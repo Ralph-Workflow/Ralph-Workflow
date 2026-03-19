@@ -21,7 +21,6 @@
 //! These layers must never mix: `AppEffect` handlers cannot use `Workspace`.
 
 pub mod config_init;
-pub mod conflict_resolution_boundary;
 pub mod context;
 pub mod detection;
 pub mod effect;
@@ -45,6 +44,7 @@ pub mod validation;
 
 pub mod io;
 
+pub mod boundary;
 pub mod cloud_progress;
 pub mod config;
 pub mod core;

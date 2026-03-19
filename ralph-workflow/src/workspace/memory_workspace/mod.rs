@@ -51,7 +51,7 @@
 
 use std::path::{Path, PathBuf};
 
-mod core;
+mod io;
 mod test_helpers;
 
 /// In-memory file entry with content and metadata.
@@ -122,11 +122,9 @@ impl MemoryWorkspace {
                     Some(state.clone())
                 })
                 .collect();
-            let mut dirs = self.directories.write()
-                .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-            for dir in dirs_to_create {
-                dirs.insert(dir);
-            }
+            self.directories.write()
+                .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+                .extend(dirs_to_create);
         }
     }
 
@@ -141,11 +139,9 @@ impl MemoryWorkspace {
                 Some(state.clone())
             })
             .collect();
-        let mut dirs = self.directories.write()
-            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-        for dir in dirs_to_create {
-            dirs.insert(dir);
-        }
+        self.directories.write()
+            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+            .extend(dirs_to_create);
     }
 }
 

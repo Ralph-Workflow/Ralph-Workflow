@@ -82,3 +82,10 @@ pub fn get_process_id() -> u32 {
 pub fn exit_with_code(code: i32) -> ! {
     std::process::exit(code)
 }
+
+pub fn read_user_input() -> String {
+    use std::io::{self, BufRead};
+    let mut input = String::new();
+    let _ = io::stdin().read_line(&mut input);
+    input
+}

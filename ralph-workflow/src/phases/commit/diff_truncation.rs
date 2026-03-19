@@ -55,32 +55,69 @@ pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
         in_file: bool,
     }
 
-    let final_acc = lines.iter().fold(Accumulator::default(), |mut acc, line| {
-        if line.starts_with("diff --git ") {
-            if acc.in_file && !acc.current_file.lines.is_empty() {
-                acc.files.push(std::mem::take(&mut acc.current_file));
+    impl Accumulator {
+        fn process_line(self, line: &str) -> Self {
+            if line.starts_with("diff --git ") {
+                let files = if self.in_file && !self.current_file.lines.is_empty() {
+                    self.files.into_iter().chain([self.current_file]).collect()
+                } else {
+                    self.files
+                };
+                let (path, priority) = line
+                    .split(" b/")
+                    .nth(1)
+                    .map(|p| (p.to_string(), prioritize_file_path(p)))
+                    .unwrap_or_default();
+                Self {
+                    files,
+                    current_file: DiffFile {
+                        path,
+                        priority,
+                        lines: vec![line.to_string()],
+                    },
+                    in_file: true,
+                }
+            } else if self.in_file {
+                let updated_lines = self
+                    .current_file
+                    .lines
+                    .into_iter()
+                    .chain([line.to_string()])
+                    .collect();
+                Self {
+                    current_file: DiffFile {
+                        lines: updated_lines,
+                        path: self.current_file.path,
+                        priority: self.current_file.priority,
+                    },
+                    files: self.files,
+                    in_file: self.in_file,
+                }
+            } else {
+                self
             }
-            acc.in_file = true;
-            acc.current_file.lines.push(line.to_string());
-
-            if let Some(path) = line.split(" b/").nth(1) {
-                acc.current_file.path = path.to_string();
-                acc.current_file.priority = prioritize_file_path(path);
-            }
-        } else if acc.in_file {
-            acc.current_file.lines.push(line.to_string());
         }
-        acc
-    });
-
-    let mut files = final_acc.files;
-    if final_acc.in_file && !final_acc.current_file.lines.is_empty() {
-        files.push(final_acc.current_file);
     }
 
-    let mut sorted_files: Vec<_> = if files.is_empty() { vec![] } else { files };
+    let final_acc = lines
+        .iter()
+        .fold(Accumulator::default(), |acc, line| acc.process_line(line));
 
-    sorted_files.sort_by_key(|f| -f.priority);
+    let sorted_files: Vec<_> = {
+        let all_files = if final_acc.in_file && !final_acc.current_file.lines.is_empty() {
+            final_acc
+                .files
+                .into_iter()
+                .chain([final_acc.current_file])
+                .collect::<Vec<_>>()
+        } else {
+            final_acc.files
+        };
+        all_files
+            .into_iter()
+            .sorted_by_key(|f| -f.priority)
+            .collect()
+    };
 
     let total_files = sorted_files.len();
 
@@ -342,7 +379,7 @@ mod diff_truncation_tests {
     fn truncate_diff_invariant_never_exceeds_max_size_edge_cases() {
         let summary_len = "\n[Truncated: 1 of 2 files shown]\n".len();
 
-        for max_size in [
+        [
             10,
             summary_len - 1,
             summary_len,
@@ -350,7 +387,9 @@ mod diff_truncation_tests {
             summary_len + 10,
             100,
             1000,
-        ] {
+        ]
+        .into_iter()
+        .for_each(|max_size| {
             let file1 = format!(
                 "diff --git a/src/a.rs b/src/a.rs\n+{}\n",
                 "x".repeat(max_size)
@@ -366,12 +405,12 @@ mod diff_truncation_tests {
                 truncated.len(),
                 &truncated[..truncated.len().min(100)]
             );
-        }
+        });
     }
 
     #[test]
     fn truncate_diff_boundary_content_sizes() {
-        for max_size in [50usize, 100, 200, 500] {
+        [50usize, 100, 200, 500].into_iter().for_each(|max_size| {
             let header = "diff --git a/a b/a\n+";
             let exact_diff = format!(
                 "{}{}",
@@ -395,7 +434,7 @@ mod diff_truncation_tests {
                 result.len(),
                 max_size
             );
-        }
+        });
     }
 
     #[test]

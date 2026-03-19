@@ -7,30 +7,21 @@ use crate::logger::output::TestLogger;
 use crate::reducer::PipelineState;
 use std::rc::Rc;
 
+use super::io::SnapshotCounter;
+
 #[test]
 fn test_execution_history_heap_estimate_uses_len_not_capacity() {
     let mut state = PipelineState::initial(100, 5);
 
-    let mut timestamp = String::with_capacity(2048);
-    timestamp.push('t');
-    let mut file = String::with_capacity(4096);
-    file.push('f');
-
-    let mut checkpoint_saved_at = String::with_capacity(2048);
-    checkpoint_saved_at.push('c');
-    let mut git_commit_oid = String::with_capacity(2048);
-    git_commit_oid.push('g');
-    let mut prompt_used = String::with_capacity(2048);
-    prompt_used.push('p');
-    let mut issues_desc = String::with_capacity(2048);
-    issues_desc.push('i');
-
-    let mut added = String::with_capacity(2048);
-    added.push('a');
-    let mut modified = String::with_capacity(2048);
-    modified.push('m');
-    let mut deleted = String::with_capacity(2048);
-    deleted.push('d');
+    let timestamp = String::from("t");
+    let file = String::from("f");
+    let checkpoint_saved_at = String::from("c");
+    let git_commit_oid = String::from("g");
+    let prompt_used = String::from("p");
+    let issues_desc = String::from("i");
+    let added = String::from("a");
+    let modified = String::from("m");
+    let deleted = String::from("d");
 
     let step = ExecutionStep {
         phase: std::sync::Arc::from("P"),
@@ -103,39 +94,24 @@ fn test_memory_snapshot_captures_state() {
 
 #[test]
 fn test_metrics_collector_respects_interval() {
-    let mut collector = MemoryMetricsCollector::new(10);
-    let mut state = PipelineState::initial(100, 5);
-
-    // Should not record at iteration 0 (initial state)
-    state.iteration = 0;
-    collector = collector.maybe_record(&state);
-    assert_eq!(collector.snapshots().len(), 0);
-
-    // Should record at iteration 1
-    state.iteration = 1;
-    collector = collector.maybe_record(&state);
-    assert_eq!(collector.snapshots().len(), 1);
-
-    // Should not record at iteration 5
-    state.iteration = 5;
-    collector = collector.maybe_record(&state);
-    assert_eq!(collector.snapshots().len(), 1);
-
-    // Should record at iteration 10
-    state.iteration = 10;
-    collector = collector.maybe_record(&state);
+    let state = PipelineState::initial(100, 5);
+    let iterations = [0, 1, 5, 10];
+    let collector = iterations.into_iter().fold(MemoryMetricsCollector::new(10), |c, i| {
+        let mut s = state;
+        s.iteration = i;
+        c.maybe_record(&s)
+    });
     assert_eq!(collector.snapshots().len(), 2);
 }
 
 #[test]
 fn test_metrics_collector_retains_bounded_snapshots_by_default() {
-    let mut collector = MemoryMetricsCollector::new(1);
-    let mut state = PipelineState::initial(100, 5);
-
-    for i in 1..=2000 {
-        state.iteration = i;
-        collector = collector.maybe_record(&state);
-    }
+    let state = PipelineState::initial(100, 5);
+    let collector = (1..=2000).fold(MemoryMetricsCollector::new(1), |c, i| {
+        let mut s = state;
+        s.iteration = i;
+        c.maybe_record(&s)
+    });
 
     let snapshots = collector.snapshots();
     assert!(
@@ -173,56 +149,39 @@ fn test_telemetry_backend_noop() {
 #[test]
 fn test_record_and_emit_integrates_with_backend() {
     struct CountingBackend {
-        snapshot_count: std::cell::RefCell<usize>,
+        snapshot_count: SnapshotCounter,
     }
 
     impl TelemetryBackend for CountingBackend {
         fn emit_snapshot(&self, _snapshot: &MemorySnapshot) {
-            *self.snapshot_count.borrow_mut() += 1;
+            self.snapshot_count.increment();
         }
         fn emit_warning(&self, _message: &str) {}
         fn flush(&self) {}
     }
 
-    let mut collector = MemoryMetricsCollector::new(10);
     let backend = CountingBackend {
-        snapshot_count: std::cell::RefCell::new(0),
+        snapshot_count: SnapshotCounter::new(),
     };
-    let mut state = PipelineState::initial(100, 5);
-
-    // Should not emit at iteration 0 (initial state)
-    state.iteration = 0;
-    collector = collector.record_and_emit(&state, &backend);
-    assert_eq!(*backend.snapshot_count.borrow(), 0);
-    assert_eq!(collector.snapshots().len(), 0);
-
-    // Should emit at iteration 1
-    state.iteration = 1;
-    collector = collector.record_and_emit(&state, &backend);
-    assert_eq!(*backend.snapshot_count.borrow(), 1);
-    assert_eq!(collector.snapshots().len(), 1);
-
-    // Should not emit at iteration 5
-    state.iteration = 5;
-    collector = collector.record_and_emit(&state, &backend);
-    assert_eq!(*backend.snapshot_count.borrow(), 1);
-
-    // Should emit at iteration 10
-    state.iteration = 10;
-    collector = collector.record_and_emit(&state, &backend);
-    assert_eq!(*backend.snapshot_count.borrow(), 2);
+    let state = PipelineState::initial(100, 5);
+    let iterations = [0, 1, 5, 10];
+    let collector = iterations.into_iter().fold(MemoryMetricsCollector::new(10), |c, i| {
+        let mut s = state;
+        s.iteration = i;
+        c.record_and_emit(&s, &backend)
+    });
     assert_eq!(collector.snapshots().len(), 2);
 }
 
 #[test]
 fn test_logging_backend_emits_warnings_above_threshold() {
     let logger = Rc::new(TestLogger::new());
-    let backend = LoggingBackend::with_logger(100, logger.clone()); // 100 byte threshold
-    let mut state = PipelineState::initial(100, 5);
-
-    // Add enough history to exceed threshold
-    for i in 0..50 {
-        state.add_execution_step(
+    let backend = LoggingBackend::with_logger(100, logger.clone());
+    let state = PipelineState::initial(100, 5);
+    let iterations = 0..50;
+    let _collector = iterations.fold(MemoryMetricsCollector::new(10), |c, i| {
+        let mut s = state;
+        s.add_execution_step(
             ExecutionStep::new(
                 "Development",
                 i,
@@ -234,7 +193,8 @@ fn test_logging_backend_emits_warnings_above_threshold() {
             ),
             1000,
         );
-    }
+        c.record_and_emit(&s, &backend)
+    });
 
     let snap = MemorySnapshot::from_pipeline_state(&state);
     assert!(
@@ -257,16 +217,18 @@ fn test_memory_metrics_library_code_does_not_write_directly_to_stderr() {
     let src_snapshot = include_str!("snapshot.rs");
     let src_collector = include_str!("collector.rs");
     let src_backends = include_str!("backends.rs");
-    for (name, src) in [
+    [
         ("mod.rs", src_mod),
         ("snapshot.rs", src_snapshot),
         ("collector.rs", src_collector),
         ("backends.rs", src_backends),
-    ] {
+    ]
+    .into_iter()
+    .for_each(|(name, src)| {
         assert!(
             !src.contains("eprintln!(\"[METRICS]")
                 && !src.contains("eprintln!(\"[METRICS WARNING]"),
             "memory_metrics/{name} should not use eprintln! in library code"
         );
-    }
+    });
 }

@@ -129,13 +129,14 @@ impl MockEffectHandler {
             }
 
             Effect::ApplyPlanningOutcome { iteration, valid } => {
-                let mut ui = Vec::new();
-                if valid {
-                    ui.push(UIEvent::PhaseTransition {
+                let ui = if valid {
+                    vec![UIEvent::PhaseTransition {
                         from: Some(self.state.phase),
                         to: PipelinePhase::Development,
-                    });
-                }
+                    }]
+                } else {
+                    vec![]
+                };
                 Some((
                     PipelineEvent::plan_generation_completed(iteration, valid),
                     ui,

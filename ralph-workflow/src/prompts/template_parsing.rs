@@ -228,21 +228,18 @@ fn extract_vars_recursive(bytes: &[u8], i: usize, line: usize) -> Vec<VariableIn
 
         let var_end = find_var_end(bytes, j);
         if var_end > j {
-            let mut result = Vec::new();
-            if let Some((var_name, default_value)) =
-                std::str::from_utf8(&bytes[name_start..var_end])
-                    .ok()
-                    .and_then(parse_variable_spec_impl)
-            {
-                result.push(VariableInfo {
+            std::str::from_utf8(&bytes[name_start..var_end])
+                .ok()
+                .and_then(parse_variable_spec_impl)
+                .map(|(var_name, default_value)| VariableInfo {
                     name: var_name.to_string(),
                     line,
                     has_default: default_value.is_some(),
                     default_value,
-                });
-            }
-            result.extend(extract_vars_recursive(bytes, var_end + 2, line));
-            result
+                })
+                .into_iter()
+                .chain(extract_vars_recursive(bytes, var_end + 2, line))
+                .collect()
         } else {
             extract_vars_recursive(bytes, i + 1, line)
         }
@@ -291,13 +288,11 @@ fn extract_partials_recursive(bytes: &[u8], i: usize) -> Vec<String> {
                 .count();
 
             if j < bytes.len() && bytes[j] == b'}' && j + 1 < bytes.len() && bytes[j + 1] == b'}' {
-                let mut result = Vec::new();
                 let name = content[name_start..j].trim();
-                if !name.is_empty() {
-                    result.push(name.to_string());
-                }
-                result.extend(extract_partials_recursive(bytes, j + 2));
-                return result;
+                std::iter::once(name.to_string())
+                    .filter(|s| !s.is_empty())
+                    .chain(extract_partials_recursive(bytes, j + 2))
+                    .collect()
             }
         }
 

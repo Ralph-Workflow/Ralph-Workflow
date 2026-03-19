@@ -181,39 +181,32 @@ impl MockEffectHandler {
 
             Effect::SaveCheckpoint { trigger } => {
                 let checkpoint_saved = PipelineEvent::checkpoint_saved(trigger);
-                let mut additional_events = Vec::new();
 
-                if trigger == CheckpointTrigger::PhaseTransition {
+                let additional_events = if trigger == CheckpointTrigger::PhaseTransition {
                     match self.state.phase {
-                        PipelinePhase::Planning => {
-                            additional_events.push(PipelineEvent::planning_phase_completed());
-                        }
-                        PipelinePhase::Development => {
-                            // Only emit completion if we've completed all iterations
-                            if self.state.iteration >= self.state.total_iterations {
-                                additional_events
-                                    .push(PipelineEvent::development_phase_completed());
-                            }
+                        PipelinePhase::Planning => vec![PipelineEvent::planning_phase_completed()],
+                        PipelinePhase::Development
+                            if self.state.iteration >= self.state.total_iterations =>
+                        {
+                            vec![PipelineEvent::development_phase_completed()]
                         }
                         PipelinePhase::Review
                             if self.state.reviewer_pass >= self.state.total_reviewer_passes =>
                         {
-                            additional_events.push(PipelineEvent::review_phase_completed(
+                            vec![PipelineEvent::review_phase_completed(
                                 /* early_exit */ false,
-                            ));
+                            )]
                         }
                         PipelinePhase::CommitMessage => {
-                            // Commit phase completion is modeled as "commit happened".
-                            // The orchestrator uses SaveCheckpoint(PhaseTransition) after commit
-                            // reaches a terminal state. Emit a synthetic commit completion that
-                            // advances the pipeline to FinalValidation.
-                            additional_events.push(PipelineEvent::commit_skipped(
+                            vec![PipelineEvent::commit_skipped(
                                 "Mock: commit phase transition".to_string(),
-                            ));
+                            )]
                         }
-                        _ => {}
+                        _ => vec![],
                     }
-                }
+                } else {
+                    vec![]
+                };
 
                 Some((checkpoint_saved, vec![], additional_events))
             }

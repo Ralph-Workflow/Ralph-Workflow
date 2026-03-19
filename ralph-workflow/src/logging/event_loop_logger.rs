@@ -176,9 +176,8 @@ mod tests {
         let workspace = WorkspaceFs::new(tempdir.path().to_path_buf());
 
         let log_path = std::path::Path::new("event_loop.log");
-        let mut logger = EventLoopLogger::new();
 
-        for i in 0..5 {
+        let _ = (0..5).fold(EventLoopLogger::new(), |logger, i| {
             let (updated_logger, _) = logger
                 .log_effect(&LogEffectParams {
                     workspace: &workspace,
@@ -192,16 +191,16 @@ mod tests {
                     timestamp: TEST_TIMESTAMP,
                 })
                 .unwrap();
-            logger = updated_logger;
-        }
+            updated_logger
+        });
 
         let content = workspace.read(log_path).unwrap();
-        for i in 1..=5 {
+        (1..=5).for_each(|i| {
             assert!(
                 content.contains(&format!("{i} ts=")),
                 "Should contain sequence number {i}"
             );
-        }
+        });
     }
 
     #[test]
@@ -269,8 +268,7 @@ mod tests {
         let log_path = std::path::Path::new("event_loop.log");
 
         {
-            let mut logger = EventLoopLogger::new();
-            for i in 0..3 {
+            let _ = (0..3).fold(EventLoopLogger::new(), |logger, i| {
                 let (updated_logger, _) = logger
                     .log_effect(&LogEffectParams {
                         workspace: &workspace,
@@ -284,8 +282,8 @@ mod tests {
                         timestamp: TEST_TIMESTAMP,
                     })
                     .unwrap();
-                logger = updated_logger;
-            }
+                updated_logger
+            });
         }
 
         let logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();

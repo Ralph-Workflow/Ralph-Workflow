@@ -201,30 +201,35 @@ fn check_worktree_conflicts() -> io::Result<()> {
         )
     })?;
 
-    for entry in entries.flatten() {
+    let result: io::Result<Option<String>> = entries.flatten().try_fold(None, |acc, entry| {
+        if acc.is_some() {
+            return Ok(acc);
+        }
         let worktree_path = entry.path();
         let worktree_head = worktree_path.join("HEAD");
 
         if worktree_head.exists() {
             if let Ok(content) = fs::read_to_string(&worktree_head) {
-                // Check if this worktree has our branch checked out
                 if content.contains(&format!("refs/heads/{branch_name}")) {
-                    // Extract worktree name from path
                     let worktree_name = worktree_path
                         .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("unknown");
-
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "Branch '{branch_name}' is already checked out in worktree '{worktree_name}'. \
-                             Use 'git worktree add' to create a new worktree for this branch."
-                        ),
-                    ));
+                    return Ok(Some(worktree_name.to_string()));
                 }
             }
         }
+        Ok(acc)
+    });
+
+    if let Ok(Some(worktree_name)) = result {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "Branch '{branch_name}' is already checked out in worktree '{worktree_name}'. \
+                 Use 'git worktree add' to create a new worktree for this branch."
+            ),
+        ));
     }
 
     Ok(())
@@ -269,8 +274,7 @@ fn check_submodule_state() -> io::Result<()> {
     let submodule_count = gitmodules_content.matches("path = ").count();
 
     if submodule_count > 0 {
-        // Verify each submodule directory exists
-        for line in gitmodules_content.lines() {
+        gitmodules_content.lines().try_for_each(|line| {
             if line.contains("path = ") {
                 if let Some(path) = line.split("path = ").nth(1) {
                     let submodule_path = workdir.join(path.trim());
@@ -285,7 +289,8 @@ fn check_submodule_state() -> io::Result<()> {
                     }
                 }
             }
-        }
+            Ok(())
+        })?;
     }
 
     Ok(())
@@ -350,4 +355,3 @@ fn check_sparse_checkout_state() -> io::Result<()> {
 
     Ok(())
 }
-

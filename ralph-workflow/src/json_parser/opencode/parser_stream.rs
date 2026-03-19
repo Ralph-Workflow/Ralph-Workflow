@@ -42,8 +42,8 @@ impl OpenCodeParser {
     }
 
     fn next_fallback_step_id(&self, session: &str, timestamp: Option<u64>) -> String {
-        let counter = self.fallback_step_counter.get().saturating_add(1);
-        self.fallback_step_counter.set(counter);
+        let counter = self.state.fallback_step_counter.get().saturating_add(1);
+        self.state.fallback_step_counter.set(counter);
         timestamp.map_or_else(
             || format!("{session}:fallback:{counter}"),
             |ts| format!("{session}:{ts}:{counter}"),
@@ -195,9 +195,9 @@ impl OpenCodeParser {
             let consumed = chunk.len();
             reader.consume(consumed);
 
-            for line in parser.feed(&byte_buffer) {
-                self.process_stream_json_line(&line, monitor, logging_enabled, log_buffer)?;
-            }
+            parser.feed(&byte_buffer).try_for_each(|line| {
+                self.process_stream_json_line(&line, monitor, logging_enabled, log_buffer)
+            })?;
         }
         Ok(())
     }
@@ -254,10 +254,9 @@ impl OpenCodeParser {
             return accumulated;
         }
 
-        let mut start = accumulated.len() - max_bytes;
-        while start < accumulated.len() && !accumulated.is_char_boundary(start) {
-            start = start.saturating_add(1);
-        }
+        let start = (accumulated.len() - max_bytes..accumulated.len())
+            .find(|&i| accumulated.is_char_boundary(i))
+            .unwrap_or(accumulated.len());
         &accumulated[start..]
     }
 
@@ -280,6 +279,7 @@ impl OpenCodeParser {
         workspace: &dyn crate::workspace::Workspace,
     ) -> io::Result<()> {
         let maybe_accumulated = self
+            .state
             .streaming_session
             .borrow()
             .get_accumulated(ContentType::Text, "main")

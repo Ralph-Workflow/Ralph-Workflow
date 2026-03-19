@@ -1,15 +1,15 @@
 use super::types::{ConflictResolutionContext, ConflictResolutionResult};
+use crate::app::boundary::conflict_resolution;
 use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
-use std::cell::RefCell;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictResolutionPromptReplay {
     pub key: String,
     pub was_replayed: bool,
-    /// When `was_replayed` is false, contains the prompt entry that should be captured.
     pub captured_entry: Option<crate::prompts::PromptHistoryEntry>,
 }
 
@@ -83,7 +83,7 @@ where
     // this helper function is not a reducer.
     let scope_key = PromptScopeKey::for_conflict_resolution(phase, 0);
     let prompt_key = scope_key.to_string();
-    let prompt_history_cell = RefCell::new(std::collections::HashMap::new());
+    let prompt_history_cell = super::boundary::create_prompt_history_cell();
     let (resolution_prompt, was_replayed) = get_stored_or_generate_prompt(
         &scope_key,
         &prompt_history_cell.borrow(),
@@ -259,7 +259,7 @@ fn run_ai_conflict_resolution(
 ) -> anyhow::Result<ConflictResolutionResult> {
     let reviewer_agent = ctx.config.reviewer_agent.as_deref().unwrap_or("codex");
 
-    crate::app::conflict_resolution_boundary::run_ai_conflict_resolution_with_runtime(
+    crate::app::boundary::conflict_resolution::run_ai_conflict_resolution_with_runtime(
         resolution_prompt,
         ctx.config,
         ctx.logger,

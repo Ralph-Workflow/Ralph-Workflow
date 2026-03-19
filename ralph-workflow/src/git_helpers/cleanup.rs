@@ -21,11 +21,13 @@ use std::path::{Path, PathBuf};
 const WORKTREE_CONFIG_STATE_FILE: &str = "worktree-config.previous";
 
 fn cleanup_hook_state_files(ralph_dir: &Path) {
-    for file_name in [HOOKS_PATH_STATE_FILE, WORKTREE_CONFIG_STATE_FILE] {
-        let path = ralph_dir.join(file_name);
-        add_owner_write_if_not_symlink(&path);
-        let _ = fs::remove_file(path);
-    }
+    [HOOKS_PATH_STATE_FILE, WORKTREE_CONFIG_STATE_FILE]
+        .iter()
+        .for_each(|file_name| {
+            let path = ralph_dir.join(file_name);
+            add_owner_write_if_not_symlink(&path);
+            let _ = fs::remove_file(path);
+        });
 }
 
 fn remove_scoped_hooks_dir(ralph_dir: &Path) {
@@ -193,13 +195,14 @@ pub(crate) fn verify_ralph_dir_removed(repo_root: &Path) -> Vec<String> {
 }
 
 fn inspect_ralph_dir_contents(ralph_dir: &Path) -> Vec<String> {
+    use itertools::Itertools;
     match fs::read_dir(ralph_dir) {
         Ok(entries) => {
-            let mut names = entries
+            let names: Vec<_> = entries
                 .filter_map(Result::ok)
                 .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                .collect::<Vec<_>>();
-            names.sort();
+                .sorted()
+                .collect();
             if names.is_empty() {
                 Vec::new()
             } else {

@@ -57,11 +57,12 @@ impl GeminiParser {
         let prefix = &self.display_name;
 
         // Reset streaming state on new session
-        self.streaming_session.borrow_mut().on_message_start();
-        self.last_rendered_content.borrow_mut().clear();
+        self.state.streaming_session.borrow_mut().on_message_start();
+        self.state.last_rendered_content.borrow_mut().clear();
         let sid = session_id.unwrap_or_else(|| "unknown".to_string());
         // Set the current message ID for duplicate detection
-        self.streaming_session
+        self.state
+            .streaming_session
             .borrow_mut()
             .set_current_message_id(Some(sid.clone()));
         let model_str = model.unwrap_or_else(|| "unknown".to_string());
@@ -97,7 +98,7 @@ impl GeminiParser {
         if let Some(text) = content {
             if is_delta && role_str == "assistant" {
                 let (show_prefix, accumulated_text, has_prefix) = {
-                    let mut session = self.streaming_session.borrow_mut();
+                    let mut session = self.state.streaming_session.borrow_mut();
                     let show_prefix = session.on_text_delta(0, &text);
 
                     let accumulated_text = session
@@ -122,7 +123,7 @@ impl GeminiParser {
                     (show_prefix, accumulated_text, has_prefix)
                 };
 
-                let terminal_mode = *self.terminal_mode.borrow();
+                let terminal_mode = *self.state.terminal_mode.borrow();
                 let key = "text:0";
 
                 if show_prefix && !has_prefix {
@@ -134,7 +135,8 @@ impl GeminiParser {
                     );
 
                     let sanitized = delta_display::sanitize_for_display(&accumulated_text);
-                    self.last_rendered_content
+                    self.state
+                        .last_rendered_content
                         .borrow_mut()
                         .insert(key.to_string(), sanitized);
 
@@ -146,6 +148,7 @@ impl GeminiParser {
 
                 let sanitized = delta_display::sanitize_for_display(&accumulated_text);
                 let last_rendered = self
+                    .state
                     .last_rendered_content
                     .borrow()
                     .get(key)
@@ -172,7 +175,8 @@ impl GeminiParser {
                     );
                 }
 
-                self.last_rendered_content
+                self.state
+                    .last_rendered_content
                     .borrow_mut()
                     .insert(key.to_string(), sanitized.clone());
 
@@ -181,7 +185,7 @@ impl GeminiParser {
                     TerminalMode::Basic | TerminalMode::None => String::new(),
                 };
             } else if !is_delta && role_str == "assistant" {
-                let session = self.streaming_session.borrow();
+                let session = self.state.streaming_session.borrow();
                 let is_duplicate = session.get_current_message_id().map_or_else(
                     || session.has_any_streamed_content(),
                     |message_id| session.is_duplicate_final_message(message_id),
@@ -191,16 +195,16 @@ impl GeminiParser {
                 drop(session);
 
                 // Finalize the message (this marks it as displayed)
-                let _was_in_block = self.streaming_session.borrow_mut().on_message_stop();
+                let _was_in_block = self.state.streaming_session.borrow_mut().on_message_stop();
 
-                let terminal_mode = *self.terminal_mode.borrow();
+                let terminal_mode = *self.state.terminal_mode.borrow();
 
                 // In non-TTY modes, per-delta output is suppressed. Flush accumulated assistant text
                 // once at the completion boundary so piped/log output contains the assistant content.
                 let text_flush_non_tty = match terminal_mode {
                     TerminalMode::Full => String::new(),
                     TerminalMode::Basic | TerminalMode::None => {
-                        let session = self.streaming_session.borrow();
+                        let session = self.state.streaming_session.borrow();
                         let mut out = String::new();
                         for key in session.accumulated_keys(ContentType::Text) {
                             let accumulated = session

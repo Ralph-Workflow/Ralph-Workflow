@@ -268,10 +268,9 @@ mod tests {
         assert!(!templates.is_empty());
         assert!(templates.len() >= 10); // At least 10 templates (reduced after removing unused reviewer templates)
 
-        // Verify sorted by name
-        for window in templates.windows(2) {
-            assert!(window[0].name <= window[1].name);
-        }
+        assert!(templates
+            .windows(2)
+            .all(|window| window[0].name <= window[1].name));
     }
 
     #[test]
@@ -289,25 +288,17 @@ mod tests {
     #[test]
     fn test_all_templates_have_content() {
         let templates = list_all_templates();
-        for template in templates {
-            assert!(
-                !template.content.is_empty(),
-                "Template '{}' has empty content",
-                template.name
-            );
-        }
+        assert!(templates
+            .iter()
+            .all(|template| !template.content.is_empty()));
     }
 
     #[test]
     fn test_all_templates_have_descriptions() {
         let templates = list_all_templates();
-        for template in templates {
-            assert!(
-                !template.description.is_empty(),
-                "Template '{}' has empty description",
-                template.name
-            );
-        }
+        assert!(templates
+            .iter()
+            .all(|template| !template.description.is_empty()));
     }
 
     #[test]
@@ -382,12 +373,8 @@ mod tests {
     #[test]
     fn test_all_templates_include_no_git_commit_partial() {
         let templates = list_all_templates();
-        for template in templates {
-            assert!(
-                template.content.contains("{{> shared/_no_git_commit}}"),
-                "Template '{}' must include shared/_no_git_commit partial",
-                template.name
-            );
-        }
+        assert!(templates
+            .iter()
+            .all(|template| template.content.contains("{{> shared/_no_git_commit}}")));
     }
 }

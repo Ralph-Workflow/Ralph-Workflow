@@ -64,19 +64,19 @@ pub fn enforce_hook_permissions(repo_root: &Path, logger: &Logger) {
         return;
     };
 
-    for hook_name in RALPH_HOOK_NAMES {
+    RALPH_HOOK_NAMES.iter().for_each(|hook_name| {
         let path = hooks_dir.join(hook_name);
         if !path.exists() {
-            continue;
+            return;
         }
         if !matches!(file_contains_marker(&path, HOOK_MARKER), Ok(true)) {
-            continue;
+            return;
         }
         if is_symlink_hook(&path, logger, hook_name) {
-            continue;
+            return;
         }
         restore_hook_permissions_if_loose(&path, logger, hook_name);
-    }
+    });
 }
 
 #[cfg(unix)]
@@ -120,13 +120,8 @@ pub fn file_contains_marker_with_workspace(
     }
 
     let content = workspace.read(relative_path)?;
-    for line in content.lines() {
-        if line.contains(marker) {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
+    let found = content.lines().any(|line| line.contains(marker));
+    Ok(found)
 }
 
 #[cfg(any(test, feature = "test-utils"))]

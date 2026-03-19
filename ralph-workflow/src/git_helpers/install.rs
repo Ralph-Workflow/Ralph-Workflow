@@ -14,17 +14,16 @@ pub const HOOK_MARKER: &str = "RALPH_RUST_MANAGED_HOOK";
 pub const RALPH_HOOK_NAMES: &[&str] = &["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"];
 
 fn bash_single_quote_literal(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
+    std::iter::once('\'')
+        .chain(s.chars().flat_map(|ch| {
+            if ch == '\'' {
+                "'\\''".chars()
+            } else {
+                std::iter::once(ch)
+            }
+        }))
+        .chain(std::iter::once('\''))
+        .collect()
 }
 
 fn make_hook_content(
@@ -159,11 +158,10 @@ fn install_hooks_for_hook_names(
     hooks_dir: &Path,
     hook_names: &[&str],
 ) -> io::Result<()> {
-    for hook_name in hook_names {
+    hook_names.iter().try_for_each(|hook_name| {
         let label = hook_display_label(hook_name);
-        install_hook_with_repo_root(label, ralph_dir, hooks_dir, &hooks_dir.join(hook_name))?;
-    }
-    Ok(())
+        install_hook_with_repo_root(label, ralph_dir, hooks_dir, &hooks_dir.join(hook_name))
+    })
 }
 
 pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
@@ -312,11 +310,11 @@ mod tests {
     #[test]
     fn test_verify_hooks_removed_with_workspace() {
         let expected_hooks = ["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"];
-        for hook in &expected_hooks {
+        expected_hooks.iter().for_each(|hook| {
             assert!(
                 RALPH_HOOK_NAMES.contains(hook),
                 "verify_hooks_removed checks RALPH_HOOK_NAMES which must contain {hook}"
             );
-        }
+        });
     }
 }

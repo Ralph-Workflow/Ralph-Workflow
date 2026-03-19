@@ -97,20 +97,6 @@ impl StringPool {
 
     /// Backward-compatible convenience: accepts any `Into<String>`.
     ///
-    /// Note: callers passing `&str` should prefer `intern_str()` to avoid
-    /// allocating a temporary `String` on repeated lookups.
-    #[must_use]
-    pub fn intern(self, s: impl Into<String>) -> (Self, Arc<str>) {
-        self.intern_string(s.into())
-    }
-
-        let interned: Arc<str> = Arc::from(s);
-        self.pool.insert(Arc::clone(&interned));
-        interned
-    }
-
-    /// Get or insert an owned string into the pool, returning an Arc<str>.
-    ///
     /// This path can reuse the allocation of the provided `String` when inserting.
     pub fn intern_string(&mut self, s: String) -> Arc<str> {
         if let Some(existing) = self.pool.get(s.as_str()) {

@@ -71,5 +71,9 @@
 //! ```
 
 include!("event_queue/config.rs");
+
+pub mod boundary;
+
 include!("event_queue/bounded_queue.rs");
+
 include!("event_queue/tests.rs");

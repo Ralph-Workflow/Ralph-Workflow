@@ -49,7 +49,7 @@ impl crate::json_parser::claude::ClaudeParser {
         text: &str,
     ) -> String {
         let thinking_finalize = self.finalize_thinking_full_mode(session);
-        *self.suppress_thinking_for_message.borrow_mut() = true;
+        *self.state.suppress_thinking_for_message.borrow_mut() = true;
         let c = &self.colors;
         let prefix = &self.display_name;
 
@@ -91,13 +91,13 @@ impl crate::json_parser::claude::ClaudeParser {
         }
 
         // Use TextDeltaRenderer for consistent rendering across all parsers
-        let terminal_mode = *self.terminal_mode.borrow();
+        let terminal_mode = *self.state.terminal_mode.borrow();
 
         if terminal_mode == TerminalMode::Full {
             // Append-only streaming keeps the cursor on the current line; we still track
             // that a streaming text line is active so newline-based output can ensure the
             // final completion newline is emitted at message boundaries.
-            *self.text_line_active.borrow_mut() = true;
+            *self.state.text_line_active.borrow_mut() = true;
         }
 
         // Use prefix trie to detect if new content extends previously rendered content
@@ -107,6 +107,7 @@ impl crate::json_parser::claude::ClaudeParser {
             // Append-only pattern in Full mode: track last rendered and emit only new content
             let key = format!("text:{default_index}");
             let last_rendered = self
+                .state
                 .last_rendered_content
                 .borrow()
                 .get(&key)
@@ -122,7 +123,8 @@ impl crate::json_parser::claude::ClaudeParser {
                     terminal_mode,
                 );
                 // Track what we rendered (the sanitized content, not the ANSI codes)
-                self.last_rendered_content
+                self.state
+                    .last_rendered_content
                     .borrow_mut()
                     .insert(key, sanitized_text.clone());
                 rendered
@@ -150,7 +152,8 @@ impl crate::json_parser::claude::ClaudeParser {
                 }
 
                 // Track new rendered content
-                self.last_rendered_content
+                self.state
+                    .last_rendered_content
                     .borrow_mut()
                     .insert(key, sanitized_text.clone());
 
@@ -202,7 +205,7 @@ impl crate::json_parser::claude::ClaudeParser {
     ) -> String {
         let c = &self.colors;
 
-        let terminal_mode = *self.terminal_mode.borrow();
+        let terminal_mode = *self.state.terminal_mode.borrow();
 
         // In Full mode, finalize any active thinking line.
         let thinking_finalize = self.finalize_thinking_full_mode(session);
@@ -223,8 +226,8 @@ impl crate::json_parser::claude::ClaudeParser {
                         .is_some_and(|message_id| session.is_message_pre_rendered(message_id))
                     {
                         // Clear any pending thinking indices to avoid cross-message contamination.
-                        self.thinking_active_index.borrow_mut().take();
-                        self.thinking_non_tty_indices.borrow_mut().clear();
+                        self.state.thinking_active_index.borrow_mut().take();
+                        self.state.thinking_non_tty_indices.borrow_mut().clear();
                         (String::new(), String::new(), String::new())
                     } else {
                         // Flush accumulated thinking.
@@ -232,22 +235,24 @@ impl crate::json_parser::claude::ClaudeParser {
                         // output in non-TTY modes (to prevent per-delta spam).
                         let thinking_output = {
                             let indices: Vec<u64> =
-                                if self.thinking_non_tty_indices.borrow().is_empty() {
-                                    self.thinking_active_index
+                                if self.state.thinking_non_tty_indices.borrow().is_empty() {
+                                    self.state
+                                        .thinking_active_index
                                         .borrow()
                                         .iter()
                                         .copied()
                                         .collect()
                                 } else {
-                                    self.thinking_non_tty_indices
+                                    self.state
+                                        .thinking_non_tty_indices
                                         .borrow()
                                         .iter()
                                         .copied()
                                         .collect()
                                 };
 
-                            self.thinking_non_tty_indices.borrow_mut().clear();
-                            self.thinking_active_index.borrow_mut().take();
+                            self.state.thinking_non_tty_indices.borrow_mut().clear();
+                            self.state.thinking_active_index.borrow_mut().take();
 
                             indices
                                 .iter()
@@ -405,13 +410,13 @@ impl crate::json_parser::claude::ClaudeParser {
         // implies we should emit a completion newline, but some real-world logs can violate block
         // lifecycle ordering. If we have an active text streaming line, still emit completion.
         let needs_text_completion = terminal_mode == TerminalMode::Full
-            && (*self.text_line_active.borrow() || *self.cursor_up_active.borrow());
+            && (*self.state.text_line_active.borrow() || *self.state.cursor_up_active.borrow());
         let should_emit_completion = was_in_block || needs_text_completion;
 
         if should_emit_completion {
             if terminal_mode == TerminalMode::Full {
-                *self.text_line_active.borrow_mut() = false;
-                *self.cursor_up_active.borrow_mut() = false;
+                *self.state.text_line_active.borrow_mut() = false;
+                *self.state.cursor_up_active.borrow_mut() = false;
             }
 
             let completion = if terminal_mode == TerminalMode::Full {

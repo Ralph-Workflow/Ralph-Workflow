@@ -139,6 +139,7 @@ impl CodexParser {
             // This handles the normal case where the stream completes properly
             if is_turn_completed {
                 if let Some(accumulated) = self
+                    .state
                     .streaming_session
                     .borrow()
                     .get_accumulated(super::types::ContentType::Text, "agent_msg")
@@ -225,6 +226,7 @@ impl CodexParser {
         // This handles the case where the stream ends unexpectedly
         if logging_enabled && !result_written_for_current_turn {
             if let Some(accumulated) = self
+                .state
                 .streaming_session
                 .borrow()
                 .get_accumulated(super::types::ContentType::Text, "agent_msg")

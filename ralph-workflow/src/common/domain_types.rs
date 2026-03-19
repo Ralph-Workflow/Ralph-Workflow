@@ -404,8 +404,7 @@ mod tests {
 
     #[test]
     fn test_git_oid_invalid_char() {
-        let mut invalid = "a".repeat(39).to_string();
-        invalid.push('g');
+        let invalid = "a".repeat(39).to_string() + "g";
         let result = GitOid::try_from_str(&invalid);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -517,10 +516,9 @@ mod tests {
         let oid1 = GitOid::try_from_str(&"1".repeat(40)).unwrap();
         let oid2 = GitOid::try_from_str(&"1".repeat(40)).unwrap();
         let oid3 = GitOid::try_from_str(&"2".repeat(40)).unwrap();
-        let mut set = HashSet::new();
-        set.insert(oid1.clone());
-        set.insert(oid2.clone());
-        set.insert(oid3.clone());
+        let set: HashSet<_> = [oid1.clone(), oid2.clone(), oid3.clone()]
+            .into_iter()
+            .collect();
         assert_eq!(set.len(), 2);
     }
 

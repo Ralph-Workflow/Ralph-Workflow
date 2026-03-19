@@ -95,7 +95,7 @@ fn test_validate_and_process_issues_xml_archives_and_writes_markdown() {
         crate::files::llm_output_extraction::xml_paths::ISSUES_XML,
         xml_content,
     );
-    let mut fixture = TestFixture::new(workspace);
+    let fixture = TestFixture::new(workspace);
     let ctx = fixture.ctx();
 
     let _ = super::xml_processing::validate_and_process_issues_xml(
@@ -139,7 +139,7 @@ fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
     let workspace = MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Plan\n");
     let colors = Colors { enabled: false };
     let logger = Logger::new(colors);
-    let mut timer = Timer::new();
+    let timer = Timer::new();
 
     let config = Config::default();
     let registry = AgentRegistry::new().unwrap();
@@ -153,7 +153,7 @@ fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
-    let mut ctx = super::super::context::PhaseContext {
+    let ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
         logger: &logger,
@@ -198,7 +198,7 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
         .with_file(".agent/ISSUES.md", "# Issues\n");
     let colors = Colors { enabled: false };
     let logger = Logger::new(colors);
-    let mut timer = Timer::new();
+    let timer = Timer::new();
 
     let config = Config::default();
     let registry = AgentRegistry::new().unwrap();
@@ -212,7 +212,7 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
-    let mut ctx = super::super::context::PhaseContext {
+    let ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
         logger: &logger,
@@ -270,7 +270,7 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
     let workspace = MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Plan\n");
     let colors = Colors { enabled: false };
     let logger = Logger::new(colors);
-    let mut timer = Timer::new();
+    let timer = Timer::new();
 
     let config = Config::default();
     let registry = AgentRegistry::new().unwrap();
@@ -282,7 +282,7 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
-    let mut ctx = super::super::context::PhaseContext {
+    let ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
         logger: &logger,
@@ -335,7 +335,7 @@ fn test_run_fix_pass_errors_on_missing_template_variables() {
         .with_file(".agent/ISSUES.md", "# Issues\n");
     let colors = Colors { enabled: false };
     let logger = Logger::new(colors);
-    let mut timer = Timer::new();
+    let timer = Timer::new();
 
     let config = Config::default();
     let registry = AgentRegistry::new().unwrap();
@@ -347,7 +347,7 @@ fn test_run_fix_pass_errors_on_missing_template_variables() {
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
-    let mut ctx = super::super::context::PhaseContext {
+    let ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
         logger: &logger,

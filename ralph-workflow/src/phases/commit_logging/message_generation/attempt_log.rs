@@ -108,7 +108,7 @@ impl CommitAttemptLog {
     /// Record an extraction attempt (consuming builder).
     #[must_use]
     pub fn add_extraction_attempt(mut self, attempt: ExtractionAttempt) -> Self {
-        self.extraction_attempts.push(attempt);
+        self.extraction_attempts = self.extraction_attempts.into_iter().chain([attempt]).collect();
         self
     }
 

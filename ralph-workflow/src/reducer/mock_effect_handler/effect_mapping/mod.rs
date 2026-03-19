@@ -77,23 +77,19 @@ impl MockEffectHandler {
     ///
     /// Panics if invariants are violated.
     pub fn execute_mock(&mut self, effect: &Effect) -> EffectResult {
-        // Capture the effect for test assertions
-        self.captured_effects.borrow_mut().push(effect.clone());
+        self.captured_state.push_effect(effect.clone());
 
-        // Try lifecycle effects first (they can occur in any phase)
         if let Some((event, ui_events, additional_events)) =
             self.handle_lifecycle_effect(effect.clone())
         {
-            // Capture UI events for test assertions
-            self.captured_ui_events
-                .borrow_mut()
-                .extend(ui_events.clone());
+            ui_events
+                .iter()
+                .for_each(|e| self.captured_state.push_ui_event(e.clone()));
 
-            // Capture emitted pipeline events (primary first, then additional)
-            self.captured_events.borrow_mut().push(event.clone());
-            self.captured_events
-                .borrow_mut()
-                .extend(additional_events.clone());
+            self.captured_state.push_event(event.clone());
+            additional_events
+                .iter()
+                .for_each(|e| self.captured_state.push_event(e.clone()));
 
             return EffectResult {
                 event,
@@ -102,7 +98,6 @@ impl MockEffectHandler {
             };
         }
 
-        // Try phase-specific effects
         let (event, ui_events) = self
             .handle_planning_effect(effect)
             .or_else(|| self.handle_development_effect(effect))
@@ -113,13 +108,11 @@ impl MockEffectHandler {
                 panic!("MockEffectHandler::execute_mock received unhandled effect: {effect:?}")
             });
 
-        // Capture UI events for test assertions
-        self.captured_ui_events
-            .borrow_mut()
-            .extend(ui_events.clone());
+        ui_events
+            .iter()
+            .for_each(|e| self.captured_state.push_ui_event(e.clone()));
 
-        // Capture emitted pipeline events
-        self.captured_events.borrow_mut().push(event.clone());
+        self.captured_state.push_event(event.clone());
 
         EffectResult {
             event,

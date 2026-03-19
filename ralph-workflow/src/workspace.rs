@@ -378,11 +378,10 @@ pub trait Workspace: Send + Sync {
 // Production Implementation: WorkspaceFs
 // ============================================================================
 
-pub mod sync_policy;
-pub mod workspace_fs;
+pub mod files;
 
 // Re-export WorkspaceFs for backward compatibility
-pub use workspace_fs::WorkspaceFs;
+pub use files::WorkspaceFs;
 
 // ============================================================================
 // Test Implementation: MemoryWorkspace

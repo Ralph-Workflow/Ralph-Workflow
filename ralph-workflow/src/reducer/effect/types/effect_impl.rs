@@ -63,12 +63,12 @@ mod tests {
             },
         ];
 
-        for effect in &effects {
+        effects.iter().for_each(|effect| {
             assert!(
                 effect.is_same_agent_retry(),
                 "Expected is_same_agent_retry() == true for {effect:?}"
             );
-        }
+        });
     }
 
     #[test]
@@ -95,12 +95,12 @@ mod tests {
             },
         ];
 
-        for effect in &effects {
+        effects.iter().for_each(|effect| {
             assert!(
                 !effect.is_same_agent_retry(),
                 "Expected is_same_agent_retry() == false for {effect:?}"
             );
-        }
+        });
     }
 
     #[test]
@@ -112,11 +112,11 @@ mod tests {
             Effect::EnsureGitignoreEntries,
         ];
 
-        for effect in &effects {
+        effects.iter().for_each(|effect| {
             assert!(
                 !effect.is_same_agent_retry(),
                 "Expected is_same_agent_retry() == false for {effect:?}"
             );
-        }
+        });
     }
 }

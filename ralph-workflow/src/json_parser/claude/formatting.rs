@@ -53,7 +53,7 @@ impl ClaudeParser {
             // In full TTY mode, streaming output uses an in-place update pattern which can leave
             // the cursor positioned on an active line. System events (like `status`) can arrive
             // at any time; clearing the line defensively avoids leaving remnants (e.g. "statusead").
-            if *self.terminal_mode.borrow() == TerminalMode::Full {
+            if *self.state.terminal_mode.borrow() == TerminalMode::Full {
                 use crate::json_parser::delta_display::CLEAR_LINE;
                 format!(
                     "{}\r{}[{}]{} {}{}{}\n",
@@ -140,7 +140,7 @@ impl ClaudeParser {
         &self,
         message: Option<&crate::json_parser::types::AssistantMessage>,
     ) -> bool {
-        let session = self.streaming_session.borrow();
+        let session = self.state.streaming_session.borrow();
 
         // Extract message_id from the assistant message
         let assistant_msg_id = message.and_then(|m| m.id.as_ref());
@@ -329,7 +329,7 @@ impl ClaudeParser {
 
                 // If we successfully rendered content, mark it as rendered
                 if !out.is_empty() {
-                    let mut session = self.streaming_session.borrow_mut();
+                    let mut session = self.state.streaming_session.borrow_mut();
 
                     // Mark the message as pre-rendered so that ALL subsequent streaming
                     // deltas for this message are suppressed.

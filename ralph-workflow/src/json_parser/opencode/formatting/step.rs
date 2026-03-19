@@ -29,18 +29,20 @@ impl OpenCodeParser {
     }
 
     fn ensure_current_step_id_for_finish(&self, event: &OpenCodeEvent) {
-        if self
+        let has_current = self
+            .state
             .streaming_session
             .borrow()
             .get_current_message_id()
-            .is_some()
-        {
+            .is_some();
+        if has_current {
             return;
         }
 
         let session = event.session_id.as_deref().unwrap_or("unknown");
         let step_id = self.derive_step_id(event, session);
-        self.streaming_session
+        self.state
+            .streaming_session
             .borrow_mut()
             .set_current_message_id(Some(step_id));
     }
@@ -54,23 +56,20 @@ impl OpenCodeParser {
         match terminal_mode {
             TerminalMode::Full => String::new(),
             TerminalMode::Basic | TerminalMode::None => {
-                let session = self.streaming_session.borrow();
-                let mut out = String::new();
+                let lines: Vec<String> = session
+                    .accumulated_keys(ContentType::Text)
+                    .filter_map(|key| {
+                        let accumulated = session
+                            .get_accumulated(ContentType::Text, &key)
+                            .unwrap_or("");
+                        let sanitized =
+                            crate::json_parser::delta_display::sanitize_for_display(accumulated);
+                        if sanitized.is_empty() {
+                            return None;
+                        }
 
-                for key in session.accumulated_keys(ContentType::Text) {
-                    let accumulated = session
-                        .get_accumulated(ContentType::Text, &key)
-                        .unwrap_or("");
-                    let sanitized =
-                        crate::json_parser::delta_display::sanitize_for_display(accumulated);
-                    if sanitized.is_empty() {
-                        continue;
-                    }
-
-                    match terminal_mode {
-                        TerminalMode::Basic => {
-                            let _ = writeln!(
-                                out,
+                        Some(match terminal_mode {
+                            TerminalMode::Basic => format!(
                                 "{}[{}]{} {}{}{}",
                                 colors.dim(),
                                 prefix,
@@ -78,16 +77,13 @@ impl OpenCodeParser {
                                 colors.white(),
                                 sanitized,
                                 colors.reset()
-                            );
-                        }
-                        TerminalMode::None => {
-                            let _ = writeln!(out, "[{prefix}] {sanitized}");
-                        }
-                        TerminalMode::Full => unreachable!(),
-                    }
-                }
-
-                out
+                            ),
+                            TerminalMode::None => format!("[{prefix}] {sanitized}"),
+                            TerminalMode::Full => unreachable!(),
+                        })
+                    })
+                    .collect();
+                lines.join("\n")
             }
         }
     }
@@ -144,8 +140,21 @@ impl OpenCodeParser {
             String::new()
         };
 
-        let mut out = format!(
-            "{}{}{}[{}]{} {}{} Step finished{} {}({}",
+        let cost_suffix = if cost > 0.0 && !tokens_str.is_empty() {
+            format!(", ${cost:.4}")
+        } else if cost > 0.0 {
+            format!("${cost:.4}")
+        } else {
+            String::new()
+        };
+        let tokens_suffix = if tokens_str.is_empty() {
+            String::new()
+        } else {
+            format!(", {tokens_str}")
+        };
+
+        format!(
+            "{}{}{}[{}]{} {}{} Step finished{} {}({}{}{}){}",
             context.text_flush_non_tty,
             newline_prefix,
             context.colors.dim(),
@@ -155,16 +164,11 @@ impl OpenCodeParser {
             icon,
             context.colors.reset(),
             context.colors.dim(),
-            reason
-        );
-        if !tokens_str.is_empty() {
-            let _ = write!(out, ", {tokens_str}");
-        }
-        if cost > 0.0 {
-            let _ = write!(out, ", ${cost:.4}");
-        }
-        let _ = writeln!(out, "){}", context.colors.reset());
-        out
+            reason,
+            tokens_suffix,
+            cost_suffix,
+            context.colors.reset()
+        )
     }
 
     /// Format a `step_start` event
@@ -174,19 +178,19 @@ impl OpenCodeParser {
         let session = event.session_id.as_deref().unwrap_or("unknown");
         let step_id = self.derive_step_id(event, session);
 
-        // Defensive: OpenCode can emit duplicate `step_start` events for the same message.
-        if self
+        let current_msg_id = self
+            .state
             .streaming_session
             .borrow()
-            .get_current_message_id()
-            .is_some_and(|current| current == step_id)
-        {
+            .get_current_message_id();
+        if current_msg_id.is_some_and(|current| current == step_id) {
             return String::new();
         }
 
-        self.streaming_session.borrow_mut().on_message_start();
-        self.last_rendered_content.borrow_mut().clear();
-        self.streaming_session
+        self.state.streaming_session.borrow_mut().on_message_start();
+        self.state.last_rendered_content.borrow_mut().clear();
+        self.state
+            .streaming_session
             .borrow_mut()
             .set_current_message_id(Some(step_id));
 
@@ -216,18 +220,20 @@ impl OpenCodeParser {
 
         self.ensure_current_step_id_for_finish(event);
 
-        let session = self.streaming_session.borrow();
-        let is_duplicate = session.get_current_message_id().map_or_else(
-            || session.has_any_streamed_content(),
-            |message_id| session.is_duplicate_final_message(message_id),
-        );
-        let was_streaming = session.has_any_streamed_content();
-        let metrics = session.get_streaming_quality_metrics();
-        drop(session);
+        let (is_duplicate, was_streaming, metrics) = {
+            let session = self.state.streaming_session.borrow();
+            let is_duplicate = session.get_current_message_id().map_or_else(
+                || session.has_any_streamed_content(),
+                |message_id| session.is_duplicate_final_message(message_id),
+            );
+            let was_streaming = session.has_any_streamed_content();
+            let metrics = session.get_streaming_quality_metrics();
+            (is_duplicate, was_streaming, metrics)
+        };
 
-        let _was_in_block = self.streaming_session.borrow_mut().on_message_stop();
+        let _was_in_block = self.state.streaming_session.borrow_mut().on_message_stop();
 
-        let terminal_mode = *self.terminal_mode.borrow();
+        let terminal_mode = *self.state.terminal_mode.borrow();
         let text_flush_non_tty = self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors);
         let render_context = StepFinishRenderContext {
             is_duplicate,

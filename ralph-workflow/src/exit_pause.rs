@@ -166,9 +166,14 @@ mod tests {
             }
         }
 
-        fn with_var(mut self, key: &str, value: &str) -> Self {
-            self.vars.insert(key.to_string(), value.into());
-            self
+        fn with_var(self, key: &str, value: &str) -> Self {
+            Self {
+                vars: self
+                    .vars
+                    .into_iter()
+                    .chain([(key.to_string(), value.into())])
+                    .collect(),
+            }
         }
     }
 

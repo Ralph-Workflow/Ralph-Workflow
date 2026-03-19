@@ -38,23 +38,6 @@ fn terminate_child_best_effort(child: &mut std::process::Child) {
 }
 
 #[cfg(unix)]
-fn wait_for_termination_or_send_sigkill(child: &mut std::process::Child, pid: i32) {
-    let (term_deadline, kill_deadline) = compute_termination_deadlines();
-    wait_until_deadline(child, term_deadline, pid);
-    send_sigkill(pid);
-    wait_until_deadline(child, kill_deadline, pid);
-}
-
-#[cfg(unix)]
-fn compute_termination_deadlines() -> (std::time::Instant, std::time::Instant) {
-    use std::time::{Duration, Instant};
-
-    let term_deadline = Instant::now() + Duration::from_millis(250);
-    let kill_deadline = term_deadline + Duration::from_millis(500);
-    (term_deadline, kill_deadline)
-}
-
-#[cfg(unix)]
 fn wait_until_deadline(child: &mut std::process::Child, deadline: std::time::Instant) {
     use std::time::{Duration, Instant};
 
@@ -64,6 +47,46 @@ fn wait_until_deadline(child: &mut std::process::Child, deadline: std::time::Ins
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),
         }
     }
+}
+
+#[cfg(unix)]
+fn termination_decision(
+    now: std::time::Instant,
+    term_deadline: std::time::Instant,
+    kill_deadline: std::time::Instant,
+    pid: i32,
+) -> TerminationStage {
+    if now < term_deadline {
+        TerminationStage::WaitAndTerm
+    } else if now < kill_deadline {
+        TerminationStage::SendSigkill
+    } else {
+        TerminationStage::Done
+    }
+}
+
+#[cfg(unix)]
+enum TerminationStage {
+    WaitAndTerm,
+    SendSigkill,
+    Done,
+}
+
+#[cfg(unix)]
+fn wait_for_termination_or_send_sigkill(child: &mut std::process::Child, pid: i32) {
+    let (term_deadline, kill_deadline) = compute_termination_deadlines();
+    wait_until_deadline(child, term_deadline);
+    send_sigkill(pid);
+    wait_until_deadline(child, kill_deadline);
+}
+
+#[cfg(unix)]
+fn compute_termination_deadlines() -> (std::time::Instant, std::time::Instant) {
+    use std::time::{Duration, Instant};
+
+    let term_deadline = Instant::now() + Duration::from_millis(250);
+    let kill_deadline = term_deadline + Duration::from_millis(500);
+    (term_deadline, kill_deadline)
 }
 
 #[cfg(unix)]

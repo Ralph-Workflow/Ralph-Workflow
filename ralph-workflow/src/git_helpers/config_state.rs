@@ -132,19 +132,21 @@ pub(crate) fn config_entries(path: &Path) -> io::Result<Vec<(String, Option<Stri
 }
 
 fn collect_config_entries(
-    mut entries: git2::ConfigEntries,
+    entries: git2::ConfigEntries,
 ) -> io::Result<Vec<(String, Option<String>)>> {
-    let mut values = Vec::new();
-    while let Some(entry) = entries.next() {
-        let entry = entry.map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
-        let name = entry
-            .name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "config entry missing name"))?
-            .to_string();
-        let value = entry.value().map(ToString::to_string);
-        values.push((name, value));
-    }
-    Ok(values)
+    entries
+        .iter()
+        .map(|entry| {
+            let name = entry
+                .name()
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "config entry missing name")
+                })?
+                .to_string();
+            let value = entry.value().map(ToString::to_string);
+            Ok((name, value))
+        })
+        .collect()
 }
 
 fn read_shared_worktree_config_state(
@@ -284,23 +286,34 @@ fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> io:
     let current_config = worktree_config_path(scope);
     let protected = protected_config_paths(scope);
 
-    for config_path in protected {
-        if current_config == Some(config_path.as_path()) || !config_path.exists() {
-            continue;
-        }
-
-        let Some(expected_hooks_dir) =
-            scoped_hooks_dir_for_config(&config_path, &scope.common_git_dir)
-        else {
-            continue;
-        };
-
-        if read_config_path(&config_path)?.is_some_and(|value| value == expected_hooks_dir) {
+    protected.iter().try_fold(false, |found, config_path| {
+        if found {
             return Ok(true);
         }
-    }
+        if current_config == Some(config_path.as_path()) || !config_path.exists() {
+            return Ok(false);
+        }
+        let Some(expected_hooks_dir) =
+            scoped_hooks_dir_for_config(config_path, &scope.common_git_dir)
+        else {
+            return Ok(false);
+        };
+        Ok(read_config_path(config_path)?.is_some_and(|value| value == expected_hooks_dir))
+    })
+}
 
-    Ok(false)
+            let Some(expected_hooks_dir) =
+                scoped_hooks_dir_for_config(config_path, &scope.common_git_dir)
+            else {
+                return Ok(());
+            };
+
+            if read_config_path(config_path)?.is_some_and(|value| value == expected_hooks_dir) {
+                return Err(io::Error::other(true));
+            }
+            Ok(())
+        })
+        .and_then(|_| Ok(false))
 }
 
 fn config_worktree_is_safe_to_activate(
@@ -333,19 +346,18 @@ fn is_single_ralph_hooks_path_for_scope(
 }
 
 fn ensure_worktree_config_extension_activation_is_safe(scope: &ProtectionScope) -> io::Result<()> {
-    for config_path in protected_config_paths(scope) {
-        if !config_worktree_is_safe_to_activate(scope, &config_path)? {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                format!(
-                    "refusing to enable extensions.worktreeConfig because {} already contains worktree-specific settings outside Ralph's active scope",
-                    config_path.display()
-                ),
-            ));
+    protected_config_paths(scope).iter().try_for_each(|config_path| {
+        if config_worktree_is_safe_to_activate(scope, config_path)? {
+            return Ok(());
         }
-    }
-
-    Ok(())
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to enable extensions.worktreeConfig because {} already contains worktree-specific settings outside Ralph's active scope",
+                config_path.display()
+            ),
+        ))
+    })
 }
 
 pub(crate) fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
@@ -413,21 +425,23 @@ pub(crate) fn restore_worktree_config_extension(scope: &ProtectionScope) -> io::
 fn unrelated_worktree_config_entries_exist(scope: &ProtectionScope) -> io::Result<bool> {
     let protected = protected_config_paths(scope);
 
-    for config_path in protected {
-        if !config_path.exists() {
-            continue;
-        }
-
-        if config_entries(&config_path)?.is_empty() {
-            continue;
-        }
-
-        if !config_contains_only_expected_ralph_hooks_path(&config_path, &scope.common_git_dir)? {
+    protected.iter().try_fold(false, |found, config_path| {
+        if found {
             return Ok(true);
         }
-    }
+        if !config_path.exists() {
+            return Ok(false);
+        }
 
-    Ok(false)
+        if config_entries(config_path)?.is_empty() {
+            return Ok(false);
+        }
+
+        if !config_contains_only_expected_ralph_hooks_path(config_path, &scope.common_git_dir)? {
+            return Ok(true);
+        }
+        Ok(false)
+    })
 }
 
 pub(crate) fn hooks_path_matches_scope(scope: &ProtectionScope) -> io::Result<bool> {

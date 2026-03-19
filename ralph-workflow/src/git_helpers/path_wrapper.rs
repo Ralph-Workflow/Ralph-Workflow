@@ -120,16 +120,17 @@ pub(crate) fn remove_wrapper_dir_and_entry(wrapper_dir: &Path) -> bool {
 
 pub(crate) fn find_wrapper_dir_on_path() -> Option<PathBuf> {
     let path_var = env::var("PATH").ok()?;
-    for entry in path_var.split(':') {
+    path_var.split(':').find_map(|entry| {
         if entry.is_empty() {
-            continue;
+            return None;
         }
         let p = PathBuf::from(entry);
         if is_reasonable_temp_path(&p) {
-            return Some(p);
+            Some(p)
+        } else {
+            None
         }
-    }
-    None
+    })
 }
 
 /// Read the wrapper directory path from the track file, if valid.
@@ -229,13 +230,13 @@ pub(crate) fn relax_temp_cleanup_permissions(path: &Path) {
 /// These files are created by `write_track_file_atomic` and
 /// `write_head_oid_file_atomic` when the rename fails.
 pub(crate) fn cleanup_stray_tmp_files(ralph_dir: &Path) {
-    let Ok(entries) = fs::read_dir(ralph_dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        if is_stray_tmp_file(&entry) {
-            cleanup_stray_tmp_entry(&entry);
-        }
+    if let Ok(entries) = fs::read_dir(ralph_dir) {
+        entries
+            .flatten()
+            .filter(|entry| is_stray_tmp_file(entry))
+            .for_each(|entry| {
+                cleanup_stray_tmp_entry(&entry);
+            });
     }
 }
 

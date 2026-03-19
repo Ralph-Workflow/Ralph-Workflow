@@ -104,10 +104,8 @@ mod tests {
             r#"{"role": "developer""#,
         ];
 
-        // This test documents what patterns to look for
-        // In a real scenario, you'd use a build script or clippy lint to detect these
-        for pattern in suspicious_patterns {
-            assert!(!pattern.is_empty(), "Pattern should not be empty");
-        }
+        assert!(suspicious_patterns
+            .iter()
+            .all(|pattern| !pattern.is_empty()));
     }
 }

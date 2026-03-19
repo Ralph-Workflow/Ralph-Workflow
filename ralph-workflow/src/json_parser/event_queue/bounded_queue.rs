@@ -37,11 +37,8 @@
 #[derive(Debug)]
 #[cfg(test)]
 pub struct BoundedEventQueue<T> {
-    // Sender for the bounded channel
     sender: mpsc::SyncSender<T>,
-    // Receiver for the bounded channel
     receiver: mpsc::Receiver<T>,
-    // Queue metrics
     metrics: QueueMetrics,
 }
 
@@ -221,13 +218,16 @@ impl<T> BoundedEventQueue<T> {
         self.depth() == 0
     }
 
+    #[cfg(test)]
+    pub(crate) fn receiver_mut(&mut self) -> &mut mpsc::Receiver<T> {
+        &mut self.receiver
+    }
+
     // Clear all events from the queue.
     //
     // This is useful for error recovery when invalid data is encountered.
     pub fn clear(&mut self) {
-        while self.try_recv().is_some() {
-            // Drain all events
-        }
+        super::boundary::clear_via_receiver(&mut self.receiver);
         self.metrics.depth = 0;
     }
 

@@ -19,26 +19,31 @@ fn pgrep_children<E: ProcessExecutor + ?Sized>(executor: &E, current_pid: u32) -
     }
 }
 
-fn bfs_traverse<F>(start: u32, get_children: F) -> Vec<u32>
-where
-    F: Fn(u32) -> Option<Vec<u32>>,
-{
+fn bfs_step(
+    current: u32,
+    visited: &HashSet<u32>,
+    get_children: impl Fn(u32) -> Option<Vec<u32>>,
+) -> Option<(Vec<u32>, Vec<u32>)> {
+    let child_pids = get_children(current)?;
+    let new_pids: Vec<u32> = child_pids
+        .into_iter()
+        .filter(|&pid| visited.insert(pid))
+        .collect();
+    Some((new_pids.clone(), new_pids))
+}
+
+fn bfs_traverse(start: u32, get_children: impl Fn(u32) -> Option<Vec<u32>>) -> Vec<u32> {
     let mut queue = VecDeque::from([start]);
     let mut visited = HashSet::new();
     let mut descendants = Vec::new();
+    let _ = visited.insert(start);
 
     while let Some(current) = queue.pop_front() {
-        let Some(children) = get_children(current) else {
-            break;
-        };
-
-        children
-            .into_iter()
-            .filter(|&pid| visited.insert(pid))
-            .for_each(|pid| {
-                descendants.push(pid);
-                queue.push_back(pid);
-            });
+        if let Some((new_queue_items, new_descendants)) = bfs_step(current, &visited, &get_children)
+        {
+            descendants.extend(new_descendants);
+            queue.extend(new_queue_items);
+        }
     }
 
     descendants.sort_unstable();

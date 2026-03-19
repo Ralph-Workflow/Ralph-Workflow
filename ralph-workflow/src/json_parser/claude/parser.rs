@@ -3,13 +3,14 @@
 // Contains the ClaudeParser struct and its core methods.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
+use std::rc::Rc;
 
+use super::io::ParserState;
 use super::streaming_state::StreamingSession;
 use super::terminal::TerminalMode;
 use super::types::ContentBlock;
 use super::{Colors, SharedPrinter};
-use std::rc::Rc;
 
 /// Claude event parser
 ///
@@ -20,14 +21,7 @@ pub struct ClaudeParser {
     pub(crate) verbosity: Verbosity,
     log_path: Option<std::path::PathBuf>,
     display_name: String,
-    terminal_mode: RefCell<TerminalMode>,
-    streaming_session: Rc<RefCell<StreamingSession>>,
-    thinking_active_index: RefCell<Option<u64>>,
-    thinking_non_tty_indices: RefCell<BTreeSet<u64>>,
-    suppress_thinking_for_message: RefCell<bool>,
-    text_line_active: RefCell<bool>,
-    cursor_up_active: RefCell<bool>,
-    last_rendered_content: RefCell<HashMap<String, String>>,
+    state: ParserState,
     show_streaming_metrics: bool,
     printer: SharedPrinter,
 }
@@ -74,21 +68,12 @@ impl ClaudeParser {
 
         let _printer_is_terminal = printer.borrow().is_terminal();
 
-        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
-
         Self {
             colors,
             verbosity,
             log_path: None,
             display_name: "Claude".to_string(),
-            terminal_mode: RefCell::new(TerminalMode::detect()),
-            streaming_session: Rc::new(RefCell::new(streaming_session)),
-            thinking_active_index: RefCell::new(None),
-            thinking_non_tty_indices: RefCell::new(BTreeSet::new()),
-            suppress_thinking_for_message: RefCell::new(false),
-            text_line_active: RefCell::new(false),
-            cursor_up_active: RefCell::new(false),
-            last_rendered_content: RefCell::new(HashMap::new()),
+            state: ParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
         }
@@ -131,28 +116,28 @@ impl ClaudeParser {
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
-        self.terminal_mode.replace(mode);
+        self.state.terminal_mode.replace(mode);
         self
     }
 
     fn streaming_session(&self) -> Rc<RefCell<StreamingSession>> {
-        Rc::clone(&self.streaming_session)
+        Rc::clone(&self.state.streaming_session)
     }
 
-    fn thinking_non_tty_indices_mut(&mut self) -> RefMut<'_, BTreeSet<u64>> {
-        self.thinking_non_tty_indices.borrow_mut()
+    fn thinking_non_tty_indices_mut(&mut self) -> RefMut<'_, std::collections::BTreeSet<u64>> {
+        self.state.thinking_non_tty_indices.borrow_mut()
     }
 
     fn suppress_thinking_for_message_mut(&mut self) -> RefMut<'_, bool> {
-        self.suppress_thinking_for_message.borrow_mut()
+        self.state.suppress_thinking_for_message.borrow_mut()
     }
 
     fn last_rendered_content(&self) -> Ref<'_, HashMap<String, String>> {
-        self.last_rendered_content.borrow()
+        self.state.last_rendered_content.borrow()
     }
 
     fn last_rendered_content_mut(&mut self) -> RefMut<'_, HashMap<String, String>> {
-        self.last_rendered_content.borrow_mut()
+        self.state.last_rendered_content.borrow_mut()
     }
 
     /// Get a shared reference to the printer.
@@ -224,7 +209,8 @@ impl ClaudeParser {
     /// ```
     #[cfg(any(test, feature = "test-utils"))]
     pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
-        self.streaming_session
+        self.state
+            .streaming_session
             .borrow()
             .get_streaming_quality_metrics()
     }
@@ -241,12 +227,12 @@ impl ClaudeParser {
         } else {
             let trimmed = line.trim();
             if !trimmed.is_empty() && !trimmed.starts_with('{') {
-                let mut session = self.streaming_session.borrow_mut();
+                let mut session = self.state.streaming_session.borrow_mut();
                 let finalize = self.finalize_in_place_full_mode(&mut session);
                 drop(session);
                 let out = format!("{finalize}{trimmed}\n");
-                if *self.terminal_mode.borrow() == TerminalMode::Full {
-                    let mut cursor_up_active = self.cursor_up_active.borrow_mut();
+                if *self.state.terminal_mode.borrow() == TerminalMode::Full {
+                    let mut cursor_up_active = self.state.cursor_up_active.borrow_mut();
                     if out.contains("\x1b[1B\n") {
                         *cursor_up_active = false;
                     }
@@ -262,7 +248,7 @@ impl ClaudeParser {
         let finalize = if matches!(&event, ClaudeEvent::StreamEvent { .. }) {
             String::new()
         } else {
-            let mut session = self.streaming_session.borrow_mut();
+            let mut session = self.state.streaming_session.borrow_mut();
             let result = self.finalize_in_place_full_mode(&mut session);
             result
         };
@@ -307,8 +293,8 @@ impl ClaudeParser {
         if output.is_empty() {
             None
         } else {
-            if *self.terminal_mode.borrow() == TerminalMode::Full {
-                let mut cursor_up_active = self.cursor_up_active.borrow_mut();
+            if *self.state.terminal_mode.borrow() == TerminalMode::Full {
+                let mut cursor_up_active = self.state.cursor_up_active.borrow_mut();
                 if output.contains("\x1b[1B\n") {
                     *cursor_up_active = false;
                 }
@@ -329,7 +315,7 @@ impl ClaudeParser {
     ///
     /// Returns String for display content, empty String for control events.
     fn parse_stream_event(&self, event: StreamInnerEvent) -> String {
-        let mut session = self.streaming_session.borrow_mut();
+        let mut session = self.state.streaming_session.borrow_mut();
 
         match event {
             StreamInnerEvent::MessageStart {
@@ -339,11 +325,11 @@ impl ClaudeParser {
                 let in_place_finalize = self.finalize_in_place_full_mode(&mut session);
 
                 {
-                    *self.thinking_active_index.borrow_mut() = None;
-                    self.thinking_non_tty_indices.borrow_mut().clear();
-                    *self.suppress_thinking_for_message.borrow_mut() = false;
-                    *self.text_line_active.borrow_mut() = false;
-                    *self.cursor_up_active.borrow_mut() = false;
+                    *self.state.thinking_active_index.borrow_mut() = None;
+                    self.state.thinking_non_tty_indices.borrow_mut().clear();
+                    *self.state.suppress_thinking_for_message.borrow_mut() = false;
+                    *self.state.text_line_active.borrow_mut() = false;
+                    *self.state.cursor_up_active.borrow_mut() = false;
                 }
 
                 let effective_message_id =
@@ -352,7 +338,7 @@ impl ClaudeParser {
                 session.on_message_start();
 
                 {
-                    self.last_rendered_content.borrow_mut().clear();
+                    self.state.last_rendered_content.borrow_mut().clear();
                 }
 
                 in_place_finalize
@@ -428,17 +414,17 @@ impl ClaudeParser {
         index: u64,
         delta: crate::json_parser::types::Delta,
     ) -> String {
-        let mut session = self.streaming_session.borrow_mut();
+        let mut session = self.state.streaming_session.borrow_mut();
         self.handle_content_block_delta(&mut session, index, delta)
     }
 
     fn handle_text_delta_inner(&self, text: &str) -> String {
-        let mut session = self.streaming_session.borrow_mut();
+        let mut session = self.state.streaming_session.borrow_mut();
         self.handle_text_delta(&mut session, text)
     }
 
     fn handle_message_stop_inner(&self) -> String {
-        let mut session = self.streaming_session.borrow_mut();
+        let mut session = self.state.streaming_session.borrow_mut();
         self.handle_message_stop(&mut session)
     }
 }

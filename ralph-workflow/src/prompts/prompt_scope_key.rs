@@ -402,13 +402,12 @@ mod tests {
         let fix = PromptScopeKey::for_fix(1, RetryMode::Normal, 0).to_string();
 
         let all = [&planning, &development, &commit, &review, &fix];
-        for (i, k1) in all.iter().enumerate() {
-            for (j, k2) in all.iter().enumerate() {
-                if i != j {
-                    assert_ne!(k1, k2, "Keys for different phases must be unique");
-                }
-            }
-        }
+        assert!(all.iter().enumerate().all(|(i, k1)| {
+            all.iter()
+                .enumerate()
+                .filter(|(j, _)| i != *j)
+                .all(|(_, k2)| k1 != k2)
+        }));
     }
 
     #[test]

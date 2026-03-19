@@ -1,5 +1,5 @@
 //! Claude CLI JSON parser.
-//!
+//
 //! This module provides the functional core implementation of the Claude parser.
 //! The I/O boundary module at `io::claude` re-exports from here.
 
@@ -23,6 +23,9 @@ use super::types::{
 
 // Delta handling submodule
 mod delta_handling;
+
+// I/O state module (exempt from interior mutability lints)
+pub mod io;
 
 // Parser core: struct definition and constructor methods
 include!("claude/parser.rs");

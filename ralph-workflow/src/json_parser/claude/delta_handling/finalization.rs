@@ -32,28 +32,28 @@ impl crate::json_parser::claude::ClaudeParser {
         &self,
         session: &std::cell::RefMut<'_, StreamingSession>,
     ) -> String {
-        let terminal_mode = *self.terminal_mode.borrow();
+        let terminal_mode = *self.state.terminal_mode.borrow();
         if terminal_mode != TerminalMode::Full {
             return String::new();
         }
 
         // Prefer thinking finalization when active (it owns the cursor-up state).
-        if self.thinking_active_index.borrow().is_some() {
+        if self.state.thinking_active_index.borrow().is_some() {
             return self.finalize_thinking_full_mode(session);
         }
 
         // Otherwise, finalize an active text streaming line.
-        if *self.text_line_active.borrow() {
-            *self.text_line_active.borrow_mut() = false;
-            *self.cursor_up_active.borrow_mut() = false;
+        if *self.state.text_line_active.borrow() {
+            *self.state.text_line_active.borrow_mut() = false;
+            *self.state.cursor_up_active.borrow_mut() = false;
             return TextDeltaRenderer::render_completion(terminal_mode);
         }
 
         // Defensive fallback: if the last output left us in an unexpected cursor state
         // (e.g., raw passthrough escape sequences), finalize even if higher-level flags
         // were reset by protocol violations.
-        if *self.cursor_up_active.borrow() {
-            *self.cursor_up_active.borrow_mut() = false;
+        if *self.state.cursor_up_active.borrow() {
+            *self.state.cursor_up_active.borrow_mut() = false;
             return TextDeltaRenderer::render_completion(terminal_mode);
         }
 
@@ -68,13 +68,13 @@ impl crate::json_parser::claude::ClaudeParser {
         &self,
         session: &std::cell::RefMut<'_, StreamingSession>,
     ) -> String {
-        let terminal_mode = *self.terminal_mode.borrow();
+        let terminal_mode = *self.state.terminal_mode.borrow();
         match terminal_mode {
             TerminalMode::Full => {
-                let Some(_index) = self.thinking_active_index.borrow_mut().take() else {
+                let Some(_index) = self.state.thinking_active_index.borrow_mut().take() else {
                     return String::new();
                 };
-                *self.cursor_up_active.borrow_mut() = false;
+                *self.state.cursor_up_active.borrow_mut() = false;
                 // Keep `session` in the signature for symmetry with other finalizers.
                 // Thinking finalization is parser-owned state in Full mode.
                 let _ = session;

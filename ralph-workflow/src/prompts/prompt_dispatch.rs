@@ -182,12 +182,12 @@ mod tests {
     #[test]
     fn test_get_stored_or_generate_prompt_replays_when_available() {
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        // Use the Display string as the key (matches legacy format!() output)
-        history.insert(
+        let history = [(
             scope_key.to_string(),
             PromptHistoryEntry::from_string("stored prompt".to_string()),
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&scope_key, &history, None, || {
@@ -231,15 +231,14 @@ mod tests {
 
     #[test]
     fn test_key_lookup_uses_display_string() {
-        // Verify that the function uses the Display string for lookup,
-        // maintaining backward-compat with legacy format!() checkpoint keys.
         let scope_key = PromptScopeKey::for_commit(2, 1, RetryMode::Xsd { count: 1 }, 0);
         let expected_key = "commit_message_attempt_iter2_1_xsd_retry_1";
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             expected_key.to_string(),
             PromptHistoryEntry::from_string("stored xsd retry prompt".to_string()),
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&scope_key, &history, None, || "new prompt".to_string());
@@ -253,15 +252,14 @@ mod tests {
 
     #[test]
     fn test_recovery_epoch_does_not_affect_lookup_key() {
-        // Two keys with different recovery_epoch but same other dims produce the same
-        // Display string, so they look up the same entry in history.
         let scope_key_epoch0 = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
         let scope_key_epoch1 = PromptScopeKey::for_planning(1, RetryMode::Normal, 1);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             scope_key_epoch0.to_string(),
             PromptHistoryEntry::from_string("stored".to_string()),
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         // epoch1 should still find the entry stored under epoch0's Display string
         let (prompt, was_replayed) =
@@ -276,14 +274,15 @@ mod tests {
     #[test]
     fn test_content_id_match_replays_prompt() {
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             scope_key.to_string(),
             PromptHistoryEntry {
                 content: "stored prompt".to_string(),
                 content_id: Some("abc123".to_string()),
             },
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&scope_key, &history, Some("abc123"), || {
@@ -297,14 +296,15 @@ mod tests {
     #[test]
     fn test_content_id_mismatch_generates_fresh_prompt() {
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             scope_key.to_string(),
             PromptHistoryEntry {
                 content: "stale prompt".to_string(),
                 content_id: Some("old_hash".to_string()),
             },
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&scope_key, &history, Some("new_hash"), || {
@@ -320,15 +320,13 @@ mod tests {
 
     #[test]
     fn test_legacy_entry_without_content_id_is_treated_as_miss_when_current_content_id_is_known() {
-        // When the caller can compute a content-id for the current materialized inputs,
-        // legacy entries with no stored content-id must be treated as stale/miss.
-        // Otherwise we can replay stale prompt text even when inputs changed.
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             scope_key.to_string(),
             PromptHistoryEntry::from_string("legacy prompt".to_string()),
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&scope_key, &history, Some("any_hash"), || {
@@ -344,16 +342,16 @@ mod tests {
 
     #[test]
     fn test_no_current_content_id_replays_without_validation() {
-        // When caller doesn't provide current_content_id, skip validation
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             scope_key.to_string(),
             PromptHistoryEntry {
                 content: "stored prompt".to_string(),
                 content_id: Some("some_hash".to_string()),
             },
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&scope_key, &history, None, || "generated".to_string());
@@ -371,15 +369,14 @@ mod tests {
     /// even when iter1's development prompt exists in history (same Normal retry mode).
     #[test]
     fn iteration_2_development_does_not_replay_iteration_1_prompt() {
-        // Arrange: history contains the iter1 development prompt
         let iter1_key = PromptScopeKey::for_development(1, None, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             iter1_key.to_string(),
             PromptHistoryEntry::from_string("iter 1 development prompt".to_string()),
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
-        // Act: request iter2 development prompt
         let iter2_key = PromptScopeKey::for_development(2, None, RetryMode::Normal, 0);
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&iter2_key, &history, None, || {
@@ -407,15 +404,14 @@ mod tests {
     /// iter2/attempt1 does NOT replay it — the iteration dimension produces a different key.
     #[test]
     fn test_iteration_2_commit_does_not_replay_iteration_1_prompt() {
-        // Arrange: history contains the iter1/attempt1 commit prompt (from a completed cycle)
         let iter1_key = PromptScopeKey::for_commit(1, 1, RetryMode::Normal, 0);
-        let mut history = std::collections::HashMap::new();
-        history.insert(
+        let history = [(
             iter1_key.to_string(),
             PromptHistoryEntry::from_string("iter 1 commit prompt".to_string()),
-        );
+        )]
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
 
-        // Act: request iter2/attempt1 (attempt resets to 1 on the new cycle — the bug scenario)
         let iter2_key = PromptScopeKey::for_commit(2, 1, RetryMode::Normal, 0);
         let (prompt, was_replayed) =
             get_stored_or_generate_prompt(&iter2_key, &history, None, || {

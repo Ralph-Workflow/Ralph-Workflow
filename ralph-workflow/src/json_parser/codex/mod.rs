@@ -20,6 +20,8 @@ pub mod event_handlers;
 
 pub mod boundary;
 
+pub mod io;
+
 use event_handlers::{
     handle_error, handle_item_completed, handle_item_started, handle_thread_started,
     handle_turn_completed, handle_turn_failed, handle_turn_started, EventHandlerContext,

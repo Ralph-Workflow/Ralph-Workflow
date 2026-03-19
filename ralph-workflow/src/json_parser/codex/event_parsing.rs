@@ -21,11 +21,11 @@ impl CodexParser {
             colors: &self.colors,
             verbosity: self.verbosity,
             display_name: &self.display_name,
-            streaming_session: &self.streaming_session,
-            reasoning_accumulator: &self.reasoning_accumulator,
-            terminal_mode: *self.terminal_mode.borrow(),
+            streaming_session: &self.state.streaming_session,
+            reasoning_accumulator: &self.state.reasoning_accumulator,
+            terminal_mode: *self.state.terminal_mode.borrow(),
             show_streaming_metrics: self.show_streaming_metrics,
-            last_rendered_content: &self.last_rendered_content,
+            last_rendered_content: &self.state.last_rendered_content,
         };
 
         match event {
@@ -33,9 +33,8 @@ impl CodexParser {
                 Self::optional_output(handle_thread_started(&ctx, thread_id))
             }
             CodexEvent::TurnStarted {} => {
-                // Generate and set synthetic turn ID for duplicate detection
                 let turn_id = {
-                    let mut counter = self.turn_counter.borrow_mut();
+                    let mut counter = self.state.turn_counter.borrow_mut();
                     let id = format!("turn-{}", *counter);
                     *counter = counter.saturating_add(1);
                     id

@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_get_primary_commit_agent_uses_commit_chain_first() {
-        let mut registry = AgentRegistry::new().unwrap();
+        let registry = AgentRegistry::new().unwrap();
 
         // Configure a commit chain
         let toml_str = r#"
@@ -216,7 +216,7 @@ mod tests {
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
         registry.apply_unified_config(&unified).unwrap();
 
-        let mut fixture = TestFixture::new();
+        let fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_get_primary_commit_agent_falls_back_to_reviewer_chain() {
-        let mut registry = AgentRegistry::new().unwrap();
+        let registry = AgentRegistry::new().unwrap();
 
         // Configure reviewer chain but NO commit chain
         let toml_str = r#"
@@ -262,7 +262,7 @@ mod tests {
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
         registry.apply_unified_config(&unified).unwrap();
 
-        let mut fixture = TestFixture::new();
+        let fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
@@ -300,7 +300,7 @@ mod tests {
         let registry = AgentRegistry::new().unwrap();
         // Default registry with no custom chains configured
 
-        let mut fixture = TestFixture::new();
+        let fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,

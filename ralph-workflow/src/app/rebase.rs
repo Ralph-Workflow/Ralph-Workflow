@@ -10,6 +10,8 @@ pub mod orchestration;
 
 pub mod conflicts;
 
+pub mod boundary;
+
 pub use orchestration::run_initial_rebase;
 
 pub use types::ConflictResolutionResult;

@@ -34,20 +34,19 @@ pub(crate) fn find_real_git_excluding(exclude_dir: &Path) -> Option<PathBuf> {
 }
 
 fn find_git_in_path(path_var: String, exclude_dir: &Path, wrapper_path: &Path) -> Option<PathBuf> {
-    for entry in path_var.split(':') {
+    path_var.split(':').find_map(|entry| {
         if entry.is_empty() || entry == exclude_dir.to_string_lossy() {
-            continue;
+            return None;
         }
         let candidate = Path::new(entry).join("git");
         if candidate == *wrapper_path || !candidate.exists() {
-            continue;
+            return None;
         }
         if !is_executable_git(&candidate) {
-            continue;
+            return None;
         }
-        return Some(candidate);
-    }
-    None
+        Some(candidate)
+    })
 }
 
 fn is_executable_git(candidate: &Path) -> bool {

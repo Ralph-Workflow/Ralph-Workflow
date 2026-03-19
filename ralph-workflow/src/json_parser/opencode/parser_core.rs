@@ -1,5 +1,7 @@
 // OpenCode parser core: struct definition and constructor methods.
 
+use super::io::OpenCodeParserState;
+
 /// `OpenCode` event parser
 pub struct OpenCodeParser {
     colors: Colors,
@@ -8,17 +10,11 @@ pub struct OpenCodeParser {
     log_path: Option<std::path::PathBuf>,
     display_name: String,
     /// Unified streaming session for state tracking
-    streaming_session: Rc<RefCell<StreamingSession>>,
-    /// Terminal mode for output formatting
-    terminal_mode: RefCell<TerminalMode>,
-    /// Track last rendered content for append-only streaming.
-    last_rendered_content: RefCell<std::collections::HashMap<String, String>>,
+    pub(crate) state: OpenCodeParserState,
     /// Whether to show streaming quality metrics
     show_streaming_metrics: bool,
     /// Output printer for capturing or displaying output
     printer: SharedPrinter,
-    /// Counter for step IDs when events lack stable identifiers
-    fallback_step_counter: Cell<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +52,6 @@ impl OpenCodeParser {
         printer: SharedPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
 
         // Use the printer's is_terminal method to validate it's connected correctly
         let _printer_is_terminal = printer.borrow().is_terminal();
@@ -66,12 +61,9 @@ impl OpenCodeParser {
             verbosity,
             log_path: None,
             display_name: "OpenCode".to_string(),
-            streaming_session: Rc::new(RefCell::new(streaming_session)),
-            terminal_mode: RefCell::new(TerminalMode::detect()),
-            last_rendered_content: RefCell::new(std::collections::HashMap::new()),
+            state: OpenCodeParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
-            fallback_step_counter: Cell::new(0),
         }
     }
 
@@ -93,7 +85,7 @@ impl OpenCodeParser {
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
-        *self.terminal_mode.borrow_mut() = mode;
+        *self.state.terminal_mode.borrow_mut() = mode;
         self
     }
 
@@ -164,7 +156,8 @@ impl OpenCodeParser {
     /// A copy of the streaming quality metrics from the internal `StreamingSession`.
     #[cfg(feature = "test-utils")]
     pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
-        self.streaming_session
+        self.state
+            .streaming_session
             .borrow()
             .get_streaming_quality_metrics()
     }

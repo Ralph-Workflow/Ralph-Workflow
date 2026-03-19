@@ -20,16 +20,14 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 
 ---
 
-## Git: Read-Only Only
-**Ralph is the ONLY entity allowed to commit.**
+## Git: User-Directed Only
+**By default, keep git usage read-only. If the current user prompt directly and explicitly requests a git operation, you may perform that specific operation.**
 
-| Allowed | Forbidden |
-|---------|-----------|
-| `git status` | `git commit`, `git push`, `git add`, `git merge`, `git rebase`, `git reset`, `git stash` (except list), `git branch -D`, `git clean`, `git cherry-pick`, `git revert` |
-| `git log`, `git diff`, `git show` | |
-| `git branch` (list), `git remote -v` | |
+| Allowed by default | Allowed only when directly requested in the user prompt | Still forbidden unless the user explicitly asks for them |
+|---------|-----------|-----------|
+| `git status`, `git log`, `git diff`, `git show`, `git branch` (list), `git remote -v` | `git add`, `git commit`, `git push`, `git merge`, `git rebase`, `git stash`, `git cherry-pick`, `git revert` | destructive or high-risk git commands such as `git reset --hard`, `git clean`, `git branch -D`, or equivalent force operations |
 
-**MCP git tools equally forbidden.** Hook/marker tampering = security violation. Bypass is futile—protections reinstall every run.
+**MCP git tools follow the same rule.** Only perform the exact git operation the user directly asked for, and do not broaden that permission to other git actions. Hook/marker tampering remains a security violation.
 
 ---
 

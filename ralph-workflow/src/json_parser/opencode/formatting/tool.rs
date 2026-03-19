@@ -32,6 +32,192 @@ impl OpenCodeParser {
         )
     }
 
+    fn format_tool_title_to_string(
+        &self,
+        title: Option<&str>,
+        prefix: &str,
+        c: crate::logger::Colors,
+    ) -> String {
+        if let Some(t) = title {
+            let limit = self.verbosity.truncate_limit("text");
+            let preview = truncate_text(t, limit);
+            format!(
+                "{}[{}]{} {}  └─ {}{}\n",
+                c.dim(),
+                prefix,
+                c.reset(),
+                c.dim(),
+                preview,
+                c.reset()
+            )
+        } else {
+            String::new()
+        }
+    }
+
+    fn format_tool_input_to_string(
+        &self,
+        part: &OpenCodePart,
+        tool_name: &str,
+        prefix: &str,
+        c: crate::logger::Colors,
+    ) -> String {
+        if !self.verbosity.show_tool_input() {
+            return String::new();
+        }
+
+        if let Some(ref state) = part.state {
+            if let Some(ref input_val) = state.input {
+                let input_str = Self::format_tool_specific_input(tool_name, input_val);
+                let limit = self.verbosity.truncate_limit("tool_input");
+                let preview = truncate_text(&input_str, limit);
+                if !preview.is_empty() {
+                    return format!(
+                        "{}[{}]{} {}  └─ {}{}\n",
+                        c.dim(),
+                        prefix,
+                        c.reset(),
+                        c.dim(),
+                        preview,
+                        c.reset()
+                    );
+                }
+            }
+        }
+        String::new()
+    }
+
+    fn format_tool_error_to_string(
+        &self,
+        part: &OpenCodePart,
+        status: &str,
+        prefix: &str,
+        c: crate::logger::Colors,
+    ) -> String {
+        if status != "error" {
+            return String::new();
+        }
+
+        if let Some(ref state) = part.state {
+            if let Some(error_msg) = state.error.as_deref() {
+                let limit = self.verbosity.truncate_limit("tool_result");
+                let preview = truncate_text(error_msg, limit);
+                return format!(
+                    "{}[{}]{} {}  └─ {}Error:{} {}{}{}\n",
+                    c.dim(),
+                    prefix,
+                    c.reset(),
+                    c.red(),
+                    c.bold(),
+                    c.reset(),
+                    c.red(),
+                    preview,
+                    c.reset()
+                );
+            }
+        }
+        String::new()
+    }
+
+    fn format_tool_output_to_string(
+        &self,
+        part: &OpenCodePart,
+        status: &str,
+        prefix: &str,
+        c: crate::logger::Colors,
+    ) -> String {
+        if !self.verbosity.show_tool_input() || status != "completed" {
+            return String::new();
+        }
+
+        if let Some(ref state) = part.state {
+            if let Some(ref output_val) = state.output {
+                let output_str = match output_val {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                if !output_str.is_empty() {
+                    let limit = self.verbosity.truncate_limit("tool_result");
+                    return Self::format_tool_output_to_string_static(
+                        &output_str,
+                        limit,
+                        prefix,
+                        c,
+                    );
+                }
+            }
+        }
+        String::new()
+    }
+
+    fn format_tool_output_to_string_static(
+        output: &str,
+        limit: usize,
+        prefix: &str,
+        c: crate::logger::Colors,
+    ) -> String {
+        use crate::config::truncation::MAX_OUTPUT_LINES;
+
+        let lines: Vec<&str> = output.lines().collect();
+        let is_multiline = lines.len() > 1;
+
+        if !is_multiline {
+            let preview = truncate_text(output, limit);
+            if preview.is_empty() {
+                return String::new();
+            }
+            return format!(
+                "{}[{}]{} {}  └─ Output:{} {}{}\n",
+                c.dim(),
+                prefix,
+                c.reset(),
+                c.cyan(),
+                c.reset(),
+                preview
+            );
+        }
+
+        let indent = format!("{}[{}]{}     ", c.dim(), prefix, c.reset());
+        let remaining = lines.len();
+
+        let prefix_sums: Vec<usize> = (0..lines.len())
+            .map(|i| lines[..i].iter().map(|l| l.len() + 1).sum())
+            .collect();
+
+        let result = [
+            format!(
+                "{}[{}]{} {}  └─ Output:{}\n",
+                c.dim(),
+                prefix,
+                c.reset(),
+                c.cyan(),
+                c.reset()
+            ),
+            lines
+                .iter()
+                .enumerate()
+                .map(|(idx, line)| {
+                    if idx >= MAX_OUTPUT_LINES {
+                        let more = remaining - idx;
+                        format!("{}{}...({} more lines)\n", indent, c.dim(), more)
+                    } else {
+                        let chars_used_before = prefix_sums[idx];
+                        if chars_used_before + line.len() > limit {
+                            let more = remaining - idx;
+                            format!("{}{}...({} more lines)\n", indent, c.dim(), more)
+                        } else {
+                            format!("{}{}{}{}\n", indent, c.dim(), line, c.reset())
+                        }
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+        ]
+        .join("");
+
+        result
+    }
+
     fn append_tool_title(
         &self,
         out: &mut String,
@@ -169,12 +355,14 @@ impl OpenCodeParser {
                 .unwrap_or("pending");
             let title = part.state.as_ref().and_then(|s| s.title.as_deref());
 
-            let mut out = Self::format_tool_event_header(tool_name, status, prefix, c);
-            self.append_tool_title(&mut out, title, prefix, c);
-            self.append_tool_input(&mut out, part, tool_name, prefix, c);
-            self.append_tool_error(&mut out, part, status, prefix, c);
-            self.append_tool_output(&mut out, part, status, prefix, c);
-            out
+            format!(
+                "{}{}{}{}{}",
+                Self::format_tool_event_header(tool_name, status, prefix, c),
+                Self::format_tool_title_to_string(title, prefix, c),
+                Self::format_tool_input_to_string(part, tool_name, prefix, c),
+                Self::format_tool_error_to_string(part, status, prefix, c),
+                Self::format_tool_output_to_string(part, status, prefix, c),
+            )
         })
     }
 
@@ -206,21 +394,27 @@ impl OpenCodeParser {
                 c.reset()
             );
 
-            let mut chars_used = 0;
             let indent = format!("{}[{}]{}     ", c.dim(), prefix, c.reset());
+            let remaining = lines.len();
 
-            for (lines_shown, line) in lines.iter().enumerate() {
-                // Stop if we've shown enough lines OR exceeded char limit
-                if lines_shown >= MAX_OUTPUT_LINES || chars_used + line.len() > limit {
-                    let remaining = lines.len() - lines_shown;
-                    if remaining > 0 {
-                        let _ = writeln!(out, "{}{}...({} more lines)", indent, c.dim(), remaining);
-                    }
-                    break;
+            let prefix_sums: Vec<usize> = (0..lines.len())
+                .map(|i| lines[..i].iter().map(|l| l.len() + 1).sum())
+                .collect();
+
+            lines.iter().enumerate().for_each(|(idx, line)| {
+                if idx >= MAX_OUTPUT_LINES {
+                    let more = remaining - idx;
+                    let _ = writeln!(out, "{}{}...({} more lines)", indent, c.dim(), more);
+                    return;
+                }
+                let chars_used_before = prefix_sums[idx];
+                if chars_used_before + line.len() > limit {
+                    let more = remaining - idx;
+                    let _ = writeln!(out, "{}{}...({} more lines)", indent, c.dim(), more);
+                    return;
                 }
                 let _ = writeln!(out, "{}{}{}{}", indent, c.dim(), line, c.reset());
-                chars_used += line.len() + 1;
-            }
+            });
         } else {
             // Single-line output: show inline
             let preview = truncate_text(output, limit);
@@ -256,16 +450,16 @@ impl OpenCodeParser {
 
         match tool_name {
             "read" | "view" => {
-                // Primary: filePath, optional: offset, limit
                 let file_path = obj.get("filePath").and_then(|v| v.as_str()).unwrap_or("");
-                let mut result = file_path.to_string();
-                if let Some(offset) = obj.get("offset").and_then(serde_json::Value::as_u64) {
-                    let _ = write!(result, " (offset: {offset})");
-                }
-                if let Some(limit) = obj.get("limit").and_then(serde_json::Value::as_u64) {
-                    let _ = write!(result, " (limit: {limit})");
-                }
-                result
+                let offset_part = obj
+                    .get("offset")
+                    .and_then(serde_json::Value::as_u64)
+                    .map_or(String::new(), |o| format!(" (offset: {o})"));
+                let limit_part = obj
+                    .get("limit")
+                    .and_then(serde_json::Value::as_u64)
+                    .map_or(String::new(), |l| format!(" (limit: {l})"));
+                format!("{file_path}{offset_part}{limit_part}")
             }
             "bash" => {
                 // Primary: command
@@ -301,16 +495,16 @@ impl OpenCodeParser {
                 path.map_or_else(|| pattern.to_string(), |p| format!("{pattern} in {p}"))
             }
             "grep" => {
-                // Primary: pattern, optional: path, include
                 let pattern = obj.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
-                let mut result = format!("/{pattern}/");
-                if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
-                    let _ = write!(result, " in {path}");
-                }
-                if let Some(include) = obj.get("include").and_then(|v| v.as_str()) {
-                    let _ = write!(result, " ({include})");
-                }
-                result
+                let path_part = obj
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map_or(String::new(), |p| format!(" in {p}"));
+                let include_part = obj
+                    .get("include")
+                    .and_then(|v| v.as_str())
+                    .map_or(String::new(), |i| format!(" ({i})"));
+                format!("/{pattern}/{path_part}{include_part}")
             }
             "fetch" | "webfetch" => {
                 // Primary: url, optional: format

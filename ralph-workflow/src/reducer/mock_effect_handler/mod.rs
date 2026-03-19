@@ -80,11 +80,11 @@ use super::state::PipelineState;
 use super::ui_event::UIEvent;
 use crate::phases::PhaseContext;
 use anyhow::Result;
-use std::cell::RefCell;
 
 mod core;
 mod effect_mapping;
 mod handler;
+mod io;
 
 // Re-export the main type
 pub use core::MockEffectHandler;

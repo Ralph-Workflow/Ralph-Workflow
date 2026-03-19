@@ -6,7 +6,8 @@
 
 use std::collections::VecDeque;
 
-use super::{Effect, PipelineEvent, PipelineState, RefCell, UIEvent};
+use super::io::CapturedState;
+use super::{Effect, PipelineEvent, PipelineState, UIEvent};
 
 /// Mock implementation of `EffectHandler` for testing.
 ///
@@ -16,11 +17,6 @@ use super::{Effect, PipelineEvent, PipelineState, RefCell, UIEvent};
 /// - No file I/O
 /// - No agent execution
 /// - No subprocess spawning
-///
-/// # Thread Safety
-///
-/// Uses `RefCell` for interior mutability, allowing effect capture even
-/// when handler is borrowed.
 ///
 /// # Examples
 ///
@@ -36,15 +32,7 @@ use super::{Effect, PipelineEvent, PipelineState, RefCell, UIEvent};
 pub struct MockEffectHandler {
     /// The pipeline state (updated by reducer, not handler).
     pub state: PipelineState,
-    /// All effects that have been executed, in order.
-    pub(super) captured_effects: RefCell<Vec<Effect>>,
-    /// All UI events that have been emitted, in order.
-    pub(super) captured_ui_events: RefCell<Vec<UIEvent>>,
-    /// All pipeline events that have been emitted by this mock handler, in order.
-    ///
-    /// This records the primary event followed by any additional events returned
-    /// in each [`EffectResult`].
-    pub(super) captured_events: RefCell<Vec<PipelineEvent>>,
+    pub(super) captured_state: CapturedState,
     /// When true, `PrepareCommitPrompt` returns `CommitSkipped` instead of proceeding.
     pub(super) simulate_empty_diff: bool,
 
@@ -112,9 +100,7 @@ impl MockEffectHandler {
     pub const fn new(state: PipelineState) -> Self {
         Self {
             state,
-            captured_effects: RefCell::new(Vec::new()),
-            captured_ui_events: RefCell::new(Vec::new()),
-            captured_events: RefCell::new(Vec::new()),
+            captured_state: CapturedState::new(),
             simulate_empty_diff: false,
             simulate_commit_diff_error: None,
             simulate_commit_diff_content: None,
@@ -195,10 +181,16 @@ impl MockEffectHandler {
     /// ```
     #[must_use]
     pub fn with_replay_prompt_key(mut self, key: impl Into<String>) -> Self {
-        self.replay_prompt_keys
-            .get_or_insert_with(std::collections::HashSet::new)
-            .insert(key.into());
-        self
+        Self {
+            replay_prompt_keys: Some(
+                self.replay_prompt_keys
+                    .iter()
+                    .flatten()
+                    .chain(std::iter::once(key.into()))
+                    .collect(),
+            ),
+            ..self
+        }
     }
 
     /// Configure the mock to simulate a clean working directory for the
@@ -260,7 +252,7 @@ impl MockEffectHandler {
     /// Returns a clone of the captured effects vector. Effects are captured
     /// in the order they were executed.
     pub fn captured_effects(&self) -> Vec<Effect> {
-        self.captured_effects.borrow().clone()
+        self.captured_state.effects.borrow().clone()
     }
 
     /// Get all captured UI events in emission order.
@@ -268,12 +260,12 @@ impl MockEffectHandler {
     /// Returns a clone of the captured UI events vector. UI events are captured
     /// in the order they were emitted by effect handlers.
     pub fn captured_ui_events(&self) -> Vec<UIEvent> {
-        self.captured_ui_events.borrow().clone()
+        self.captured_state.ui_events.borrow().clone()
     }
 
     /// Get all captured pipeline events in emission order.
     pub fn captured_events(&self) -> Vec<PipelineEvent> {
-        self.captured_events.borrow().clone()
+        self.captured_state.events.borrow().clone()
     }
 
     /// Check if a specific effect type was captured.
@@ -293,7 +285,7 @@ impl MockEffectHandler {
     where
         F: Fn(&Effect) -> bool,
     {
-        self.captured_effects.borrow().iter().any(predicate)
+        self.captured_state.effects.borrow().iter().any(predicate)
     }
 
     /// Check if a specific UI event was emitted.
@@ -313,7 +305,7 @@ impl MockEffectHandler {
     where
         F: Fn(&UIEvent) -> bool,
     {
-        self.captured_ui_events.borrow().iter().any(predicate)
+        self.captured_state.ui_events.borrow().iter().any(predicate)
     }
 
     /// Check if a specific pipeline event was emitted.
@@ -321,7 +313,7 @@ impl MockEffectHandler {
     where
         F: Fn(&PipelineEvent) -> bool,
     {
-        self.captured_events.borrow().iter().any(predicate)
+        self.captured_state.events.borrow().iter().any(predicate)
     }
 
     /// Clear all captured effects and UI events.
@@ -329,23 +321,23 @@ impl MockEffectHandler {
     /// Useful for resetting the mock between test cases when reusing
     /// the same handler instance.
     pub fn clear_captured(&self) {
-        self.captured_effects.borrow_mut().clear();
-        self.captured_ui_events.borrow_mut().clear();
-        self.captured_events.borrow_mut().clear();
+        self.captured_state.effects.borrow_mut().clear();
+        self.captured_state.ui_events.borrow_mut().clear();
+        self.captured_state.events.borrow_mut().clear();
     }
 
     /// Get the number of captured effects.
     pub fn effect_count(&self) -> usize {
-        self.captured_effects.borrow().len()
+        self.captured_state.effects.borrow().len()
     }
 
     /// Get the number of captured UI events.
     pub fn ui_event_count(&self) -> usize {
-        self.captured_ui_events.borrow().len()
+        self.captured_state.ui_events.borrow().len()
     }
 
     /// Get the number of captured pipeline events.
     pub fn event_count(&self) -> usize {
-        self.captured_events.borrow().len()
+        self.captured_state.events.borrow().len()
     }
 }

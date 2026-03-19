@@ -8,14 +8,14 @@ use crate::workspace::Workspace;
 
 /// XSD schemas for XML validation - included at compile time.
 /// These are written to `.agent/xsd/` at pipeline start for agent self-validation.
-const PLAN_XSD_SCHEMA: &str = include_str!("llm_output_extraction/plan.xsd");
+const PLAN_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/plan.xsd");
 const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
-    include_str!("llm_output_extraction/development_result.xsd");
+    include_str!("../llm_output_extraction/development_result.xsd");
 const DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA: &str =
-    include_str!("llm_output_extraction/development_continuation_result.xsd");
-const ISSUES_XSD_SCHEMA: &str = include_str!("llm_output_extraction/issues.xsd");
-const FIX_RESULT_XSD_SCHEMA: &str = include_str!("llm_output_extraction/fix_result.xsd");
-const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("llm_output_extraction/commit_message.xsd");
+    include_str!("../llm_output_extraction/development_continuation_result.xsd");
+const ISSUES_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/issues.xsd");
+const FIX_RESULT_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/fix_result.xsd");
+const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/commit_message.xsd");
 
 /// Files that Ralph generates during a run and should clean up.
 pub const GENERATED_FILES: &[&str] = &[
@@ -42,6 +42,8 @@ pub fn ensure_files_with_workspace(
 ) -> io::Result<()> {
     let agent_dir = Path::new(".agent");
 
+    // Best-effort state repair before we start touching `.agent/` contents.
+    // If the state is unrecoverable, fail early with a clear error.
     if let recovery::RecoveryStatus::Unrecoverable(msg) =
         recovery::auto_repair_with_workspace(workspace, agent_dir)?
     {
@@ -54,12 +56,18 @@ pub fn ensure_files_with_workspace(
     workspace.create_dir_all(&agent_dir.join("logs"))?;
     workspace.create_dir_all(&agent_dir.join("tmp"))?;
 
+    // Clean up any stale XML files from previous runs that might be locked
     let tmp_dir = agent_dir.join("tmp");
     let _ = integrity::cleanup_stale_xml_files_with_workspace(workspace, &tmp_dir, false);
+    // Note: cleanup is best-effort, failures are not fatal
 
+    // Write XSD schemas to .agent/tmp/ for agent self-validation
     setup_xsd_schemas_with_workspace(workspace)?;
 
+    // Only create STATUS.md, NOTES.md and ISSUES.md when NOT in isolation mode
     if !isolation_mode {
+        // Always overwrite/truncate these files to a single vague sentence to
+        // avoid detailed context persisting across runs.
         workspace.write_atomic(
             &agent_dir.join("STATUS.md"),
             &format!("{VAGUE_STATUS_LINE}\n"),
@@ -76,6 +84,10 @@ pub fn ensure_files_with_workspace(
 
     Ok(())
 }
+
+// ============================================================================
+// Workspace-based functions (for testability with MemoryWorkspace)
+// ============================================================================
 
 /// Check if a file contains a specific marker string using the Workspace trait.
 ///
@@ -165,7 +177,8 @@ pub fn read_commit_message_file_with_workspace(workspace: &dyn Workspace) -> io:
     let msg_path = Path::new(".agent/commit-message.txt");
 
     if workspace.exists(msg_path) {
-        if !integrity::verify_file_not_corrupted_with_workspace(workspace, msg_path)? {
+        // Use workspace-based verification
+        if !super::integrity::verify_file_not_corrupted_with_workspace(workspace, msg_path)? {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 ".agent/commit-message.txt appears corrupted",
@@ -250,6 +263,10 @@ pub fn setup_xsd_schemas_with_workspace(workspace: &dyn Workspace) -> io::Result
 
 #[cfg(test)]
 mod tests {
+    // =========================================================================
+    // Workspace-based tests (for testability without real filesystem)
+    // =========================================================================
+
     #[cfg(feature = "test-utils")]
     mod workspace_tests {
         use super::super::*;
@@ -301,6 +318,7 @@ mod tests {
         fn test_delete_plan_file_with_workspace_nonexistent() {
             let workspace = MemoryWorkspace::new_test();
 
+            // Should succeed even if file doesn't exist
             delete_plan_file_with_workspace(&workspace).unwrap();
         }
 
@@ -366,12 +384,14 @@ mod tests {
 
             setup_xsd_schemas_with_workspace(&workspace).unwrap();
 
+            // Verify all schemas are written
             assert!(workspace.exists(Path::new(".agent/tmp/plan.xsd")));
             assert!(workspace.exists(Path::new(".agent/tmp/development_result.xsd")));
             assert!(workspace.exists(Path::new(".agent/tmp/issues.xsd")));
             assert!(workspace.exists(Path::new(".agent/tmp/fix_result.xsd")));
             assert!(workspace.exists(Path::new(".agent/tmp/commit_message.xsd")));
 
+            // Verify content
             let plan_xsd = workspace.read(Path::new(".agent/tmp/plan.xsd")).unwrap();
             assert!(plan_xsd.contains("xs:schema"));
             assert!(plan_xsd.contains("ralph-plan"));

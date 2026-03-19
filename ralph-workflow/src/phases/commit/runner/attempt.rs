@@ -70,30 +70,22 @@ pub fn run_commit_attempt(
         ));
     }
 
-    let mut runtime = PipelineRuntime {
-        timer: ctx.timer,
-        logger: ctx.logger,
-        colors: ctx.colors,
-        config: ctx.config,
-        executor: ctx.executor,
-        executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-        workspace: ctx.workspace,
-        workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-    };
-
     let log_dir = ctx
         .run_log_context
         .run_dir()
         .join("debug")
         .join("commit_generation");
-    let mut session = CommitLogSession::new(
-        log_dir
-            .to_str()
-            .expect("Path contains invalid UTF-8 - all paths in this codebase should be UTF-8"),
-        ctx.workspace,
-    )
-    .unwrap_or_else(|_| CommitLogSession::noop());
-    let attempt_number = session.next_attempt_number();
+    let (session, attempt_number) = {
+        let mut session = CommitLogSession::new(
+            log_dir
+                .to_str()
+                .expect("Path contains invalid UTF-8 - all paths in this codebase should be UTF-8"),
+            ctx.workspace,
+        )
+        .unwrap_or_else(|_| CommitLogSession::noop());
+        let attempt_number = session.next_attempt_number();
+        (session, attempt_number)
+    };
     let diff_was_truncated =
         model_safe_diff.contains("[Truncated:") || model_safe_diff.contains("[truncated...]");
     let attempt_log = CommitAttemptLog::with_basics(
@@ -163,7 +155,19 @@ pub fn run_commit_attempt(
         env_vars: &agent_config.env_vars,
     };
 
-    let result = run_with_prompt(&prompt_cmd, &mut runtime)?;
+    let result = run_with_prompt(
+        &prompt_cmd,
+        &mut PipelineRuntime {
+            timer: ctx.timer,
+            logger: ctx.logger,
+            colors: ctx.colors,
+            config: ctx.config,
+            executor: ctx.executor,
+            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+            workspace: ctx.workspace,
+            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+        },
+    )?;
     let had_error = result.exit_code != 0;
     let auth_failure = had_error && stderr_contains_auth_error(&result.stderr);
 

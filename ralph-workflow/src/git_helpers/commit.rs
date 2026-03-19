@@ -60,18 +60,15 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
         Err(e) => return Err(git2_to_io_error(&e)),
     }
 
-    for path_str in files {
+    files.iter().try_for_each(|path_str| {
         let path = std::path::Path::new(path_str);
         if is_internal_agent_artifact(path) {
-            continue;
+            return Ok(());
         }
 
         match index.add_path(path) {
-            Ok(()) => {}
+            Ok(()) => Ok(()),
             Err(ref e) if e.code() == git2::ErrorCode::NotFound => {
-                // NotFound can mean either:
-                // - the path was deleted (tracked in HEAD, absent in working tree)
-                // - the path is invalid / doesn't exist and is not tracked
                 let tracked_in_head = index.get_path(path, 0).is_some();
                 if !tracked_in_head {
                     let io_err = git2_to_io_error(e);
@@ -84,7 +81,6 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
                     ));
                 }
 
-                // Treat as deletion: attempt to stage deletion by removing the path from index.
                 index.remove_path(path).map_err(|remove_err| {
                     let io_err = git2_to_io_error(&remove_err);
                     io::Error::new(
@@ -94,17 +90,17 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
                             path.display()
                         ),
                     )
-                })?;
+                })
             }
             Err(e) => {
                 let io_err = git2_to_io_error(&e);
-                return Err(io::Error::new(
+                Err(io::Error::new(
                     io_err.kind(),
                     format!("failed to stage path '{}': {io_err}", path.display()),
-                ));
+                ))
             }
         }
-    }
+    })?;
 
     index.write().map_err(|e| git2_to_io_error(&e))?;
     index_has_changes_to_commit(&repo, &index)
@@ -173,9 +169,9 @@ fn git_add_all_impl(repo: &git2::Repository) -> io::Result<bool> {
         .filter_map(|entry| entry.path().map(|p| std::path::PathBuf::from(p)))
         .collect();
 
-    for path in deletions {
-        index.remove_path(&path).map_err(|e| git2_to_io_error(&e))?;
-    }
+    deletions
+        .iter()
+        .try_for_each(|path| index.remove_path(path).map_err(|e| git2_to_io_error(&e)))?;
 
     // Add all files (staged, unstaged, and untracked).
     // Note: add_all() is required here, not update_all(), to include untracked files.

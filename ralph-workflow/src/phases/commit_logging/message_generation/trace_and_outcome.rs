@@ -142,8 +142,10 @@ impl ParsingTraceLog {
     }
 
     /// Add a parsing step to the trace.
-    pub fn add_step(&mut self, step: ParsingTraceStep) {
-        self.steps.push(step);
+    #[must_use]
+    pub fn add_step(mut self, step: ParsingTraceStep) -> Self {
+        self.steps = self.steps.into_iter().chain([step]).collect();
+        self
     }
 
     /// Set the final extracted message.

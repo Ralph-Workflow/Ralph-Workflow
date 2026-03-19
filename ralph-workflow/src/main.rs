@@ -173,12 +173,11 @@ mod tests {
         }
     }
 
-    fn initialized_agents_for_drain(fixture: &mut TestFixture, drain: AgentDrain) -> Vec<String> {
-        let mut handler =
-            MainEffectHandler::new(ralph_workflow::reducer::state::PipelineState::initial(1, 1));
-        let result = handler
-            .execute(Effect::InitializeAgentChain { drain }, &mut fixture.ctx())
-            .unwrap();
+    fn initialized_agents_for_drain(mut fixture: TestFixture, drain: AgentDrain) -> Vec<String> {
+        let result =
+            MainEffectHandler::new(ralph_workflow::reducer::state::PipelineState::initial(1, 1))
+                .execute(Effect::InitializeAgentChain { drain }, &mut fixture.ctx())
+                .unwrap();
 
         match result.event {
             PipelineEvent::Agent(AgentEvent::ChainInitialized { agents, .. }) => agents,
@@ -213,12 +212,12 @@ mod tests {
             commit = "commit_chain"
         "#;
 
-        let mut review_fixture = TestFixture::new(review_config);
-        let review_agents = initialized_agents_for_drain(&mut review_fixture, AgentDrain::Review);
+        let review_fixture = TestFixture::new(review_config);
+        let review_agents = initialized_agents_for_drain(review_fixture, AgentDrain::Review);
         assert_eq!(review_agents, vec!["claude".to_string()]);
 
-        let mut commit_fixture = TestFixture::new(commit_config);
-        let commit_agents = initialized_agents_for_drain(&mut commit_fixture, AgentDrain::Commit);
+        let commit_fixture = TestFixture::new(commit_config);
+        let commit_agents = initialized_agents_for_drain(commit_fixture, AgentDrain::Commit);
         assert_eq!(commit_agents, vec!["opencode".to_string()]);
     }
 }

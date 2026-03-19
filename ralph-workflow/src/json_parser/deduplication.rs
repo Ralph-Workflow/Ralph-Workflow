@@ -1,16 +1,13 @@
 //! Delta deduplication using KMP and Rolling Hash algorithms.
 
-// Threshold configuration and overlap detection
 include!("deduplication/thresholds.rs");
 
-// Rolling hash window for fast substring detection
-include!("deduplication/rolling_hash.rs");
+pub mod boundary;
 
-// KMP matcher for exact substring verification (test-only)
-include!("deduplication/kmp_matcher.rs");
+pub mod rolling_hash;
 
-// Delta deduplicator orchestration
+pub mod kmp_matcher;
+
 include!("deduplication/deduplicator.rs");
 
-// Tests
 include!("deduplication/tests.rs");

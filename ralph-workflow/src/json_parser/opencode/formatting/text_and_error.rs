@@ -9,7 +9,7 @@ impl OpenCodeParser {
             if let Some(ref text) = part.text {
                 // Accumulate streaming text using StreamingSession
                 let (show_prefix, accumulated_text) = {
-                    let mut session = self.streaming_session.borrow_mut();
+                    let mut session = self.state.streaming_session.borrow_mut();
                     let show_prefix = session.on_text_delta_key("main", text);
                     // Get accumulated text for streaming display
                     let accumulated_text = session
@@ -23,7 +23,7 @@ impl OpenCodeParser {
                 // contract once the preview stops being a prefix of prior output.
                 let preview = accumulated_text;
 
-                let terminal_mode = *self.terminal_mode.borrow();
+                let terminal_mode = *self.state.terminal_mode.borrow();
 
                 // Append-only streaming: emit prefix once, then only the new suffix.
                 let key = "text:main";
@@ -31,15 +31,24 @@ impl OpenCodeParser {
                 if show_prefix {
                     let rendered =
                         TextDeltaRenderer::render_first_delta(&preview, prefix, *c, terminal_mode);
-                    self.last_rendered_content.borrow_mut().insert(
-                        key.to_string(),
-                        crate::json_parser::delta_display::sanitize_for_display(&preview),
-                    );
+                    let new_content = self
+                        .state
+                        .last_rendered_content
+                        .borrow()
+                        .clone()
+                        .into_iter()
+                        .chain([(
+                            key.to_string(),
+                            crate::json_parser::delta_display::sanitize_for_display(&preview),
+                        )])
+                        .collect();
+                    *self.state.last_rendered_content.borrow_mut() = new_content;
                     return rendered;
                 }
 
                 let sanitized = crate::json_parser::delta_display::sanitize_for_display(&preview);
                 let last_rendered = self
+                    .state
                     .last_rendered_content
                     .borrow()
                     .get(key)
@@ -66,9 +75,15 @@ impl OpenCodeParser {
                     );
                 }
 
-                self.last_rendered_content
-                    .borrow_mut()
-                    .insert(key.to_string(), sanitized.clone());
+                let new_content = self
+                    .state
+                    .last_rendered_content
+                    .borrow()
+                    .clone()
+                    .into_iter()
+                    .chain([(key.to_string(), sanitized.clone())])
+                    .collect();
+                *self.state.last_rendered_content.borrow_mut() = new_content;
 
                 return match terminal_mode {
                     TerminalMode::Full => format!("{}{}{}", c.white(), suffix, c.reset()),

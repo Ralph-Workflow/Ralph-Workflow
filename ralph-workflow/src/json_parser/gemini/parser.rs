@@ -1,19 +1,14 @@
+use super::io::GeminiParserState;
+use super::streaming_state::StreamingSession;
+
 /// Gemini event parser
 pub struct GeminiParser {
     colors: Colors,
     verbosity: Verbosity,
-    /// Relative path to log file (if logging enabled)
     log_path: Option<std::path::PathBuf>,
     display_name: String,
-    /// Unified streaming session for state tracking
-    streaming_session: Rc<RefCell<StreamingSession>>,
-    /// Terminal mode for output formatting
-    terminal_mode: RefCell<TerminalMode>,
-    /// Track last rendered content for append-only streaming.
-    last_rendered_content: RefCell<std::collections::HashMap<String, String>>,
-    /// Whether to show streaming quality metrics
+    state: GeminiParserState,
     show_streaming_metrics: bool,
-    /// Output printer for capturing or displaying output
     printer: SharedPrinter,
 }
 
@@ -22,16 +17,13 @@ impl GeminiParser {
         Self::with_printer(colors, verbosity, super::printer::shared_stdout())
     }
 
-    /// Create a new `GeminiParser` with a custom printer.
     pub(crate) fn with_printer(
         colors: Colors,
         verbosity: Verbosity,
         printer: SharedPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
 
-        // Use the printer's is_terminal method to validate it's connected correctly
         let _printer_is_terminal = printer.borrow().is_terminal();
 
         Self {
@@ -39,9 +31,7 @@ impl GeminiParser {
             verbosity,
             log_path: None,
             display_name: "Gemini".to_string(),
-            streaming_session: Rc::new(RefCell::new(streaming_session)),
-            terminal_mode: RefCell::new(TerminalMode::detect()),
-            last_rendered_content: RefCell::new(std::collections::HashMap::new()),
+            state: GeminiParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
         }
@@ -65,7 +55,7 @@ impl GeminiParser {
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
-        *self.terminal_mode.borrow_mut() = mode;
+        *self.state.terminal_mode.borrow_mut() = mode;
         self
     }
 
@@ -128,7 +118,8 @@ impl GeminiParser {
     /// parsing session. Only available with the `test-utils` feature.
     #[cfg(feature = "test-utils")]
     pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
-        self.streaming_session
+        self.state
+            .streaming_session
             .borrow()
             .get_streaming_quality_metrics()
     }

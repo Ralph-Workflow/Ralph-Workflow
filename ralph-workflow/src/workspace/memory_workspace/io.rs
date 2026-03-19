@@ -1,7 +1,7 @@
-//! Core Workspace trait implementation for `MemoryWorkspace`.
-//!
-//! This module implements all Workspace trait methods for the in-memory
-//! workspace, including file operations, directory operations, and metadata access.
+//! In-memory Workspace implementation.
+//
+// This module implements all Workspace trait methods for the in-memory
+// workspace, including file operations, directory operations, and metadata access.
 
 use super::{MemoryFile, MemoryWorkspace};
 use crate::workspace::{DirEntry, Workspace};
@@ -124,23 +124,18 @@ impl Workspace for MemoryWorkspace {
     }
 
     fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
-        // In-memory operations are inherently atomic - no partial state possible.
-        // Just delegate to regular write().
         self.write(relative, content)
     }
 
     fn set_readonly(&self, _relative: &Path) -> io::Result<()> {
-        // No-op for in-memory workspace - permissions aren't relevant for testing
         Ok(())
     }
 
     fn set_writable(&self, _relative: &Path) -> io::Result<()> {
-        // No-op for in-memory workspace - permissions aren't relevant for testing
         Ok(())
     }
 
     fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
-        // Check if directory exists first
         if !self.directories.read()
             .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
             .contains(relative) {
@@ -165,7 +160,6 @@ impl Workspace for MemoryWorkspace {
             let dirs = self.directories.read()
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
 
-            // Check if the directory exists
             if !relative.as_os_str().is_empty() && !dirs.contains(relative) {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
@@ -173,7 +167,6 @@ impl Workspace for MemoryWorkspace {
                 ));
             }
 
-            // Collect file entries
             let file_entries: Vec<_> = files
                 .iter()
                 .filter_map(|(path, mem_file)| {
@@ -185,7 +178,6 @@ impl Workspace for MemoryWorkspace {
                 .collect();
             drop(files);
 
-            // Collect directory entries
             let dir_entries: Vec<_> = dirs
                 .iter()
                 .filter_map(|dir_path| {
@@ -200,31 +192,39 @@ impl Workspace for MemoryWorkspace {
             (file_entries, dir_entries)
         };
 
-        // Build result after locks are dropped
-        let mut seen = std::collections::HashSet::new();
-        let file_entries: Vec<DirEntry> = file_entries
+        let entries: Vec<DirEntry> = file_entries
             .into_iter()
-            .filter_map(|(name, path, modified)| {
-                seen.insert(name)
-                    .then_some(DirEntry::with_modified(path, true, false, modified))
-            })
-            .collect();
-
-        let dir_entries: Vec<DirEntry> = dir_entries
+            .fold(
+                (Vec::new(), std::collections::HashSet::new()),
+                |(mut results, mut seen), (name, path, modified)| {
+                    if seen.insert(name) {
+                        results.push(DirEntry::with_modified(path, true, false, modified));
+                    }
+                    (results, seen)
+                },
+            )
+            .0
             .into_iter()
-            .filter_map(|(name, path)| {
-                seen.insert(name)
-                    .then_some(DirEntry::new(path, false, true))
-            })
+            .chain(
+                dir_entries
+                    .into_iter()
+                    .fold(
+                        (Vec::new(), std::collections::HashSet::new()),
+                        |(mut results, mut seen), (name, path)| {
+                            if seen.insert(name) {
+                                results.push(DirEntry::new(path, false, true));
+                            }
+                            (results, seen)
+                        },
+                    )
+                    .0,
+            )
             .collect();
-
-        let entries: Vec<DirEntry> = file_entries.into_iter().chain(dir_entries).collect();
 
         Ok(entries)
     }
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
-        // Create parent directories for destination first (before taking files lock)
         self.ensure_parent_dirs(to);
         {
             let mut files = self.files.write()
@@ -243,9 +243,6 @@ impl Workspace for MemoryWorkspace {
 }
 
 impl MemoryWorkspace {
-    /// Remove all files and directories under the given path (including the path itself).
-    ///
-    /// Internal implementation used by both `remove_dir_all` and `remove_dir_all_if_exists`.
     fn remove_dir_all_impl(&self, relative: &Path) {
         {
             let mut files = self.files.write()

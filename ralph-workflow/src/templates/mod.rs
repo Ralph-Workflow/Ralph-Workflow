@@ -475,25 +475,25 @@ mod tests {
 
     #[test]
     fn test_template_content_has_goal() {
-        for template in ALL_TEMPLATES {
+        ALL_TEMPLATES.iter().for_each(|template| {
             let content = template.content();
             assert!(
                 content.contains("## Goal"),
                 "Template {} missing Goal section",
                 template.name()
             );
-        }
+        });
     }
 
     #[test]
     fn test_template_content_has_acceptance() {
-        for template in ALL_TEMPLATES {
+        ALL_TEMPLATES.iter().for_each(|template| {
             let content = template.content();
             assert!(
                 content.contains("## Acceptance") || content.contains("## Acceptance Checks"),
                 "Template {} missing Acceptance section",
                 template.name()
             );
-        }
+        });
     }
 }

@@ -112,15 +112,13 @@ If you determine there are NO actual changes to commit, respond with:
                     .write(Path::new(".agent/tmp/commit_diff.txt"), &content)
                     .map_err(|e| anyhow::anyhow!(e))?;
 
-                self.captured_effects
-                    .borrow_mut()
-                    .push(Effect::CheckCommitDiff);
+                self.captured_state.push_effect(Effect::CheckCommitDiff);
 
                 let event = PipelineEvent::commit_diff_prepared(
                     content.trim().is_empty(),
                     sha256_hex_str(&content),
                 );
-                self.captured_events.borrow_mut().push(event.clone());
+                self.captured_state.push_event(event.clone());
                 Ok(EffectResult::event(event))
             }
 
@@ -132,9 +130,8 @@ If you determine there are NO actual changes to commit, respond with:
                 };
                 use std::path::Path;
 
-                self.captured_effects
-                    .borrow_mut()
-                    .push(Effect::MaterializeCommitInputs { attempt });
+                self.captured_state
+                    .push_effect(Effect::MaterializeCommitInputs { attempt });
 
                 let diff_path = Path::new(".agent/tmp/commit_diff.txt");
                 let content = match ctx.workspace.read(diff_path) {
@@ -144,7 +141,7 @@ If you determine there are NO actual changes to commit, respond with:
                         let event = PipelineEvent::commit_diff_invalidated(
                             "Missing commit diff at .agent/tmp/commit_diff.txt".to_string(),
                         );
-                        self.captured_events.borrow_mut().push(event.clone());
+                        self.captured_state.push_event(event.clone());
                         return Ok(EffectResult::event(event));
                     }
                     Err(err) => {
@@ -171,21 +168,20 @@ If you determine there are NO actual changes to commit, respond with:
                 };
 
                 let event = PipelineEvent::commit_inputs_materialized(attempt, input);
-                self.captured_events.borrow_mut().push(event.clone());
+                self.captured_state.push_event(event.clone());
                 Ok(EffectResult::event(event))
             }
 
             Effect::CheckUncommittedChangesBeforeTermination => {
                 use crate::reducer::event::ErrorEvent;
 
-                self.captured_effects
-                    .borrow_mut()
-                    .push(Effect::CheckUncommittedChangesBeforeTermination);
+                self.captured_state
+                    .push_effect(Effect::CheckUncommittedChangesBeforeTermination);
 
                 match self.pre_termination_snapshot.clone() {
                     super::core::PreTerminationSnapshotMock::Clean => {
                         let event = PipelineEvent::pre_termination_safety_check_passed();
-                        self.captured_events.borrow_mut().push(event.clone());
+                        self.captured_state.push_event(event.clone());
                         Ok(EffectResult::event(event))
                     }
                     super::core::PreTerminationSnapshotMock::Dirty { file_count } => {
@@ -197,7 +193,7 @@ If you determine there are NO actual changes to commit, respond with:
                             super::core::PreTerminationSnapshotMock::Clean;
                         let event =
                             PipelineEvent::pre_termination_uncommitted_changes_detected(file_count);
-                        self.captured_events.borrow_mut().push(event.clone());
+                        self.captured_state.push_event(event.clone());
                         Ok(EffectResult::event(event))
                     }
                     super::core::PreTerminationSnapshotMock::Error { kind } => {
@@ -207,9 +203,8 @@ If you determine there are NO actual changes to commit, respond with:
             }
 
             Effect::CheckResidualFiles { pass } => {
-                self.captured_effects
-                    .borrow_mut()
-                    .push(Effect::CheckResidualFiles { pass });
+                self.captured_state
+                    .push_effect(Effect::CheckResidualFiles { pass });
                 let configured = match pass {
                     1 => self.residual_files_pass_1.clone(),
                     2.. => self.residual_files_pass_2.clone(),
@@ -222,7 +217,7 @@ If you determine there are NO actual changes to commit, respond with:
                     }
                     _ => PipelineEvent::residual_files_none(),
                 };
-                self.captured_events.borrow_mut().push(event.clone());
+                self.captured_state.push_event(event.clone());
                 Ok(EffectResult::event(event))
             }
 
@@ -301,13 +296,11 @@ If you determine there are NO actual changes to commit, respond with:
                 retry_cycle,
             } => {
                 // Capture the effect for test verification
-                self.captured_effects
-                    .borrow_mut()
-                    .push(Effect::TriggerDevFixFlow {
-                        failed_phase,
-                        failed_role,
-                        retry_cycle,
-                    });
+                self.captured_state.push_effect(Effect::TriggerDevFixFlow {
+                    failed_phase,
+                    failed_role,
+                    retry_cycle,
+                });
 
                 // Emit trigger and completion events (NO CompletionMarkerEmitted).
                 // Completion markers are only emitted on actual termination

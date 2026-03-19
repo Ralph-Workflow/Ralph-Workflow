@@ -130,21 +130,25 @@ pub fn detect_concurrent_git_operations() -> io::Result<Option<ConcurrentOperati
     }
 
     // Check for any other state files we might have missed
-    if let Ok(entries) = fs::read_dir(git_dir) {
-        for entry in entries.flatten() {
+    let result: io::Result<Option<ConcurrentOperation>> = fs::read_dir(git_dir)
+        .map_err(|e| io::Error::other(e))?
+        .flatten()
+        .try_fold(None, |acc, entry| {
+            if acc.is_some() {
+                return Ok(acc);
+            }
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            // Look for other state patterns
             if name_str.contains("REBASE")
                 || name_str.contains("MERGE")
                 || name_str.contains("CHERRY")
             {
                 return Ok(Some(ConcurrentOperation::Unknown(name_str.to_string())));
             }
-        }
-    }
+            Ok(acc)
+        });
 
-    Ok(None)
+    Ok(result?.flatten())
 }
 
 /// Check if a rebase is currently in progress using Git CLI.

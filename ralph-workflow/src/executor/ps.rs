@@ -76,6 +76,63 @@ fn module_level_descendant_pid_signature(descendants: &[u32]) -> u64 {
     })
 }
 
+fn build_children_lookup(
+    entries: &[ProcessEntry],
+) -> std::collections::HashMap<u32, Vec<ProcessEntry>> {
+    let mut lookup = std::collections::HashMap::new();
+    for entry in entries {
+        lookup.entry(entry.parent_pid).or_default().push(*entry);
+    }
+    lookup
+}
+
+fn compute_child_process_info(
+    entries: Vec<ProcessEntry>,
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    let children_of = build_children_lookup(&entries);
+
+    let mut child_count: u32 = 0;
+    let mut active_child_count: u32 = 0;
+    let mut total_cpu_ms: u64 = 0;
+    let mut descendant_pids = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(parent_pid);
+
+    while let Some(current) = queue.pop_front() {
+        if let Some(kids) = children_of.get(&current) {
+            for child in kids {
+                if !child.in_scope || !visited.insert(child.pid) {
+                    continue;
+                }
+
+                debug_assert_eq!(child.parent_pid, current);
+                child_count = child_count.saturating_add(1);
+                if child.currently_active {
+                    active_child_count = active_child_count.saturating_add(1);
+                }
+                total_cpu_ms += child.cpu_time_ms;
+                descendant_pids.push(child.pid);
+                queue.push_back(child.pid);
+            }
+        }
+    }
+
+    descendant_pids.sort_unstable();
+
+    if child_count == 0 {
+        return Some(ChildProcessInfo::NONE);
+    }
+
+    Some(ChildProcessInfo {
+        child_count,
+        active_child_count,
+        cpu_time_ms: total_cpu_ms,
+        descendant_pid_signature: module_level_descendant_pid_signature(&descendant_pids),
+    })
+}
+
 pub fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
     let entries = parse_ps_entries(stdout, parent_pid);
     compute_child_process_info(entries, parent_pid)
@@ -124,57 +181,6 @@ fn parse_ps_line(line: &str, parent_pid: u32) -> Option<ProcessEntry> {
         cpu_time_ms: cpu_ms,
         in_scope,
         currently_active,
-    })
-}
-
-fn compute_child_process_info(
-    entries: Vec<ProcessEntry>,
-    parent_pid: u32,
-) -> Option<ChildProcessInfo> {
-    let mut children_of: HashMap<u32, Vec<ProcessEntry>> = HashMap::new();
-
-    for entry in entries {
-        children_of.entry(entry.parent_pid).or_default().push(entry);
-    }
-
-    let mut child_count: u32 = 0;
-    let mut active_child_count: u32 = 0;
-    let mut total_cpu_ms: u64 = 0;
-    let mut descendant_pids = Vec::new();
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back(parent_pid);
-
-    while let Some(current) = queue.pop_front() {
-        if let Some(kids) = children_of.get(&current) {
-            for child in kids {
-                if !child.in_scope || !visited.insert(child.pid) {
-                    continue;
-                }
-
-                debug_assert_eq!(child.parent_pid, current);
-                child_count = child_count.saturating_add(1);
-                if child.currently_active {
-                    active_child_count = active_child_count.saturating_add(1);
-                }
-                total_cpu_ms += child.cpu_time_ms;
-                descendant_pids.push(child.pid);
-                queue.push_back(child.pid);
-            }
-        }
-    }
-
-    descendant_pids.sort_unstable();
-
-    if child_count == 0 {
-        return Some(ChildProcessInfo::NONE);
-    }
-
-    Some(ChildProcessInfo {
-        child_count,
-        active_child_count,
-        cpu_time_ms: total_cpu_ms,
-        descendant_pid_signature: module_level_descendant_pid_signature(&descendant_pids),
     })
 }
 

@@ -84,97 +84,80 @@ impl IncrementalNdjsonParser {
     ///
     /// A vector of complete JSON strings, in the order they were completed.
     pub fn feed(&mut self, data: &[u8]) -> Vec<String> {
-        let mut complete_jsons = Vec::new();
-
-        for &byte in data {
-            self.process_byte(byte, &mut complete_jsons);
-        }
-
-        complete_jsons
+        data.iter()
+            .filter_map(|&byte| self.process_byte(byte))
+            .collect()
     }
 
-    /// Process a single byte, tracking state and extracting complete JSONs.
-    ///
-    /// If the depth exceeds `MAX_JSON_DEPTH`, the parser will reset to a safe
-    /// state and skip the current JSON to prevent integer overflow from malicious input.
-    fn process_byte(&mut self, byte: u8, complete_jsons: &mut Vec<String>) {
-        // Ignore any non-JSON preamble before the first opening brace.
-        //
-        // Some real-world streams start with log lines or other text before the first JSON
-        // object. We only start buffering once we see the first `{`.
+    fn process_byte(&mut self, byte: u8) -> Option<String> {
         if !self.started && byte != b'{' {
-            return;
+            return None;
         }
 
-        // Handle escape sequences
         if self.escape_next {
             self.buffer.push(byte);
             self.escape_next = false;
-            return;
+            return None;
         }
 
         match byte {
             b'\\' if self.in_string => {
                 self.buffer.push(byte);
                 self.escape_next = true;
+                None
             }
             b'"' => {
                 self.buffer.push(byte);
                 if self.started {
                     self.in_string = !self.in_string;
                 }
+                None
             }
             b'{' if !self.in_string => {
-                // Check for depth limit to prevent overflow BEFORE pushing
                 if self.depth + 1 > MAX_JSON_DEPTH {
-                    // Depth exceeded - reset parser state to skip this malformed JSON
                     self.buffer.clear();
                     self.depth = 0;
                     self.started = false;
                     self.in_string = false;
                     self.escape_next = false;
+                    None
                 } else {
                     self.buffer.push(byte);
                     self.depth = self.depth.saturating_add(1);
                     self.started = true;
+                    None
                 }
             }
             b'}' if !self.in_string && self.started => {
                 self.buffer.push(byte);
                 self.depth = self.depth.saturating_sub(1);
 
-                // When depth returns to 0, we have a complete JSON object
                 if self.depth == 0 {
-                    self.extract_complete_json(complete_jsons);
+                    self.extract_complete_json()
+                } else {
+                    None
                 }
             }
             _ => {
                 self.buffer.push(byte);
+                None
             }
         }
     }
 
-    /// Extract a complete JSON object from the buffer.
-    fn extract_complete_json(&mut self, complete_jsons: &mut Vec<String>) {
-        // Find the end of the JSON (we know it's complete at this point)
-        // Look for the closing brace that brought us to depth 0
+    fn extract_complete_json(&mut self) -> Option<String> {
         let json_end = self.buffer.len();
 
-        // Convert to UTF-8 (should be valid JSON)
-        let Ok(json_str) = String::from_utf8(self.buffer.drain(..json_end).collect()) else {
-            // Invalid UTF-8 - skip this JSON silently
-            self.started = false;
-            return;
-        };
+        let json_str = String::from_utf8(self.buffer.drain(..json_end).collect())?;
 
-        // Trim whitespace and check if it's non-empty
         let trimmed = json_str.trim();
-        if !trimmed.is_empty() {
-            complete_jsons.push(trimmed.to_string());
+        if trimmed.is_empty() {
+            self.started = false;
+            return None;
         }
 
-        // Reset state for next JSON
         self.started = false;
+        Some(trimmed.to_string())
     }
 
     /// Get any incomplete JSON currently in the buffer.
@@ -234,7 +217,6 @@ impl IncrementalNdjsonParser {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
-        // Reset state to clean state
         self.buffer.clear();
         self.depth = 0;
         self.in_string = false;

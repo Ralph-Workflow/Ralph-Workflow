@@ -31,6 +31,44 @@ if they are working against functional programming practices.
 
 ---
 
+## 🚨 HARD BAN: NEVER USE `category` IN task() — ONLY subagent_type FROM opencode.json
+
+**This project uses opencode.json to define specific cheap subagents. Category-based dispatch uses expensive external models and is STRICTLY FORBIDDEN.**
+
+### The Rule
+- **ONLY** use `subagent_type=` with agent names explicitly defined in `.opencode/opencode.json`
+- **NEVER** use `category=` parameter in any `task()` call — ever
+- **NEVER** use `subagent_type="Sisyphus-Junior"` — not a valid agent type
+- Do NOT combine `category=` and `subagent_type=` — category takes precedence and ignores your subagent
+
+### Valid subagent_type values (from opencode.json):
+`build`, `workflow-gui`, `workflow-core`, `workflow-reducer`, `workflow-execution`, `workflow-io`, `workflow-workspace`, `workflow-git`, `workflow-config`, `workflow-app`, `workflow-logging`, `workflow-monitoring`, `workflow-misc`, `workflow-future`, `workflow-agents`, `workflow-prompts`, `workflow-json`, `workflow-cloud`, `test-helpers`, `xtask`, `workflow-tests`, `workflow-lints`, `workflow-docs`, `explore`, `librarian`, `oracle`, `metis`, `momus`
+(plus `-cargo` variants of all workflow-* agents)
+
+### If no agent covers the target path:
+**STOP. Ask the user which agent to use. Do NOT fall back to category-based dispatch.**
+
+### Module → Agent mapping:
+| Path | Correct Agent |
+|------|--------------|
+| `src/phases/**` | `workflow-reducer` |
+| `src/reducer/**` | `workflow-reducer` |
+| `src/pipeline/**` | `workflow-reducer` |
+| `src/checkpoint/**` | `workflow-reducer` |
+| `src/app/**` | `workflow-app` |
+| `src/git_helpers/**` | `workflow-git` |
+| `src/json_parser/**` | `workflow-json` |
+| `src/executor/**` | `workflow-execution` |
+| `src/files/**` | `workflow-io` |
+| `src/workspace/**` | `workflow-workspace` |
+| `src/logging/**`, `src/logger/**` | `workflow-logging` |
+| `src/monitoring/**` | `workflow-monitoring` |
+| `src/common/**`, `src/templates/**`, `src/rendering/**` | `workflow-misc` |
+| `src/prompts/**`, `src/guidelines/**` | `workflow-prompts` |
+| `src/*.rs` (root level) | `workflow-core` |
+
+---
+
 ## 🚫 CARGO IS INTENTIONALLY DISABLED FOR AGENTS
 
 **Cargo is turned OFF for agents during refactoring. This is by design.**

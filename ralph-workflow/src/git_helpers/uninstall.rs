@@ -56,13 +56,16 @@ pub fn uninstall_hooks_in_repo(repo_root: &Path, logger: &Logger) -> io::Result<
 
     hooks_dir::validate_hooks_dir_for_scope(&scope, false)?;
 
-    let mut restored: usize = 0;
-    for hook_name in RALPH_HOOK_NAMES {
-        let hook_path = hooks_dir.join(hook_name);
-        if hook_path.exists() && uninstall_hook(&hook_path, logger)? {
-            restored = restored.saturating_add(1);
-        }
-    }
+    let restored = RALPH_HOOK_NAMES
+        .iter()
+        .try_fold(0usize, |count, hook_name| {
+            let hook_path = hooks_dir.join(hook_name);
+            if hook_path.exists() && uninstall_hook(&hook_path, logger)? {
+                Ok(count.saturating_add(1))
+            } else {
+                Ok(count)
+            }
+        })?;
 
     if restored > 0 {
         logger.success(&format!("Uninstalled {restored} Ralph hook(s)"));
@@ -102,13 +105,13 @@ fn uninstall_hooks_silent_in_dir(hooks_dir: &Path) {
         return;
     }
 
-    for hook_name in RALPH_HOOK_NAMES {
+    RALPH_HOOK_NAMES.iter().for_each(|hook_name| {
         let hook_path = hooks_dir.join(hook_name);
         if !hook_path.exists() {
-            continue;
+            return;
         }
         if !matches!(file_contains_marker(&hook_path, HOOK_MARKER), Ok(true)) {
-            continue;
+            return;
         }
         #[cfg(unix)]
         make_hook_writable(&hook_path);
@@ -121,7 +124,7 @@ fn uninstall_hooks_silent_in_dir(hooks_dir: &Path) {
         } else {
             let _ = fs::remove_file(&hook_path);
         }
-    }
+    });
 }
 
 #[cfg(unix)]

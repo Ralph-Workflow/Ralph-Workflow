@@ -20,6 +20,8 @@ use super::types::{format_tool_input, format_unknown_json_event, ContentType, Ge
 
 pub mod boundary;
 
+pub mod io;
+
 include!("gemini/parser.rs");
 include!("gemini/event_parsing.rs");
 include!("gemini/stream_parsing.rs");

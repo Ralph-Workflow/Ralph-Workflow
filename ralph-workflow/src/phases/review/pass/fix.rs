@@ -153,17 +153,6 @@ pub fn run_fix_pass(
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {active_agent}"))?;
     let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
-    let mut runtime = PipelineRuntime {
-        timer: ctx.timer,
-        logger: ctx.logger,
-        colors: ctx.colors,
-        config: ctx.config,
-        executor: ctx.executor,
-        executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-        workspace: ctx.workspace,
-        workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-    };
-
     let prompt_cmd = PromptCommand {
         label: "fix",
         display_name: active_agent,
@@ -177,7 +166,19 @@ pub fn run_fix_pass(
         env_vars: &agent_config.env_vars,
     };
 
-    let result = run_with_prompt(&prompt_cmd, &mut runtime)?;
+    let result = run_with_prompt(
+        &prompt_cmd,
+        &mut PipelineRuntime {
+            timer: ctx.timer,
+            logger: ctx.logger,
+            colors: ctx.colors,
+            config: ctx.config,
+            executor: ctx.executor,
+            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+            workspace: ctx.workspace,
+            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+        },
+    )?;
     if result.exit_code != 0 {
         let auth_failure = stderr_contains_auth_error(&result.stderr);
         return Ok(FixPassResult::agent_failed(auth_failure));

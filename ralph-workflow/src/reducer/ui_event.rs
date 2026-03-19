@@ -335,14 +335,14 @@ mod tests {
             XmlOutputType::FixResult,
             XmlOutputType::CommitMessage,
         ];
-        for (i, v1) in variants.iter().enumerate() {
-            for (j, v2) in variants.iter().enumerate() {
-                if i == j {
-                    assert_eq!(v1, v2);
-                } else {
-                    assert_ne!(v1, v2);
-                }
-            }
-        }
+        assert!(
+            variants.iter().enumerate().all(|(i, v1)| {
+                variants
+                    .iter()
+                    .enumerate()
+                    .all(|(j, v2)| i == j || v1 != v2)
+            }),
+            "All XmlOutputType variants should be distinct"
+        );
     }
 }

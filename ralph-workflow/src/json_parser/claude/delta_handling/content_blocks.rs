@@ -91,7 +91,7 @@ impl crate::json_parser::claude::ClaudeParser {
         match delta {
             ContentBlockDelta::TextDelta { text: Some(text) } => {
                 let thinking_finalize = self.finalize_thinking_full_mode(session);
-                *self.suppress_thinking_for_message.borrow_mut() = true;
+                *self.state.suppress_thinking_for_message.borrow_mut() = true;
                 let index_str = index.to_string();
 
                 // Track this delta with StreamingSession for state management.
@@ -132,10 +132,10 @@ impl crate::json_parser::claude::ClaudeParser {
                 }
 
                 // Use TextDeltaRenderer for consistent rendering
-                let terminal_mode = *self.terminal_mode.borrow();
+                let terminal_mode = *self.state.terminal_mode.borrow();
 
                 if terminal_mode == TerminalMode::Full {
-                    *self.text_line_active.borrow_mut() = true;
+                    *self.state.text_line_active.borrow_mut() = true;
                 }
 
                 // Use prefix trie to detect if new content extends previously rendered content
@@ -146,6 +146,7 @@ impl crate::json_parser::claude::ClaudeParser {
                     // Append-only pattern in Full mode: track last rendered and emit only new content
                     let key = format!("text:{index}");
                     let last_rendered = self
+                        .state
                         .last_rendered_content
                         .borrow()
                         .get(&key)
@@ -161,7 +162,8 @@ impl crate::json_parser::claude::ClaudeParser {
                             terminal_mode,
                         );
                         // Track what we rendered (the sanitized content, not the ANSI codes)
-                        self.last_rendered_content
+                        self.state
+                            .last_rendered_content
                             .borrow_mut()
                             .insert(key, sanitized_text.clone());
                         rendered
@@ -196,7 +198,8 @@ impl crate::json_parser::claude::ClaudeParser {
                         }
 
                         // Track new rendered content
-                        self.last_rendered_content
+                        self.state
+                            .last_rendered_content
                             .borrow_mut()
                             .insert(key, sanitized_text.clone());
 
@@ -235,16 +238,16 @@ impl crate::json_parser::claude::ClaudeParser {
             } => {
                 let _show_prefix = session.on_thinking_delta(index, &text);
 
-                if *self.suppress_thinking_for_message.borrow() {
+                if *self.state.suppress_thinking_for_message.borrow() {
                     // Accumulate for state/deduplication, but don't render late thinking.
                     return String::new();
                 }
 
-                *self.thinking_active_index.borrow_mut() = Some(index);
+                *self.state.thinking_active_index.borrow_mut() = Some(index);
 
                 // In non-TTY modes, we suppress per-delta thinking output and flush once
                 // at the next output boundary (or at message_stop).
-                let terminal_mode = *self.terminal_mode.borrow();
+                let terminal_mode = *self.state.terminal_mode.borrow();
                 match terminal_mode {
                     TerminalMode::Full => {
                         let index_str = index.to_string();
@@ -256,6 +259,7 @@ impl crate::json_parser::claude::ClaudeParser {
                         // Append-only pattern: track last rendered and emit only new content
                         let key = format!("thinking:{index}");
                         let last_rendered = self
+                            .state
                             .last_rendered_content
                             .borrow()
                             .get(&key)
@@ -271,7 +275,8 @@ impl crate::json_parser::claude::ClaudeParser {
                                 terminal_mode,
                             );
                             // Track what we rendered (the sanitized content)
-                            self.last_rendered_content
+                            self.state
+                                .last_rendered_content
                                 .borrow_mut()
                                 .insert(key, sanitized);
                             rendered
@@ -301,7 +306,8 @@ impl crate::json_parser::claude::ClaudeParser {
                             }
 
                             // Track new rendered content
-                            self.last_rendered_content
+                            self.state
+                                .last_rendered_content
                                 .borrow_mut()
                                 .insert(key, sanitized.clone());
 
@@ -317,7 +323,10 @@ impl crate::json_parser::claude::ClaudeParser {
                         // at message_stop. Providers can emit multiple thinking content blocks in a
                         // single message, so tracking only the "active" index would drop earlier
                         // thinking blocks from non-TTY output.
-                        self.thinking_non_tty_indices.borrow_mut().insert(index);
+                        self.state
+                            .thinking_non_tty_indices
+                            .borrow_mut()
+                            .insert(index);
                         String::new()
                     }
                 }
@@ -326,7 +335,7 @@ impl crate::json_parser::claude::ClaudeParser {
                 tool_use: Some(tool_delta),
             } => {
                 let thinking_finalize = self.finalize_in_place_full_mode(session);
-                *self.suppress_thinking_for_message.borrow_mut() = true;
+                *self.state.suppress_thinking_for_message.borrow_mut() = true;
                 // Track tool name for GLM/CCS deduplication (if available in delta)
                 if let Some(serde_json::Value::String(name)) = tool_delta.get("name") {
                     session.set_tool_name(index, Some(name.clone()));
@@ -350,7 +359,7 @@ impl crate::json_parser::claude::ClaudeParser {
 
                     // Tool input is rendered once at tool completion/message_stop in non-TTY modes
                     // to avoid repeated prefixed lines for partial JSON chunks.
-                    let terminal_mode = *self.terminal_mode.borrow();
+                    let terminal_mode = *self.state.terminal_mode.borrow();
                     if matches!(terminal_mode, TerminalMode::Basic | TerminalMode::None) {
                         thinking_finalize
                     } else {

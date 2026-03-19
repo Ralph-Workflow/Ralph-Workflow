@@ -190,6 +190,9 @@
 //! - Content updates in-place without visual artifacts
 //! - Terminal state is clean and predictable
 
+// Parser state (RefCell/Cell fields isolated to boundary)
+pub mod io;
+
 use crate::common::truncate_text;
 use crate::config::Verbosity;
 use crate::logger::{Colors, CHECK, CROSS};

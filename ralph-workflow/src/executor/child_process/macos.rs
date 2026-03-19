@@ -189,14 +189,14 @@ fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
     (bytes == expected).then_some(info)
 }
 
-pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
+fn collect_descendant_pids(current_pid: u32) -> Option<Vec<u32>> {
     let mut descendants = Vec::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
-    queue.push_back(parent_pid);
+    queue.push_back(current_pid);
 
-    while let Some(current_pid) = queue.pop_front() {
-        let child_pids = list_child_pids(current_pid)?;
+    while let Some(pid) = queue.pop_front() {
+        let child_pids = list_child_pids(pid)?;
         for child_pid in child_pids {
             if visited.insert(child_pid) {
                 descendants.push(child_pid);
@@ -205,11 +205,17 @@ pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         }
     }
 
+    descendants.sort_unstable();
+    Some(descendants)
+}
+
+fn compute_child_info_from_descendants(
+    parent_pid: u32,
+    descendants: &[u32],
+) -> Option<ChildProcessInfo> {
     if descendants.is_empty() {
         return None;
     }
-
-    descendants.sort_unstable();
 
     let mut child_count: u32 = 0;
     let mut active_child_count: u32 = 0;
@@ -217,14 +223,14 @@ pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
     let mut qualifying_descendants = Vec::new();
 
     for descendant_pid in descendants {
-        let Some(bsd_info) = fetch_bsd_short_info(descendant_pid) else {
+        let Some(bsd_info) = fetch_bsd_short_info(*descendant_pid) else {
             continue;
         };
         if bsd_info.process_group_id != parent_pid || !qualifies_libproc_status(bsd_info.status) {
             continue;
         }
 
-        let task_info = fetch_task_info(descendant_pid);
+        let task_info = fetch_task_info(*descendant_pid);
         let cpu_time_ms = task_info.as_ref().map_or(0, |info| {
             (info.total_user_time + info.total_system_time) / 1_000_000
         });
@@ -243,7 +249,7 @@ pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         if counts_as_current_activity {
             active_child_count = active_child_count.saturating_add(1);
         }
-        qualifying_descendants.push(descendant_pid);
+        qualifying_descendants.push(*descendant_pid);
     }
 
     if child_count == 0 {
@@ -256,4 +262,9 @@ pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         cpu_time_ms: total_cpu_ms,
         descendant_pid_signature: descendant_pid_signature(&qualifying_descendants),
     })
+}
+
+pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
+    let descendants = collect_descendant_pids(parent_pid)?;
+    compute_child_info_from_descendants(parent_pid, &descendants)
 }
