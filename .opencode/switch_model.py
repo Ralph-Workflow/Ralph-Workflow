@@ -13,7 +13,8 @@ from pathlib import Path
 
 MODELS = {
     'glm': 'zai-coding-plan/glm-5',
-    'minimax': 'minimax/MiniMax-M2.7-highspeed'
+    'minimax': 'minimax/MiniMax-M2.7-highspeed',
+    'gpt5': 'openai/gpt-5.1-codex-mini'
 }
 
 # Subagents to exclude from model switching

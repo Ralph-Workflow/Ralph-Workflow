@@ -27,7 +27,7 @@
     "workflow-gui": {
       "description": "Ralph GUI - Angular frontend application. Contains UI components, services, and Angular-specific code for the code review interface.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -93,7 +93,7 @@
     "workflow-core": {
       "description": "Ralph workflow core entry points. Root-level files: lib.rs (module declarations), main.rs (CLI entry), banner.rs (ASCII banner), exit_pause.rs (exit handling). Application bootstrap and top-level orchestration.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -171,7 +171,7 @@
     "workflow-reducer": {
       "description": "Event-driven state management core. Modules: reducer (state transitions), pipeline (data flow orchestration), checkpoint (state snapshots), phases (workflow stages). The functional heart of the application.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -254,7 +254,7 @@
     "workflow-execution": {
       "description": "Execution and runtime. Modules: executor (task execution logic), runtime (process/thread management). Handles work dispatch and lifecycle management.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -325,7 +325,7 @@
     "workflow-io": {
       "description": "I/O boundaries. Modules: io (input/output operations, file reading/writing, network calls), files (file system operations, path handling). Primary boundary between domain logic and external systems.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -396,7 +396,7 @@
     "workflow-workspace": {
       "description": "Workspace abstraction and boundaries. Modules: workspace (workspace discovery, project detection), boundary (external system interfaces). Defines the interface between the application and user projects.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -467,7 +467,7 @@
     "workflow-git": {
       "description": "Git operations helper. Module: git_helpers. Contains git operations like diff parsing, commit analysis, branch detection. Boundary module that interacts with the git executable.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -532,7 +532,7 @@
     "workflow-config": {
       "description": "Configuration and CLI. Modules: config (application configuration, settings loading), cli (command-line argument parsing, subcommands). All user-facing configuration handling.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -603,7 +603,7 @@
     "workflow-app": {
       "description": "Application orchestration. Module: app. Main application layer that coordinates all other modules, wiring together components.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -668,7 +668,7 @@
     "workflow-logging": {
       "description": "Logging infrastructure. Modules: logging (log message construction, formatting), logger (log output handling, sinks). Observability and debugging support.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -739,7 +739,7 @@
     "workflow-monitoring": {
       "description": "Observability. Modules: monitoring (metrics collection, performance tracking), diagnostics (error reporting, debugging utilities). System reliability and troubleshooting support.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -810,7 +810,7 @@
     "workflow-misc": {
       "description": "Shared utilities. Modules: common (shared types, utilities), platform (OS-specific code), rendering (UI/text rendering), templates (message/response templates). Cross-cutting functionality.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -893,7 +893,7 @@
     "workflow-future": {
       "description": "Experimental and specialized features. Modules: benchmarks (performance measurement), interrupt (signal handling), language_detector (programming language identification), review_metrics (code review analytics). Advanced or niche functionality.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -976,7 +976,7 @@
     "workflow-agents": {
       "description": "AI agent integrations. Module: agents. Contains AI agent abstractions or integrations for the code review workflow.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1041,7 +1041,7 @@
     "workflow-prompts": {
       "description": "Prompt engineering. Modules: guidelines (prompt guidelines, best practices), prompts (prompt templates, message construction). Drives AI interactions.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1112,7 +1112,7 @@
     "workflow-json": {
       "description": "JSON parsing and serialization. Module: json_parser. Handles JSON parsing, validation, and structured data handling from files and APIs.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1177,7 +1177,7 @@
     "workflow-cloud": {
       "description": "Cloud integrations. Module: cloud. Handles cloud service integrations, remote operations, or cloud-native functionality. Boundary module for external cloud APIs.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1242,7 +1242,7 @@
     "test-helpers": {
       "description": "Test utilities crate. Shared testing utilities, test fixtures, and helper functions used across the test suite.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1308,7 +1308,7 @@
     "xtask": {
       "description": "Build automation crate. Build tasks, development scripts, and project maintenance utilities. CI/CD and development workflow automation.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1374,7 +1374,7 @@
     "workflow-tests": {
       "description": "Integration tests. End-to-end tests, integration scenarios, and test harnesses in the tests/ directory that span multiple modules.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1440,7 +1440,7 @@
     "workflow-lints": {
       "description": "Linting rules crate. Custom linting rules, code quality checks, and static analysis that define project code standards.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1510,7 +1510,7 @@
     "workflow-docs": {
       "description": "Documentation. Architecture decision records, code style guides, API documentation, and developer guides in the docs/ directory.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1567,7 +1567,7 @@
     "workflow-gui-cargo": {
       "description": "Ralph GUI - Angular frontend application. Contains UI components, services, and Angular-specific code for the code review interface.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1636,7 +1636,7 @@
     "workflow-core-cargo": {
       "description": "Ralph workflow core entry points. Root-level files: lib.rs (module declarations), main.rs (CLI entry), banner.rs (ASCII banner), exit_pause.rs (exit handling). Application bootstrap and top-level orchestration.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1717,7 +1717,7 @@
     "workflow-reducer-cargo": {
       "description": "Event-driven state management core. Modules: reducer (state transitions), pipeline (data flow orchestration), checkpoint (state snapshots), phases (workflow stages). The functional heart of the application.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1803,7 +1803,7 @@
     "workflow-execution-cargo": {
       "description": "Execution and runtime. Modules: executor (task execution logic), runtime (process/thread management). Handles work dispatch and lifecycle management.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1877,7 +1877,7 @@
     "workflow-io-cargo": {
       "description": "I/O boundaries. Modules: io (input/output operations, file reading/writing, network calls), files (file system operations, path handling). Primary boundary between domain logic and external systems.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -1951,7 +1951,7 @@
     "workflow-workspace-cargo": {
       "description": "Workspace abstraction and boundaries. Modules: workspace (workspace discovery, project detection), boundary (external system interfaces). Defines the interface between the application and user projects.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2025,7 +2025,7 @@
     "workflow-git-cargo": {
       "description": "Git operations helper. Module: git_helpers. Contains git operations like diff parsing, commit analysis, branch detection. Boundary module that interacts with the git executable.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2093,7 +2093,7 @@
     "workflow-config-cargo": {
       "description": "Configuration and CLI. Modules: config (application configuration, settings loading), cli (command-line argument parsing, subcommands). All user-facing configuration handling.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2167,7 +2167,7 @@
     "workflow-app-cargo": {
       "description": "Application orchestration. Module: app. Main application layer that coordinates all other modules, wiring together components.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2235,7 +2235,7 @@
     "workflow-logging-cargo": {
       "description": "Logging infrastructure. Modules: logging (log message construction, formatting), logger (log output handling, sinks). Observability and debugging support.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2309,7 +2309,7 @@
     "workflow-monitoring-cargo": {
       "description": "Observability. Modules: monitoring (metrics collection, performance tracking), diagnostics (error reporting, debugging utilities). System reliability and troubleshooting support.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2383,7 +2383,7 @@
     "workflow-misc-cargo": {
       "description": "Shared utilities. Modules: common (shared types, utilities), platform (OS-specific code), rendering (UI/text rendering), templates (message/response templates). Cross-cutting functionality.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2469,7 +2469,7 @@
     "workflow-future-cargo": {
       "description": "Experimental and specialized features. Modules: benchmarks (performance measurement), interrupt (signal handling), language_detector (programming language identification), review_metrics (code review analytics). Advanced or niche functionality.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2555,7 +2555,7 @@
     "workflow-agents-cargo": {
       "description": "AI agent integrations. Module: agents. Contains AI agent abstractions or integrations for the code review workflow.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2623,7 +2623,7 @@
     "workflow-prompts-cargo": {
       "description": "Prompt engineering. Modules: guidelines (prompt guidelines, best practices), prompts (prompt templates, message construction). Drives AI interactions.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2697,7 +2697,7 @@
     "workflow-json-cargo": {
       "description": "JSON parsing and serialization. Module: json_parser. Handles JSON parsing, validation, and structured data handling from files and APIs.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2765,7 +2765,7 @@
     "workflow-cloud-cargo": {
       "description": "Cloud integrations. Module: cloud. Handles cloud service integrations, remote operations, or cloud-native functionality. Boundary module for external cloud APIs.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2833,7 +2833,7 @@
     "test-helpers-cargo": {
       "description": "Test utilities crate. Shared testing utilities, test fixtures, and helper functions used across the test suite.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2902,7 +2902,7 @@
     "xtask-cargo": {
       "description": "Build automation crate. Build tasks, development scripts, and project maintenance utilities. CI/CD and development workflow automation.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -2971,7 +2971,7 @@
     "workflow-tests-cargo": {
       "description": "Integration tests. End-to-end tests, integration scenarios, and test harnesses in the tests/ directory that span multiple modules.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -3040,7 +3040,7 @@
     "workflow-lints-cargo": {
       "description": "Linting rules crate. Custom linting rules, code quality checks, and static analysis that define project code standards.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",
@@ -3115,7 +3115,7 @@
     "workflow-docs-cargo": {
       "description": "Documentation. Architecture decision records, code style guides, API documentation, and developer guides in the docs/ directory.",
       "mode": "subagent",
-      "model": "minimax/MiniMax-M2.7-highspeed",
+      "model": "openai/gpt-5.1-codex-mini",
       "permission": {
         "bash": {
           "*": "deny",

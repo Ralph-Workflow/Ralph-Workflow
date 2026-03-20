@@ -3,10 +3,10 @@
 //! This module handles HTTP requests to fetch the `OpenCode` model catalog
 //! from <https://models.dev/api.json>.
 
+use crate::agents::fetch_api_catalog_json;
 use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
-use crate::agents::opencode_api::{API_URL, CACHE_TTL_ENV_VAR, DEFAULT_CACHE_TTL_SECONDS};
-use crate::agents::{fetch_api_catalog_json, get_env_var};
+use crate::agents::opencode_api::{API_URL, DEFAULT_CACHE_TTL_SECONDS};
 
 /// Fetch the `OpenCode` API catalog from the remote endpoint.
 ///
@@ -14,14 +14,10 @@ use crate::agents::{fetch_api_catalog_json, get_env_var};
 /// and parses the JSON response into an `ApiCatalog`.
 ///
 /// The fetched catalog is automatically cached to disk for future use.
-pub fn fetch_api_catalog() -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
+pub fn fetch_api_catalog(ttl_seconds: u64) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
     let body = fetch_api_catalog_json(API_URL).map_err(CacheError::FetchError)?;
 
     let catalog: ApiCatalog = serde_json::from_str(&body)?;
-
-    let ttl_seconds = get_env_var(CACHE_TTL_ENV_VAR)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_CACHE_TTL_SECONDS);
 
     let catalog = ApiCatalog {
         cached_at: Some(chrono::Utc::now()),

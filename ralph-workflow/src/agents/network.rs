@@ -15,7 +15,3 @@ pub fn fetch_api_catalog_json(url: &str) -> Result<String, String> {
         .read_to_string()
         .map_err(|e: ureq::Error| e.to_string())
 }
-
-pub fn get_env_var(name: &str) -> Option<String> {
-    std::env::var(name).ok()
-}

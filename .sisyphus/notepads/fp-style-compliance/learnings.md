@@ -402,3 +402,40 @@ For modules built with `include!(...)` (for example `json_parser/streaming_state
 
 - Created `boundary/executor_reexports_boundary.rs` as the only boundary module that imports the executor layer; the crate root now re-exports its types through `executor_reexports_boundary` instead of touching `crate::executor` directly.
 - The shim keeps the public API for `ProcessExecutor`, `RealProcessExecutor`, `AgentChild`, etc., intact while keeping the domain `use` tree boundary-free for `forbid_domain_boundary_dependencies`.
+
+
+## 2026-03-19T19:55Z — P3-contracts-agents: SATISFIED
+
+### Implementation
+
+Created `ralph-workflow/src/agents/invoke.rs` with the following abstract contract:
+
+- **`AgentInvoker` trait** (object-safe, `Send + Sync`): Single method `invoke(input: AgentInput) -> Result<AgentOutput, AgentInvokeError>`
+- **`AgentInput` struct**: Domain-shaped input with `prompt: &str`, `agent_config: &AgentConfig`, `logfile: Option<&Path>`
+- **`AgentOutput` struct**: Domain-shaped output with `stdout: String`, `stderr: String`, `exit_code: i32`
+- **`AgentInvokeError` enum**: Typed error variants including `ExecutionFailed`, `ProcessKilled`, `InvalidInput`, `AgentError(AgentErrorKind)`, `NoOutput`, `TruncatedOutput`
+
+### Module integration
+
+- Added `pub mod invoke;` to `ralph-workflow/src/agents/mod.rs:93`
+- Re-exported types at `agents/mod.rs:139`: `pub use invoke::{AgentInput, AgentInvoker, AgentInvokeError, AgentOutput};`
+
+### Tests
+
+Added 5 tests in `invoke.rs`:
+- `test_agent_invoker_is_object_safe` - verifies trait is object-safe via `dyn AgentInvoker`
+- `test_agent_input_clone` - verifies `AgentInput` is clonable
+- `test_agent_output_clone` - verifies `AgentOutput` is clonable
+- `test_agent_invoke_error_display` - verifies error display formatting
+- `test_mock_agent_invoker` - verifies mock implementation works correctly
+
+### Verification
+
+- `cargo check -p ralph-workflow --lib` → **PASSES** (no errors)
+- `cargo test -p ralph-workflow --lib agents::invoke` → **5 passed, 0 failed**
+- `cargo test -p ralph-workflow --lib agents` → **174 passed, 0 failed** (agent module tests)
+
+### Design rationale
+
+The trait is minimal and focused: it takes `AgentInput` (containing prompt + config) and returns `AgentOutput` or error. The `AgentConfig` is passed at invocation time (not construction), enabling flexible agent selection. Error variants wrap `AgentErrorKind` for seamless integration with existing error classification logic. The `Send + Sync` bounds enable use as `Arc<dyn AgentInvoker>` in concurrent contexts.
+

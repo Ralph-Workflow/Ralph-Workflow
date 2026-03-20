@@ -735,7 +735,7 @@ Before fixing any individual import, verify the abstraction layer is complete:
   access. If not, create one or adopt the env-injection pattern from `docs/agents/testing-guide.md`:
   `impl Fn(&str) -> Option<String>`. Domain code should never import `std::env::var` directly.
 
-- [ ] **P3-contracts-agents**: Define or verify an abstract agent trait (e.g., `AgentInvoker`
+- [x] **P3-contracts-agents**: Define or verify an abstract agent trait (e.g., `AgentInvoker`
   or `ModelExecutor`). Boundary adapters for claude, codex, gemini, opencode implement the
   trait. Domain code depends on the trait only; concrete adapter types never appear in domain
   module imports.
