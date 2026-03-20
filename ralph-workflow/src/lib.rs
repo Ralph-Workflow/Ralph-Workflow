@@ -156,6 +156,9 @@ pub mod runtime;
 pub mod templates;
 pub mod workspace;
 
+#[path = "boundary/executor_reexports_boundary.rs"]
+mod executor_reexports_boundary;
+
 // Benchmarks module - contains public baselines used by integration tests.
 // Benchmark *tests* inside the module remain `#[cfg(test)]`.
 pub mod benchmarks;
@@ -174,24 +177,14 @@ pub use files::llm_output_extraction::validate_xml_against_xsd;
 
 // Re-export process executor types for dependency injection.
 // See [`executor`] module for documentation.
-mod executor_reexports_boundary {
-    pub use crate::executor::{
-        AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
-        ProcessExecutor, ProcessOutput, RealAgentChild, RealProcessExecutor,
-    };
-
-    #[cfg(any(test, feature = "test-utils"))]
-    pub use crate::executor::{MockAgentChild, MockProcessExecutor};
-}
-
 pub use executor_reexports_boundary::{
     AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
     ProcessExecutor, ProcessOutput, RealAgentChild, RealProcessExecutor,
 };
 
-pub use workspace::Workspace;
-
-// Re-export mock executor for test-utils feature.
-// Use MockProcessExecutor to control process behavior in integration tests.
+/// Re-export mock executor for test-utils feature.
+/// Use MockProcessExecutor to control process behavior in integration tests.
 #[cfg(any(test, feature = "test-utils"))]
 pub use executor_reexports_boundary::{MockAgentChild, MockProcessExecutor};
+
+pub use workspace::Workspace;

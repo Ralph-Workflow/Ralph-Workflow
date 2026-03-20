@@ -28,6 +28,10 @@ use std::path::Path;
 pub(crate) mod checkpoint;
 #[path = "runtime.rs"]
 mod handling;
+#[cfg(test)]
+pub(crate) mod runtime {
+    pub(crate) use super::handling::INTERRUPT_CONTEXT;
+}
 
 pub use checkpoint::InterruptContext;
 pub use handling::{clear_interrupt_context, get_interrupt_context, set_interrupt_context};

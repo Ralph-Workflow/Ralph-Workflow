@@ -82,3 +82,58 @@ callers to use the return value. Other live call sites in the file correctly use
 to explicitly discard it when mutation is the intent. This pattern mismatch (mutable field
 vs consuming builder) is worth tracking — if these functions are ever revived, they'll need
 `phase_ctx.execution_history = phase_ctx.execution_history.add_step_bounded(...)`.
+
+## 2026-03-19 — 18:27 — Phase 3 forbid_domain_boundary_dependencies Audit
+
+### Summary
+Exactly ONE `forbid_domain_boundary_dependencies` violation found in current repo state.
+
+### Violation Details
+
+**File:** `/Users/mistlight/Projects/RalphWithReviewer/wt-68-build-system/ralph-workflow/src/lib.rs:178:5`
+
+**Location within file:**
+```rust
+// Lines 177-185
+mod executor_reexports_boundary {
+    pub use crate::executor::{
+        AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
+        ProcessExecutor, ProcessOutput, RealAgentChild, RealProcessExecutor,
+    };
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub use crate::executor::{MockAgentChild, MockProcessExecutor};
+}
+```
+
+**Offending import:** `pub use crate::executor::{...}` — importing from boundary module `executor`
+
+**Why it triggers the lint:**
+- The `lib.rs` file is the crate root (not a boundary module)
+- The inline module `executor_reexports_boundary` is defined in `lib.rs`, NOT in a boundary directory
+- Even though the module name contains "boundary", it's not actually located in a recognized boundary path (`io/`, `runtime/`, `ffi/`, `boundary/`, `executor/`)
+- The lint correctly detects that non-boundary code is importing from the `executor` boundary module
+
+**Matching plan checkbox:** P3-remaining-boundary (or could be considered P3-workflow-* since it's in lib.rs)
+
+### Root Cause Analysis
+The re-export pattern was likely intended to make executor types available at the crate root for dependency injection. However, the module containing these re-exports is not physically located in a boundary directory, so the lint treats it as non-boundary code importing from a boundary module.
+
+### Verification Command
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep "import from boundary module"
+```
+Returns exactly 1 line with this violation.
+
+### Note
+All other Phase 3 boundary import violations have already been resolved in prior work. The repo is very close to Phase 3 completion with only this single remaining issue.
+
+## 2026-03-19T12:30Z — Interrupt runtime re-export fix
+
+- **Problem:** `interrupt/io_tests.rs` imported `crate::interrupt::runtime::INTERRUPT_CONTEXT`, but the interrupt module now keeps its implementation inside a `handling` module (`#[path = "runtime.rs"] mod handling`). There was no `runtime` re-export, so the test failed with `E0432: unresolved import`.
+- **Fix:** Added a `pub(crate) mod runtime { pub use super::handling::INTERRUPT_CONTEXT; }` wrapper so the runtime namespace exposes only the constant that tests still need, avoiding the previous wildcard import while keeping the implementation inside the boundary module.
+
+## 2026-03-19T12:45Z — Interrupt runtime shim unused import
+
+- **Problem:** Making the runtime shim always available introduced a wildcard re-export in `interrupt/mod.rs` that the non-test build flagged as `unused import` under `#![deny(warnings)]`. The warning was triggered because only the `io_tests` target uses the runtime namespace.
+- **Fix:** Guarded the runtime re-export with `#[cfg(test)]` so the constant is exposed only under test builds. This keeps `crate::interrupt::runtime::INTERRUPT_CONTEXT` available where needed while avoiding unused import warnings during the normal build.

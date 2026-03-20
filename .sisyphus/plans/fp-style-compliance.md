@@ -774,7 +774,7 @@ For each workflow, fix ALL boundary imports (io + runtime + executor + boundary)
 
 #### Step 3 — Fix Remaining Standalone Imports
 
-- [ ] **P3-remaining-boundary**: After Phase 2 flattening, the ~12 `boundary/` import
+- [x] **P3-remaining-boundary**: After Phase 2 flattening, the ~12 `boundary/` import
   violations should mostly be gone. For any that remain: the importing file is using
   boundary logic directly (e.g., calling a handler from domain code). Move the policy
   decision to the domain caller and have it emit an `Effect` enum variant instead of
