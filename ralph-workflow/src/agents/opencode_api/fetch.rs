@@ -6,7 +6,7 @@
 use crate::agents::fetch_api_catalog_json;
 use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
-use crate::agents::opencode_api::{API_URL, DEFAULT_CACHE_TTL_SECONDS};
+use crate::agents::opencode_api::API_URL;
 
 /// Fetch the `OpenCode` API catalog from the remote endpoint.
 ///
@@ -40,6 +40,7 @@ pub fn fetch_api_catalog(ttl_seconds: u64) -> Result<(ApiCatalog, Vec<CacheWarni
 mod tests {
     use super::*;
     use crate::agents::opencode_api::types::{Model, Provider};
+    use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
     use std::collections::HashMap;
 
     /// Create a mock API catalog for testing.

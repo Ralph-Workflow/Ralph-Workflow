@@ -721,17 +721,17 @@ Instead, follow this sequence:
 
 Before fixing any individual import, verify the abstraction layer is complete:
 
-- [ ] **P3-contracts-workspace**: Verify `Workspace` trait (at `workspace.rs:100`) covers
+- [x] **P3-contracts-workspace**: Verify `Workspace` trait (at `workspace.rs:100`) covers
   all file access needs across all domain callers. Confirm `MemoryWorkspace` is ready for
   tests. If any domain function needs a file operation the trait doesn't support, extend
   the trait first.
 
-- [ ] **P3-contracts-executor**: Verify `ProcessExecutor` trait (at `executor/executor_trait.rs:28`)
+- [x] **P3-contracts-executor**: Verify `ProcessExecutor` trait (at `executor/executor_trait.rs:28`)
   covers all process execution needs. Confirm `MockProcessExecutor` is ready for tests.
   Create `CommandOutput` domain type if not already available (exit code, stdout, stderr as
   plain values — NOT `std::process::Output`).
 
-- [ ] **P3-contracts-env**: Check if `Environment`/`ConfigEnvironment` traits exist for env
+- [x] **P3-contracts-env**: Check if `Environment`/`ConfigEnvironment` traits exist for env
   access. If not, create one or adopt the env-injection pattern from `docs/agents/testing-guide.md`:
   `impl Fn(&str) -> Option<String>`. Domain code should never import `std::env::var` directly.
 
@@ -744,31 +744,31 @@ Before fixing any individual import, verify the abstraction layer is complete:
 
 For each workflow, fix ALL boundary imports (io + runtime + executor + boundary) in one pass:
 
-- [ ] **P3-workflow-context**: Fix `phases/context.rs` and config loading:
+- [x] **P3-workflow-context**: Fix `phases/context.rs` and config loading:
   Currently imports from executor (ProcessExecutor), runtime (GitEnvironment).
   Refactor to receive both via constructor/parameter injection. Single pass.
 
-- [ ] **P3-workflow-pipeline**: Fix pipeline modules (`idle_timeout/`, `prompt/`, `clipboard.rs`,
+- [x] **P3-workflow-pipeline**: Fix pipeline modules (`idle_timeout/`, `prompt/`, `clipboard.rs`,
   `types.rs`): these import executor types (ProcessExecutor, AgentChild, ChildProcessInfo).
   Domain code should receive `CommandOutput` plain values or accept the trait via injection.
 
-- [ ] **P3-workflow-platform**: Fix `platform/detection.rs`: imports RealProcessExecutor.
+- [x] **P3-workflow-platform**: Fix `platform/detection.rs`: imports RealProcessExecutor.
   Platform detection logic (interpreting OS info) is pure; running the detection command
   is boundary. Split into `detect_platform(os_info: &str) -> Platform` (pure) and
   `gather_platform_info(executor: &dyn ProcessExecutor) -> CommandOutput` (boundary).
 
-- [ ] **P3-workflow-git**: Fix `git_helpers/identity.rs` and other git_helpers boundary
+- [x] **P3-workflow-git**: Fix `git_helpers/identity.rs` and other git_helpers boundary
   imports. Note: comprehensive git_helpers refactor happens in Phase 9 — here only fix
   the specific boundary import violations. Do not restructure the entire git_helpers module.
 
-- [ ] **P3-workflow-app**: Fix `app/effect_handler.rs`, `app/plumbing.rs`,
+- [x] **P3-workflow-app**: Fix `app/effect_handler.rs`, `app/plumbing.rs`,
   `app/rebase/orchestration.rs`, `app/rebase/conflicts.rs`, `app/env_access/mod.rs`.
   These are higher-level wiring modules — some may legitimately be boundary code. For
   each: if the function IS boundary wiring (gathering inputs, calling pure logic, performing
   effects), verify it's in a boundary-named module. If it's domain policy that happens to
   import a boundary type, extract the pure logic out.
 
-- [ ] **P3-workflow-agents**: Fix `agents/mod.rs`, `agents/cache_environment.rs`,
+- [x] **P3-workflow-agents**: Fix `agents/mod.rs`, `agents/cache_environment.rs`,
   `agents/ccs_env.rs`, `agents/config/file.rs`. These import `std::io` and `runtime`.
   Agent config parsing is pure (accept &str, return typed config). File reading is boundary.
 
@@ -780,7 +780,7 @@ For each workflow, fix ALL boundary imports (io + runtime + executor + boundary)
   decision to the domain caller and have it emit an `Effect` enum variant instead of
   calling the boundary directly.
 
-- [ ] **P3-remaining-agents**: For any remaining `claude`, `codex`, `gemini`, `opencode`,
+- [x] **P3-remaining-agents**: For any remaining `claude`, `codex`, `gemini`, `opencode`,
   `streaming_state`, `printer` boundary imports from domain code that weren't fixed in
   Step 2 workflows — apply the abstract trait pattern from P3-contracts-agents.
 

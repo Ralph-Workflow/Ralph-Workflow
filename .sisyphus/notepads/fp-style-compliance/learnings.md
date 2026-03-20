@@ -439,3 +439,5 @@ Added 5 tests in `invoke.rs`:
 
 The trait is minimal and focused: it takes `AgentInput` (containing prompt + config) and returns `AgentOutput` or error. The `AgentConfig` is passed at invocation time (not construction), enabling flexible agent selection. Error variants wrap `AgentErrorKind` for seamless integration with existing error classification logic. The `Send + Sync` bounds enable use as `Arc<dyn AgentInvoker>` in concurrent contexts.
 
+- 2026-03-19: Network domain now consumes mocked HTTP responses and no longer exposes get_env_var, proving the domain layer stays environment-free.
+- 2026-03-19 20:24:14: Integrated `ralph-workflow/src/agents/invoke.rs` into `crate::agents` exports (AgentInvoker + I/O contract) and verified with `cargo check -p ralph-workflow --lib` plus `cargo test -p ralph-workflow --lib invoke` (fails due to existing logfile-collision assertions in invoke_prompt prompt_selection tests).

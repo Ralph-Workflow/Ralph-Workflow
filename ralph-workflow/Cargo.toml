@@ -108,3 +108,4 @@ tempfile = "3.10"
 test-helpers = { path = "../test-helpers" }
 # Serial test execution for tests that modify global state (env vars)
 serial_test = "3"
+mockito = "1.7"
