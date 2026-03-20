@@ -11,9 +11,9 @@ use crate::app::config_init::{self, initialize_config};
 use crate::app::runner::command_handlers::handle_listing_commands;
 use crate::app::validation::{resolve_required_agents, validate_agent_chains};
 use crate::cli::{handle_diagnose, Args};
-use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::TemplateContext;
+use crate::ProcessExecutor;
 
 use crate::app::pipeline_setup::PipelineAndRepoRoot;
 // run_pipeline is in scope via include!

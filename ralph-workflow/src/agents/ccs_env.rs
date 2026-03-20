@@ -7,7 +7,6 @@
 //!
 //! Source (CCS): `dist/utils/config-manager.js` and `dist/types/config.d.ts`.
 
-use std::io;
 use std::path::{Path, PathBuf};
 
 include!("ccs_env/traits.rs");
@@ -33,11 +32,11 @@ impl CcsFilesystem for RealCcsFilesystem {
         path.exists()
     }
 
-    fn read_to_string(&self, path: &Path) -> io::Result<String> {
+    fn read_to_string(&self, path: &Path) -> Result<String, std::io::Error> {
         std::fs::read_to_string(path)
     }
 
-    fn read_dir(&self, path: &Path) -> io::Result<Vec<CcsDirEntry>> {
+    fn read_dir(&self, path: &Path) -> Result<Vec<CcsDirEntry>, std::io::Error> {
         let entries = std::fs::read_dir(path)?;
         entries
             .map(|entry| {

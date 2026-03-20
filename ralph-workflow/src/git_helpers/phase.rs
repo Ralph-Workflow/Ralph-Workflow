@@ -14,7 +14,6 @@ use crate::git_helpers::repo::{normalize_protection_scope_path, ralph_git_dir};
 use crate::logger::Logger;
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use which::which;
 
@@ -22,7 +21,7 @@ const HEAD_OID_FILE_NAME: &str = "head-oid.txt";
 const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";
 
 /// Escape a path for safe use in a POSIX shell single-quoted string.
-pub(crate) fn escape_shell_path(path: &str) -> io::Result<String> {
+pub(crate) fn escape_shell_path(path: &str) -> std::io::Result<String> {
     escape_shell_single_quoted(path)
 }
 
@@ -515,8 +514,8 @@ pub(crate) fn check_and_install_wrapper(
                             .create_new(true)
                             .open(&wrapper_path)
                             .and_then(|mut f| {
-                                f.write_all(wrapper_content.as_bytes())?;
-                                f.flush()?;
+                                std::io::Write::write_all(&mut f, wrapper_content.as_bytes())?;
+                                std::io::Write::flush(&mut f)?;
                                 let _ = f.sync_all();
                                 Ok(())
                             })
@@ -558,7 +557,7 @@ fn set_wrapper_permissions_windows(path: &Path) {
     }
 }
 
-fn open_wrapper_tmp(tmp_path: &Path, content: &str) -> io::Result<()> {
+fn open_wrapper_tmp(tmp_path: &Path, content: &str) -> std::io::Result<()> {
     let open_tmp = {
         #[cfg(unix)]
         {
@@ -579,8 +578,8 @@ fn open_wrapper_tmp(tmp_path: &Path, content: &str) -> io::Result<()> {
     };
 
     open_tmp.and_then(|mut f| {
-        f.write_all(content.as_bytes())?;
-        f.flush()?;
+        std::io::Write::write_all(&mut f, content.as_bytes())?;
+        std::io::Write::flush(&mut f)?;
         let _ = f.sync_all();
         Ok(())
     })
@@ -594,7 +593,7 @@ pub(crate) fn capture_head_oid(repo_root: &Path) {
     let _ = write_head_oid_file_atomic(repo_root, head_oid.trim());
 }
 
-fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
+fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> std::io::Result<()> {
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(repo_root)?;
     let head_oid_path = ralph_dir.join(HEAD_OID_FILE_NAME);
 
@@ -602,8 +601,8 @@ fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
         fs::symlink_metadata(&head_oid_path),
         Ok(m) if m.file_type().is_symlink()
     ) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "head-oid path is a symlink; refusing to write baseline",
         ));
     }
@@ -622,9 +621,9 @@ fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
             .write(true)
             .create_new(true)
             .open(&tmp_path)?;
-        tf.write_all(oid.as_bytes())?;
-        tf.write_all(b"\n")?;
-        tf.flush()?;
+        std::io::Write::write_all(&mut tf, oid.as_bytes())?;
+        std::io::Write::write_all(&mut tf, b"\n")?;
+        std::io::Write::flush(&mut tf)?;
         let _ = tf.sync_all();
     }
 

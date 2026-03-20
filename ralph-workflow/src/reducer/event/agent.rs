@@ -1,7 +1,7 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
 use crate::agents::{AgentDrain, AgentRole};
-use crate::executor::ChildProcessInfo;
+use crate::ChildProcessInfo;
 use serde::{Deserialize, Serialize};
 
 /// Agent invocation and chain management events.

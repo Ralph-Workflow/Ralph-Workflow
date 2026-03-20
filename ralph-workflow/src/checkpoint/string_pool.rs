@@ -75,11 +75,9 @@ impl StringPool {
         }
 
         let interned: Arc<str> = Arc::from(s);
-        let new_pool = Self {
-            pool: self.pool.clone(),
-            ..self
-        };
-        (new_pool, interned)
+        let mut pool = self.pool;
+        pool.insert(Arc::clone(&interned));
+        (Self { pool }, interned)
     }
 
     /// Get or insert an owned string into the pool, returning an Arc<str>.
@@ -92,11 +90,9 @@ impl StringPool {
         }
 
         let interned: Arc<str> = Arc::from(s);
-        let new_pool = Self {
-            pool: self.pool.clone(),
-            ..self
-        };
-        (new_pool, interned)
+        let mut pool = self.pool;
+        pool.insert(Arc::clone(&interned));
+        (Self { pool }, interned)
     }
 
     /// Backward-compatible convenience: accepts any `Into<String>`.
@@ -230,14 +226,16 @@ mod tests {
         let pool = (0..1000).fold(StringPool::new(), |pool, _| {
             pool.intern_str("Development").0
         });
-        let arcs: Vec<_> = (0..1000)
-            .map(|_| StringPool::new().intern_str("Development").1)
-            .collect();
 
-        // Pool should still only contain one entry
+        // Pool should still only contain one entry (deduplication works)
         assert_eq!(pool.len(), 1);
 
-        // All arcs should point to the same allocation
+        // Interning from a single pool multiple times produces same Arc
+        let arcs: Vec<_> = (0..1000)
+            .map(|_| pool.clone().intern_str("Development").1)
+            .collect();
+
+        // All arcs from the same pool should point to the same allocation
         assert!((1..arcs.len()).all(|i| Arc::ptr_eq(&arcs[0], &arcs[i])));
     }
 

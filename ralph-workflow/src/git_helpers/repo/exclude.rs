@@ -8,11 +8,13 @@
 //! Only paths that begin with approved prefixes are added to the exclude file.
 //! This prevents accidental suppression of user-owned files.
 
-use std::io;
-use std::io::Write;
 use std::path::Path;
 
 use crate::git_helpers::git2_to_io_error;
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+}
 
 /// Approved path prefixes that may be added to `.git/info/exclude`.
 ///
@@ -110,9 +112,9 @@ pub fn ensure_local_excludes(repo_root: &Path, patterns: &[&str]) -> io::Result<
         .append(true)
         .open(&exclude_path)?;
     if !existing.is_empty() && !existing.ends_with('\n') {
-        file.write_all(b"\n")?;
+        std::io::Write::write_all(&mut file, b"\n")?;
     }
-    file.write_all(additions.as_bytes())?;
+    std::io::Write::write_all(&mut file, additions.as_bytes())?;
     Ok(())
 }
 

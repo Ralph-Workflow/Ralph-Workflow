@@ -25,13 +25,18 @@
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io;
 use std::path::Path;
 
 use crate::workspace::Workspace;
 use sha2::{Digest, Sha256};
 
 pub(crate) use chrono::Local;
+
+mod io {
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+    pub type Result<T> = std::result::Result<T, Error>;
+}
 
 include!("state/types/snapshots_and_phases.rs");
 include!("state/types/pipeline_phase.rs");

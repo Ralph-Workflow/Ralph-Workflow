@@ -15,8 +15,17 @@ use crate::config::{ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
 use crate::templates::{get_template, list_templates, ALL_TEMPLATES};
 use itertools::Itertools;
-use std::io::Write;
 use std::path::Path;
+
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
 
 /// Minimum similarity threshold for suggesting alternatives (0-100 percentage).
 const MIN_SIMILARITY_PERCENT: u32 = 40;

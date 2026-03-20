@@ -4,8 +4,6 @@
 //! When the marker file exists, the wrapper blocks mutating git commands
 //! (commit, push, tag) while allowing read-only commands (status, log, diff).
 
-use std::io;
-
 const WRAPPER_MARKER: &str = "RALPH_AGENT_PHASE_GIT_WRAPPER";
 
 /// Escape a path for safe use in a POSIX shell single-quoted string.
@@ -13,10 +11,10 @@ const WRAPPER_MARKER: &str = "RALPH_AGENT_PHASE_GIT_WRAPPER";
 /// Single quotes in POSIX shells cannot contain literal single quotes.
 /// The standard workaround is to end the quote, add an escaped quote, and restart the quote.
 /// This function rejects paths with newlines since they can't be safely handled.
-pub(crate) fn escape_shell_single_quoted(path: &str) -> io::Result<String> {
+pub(crate) fn escape_shell_single_quoted(path: &str) -> std::io::Result<String> {
     if path.contains('\n') || path.contains('\r') {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             "git path contains newline characters, cannot create safe shell wrapper",
         ));
     }

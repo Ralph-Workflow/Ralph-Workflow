@@ -5,8 +5,6 @@ use crate::git_helpers::hooks_dir;
 use crate::git_helpers::repo::resolve_protection_scope_from;
 use crate::git_helpers::worktree;
 use std::fs::{self, File};
-use std::io;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub const HOOK_MARKER: &str = "RALPH_RUST_MANAGED_HOOK";
@@ -64,7 +62,7 @@ pub(crate) fn install_hook_with_repo_root(
     ralph_dir: &Path,
     hooks_dir: &Path,
     hook_path: &Path,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let marker_path = ralph_dir.join("no_agent_commit");
     let track_file_path = ralph_dir.join("git-wrapper-dir.txt");
 
@@ -72,14 +70,14 @@ pub(crate) fn install_hook_with_repo_root(
     let track_file_path_bash = bash_single_quote_literal(&track_file_path.display().to_string());
 
     let hook_parent_dir = hook_path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             "Hook path has no parent directory",
         )
     })?;
     if hook_parent_dir != hooks_dir {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to install hook outside scoped hooks dir: {}",
                 hook_path.display()
@@ -89,9 +87,12 @@ pub(crate) fn install_hook_with_repo_root(
 
     let resolved_hook_dir = fs::canonicalize(hooks_dir)?;
 
-    let hook_file_name = hook_path
-        .file_name()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Hook path has no file name"))?;
+    let hook_file_name = hook_path.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Hook path has no file name",
+        )
+    })?;
     let hook_path_abs = resolved_hook_dir.join(hook_file_name);
     let orig_path_abs = PathBuf::from(format!("{}.ralph.orig", hook_path_abs.display()));
 
@@ -121,7 +122,7 @@ pub(crate) fn install_hook_with_repo_root(
     );
 
     let mut file = File::create(hook_path)?;
-    file.write_all(hook_content.as_bytes())?;
+    std::io::Write::write_all(&mut file, hook_content.as_bytes())?;
 
     #[cfg(unix)]
     {
@@ -148,14 +149,14 @@ fn install_hooks_for_hook_names(
     ralph_dir: &Path,
     hooks_dir: &Path,
     hook_names: &[&str],
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     hook_names.iter().try_for_each(|hook_name| {
         let label = hook_display_label(hook_name);
         install_hook_with_repo_root(label, ralph_dir, hooks_dir, &hooks_dir.join(hook_name))
     })
 }
 
-pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
+pub fn install_hooks_in_repo(repo_root: &Path) -> std::io::Result<()> {
     let scope = resolve_protection_scope_from(repo_root)?;
 
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(repo_root)?;
@@ -167,19 +168,19 @@ pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
+pub fn install_hook(hook_name: &str, hook_path: &Path) -> std::io::Result<()> {
     let repo_root = crate::git_helpers::repo::get_repo_root()?;
     let scope = resolve_protection_scope_from(&repo_root)?;
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(&repo_root)?;
     let hooks_dir = hook_path.parent().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             "Hook path has no parent directory",
         )
     })?;
     if hooks_dir != scope.hooks_dir {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to install hook outside resolved hooks dir: {}",
                 hook_path.display()
@@ -191,7 +192,7 @@ pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-pub fn install_hooks() -> io::Result<()> {
+pub fn install_hooks() -> std::io::Result<()> {
     let repo_root = crate::git_helpers::repo::get_repo_root()?;
     install_hooks_in_repo(&repo_root)
 }

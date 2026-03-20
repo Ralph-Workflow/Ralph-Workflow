@@ -39,7 +39,25 @@
 // - Effect system: docs/architecture/effect-system.md
 
 use anyhow::Context;
-use std::io::Write;
+
+trait Write {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T> Write for T
+where
+    T: std::io::Write + ?Sized,
+{
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
+
+macro_rules! writeln {
+    ($dst:expr) => {
+        Write::write_fmt(&mut ($dst), format_args!("\n"))
+    };
+}
 
 // Include sub-modules
 include!("initialization.rs");

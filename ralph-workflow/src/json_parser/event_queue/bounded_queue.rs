@@ -189,7 +189,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // Clear all events from the queue.
     //
     // This is useful for error recovery when invalid data is encountered.
-    pub fn clear(mut self) -> Self {
+    pub fn clear(self) -> Self {
         while self.receiver.try_recv().is_ok() {}
         Self {
             sender: self.sender,

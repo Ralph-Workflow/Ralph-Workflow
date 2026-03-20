@@ -4,6 +4,8 @@ mod tests {
         truncate_diff_if_large, truncate_lines_to_fit, CLAUDE_MAX_PROMPT_SIZE, GLM_MAX_PROMPT_SIZE,
         MAX_SAFE_PROMPT_SIZE,
     };
+    use crate::prompts::SubstitutionLog;
+    use crate::reducer::event::{CommitEvent, PipelineEvent};
 
     #[test]
     fn test_truncate_diff_if_large() {
@@ -88,5 +90,213 @@ mod tests {
     fn test_effective_model_budget_bytes_no_agents() {
         let agents: Vec<String> = vec![];
         assert_eq!(effective_model_budget_bytes(&agents), MAX_SAFE_PROMPT_SIZE);
+    }
+
+    #[test]
+    fn test_commit_prompt_content_id_includes_residual_files() {
+        let residual = vec!["src/lib.rs".to_string(), "Cargo.toml".to_string()];
+        let with_residual = commit_prompt_content_id("diff123", "consumer456", &residual);
+        let without_residual = commit_prompt_content_id("diff123", "consumer456", &[]);
+
+        assert_ne!(with_residual, without_residual);
+    }
+
+    #[test]
+    fn test_commit_xsd_retry_prompt_content_id_changes_with_error() {
+        let first = commit_xsd_retry_prompt_content_id("diff123", "xsd-a", "consumer456");
+        let second = commit_xsd_retry_prompt_content_id("diff123", "xsd-b", "consumer456");
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn test_prepend_residual_files_context_formats_note() {
+        let base_prompt = "Base prompt";
+        let residual = vec!["src/lib.rs".to_string(), "Cargo.toml".to_string()];
+
+        let updated = prepend_residual_files_context(base_prompt, &residual);
+
+        assert!(updated.contains("must be accounted for in this commit run"));
+        assert!(updated.contains("- src/lib.rs"));
+        assert!(updated.contains("- Cargo.toml"));
+        assert!(updated.ends_with(base_prompt));
+    }
+
+    #[test]
+    fn test_diff_unavailable_investigation_instructions_contains_error() {
+        let message = diff_unavailable_investigation_instructions("boom");
+
+        assert!(message.contains("git diff"));
+        assert!(message.contains("boom"));
+        assert!(message.contains("<ralph-commit>"));
+    }
+
+    #[test]
+    fn test_commit_outcome_event_prefers_message() {
+        let event = commit_outcome_event_from_validated(
+            Some("feat: add parser".to_string()),
+            Some("should be ignored".to_string()),
+            7,
+        );
+
+        assert!(matches!(
+            event,
+            PipelineEvent::Commit(CommitEvent::MessageGenerated {
+                message,
+                attempt: 7
+            }) if message == "feat: add parser"
+        ));
+    }
+
+    #[test]
+    fn test_commit_outcome_event_uses_reason_without_message() {
+        let event = commit_outcome_event_from_validated(None, Some("invalid xml".to_string()), 3);
+
+        assert!(matches!(
+            event,
+            PipelineEvent::Commit(CommitEvent::MessageValidationFailed {
+                reason,
+                attempt: 3
+            }) if reason == "invalid xml"
+        ));
+    }
+
+    #[test]
+    fn test_commit_outcome_event_reports_missing_message_and_reason() {
+        let event = commit_outcome_event_from_validated(None, None, 1);
+
+        assert!(matches!(
+            event,
+            PipelineEvent::Commit(CommitEvent::GenerationFailed { reason })
+                if reason == "Commit validation outcome missing message and reason"
+        ));
+    }
+
+    #[test]
+    fn test_parse_commit_xml_document_detects_skip() {
+        let xml = "<ralph-commit><ralph-skip>No changes to commit</ralph-skip></ralph-commit>";
+
+        let parsed = parse_commit_xml_document(xml);
+
+        assert!(matches!(
+            parsed,
+            ParsedCommitXmlOutcome::Skipped(reason) if reason == "No changes to commit"
+        ));
+    }
+
+    #[test]
+    fn test_commit_representation_and_reason_prefers_model_budget_exceeded() {
+        let (representation, reason) = commit_representation_and_reason(
+            123,
+            100,
+            true,
+            std::path::Path::new(".agent/tmp/commit_diff.model_safe.txt"),
+        );
+
+        assert!(matches!(
+            representation,
+            crate::reducer::state::PromptInputRepresentation::FileReference { .. }
+        ));
+        assert_eq!(
+            reason,
+            crate::reducer::state::PromptMaterializationReason::ModelBudgetExceeded
+        );
+    }
+
+    #[test]
+    fn test_commit_representation_and_reason_selects_inline_within_budgets() {
+        let (representation, reason) = commit_representation_and_reason(
+            64,
+            100,
+            false,
+            std::path::Path::new(".agent/tmp/commit_diff.model_safe.txt"),
+        );
+
+        assert_eq!(
+            representation,
+            crate::reducer::state::PromptInputRepresentation::Inline
+        );
+        assert_eq!(
+            reason,
+            crate::reducer::state::PromptMaterializationReason::WithinBudgets
+        );
+    }
+
+    #[test]
+    fn test_base_prompt_for_same_agent_retry_strips_existing_retry_header() {
+        let previous_prompt = "## Retry Guidance\n\nOriginal base prompt";
+        let generated = "Freshly generated prompt";
+
+        let (base_prompt, should_validate) =
+            base_prompt_for_same_agent_retry(Some(previous_prompt), generated);
+
+        assert_eq!(base_prompt, "Original base prompt");
+        assert!(!should_validate);
+    }
+
+    #[test]
+    fn test_prompt_captured_event_returns_none_when_prompt_was_replayed() {
+        let event = prompt_captured_event("scope-key", "prompt body", "content-id", true);
+
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn test_prompt_captured_event_returns_prompt_input_when_fresh() {
+        let event = prompt_captured_event("scope-key", "prompt body", "content-id", false)
+            .expect("fresh prompts must emit PromptCaptured event");
+
+        assert!(matches!(
+            event,
+            PipelineEvent::PromptInput(crate::reducer::event::PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: Some(id)
+            }) if key == "scope-key" && content == "prompt body" && id == "content-id"
+        ));
+    }
+
+    #[test]
+    fn test_commit_prompt_prepared_result_adds_template_rendered_event_when_present() {
+        let rendered_log = SubstitutionLog {
+            template_name: "commit_message_xml".to_string(),
+            substituted: Vec::new(),
+            unsubstituted: Vec::new(),
+        };
+
+        let result = commit_prompt_prepared_result(
+            2,
+            crate::reducer::event::PipelinePhase::Planning,
+            "scope-key".to_string(),
+            false,
+            None,
+            Some(rendered_log),
+            "commit_message_xml",
+        );
+
+        assert!(matches!(
+            result.event,
+            PipelineEvent::Commit(CommitEvent::PromptPrepared { attempt: 2 })
+        ));
+        assert!(matches!(
+            result.ui_events.as_slice(),
+            [
+                crate::reducer::ui_event::UIEvent::PhaseTransition {
+                    to: crate::reducer::event::PipelinePhase::CommitMessage,
+                    ..
+                },
+                crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            ] if key == "scope-key"
+        ));
+        assert!(matches!(
+            result.additional_events.as_slice(),
+            [PipelineEvent::PromptInput(
+                crate::reducer::event::PromptInputEvent::TemplateRendered {
+                    phase: crate::reducer::event::PipelinePhase::CommitMessage,
+                    template_name,
+                    ..
+                }
+            )] if template_name == "commit_message_xml"
+        ));
     }
 }

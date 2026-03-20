@@ -56,9 +56,14 @@ use crate::logger::Logger;
 use crate::workspace::Workspace;
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use which::which;
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
 
 const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";
 
@@ -574,7 +579,7 @@ fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Resu
         .write(true)
         .create_new(true)
         .open(&wrapper_path)?;
-    file.write_all(wrapper_content.as_bytes())?;
+    std::io::Write::write_all(&mut file, wrapper_content.as_bytes())?;
 
     #[cfg(unix)]
     {

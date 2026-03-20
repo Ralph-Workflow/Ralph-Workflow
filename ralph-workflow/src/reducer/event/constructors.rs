@@ -7,7 +7,7 @@ use super::{
     ReviewEvent, TimeoutOutputKind,
 };
 use crate::agents::AgentDrain;
-use crate::executor::ChildProcessInfo;
+type ChildProcessInfo = crate::executor::ChildProcessInfo;
 
 // Include constructor implementations split by category
 include!("constructors_lifecycle.rs");

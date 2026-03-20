@@ -9,7 +9,6 @@
 //! - Rendering templates for testing
 
 use std::collections::BTreeMap;
-use std::io::Write;
 
 use itertools::Itertools;
 
@@ -21,6 +20,16 @@ use crate::prompts::template_registry::TemplateRegistry;
 use crate::prompts::{
     extract_metadata, extract_partials, extract_variables, validate_template, Template,
 };
+
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
 
 /// Get all available templates as a map of name -> (content, description).
 fn get_all_templates() -> BTreeMap<String, (String, String)> {

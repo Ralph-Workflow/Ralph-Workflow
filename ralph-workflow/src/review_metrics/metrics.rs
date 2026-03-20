@@ -4,7 +4,6 @@
 //! issue counts and resolution rates from ISSUES.md.
 
 use crate::workspace::Workspace;
-use std::io;
 use std::path::Path;
 
 use super::severity::IssueSeverity;
@@ -191,7 +190,9 @@ impl ReviewMetrics {
     ///
     /// This enables testing with `MemoryWorkspace` without real filesystem access.
     /// Used by the pipeline layer for post-flight validation checks.
-    pub(crate) fn from_issues_file_with_workspace(workspace: &dyn Workspace) -> io::Result<Self> {
+    pub(crate) fn from_issues_file_with_workspace(
+        workspace: &dyn Workspace,
+    ) -> std::io::Result<Self> {
         let path = Path::new(".agent/ISSUES.md");
         if !workspace.exists(path) {
             return Ok(Self::new());

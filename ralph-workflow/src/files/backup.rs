@@ -3,7 +3,6 @@
 //! This module handles creation and rotation of PROMPT.md backups to protect
 //! against accidental deletion or modification.
 
-use std::io;
 use std::path::Path;
 
 use crate::workspace::Workspace;
@@ -41,7 +40,7 @@ use crate::workspace::Workspace;
 /// Returns error if the operation fails.
 pub fn create_prompt_backup_with_workspace(
     workspace: &dyn Workspace,
-) -> io::Result<Option<String>> {
+) -> std::io::Result<Option<String>> {
     let prompt_path = Path::new("PROMPT.md");
 
     // If PROMPT.md doesn't exist, that's fine - nothing to backup
@@ -59,7 +58,7 @@ pub fn create_prompt_backup_with_workspace(
 
     // Read PROMPT.md content
     let content = workspace.read(prompt_path).map_err(|e| {
-        io::Error::new(
+        std::io::Error::new(
             e.kind(),
             format!("Failed to read PROMPT.md for backup: {e}"),
         )
@@ -80,9 +79,9 @@ pub fn create_prompt_backup_with_workspace(
     }
 
     // Write new backup atomically to prevent corruption
-    workspace
-        .write_atomic(backup_base, &content)
-        .map_err(|e| io::Error::new(e.kind(), format!("Failed to write PROMPT.md backup: {e}")))?;
+    workspace.write_atomic(backup_base, &content).map_err(|e| {
+        std::io::Error::new(e.kind(), format!("Failed to write PROMPT.md backup: {e}"))
+    })?;
 
     // Set read-only permissions on all backups (best-effort)
     let readonly_warning = [backup_base, backup_1, backup_2]
@@ -177,7 +176,7 @@ const DIFF_BACKUP_PATH: &str = ".agent/DIFF.backup";
 pub fn write_diff_backup_with_workspace(
     workspace: &dyn Workspace,
     diff_content: &str,
-) -> io::Result<std::path::PathBuf> {
+) -> std::io::Result<std::path::PathBuf> {
     let backup_path = Path::new(DIFF_BACKUP_PATH);
 
     // Ensure .agent directory exists

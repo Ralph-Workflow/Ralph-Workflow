@@ -14,16 +14,14 @@ enum PromptOutputTarget {
 }
 
 fn prompt_output_target() -> Option<PromptOutputTarget> {
-    use crate::cli::handlers::boundary as term;
-
-    if !term::is_terminal() {
+    if !crate::cli::handlers::boundary::is_terminal() {
         return None;
     }
 
-    if term::stdout_is_terminal() {
+    if crate::cli::handlers::boundary::stdout_is_terminal() {
         return Some(PromptOutputTarget::Stdout);
     }
-    if term::stderr_is_terminal() {
+    if crate::cli::handlers::boundary::stderr_is_terminal() {
         return Some(PromptOutputTarget::Stderr);
     }
 
@@ -34,11 +32,9 @@ fn with_prompt_writer<T>(
     target: PromptOutputTarget,
     f: impl FnOnce(&mut dyn std::io::Write) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    use crate::cli::handlers::boundary as term;
-
     match target {
-        PromptOutputTarget::Stdout => f(&mut term::stdout()),
-        PromptOutputTarget::Stderr => f(&mut term::stderr()),
+        PromptOutputTarget::Stdout => f(&mut crate::cli::handlers::boundary::stdout()),
+        PromptOutputTarget::Stderr => f(&mut crate::cli::handlers::boundary::stderr()),
     }
 }
 

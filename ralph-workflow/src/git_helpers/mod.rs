@@ -19,32 +19,32 @@
 
 #![deny(unsafe_code)]
 
-use std::io;
-
 /// Convert git2 errors to `std::io` errors for consistent error handling.
 #[cfg(any(test, feature = "test-utils"))]
 #[must_use]
-pub fn git2_to_io_error(err: &git2::Error) -> io::Error {
+pub fn git2_to_io_error(err: &git2::Error) -> std::io::Error {
     git2_to_io_error_impl(err)
 }
 
 #[cfg(not(any(test, feature = "test-utils")))]
-pub(crate) fn git2_to_io_error(err: &git2::Error) -> io::Error {
+pub(crate) fn git2_to_io_error(err: &git2::Error) -> std::io::Error {
     git2_to_io_error_impl(err)
 }
 
-fn git2_to_io_error_impl(err: &git2::Error) -> io::Error {
+fn git2_to_io_error_impl(err: &git2::Error) -> std::io::Error {
     // Fall back to mapping git2 error codes to a best-effort io::ErrorKind.
     let kind = match err.code() {
-        git2::ErrorCode::NotFound | git2::ErrorCode::UnbornBranch => io::ErrorKind::NotFound,
-        git2::ErrorCode::Exists => io::ErrorKind::AlreadyExists,
-        git2::ErrorCode::Auth | git2::ErrorCode::Certificate => io::ErrorKind::PermissionDenied,
-        git2::ErrorCode::Invalid => io::ErrorKind::InvalidInput,
-        git2::ErrorCode::Eof => io::ErrorKind::UnexpectedEof,
-        _ => io::ErrorKind::Other,
+        git2::ErrorCode::NotFound | git2::ErrorCode::UnbornBranch => std::io::ErrorKind::NotFound,
+        git2::ErrorCode::Exists => std::io::ErrorKind::AlreadyExists,
+        git2::ErrorCode::Auth | git2::ErrorCode::Certificate => {
+            std::io::ErrorKind::PermissionDenied
+        }
+        git2::ErrorCode::Invalid => std::io::ErrorKind::InvalidInput,
+        git2::ErrorCode::Eof => std::io::ErrorKind::UnexpectedEof,
+        _ => std::io::ErrorKind::Other,
     };
 
-    io::Error::new(kind, err.to_string())
+    std::io::Error::new(kind, err.to_string())
 }
 
 pub mod agent_phase_state;
@@ -82,11 +82,13 @@ pub mod rebase_state_machine;
 /// # Errors
 ///
 /// Returns an error if the git repository cannot be found or hooks directory cannot be determined.
-pub fn get_hooks_dir() -> io::Result<std::path::PathBuf> {
+pub fn get_hooks_dir() -> std::io::Result<std::path::PathBuf> {
     repo::get_hooks_dir_from(std::path::Path::new("."))
 }
 
-pub(crate) fn get_hooks_dir_in_repo(repo_root: &std::path::Path) -> io::Result<std::path::PathBuf> {
+pub(crate) fn get_hooks_dir_in_repo(
+    repo_root: &std::path::Path,
+) -> std::io::Result<std::path::PathBuf> {
     repo::get_hooks_dir_from(repo_root)
 }
 

@@ -37,10 +37,15 @@ const REBASE_APPLY_DIR: &str = "rebase-apply";
 #[cfg(any(test, feature = "test-utils"))]
 const REBASE_MERGE_DIR: &str = "rebase-merge";
 
-use std::io;
 use std::path::Path;
 
 use crate::git_helpers::git2_to_io_error;
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
 
 include!("rebase_kinds.rs");
 include!("rebase_classification.rs");

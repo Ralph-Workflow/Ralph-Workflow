@@ -1,11 +1,11 @@
-use std::io::{self, Write};
 use std::path::Path;
 
 use crate::git_helpers::git2_to_io_error;
 use crate::git_helpers::identity::GitIdentity;
-use crate::runtime::environment::Environment;
-
-fn index_has_changes_to_commit(repo: &git2::Repository, index: &git2::Index) -> io::Result<bool> {
+fn index_has_changes_to_commit(
+    repo: &git2::Repository,
+    index: &git2::Index,
+) -> std::io::Result<bool> {
     match repo.head() {
         Ok(head) => {
             let head_tree = head.peel_to_tree().map_err(|e| git2_to_io_error(&e))?;
@@ -41,7 +41,7 @@ fn is_internal_agent_artifact(path: &std::path::Path) -> bool {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<bool> {
+pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> std::io::Result<bool> {
     let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
@@ -72,7 +72,7 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
                 let tracked_in_head = index.get_path(path, 0).is_some();
                 if !tracked_in_head {
                     let io_err = git2_to_io_error(e);
-                    return Err(io::Error::new(
+                    return Err(std::io::Error::new(
                         io_err.kind(),
                         format!(
                             "path '{}' not found for selective staging: {io_err}",
@@ -83,7 +83,7 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
 
                 index.remove_path(path).map_err(|remove_err| {
                     let io_err = git2_to_io_error(&remove_err);
-                    io::Error::new(
+                    std::io::Error::new(
                         io_err.kind(),
                         format!(
                             "failed to stage deletion for '{}': {io_err}",
@@ -94,7 +94,7 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
             }
             Err(e) => {
                 let io_err = git2_to_io_error(&e);
-                Err(io::Error::new(
+                Err(std::io::Error::new(
                     io_err.kind(),
                     format!("failed to stage path '{}': {io_err}", path.display()),
                 ))
@@ -118,7 +118,7 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_add_all() -> io::Result<bool> {
+pub fn git_add_all() -> std::io::Result<bool> {
     git_add_all_in_repo(Path::new("."))
 }
 
@@ -130,7 +130,7 @@ pub fn git_add_all() -> io::Result<bool> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_add_all_in_repo(repo_root: &Path) -> io::Result<bool> {
+pub fn git_add_all_in_repo(repo_root: &Path) -> std::io::Result<bool> {
     let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     git_add_all_impl(&repo)
 }
@@ -149,7 +149,7 @@ pub enum CommitResultFallback {
 }
 
 /// Implementation of git add all.
-fn git_add_all_impl(repo: &git2::Repository) -> io::Result<bool> {
+fn git_add_all_impl(repo: &git2::Repository) -> std::io::Result<bool> {
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
     // Stage deletions (equivalent to `git add -A` behavior).
@@ -199,7 +199,7 @@ fn resolve_commit_identity(
     provided_name: Option<&str>,
     provided_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
-    env: Option<&dyn Environment>,
+    env: Option<&dyn crate::runtime::environment::Environment>,
 ) -> GitIdentity {
     use crate::git_helpers::identity::{default_identity, fallback_email, fallback_username};
 
@@ -299,8 +299,8 @@ pub fn git_commit(
     git_user_name: Option<&str>,
     git_user_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
-    env: Option<&dyn Environment>,
-) -> io::Result<Option<git2::Oid>> {
+    env: Option<&dyn crate::runtime::environment::Environment>,
+) -> std::io::Result<Option<git2::Oid>> {
     git_commit_in_repo(
         Path::new("."),
         message,
@@ -325,8 +325,8 @@ pub fn git_commit_in_repo(
     git_user_name: Option<&str>,
     git_user_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
-    env: Option<&dyn Environment>,
-) -> io::Result<Option<git2::Oid>> {
+    env: Option<&dyn crate::runtime::environment::Environment>,
+) -> std::io::Result<Option<git2::Oid>> {
     let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     git_commit_impl(&repo, message, git_user_name, git_user_email, executor, env)
 }
@@ -337,8 +337,8 @@ fn git_commit_impl(
     git_user_name: Option<&str>,
     git_user_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
-    env: Option<&dyn Environment>,
-) -> io::Result<Option<git2::Oid>> {
+    env: Option<&dyn crate::runtime::environment::Environment>,
+) -> std::io::Result<Option<git2::Oid>> {
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
     // Don't create empty commits: if the index matches HEAD (or is empty on an unborn branch),
@@ -376,9 +376,9 @@ fn git_commit_impl(
         } else {
             "system/default"
         };
-        let _ = writeln!(
-            std::io::stderr(),
-            "Git identity: {name} <{email}> (source: {identity_source})"
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr(),
+            format_args!("Git identity: {name} <{email}> (source: {identity_source})\n"),
         );
     }
 

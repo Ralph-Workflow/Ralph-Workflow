@@ -15,7 +15,6 @@ use super::path_wrapper::{
 use crate::git_helpers::repo::{ralph_git_dir, sanitize_ralph_git_dir_at};
 use crate::logger::Logger;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 const WORKTREE_CONFIG_STATE_FILE: &str = "worktree-config.previous";
@@ -164,7 +163,7 @@ pub(crate) fn remove_ralph_dir(repo_root: &Path) -> bool {
     remove_scoped_hooks_dir(&ralph_dir);
     match fs::remove_dir(&ralph_dir) {
         Ok(()) => true,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => true,
         Err(_) => !ralph_dir.exists(),
     }
 }
@@ -238,7 +237,7 @@ pub(crate) fn verify_wrapper_cleaned(repo_root: &Path) -> Vec<String> {
     check_track_file_issues(&track_file)
 }
 
-pub(crate) fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
+pub(crate) fn cleanup_orphaned_marker(logger: &Logger) -> std::io::Result<()> {
     let repo_root = crate::git_helpers::get_repo_root()?;
     let legacy_marker = repo_root.join(".no_agent_commit");
     if fs::symlink_metadata(&legacy_marker).is_ok() {

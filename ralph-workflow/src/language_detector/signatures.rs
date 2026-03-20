@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 
 use crate::workspace::Workspace;
 
-use super::io;
-
 #[path = "signatures/detectors.rs"]
 mod detectors;
 
@@ -24,7 +22,7 @@ pub(super) fn collect_signature_files_with_workspace(
     workspace: &dyn Workspace,
     root: &Path,
 ) -> SignatureFiles {
-    io::collect_signature_files_with_workspace(workspace, root)
+    super::collect_signature_files_with_workspace(workspace, root)
 }
 
 /// Detect signature files and return frameworks, test framework, package manager.

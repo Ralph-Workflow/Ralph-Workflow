@@ -100,14 +100,33 @@ mod retry_timer;
 pub mod runtime;
 pub mod validation;
 
+use std::sync::Arc;
+use std::time::Duration;
+
 // Re-export I/O implementations for backwards compatibility
 pub use cache_environment::{CacheEnvironment, RealCacheEnvironment};
 pub use ccs_env::{CcsEnvironment, CcsFilesystem};
 pub use ccs_env::{RealCcsEnvironment, RealCcsFilesystem};
 pub use network::{fetch_api_catalog_json, get_env_var};
-pub use runtime::{
-    production_timer, ProductionRetryTimer, RetryTimerProvider, RetryTimerProviderDebug,
-};
+pub fn production_timer() -> Arc<dyn RetryTimerProviderDebug> {
+    Arc::new(ProductionRetryTimer)
+}
+
+pub trait RetryTimerProvider: Send + Sync {
+    fn sleep(&self, duration: Duration);
+}
+
+pub trait RetryTimerProviderDebug: RetryTimerProvider + std::fmt::Debug {}
+impl<T: RetryTimerProvider + std::fmt::Debug> RetryTimerProviderDebug for T {}
+
+#[derive(Debug, Clone)]
+pub struct ProductionRetryTimer;
+
+impl RetryTimerProvider for ProductionRetryTimer {
+    fn sleep(&self, duration: Duration) {
+        std::thread::sleep(duration);
+    }
+}
 
 // Re-export public types for crate-level access
 pub use ccs::is_ccs_ref;

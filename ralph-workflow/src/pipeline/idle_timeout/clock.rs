@@ -5,6 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+static EPOCH: std::sync::LazyLock<Instant, fn() -> Instant> =
+    std::sync::LazyLock::new(Instant::now);
+
 pub trait Clock: Send + Sync {
     fn now_millis(&self) -> u64;
 }
@@ -79,8 +82,7 @@ pub fn new_file_activity_tracker() -> SharedFileActivityTracker {
 }
 
 pub fn touch_activity(timestamp: &SharedActivityTimestamp) {
-    let now = Instant::now();
-    let now_ms = u64::try_from(now.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let now_ms = u64::try_from(EPOCH.elapsed().as_millis()).unwrap_or(u64::MAX);
     timestamp.store(now_ms, Ordering::Release);
 }
 
@@ -90,8 +92,7 @@ pub fn touch_activity_with_clock(timestamp: &SharedActivityTimestamp, clock: &dy
 
 pub fn time_since_activity(timestamp: &SharedActivityTimestamp) -> Duration {
     let last_ms = timestamp.load(Ordering::Acquire);
-    let now = Instant::now();
-    let now_ms = u64::try_from(now.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let now_ms = u64::try_from(EPOCH.elapsed().as_millis()).unwrap_or(u64::MAX);
     Duration::from_millis(now_ms.saturating_sub(last_ms))
 }
 

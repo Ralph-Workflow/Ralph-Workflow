@@ -71,7 +71,6 @@
 mod rate_limit;
 
 use crate::reducer::event::AgentErrorKind;
-use std::io;
 
 /// Classify agent error from exit code, stderr, and optional stdout content.
 ///
@@ -186,18 +185,20 @@ fn contains_timeout_phrase(text_lower: &str) -> bool {
 
 /// Classify I/O error during agent execution.
 #[must_use]
-pub fn classify_io_error(error: &io::Error) -> AgentErrorKind {
+pub fn classify_io_error(error: &std::io::Error) -> AgentErrorKind {
     match error.kind() {
-        io::ErrorKind::TimedOut => AgentErrorKind::Timeout,
-        io::ErrorKind::PermissionDenied | io::ErrorKind::NotFound => AgentErrorKind::FileSystem,
-        io::ErrorKind::BrokenPipe
-        | io::ErrorKind::ConnectionAborted
-        | io::ErrorKind::ConnectionRefused
-        | io::ErrorKind::ConnectionReset
-        | io::ErrorKind::NotConnected
-        | io::ErrorKind::AddrInUse
-        | io::ErrorKind::AddrNotAvailable
-        | io::ErrorKind::UnexpectedEof => AgentErrorKind::Network,
+        std::io::ErrorKind::TimedOut => AgentErrorKind::Timeout,
+        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound => {
+            AgentErrorKind::FileSystem
+        }
+        std::io::ErrorKind::BrokenPipe
+        | std::io::ErrorKind::ConnectionAborted
+        | std::io::ErrorKind::ConnectionRefused
+        | std::io::ErrorKind::ConnectionReset
+        | std::io::ErrorKind::NotConnected
+        | std::io::ErrorKind::AddrInUse
+        | std::io::ErrorKind::AddrNotAvailable
+        | std::io::ErrorKind::UnexpectedEof => AgentErrorKind::Network,
         _ => {
             // Some process/executor paths surface `io::ErrorKind::Other` with a message that still
             // carries useful intent; keep message-based heuristics as a fallback.

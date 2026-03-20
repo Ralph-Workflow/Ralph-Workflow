@@ -20,7 +20,5 @@ use super::types::{format_tool_input, format_unknown_json_event, ContentType};
 include!("opencode/event_types.rs");
 include!("opencode/parser_core.rs");
 include!("opencode/parser_stream.rs");
-include!("opencode/formatting/step.rs");
-include!("opencode/formatting/tool.rs");
-include!("opencode/formatting/text_and_error.rs");
+include!("opencode/formatting.rs");
 include!("opencode/tests.rs");

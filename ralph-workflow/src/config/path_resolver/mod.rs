@@ -33,13 +33,12 @@
 //!     .with_file("/test/repo/PROMPT.md", "# Goal\nTest");
 //! ```
 
-use std::io;
 use std::path::{Path, PathBuf};
 
 #[path = "boundary.rs"]
-mod boundary;
+mod implementations;
 // Re-export from boundary for backward compatibility
-pub use boundary::{MemoryConfigEnvironment, RealConfigEnvironment};
+pub use implementations::{MemoryConfigEnvironment, RealConfigEnvironment};
 
 /// Trait for configuration environment access.
 ///
@@ -85,21 +84,21 @@ pub trait ConfigEnvironment: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn read_file(&self, path: &Path) -> io::Result<String>;
+    fn read_file(&self, path: &Path) -> std::io::Result<String>;
 
     /// Write content to a file, creating parent directories if needed.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn write_file(&self, path: &Path, content: &str) -> io::Result<()>;
+    fn write_file(&self, path: &Path, content: &str) -> std::io::Result<()>;
 
     /// Create directories recursively.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn create_dir_all(&self, path: &Path) -> io::Result<()>;
+    fn create_dir_all(&self, path: &Path) -> std::io::Result<()>;
 
     /// Get the canonical root of the git repository, even from a worktree.
     ///
@@ -201,7 +200,7 @@ mod tests {
         let env = MemoryConfigEnvironment::new();
         let result = env.read_file(Path::new("/nonexistent"));
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 
     #[test]

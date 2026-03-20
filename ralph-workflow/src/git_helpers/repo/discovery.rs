@@ -1,5 +1,4 @@
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::git_helpers::git2_to_io_error;
@@ -22,7 +21,7 @@ pub struct ProtectionScope {
 ///
 /// Returns an error when the current directory is not inside a git worktree or
 /// when the repository workdir cannot be determined.
-pub fn resolve_protection_scope() -> io::Result<ProtectionScope> {
+pub fn resolve_protection_scope() -> std::io::Result<ProtectionScope> {
     resolve_protection_scope_from(Path::new("."))
 }
 
@@ -32,12 +31,11 @@ pub fn resolve_protection_scope() -> io::Result<ProtectionScope> {
 ///
 /// Returns an error when `discovery_root` is not inside a git worktree or when
 /// the repository workdir cannot be determined.
-pub fn resolve_protection_scope_from(discovery_root: &Path) -> io::Result<ProtectionScope> {
+pub fn resolve_protection_scope_from(discovery_root: &Path) -> std::io::Result<ProtectionScope> {
     let repo = git2::Repository::discover(discovery_root).map_err(|e| git2_to_io_error(&e))?;
-    let repo_root = repo
-        .workdir()
-        .map(PathBuf::from)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+    let repo_root = repo.workdir().map(PathBuf::from).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "No workdir for repository")
+    })?;
     let git_dir = repo.path().to_path_buf();
     let common_git_dir = common_git_dir(&repo);
     let is_linked_worktree = repo.is_worktree() && git_dir != common_git_dir;
@@ -116,13 +114,16 @@ fn build_normalized_path(path: &Path, existing_ancestor: &Path) -> PathBuf {
     canonical_ancestor.join(suffix)
 }
 
-pub fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
+pub fn quarantine_path_in_place(path: &Path, label: &str) -> std::io::Result<PathBuf> {
     let parent = path.parent().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "path has no parent directory",
+        )
     })?;
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+    let file_name = path.file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "path has no file name")
+    })?;
 
     let suffix = format!(
         "ralph.tampered.{label}.{}.{}",
@@ -150,10 +151,13 @@ pub fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf>
     }
 }
 
-fn prepare_ralph_git_dir_internal(ralph_dir: &Path, create_if_missing: bool) -> io::Result<bool> {
+fn prepare_ralph_git_dir_internal(
+    ralph_dir: &Path,
+    create_if_missing: bool,
+) -> std::io::Result<bool> {
     match fs::symlink_metadata(ralph_dir) {
         Ok(meta) => handle_existing_ralph_dir(ralph_dir, &meta, create_if_missing),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             if !create_if_missing {
                 return Ok(false);
             }
@@ -168,7 +172,7 @@ fn handle_existing_ralph_dir(
     ralph_dir: &Path,
     meta: &fs::Metadata,
     create_if_missing: bool,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     let ft = meta.file_type();
     if ft.is_symlink() || !meta.is_dir() {
         quarantine_path_in_place(ralph_dir, "dir")?;
@@ -182,25 +186,25 @@ fn handle_existing_ralph_dir(
     }
 }
 
-fn verify_created_ralph_dir(ralph_dir: &Path) -> io::Result<bool> {
+fn verify_created_ralph_dir(ralph_dir: &Path) -> std::io::Result<bool> {
     let meta = fs::symlink_metadata(ralph_dir)?;
     let ft = meta.file_type();
     if ft.is_symlink() || !meta.is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "ralph git dir is not a regular directory",
         ));
     }
     Ok(true)
 }
 
-pub fn ensure_ralph_git_dir(repo_root: &Path) -> io::Result<PathBuf> {
+pub fn ensure_ralph_git_dir(repo_root: &Path) -> std::io::Result<PathBuf> {
     let ralph_dir = ralph_git_dir(repo_root);
     prepare_ralph_git_dir_internal(&ralph_dir, true)?;
     Ok(ralph_dir)
 }
 
-pub fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> io::Result<bool> {
+pub fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> std::io::Result<bool> {
     prepare_ralph_git_dir_internal(ralph_dir, false)
 }
 
@@ -209,7 +213,7 @@ pub fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> io::Result<bool> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn require_git_repo() -> io::Result<()> {
+pub fn require_git_repo() -> std::io::Result<()> {
     git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     Ok(())
 }
@@ -219,14 +223,14 @@ pub fn require_git_repo() -> io::Result<()> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_repo_root() -> io::Result<PathBuf> {
+pub fn get_repo_root() -> std::io::Result<PathBuf> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    repo.workdir()
-        .map(PathBuf::from)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))
+    repo.workdir().map(PathBuf::from).ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "No workdir for repository")
+    })
 }
 
-pub fn get_hooks_dir_from(discovery_root: &Path) -> io::Result<PathBuf> {
+pub fn get_hooks_dir_from(discovery_root: &Path) -> std::io::Result<PathBuf> {
     Ok(resolve_protection_scope_from(discovery_root)?.hooks_dir)
 }
 

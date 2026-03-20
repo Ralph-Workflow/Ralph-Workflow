@@ -1,7 +1,7 @@
 use super::types::{PromptArchiveInfo, PromptSaveOptions};
 use crate::logger::Logger;
+use crate::Workspace;
 
-use std::io;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static PROMPT_ARCHIVE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -28,8 +28,8 @@ pub(super) fn save_prompt_to_file_and_clipboard(
     options: PromptSaveOptions<'_>,
     logger: &Logger,
     executor: &dyn crate::executor::ProcessExecutor,
-    workspace: &dyn crate::workspace::Workspace,
-) -> io::Result<()> {
+    workspace: &dyn Workspace,
+) -> std::io::Result<()> {
     // Save prompt to primary location (existing behavior)
     workspace.write(prompt_path, prompt)?;
     logger.info(&format!(
@@ -85,8 +85,8 @@ fn archive_prompt(
     prompt: &str,
     info: &PromptArchiveInfo<'_>,
     logger: &Logger,
-    workspace: &dyn crate::workspace::Workspace,
-) -> io::Result<()> {
+    workspace: &dyn Workspace,
+) -> std::io::Result<()> {
     use std::path::PathBuf;
 
     let prompts_dir = PathBuf::from(".agent/prompts");

@@ -411,6 +411,16 @@ mod tests {
 
     #[cfg(any(test, feature = "test-utils"))]
     #[test]
+    fn test_virtual_terminal_visible_output_ansi_stripped_applies_carriage_return() {
+        let mut term = VirtualTerminal::new();
+
+        write!(term, "Hello\rWorld").unwrap();
+
+        assert_eq!(term.get_visible_output_ansi_stripped(), "World");
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    #[test]
     fn test_virtual_terminal_is_terminal() {
         let term_tty = VirtualTerminal::new();
         assert!(term_tty.is_terminal());

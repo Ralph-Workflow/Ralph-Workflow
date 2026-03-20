@@ -26,7 +26,6 @@
 //! ```
 
 use super::types::UnifiedConfig;
-use std::io;
 
 /// Result of config initialization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,7 +159,7 @@ impl UnifiedConfig {
     /// }
     /// # Ok::<(), std::io::Error>(())
     /// ```
-    pub fn ensure_config_exists() -> io::Result<ConfigInitResult> {
+    pub fn ensure_config_exists() -> std::io::Result<ConfigInitResult> {
         Self::ensure_config_exists_with_env(&super::super::path_resolver::RealConfigEnvironment)
     }
 
@@ -173,10 +172,10 @@ impl UnifiedConfig {
     /// Returns error if the operation fails.
     pub fn ensure_config_exists_with_env(
         env: &dyn super::super::path_resolver::ConfigEnvironment,
-    ) -> io::Result<ConfigInitResult> {
+    ) -> std::io::Result<ConfigInitResult> {
         let Some(path) = env.unified_config_path() else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
                 "Cannot determine config directory (no home directory)",
             ));
         };
@@ -191,7 +190,7 @@ impl UnifiedConfig {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn ensure_config_exists_at(path: &std::path::Path) -> io::Result<ConfigInitResult> {
+    pub fn ensure_config_exists_at(path: &std::path::Path) -> std::io::Result<ConfigInitResult> {
         Self::ensure_config_exists_at_with_env(
             path,
             &super::super::path_resolver::RealConfigEnvironment,
@@ -208,7 +207,7 @@ impl UnifiedConfig {
     pub fn ensure_config_exists_at_with_env(
         path: &std::path::Path,
         env: &dyn super::super::path_resolver::ConfigEnvironment,
-    ) -> io::Result<ConfigInitResult> {
+    ) -> std::io::Result<ConfigInitResult> {
         if env.file_exists(path) {
             return Ok(ConfigInitResult::AlreadyExists);
         }

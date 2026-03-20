@@ -91,12 +91,6 @@ pub(super) fn advance_search(
 
         if path.is_dir() {
             matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__")
-                || (if let Some((_, depth)) = queue.first() {
-                    *depth < MAX_SIGNATURE_SEARCH_DEPTH
-                        && !is_test_file_name(name_lower, primary_lang, &path_components)
-                } else {
-                    false
-                })
         } else {
             is_test_file_name(name_lower, primary_lang, &path_components)
         }

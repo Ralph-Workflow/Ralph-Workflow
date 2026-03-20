@@ -2,9 +2,8 @@
 
 use crate::git_helpers::config_state;
 use crate::git_helpers::repo::ProtectionScope;
-use std::io;
 
-pub(crate) fn ensure_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn ensure_worktree_hook_scoping(scope: &ProtectionScope) -> std::io::Result<()> {
     if !scope.uses_worktree_scoped_hooks {
         return Ok(());
     }
@@ -39,7 +38,7 @@ pub(crate) fn ensure_worktree_hook_scoping(scope: &ProtectionScope) -> io::Resul
     Ok(())
 }
 
-pub(crate) fn restore_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn restore_worktree_hook_scoping(scope: &ProtectionScope) -> std::io::Result<()> {
     if !scope.uses_worktree_scoped_hooks {
         return Ok(());
     }

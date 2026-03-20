@@ -10,7 +10,6 @@
 
 #![deny(unsafe_code)]
 
-use std::io;
 use std::path::Path;
 
 use super::git2_to_io_error;
@@ -28,20 +27,20 @@ use super::git2_to_io_error;
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn is_main_or_master_branch() -> io::Result<bool> {
+pub fn is_main_or_master_branch() -> std::io::Result<bool> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     is_main_or_master_branch_impl(&repo)
 }
 
 /// Implementation of `is_main_or_master_branch`.
-fn is_main_or_master_branch_impl(repo: &git2::Repository) -> io::Result<bool> {
+fn is_main_or_master_branch_impl(repo: &git2::Repository) -> std::io::Result<bool> {
     let head = repo.head().map_err(|e| git2_to_io_error(&e))?;
 
     // Get the branch name from the reference name
     // HEAD is usually a symbolic reference like "refs/heads/main"
     let reference_name = head.shorthand().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
             "Could not determine branch name from HEAD",
         )
     })?;
@@ -67,7 +66,7 @@ fn is_main_or_master_branch_impl(repo: &git2::Repository) -> io::Result<bool> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_default_branch() -> io::Result<String> {
+pub fn get_default_branch() -> std::io::Result<String> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     Ok(get_default_branch_impl(&repo))
 }
@@ -86,7 +85,7 @@ pub fn get_default_branch() -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_default_branch_at(repo_root: &Path) -> io::Result<String> {
+pub fn get_default_branch_at(repo_root: &Path) -> std::io::Result<String> {
     let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     Ok(get_default_branch_impl(&repo))
 }

@@ -6,7 +6,6 @@
 
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 const WRAPPER_TRACK_FILE_NAME: &str = "git-wrapper-dir.txt";
@@ -146,7 +145,7 @@ pub(crate) fn read_tracked_wrapper_dir(ralph_dir: &Path) -> Option<PathBuf> {
 }
 
 /// Write the wrapper track file atomically.
-pub(crate) fn write_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::Result<()> {
+pub(crate) fn write_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> std::io::Result<()> {
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(repo_root)?;
     let track_file_path = track_file_path_for_ralph_dir(&ralph_dir);
 
@@ -172,9 +171,9 @@ pub(crate) fn write_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> i
             .write(true)
             .create_new(true)
             .open(&tmp_track)?;
-        tf.write_all(wrapper_dir.display().to_string().as_bytes())?;
-        tf.write_all(b"\n")?;
-        tf.flush()?;
+        std::io::Write::write_all(&mut tf, wrapper_dir.display().to_string().as_bytes())?;
+        std::io::Write::write_all(&mut tf, b"\n")?;
+        std::io::Write::flush(&mut tf)?;
         let _ = tf.sync_all();
     }
 

@@ -1,9 +1,9 @@
 use super::types::InitialRebaseOutcome;
 use crate::checkpoint::RunContext;
-use crate::executor::ProcessExecutor;
 use crate::git_helpers::{get_default_branch, rebase_onto, RebaseResult};
 use crate::logger::{Colors, Logger};
 use crate::phases::PhaseContext;
+use crate::ProcessExecutor;
 
 pub struct InitialRebaseRunResult {
     pub outcome: InitialRebaseOutcome,

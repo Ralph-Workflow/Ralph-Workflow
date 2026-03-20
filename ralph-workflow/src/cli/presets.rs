@@ -6,7 +6,16 @@
 use crate::config::{Config, ReviewDepth};
 use crate::logger::Colors;
 use clap::ValueEnum;
-use std::io::Write;
+
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
 
 /// Preset configurations for common agent combinations.
 #[derive(Clone, Debug, ValueEnum)]

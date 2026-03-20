@@ -18,8 +18,8 @@
 
 #![deny(unsafe_code)]
 
-use crate::executor::ProcessExecutor;
 use crate::git_helpers::runtime_identity::{get_system_hostname, get_system_username};
+use crate::ProcessExecutor;
 
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;

@@ -3,10 +3,18 @@
 //! Handles the --show-baseline CLI flag to display the current
 //! start commit and review baseline state.
 
-use std::io::{self, Write};
-
 use crate::git_helpers::{get_current_head_oid, get_review_baseline_info, load_review_baseline};
 use crate::git_helpers::{load_start_point, ReviewBaseline};
+
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
 
 /// Handle the --show-baseline flag.
 ///
@@ -15,7 +23,7 @@ use crate::git_helpers::{load_start_point, ReviewBaseline};
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_show_baseline() -> io::Result<()> {
+pub fn handle_show_baseline() -> std::io::Result<()> {
     let _ = writeln!(
         std::io::stdout(),
         "╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"

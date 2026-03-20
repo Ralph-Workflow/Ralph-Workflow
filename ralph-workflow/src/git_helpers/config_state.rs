@@ -8,7 +8,6 @@
 use crate::git_helpers::repo::ProtectionScope;
 use git2::Config;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 pub(crate) const HOOKS_PATH_STATE_FILE: &str = "hooks-path.previous";
@@ -52,7 +51,7 @@ pub(crate) fn common_config_path(scope: &ProtectionScope) -> PathBuf {
     scope.common_git_dir.join("config")
 }
 
-pub(crate) fn ensure_config_file_exists(path: &Path) -> io::Result<()> {
+pub(crate) fn ensure_config_file_exists(path: &Path) -> std::io::Result<()> {
     if path.exists() {
         return Ok(());
     }
@@ -63,12 +62,12 @@ pub(crate) fn ensure_config_file_exists(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn open_config(path: &Path) -> io::Result<Config> {
+pub(crate) fn open_config(path: &Path) -> std::io::Result<Config> {
     ensure_config_file_exists(path)?;
     Config::open(path).map_err(|e| crate::git_helpers::git2_to_io_error(&e))
 }
 
-pub(crate) fn read_config_string(path: &Path, key: &str) -> io::Result<Option<String>> {
+pub(crate) fn read_config_string(path: &Path, key: &str) -> std::io::Result<Option<String>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -80,7 +79,7 @@ pub(crate) fn read_config_string(path: &Path, key: &str) -> io::Result<Option<St
     }
 }
 
-fn remove_config_file_if_no_entries(path: &Path) -> io::Result<()> {
+fn remove_config_file_if_no_entries(path: &Path) -> std::io::Result<()> {
     if !path.exists() {
         return Ok(());
     }
@@ -96,7 +95,7 @@ fn remove_config_file_if_no_entries(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn store_hook_path_state(path: &Path, state: &StoredHookPath) -> io::Result<()> {
+pub(crate) fn store_hook_path_state(path: &Path, state: &StoredHookPath) -> std::io::Result<()> {
     let content = match state {
         StoredHookPath::Missing => "missing\n".to_string(),
         StoredHookPath::Value(value) => format!("value\n{value}"),
@@ -104,7 +103,7 @@ pub(crate) fn store_hook_path_state(path: &Path, state: &StoredHookPath) -> io::
     fs::write(path, content)
 }
 
-pub(crate) fn load_hook_path_state(path: &Path) -> io::Result<Option<StoredHookPath>> {
+pub(crate) fn load_hook_path_state(path: &Path) -> std::io::Result<Option<StoredHookPath>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -115,11 +114,11 @@ pub(crate) fn load_hook_path_state(path: &Path) -> io::Result<Option<StoredHookP
     Ok(Some(StoredHookPath::Missing))
 }
 
-fn read_config_path(config_path: &Path) -> io::Result<Option<PathBuf>> {
+fn read_config_path(config_path: &Path) -> std::io::Result<Option<PathBuf>> {
     read_config_string(config_path, "core.hooksPath").map(|value| value.map(PathBuf::from))
 }
 
-pub(crate) fn config_entries(path: &Path) -> io::Result<Vec<(String, Option<String>)>> {
+pub(crate) fn config_entries(path: &Path) -> std::io::Result<Vec<(String, Option<String>)>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -133,13 +132,15 @@ pub(crate) fn config_entries(path: &Path) -> io::Result<Vec<(String, Option<Stri
 
 fn collect_config_entries(
     mut entries: git2::ConfigEntries,
-) -> io::Result<Vec<(String, Option<String>)>> {
+) -> std::io::Result<Vec<(String, Option<String>)>> {
     let mut result = Vec::new();
     while let Some(entry) = entries.next() {
         let entry = entry.map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
         let name = entry
             .name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "config entry missing name"))?
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "config entry missing name")
+            })?
             .to_string();
         let value = entry.value().map(ToString::to_string);
         result.push((name, value));
@@ -149,7 +150,7 @@ fn collect_config_entries(
 
 fn read_shared_worktree_config_state(
     common_config: &Path,
-) -> io::Result<Option<StoredSharedWorktreeConfigState>> {
+) -> std::io::Result<Option<StoredSharedWorktreeConfigState>> {
     if !common_config.exists() {
         return Ok(None);
     }
@@ -166,14 +167,14 @@ fn read_shared_worktree_config_state(
 fn write_shared_worktree_config_state(
     common_config: &Path,
     state: &StoredSharedWorktreeConfigState,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let mut config = open_config(common_config)?;
     config
         .set_str(WORKTREE_CONFIG_STATE_KEY, &state.serialize())
         .map_err(|e| crate::git_helpers::git2_to_io_error(&e))
 }
 
-fn remove_shared_worktree_config_state(common_config: &Path) -> io::Result<()> {
+fn remove_shared_worktree_config_state(common_config: &Path) -> std::io::Result<()> {
     let mut config = open_config(common_config)?;
     match config.remove(WORKTREE_CONFIG_STATE_KEY) {
         Ok(()) => {}
@@ -183,13 +184,13 @@ fn remove_shared_worktree_config_state(common_config: &Path) -> io::Result<()> {
     remove_config_file_if_no_entries(common_config)
 }
 
-pub(crate) fn write_worktree_hooks_path(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn write_worktree_hooks_path(scope: &ProtectionScope) -> std::io::Result<()> {
     let Some(config_path) = worktree_config_path(scope) else {
         return Ok(());
     };
     let hooks_path = scope.hooks_dir.to_str().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "hooks path contains invalid UTF-8 characters",
         )
     })?;
@@ -199,7 +200,7 @@ pub(crate) fn write_worktree_hooks_path(scope: &ProtectionScope) -> io::Result<(
         .map_err(|e| crate::git_helpers::git2_to_io_error(&e))
 }
 
-pub(crate) fn restore_worktree_hooks_path(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn restore_worktree_hooks_path(scope: &ProtectionScope) -> std::io::Result<()> {
     let Some(config_path) = worktree_config_path(scope) else {
         return Ok(());
     };
@@ -253,7 +254,7 @@ pub(crate) fn scoped_hooks_dir_for_config(
 fn config_contains_only_expected_ralph_hooks_path(
     config_path: &Path,
     common_git_dir: &Path,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     let entries = config_entries(config_path)?;
     debug_assert!(!entries.is_empty());
 
@@ -267,10 +268,10 @@ fn config_contains_only_expected_ralph_hooks_path(
 fn matches_single_ralph_hooks_path(
     entries: &[(String, Option<String>)],
     expected_dir: &Path,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     let expected_hooks_path = expected_dir.to_str().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "hooks path contains invalid UTF-8 characters",
         )
     })?;
@@ -280,7 +281,7 @@ fn matches_single_ralph_hooks_path(
         && entries[0].1.as_deref() == Some(expected_hooks_path))
 }
 
-fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> io::Result<bool> {
+fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> std::io::Result<bool> {
     let current_config = worktree_config_path(scope);
     let protected = protected_config_paths(scope);
 
@@ -303,7 +304,7 @@ fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> io:
 fn config_worktree_is_safe_to_activate(
     scope: &ProtectionScope,
     config_path: &Path,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     let entries = config_entries(config_path)?;
     if entries.is_empty() {
         return Ok(true);
@@ -316,10 +317,10 @@ fn is_single_ralph_hooks_path_for_scope(
     entries: &[(String, Option<String>)],
     scope: &ProtectionScope,
     config_path: &Path,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     let expected_hooks_path = scope.hooks_dir.to_str().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "hooks path contains invalid UTF-8 characters",
         )
     })?;
@@ -330,13 +331,15 @@ fn is_single_ralph_hooks_path_for_scope(
         && entries[0].1.as_deref() == Some(expected_hooks_path))
 }
 
-fn ensure_worktree_config_extension_activation_is_safe(scope: &ProtectionScope) -> io::Result<()> {
+fn ensure_worktree_config_extension_activation_is_safe(
+    scope: &ProtectionScope,
+) -> std::io::Result<()> {
     protected_config_paths(scope).iter().try_for_each(|config_path| {
         if config_worktree_is_safe_to_activate(scope, config_path)? {
             return Ok(());
         }
-        Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to enable extensions.worktreeConfig because {} already contains worktree-specific settings outside Ralph's active scope",
                 config_path.display()
@@ -345,7 +348,7 @@ fn ensure_worktree_config_extension_activation_is_safe(scope: &ProtectionScope) 
     })
 }
 
-pub(crate) fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn ensure_worktree_config_extension(scope: &ProtectionScope) -> std::io::Result<()> {
     if !scope.uses_worktree_scoped_hooks {
         return Ok(());
     }
@@ -378,7 +381,7 @@ pub(crate) fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::R
         .map_err(|e| crate::git_helpers::git2_to_io_error(&e))
 }
 
-pub(crate) fn restore_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn restore_worktree_config_extension(scope: &ProtectionScope) -> std::io::Result<()> {
     if !scope.uses_worktree_scoped_hooks
         || other_active_ralph_hooks_path_overrides_exist(scope)?
         || unrelated_worktree_config_entries_exist(scope)?
@@ -407,7 +410,7 @@ pub(crate) fn restore_worktree_config_extension(scope: &ProtectionScope) -> io::
     Ok(())
 }
 
-fn unrelated_worktree_config_entries_exist(scope: &ProtectionScope) -> io::Result<bool> {
+fn unrelated_worktree_config_entries_exist(scope: &ProtectionScope) -> std::io::Result<bool> {
     let protected = protected_config_paths(scope);
 
     protected.iter().try_fold(false, |found, config_path| {
@@ -429,7 +432,7 @@ fn unrelated_worktree_config_entries_exist(scope: &ProtectionScope) -> io::Resul
     })
 }
 
-pub(crate) fn hooks_path_matches_scope(scope: &ProtectionScope) -> io::Result<bool> {
+pub(crate) fn hooks_path_matches_scope(scope: &ProtectionScope) -> std::io::Result<bool> {
     let Some(config_path) = worktree_config_path(scope) else {
         return Ok(true);
     };

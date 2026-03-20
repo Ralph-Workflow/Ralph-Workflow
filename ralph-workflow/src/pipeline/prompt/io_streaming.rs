@@ -15,7 +15,6 @@ use crate::logger::argv_requests_json;
 use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
 use crate::rendering::json_pretty::format_generic_json_for_display;
 
-use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -23,18 +22,41 @@ use std::time::Duration;
 
 use crate::pipeline::idle_timeout::SharedActivityTimestamp;
 
-pub use crate::runtime::streaming::StreamingLineReader;
-pub use crate::runtime::streaming::{
-    cleanup_stdout_pump, create_stdout_channel, spawn_stdout_pump, CancelAwareReceiverBufRead,
-};
+pub type StreamingLineReader<R> = crate::runtime::streaming::StreamingLineReader<R>;
+pub type CancelAwareReceiverBufRead = crate::runtime::streaming::CancelAwareReceiverBufRead;
+
+pub fn create_stdout_channel() -> (
+    std::sync::mpsc::SyncSender<Result<Vec<u8>, std::io::Error>>,
+    std::sync::mpsc::Receiver<Result<Vec<u8>, std::io::Error>>,
+) {
+    crate::runtime::streaming::create_stdout_channel()
+}
+
+pub fn spawn_stdout_pump(
+    stdout: Box<dyn std::io::Read + Send>,
+    activity_timestamp: SharedActivityTimestamp,
+    tx: std::sync::mpsc::SyncSender<Result<Vec<u8>, std::io::Error>>,
+    cancel: Arc<AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    crate::runtime::streaming::spawn_stdout_pump(stdout, activity_timestamp, tx, cancel)
+}
+
+pub fn cleanup_stdout_pump(
+    pump_handle: std::thread::JoinHandle<()>,
+    cancel: &Arc<AtomicBool>,
+    logger: &crate::logger::Logger,
+    parse_result: &Result<(), std::io::Error>,
+) {
+    crate::runtime::streaming::cleanup_stdout_pump(pump_handle, cancel, logger, parse_result)
+}
 
 pub(crate) fn stream_agent_output_from_handle(
-    stdout: Box<dyn io::Read + Send>,
+    stdout: Box<dyn std::io::Read + Send>,
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     activity_timestamp: SharedActivityTimestamp,
     cancel: &Arc<AtomicBool>,
-) -> io::Result<()> {
+) -> Result<(), std::io::Error> {
     let (tx, rx) = create_stdout_channel();
     let pump_handle = spawn_stdout_pump(stdout, activity_timestamp, tx, Arc::clone(cancel));
 
@@ -46,7 +68,7 @@ pub(crate) fn stream_agent_output_from_handle(
         if cmd.parser_type != JsonParserType::Generic
             || argv_requests_json(&split_command(cmd.cmd_str)?)
         {
-            let stdout_io = io::stdout();
+            let stdout_io = std::io::stdout();
             let mut out = stdout_io.lock();
 
             match cmd.parser_type {
@@ -93,7 +115,7 @@ pub(crate) fn stream_agent_output_from_handle(
                 JsonParserType::Generic => {
                     let logfile_path = Path::new(cmd.logfile);
                     let mut buf = String::new();
-                    for line in reader.lines() {
+                    for line in std::io::BufRead::lines(reader) {
                         let line = line?;
                         runtime
                             .workspace
@@ -103,17 +125,17 @@ pub(crate) fn stream_agent_output_from_handle(
                     }
 
                     let formatted = format_generic_json_for_display(&buf, runtime.config.verbosity);
-                    out.write_all(formatted.as_bytes())?;
+                    std::io::Write::write_all(&mut out, formatted.as_bytes())?;
                 }
             }
         } else {
             let logfile_path = Path::new(cmd.logfile);
-            let stdout_io = io::stdout();
+            let stdout_io = std::io::stdout();
             let mut out = stdout_io.lock();
 
-            for line in reader.lines() {
+            for line in std::io::BufRead::lines(reader) {
                 let line = line?;
-                writeln!(out, "{line}")?;
+                std::io::Write::write_fmt(&mut out, format_args!("{line}\n"))?;
                 runtime
                     .workspace
                     .append_bytes(logfile_path, format!("{line}\n").as_bytes())?;

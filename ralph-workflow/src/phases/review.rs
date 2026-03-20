@@ -9,7 +9,9 @@
 //! Most implementation details are split into sub-modules to keep files small
 //! and make the phase easier to reason about.
 
+pub(crate) mod boundary_domain;
 mod pass;
+pub(crate) mod snippet_domain;
 mod types;
 mod validation;
 mod xml_processing;

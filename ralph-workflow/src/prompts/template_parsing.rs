@@ -203,103 +203,123 @@ fn skip_comment_partial(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 pub fn extract_variables_impl(content: &str) -> Vec<VariableInfo> {
-    extract_vars_recursive(content.as_bytes(), 0, 0)
+    extract_vars_iterative(content.as_bytes())
 }
 
-fn extract_vars_recursive(bytes: &[u8], i: usize, line: usize) -> Vec<VariableInfo> {
-    if i >= bytes.len().saturating_sub(1) {
-        return Vec::new();
-    }
+/// Iterative version of variable extraction to avoid stack overflow on large templates.
+fn extract_vars_iterative(bytes: &[u8]) -> Vec<VariableInfo> {
+    let mut results = Vec::new();
+    let mut i = 0;
+    let mut line = 0;
 
-    if bytes[i] == b'\n' {
-        return extract_vars_recursive(bytes, i + 1, line + 1);
-    }
-
-    if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-        match find_comment_end(bytes, i) {
-            Some(next) => extract_vars_recursive(bytes, next, line),
-            None => Vec::new(),
+    while i < bytes.len().saturating_sub(1) {
+        if bytes[i] == b'\n' {
+            i += 1;
+            line += 1;
+            continue;
         }
-    } else if bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-        let j = i + 2;
-        let j = skip_whitespace(bytes, j);
-        let name_start = j;
-        let j = skip_whitespace(bytes, j);
 
-        let var_end = find_var_end(bytes, j);
-        if var_end > j {
-            std::str::from_utf8(&bytes[name_start..var_end])
-                .ok()
-                .and_then(parse_variable_spec_impl)
-                .map(|(var_name, default_value)| VariableInfo {
-                    name: var_name.to_string(),
-                    line,
-                    has_default: default_value.is_some(),
-                    default_value,
-                })
-                .into_iter()
-                .chain(extract_vars_recursive(bytes, var_end + 2, line))
-                .collect()
-        } else {
-            extract_vars_recursive(bytes, i + 1, line)
+        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
+            match find_comment_end(bytes, i) {
+                Some(next) => {
+                    i = next;
+                    continue;
+                }
+                None => break,
+            }
+        } else if bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            let j = i + 2;
+            let j = skip_whitespace(bytes, j);
+            let name_start = j;
+            let j = skip_whitespace(bytes, j);
+
+            let var_end = find_var_end(bytes, j);
+            if var_end > j {
+                if let Some((var_name, default_value)) =
+                    std::str::from_utf8(&bytes[name_start..var_end])
+                        .ok()
+                        .and_then(parse_variable_spec_impl)
+                {
+                    results.push(VariableInfo {
+                        name: var_name.to_string(),
+                        line,
+                        has_default: default_value.is_some(),
+                        default_value,
+                    });
+                }
+                i = var_end + 2;
+                continue;
+            }
         }
-    } else {
-        extract_vars_recursive(bytes, i + 1, line)
+
+        i += 1;
     }
+
+    results
 }
 
 pub fn extract_partials_impl(content: &str) -> Vec<String> {
-    extract_partials_recursive(content.as_bytes(), 0, content)
+    extract_partials_iterative(content.as_bytes(), content)
 }
 
-fn extract_partials_recursive(bytes: &[u8], i: usize, content: &str) -> Vec<String> {
-    if i >= bytes.len().saturating_sub(2) {
-        return Vec::new();
-    }
+/// Iterative version of partial extraction to avoid stack overflow on large templates.
+fn extract_partials_iterative(bytes: &[u8], content: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    let mut i = 0;
 
-    if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-        match skip_comment_partial(bytes, i) {
-            Some(next) => extract_partials_recursive(bytes, next, content),
-            None => Vec::new(),
-        }
-    } else if bytes[i] == b'{' && bytes[i + 1] == b'{' && i + 2 < bytes.len() {
-        let j = i + 2;
-
-        let j = j + bytes[j..]
-            .iter()
-            .take_while(|&&b| b == b' ' || b == b'\t')
-            .count();
-
-        if j < bytes.len() && bytes[j] == b'>' {
-            let j = j + 1;
+    while i < bytes.len().saturating_sub(2) {
+        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
+            match skip_comment_partial(bytes, i) {
+                Some(next) => {
+                    i = next;
+                    continue;
+                }
+                None => break,
+            }
+        } else if bytes[i] == b'{' && bytes[i + 1] == b'{' && i + 2 < bytes.len() {
+            let j = i + 2;
 
             let j = j + bytes[j..]
                 .iter()
                 .take_while(|&&b| b == b' ' || b == b'\t')
                 .count();
 
-            let name_start = j;
+            if j < bytes.len() && bytes[j] == b'>' {
+                let j = j + 1;
 
-            let j = j + bytes[j..]
-                .iter()
-                .take_while(|&&b| {
-                    b != b'}' && !(b == b'}' && j + 1 < bytes.len() && bytes[j + 1] == b'}')
-                })
-                .count();
+                let j = j + bytes[j..]
+                    .iter()
+                    .take_while(|&&b| b == b' ' || b == b'\t')
+                    .count();
 
-            if j < bytes.len() && bytes[j] == b'}' && j + 1 < bytes.len() && bytes[j + 1] == b'}' {
-                let name = content[name_start..j].trim();
-                return std::iter::once(name.to_string())
-                    .filter(|s| !s.is_empty())
-                    .chain(extract_partials_recursive(bytes, j + 2, content))
-                    .collect::<Vec<_>>();
+                let name_start = j;
+
+                let j = j + bytes[j..]
+                    .iter()
+                    .take_while(|&&b| {
+                        b != b'}' && !(b == b'}' && j + 1 < bytes.len() && bytes[j + 1] == b'}')
+                    })
+                    .count();
+
+                if j < bytes.len()
+                    && bytes[j] == b'}'
+                    && j + 1 < bytes.len()
+                    && bytes[j + 1] == b'}'
+                {
+                    let name = content[name_start..j].trim();
+                    if !name.is_empty() {
+                        results.push(name.to_string());
+                    }
+                    i = j + 2;
+                    continue;
+                }
             }
         }
 
-        extract_partials_recursive(bytes, i + 1, content)
-    } else {
-        extract_partials_recursive(bytes, i + 1, content)
+        i += 1;
     }
+
+    results
 }
 
 #[derive(Debug, Clone)]

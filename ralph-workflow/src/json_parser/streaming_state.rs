@@ -92,14 +92,15 @@
 //! session.on_message_stop();
 //! ```
 
-// Re-export ContentType from types module for use in sub-modules
-use crate::json_parser::types::ContentType;
-
 // Contract types: constants, thresholds, and state enums
 include!("streaming_state/contract.rs");
 
+include!("streaming_state/domain.rs");
+
 // Session implementation: StreamingSession struct and all methods
 include!("streaming_state/session.rs");
+
+include!("streaming_state/session_domain_impl.rs");
 
 // Tests: all unit tests for streaming state functionality
 include!("streaming_state/tests.rs");

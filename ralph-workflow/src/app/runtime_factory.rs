@@ -5,11 +5,11 @@
 //! exempt from functional programming lints.
 
 use crate::config::Config;
-use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::pipeline::PipelineRuntime;
 use crate::prompts::registry::AgentRegistry;
 use crate::workspace::Workspace;
+use crate::ProcessExecutor;
 use std::sync::Arc;
 
 pub fn create_agent_registry() -> Result<AgentRegistry, anyhow::Error> {

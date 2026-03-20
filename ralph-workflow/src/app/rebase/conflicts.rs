@@ -1,8 +1,8 @@
 use super::types::{ConflictResolutionContext, ConflictResolutionResult};
-use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
+use crate::ProcessExecutor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictResolutionPromptReplay {

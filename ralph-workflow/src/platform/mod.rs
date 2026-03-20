@@ -2,7 +2,6 @@
 //!
 //! Provides OS-specific detection for platform-dependent behavior.
 mod detection;
-mod io;
 
 /// Detected platform type
 ///

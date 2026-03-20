@@ -1,6 +1,6 @@
 // Test moved to runtime boundary - import from there
-use crate::runtime::streaming::streaming_line_reader::MAX_BUFFER_SIZE;
 use crate::runtime::streaming::StreamingLineReader;
+use crate::runtime::streaming::MAX_BUFFER_SIZE;
 use std::io::{BufRead, Cursor};
 
 #[test]

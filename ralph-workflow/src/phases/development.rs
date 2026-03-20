@@ -9,6 +9,8 @@
 
 use crate::files::llm_output_extraction::PlanElements;
 
+pub(crate) mod boundary_domain;
+
 /// Format plan elements as markdown for PLAN.md.
 pub(crate) fn format_plan_as_markdown(elements: &PlanElements) -> String {
     let summary = format_summary_section(elements);

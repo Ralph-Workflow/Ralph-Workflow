@@ -593,6 +593,63 @@ function has at least one passing unit test using plain value inputs.
 
 ---
 
+### Phase 2 Completion Gate (MANDATORY — blocks ALL subsequent phases)
+
+Phase 2 flattening MUST be complete before ANY Phase 3 work begins. Domain logic
+extraction from boundary subtrees changes file locations and module paths — starting
+Phase 3 before Phase 2 is done means fixing imports that point at code about to move.
+
+```bash
+# GATE CHECK — must return 0:
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "nested module" | wc -l
+```
+
+If this returns any value > 0, STOP. Complete the remaining Phase 2 tasks first.
+
+---
+
+### Cumulative Verification Protocol (applies to ALL phases below)
+
+After completing EACH phase, run ALL previously-cleared checks — not just the current
+phase's lint. A Phase 5 refactor can accidentally re-introduce a Phase 3 violation.
+
+```bash
+# Always run after every phase:
+cargo check -p ralph-workflow --lib 2>&1 | grep "^error" | grep -v "could not compile"
+  # → 0 errors (compilation clean)
+
+cargo test -p ralph-workflow --lib --all-features
+  # → all tests pass
+
+# Add each cleared DENY lint to the cumulative check:
+# After Phase 2: + grep "nested module" → 0
+# After Phase 3: + grep "import from boundary module" → 0
+# After Phase 4: + grep -E "policy_call|retry_loop" → 0
+# After Phase 8: + grep "swallow" → 0
+```
+
+---
+
+### Inline TDD Requirement (applies to ALL phases below)
+
+Every phase that extracts, moves, or refactors a function MUST follow red-first TDD
+per `docs/agents/testing-guide.md` and `AGENTS.md`. This is NOT deferred to Phase 12.
+
+```
+For every extracted/refactored function:
+□ Red test written first (fails before refactor)
+□ Green after refactor (test passes)
+□ Pure functions: test with plain values, zero setup
+□ Boundary functions: test with MemoryWorkspace + MockProcessExecutor
+□ No #[serial] — use env-injection and MemoryWorkspace
+```
+
+Phase 12 serves as a TDD AUDIT — verifying each phase's work was tested, not as the
+testing phase itself.
+
+---
+
 ### Phase 3 — Apply Reader Pattern: Capability Injection (DENY: forbid_domain_boundary_dependencies)
 
 **What this fixes:** Domain modules that directly `use`-import from boundary modules. This
@@ -652,41 +709,99 @@ pub fn build_prompt_for_path(
    ```
 3. A boundary-level integration test exercises the wiring using `MemoryWorkspace`.
 
-- [ ] **P3-io**: For each of the ~90 `import from boundary module io` violations:
-  1. Read the offending file and identify which function imports from `io/`.
-  2. Find what it actually DOES with the `io` import — what data does it need?
-  3. Refactor: extract a pure function that takes that data as a parameter; put the
-     `workspace.read(...)` call in a boundary caller.
-  4. The `Workspace` trait already exists and has `MemoryWorkspace` for tests — use them.
-  5. After each file: `cargo dylint ... 2>&1 | grep "import from boundary module io"` should
-     have one fewer line.
+#### Execution Order: Topological, Not Lint-Bucket
 
-- [ ] **P3-runtime**: For each of the ~24 `import from boundary module runtime` violations:
-  1. Identify what runtime capability is being used:
-     - `std::env::var(...)` → refactor to accept `impl Fn(&str) -> Option<String>` (env-injection
-       pattern from `docs/agents/testing-guide.md`)
-     - `std::process::Command` → refactor to accept `&dyn ProcessExecutor`
-     - Clock/timestamp → inject a clock trait or accept a `u64` timestamp parameter
-  2. Refactor the function to accept the capability as a parameter.
-  3. Tests: env-dependent tests use `|_| None` or `|k| env_map.get(k).copied()` instead
-     of `std::env::var`. No `#[serial]` required.
+**DO NOT fix all io imports, then all runtime imports, then all executor imports.**
+A single function may import from io AND runtime AND executor. Fixing them one lint
+category at a time means touching the same function 3 times.
 
-- [ ] **P3-executor**: For each of the ~17 `import from boundary module executor` violations:
-  1. Domain code should receive `CommandOutput` (exit code, stdout, stderr) — typed values.
-     It should not import `ExecutorImpl` or call `Command::new`.
-  2. Refactor to accept `&dyn ProcessExecutor` or accept a pre-computed `CommandOutput` struct.
-  3. Tests: use `MockProcessExecutor::new().with_result(...)`.
+Instead, follow this sequence:
 
-- [ ] **P3-boundary**: For each of the ~12 `import from boundary module boundary` violations:
-  1. After Phase 2 flattening, many disappear. For any that remain: the importing file is
-     using boundary logic directly (e.g., calling a handler from domain code). Move the
-     policy decision to the domain caller and have it emit an `Effect` enum variant instead
-     of calling the boundary directly.
+#### Step 1 — Capability Contracts (shared traits + translated types)
 
-- [ ] **P3-agents**: For `claude`, `codex`, `gemini` boundary imports from domain code (~6):
-  1. Define or use an existing abstract agent trait (e.g., `AgentInvoker` or `ModelExecutor`).
-  2. Boundary adapters implement the trait. Domain code depends on the trait only.
-  3. The concrete adapter type never appears in domain module imports.
+Before fixing any individual import, verify the abstraction layer is complete:
+
+- [ ] **P3-contracts-workspace**: Verify `Workspace` trait (at `workspace.rs:100`) covers
+  all file access needs across all domain callers. Confirm `MemoryWorkspace` is ready for
+  tests. If any domain function needs a file operation the trait doesn't support, extend
+  the trait first.
+
+- [ ] **P3-contracts-executor**: Verify `ProcessExecutor` trait (at `executor/executor_trait.rs:28`)
+  covers all process execution needs. Confirm `MockProcessExecutor` is ready for tests.
+  Create `CommandOutput` domain type if not already available (exit code, stdout, stderr as
+  plain values — NOT `std::process::Output`).
+
+- [ ] **P3-contracts-env**: Check if `Environment`/`ConfigEnvironment` traits exist for env
+  access. If not, create one or adopt the env-injection pattern from `docs/agents/testing-guide.md`:
+  `impl Fn(&str) -> Option<String>`. Domain code should never import `std::env::var` directly.
+
+- [ ] **P3-contracts-agents**: Define or verify an abstract agent trait (e.g., `AgentInvoker`
+  or `ModelExecutor`). Boundary adapters for claude, codex, gemini, opencode implement the
+  trait. Domain code depends on the trait only; concrete adapter types never appear in domain
+  module imports.
+
+#### Step 2 — Fix Per-Workflow (not per-lint-bucket)
+
+For each workflow, fix ALL boundary imports (io + runtime + executor + boundary) in one pass:
+
+- [ ] **P3-workflow-context**: Fix `phases/context.rs` and config loading:
+  Currently imports from executor (ProcessExecutor), runtime (GitEnvironment).
+  Refactor to receive both via constructor/parameter injection. Single pass.
+
+- [ ] **P3-workflow-pipeline**: Fix pipeline modules (`idle_timeout/`, `prompt/`, `clipboard.rs`,
+  `types.rs`): these import executor types (ProcessExecutor, AgentChild, ChildProcessInfo).
+  Domain code should receive `CommandOutput` plain values or accept the trait via injection.
+
+- [ ] **P3-workflow-platform**: Fix `platform/detection.rs`: imports RealProcessExecutor.
+  Platform detection logic (interpreting OS info) is pure; running the detection command
+  is boundary. Split into `detect_platform(os_info: &str) -> Platform` (pure) and
+  `gather_platform_info(executor: &dyn ProcessExecutor) -> CommandOutput` (boundary).
+
+- [ ] **P3-workflow-git**: Fix `git_helpers/identity.rs` and other git_helpers boundary
+  imports. Note: comprehensive git_helpers refactor happens in Phase 9 — here only fix
+  the specific boundary import violations. Do not restructure the entire git_helpers module.
+
+- [ ] **P3-workflow-app**: Fix `app/effect_handler.rs`, `app/plumbing.rs`,
+  `app/rebase/orchestration.rs`, `app/rebase/conflicts.rs`, `app/env_access/mod.rs`.
+  These are higher-level wiring modules — some may legitimately be boundary code. For
+  each: if the function IS boundary wiring (gathering inputs, calling pure logic, performing
+  effects), verify it's in a boundary-named module. If it's domain policy that happens to
+  import a boundary type, extract the pure logic out.
+
+- [ ] **P3-workflow-agents**: Fix `agents/mod.rs`, `agents/cache_environment.rs`,
+  `agents/ccs_env.rs`, `agents/config/file.rs`. These import `std::io` and `runtime`.
+  Agent config parsing is pure (accept &str, return typed config). File reading is boundary.
+
+#### Step 3 — Fix Remaining Standalone Imports
+
+- [ ] **P3-remaining-boundary**: After Phase 2 flattening, the ~12 `boundary/` import
+  violations should mostly be gone. For any that remain: the importing file is using
+  boundary logic directly (e.g., calling a handler from domain code). Move the policy
+  decision to the domain caller and have it emit an `Effect` enum variant instead of
+  calling the boundary directly.
+
+- [ ] **P3-remaining-agents**: For any remaining `claude`, `codex`, `gemini`, `opencode`,
+  `streaming_state`, `printer` boundary imports from domain code that weren't fixed in
+  Step 2 workflows — apply the abstract trait pattern from P3-contracts-agents.
+
+#### Per-Category Refactoring Guidance
+
+**io/ imports (most are for TerminalInput/TerminalOutput/BannerOutput):**
+- Domain function should return a display-ready value; boundary function writes it
+- Pattern: `fn format_banner(config: &Config) -> BannerContent` (pure) +
+  `fn write_banner(output: &dyn TerminalOutput, content: &BannerContent)` (boundary)
+
+**runtime/ imports (most are for Environment/GitEnvironment):**
+- Refactor to accept env values as parameters, not the Environment trait
+- Pattern: `fn resolve_config_path(home: &str, project_dir: &str) -> PathBuf` (pure) +
+  `fn load_config_path(env: &dyn Environment) -> Result<PathBuf, ...>` (boundary gathers
+  home/project_dir, calls pure resolver)
+
+**executor/ imports (most are for ProcessExecutor trait):**
+- Domain code should receive `CommandOutput` (plain values), not the executor trait itself
+- Pattern: `fn interpret_format_result(output: &CommandOutput) -> FormatEvent` (pure) +
+  `fn run_formatter(executor: &dyn ProcessExecutor) -> Result<FormatEvent, ...>` (boundary
+  runs command, calls pure interpreter)
 
 **Phase 3 done when:**
 ```bash
@@ -707,6 +822,47 @@ progression, business branching) instead of delegating to domain code or the sta
 cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
   | grep -E "forbid_boundary_policy|forbid_boundary_retry|retry.*boundary|policy.*boundary"
 ```
+
+#### Existing Effect Infrastructure (MUST reference — do NOT reinvent)
+
+The Effect dispatch mechanism already exists. Phase 4 work extends it, not replaces it:
+
+```
+Effect enum:      reducer/effect/types/effect_enum.rs
+Orchestration:    reducer/orchestration/ (per-workflow determine_next_effect)
+Handler dispatch: reducer/boundary/mod.rs:187 (MainEffectHandler.execute())
+Mock dispatch:    app/mock_effect_handler/core.rs (MockEffectHandler for tests)
+```
+
+When moving policy OUT of a boundary function, the policy goes INTO the orchestrator +
+reducer, and the boundary gets a new Effect variant (or reuses an existing one).
+
+#### Per-Effect Checklist (MANDATORY for every new Effect variant)
+
+When Phase 4 work creates a new Effect (e.g., splitting a retry loop into single-attempt
+effects), verify ALL of these:
+
+```
+□ Effect variant added to reducer/effect/types/effect_enum.rs
+□ Orchestrator: determine_next_effect() handles the new state (selects this effect)
+□ Handler: MainEffectHandler.execute() dispatches to the boundary function
+□ MockEffectHandler: match arm added for testing
+□ Event type(s) defined for the handler's outcome (past-tense, fact-shaped)
+□ Reducer: reduce() handles the new event and produces next state
+□ Unit test: orchestrator selects the correct effect from state
+□ Unit test: reducer produces correct state from event
+□ Integration test: effect → handler → event → reducer round-trip
+```
+
+#### Effect Design Rules (from docs/code-style/architecture.md)
+
+- Effects are **concrete edge actions** ("RunReview", "LoadConfig"), NOT control flow ("Retry", "Continue")
+- Effect payloads are **domain-shaped** (typed structs), not raw types
+- Retries **re-derive the same concrete effect** from updated state — the reducer decrements
+  retry count and the orchestrator re-selects the same effect. Do NOT create generic "RetryEffect"
+  variants that encode control policy in the effect layer.
+- Events are **past-tense facts** ("ReviewCompleted", "ValidationFailed"), NOT commands
+  ("RetryReview", "AdvancePhase"). Reducers decide consequences from state + facts.
 
 **Retry loop transformation (from `docs/code-style/functional-transformations.md`):**
 
@@ -752,9 +908,17 @@ Returns `0`. AND: describe aloud every boundary function in one sentence. If you
 
 ---
 
-### Phase 5 — Immutability in Domain Code (WARN: forbid_mut_binding)
+### Phase 5 — Value Transformations in Domain Code (MERGED: forbid_mut_binding + forbid_imperative_loops)
 
-**Important:** This is a WARN-level heuristic. The lint fires on `let mut` bindings but
+**This phase merges the old separate "mutable bindings" and "imperative loops" phases.**
+Most `let mut` violations ARE the imperative loop pattern — `let mut v = Vec::new(); for x
+in xs { v.push(f(x)); }` triggers BOTH lints on the same function. Fixing them separately
+would mean visiting the same function twice.
+
+**Execution model:** Work per-MODULE, not per-pattern. For each module, fix ALL let-mut +
+ALL loops + ALL flags in one pass. Keep separate acceptance criteria for lint visibility.
+
+**Important:** These are WARN-level heuristics. The lint fires on `let mut` bindings but
 cannot prove that any problematic mutation actually happens. For every firing, investigate:
 is this genuine domain-layer mutation that would be cleaner as a value transformation?
 
@@ -815,7 +979,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
   `docs/code-style/functional-transformations.md` ("The with_* method pattern").
 
 - [ ] **P5-git** — vars like `git_helpers`, `index`, `perms`, `files`, `diff_opts`:
-  Many of these are in `git_helpers/` which is being comprehensively refactored in Phase 8.
+  Many of these are in `git_helpers/` which is being comprehensively refactored in Phase 9.
   Coordinate with that phase — fix the architecture first, then the style follows.
 
 - [ ] **P5-misc** — remaining `let mut` vars: investigate each individually. Document any
@@ -823,20 +987,20 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
 
 ---
 
-### Phase 6 — Imperative Loops in Domain Code (WARN: forbid_imperative_loops)
+### ~~Phase 6~~ (MERGED into Phase 5 — Imperative Loops)
 
-**Important:** WARN-level heuristic. The lint fires on `for`/`while`/`loop` syntax but
-cannot prove the loop has side effects. Investigate each one.
+**This phase has been merged into Phase 5 above.** The loop replacement table and
+investigation tasks are now part of the Phase 5 "Value Transformations" pass.
 
-**How to find all current instances:**
+The following guidance applies during Phase 5 work for loop replacements:
+
+**How to find imperative loop instances (run alongside the let-mut search):**
 ```bash
 cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
   | grep "loop is forbidden"
 ```
 
-**The judgment question for each loop:**
-
-Ask: "What is this loop DOING?" Then match to one of these categories:
+**Loop purpose → correct fix mapping:**
 
 | Loop purpose | Correct fix |
 |---|---|
@@ -855,21 +1019,29 @@ Ask: "What is this loop DOING?" Then match to one of these categories:
   function does no actual I/O (e.g., transforming an in-memory collection)
 - Converting `for item in items { result.push(f(item)) }` to `for item in items { result = result.with_f(item) }` (same loop, different mutation)
 
-**Acceptance criteria:**
-- The replacement is genuinely more readable (not just lint-satisfying)
-- The function's intent is immediately visible from the combinator name (`filter_map` says
-  "keep only the successful transformations"; `fold` says "combine all elements into one")
+**Investigation tasks (execute during Phase 5 module-by-module pass):**
 
-- [ ] **P6-for**: For each `for` loop in domain code — identify its purpose, apply the
-  correct replacement from the table above.
+- [ ] **P5-loops-for**: For each `for` loop encountered during Phase 5 module work — identify
+  its purpose from the table above and apply the correct replacement.
 
-- [ ] **P6-loop**: Each bare `loop` in domain code is almost certainly retry policy (→ Phase 4
-  state machine) or a streaming I/O loop (→ boundary module). Classify each and fix correctly.
+- [ ] **P5-loops-bare**: Each bare `loop` in domain code is almost certainly retry policy
+  (→ Phase 4 state machine) or a streaming I/O loop (→ boundary module). Classify and fix.
 
-- [ ] **P6-while**: Each `while` is either:
+- [ ] **P5-loops-while**: Each `while` is either:
   - `while condition { mutate }` → recursive step or `successors()`
   - `while let Some(x) = iter.next()` → `for x in iter` or combinator
   - `while bytes_read > 0` → streaming I/O (boundary)
+
+**Combined Phase 5 acceptance criteria (both let-mut AND loops):**
+```bash
+# Mutable bindings (track count decrease):
+cargo dylint ... 2>&1 | grep "let mut.*is forbidden" | wc -l
+
+# Imperative loops (track count decrease):
+cargo dylint ... 2>&1 | grep "loop is forbidden" | wc -l
+```
+Both counts should decrease after each module pass. WARN-level: 0 is aspirational, not
+mandatory. Genuine false positives should be documented with code comments.
 
 ---
 
@@ -885,16 +1057,30 @@ cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
 
 **For each instance, ask:** Why is shared mutable state needed here?
 
-- [ ] **P7-mutex** (~6 `Mutex` instances): If protecting shared data across threads in domain
-  code — the real question is why domain code involves threading. Threading is a runtime/
-  boundary concern. Re-model as explicit state flowing through the reducer cycle.
+#### Legitimate Interior Mutability (document, do NOT "fix")
+
+Not all interior mutability is problematic. The following uses are architecturally correct
+and should be documented with a comment, not refactored away:
+
+- `LazyLock<Regex>` / `OnceLock<Regex>` for compile-once domain regex patterns — this is
+  a performance optimisation for immutable data, not shared mutable state
+- `OnceLock<T>` for expensive one-time initialization of truly constant data
+- `Mutex`/`RwLock` in boundary modules protecting real I/O resources (connection pools,
+  file handles, terminal state) — this is intrinsic to the effect seam
+
+#### Problematic Interior Mutability (MUST fix)
+
+- [ ] **P7-mutex** (~6 `Mutex` instances in domain code): If protecting shared data across
+  threads in domain code — the real question is why domain code involves threading. Threading
+  is a runtime/boundary concern. Re-model as explicit state flowing through the reducer cycle.
   If `Mutex` wraps a resource needed for I/O (e.g., a connection pool), move it to the
   boundary module that owns that resource.
 
 - [ ] **P7-lazylock** (~4 `LazyLock` instances): 
   - Static data that is truly constant → `const` or `static` (no `LazyLock` needed)
   - Compiled regex that is domain knowledge → `OnceLock<Regex>` in the domain module is
-    acceptable IF the regex is actually domain knowledge; WARN lint may fire but document it
+    acceptable IF the regex is actually domain knowledge; WARN lint may fire but document
+    with a comment explaining why this is correct
   - Runtime-derived singleton → inject as a parameter (Reader pattern)
 
 - [ ] **P7-cell** (~2 `Cell` instances): `Cell<T>` in domain code usually means a counter
@@ -942,10 +1128,17 @@ if let Err(e) = result {
 - [ ] **P8-swallow**: For every silent result discard — decide: should this failure propagate
   to the caller? Almost always yes. Add `?` propagation and a typed error variant.
 
+**Note: Phase 8 / Phase 9 overlap.** 190 of the result swallowing matches are in
+`git_helpers/` (85 in `config_state.rs` alone). These are addressed comprehensively in
+Phase 9's git_helpers refactor. During Phase 8, **skip git_helpers files** — fix result
+swallowing everywhere else first. Phase 9 will handle the git_helpers unwraps as part of
+the larger architectural refactor of that module.
+
 **Phase 8 done when:**
 ```bash
+# Excluding git_helpers (handled in Phase 9):
 cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
-  | grep "swallow" | wc -l
+  | grep "swallow" | grep -v "git_helpers" | wc -l
 ```
 Returns `0`.
 
@@ -963,12 +1156,30 @@ interpretation with effectful git operations, using panic-driven control flow th
 
   Record findings in `.sisyphus/notepads/fp-style-compliance/learnings.md`.
 
-- [ ] **P9-split**: Reorganise the module:
-  - `ralph-workflow/src/git_helpers/` — pure domain functions only (parsers, interpreters,
-    command spec builders). Zero `std::process`, zero `git2` imports.
-  - `ralph-workflow/src/git_helpers/boundary.rs` OR move to `ralph-workflow/src/io/git.rs`
-    — thin boundary adapter that runs commands via `&dyn ProcessExecutor` and `git2` (in
-    `ffi/` if using git2 directly).
+- [ ] **P9-split**: Reorganise the module using **facade preservation strategy**:
+
+  **CRITICAL:** `git_helpers` is imported in **48 files with 225 matches** across the crate.
+  A hard API rename (e.g., `git_helpers::foo` → `git_helpers::domain::foo`) would force
+  broad call-site rework and create noisy diffs conflicting with other branches.
+
+  **Strategy: Keep `mod.rs` public API stable, refactor internals:**
+  ```
+  git_helpers/
+    mod.rs              ← PUBLIC API UNCHANGED — re-exports from internal modules
+    domain/             ← NEW: pure parsing, validation, command spec building
+      parse.rs          ← parse_status_output(), parse_diff_output(), etc.
+      identity.rs       ← validate_git_identity_fields(), choose_username()
+      types.rs          ← GitError enum, GitStatus, DiffSummary, etc.
+    boundary.rs         ← NEW: effectful git2 calls, process spawning
+    config_state.rs     ← gradually migrate .unwrap() to Result<T, GitError>
+  ```
+
+  The `mod.rs` file re-exports everything through the existing public paths. Callers see
+  no API change. Internally, pure logic moves to `domain/` and effectful code stays in
+  `boundary.rs`.
+
+  **Only change public import paths AFTER** the internal split is stable and all phases
+  are complete. Change one workflow at a time during a follow-up task, not a global rename.
 
 - [ ] **P9-errors**: Create a `GitError` enum:
   ```rust
@@ -1002,7 +1213,11 @@ previously pure-but-panicky now returns `Result<T, GitError>` and has a passing 
 
 ---
 
-### Phase 10 — Error and Diagnostics Architecture (Except + Writer Monads)
+### Phase 10A — Error Cleanup (Except Monad — no newtypes needed yet)
+
+**Why 10A before Phase 11:** This phase replaces panics, unwraps, and string errors with
+typed error enums using primitive payloads. It does NOT need the newtypes from Phase 11 —
+those come next. After Phase 11 introduces strong types, Phase 10B enriches error payloads.
 
 - [ ] **P10-unwrap-domain**: Audit all `.unwrap()` in non-test, non-boundary domain code.
   
@@ -1038,7 +1253,7 @@ previously pure-but-panicky now returns `Result<T, GitError>` and has a passing 
   pub fn parse(s: &str) -> Result<Config, ConfigParseError>
   ```
 
-- [ ] **P10-diagnostics-as-data**: Identify domain functions that call `println!`, `eprintln!`,
+- [ ] **P10A-diagnostics-as-data**: Identify domain functions that call `println!`, `eprintln!`,
   `log::warn!`, `tracing::warn!`, or similar with domain-meaningful content (normalisation
   decisions, defaults applied, values clamped). Refactor to return `WithDiagnostics<T>`:
   ```rust
@@ -1110,10 +1325,47 @@ previously pure-but-panicky now returns `Result<T, GitError>` and has a passing 
 
 ---
 
-### Phase 12 — Test Coverage for All Refactored Code
+### Phase 10B — Enrich Error Payloads With Strong Types
 
-**Rule:** For every function touched in Phases 2–11, at least one test must exist that was
-written BEFORE the refactor (red-first). No exceptions.
+**Why 10B after Phase 11:** Now that newtypes and parse functions exist (Phase 11), error
+enums can carry domain-typed context instead of raw strings.
+
+- [ ] **P10B-error-payloads**: Revisit error enums created in Phase 10A. Where a variant
+  carries a raw `String` or `usize` that now has a corresponding newtype from Phase 11,
+  upgrade the payload:
+  ```rust
+  // Phase 10A created this with primitive payload:
+  enum ConfigError { InvalidField(String) }
+  
+  // Phase 10B upgrades to use newtype from Phase 11:
+  enum ConfigError { InvalidField(FieldName) }
+  ```
+
+  **Note:** Parse errors should keep raw input types, not validated newtypes — the parse
+  function is what creates the newtype, so parse errors occur BEFORE the newtype exists:
+  ```rust
+  // CORRECT: parse error carries raw input
+  enum GitOidParseError { WrongLength { expected: usize, actual: usize } }
+  
+  // WRONG: parse error carries the type it's trying to create
+  enum GitOidParseError { Invalid(GitOid) }  // GitOid doesn't exist yet!
+  ```
+
+- [ ] **P10B-diagnostic-payloads**: Similarly, upgrade `WithDiagnostics<T>` diagnostic
+  enum variants to carry newtype context where it adds clarity. Diagnostic variants that
+  describe "what was defaulted" benefit from strong types; variants that describe "what
+  raw input was rejected" keep raw types.
+
+---
+
+### Phase 12 — TDD Audit and Coverage Gap Fill (repurposed)
+
+**This phase is now an AUDIT, not the testing phase.** The "Inline TDD Requirement" at the
+top of Phases 3+ mandates red-first testing during each phase. Phase 12 verifies that
+mandate was followed and fills any gaps.
+
+**Audit rule:** For every function touched in Phases 2–11, at least one test must exist.
+If a function was missed during its owning phase, write the test now.
 
 - [ ] **P12-tdd-pure**: For every new or extracted pure domain function — write a red test
   first (calling the function with plain values and asserting on the result), then implement.

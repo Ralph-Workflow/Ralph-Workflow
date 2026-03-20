@@ -48,11 +48,11 @@
 
 pub mod bfs;
 pub mod command;
-pub mod macos;
-pub mod ps;
 mod executor_trait;
+pub mod macos;
 #[cfg(any(test, feature = "test-utils"))]
 mod mock;
+pub mod ps;
 mod real;
 mod types;
 

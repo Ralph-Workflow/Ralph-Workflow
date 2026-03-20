@@ -8,8 +8,11 @@ use crate::logger::Logger;
 #[cfg(any(test, feature = "test-utils"))]
 use crate::workspace::Workspace;
 use std::fs;
-use std::io;
 use std::path::Path;
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+}
 
 pub fn verify_hooks_removed(repo_root: &Path) -> io::Result<Vec<&'static str>> {
     let hooks_dir = get_hooks_dir_from(repo_root)?;

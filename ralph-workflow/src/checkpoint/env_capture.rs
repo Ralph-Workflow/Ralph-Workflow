@@ -1,1 +1,5 @@
-pub use crate::checkpoint::io::env_capture::capture_environment;
+use crate::checkpoint::state::EnvironmentSnapshot;
+
+pub fn capture_environment() -> EnvironmentSnapshot {
+    EnvironmentSnapshot::from_env_vars(std::env::vars())
+}

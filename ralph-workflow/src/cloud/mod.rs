@@ -27,9 +27,10 @@ pub mod redaction;
 pub mod runtime;
 pub mod types;
 
-pub use io::HttpCloudReporter;
-pub use runtime::HeartbeatGuard;
 pub use types::{CloudError, PipelineResult, ProgressEventType, ProgressUpdate};
+
+pub type HttpCloudReporter = crate::cloud::io::HttpCloudReporter;
+pub type HeartbeatGuard = crate::cloud::runtime::HeartbeatGuard;
 
 pub trait CloudReporter: Send + Sync {
     fn report_progress(&self, update: &ProgressUpdate) -> Result<(), CloudError>;

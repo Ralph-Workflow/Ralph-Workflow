@@ -5,7 +5,6 @@ use crate::agents::fallback::ResolvedDrainConfig;
 use crate::workspace::{Workspace, WorkspaceFs};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io;
 use std::path::{Path, PathBuf};
 
 // Note: Legacy global config directory functions (global_config_dir, global_agents_config_path)
@@ -34,7 +33,7 @@ pub struct AgentsConfigFile {
 #[derive(Debug, thiserror::Error)]
 pub enum AgentConfigError {
     #[error("Failed to read config file: {0}")]
-    Io(#[from] io::Error),
+    Io(#[from] std::io::Error),
     #[error("Failed to parse TOML: {0}")]
     Toml(#[from] toml::de::Error),
     #[error("Built-in agents.toml template is invalid TOML: {0}")]
@@ -126,7 +125,7 @@ impl AgentsConfigFile {
 
         let contents = workspace
             .read(path)
-            .map_err(|e| AgentConfigError::Io(io::Error::other(e)))?;
+            .map_err(|e| AgentConfigError::Io(std::io::Error::other(e)))?;
         let config: Self = toml::from_str(&contents)?;
         Ok(Some(Self {
             raw_toml: Some(contents),
@@ -141,7 +140,9 @@ impl AgentsConfigFile {
     /// Returns error if:
     /// - Parent directories cannot be created
     /// - Default template cannot be written to file
-    pub fn ensure_config_exists<P: AsRef<Path>>(path: P) -> io::Result<ConfigInitResult> {
+    pub fn ensure_config_exists<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<ConfigInitResult, std::io::Error> {
         let path = path.as_ref();
         let workspace = WorkspaceFs::new(PathBuf::from("."));
 
@@ -174,7 +175,7 @@ impl AgentsConfigFile {
     pub fn ensure_config_exists_with_workspace(
         path: &Path,
         workspace: &dyn Workspace,
-    ) -> io::Result<ConfigInitResult> {
+    ) -> Result<ConfigInitResult, std::io::Error> {
         if workspace.exists(path) {
             return Ok(ConfigInitResult::AlreadyExists);
         }

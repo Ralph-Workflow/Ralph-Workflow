@@ -3,7 +3,6 @@
 //! This module contains presentation logic for the pipeline's visual output,
 //! including the welcome banner and the final summary display.
 
-use crate::io::terminal::{write_banner_to, BannerOutput};
 use crate::logger::Colors;
 use crate::logger::Loggable;
 
@@ -69,7 +68,7 @@ pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agen
     let _ = print_welcome_banner_to(colors, developer_agent, reviewer_agent, std::io::stdout());
 }
 
-pub fn print_welcome_banner_to<W: BannerOutput>(
+pub fn print_welcome_banner_to<W: std::io::Write>(
     colors: Colors,
     developer_agent: &str,
     reviewer_agent: &str,
@@ -145,7 +144,7 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
     let _ = print_final_summary_to(colors, summary, logger, std::io::stdout());
 }
 
-pub fn print_final_summary_to<L: Loggable, W: BannerOutput>(
+pub fn print_final_summary_to<L: Loggable, W: std::io::Write>(
     colors: Colors,
     summary: &PipelineSummary,
     logger: &L,
@@ -188,6 +187,10 @@ pub fn print_final_summary_to<L: Loggable, W: BannerOutput>(
     }
 
     Ok(())
+}
+
+fn write_banner_to<W: std::io::Write>(mut output: W, content: &str) -> std::io::Result<()> {
+    output.write_all(content.as_bytes())
 }
 
 fn build_final_summary_content(colors: Colors, summary: &PipelineSummary) -> String {

@@ -11,7 +11,7 @@
 //! - Emit events describing outcomes
 //! - No retry logic (reducer decides)
 
-use super::io::cloud::is_success;
+use super::io_cloud::is_success;
 use super::MainEffectHandler;
 use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;

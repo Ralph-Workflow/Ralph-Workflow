@@ -26,10 +26,11 @@ use std::sync::Mutex;
 use std::path::Path;
 
 pub(crate) mod checkpoint;
-mod runtime;
+#[path = "runtime.rs"]
+mod handling;
 
 pub use checkpoint::InterruptContext;
-pub use runtime::{clear_interrupt_context, get_interrupt_context, set_interrupt_context};
+pub use handling::{clear_interrupt_context, get_interrupt_context, set_interrupt_context};
 
 /// True when a user interrupt (SIGINT / Ctrl+C) has been requested.
 ///
@@ -83,7 +84,7 @@ pub fn take_exit_130_after_run() -> bool {
 #[cfg(unix)]
 fn restore_prompt_md_writable_via_std_fs() {
     // Fast path: current working directory is already the repo root in normal runs.
-    if runtime::restore_prompt_md_writable(std::path::Path::new("PROMPT.md")) {
+    if handling::restore_prompt_md_writable(std::path::Path::new("PROMPT.md")) {
         return;
     }
 
@@ -92,16 +93,16 @@ fn restore_prompt_md_writable_via_std_fs() {
         return;
     };
 
-    let _ = runtime::restore_prompt_md_writable_in_repo(&repo_root);
+    let _ = handling::restore_prompt_md_writable_in_repo(&repo_root);
 }
 
 fn remove_repo_root_ralph_dir_via_std_fs() {
-    let repo_root = runtime::get_interrupt_context()
+    let repo_root = handling::get_interrupt_context()
         .and_then(|ctx| ctx.map(|c| c.workspace.root().to_path_buf()))
         .or_else(|| crate::git_helpers::get_repo_root().ok());
 
     if let Some(repo_root) = repo_root {
-        runtime::remove_ralph_dir(&repo_root);
+        handling::remove_ralph_dir(&repo_root);
     }
 }
 
@@ -235,7 +236,7 @@ pub fn setup_interrupt_handler() {
                 eprintln!("Cleaning up...");
                 crate::git_helpers::cleanup_agent_phase_silent();
                 remove_repo_root_ralph_dir_via_std_fs();
-                runtime::exit_sigint();
+                handling::exit_sigint();
             }
 
             eprintln!(
@@ -248,7 +249,7 @@ pub fn setup_interrupt_handler() {
 
         // Clone the entire context (small, Arc-backed) and then perform I/O without
         // holding the mutex.
-        let context = runtime::get_interrupt_context();
+        let context = handling::get_interrupt_context();
 
         if let Some(Some(ref context)) = context {
             if let Err(e) = checkpoint::save_interrupt_checkpoint(context) {
@@ -274,7 +275,7 @@ pub fn setup_interrupt_handler() {
         eprintln!("Cleaning up...");
         crate::git_helpers::cleanup_agent_phase_silent();
         remove_repo_root_ralph_dir_via_std_fs();
-        runtime::exit_sigint();
+        handling::exit_sigint();
     });
 
     if let Err(e) = install {

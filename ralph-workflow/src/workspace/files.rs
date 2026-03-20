@@ -4,7 +4,6 @@
 // filesystem operations relative to the repository root.
 
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::workspace::{DirEntry, Workspace};
@@ -23,7 +22,7 @@ pub fn decide_atomic_write_sync(interrupted: bool) -> AtomicWriteSync {
     }
 }
 
-pub fn sync_temp_file(file: &std::fs::File, policy: AtomicWriteSync) -> io::Result<()> {
+pub fn sync_temp_file(file: &std::fs::File, policy: AtomicWriteSync) -> std::io::Result<()> {
     match policy {
         AtomicWriteSync::Full => {
             file.sync_all()?;
@@ -34,7 +33,7 @@ pub fn sync_temp_file(file: &std::fs::File, policy: AtomicWriteSync) -> io::Resu
 }
 
 #[cfg(unix)]
-pub fn set_restrictive_permissions(path: &std::path::Path) -> io::Result<()> {
+pub fn set_restrictive_permissions(path: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let metadata = fs::metadata(path)?;
     let mut perms = metadata.permissions();
@@ -43,7 +42,7 @@ pub fn set_restrictive_permissions(path: &std::path::Path) -> io::Result<()> {
 }
 
 #[cfg(not(unix))]
-pub fn set_restrictive_permissions(_path: &std::path::Path) -> io::Result<()> {
+pub fn set_restrictive_permissions(_path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -72,15 +71,15 @@ impl Workspace for WorkspaceFs {
         &self.root
     }
 
-    fn read(&self, relative: &Path) -> io::Result<String> {
+    fn read(&self, relative: &Path) -> std::io::Result<String> {
         fs::read_to_string(self.root.join(relative))
     }
 
-    fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>> {
+    fn read_bytes(&self, relative: &Path) -> std::io::Result<Vec<u8>> {
         fs::read(self.root.join(relative))
     }
 
-    fn write(&self, relative: &Path, content: &str) -> io::Result<()> {
+    fn write(&self, relative: &Path, content: &str) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -88,7 +87,7 @@ impl Workspace for WorkspaceFs {
         fs::write(path, content)
     }
 
-    fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+    fn write_bytes(&self, relative: &Path, content: &[u8]) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -96,8 +95,7 @@ impl Workspace for WorkspaceFs {
         fs::write(path, content)
     }
 
-    fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
-        use std::io::Write;
+    fn append_bytes(&self, relative: &Path, content: &[u8]) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
@@ -106,8 +104,8 @@ impl Workspace for WorkspaceFs {
             .create(true)
             .append(true)
             .open(path)?;
-        file.write_all(content)?;
-        file.flush()
+        std::io::Write::write_all(&mut file, content)?;
+        std::io::Write::flush(&mut file)
     }
 
     fn exists(&self, relative: &Path) -> bool {
@@ -122,11 +120,11 @@ impl Workspace for WorkspaceFs {
         self.root.join(relative).is_dir()
     }
 
-    fn remove(&self, relative: &Path) -> io::Result<()> {
+    fn remove(&self, relative: &Path) -> std::io::Result<()> {
         fs::remove_file(self.root.join(relative))
     }
 
-    fn remove_if_exists(&self, relative: &Path) -> io::Result<()> {
+    fn remove_if_exists(&self, relative: &Path) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if path.exists() {
             fs::remove_file(path)?;
@@ -134,11 +132,11 @@ impl Workspace for WorkspaceFs {
         Ok(())
     }
 
-    fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
+    fn remove_dir_all(&self, relative: &Path) -> std::io::Result<()> {
         fs::remove_dir_all(self.root.join(relative))
     }
 
-    fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()> {
+    fn remove_dir_all_if_exists(&self, relative: &Path) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if path.exists() {
             fs::remove_dir_all(path)?;
@@ -146,14 +144,14 @@ impl Workspace for WorkspaceFs {
         Ok(())
     }
 
-    fn create_dir_all(&self, relative: &Path) -> io::Result<()> {
+    fn create_dir_all(&self, relative: &Path) -> std::io::Result<()> {
         fs::create_dir_all(self.root.join(relative))
     }
 
-    fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>> {
+    fn read_dir(&self, relative: &Path) -> std::io::Result<Vec<DirEntry>> {
         let abs_path = self.root.join(relative);
         let entries: Vec<DirEntry> = fs::read_dir(abs_path)?
-            .map(|entry| -> io::Result<DirEntry> {
+            .map(|entry| -> std::io::Result<DirEntry> {
                 let entry = entry?;
                 let metadata = entry.metadata()?;
                 let rel_path = relative.join(entry.file_name());
@@ -169,16 +167,15 @@ impl Workspace for WorkspaceFs {
                     DirEntry::new(rel_path, metadata.is_file(), metadata.is_dir())
                 })
             })
-            .collect::<io::Result<Vec<_>>>()?;
+            .collect::<std::io::Result<Vec<_>>>()?;
         Ok(entries)
     }
 
-    fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
         fs::rename(self.root.join(from), self.root.join(to))
     }
 
-    fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
-        use std::io::Write;
+    fn write_atomic(&self, relative: &Path, content: &str) -> std::io::Result<()> {
         use tempfile::NamedTempFile;
 
         let path = self.root.join(relative);
@@ -193,8 +190,8 @@ impl Workspace for WorkspaceFs {
         #[cfg(unix)]
         set_restrictive_permissions(temp_file.path())?;
 
-        temp_file.write_all(content.as_bytes())?;
-        temp_file.flush()?;
+        std::io::Write::write_all(&mut temp_file, content.as_bytes())?;
+        std::io::Write::flush(&mut temp_file)?;
 
         let policy = decide_atomic_write_sync(crate::interrupt::user_interrupted_occurred());
         sync_temp_file(temp_file.as_file(), policy)?;
@@ -204,7 +201,7 @@ impl Workspace for WorkspaceFs {
         Ok(())
     }
 
-    fn set_readonly(&self, relative: &Path) -> io::Result<()> {
+    fn set_readonly(&self, relative: &Path) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if !path.exists() {
             return Ok(());
@@ -227,7 +224,7 @@ impl Workspace for WorkspaceFs {
         fs::set_permissions(path, perms)
     }
 
-    fn set_writable(&self, relative: &Path) -> io::Result<()> {
+    fn set_writable(&self, relative: &Path) -> std::io::Result<()> {
         let path = self.root.join(relative);
         if !path.exists() {
             return Ok(());

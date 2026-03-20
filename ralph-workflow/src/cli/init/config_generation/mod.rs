@@ -42,7 +42,27 @@ pub use global::{handle_init_global, handle_init_global_with};
 pub use local::{handle_init_local_config, handle_init_local_config_with};
 pub use validation::{handle_check_config, handle_check_config_with};
 
-// Re-export prompt handlers from boundary module
-pub use boundary::{
-    handle_init_state_inference_with_env, handle_init_template_arg_at_path_with_env,
-};
+pub fn handle_init_state_inference_with_env<R: crate::config::ConfigEnvironment>(
+    config_path: &std::path::Path,
+    prompt_path: &std::path::Path,
+    template_arg: Option<&str>,
+    colors: crate::logger::Colors,
+    env: &R,
+) -> anyhow::Result<bool> {
+    boundary::handle_init_state_inference_with_env(
+        config_path,
+        prompt_path,
+        template_arg,
+        colors,
+        env,
+    )
+}
+
+pub fn handle_init_template_arg_at_path_with_env<R: crate::config::ConfigEnvironment>(
+    template_name: &str,
+    prompt_path: &std::path::Path,
+    colors: crate::logger::Colors,
+    env: &R,
+) -> anyhow::Result<bool> {
+    boundary::handle_init_template_arg_at_path_with_env(template_name, prompt_path, colors, env)
+}

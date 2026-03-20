@@ -12,10 +12,10 @@ use crate::checkpoint::state::{
 };
 use crate::checkpoint::RunContext;
 use crate::config::{Config, ReviewDepth};
-use crate::executor::ProcessExecutor;
 use crate::logger::Logger;
 use crate::reducer::state::{PromptInputsState, PromptPermissionsState};
 use crate::workspace::Workspace;
+use crate::ProcessExecutor;
 use std::sync::Arc;
 
 /// Builder for creating pipeline checkpoints.

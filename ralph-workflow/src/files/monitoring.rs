@@ -379,7 +379,6 @@ fn read_backup_content_secure(path: &Path) -> Option<String> {
     // - Ensure it's a regular file
     #[cfg(unix)]
     {
-        use std::io::Read;
         use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 
         let mut file = OpenOptions::new()
@@ -397,14 +396,12 @@ fn read_backup_content_secure(path: &Path) -> Option<String> {
         }
 
         let mut buf = String::new();
-        file.read_to_string(&mut buf).ok()?;
+        std::io::Read::read_to_string(&mut file, &mut buf).ok()?;
         Some(buf)
     }
 
     #[cfg(not(unix))]
     {
-        use std::io::Read;
-
         let meta = fs::symlink_metadata(path).ok()?;
         if meta.file_type().is_symlink() {
             return None;
@@ -415,14 +412,12 @@ fn read_backup_content_secure(path: &Path) -> Option<String> {
 
         let mut file = std::fs::File::open(path).ok()?;
         let mut buf = String::new();
-        file.read_to_string(&mut buf).ok()?;
+        std::io::Read::read_to_string(&mut file, &mut buf).ok()?;
         Some(buf)
     }
 }
 
 fn restore_prompt_content_atomic(prompt_path: &Path, content: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-
     // Ensure destination is not a directory.
     if let Ok(meta) = fs::symlink_metadata(prompt_path) {
         if meta.is_dir() {
@@ -438,8 +433,8 @@ fn restore_prompt_content_atomic(prompt_path: &Path, content: &[u8]) -> std::io:
         .write(true)
         .create_new(true)
         .open(temp_path)?;
-    file.write_all(content)?;
-    file.flush()?;
+    std::io::Write::write_all(&mut file, content)?;
+    std::io::Write::flush(&mut file)?;
     let _ = file.sync_all();
     drop(file);
 

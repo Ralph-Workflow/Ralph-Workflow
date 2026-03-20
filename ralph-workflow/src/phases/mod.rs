@@ -81,6 +81,7 @@ pub mod commit_logging;
 pub mod context;
 pub mod development;
 pub mod integrity;
+pub mod planning;
 pub mod review;
 pub mod runtime;
 pub mod timing;

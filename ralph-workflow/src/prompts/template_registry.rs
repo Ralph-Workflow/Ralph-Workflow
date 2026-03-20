@@ -13,8 +13,6 @@
 
 use std::path::PathBuf;
 
-use super::io::{get_xdg_config_home, load_template, template_exists};
-
 /// Error type for template loading and rendering operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum TemplateError {
@@ -90,7 +88,7 @@ impl TemplateRegistry {
     pub fn has_user_template(&self, name: &str) -> bool {
         self.user_templates_dir
             .as_ref()
-            .is_some_and(|user_dir| user_dir.join(format!("{name}.txt")).exists())
+            .is_some_and(|user_dir| template_exists(&user_dir.join(format!("{name}.txt"))))
     }
 
     /// Get the source of a template (user or embedded).
@@ -177,6 +175,25 @@ impl TemplateRegistry {
     pub fn template_exists(&self, name: &str) -> bool {
         self.has_user_template(name) || self.get_template(name).is_ok()
     }
+}
+
+fn get_xdg_config_home() -> Option<PathBuf> {
+    std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join(".config"))
+        })
+}
+
+fn template_exists(path: &std::path::Path) -> bool {
+    path.exists()
+}
+
+fn load_template(path: &std::path::Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
 impl Default for TemplateRegistry {

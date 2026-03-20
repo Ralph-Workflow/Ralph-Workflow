@@ -47,8 +47,19 @@ fn scan_dirs_step(
     let scanned = files_scanned + new_counts.values().sum::<usize>();
     let next_queue: Vec<_> = queue_tail.iter().chain(subdirs.iter()).cloned().collect();
 
+    // If next_queue is empty but queue_tail is non-empty, we still have directories
+    // to process - the current directory just had no subdirectories.
     if next_queue.is_empty() {
-        ScanDirsNext::Done(new_counts)
+        if !queue_tail.is_empty() {
+            // Continue with remaining directories from queue_tail
+            ScanDirsNext::Continue {
+                queue: queue_tail.to_vec(),
+                counts: new_counts,
+                files_scanned: scanned,
+            }
+        } else {
+            ScanDirsNext::Done(new_counts)
+        }
     } else {
         ScanDirsNext::Continue {
             queue: next_queue,

@@ -203,6 +203,7 @@ fn test_record_and_emit_integrates_with_backend() {
             c.record_and_emit(&s, &backend)
         });
     assert_eq!(collector.snapshots().len(), 2);
+    assert_eq!(backend.snapshot_count.get(), 2);
 }
 
 #[test]

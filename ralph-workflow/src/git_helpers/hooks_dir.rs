@@ -5,16 +5,15 @@
 
 use crate::git_helpers::repo::ProtectionScope;
 use std::fs;
-use std::io;
 
-pub(crate) fn ensure_scoped_hooks_dir_is_owned(scope: &ProtectionScope) -> io::Result<()> {
+pub(crate) fn ensure_scoped_hooks_dir_is_owned(scope: &ProtectionScope) -> std::io::Result<()> {
     validate_hooks_dir_for_scope(scope, true)
 }
 
 pub(crate) fn validate_hooks_dir_for_scope(
     scope: &ProtectionScope,
     create_if_missing: bool,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     if scope.uses_worktree_scoped_hooks {
         return validate_ralph_scoped_hooks_dir(scope, create_if_missing);
     }
@@ -25,11 +24,11 @@ pub(crate) fn validate_hooks_dir_for_scope(
 fn validate_traditional_hooks_dir(
     scope: &ProtectionScope,
     create_if_missing: bool,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let expected_hooks_dir = scope.git_dir.join("hooks");
     if scope.hooks_dir != expected_hooks_dir {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to use unexpected hooks dir for repository scope: {}",
                 scope.hooks_dir.display()
@@ -40,8 +39,8 @@ fn validate_traditional_hooks_dir(
     match fs::symlink_metadata(&scope.hooks_dir) {
         Ok(meta) => {
             if meta.file_type().is_symlink() || !meta.is_dir() {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
                     format!(
                         "refusing to use non-directory hooks dir: {}",
                         scope.hooks_dir.display()
@@ -49,7 +48,7 @@ fn validate_traditional_hooks_dir(
                 ));
             }
         }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             if !create_if_missing {
                 return Ok(());
             }
@@ -61,8 +60,8 @@ fn validate_traditional_hooks_dir(
     let resolved_hooks_dir = fs::canonicalize(&scope.hooks_dir)?;
     let resolved_git_dir = fs::canonicalize(&scope.git_dir)?;
     if resolved_hooks_dir.parent() != Some(resolved_git_dir.as_path()) {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to use hook dir outside repository git dir: {}",
                 scope.hooks_dir.display()
@@ -76,10 +75,10 @@ fn validate_traditional_hooks_dir(
 fn validate_ralph_scoped_hooks_dir(
     scope: &ProtectionScope,
     create_if_missing: bool,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     if scope.hooks_dir.parent() != Some(scope.ralph_dir.as_path()) {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to install hooks outside Ralph's scoped metadata dir: {}",
                 scope.hooks_dir.display()
@@ -90,8 +89,8 @@ fn validate_ralph_scoped_hooks_dir(
     match fs::symlink_metadata(&scope.hooks_dir) {
         Ok(meta) => {
             if meta.file_type().is_symlink() || !meta.is_dir() {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
                     format!(
                         "refusing to use non-directory scoped hooks dir: {}",
                         scope.hooks_dir.display()
@@ -99,7 +98,7 @@ fn validate_ralph_scoped_hooks_dir(
                 ));
             }
         }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             if !create_if_missing {
                 return Ok(());
             }
@@ -114,8 +113,8 @@ fn validate_ralph_scoped_hooks_dir(
     let resolved_hooks_dir = fs::canonicalize(&scope.hooks_dir)?;
     let resolved_ralph_dir = fs::canonicalize(&scope.ralph_dir)?;
     if resolved_hooks_dir.parent() != Some(resolved_ralph_dir.as_path()) {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
             format!(
                 "refusing to use hook dir outside Ralph's scoped metadata dir: {}",
                 scope.hooks_dir.display()

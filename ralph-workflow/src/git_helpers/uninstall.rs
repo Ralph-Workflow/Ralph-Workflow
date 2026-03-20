@@ -8,8 +8,13 @@ use crate::git_helpers::repo::resolve_protection_scope_from;
 use crate::git_helpers::worktree;
 use crate::logger::Logger;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
 
 pub fn uninstall_hook(hook_path: &Path, _logger: &Logger) -> io::Result<bool> {
     let hook_path_abs = if hook_path.is_absolute() {

@@ -155,7 +155,7 @@ pub mod ui_event;
 mod io_tests;
 
 pub use crate::agents::AgentRole;
-pub use boundary::MainEffectHandler;
+pub type MainEffectHandler = self::boundary::MainEffectHandler;
 pub use effect::{EffectHandler, EffectResult};
 pub use event::PipelineEvent;
 pub use event::PipelinePhase;

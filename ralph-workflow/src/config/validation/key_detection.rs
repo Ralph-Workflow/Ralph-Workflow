@@ -46,14 +46,26 @@ pub fn detect_unknown_and_deprecated_keys(
         .map(|(key, _)| (key.clone(), String::new()))
         .collect();
 
-    let deprecated: KeyLocationList = table
+    let (section_unknown, section_deprecated): (KeyLocationList, KeyLocationList) = table
         .iter()
         .filter(|(key, _)| matches!(key.as_str(), "general"))
-        .flat_map(|(key, value)| {
+        .map(|(key, value)| {
             let prefix = format!("{key}.");
-            check_section(key.as_str(), value, &prefix).1
+            check_section(key.as_str(), value, &prefix)
         })
-        .collect();
+        .fold(
+            (KeyLocationList::new(), KeyLocationList::new()),
+            |(mut unks, mut deps), (unk, dep)| {
+                unks.extend(unk);
+                deps.extend(dep);
+                (unks, deps)
+            },
+        );
+
+    let unknown = unknown.into_iter().chain(section_unknown).collect();
+    let deprecated = std::iter::empty::<(String, String)>()
+        .chain(section_deprecated)
+        .collect::<KeyLocationList>();
 
     (unknown, deprecated)
 }

@@ -48,11 +48,10 @@ fn get_conflicted_files_impl(repo: &git2::Repository) -> io::Result<Vec<String>>
 /// Returns error if the operation fails.
 pub fn get_conflict_markers_for_file(path: &Path) -> io::Result<String> {
     use std::fs;
-    use std::io::Read;
 
     let mut file = fs::File::open(path)?;
     let mut content = String::new();
-    file.read_to_string(&mut content)?;
+    std::io::Read::read_to_string(&mut file, &mut content)?;
 
     let lines: Vec<&str> = content.lines().collect();
 

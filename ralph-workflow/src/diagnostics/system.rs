@@ -1,6 +1,6 @@
 //! System information gathering.
 
-use crate::executor::{ProcessExecutor, RealProcessExecutor};
+use std::process::Command;
 
 /// System information.
 #[derive(Debug, Clone)]
@@ -16,42 +16,33 @@ pub struct SystemInfo {
 }
 
 impl SystemInfo {
-    /// Gather system information using default process executor.
     #[must_use]
     pub fn gather() -> Self {
-        Self::gather_with_executor(&RealProcessExecutor)
+        Self::gather_with_runner(run_command)
     }
 
-    /// Gather system information with a provided process executor.
-    pub fn gather_with_executor(executor: &dyn ProcessExecutor) -> Self {
-        use crate::diagnostics::runtime as rt;
-        let os = rt::get_os_info();
-        let working_directory = rt::get_working_directory()
+    pub fn gather_with_runner(runner: impl Fn(&str, &[&str]) -> Option<String>) -> Self {
+        let os = std::env::consts::OS.to_string();
+        let working_directory = std::env::current_dir()
             .ok()
             .map(|p| p.display().to_string());
-        let shell = rt::get_shell();
-
-        let git_version = executor
-            .execute("git", &["--version"], &[], None)
+        let shell = std::env::var("SHELL")
             .ok()
-            .map(|o| o.stdout.trim().to_string());
+            .or_else(|| std::env::var("ComSpec").ok());
 
-        let git_repo = rt::is_git_repo(executor);
+        let git_version = runner("git", &["--version"]);
+
+        let git_repo = runner("git", &["rev-parse", "--is-inside-work-tree"])
+            .is_some_and(|out| out.trim() == "true");
 
         let git_branch = if git_repo {
-            executor
-                .execute("git", &["branch", "--show-current"], &[], None)
-                .ok()
-                .map(|o| o.stdout.trim().to_string())
+            runner("git", &["branch", "--show-current"])
         } else {
             None
         };
 
         let uncommitted_changes = if git_repo {
-            executor
-                .execute("git", &["status", "--porcelain"], &[], None)
-                .ok()
-                .map(|o| o.stdout.lines().count())
+            runner("git", &["status", "--porcelain"]).map(|o| o.lines().count())
         } else {
             None
         };
@@ -64,7 +55,15 @@ impl SystemInfo {
             git_repo,
             git_branch,
             uncommitted_changes,
-            arch: rt::get_arch().to_string(),
+            arch: std::env::consts::ARCH.to_string(),
         }
     }
+}
+
+fn run_command(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
 }

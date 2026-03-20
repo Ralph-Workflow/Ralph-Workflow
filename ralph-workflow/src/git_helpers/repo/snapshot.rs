@@ -1,5 +1,3 @@
-use std::io;
-
 use crate::git_helpers::git2_to_io_error;
 use itertools::Itertools;
 use std::path::Path;
@@ -11,7 +9,7 @@ use std::path::Path;
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_snapshot() -> io::Result<String> {
+pub fn git_snapshot() -> std::io::Result<String> {
     git_snapshot_in_repo(Path::new("."))
 }
 
@@ -23,7 +21,7 @@ pub fn git_snapshot() -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_snapshot_in_repo(repo_root: &Path) -> io::Result<String> {
+pub fn git_snapshot_in_repo(repo_root: &Path) -> std::io::Result<String> {
     let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     git_snapshot_impl(&repo)
 }
@@ -174,7 +172,7 @@ fn parse_path_component(raw: &str) -> String {
 }
 
 /// Implementation of git snapshot.
-fn git_snapshot_impl(repo: &git2::Repository) -> io::Result<String> {
+fn git_snapshot_impl(repo: &git2::Repository) -> std::io::Result<String> {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true)
         .recurse_untracked_dirs(true)
@@ -187,18 +185,18 @@ fn git_snapshot_impl(repo: &git2::Repository) -> io::Result<String> {
     Ok(lines.into_iter().collect())
 }
 
-fn collect_status_lines(statuses: git2::Statuses) -> io::Result<Vec<String>> {
+fn collect_status_lines(statuses: git2::Statuses) -> std::io::Result<Vec<String>> {
     statuses
         .iter()
         .map(|entry| status_entry_to_porcelain(&entry))
-        .collect::<io::Result<Vec<_>>>()
+        .collect::<std::io::Result<Vec<_>>>()
 }
 
-fn status_entry_to_porcelain(entry: &git2::StatusEntry) -> io::Result<String> {
+fn status_entry_to_porcelain(entry: &git2::StatusEntry) -> std::io::Result<String> {
     let status = entry.status();
     let path = entry.path().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "non-UTF8 path encountered in git status; cannot safely track residual files",
         )
     })?;
@@ -207,10 +205,10 @@ fn status_entry_to_porcelain(entry: &git2::StatusEntry) -> io::Result<String> {
     Ok(format_status_porcelain(status, &path))
 }
 
-fn validate_path_for_snapshot(path: &str) -> io::Result<()> {
+fn validate_path_for_snapshot(path: &str) -> std::io::Result<()> {
     if path.bytes().any(|b| b < 0x20 || b == 0x7F) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "control characters in path encountered in git status; cannot safely snapshot",
         ));
     }
@@ -324,7 +322,6 @@ mod snapshot_tests {
 
     #[test]
     fn test_git_snapshot_in_repo_errors_on_non_utf8_paths() {
-        use std::io;
         use std::os::unix::ffi::OsStrExt;
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -336,7 +333,7 @@ mod snapshot_tests {
         std::fs::write(root.join(name), "x\n").expect("write non-utf8 file");
 
         let err = git_snapshot_in_repo(root).expect_err("expected error");
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 }
 
@@ -346,8 +343,6 @@ mod snapshot_control_char_tests {
 
     #[test]
     fn test_git_snapshot_in_repo_errors_on_control_characters_in_paths() {
-        use std::io;
-
         let tmp = tempfile::tempdir().expect("tempdir");
         let root = tmp.path();
         let _repo = git2::Repository::init(root).expect("init repo");
@@ -357,6 +352,6 @@ mod snapshot_control_char_tests {
         std::fs::write(root.join("x\nfile.rs"), "x\n").expect("write file with newline");
 
         let err = git_snapshot_in_repo(root).expect_err("expected error");
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 }

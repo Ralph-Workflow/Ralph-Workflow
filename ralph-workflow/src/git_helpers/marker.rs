@@ -9,7 +9,6 @@
 
 use crate::git_helpers::repo::{ensure_ralph_git_dir, quarantine_path_in_place, ralph_git_dir};
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
 use std::path::Path;
 
 const MARKER_FILE_NAME: &str = "no_agent_commit";
@@ -27,20 +26,20 @@ pub(crate) fn marker_path_from_ralph_dir(ralph_dir: &Path) -> std::path::PathBuf
     ralph_dir.join(MARKER_FILE_NAME)
 }
 
-fn quarantine_and_create_marker(marker_path: &Path, repo_root: &Path) -> io::Result<()> {
+fn quarantine_and_create_marker(marker_path: &Path, repo_root: &Path) -> std::io::Result<()> {
     quarantine_path_in_place(marker_path, "marker")?;
     create_marker_in_repo_root(repo_root)
 }
 
-fn marker_needs_creation(meta: Result<std::fs::Metadata, io::Error>) -> bool {
+fn marker_needs_creation(meta: Result<std::fs::Metadata, std::io::Error>) -> bool {
     match meta {
         Ok(meta) => !is_regular_file(&meta),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
         Err(_) => true,
     }
 }
 
-pub(crate) fn ensure_marker_exists(repo_root: &Path) -> io::Result<()> {
+pub(crate) fn ensure_marker_exists(repo_root: &Path) -> std::io::Result<()> {
     let ralph_dir = ensure_ralph_git_dir(repo_root)?;
     let marker_path = marker_path_from_ralph_dir(&ralph_dir);
 
@@ -69,11 +68,11 @@ pub(crate) fn ensure_marker_exists(repo_root: &Path) -> io::Result<()> {
 
     match open_res {
         Ok(mut f) => {
-            f.write_all(b"")?;
-            f.flush()?;
+            std::io::Write::write_all(&mut f, b"")?;
+            std::io::Write::flush(&mut f)?;
             let _ = f.sync_all();
         }
-        Err(ref e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e),
     }
     Ok(())
@@ -84,7 +83,7 @@ pub(crate) fn ensure_marker_exists(repo_root: &Path) -> io::Result<()> {
 /// Any non-regular marker path (symlink/directory/socket/FIFO/device) can bypass
 /// hook/wrapper `-f` checks. This function quarantines such paths and recreates
 /// a regular file marker.
-pub(crate) fn repair_marker_if_tampered(repo_root: &Path) -> io::Result<()> {
+pub(crate) fn repair_marker_if_tampered(repo_root: &Path) -> std::io::Result<()> {
     let ralph_dir = ralph_git_dir(repo_root);
     let marker_path = marker_path_from_ralph_dir(&ralph_dir);
 
@@ -102,7 +101,7 @@ pub(crate) fn repair_marker_if_tampered(repo_root: &Path) -> io::Result<()> {
 /// If the path already exists as a regular file, this is a no-op.
 /// If the path exists as a non-regular file (symlink/directory/socket/FIFO/device),
 /// it is quarantined and replaced with a regular file.
-pub(crate) fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
+pub(crate) fn create_marker_in_repo_root(repo_root: &Path) -> std::io::Result<()> {
     let ralph_dir = ensure_ralph_git_dir(repo_root)?;
     let marker_path = marker_path_from_ralph_dir(&ralph_dir);
 
@@ -134,11 +133,11 @@ pub(crate) fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
 
     match open_res {
         Ok(mut f) => {
-            f.write_all(b"")?;
-            f.flush()?;
+            std::io::Write::write_all(&mut f, b"")?;
+            std::io::Write::flush(&mut f)?;
             let _ = f.sync_all();
         }
-        Err(ref e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e),
     }
     Ok(())

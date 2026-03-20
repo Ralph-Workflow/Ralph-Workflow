@@ -6,5 +6,5 @@
 //! The imperative parsing and rendering code lives in the runtime/ boundary module
 //! to satisfy the functional programming lints.
 
-pub use crate::prompts::runtime::Template;
-pub use crate::prompts::template_registry::TemplateError;
+pub type Template = crate::prompts::runtime::Template;
+pub type TemplateError = crate::prompts::template_registry::TemplateError;

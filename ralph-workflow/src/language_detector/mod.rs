@@ -33,8 +33,6 @@ use crate::workspace::Workspace;
 pub use extensions::extension_to_language;
 use extensions::is_non_primary_language;
 
-pub use io::{count_extensions_with_workspace, detect_tests_with_workspace};
-
 /// Maximum number of secondary languages to include in the stack summary.
 ///
 /// Polyglot repos commonly have more than 3 relevant languages (e.g. PHP + TS + JS + SQL),
@@ -210,6 +208,28 @@ pub fn detect_stack_with_workspace(
         test_framework,
         package_manager,
     })
+}
+
+pub fn count_extensions_with_workspace(
+    workspace: &dyn Workspace,
+    root: &Path,
+) -> std::io::Result<std::collections::HashMap<String, usize>> {
+    io::count_extensions_with_workspace(workspace, root)
+}
+
+pub fn detect_tests_with_workspace(
+    workspace: &dyn Workspace,
+    root: &Path,
+    primary_lang: &str,
+) -> bool {
+    io::detect_tests_with_workspace(workspace, root, primary_lang)
+}
+
+fn collect_signature_files_with_workspace(
+    workspace: &dyn Workspace,
+    root: &Path,
+) -> signatures::SignatureFiles {
+    io::collect_signature_files_with_workspace(workspace, root)
 }
 
 #[cfg(test)]

@@ -79,11 +79,12 @@ mod streaming_state;
 pub mod terminal;
 pub mod types;
 
-pub use claude::ClaudeParser;
-pub use codex::CodexParser;
-pub use gemini::GeminiParser;
-pub use opencode::OpenCodeParser;
 pub use terminal::TerminalMode;
+
+pub type ClaudeParser = claude::ClaudeParser;
+pub type CodexParser = codex::CodexParser;
+pub type GeminiParser = gemini::GeminiParser;
+pub type OpenCodeParser = opencode::OpenCodeParser;
 
 #[cfg(test)]
 mod tests;

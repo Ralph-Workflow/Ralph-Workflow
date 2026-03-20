@@ -1,5 +1,4 @@
 use crate::cli::PauseOnExitMode;
-use crate::io::terminal::{TerminalInput, TerminalOutput};
 
 pub trait EnvironmentReader: Send {
     fn var_os(&self, key: &str) -> Option<std::ffi::OsString>;
@@ -72,8 +71,8 @@ pub fn pause_for_enter() -> std::io::Result<()> {
 }
 
 pub fn pause_for_enter_with(
-    input: impl TerminalInput,
-    output: impl TerminalOutput,
+    input: impl crate::io::terminal::TerminalInput,
+    output: impl crate::io::terminal::TerminalOutput,
 ) -> std::io::Result<()> {
     crate::io::terminal::pause_for_enter_with(input, output)
 }

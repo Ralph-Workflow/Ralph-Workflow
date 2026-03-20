@@ -4,7 +4,6 @@
 //! artifacts (e.g. non-UTF8 files from interrupted writes), we attempt a small
 //! set of best-effort repairs so the pipeline can proceed.
 
-use std::io;
 use std::path::Path;
 
 use crate::workspace::Workspace;
@@ -89,7 +88,7 @@ fn validate_agent_state_with_workspace(
 fn remove_zero_length_files_with_workspace(
     workspace: &dyn Workspace,
     agent_dir: &Path,
-) -> io::Result<usize> {
+) -> std::io::Result<usize> {
     let filenames = [
         "PLAN.md",
         "ISSUES.md",
@@ -128,7 +127,7 @@ fn remove_zero_length_files_with_workspace(
 pub fn auto_repair_with_workspace(
     workspace: &dyn Workspace,
     agent_dir: &Path,
-) -> io::Result<RecoveryStatus> {
+) -> std::io::Result<RecoveryStatus> {
     if !workspace.exists(agent_dir) {
         workspace.create_dir_all(&agent_dir.join("logs"))?;
         return Ok(RecoveryStatus::Recovered);

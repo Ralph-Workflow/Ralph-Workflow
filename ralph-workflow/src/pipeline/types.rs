@@ -1,13 +1,12 @@
 //! Core pipeline types (cleanup guards and command results).
 
-use crate::executor::ChildProcessInfo;
 use crate::files::{cleanup_generated_files_with_workspace, make_prompt_writable_with_workspace};
 use crate::git_helpers::{
     disable_git_wrapper, end_agent_phase_in_repo, try_remove_ralph_dir, uninstall_hooks_in_repo,
     verify_hooks_removed, verify_ralph_dir_removed, verify_wrapper_cleaned, GitHelpers,
 };
 use crate::logger::Logger;
-use crate::workspace::Workspace;
+use crate::{ChildProcessInfo, Workspace};
 
 /// Result of running a command, including stderr for error classification.
 pub struct CommandResult {

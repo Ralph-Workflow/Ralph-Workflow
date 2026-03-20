@@ -15,10 +15,15 @@
 //! The starting commit file persists across pipeline runs unless explicitly
 //! reset by the user via the `--reset-start-commit` CLI command.
 
-use std::io;
 use std::path::Path;
 
 use crate::workspace::{Workspace, WorkspaceFs};
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
 
 /// Path to the starting commit file.
 ///

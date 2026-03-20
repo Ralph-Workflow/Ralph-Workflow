@@ -1,7 +1,4 @@
 fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
-    use super::boundary as fs_io;
-    use super::boundary as term;
-
     let templates_dir = TemplateRegistry::default_user_templates_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory for templates"))?;
 
@@ -16,25 +13,25 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
     let _ = (source, has_user);
 
     let _ = writeln!(
-        term::stdout(),
+        crate::cli::handlers::boundary::stdout(),
         "{}Initializing user templates directory...{}",
         colors.bold(),
         colors.reset()
     );
     let _ = writeln!(
-        term::stdout(),
+        crate::cli::handlers::boundary::stdout(),
         "  Location: {}{}{}",
         colors.cyan(),
         templates_dir.display(),
         colors.reset()
     );
-    let _ = writeln!(term::stdout());
+    let _ = writeln!(crate::cli::handlers::boundary::stdout());
 
     // Check if directory already exists
     if templates_dir.exists() {
         if force {
             let _ = writeln!(
-                term::stdout(),
+                crate::cli::handlers::boundary::stdout(),
                 "{}Warning: {}Directory already exists. Overwriting...{}",
                 colors.yellow(),
                 colors.reset(),
@@ -42,27 +39,33 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
             );
         } else {
             let _ = writeln!(
-                term::stdout(),
+                crate::cli::handlers::boundary::stdout(),
                 "{}Error: {}Directory already exists. Use --force to overwrite.{}",
                 colors.red(),
                 colors.reset(),
                 colors.reset()
             );
-            let _ = writeln!(term::stdout());
-            let _ = writeln!(term::stdout(), "To reinitialize with defaults, run:");
-            let _ = writeln!(term::stdout(), "  ralph --template-init --force");
+            let _ = writeln!(crate::cli::handlers::boundary::stdout());
+            let _ = writeln!(
+                crate::cli::handlers::boundary::stdout(),
+                "To reinitialize with defaults, run:"
+            );
+            let _ = writeln!(
+                crate::cli::handlers::boundary::stdout(),
+                "  ralph --template-init --force"
+            );
             return Err(anyhow::anyhow!("Templates directory already exists"));
         }
     }
 
     // Create directory structure
-    fs_io::create_dir_all(&templates_dir)?;
+    crate::cli::handlers::boundary::create_dir_all(&templates_dir)?;
 
     let shared_dir = templates_dir.join("shared");
-    fs_io::create_dir_all(&shared_dir)?;
+    crate::cli::handlers::boundary::create_dir_all(&shared_dir)?;
 
     let reviewer_dir = templates_dir.join("reviewer");
-    fs_io::create_dir_all(&reviewer_dir)?;
+    crate::cli::handlers::boundary::create_dir_all(&reviewer_dir)?;
 
     // Copy all templates from the embedded templates
     let templates = get_all_templates();
@@ -93,7 +96,7 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
                     return (copied, skipped + 1);
                 }
 
-                if fs_io::write(&target_path, content).is_ok() {
+                if crate::cli::handlers::boundary::write(&target_path, content).is_ok() {
                     (copied + 1, skipped)
                 } else {
                     (copied, skipped)
@@ -110,7 +113,7 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
                 if target_path.exists() && !force {
                     return (copied, skipped + 1);
                 }
-                if fs_io::write(&target_path, content).is_ok() {
+                if crate::cli::handlers::boundary::write(&target_path, content).is_ok() {
                     (copied + 1, skipped)
                 } else {
                     (copied, skipped)
@@ -118,25 +121,35 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
             });
 
     let _ = writeln!(
-        term::stdout(),
+        crate::cli::handlers::boundary::stdout(),
         "{}Successfully initialized user templates!{}",
         colors.green(),
         colors.reset()
     );
-    let _ = writeln!(term::stdout());
-    let _ = writeln!(term::stdout(), "  {final_copied} templates copied");
+    let _ = writeln!(crate::cli::handlers::boundary::stdout());
+    let _ = writeln!(
+        crate::cli::handlers::boundary::stdout(),
+        "  {final_copied} templates copied"
+    );
     if final_skipped > 0 {
         let _ = writeln!(
-            term::stdout(),
+            crate::cli::handlers::boundary::stdout(),
             "  {final_skipped} templates skipped (already exists)"
         );
     }
-    let _ = writeln!(term::stdout());
-    let _ = writeln!(term::stdout(), "You can now edit templates in:");
-    let _ = writeln!(term::stdout(), "  {}", templates_dir.display());
-    let _ = writeln!(term::stdout());
+    let _ = writeln!(crate::cli::handlers::boundary::stdout());
     let _ = writeln!(
-        term::stdout(),
+        crate::cli::handlers::boundary::stdout(),
+        "You can now edit templates in:"
+    );
+    let _ = writeln!(
+        crate::cli::handlers::boundary::stdout(),
+        "  {}",
+        templates_dir.display()
+    );
+    let _ = writeln!(crate::cli::handlers::boundary::stdout());
+    let _ = writeln!(
+        crate::cli::handlers::boundary::stdout(),
         "Changes to user templates will override the built-in templates."
     );
 

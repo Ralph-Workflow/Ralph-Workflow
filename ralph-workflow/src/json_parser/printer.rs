@@ -18,7 +18,7 @@ include!("printer/io_test_printer.rs");
 include!("printer/streaming_printer.rs");
 
 // Virtual terminal (test-utils only)
-include!("printer/virtual_terminal/mod.rs");
+include!("printer/virtual_terminal.rs");
 
 // Tests
 include!("printer/io_tests.rs");

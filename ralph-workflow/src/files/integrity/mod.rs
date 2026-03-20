@@ -4,7 +4,6 @@
 //! corruption (e.g. zero-length or binary files) in small, text-based agent
 //! artifacts like `PLAN.md` and `commit-message.txt`.
 
-use std::io;
 use std::path::Path;
 
 use crate::workspace::Workspace;
@@ -34,7 +33,7 @@ pub fn write_file_atomic_with_workspace(
     workspace: &dyn Workspace,
     path: &Path,
     content: &str,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     workspace.write_atomic(path, content)
 }
 
@@ -56,7 +55,7 @@ pub fn write_file_atomic_with_workspace(
 pub fn verify_file_not_corrupted_with_workspace(
     workspace: &dyn Workspace,
     path: &Path,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     let content = workspace.read_bytes(path)?;
 
     // Check size limits
@@ -98,7 +97,7 @@ pub fn verify_file_not_corrupted_with_workspace(
 pub fn check_filesystem_ready_with_workspace(
     workspace: &dyn Workspace,
     path: &Path,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     // Create directory if it doesn't exist
     if !workspace.is_dir(path) {
         workspace.create_dir_all(path)?;
@@ -129,7 +128,7 @@ pub fn check_filesystem_ready_with_workspace(
             })
             .next()
     }) {
-        return Err(io::Error::other(format!(
+        return Err(std::io::Error::other(format!(
             "Stale lock file found: {lock_file}"
         )));
     }
@@ -180,7 +179,7 @@ pub fn check_xml_file_writable_with_workspace(
     workspace: &dyn Workspace,
     xml_path: &Path,
     force_cleanup: bool,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     // If file doesn't exist, it's writable (we can create it)
     if !workspace.exists(xml_path) {
         return Ok(false);
@@ -218,7 +217,7 @@ pub fn check_and_cleanup_xml_before_retry_with_workspace(
     workspace: &dyn Workspace,
     xml_path: &Path,
     logger: &crate::logger::Logger,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     match check_xml_file_writable_with_workspace(workspace, xml_path, false) {
         Ok(true | false) => Ok(()),
         Err(e) => {
@@ -270,7 +269,7 @@ pub fn cleanup_stale_xml_files_with_workspace(
     workspace: &dyn Workspace,
     tmp_dir: &Path,
     force_cleanup: bool,
-) -> io::Result<String> {
+) -> std::io::Result<String> {
     if !workspace.is_dir(tmp_dir) {
         return Ok("Directory doesn't exist yet - nothing to clean".to_string());
     }

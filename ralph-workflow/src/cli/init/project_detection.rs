@@ -3,10 +3,6 @@
 // This file is included via include!() macro from the parent init.rs module.
 // Contains Levenshtein distance calculation and template name fuzzy matching.
 
-/// Calculate Levenshtein distance between two strings.
-///
-/// Returns the minimum number of single-character edits (insertions, deletions,
-/// or substitutions) required to change one string into the other.
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
@@ -20,32 +16,30 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
         return a_len;
     }
 
-    fn compute_row(a_chars: &[char], b_chars: &[char], prev_row: &[usize], i: usize) -> Vec<usize> {
-        (0..=b_chars.len())
-            .map(|j| {
-                if j == 0 {
-                    i
-                } else {
-                    let _cost = usize::from(a_chars[i - 1] != b_chars[j - 1]);
-                    std::cmp::min(
-                        std::cmp::min(prev_row[j] + 1, prev_row[j - 1] + 1),
-                        if a_chars[i - 1] == b_chars[j - 1] {
-                            prev_row[j - 1]
-                        } else {
-                            prev_row[j - 1] + 1
-                        },
-                    )
-                }
-            })
-            .collect()
-    }
+    let final_row = b_chars.iter().enumerate().fold(
+        (0..=a_len).collect::<Vec<usize>>(),
+        |prev_row, (j, b_char)| {
+            let first_val = j;
+            let curr_row: Vec<usize> = (0..=a_len)
+                .scan(first_val, |prev_val, i| {
+                    if i == 0 {
+                        Some(first_val)
+                    } else {
+                        let cost = usize::from(*b_char != a_chars[i - 1]);
+                        let curr = (*prev_val)
+                            .saturating_add(1)
+                            .min(prev_row[i].saturating_add(1))
+                            .min(prev_row[i - 1].saturating_add(cost));
+                        *prev_val = curr;
+                        Some(curr)
+                    }
+                })
+                .collect();
+            curr_row
+        },
+    );
 
-    let initial_row: Vec<usize> = (0..=b_len).collect();
-    let final_row = (0..=a_len).fold(initial_row, |prev_row, i| {
-        compute_row(&a_chars, &b_chars, &prev_row, i)
-    });
-
-    final_row[b_len]
+    *final_row.get(a_len).unwrap_or(&a_len)
 }
 
 /// Calculate similarity score as a percentage (0-100).

@@ -17,7 +17,6 @@
 use crate::agents::{AgentDrain, AgentRegistry};
 use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult};
 use crate::config::Config;
-use crate::executor::ProcessExecutor;
 use crate::files::{
     delete_commit_message_file_with_workspace, read_commit_message_file_with_workspace,
     write_commit_message_file_with_workspace,
@@ -29,6 +28,7 @@ use crate::phases::generate_commit_message_with_chain;
 
 use crate::prompts::TemplateContext;
 use crate::workspace::Workspace;
+use crate::ProcessExecutor;
 use std::sync::Arc;
 
 /// Configuration for commit message generation in plumbing commands.

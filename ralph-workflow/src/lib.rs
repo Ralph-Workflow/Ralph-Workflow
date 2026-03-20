@@ -127,11 +127,11 @@ pub mod app;
 pub mod banner;
 pub mod boundary;
 pub mod checkpoint;
-pub mod config_loading;
 pub mod cli;
 pub mod cloud;
 pub mod common;
 pub mod config;
+pub mod config_loading;
 pub mod diagnostics;
 pub mod executor;
 pub mod exit_pause;
@@ -174,12 +174,24 @@ pub use files::llm_output_extraction::validate_xml_against_xsd;
 
 // Re-export process executor types for dependency injection.
 // See [`executor`] module for documentation.
-pub use executor::{
+mod executor_reexports_boundary {
+    pub use crate::executor::{
+        AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
+        ProcessExecutor, ProcessOutput, RealAgentChild, RealProcessExecutor,
+    };
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub use crate::executor::{MockAgentChild, MockProcessExecutor};
+}
+
+pub use executor_reexports_boundary::{
     AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
     ProcessExecutor, ProcessOutput, RealAgentChild, RealProcessExecutor,
 };
 
+pub use workspace::Workspace;
+
 // Re-export mock executor for test-utils feature.
 // Use MockProcessExecutor to control process behavior in integration tests.
 #[cfg(any(test, feature = "test-utils"))]
-pub use executor::{MockAgentChild, MockProcessExecutor};
+pub use executor_reexports_boundary::{MockAgentChild, MockProcessExecutor};

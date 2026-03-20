@@ -13,7 +13,6 @@
 mod types;
 mod validation;
 
-#[cfg(test)]
 pub use types::DevelopmentResultElements;
 pub use validation::validate_continuation_development_result_xml;
 pub use validation::validate_development_result_xml;

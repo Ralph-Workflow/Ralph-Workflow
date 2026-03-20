@@ -8,14 +8,13 @@ use crate::agents::{AgentDrain, AgentRegistry};
 use crate::checkpoint::execution_history::ExecutionHistory;
 use crate::checkpoint::RunContext;
 use crate::config::Config;
-use crate::executor::ProcessExecutor;
 use crate::guidelines::ReviewGuidelines;
 use crate::logger::{Colors, Logger};
 use crate::logging::RunLogContext;
 use crate::pipeline::Timer;
 use crate::prompts::template_context::TemplateContext;
-use crate::runtime::environment::GitEnvironment;
 use crate::workspace::Workspace;
+use crate::ProcessExecutor;
 // MemoryWorkspace is used in test fixtures for proper DI
 #[cfg(test)]
 use crate::workspace::MemoryWorkspace;
@@ -110,7 +109,7 @@ pub struct PhaseContext<'a> {
     ///
     /// Used by cloud handlers to configure GIT_SSH_COMMAND and GIT_TERMINAL_PROMPT
     /// without calling `std::env::set_var` directly.
-    pub env: &'a dyn GitEnvironment,
+    pub env: &'a dyn crate::runtime::environment::GitEnvironment,
 }
 
 impl PhaseContext<'_> {

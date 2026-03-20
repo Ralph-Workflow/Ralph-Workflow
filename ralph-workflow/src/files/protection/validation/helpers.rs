@@ -2,7 +2,6 @@
 
 use crate::workspace::{Workspace, WorkspaceFs};
 use std::fs;
-use std::io::IsTerminal;
 use std::path::Path;
 
 pub(super) fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
@@ -253,7 +252,7 @@ pub fn validate_prompt_md_with_workspace(
             ));
         } else {
             // No backup available
-            if interactive && std::io::stdout().is_terminal() {
+            if interactive && std::io::IsTerminal::is_terminal(&std::io::stdout()) {
                 result.errors.push(
                     "PROMPT.md not found. Use 'ralph --init <template>' to create one.".to_string(),
                 );

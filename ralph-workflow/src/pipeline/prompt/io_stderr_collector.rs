@@ -1,13 +1,12 @@
 //! Stderr collection utilities.
 
-use std::io::{self, Read};
 use std::sync::Arc;
 
-pub fn collect_stderr_with_cap_and_drain<R: Read>(
+pub fn collect_stderr_with_cap_and_drain<R: std::io::Read>(
     mut reader: R,
     max_bytes: usize,
     cancel: &std::sync::atomic::AtomicBool,
-) -> io::Result<String> {
+) -> std::io::Result<String> {
     let mut buf = [0u8; 8192];
     let mut collected = Vec::<u8>::new();
     let mut truncated = false;
@@ -17,9 +16,9 @@ pub fn collect_stderr_with_cap_and_drain<R: Read>(
             break;
         }
 
-        let n = match reader.read(&mut buf) {
+        let n = match std::io::Read::read(&mut reader, &mut buf) {
             Ok(n) => n,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 continue;
             }
@@ -54,7 +53,7 @@ pub fn collect_stderr_with_cap_and_drain<R: Read>(
 
 pub fn cancel_and_join_stderr_collector(
     cancel: &Arc<std::sync::atomic::AtomicBool>,
-    stderr_join_handle: &mut Option<std::thread::JoinHandle<io::Result<String>>>,
+    stderr_join_handle: &mut Option<std::thread::JoinHandle<std::io::Result<String>>>,
     join_timeout: std::time::Duration,
 ) {
     use std::sync::atomic::Ordering;

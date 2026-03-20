@@ -4,8 +4,6 @@
 //! All functions here may use mutation, imperative loops, and I/O.
 
 use std::fs;
-use std::io;
-use std::io::Write;
 use std::path::Path;
 
 /// Rebase lock file name.
@@ -28,7 +26,7 @@ fn build_lock_content() -> String {
     format!("pid={pid}\ntimestamp={timestamp}\n")
 }
 
-fn should_acquire_lock(lock_path: &Path) -> io::Result<bool> {
+fn should_acquire_lock(lock_path: &Path) -> std::io::Result<bool> {
     if !lock_path.exists() {
         return Ok(true);
     }
@@ -45,7 +43,7 @@ fn should_acquire_lock(lock_path: &Path) -> io::Result<bool> {
 /// Returns an error if:
 /// - The lock file exists and is not stale
 /// - The lock file cannot be created
-pub fn acquire_rebase_lock() -> io::Result<()> {
+pub fn acquire_rebase_lock() -> std::io::Result<()> {
     let lock_path_str = rebase_lock_path();
     let lock_path = Path::new(&lock_path_str);
 
@@ -63,15 +61,15 @@ pub fn acquire_rebase_lock() -> io::Result<()> {
 
     let lock_content = build_lock_content();
     let mut file = fs::File::create(lock_path)?;
-    file.write_all(lock_content.as_bytes())?;
+    std::io::Write::write_all(&mut file, lock_content.as_bytes())?;
     file.sync_all()?;
 
     Ok(())
 }
 
-fn lock_already_held_error() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::PermissionDenied,
+fn lock_already_held_error() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
         "Rebase is already in progress. If you believe this is incorrect, \
          wait 30 minutes for the lock to expire or manually remove `.agent/rebase.lock`.",
     )
@@ -84,7 +82,7 @@ fn lock_already_held_error() -> io::Error {
 /// # Errors
 ///
 /// Returns an error if the lock file exists but cannot be removed.
-pub fn release_rebase_lock() -> io::Result<()> {
+pub fn release_rebase_lock() -> std::io::Result<()> {
     let lock_path = rebase_lock_path();
     let path = Path::new(&lock_path);
 
@@ -102,7 +100,7 @@ pub fn release_rebase_lock() -> io::Result<()> {
 /// # Returns
 ///
 /// Returns `true` if the lock is stale, `false` otherwise.
-fn is_lock_stale() -> io::Result<bool> {
+fn is_lock_stale() -> std::io::Result<bool> {
     let lock_path = rebase_lock_path();
     let path = Path::new(&lock_path);
 
@@ -119,23 +117,28 @@ fn is_lock_stale() -> io::Result<bool> {
     Ok(elapsed.num_seconds() > timeout_seconds)
 }
 
-fn parse_lock_timestamp(content: &str) -> io::Result<chrono::DateTime<chrono::Utc>> {
+fn parse_lock_timestamp(content: &str) -> std::io::Result<chrono::DateTime<chrono::Utc>> {
     let timestamp_line = content
         .lines()
         .find(|line| line.starts_with("timestamp="))
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Lock file missing timestamp"))?;
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Lock file missing timestamp",
+            )
+        })?;
 
     let timestamp_str = timestamp_line.strip_prefix("timestamp=").ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             "Invalid timestamp format in lock file",
         )
     })?;
 
     chrono::DateTime::parse_from_rfc3339(timestamp_str)
         .map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
                 "Invalid timestamp format in lock file",
             )
         })

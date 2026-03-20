@@ -12,14 +12,12 @@ use crate::pipeline::idle_timeout::{
     MonitorResult, StderrActivityTracker, DEFAULT_KILL_CONFIG, IDLE_TIMEOUT_SECS,
 };
 use crate::pipeline::prompt::io_streaming;
+use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
+use crate::pipeline::prompt::SIGTERM_EXIT_CODE;
 use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
-use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-
-use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
-use crate::pipeline::prompt::SIGTERM_EXIT_CODE;
 
 const INTERRUPT_KILL_CONFIG: KillConfig = KillConfig::new(
     std::time::Duration::from_millis(500),
@@ -54,13 +52,13 @@ pub(crate) fn run_with_agent_spawn(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     anthropic_env_vars_to_sanitize: &[&str],
-) -> io::Result<CommandResult> {
+) -> Result<CommandResult, std::io::Error> {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     let argv = split_command(cmd.cmd_str)?;
     if argv.is_empty() || cmd.cmd_str.trim().is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             "Agent command is empty or contains only whitespace",
         ));
     }
@@ -124,13 +122,13 @@ pub(crate) fn run_with_agent_spawn(
         Ok(handle) => handle,
         Err(e) => {
             let (exit_code, detail) = match e.kind() {
-                io::ErrorKind::NotFound => (127, "command not found"),
-                io::ErrorKind::PermissionDenied => (126, "permission denied"),
-                io::ErrorKind::ArgumentListTooLong => {
+                std::io::ErrorKind::NotFound => (127, "command not found"),
+                std::io::ErrorKind::PermissionDenied => (126, "permission denied"),
+                std::io::ErrorKind::ArgumentListTooLong => {
                     (7, "argument list too long (prompt exceeds OS limit)")
                 }
-                io::ErrorKind::InvalidInput => (22, "invalid input"),
-                io::ErrorKind::OutOfMemory => (12, "out of memory"),
+                std::io::ErrorKind::InvalidInput => (22, "invalid input"),
+                std::io::ErrorKind::OutOfMemory => (12, "out of memory"),
                 _ => (1, "spawn failed"),
             };
             return Ok(CommandResult {
@@ -197,16 +195,18 @@ pub(crate) fn run_with_agent_spawn(
     let stderr_cancel = Arc::new(AtomicBool::new(false));
     let stderr_cancel_for_thread = Arc::clone(&stderr_cancel);
 
-    let mut stderr_join_handle = Some(std::thread::spawn(move || -> io::Result<String> {
-        const STDERR_MAX_BYTES: usize = 512 * 1024;
-        let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
-        let reader = BufReader::new(tracked_stderr);
-        super::io_stderr_collector::collect_stderr_with_cap_and_drain(
-            reader,
-            STDERR_MAX_BYTES,
-            stderr_cancel_for_thread.as_ref(),
-        )
-    }));
+    let mut stderr_join_handle = Some(std::thread::spawn(
+        move || -> Result<String, std::io::Error> {
+            const STDERR_MAX_BYTES: usize = 512 * 1024;
+            let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
+            let reader = std::io::BufReader::new(tracked_stderr);
+            super::io_stderr_collector::collect_stderr_with_cap_and_drain(
+                reader,
+                STDERR_MAX_BYTES,
+                stderr_cancel_for_thread.as_ref(),
+            )
+        },
+    ));
 
     let activity_timestamp_for_timeout = activity_timestamp.clone();
     if let Err(e) = super::io_streaming::stream_agent_output_from_handle(

@@ -5,7 +5,6 @@
 //! for the reviewer phase.
 use crate::logger::Logger;
 use crate::workspace::Workspace;
-use std::io;
 use std::path::Path;
 
 // Vague status line constants (for isolation mode)
@@ -29,7 +28,7 @@ pub const VAGUE_ISSUES_LINE: &str = "No issues recorded.";
 pub fn delete_issues_file_for_isolation_with_workspace(
     workspace: &dyn Workspace,
     logger: &Logger,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let issues_path = Path::new(".agent/ISSUES.md");
 
     if workspace.exists(issues_path) {
@@ -48,7 +47,7 @@ fn overwrite_one_liner_with_workspace(
     workspace: &dyn Workspace,
     path: &Path,
     line: &str,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let first_line = line.lines().next().unwrap_or_default().trim();
     let content = if first_line.is_empty() {
         "\n".to_string()
@@ -83,7 +82,7 @@ pub fn clean_context_for_reviewer_with_workspace(
     workspace: &dyn Workspace,
     logger: &Logger,
     isolation_mode: bool,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     if isolation_mode {
         // In isolation mode, these files don't exist, so nothing to clean
         logger.info("Isolation mode: skipping context cleanup (files don't exist)");
@@ -136,7 +135,7 @@ pub fn update_status_with_workspace(
     workspace: &dyn Workspace,
     _status: &str,
     isolation_mode: bool,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     if isolation_mode {
         // In isolation mode, STATUS.md should not exist
         return Ok(());

@@ -1,8 +1,4 @@
-use crate::json_parser::printer::Printable;
 use crate::logger::Logger;
-use std::io::Write;
-
-use crate::logger::runtime::{stdout_flush, stdout_is_terminal, stdout_write};
 
 pub struct LoggerIoWrapper {
     logger: Logger,
@@ -22,18 +18,18 @@ impl LoggerIoWrapper {
     }
 }
 
-impl Write for LoggerIoWrapper {
+impl std::io::Write for LoggerIoWrapper {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        stdout_write(buf)
+        crate::logger::runtime::stdout_write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        stdout_flush()
+        crate::logger::runtime::stdout_flush()
     }
 }
 
-impl Printable for LoggerIoWrapper {
+impl crate::json_parser::printer::Printable for LoggerIoWrapper {
     fn is_terminal(&self) -> bool {
-        stdout_is_terminal()
+        crate::logger::runtime::stdout_is_terminal()
     }
 }

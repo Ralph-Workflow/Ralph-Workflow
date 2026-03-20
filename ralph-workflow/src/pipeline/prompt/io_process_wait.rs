@@ -2,15 +2,14 @@
 
 use crate::pipeline::idle_timeout::MonitorResult;
 use crate::pipeline::prompt::PipelineRuntime;
-use std::io;
 use std::sync::Arc;
 
 pub fn wait_for_completion_and_collect_stderr(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
-    stderr_join_handle: &mut Option<std::thread::JoinHandle<io::Result<String>>>,
+    stderr_join_handle: &mut Option<std::thread::JoinHandle<std::io::Result<String>>>,
     monitor_handle: &mut Option<std::thread::JoinHandle<MonitorResult>>,
     runtime: &PipelineRuntime<'_>,
-) -> io::Result<(i32, String, Option<MonitorResult>)> {
+) -> std::io::Result<(i32, String, Option<MonitorResult>)> {
     use std::time::Duration;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +51,7 @@ pub fn wait_for_completion_and_collect_stderr(
     }
 
     fn try_take_stderr_output(
-        stderr_join_handle: &mut Option<std::thread::JoinHandle<io::Result<String>>>,
+        stderr_join_handle: &mut Option<std::thread::JoinHandle<std::io::Result<String>>>,
         runtime: &PipelineRuntime<'_>,
     ) -> String {
         let finished = stderr_join_handle
@@ -206,7 +205,7 @@ mod tests {
         let child_arc: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>> =
             Arc::new(std::sync::Mutex::new(Box::new(child)));
 
-        let mut stderr_join_handle: Option<std::thread::JoinHandle<io::Result<String>>> = None;
+        let mut stderr_join_handle: Option<std::thread::JoinHandle<std::io::Result<String>>> = None;
         let mut monitor_handle: Option<std::thread::JoinHandle<MonitorResult>> = None;
 
         let workspace = MemoryWorkspace::new_test();
@@ -265,7 +264,7 @@ mod tests {
         let child_arc: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>> =
             Arc::new(std::sync::Mutex::new(Box::new(child)));
 
-        let mut stderr_join_handle: Option<std::thread::JoinHandle<io::Result<String>>> = None;
+        let mut stderr_join_handle: Option<std::thread::JoinHandle<std::io::Result<String>>> = None;
         let mut monitor_handle: Option<std::thread::JoinHandle<MonitorResult>> =
             Some(std::thread::spawn(|| panic!("monitor blew up")));
 

@@ -1,4 +1,3 @@
-use std::io;
 use std::path::Path;
 
 use crate::files::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
@@ -39,7 +38,7 @@ pub const GENERATED_FILES: &[&str] = &[
 pub fn ensure_files_with_workspace(
     workspace: &dyn Workspace,
     isolation_mode: bool,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let agent_dir = Path::new(".agent");
 
     // Best-effort state repair before we start touching `.agent/` contents.
@@ -47,7 +46,7 @@ pub fn ensure_files_with_workspace(
     if let recovery::RecoveryStatus::Unrecoverable(msg) =
         recovery::auto_repair_with_workspace(workspace, agent_dir)?
     {
-        return Err(io::Error::other(format!(
+        return Err(std::io::Error::other(format!(
             "Failed to repair .agent state: {msg}"
         )));
     }
@@ -108,7 +107,7 @@ pub fn file_contains_marker_with_workspace(
     workspace: &dyn Workspace,
     path: &Path,
     marker: &str,
-) -> io::Result<bool> {
+) -> std::io::Result<bool> {
     if !workspace.exists(path) {
         return Ok(false);
     }
@@ -127,7 +126,7 @@ pub fn file_contains_marker_with_workspace(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn file_contains_marker(path: &Path, marker: &str) -> io::Result<bool> {
+pub fn file_contains_marker(path: &Path, marker: &str) -> std::io::Result<bool> {
     if !path.exists() {
         return Ok(false);
     }
@@ -143,7 +142,7 @@ pub fn file_contains_marker(path: &Path, marker: &str) -> io::Result<bool> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn delete_plan_file_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
+pub fn delete_plan_file_with_workspace(workspace: &dyn Workspace) -> std::io::Result<()> {
     let plan_path = Path::new(".agent/PLAN.md");
     if workspace.exists(plan_path) {
         workspace.remove(plan_path)?;
@@ -158,7 +157,7 @@ pub fn delete_plan_file_with_workspace(workspace: &dyn Workspace) -> io::Result<
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn delete_commit_message_file_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
+pub fn delete_commit_message_file_with_workspace(workspace: &dyn Workspace) -> std::io::Result<()> {
     let msg_path = Path::new(".agent/commit-message.txt");
     if workspace.exists(msg_path) {
         workspace.remove(msg_path)?;
@@ -173,21 +172,23 @@ pub fn delete_commit_message_file_with_workspace(workspace: &dyn Workspace) -> i
 /// # Errors
 ///
 /// Returns an error if the file doesn't exist, cannot be read, or is empty.
-pub fn read_commit_message_file_with_workspace(workspace: &dyn Workspace) -> io::Result<String> {
+pub fn read_commit_message_file_with_workspace(
+    workspace: &dyn Workspace,
+) -> std::io::Result<String> {
     let msg_path = Path::new(".agent/commit-message.txt");
 
     if workspace.exists(msg_path) {
         // Use workspace-based verification
         if !super::integrity::verify_file_not_corrupted_with_workspace(workspace, msg_path)? {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
                 ".agent/commit-message.txt appears corrupted",
             ));
         }
     }
 
     let content = workspace.read(msg_path).map_err(|e| {
-        io::Error::new(
+        std::io::Error::new(
             e.kind(),
             format!("Failed to read .agent/commit-message.txt: {e}"),
         )
@@ -195,8 +196,8 @@ pub fn read_commit_message_file_with_workspace(workspace: &dyn Workspace) -> io:
 
     let trimmed = content.trim();
     if trimmed.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
             ".agent/commit-message.txt is empty",
         ));
     }
@@ -216,7 +217,7 @@ pub fn read_commit_message_file_with_workspace(workspace: &dyn Workspace) -> io:
 pub fn write_commit_message_file_with_workspace(
     workspace: &dyn Workspace,
     message: &str,
-) -> io::Result<()> {
+) -> std::io::Result<()> {
     let msg_path = Path::new(".agent/commit-message.txt");
     workspace.write_atomic(msg_path, message)
 }
@@ -238,7 +239,7 @@ pub fn cleanup_generated_files_with_workspace(workspace: &dyn Workspace) {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn setup_xsd_schemas_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
+pub fn setup_xsd_schemas_with_workspace(workspace: &dyn Workspace) -> std::io::Result<()> {
     let tmp_dir = Path::new(".agent/tmp");
     workspace.create_dir_all(tmp_dir)?;
 

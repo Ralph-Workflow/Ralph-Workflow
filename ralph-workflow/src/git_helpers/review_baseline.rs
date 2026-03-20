@@ -16,10 +16,15 @@
 //! This prevents "diff scope creep" where previous fix commits pollute
 //! subsequent review passes.
 
-use std::io;
 use std::path::Path;
 
 use crate::workspace::{Workspace, WorkspaceFs};
+
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
 
 use super::start_commit::get_current_head_oid;
 

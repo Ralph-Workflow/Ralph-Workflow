@@ -1,5 +1,4 @@
 use crate::pipeline::types::CommandResult;
-use std::io;
 
 use super::types::{PipelineRuntime, PromptArchiveInfo, PromptCommand, PromptSaveOptions};
 
@@ -13,7 +12,7 @@ use super::types::{PipelineRuntime, PromptArchiveInfo, PromptCommand, PromptSave
 pub fn run_with_prompt(
     cmd: &PromptCommand<'_>,
     runtime: &mut PipelineRuntime<'_>,
-) -> io::Result<CommandResult> {
+) -> std::io::Result<CommandResult> {
     const ANTHROPIC_ENV_VARS_TO_SANITIZE: &[&str] = &[
         "ANTHROPIC_API_KEY",
         "ANTHROPIC_BASE_URL",

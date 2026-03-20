@@ -118,12 +118,15 @@ mod cloud;
 mod commit;
 mod context;
 mod development;
-mod io;
+mod io_agent;
+mod io_cloud;
 mod lifecycle;
 mod planning;
 mod rebase;
-mod retry_guidance;
-mod review;
+pub(crate) mod retry_guidance;
+mod run_fix;
+mod run_review;
+mod run_review_prompt;
 
 #[cfg(test)]
 mod tests;

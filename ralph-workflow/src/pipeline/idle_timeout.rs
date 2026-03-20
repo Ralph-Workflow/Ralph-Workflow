@@ -89,14 +89,81 @@ pub use clock::{
     MonotonicClock, SharedActivityTimestamp, SharedFileActivityTracker, IDLE_TIMEOUT_SECS,
 };
 pub use file_activity::FileActivityTracker;
-pub use io::{KillConfig, DEFAULT_KILL_CONFIG};
 pub use readers::{ActivityTrackingReader, StderrActivityTracker};
-pub(crate) use runtime::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
-pub use runtime::{
-    monitor_idle_timeout, monitor_idle_timeout_with_interval,
-    monitor_idle_timeout_with_interval_and_kill_config, FileActivityConfig, MonitorConfig,
-    MonitorResult,
-};
+pub type KillConfig = self::io::KillConfig;
+pub const DEFAULT_KILL_CONFIG: KillConfig = self::io::DEFAULT_KILL_CONFIG;
+
+pub type FileActivityConfig = self::runtime::FileActivityConfig;
+pub type MonitorConfig = self::runtime::MonitorConfig;
+pub type MonitorResult = self::runtime::MonitorResult;
+
+pub fn monitor_idle_timeout(
+    activity_timestamp: &SharedActivityTimestamp,
+    child: &std::sync::Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    timeout: std::time::Duration,
+    should_stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
+) -> MonitorResult {
+    self::runtime::monitor_idle_timeout(activity_timestamp, child, timeout, should_stop, executor)
+}
+
+pub fn monitor_idle_timeout_with_interval(
+    activity_timestamp: &SharedActivityTimestamp,
+    child: &std::sync::Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    timeout: std::time::Duration,
+    should_stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
+    check_interval: std::time::Duration,
+) -> MonitorResult {
+    self::runtime::monitor_idle_timeout_with_interval(
+        activity_timestamp,
+        child,
+        timeout,
+        should_stop,
+        executor,
+        check_interval,
+    )
+}
+
+pub fn monitor_idle_timeout_with_interval_and_kill_config(
+    activity_timestamp: &SharedActivityTimestamp,
+    file_activity: Option<&FileActivityConfig>,
+    child: &std::sync::Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    should_stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
+    config: MonitorConfig,
+) -> MonitorResult {
+    self::runtime::monitor_idle_timeout_with_interval_and_kill_config(
+        activity_timestamp,
+        file_activity,
+        child,
+        should_stop,
+        executor,
+        config,
+    )
+}
+
+pub(crate) fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+    activity_timestamp: &SharedActivityTimestamp,
+    file_activity: Option<&FileActivityConfig>,
+    child: &std::sync::Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    should_stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
+    monitor_config: MonitorConfig,
+    child_activity_observer: Option<
+        &std::sync::Arc<std::sync::Mutex<Option<crate::executor::ChildProcessInfo>>>,
+    >,
+) -> MonitorResult {
+    self::runtime::monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+        activity_timestamp,
+        file_activity,
+        child,
+        should_stop,
+        executor,
+        monitor_config,
+        child_activity_observer,
+    )
+}
 
 #[cfg(test)]
 mod tests;

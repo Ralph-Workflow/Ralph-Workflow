@@ -4,7 +4,6 @@
 //! ANSI escape sequences (cursor positioning, colors) should be emitted.
 
 use crate::logger::ColorEnvironment;
-use std::io::IsTerminal;
 
 /// Terminal capability mode for streaming output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,7 +111,7 @@ impl ColorEnvironment for RealTerminalEnvironment {
     }
 
     fn is_terminal(&self) -> bool {
-        std::io::stdout().is_terminal()
+        std::io::IsTerminal::is_terminal(&std::io::stdout())
     }
 }
 

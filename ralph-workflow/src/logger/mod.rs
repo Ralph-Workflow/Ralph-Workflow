@@ -29,10 +29,50 @@ pub use progress::print_progress;
 
 pub use crate::logger::file_writer::append_to_file;
 pub use crate::logger::logger_wrapper::LoggerIoWrapper;
-pub use crate::logger::runtime::{
-    stderr_write_line, stdout_flush, stdout_is_terminal, stdout_write, stdout_write_line,
-};
-pub use crate::logger::runtime::{ColorEnvironment, RealColorEnvironment};
+
+pub trait ColorEnvironment {
+    fn get_var(&self, name: &str) -> Option<String>;
+    fn is_terminal(&self) -> bool;
+}
+
+pub struct RealColorEnvironment;
+
+impl ColorEnvironment for RealColorEnvironment {
+    fn get_var(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
+    }
+
+    fn is_terminal(&self) -> bool {
+        runtime_color_env_is_terminal()
+    }
+}
+
+pub fn stdout_write(buf: &[u8]) -> std::io::Result<usize> {
+    runtime::stdout_write(buf)
+}
+
+pub fn stdout_write_line(s: &str) -> std::io::Result<()> {
+    runtime::stdout_write_line(s)
+}
+
+pub fn stderr_write_line(s: &str) -> std::io::Result<()> {
+    runtime::stderr_write_line(s)
+}
+
+pub fn stdout_flush() -> std::io::Result<()> {
+    runtime::stdout_flush()
+}
+
+#[must_use]
+pub fn stdout_is_terminal() -> bool {
+    runtime::stdout_is_terminal()
+}
+
+fn runtime_color_env_is_terminal() -> bool {
+    let env = runtime::RealColorEnvironment;
+    let _ = runtime::ColorEnvironment::get_var(&env, "TERM");
+    runtime::ColorEnvironment::is_terminal(&env)
+}
 
 /// Check if colors should be enabled using the provided environment.
 ///

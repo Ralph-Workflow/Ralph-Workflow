@@ -3,9 +3,9 @@
 //! Contains the main dispatcher functions for routing to appropriate prompt generators
 //! based on role and action, as well as prompt replay functionality for checkpoint resume.
 
+use super::generate_resume_note;
 use super::prompt_config::PromptConfig;
 use super::prompt_scope_key::PromptScopeKey;
-use super::runtime::generate_resume_note;
 use super::types::{Action, Role};
 use super::ContextLevel;
 use super::TemplateContext;

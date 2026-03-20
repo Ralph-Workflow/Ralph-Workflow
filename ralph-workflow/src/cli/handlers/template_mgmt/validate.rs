@@ -1,14 +1,12 @@
 /// Handle template validation command.
 pub fn handle_template_validate(colors: Colors) {
-    use super::boundary as term;
-
     let _ = writeln!(
-        term::stdout(),
+        crate::cli::handlers::boundary::stdout(),
         "{}Validating templates...{}",
         colors.bold(),
         colors.reset()
     );
-    let _ = writeln!(term::stdout());
+    let _ = writeln!(crate::cli::handlers::boundary::stdout());
 
     let templates = get_all_templates();
     let partials_set: std::collections::HashSet<String> =
@@ -26,7 +24,7 @@ pub fn handle_template_validate(colors: Colors) {
 
                 if result.is_valid {
                     let _ = writeln!(
-                        term::stdout(),
+                        crate::cli::handlers::boundary::stdout(),
                         "{}✓{} {}{}{}",
                         colors.green(),
                         colors.reset(),
@@ -36,7 +34,7 @@ pub fn handle_template_validate(colors: Colors) {
                     );
                 } else {
                     let _ = writeln!(
-                        term::stdout(),
+                        crate::cli::handlers::boundary::stdout(),
                         "{}✗{} {}{}{}",
                         colors.red(),
                         colors.reset(),
@@ -49,7 +47,7 @@ pub fn handle_template_validate(colors: Colors) {
                 // Print errors using iterator for_each
                 result.errors.iter().for_each(|error| {
                     let _ = writeln!(
-                        term::stdout(),
+                        crate::cli::handlers::boundary::stdout(),
                         "  {}error:{} {}",
                         colors.red(),
                         colors.reset(),
@@ -60,7 +58,7 @@ pub fn handle_template_validate(colors: Colors) {
                 // Print warnings using iterator for_each
                 result.warnings.iter().for_each(|warning| {
                     let _ = writeln!(
-                        term::stdout(),
+                        crate::cli::handlers::boundary::stdout(),
                         "  {}warning:{} {}",
                         colors.yellow(),
                         colors.reset(),
@@ -72,7 +70,7 @@ pub fn handle_template_validate(colors: Colors) {
                     let var_names: Vec<&str> =
                         result.variables.iter().map(|v| v.name.as_str()).collect();
                     let _ = writeln!(
-                        term::stdout(),
+                        crate::cli::handlers::boundary::stdout(),
                         "  {}variables:{} {}",
                         colors.dim(),
                         colors.reset(),
@@ -82,7 +80,7 @@ pub fn handle_template_validate(colors: Colors) {
 
                 if !result.partials.is_empty() {
                     let _ = writeln!(
-                        term::stdout(),
+                        crate::cli::handlers::boundary::stdout(),
                         "  {}partials:{} {}",
                         colors.dim(),
                         colors.reset(),
@@ -97,28 +95,34 @@ pub fn handle_template_validate(colors: Colors) {
                 )
             });
 
-    let _ = writeln!(term::stdout());
+    let _ = writeln!(crate::cli::handlers::boundary::stdout());
     if total_errors == 0 {
         let _ = writeln!(
-            term::stdout(),
+            crate::cli::handlers::boundary::stdout(),
             "{}All templates validated successfully!{}",
             colors.green(),
             colors.reset()
         );
         if total_warnings > 0 {
-            let _ = writeln!(term::stdout(), "{total_warnings} warnings");
+            let _ = writeln!(
+                crate::cli::handlers::boundary::stdout(),
+                "{total_warnings} warnings"
+            );
         }
     } else {
         let _ = writeln!(
-            term::stdout(),
+            crate::cli::handlers::boundary::stdout(),
             "{}Validation failed with {} error(s){}",
             colors.red(),
             total_errors,
             colors.reset()
         );
         if total_warnings > 0 {
-            let _ = writeln!(term::stdout(), "{total_warnings} warnings");
+            let _ = writeln!(
+                crate::cli::handlers::boundary::stdout(),
+                "{total_warnings} warnings"
+            );
         }
-        term::exit_with_code(1);
+        crate::cli::handlers::boundary::exit_with_code(1);
     }
 }
