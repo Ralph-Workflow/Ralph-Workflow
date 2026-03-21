@@ -148,17 +148,23 @@ pub enum CommitResultFallback {
     Failed(String),
 }
 
+/// Build the status options used when scanning the working tree.
+fn configured_status_options() -> git2::StatusOptions {
+    let mut status_opts = git2::StatusOptions::new();
+    status_opts
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    status_opts
+}
+
 /// Implementation of git add all.
 fn git_add_all_impl(repo: &git2::Repository) -> std::io::Result<bool> {
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
     // Stage deletions (equivalent to `git add -A` behavior).
     // libgit2's `add_all` doesn't automatically remove deleted paths.
-    let mut status_opts = git2::StatusOptions::new();
-    status_opts
-        .include_untracked(true)
-        .recurse_untracked_dirs(true)
-        .include_ignored(false);
+    let mut status_opts = configured_status_options();
     let statuses = repo
         .statuses(Some(&mut status_opts))
         .map_err(|e| git2_to_io_error(&e))?;
@@ -166,7 +172,7 @@ fn git_add_all_impl(repo: &git2::Repository) -> std::io::Result<bool> {
     let deletions: Vec<_> = statuses
         .iter()
         .filter(|entry| entry.status().contains(git2::Status::WT_DELETED))
-        .filter_map(|entry| entry.path().map(|p| std::path::PathBuf::from(p)))
+        .filter_map(|entry| entry.path().map(std::path::PathBuf::from))
         .collect();
 
     deletions

@@ -59,73 +59,59 @@ pub fn format_xml_for_display(xml_content: &str) -> String {
     reason = "bounds-checked index arithmetic"
 )]
 fn pretty_print_xml(xml_content: &str) -> String {
+    #[derive(Copy, Clone)]
+    enum XmlMode {
+        Outside,
+        Tag { start: usize },
+        Content,
+    }
+
     let mut result = String::new();
     let mut indent: usize = 0;
-    let mut in_tag = false;
-    let mut in_content = false;
-    let mut tag_start = 0;
     let chars: Vec<char> = xml_content.chars().collect();
     let mut i = 0;
+    let mut mode = XmlMode::Outside;
 
     while i < chars.len() {
         let c = chars[i];
 
         match c {
             '<' => {
-                // Check if this is a closing tag
-                let is_closing_tag = i + 1 < chars.len() && chars[i + 1] == '/';
-                // Check if this is an XML declaration
-                let is_declaration = i + 1 < chars.len() && chars[i + 1] == '?';
+                let next_char = chars.get(i + 1).copied();
+                let is_closing_tag = matches!(next_char, Some('/'));
 
                 if is_closing_tag {
-                    // Closing tag - decrease indent before outputting
-                    if in_content && indent > 0 {
+                    if matches!(mode, XmlMode::Content) && indent > 0 {
                         result.push('\n');
                     }
                     indent = indent.saturating_sub(1);
-                    in_tag = true;
-                    in_content = false;
-                } else if is_declaration {
-                    // XML declaration - don't indent
-                    in_tag = true;
-                } else {
-                    // Opening tag
-                    if in_content {
-                        result.push('\n');
-                    }
-                    in_tag = true;
-                    in_content = false;
+                } else if matches!(mode, XmlMode::Content) {
+                    result.push('\n');
                 }
-                tag_start = i;
+
+                mode = XmlMode::Tag { start: i };
             }
             '>' => {
-                if in_tag {
-                    // Check if this is a self-closing tag
+                if let XmlMode::Tag { start } = mode {
+                    let char_after_lt = chars.get(start + 1).copied().unwrap_or('\0');
                     let is_self_closing = i > 0 && chars[i - 1] == '/';
-                    // Check if this is a declaration
-                    let is_declaration = tag_start > 0
-                        && chars[tag_start + 1] == '?'
-                        && i > 0
-                        && chars[i - 1] == '?';
+                    let is_declaration =
+                        matches!(chars.get(start + 1), Some('?')) && i > 0 && chars[i - 1] == '?';
 
-                    // Extract the tag name - both / and ? prefixes skip 2 characters
-                    let skips_prefix = chars[tag_start + 1] == '/' || chars[tag_start + 1] == '?';
-                    let tag_name_start = if skips_prefix {
-                        tag_start + 2
+                    let skips_prefix = char_after_lt == '/' || char_after_lt == '?';
+                    let tag_name_start = if skips_prefix { start + 2 } else { start + 1 };
+                    let tag_name_end = i;
+                    let tag_name: String = if tag_name_start < tag_name_end {
+                        chars[tag_name_start..tag_name_end]
+                            .iter()
+                            .take_while(|&ch| !ch.is_whitespace() && *ch != '/')
+                            .collect()
                     } else {
-                        tag_start + 1
+                        String::new()
                     };
 
-                    let tag_name_end = i;
-                    let tag_name: String = chars[tag_name_start..tag_name_end]
-                        .iter()
-                        .take_while(|&c| !c.is_whitespace() && *c != '/')
-                        .collect();
-
-                    // Add indentation for opening tags (not self-closing or declaration)
-                    let should_indent = !is_self_closing
-                        && !is_declaration
-                        && !chars[tag_start + 1].is_whitespace();
+                    let should_indent =
+                        !is_self_closing && !is_declaration && !char_after_lt.is_whitespace();
                     if should_indent {
                         if !result.ends_with('\n') && !result.is_empty() {
                             result.push('\n');
@@ -135,36 +121,27 @@ fn pretty_print_xml(xml_content: &str) -> String {
                         }
                     }
 
-                    // Add the tag content
-                    result.extend(chars[tag_start..=i].iter().copied());
+                    result.extend(chars[start..=i].iter().copied());
 
-                    // Increase indent after opening tag (if not self-closing)
                     let should_increase_indent = !is_self_closing
                         && !is_declaration
-                        && chars[tag_start + 1] != '/'
+                        && char_after_lt != '/'
                         && !tag_name.is_empty();
-                    if should_increase_indent {
+                    mode = if should_increase_indent {
                         indent = indent.saturating_add(1);
-                        in_content = true;
-                    }
-
-                    in_tag = false;
+                        XmlMode::Content
+                    } else {
+                        XmlMode::Outside
+                    };
                 } else {
                     result.push(c);
                 }
             }
-            '\n' | '\r' | '\t' => {
-                // Skip whitespace outside of tags
-                if !in_tag {
-                    // Keep track but don't output
-                }
-            }
+            '\n' | '\r' | '\t' => {}
             ' ' => {
-                if in_tag {
-                    // Keep spaces inside tags
+                if matches!(mode, XmlMode::Tag { .. }) {
                     result.push(c);
-                } else if in_content {
-                    // Keep leading spaces for content but not multiple spaces
+                } else if matches!(mode, XmlMode::Content) {
                     if let Some(last_char) = result.chars().last() {
                         if last_char != ' ' && last_char != '\n' {
                             result.push(c);
@@ -175,8 +152,7 @@ fn pretty_print_xml(xml_content: &str) -> String {
                 }
             }
             _ => {
-                // For any other character, push it if we're in a tag or content
-                if in_tag || in_content {
+                if matches!(mode, XmlMode::Tag { .. } | XmlMode::Content) {
                     result.push(c);
                 }
             }

@@ -14,6 +14,7 @@
 // - handle_rebase_only: Handle --rebase-only flag
 
 use crate::app::context::PipelineContext;
+use crate::app::pipeline_setup::RepoCommandBoundaryParams;
 use crate::app::rebase::conflicts::try_resolve_conflicts_without_phase_ctx;
 use crate::app::rebase::orchestration::run_rebase_to_default;
 use crate::checkpoint::PipelineCheckpoint;
@@ -162,7 +163,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         workspace,
     } = params;
 
-    crate::app::pipeline_setup::handle_repo_commands_boundary(
+    crate::app::pipeline_setup::handle_repo_commands_boundary(RepoCommandBoundaryParams {
         args,
         config,
         registry,
@@ -173,7 +174,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         executor,
         repo_root,
         workspace,
-    )
+    })
 }
 
 /// Validate PROMPT.md and set up backup/protection.

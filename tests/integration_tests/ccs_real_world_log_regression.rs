@@ -62,7 +62,7 @@ fn parse_real_world_log(mode: TerminalMode) -> String {
     let colors = Colors::new();
     let verbosity = Verbosity::Normal;
 
-    let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+    let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
         .with_display_name("ccs/claude")
         .with_terminal_mode(mode);
 

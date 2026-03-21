@@ -85,7 +85,8 @@ impl MainEffectHandler {
 
     /// Push commits to remote repository.
     ///
-    /// Executes git push command and reports success/failure.
+    /// Executes git push command and emits domain-shaped execution outcome.
+    /// The reducer/orchestrator interprets the outcome and applies policy-level success/failure.
     pub(super) fn handle_push_to_remote(
         ctx: &PhaseContext<'_>,
         remote: String,
@@ -159,45 +160,55 @@ impl MainEffectHandler {
             .execute("git", &git_args, &[], Some(ctx.repo_root));
 
         match result {
-            Ok(output) if is_success(&output) => {
-                ctx.logger
-                    .info(&format!("Successfully pushed to {remote}/{branch}"));
+            Ok(output) => {
+                // Boundary emits domain-shaped outcome with raw process result.
+                // Reducer interprets the result and applies policy-level state transitions.
+                let exit_code = output.status.code().unwrap_or(-1);
+                let success = output.status.success();
+                let stderr = output.stderr.clone();
 
-                let ui = UIEvent::PushCompleted {
+                ctx.logger.info(&format!(
+                    "Git push executed for {remote}/{branch} (exit: {exit_code})"
+                ));
+
+                let exec_result: crate::reducer::event::ProcessExecutionResult = output.into();
+
+                let primary_event = PipelineEvent::Commit(CommitEvent::PushExecuted {
                     remote: remote.clone(),
                     branch: branch.clone(),
                     commit_sha: commit_sha.clone(),
-                };
+                    result: exec_result,
+                });
 
-                EffectResult::with_ui(
-                    PipelineEvent::Commit(CommitEvent::PushCompleted {
+                // Boundary attaches UI events based on exit code interpretation.
+                // Policy-level state transitions happen in the reducer.
+                if success {
+                    ctx.logger
+                        .info(&format!("Successfully pushed to {remote}/{branch}"));
+
+                    let ui = UIEvent::PushCompleted {
                         remote,
                         branch,
                         commit_sha,
-                    }),
-                    vec![ui],
-                )
-            }
-            Ok(output) => {
-                let error = crate::cloud::redaction::redact_secrets(&output.stderr);
-                ctx.logger.warn(&format!("Git push failed: {error}"));
+                    };
 
-                let ui = UIEvent::PushFailed {
-                    remote: remote.clone(),
-                    branch: branch.clone(),
-                    error: error.clone(),
-                };
+                    EffectResult::event(primary_event).with_ui_event(ui)
+                } else {
+                    let error = crate::cloud::redaction::redact_secrets(&stderr);
+                    ctx.logger.warn(&format!("Git push failed: {error}"));
 
-                EffectResult::with_ui(
-                    PipelineEvent::Commit(CommitEvent::PushFailed {
+                    let ui = UIEvent::PushFailed {
                         remote,
                         branch,
                         error,
-                    }),
-                    vec![ui],
-                )
+                    };
+
+                    EffectResult::event(primary_event).with_ui_event(ui)
+                }
             }
             Err(e) => {
+                // Executor-level failure (command not found, spawn failure, etc.)
+                // This is still a policy-level failure but at a different layer.
                 let error = crate::cloud::redaction::redact_secrets(&e.to_string());
                 ctx.logger
                     .warn(&format!("Git push execution failed: {error}"));

@@ -131,7 +131,7 @@ pub fn detect_concurrent_git_operations() -> io::Result<Option<ConcurrentOperati
 
     // Check for any other state files we might have missed
     let result: io::Result<Option<ConcurrentOperation>> = fs::read_dir(git_dir)
-        .map_err(|e| io::Error::other(e))?
+        .map_err(io::Error::other)?
         .flatten()
         .try_fold(None, |acc, entry| {
             if acc.is_some() {
@@ -148,7 +148,7 @@ pub fn detect_concurrent_git_operations() -> io::Result<Option<ConcurrentOperati
             Ok(acc)
         });
 
-    Ok(result?)
+    result
 }
 
 /// Check if a rebase is currently in progress using Git CLI.

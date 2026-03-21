@@ -83,10 +83,9 @@ impl OpenCodeParser {
     pub fn with_printer_for_test(
         colors: Colors,
         verbosity: Verbosity,
-        printer: StdoutPrinter,
+        printer: SharedPrinter,
     ) -> Self {
-        Self::with_printer(colors, verbosity, Rc::new(RefCell::new(printer)))
-            .with_terminal_mode(TerminalMode::Full)
+        Self::with_printer(colors, verbosity, printer).with_terminal_mode(TerminalMode::Full)
     }
 
     #[cfg(feature = "test-utils")]
@@ -98,7 +97,7 @@ impl OpenCodeParser {
 
     #[cfg(feature = "test-utils")]
     pub fn parse_stream_for_test<R: std::io::BufRead>(
-        &self,
+        &mut self,
         reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> std::io::Result<()> {

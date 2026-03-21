@@ -10,6 +10,7 @@
 use crate::files::llm_output_extraction::PlanElements;
 
 pub(crate) mod boundary_domain;
+pub(crate) mod prompt_mode_strategy;
 
 /// Format plan elements as markdown for PLAN.md.
 pub(crate) fn format_plan_as_markdown(elements: &PlanElements) -> String {

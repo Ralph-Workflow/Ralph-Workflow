@@ -8,7 +8,7 @@
 {#   Agent can only read and explore the codebase.                            #}
 {#                                                                             #}
 {# USAGE:                                                                      #}
-{#   {{> shared/_safety_no_execute}}                                           #}
+{#   Include shared/_safety_no_execute when read-only safety constraints are required. #}
 {#                                                                             #}
 {# VARIABLES: None                                                             #}
 {#                                                                             #}

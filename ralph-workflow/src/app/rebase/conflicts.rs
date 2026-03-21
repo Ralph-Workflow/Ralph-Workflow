@@ -258,15 +258,17 @@ pub fn run_ai_conflict_resolution(
     let reviewer_agent = ctx.config.reviewer_agent.as_deref().unwrap_or("codex");
 
     crate::app::boundary::conflict_resolution::run_ai_conflict_resolution_with_runtime(
-        resolution_prompt,
-        ctx.config,
-        ctx.logger,
-        ctx.colors,
-        std::sync::Arc::clone(&ctx.executor_arc),
-        ctx.workspace,
-        std::sync::Arc::clone(&ctx.workspace_arc),
-        reviewer_agent,
-        ctx.registry,
+        crate::app::boundary::conflict_resolution::ConflictResolutionRuntimeParams {
+            resolution_prompt,
+            config: ctx.config,
+            logger: ctx.logger,
+            colors: ctx.colors,
+            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+            workspace: ctx.workspace,
+            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+            reviewer_agent,
+            registry: ctx.registry,
+        },
     )
 }
 

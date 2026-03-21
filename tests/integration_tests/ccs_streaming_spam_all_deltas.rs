@@ -39,7 +39,7 @@ fn test_ccs_glm_text_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -86,7 +86,7 @@ fn test_ccs_glm_text_deltas_no_spam_in_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -121,7 +121,7 @@ fn test_ccs_glm_thinking_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -176,7 +176,7 @@ fn test_ccs_glm_thinking_deltas_no_spam_in_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -211,7 +211,7 @@ fn test_ccs_glm_tool_input_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -249,7 +249,7 @@ fn test_ccs_glm_tool_input_deltas_no_spam_in_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -283,7 +283,7 @@ fn test_ccs_glm_mixed_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -333,9 +333,10 @@ fn test_ccs_codex_reasoning_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Simulate many reasoning deltas
         let stream = r#"
@@ -379,9 +380,10 @@ fn test_ccs_codex_reasoning_deltas_no_spam_in_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let stream = r#"
 {"type":"item.started","item":{"type":"reasoning","text":"Analyzing"}}
@@ -411,9 +413,10 @@ fn test_ccs_codex_agent_message_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Simulate many agent_message deltas
         let stream = r#"
@@ -451,9 +454,10 @@ fn test_ccs_codex_agent_message_deltas_no_spam_in_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let stream = r#"
 {"type":"item.started","item":{"type":"agent_message","text":"Test"}}
@@ -491,7 +495,7 @@ fn test_ccs_glm_extreme_text_deltas_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -548,7 +552,7 @@ fn test_ccs_glm_two_text_blocks_both_flushed() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -598,7 +602,7 @@ fn test_ccs_glm_real_world_multi_block_streaming_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -728,9 +732,10 @@ fn test_ccs_codex_real_world_multi_turn_streaming_no_spam_in_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Simulate a real-world multi-turn scenario with:
         // - First turn: many reasoning deltas + many agent_message deltas

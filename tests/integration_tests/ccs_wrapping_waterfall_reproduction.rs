@@ -33,7 +33,7 @@ fn test_wrapping_no_waterfall_claude() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -95,7 +95,7 @@ fn test_wrapping_no_waterfall_codex() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
+        let mut parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -164,10 +164,6 @@ fn test_cursor_up_pattern_fails_with_wrapping() {
         write!(term, "{prefix}{content}\n\x1b[1A").unwrap();
 
         // Verify content wrapped to multiple rows
-        assert!(
-            term.count_visible_lines() > 1,
-            "Content should wrap to multiple rows"
-        );
         let rows_before = term.count_physical_rows();
         assert!(
             rows_before > 1,

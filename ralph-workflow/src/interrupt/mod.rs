@@ -28,11 +28,6 @@ use std::path::Path;
 pub(crate) mod checkpoint;
 #[path = "runtime.rs"]
 mod handling;
-#[cfg(test)]
-pub(crate) mod runtime {
-    pub(crate) use super::handling::INTERRUPT_CONTEXT;
-}
-
 pub use checkpoint::InterruptContext;
 pub use handling::{clear_interrupt_context, get_interrupt_context, set_interrupt_context};
 
@@ -102,7 +97,7 @@ fn restore_prompt_md_writable_via_std_fs() {
 
 fn remove_repo_root_ralph_dir_via_std_fs() {
     let repo_root = handling::get_interrupt_context()
-        .and_then(|ctx| ctx.map(|c| c.workspace.root().to_path_buf()))
+        .map(|ctx| ctx.workspace.root().to_path_buf())
         .or_else(|| crate::git_helpers::get_repo_root().ok());
 
     if let Some(repo_root) = repo_root {
@@ -255,7 +250,7 @@ pub fn setup_interrupt_handler() {
         // holding the mutex.
         let context = handling::get_interrupt_context();
 
-        if let Some(Some(ref context)) = context {
+        if let Some(ref context) = context {
             if let Err(e) = checkpoint::save_interrupt_checkpoint(context) {
                 eprintln!("Warning: Failed to save checkpoint: {e}");
             } else {
@@ -272,7 +267,7 @@ pub fn setup_interrupt_handler() {
         //   (e.g., MemoryWorkspace)
         restore_prompt_md_writable_via_std_fs();
 
-        if let Some(Some(context)) = context {
+        if let Some(ref context) = context {
             let _ = context.workspace.set_writable(Path::new("PROMPT.md"));
         }
 

@@ -11,28 +11,46 @@ use crate::workspace::Workspace;
 use std::path::Path;
 use std::sync::Arc;
 
+pub struct ConflictResolutionRuntimeParams<'a> {
+    pub resolution_prompt: &'a str,
+    pub config: &'a Config,
+    pub logger: &'a Logger,
+    pub colors: Colors,
+    pub executor_arc: Arc<dyn crate::executor::ProcessExecutor>,
+    pub workspace: &'a dyn Workspace,
+    pub workspace_arc: Arc<dyn Workspace>,
+    pub reviewer_agent: &'a str,
+    pub registry: &'a crate::agents::AgentRegistry,
+}
+
 pub fn run_ai_conflict_resolution_with_runtime(
-    resolution_prompt: &str,
-    config: &Config,
-    logger: &Logger,
-    colors: Colors,
-    executor_arc: Arc<dyn crate::executor::ProcessExecutor>,
-    workspace: &dyn Workspace,
-    workspace_arc: Arc<dyn Workspace>,
-    reviewer_agent: &str,
-    registry: &crate::agents::AgentRegistry,
+    params: ConflictResolutionRuntimeParams<'_>,
 ) -> anyhow::Result<ConflictResolutionResult> {
+    let ConflictResolutionRuntimeParams {
+        resolution_prompt,
+        config,
+        logger,
+        colors,
+        executor_arc,
+        workspace,
+        workspace_arc,
+        reviewer_agent,
+        registry,
+    } = params;
+
     let mut timer = crate::app::runtime_factory::create_timer();
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*executor_arc;
     let mut runtime = crate::app::runtime_factory::create_pipeline_runtime(
-        &mut timer,
-        logger,
-        &colors,
-        config,
-        executor_ref,
-        Arc::clone(&executor_arc),
-        workspace,
-        Arc::clone(&workspace_arc),
+        crate::app::runtime_factory::PipelineRuntimeFactoryParams {
+            timer: &mut timer,
+            logger,
+            colors: &colors,
+            config,
+            executor: executor_ref,
+            executor_arc: Arc::clone(&executor_arc),
+            workspace,
+            workspace_arc: Arc::clone(&workspace_arc),
+        },
     );
 
     let log_dir = ".agent/logs/rebase_conflict_resolution";

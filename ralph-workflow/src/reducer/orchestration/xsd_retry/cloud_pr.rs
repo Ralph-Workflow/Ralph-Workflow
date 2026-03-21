@@ -71,7 +71,7 @@ fn convert_cloud_pr_template_placeholders(input: &str) -> Option<String> {
                 .map(|offset| pos + offset);
 
             let name: String = match name_end {
-                Some(end) => chars[pos..end].iter().collect(),
+                Some(end) => chars[pos + 1..end].iter().collect(),
                 None => {
                     return Some(format!(
                         "{{{rest}",
@@ -82,7 +82,7 @@ fn convert_cloud_pr_template_placeholders(input: &str) -> Option<String> {
 
             let trimmed = name.trim();
             let replacement = if is_simple_placeholder_name(trimmed) && ALLOWED.contains(&trimmed) {
-                format!("{{{trimmed}}}")
+                format!("{{{{{trimmed}}}}}")
             } else if is_simple_placeholder_name(trimmed) {
                 return None;
             } else {

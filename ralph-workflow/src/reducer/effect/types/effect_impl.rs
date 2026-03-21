@@ -41,7 +41,7 @@ mod tests {
     fn test_is_same_agent_retry_returns_true_for_same_agent_retry_variants() {
         let retry_mode = PromptMode::SameAgentRetry;
 
-        let effects = vec![
+        let effects = [
             Effect::PreparePlanningPrompt {
                 iteration: 0,
                 prompt_mode: retry_mode,
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn test_is_same_agent_retry_returns_false_for_other_prompt_modes() {
-        let effects = vec![
+        let effects = [
             Effect::PreparePlanningPrompt {
                 iteration: 0,
                 prompt_mode: PromptMode::Normal,

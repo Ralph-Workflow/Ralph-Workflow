@@ -44,7 +44,7 @@ fn test_ccs_glm_text_delta_spam_reproduction_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -98,7 +98,7 @@ fn test_ccs_glm_text_delta_spam_reproduction_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -153,7 +153,7 @@ fn test_ccs_glm_thinking_delta_spam_reproduction_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -204,7 +204,7 @@ fn test_ccs_glm_thinking_delta_spam_reproduction_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -258,7 +258,7 @@ fn test_ccs_glm_tool_input_delta_spam_reproduction_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Verbose; // Need verbose to see tool input
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -309,7 +309,7 @@ fn test_ccs_glm_tool_input_delta_spam_reproduction_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Verbose;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -363,7 +363,7 @@ fn test_ccs_glm_multi_block_spam_reproduction_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -455,7 +455,7 @@ fn test_ccs_glm_mode_consistency_same_stream_none_vs_basic() {
             let colors = Colors::new();
             let verbosity = Verbosity::Normal;
 
-            let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+            let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
                 .with_display_name("ccs/glm")
                 .with_terminal_mode(mode);
 
@@ -511,9 +511,10 @@ fn test_ccs_codex_agent_message_delta_spam_reproduction_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Codex uses {"type":"item.started",...} format, not stream_event
         let mut stream = String::new();
@@ -561,9 +562,10 @@ fn test_ccs_codex_agent_message_delta_spam_reproduction_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let mut stream = String::new();
 
@@ -613,9 +615,10 @@ fn test_ccs_codex_reasoning_delta_spam_reproduction_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         let mut stream = String::new();
 
@@ -662,9 +665,10 @@ fn test_ccs_codex_reasoning_delta_spam_reproduction_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let mut stream = String::new();
 

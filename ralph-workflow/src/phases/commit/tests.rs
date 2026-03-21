@@ -40,7 +40,8 @@ mod tests {
     #[test]
     fn test_truncate_diff_very_small_limit() {
         let _cloud = crate::config::types::CloudConfig::disabled();
-        let diff = "diff --git a/src/main.rs b/src/main.rs\n+change\n";
+        // Diff must exceed the limit (80) to trigger truncation.
+        let diff = "diff --git a/src/main.rs b/src/main.rs\n+change with enough content here to exceed\n";
         let truncated = truncate_diff_if_large(diff, 80);
 
         assert!(truncated.len() <= 80 + 200);
@@ -224,11 +225,20 @@ mod tests {
 
     #[test]
     fn test_base_prompt_for_same_agent_retry_strips_existing_retry_header() {
-        let previous_prompt = "## Retry Guidance\n\nOriginal base prompt";
+        use crate::reducer::state::{ContinuationState, SameAgentRetryReason};
+        let continuation = ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::Timeout),
+            ..ContinuationState::default()
+        };
+        let preamble =
+            crate::reducer::boundary::retry_guidance::same_agent_retry_preamble(&continuation);
+        let original = "Original base prompt";
+        let previous_prompt = format!("{preamble}\n\n{original}");
         let generated = "Freshly generated prompt";
 
         let (base_prompt, should_validate) =
-            base_prompt_for_same_agent_retry(Some(previous_prompt), generated);
+            base_prompt_for_same_agent_retry(Some(&previous_prompt), generated);
 
         assert_eq!(base_prompt, "Original base prompt");
         assert!(!should_validate);

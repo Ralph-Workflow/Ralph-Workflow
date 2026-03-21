@@ -20,14 +20,25 @@ pub fn prompt_review_xml_with_context(
     changes_content: &str,
     workspace: &dyn Workspace,
 ) -> String {
+    let plan_value = if plan_content.trim().is_empty() {
+        "(no plan available)".to_string()
+    } else {
+        plan_content.to_string()
+    };
+    let changes_value = if changes_content.trim().is_empty() {
+        "(no diff available)".to_string()
+    } else {
+        changes_content.to_string()
+    };
+
     let partials = get_shared_partials();
     let template_content = context
         .registry()
         .get_template("review_xml")
         .unwrap_or_else(|_| include_str!("../templates/review_xml.txt").to_string());
     let variables = HashMap::from([
-        ("PLAN", plan_content.to_string()),
-        ("CHANGES", changes_content.to_string()),
+        ("PLAN", plan_value),
+        ("CHANGES", changes_value),
         (
             "ISSUES_XML_PATH",
             workspace.absolute_str(".agent/tmp/issues.xml"),
@@ -213,18 +224,15 @@ pub fn prompt_review_xsd_retry_with_context_files(
     let diagnostic_prefix = if !schema_exists || !last_output_exists {
         let parts: Vec<String> =
             std::iter::once("⚠️  WARNING: Required XSD retry files are missing:\n".to_string())
-                .chain(
-                    if !schema_exists {
-                        Some(format!(
-                            "  - Schema file: {} (workspace.root() = {})\n",
-                            workspace.absolute_str(".agent/tmp/issues.xsd"),
-                            workspace.root().display()
-                        ))
-                    } else {
-                        None
-                    }
-                    .into_iter(),
-                )
+                .chain(if !schema_exists {
+                    Some(format!(
+                        "  - Schema file: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/issues.xsd"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
                 .chain(if !last_output_exists {
                     Some(format!(
                         "  - Last output: {} (workspace.root() = {})\n",
@@ -317,18 +325,15 @@ pub fn prompt_review_xsd_retry_with_context_files_and_log(
     let diagnostic_prefix = if !schema_exists || !last_output_exists {
         let parts: Vec<String> =
             std::iter::once("⚠️  WARNING: Required XSD retry files are missing:\n".to_string())
-                .chain(
-                    if !schema_exists {
-                        Some(format!(
-                            "  - Schema file: {} (workspace.root() = {})\n",
-                            workspace.absolute_str(".agent/tmp/issues.xsd"),
-                            workspace.root().display()
-                        ))
-                    } else {
-                        None
-                    }
-                    .into_iter(),
-                )
+                .chain(if !schema_exists {
+                    Some(format!(
+                        "  - Schema file: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/issues.xsd"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
                 .chain(if !last_output_exists {
                     Some(format!(
                         "  - Last output: {} (workspace.root() = {})\n",

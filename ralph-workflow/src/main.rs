@@ -95,6 +95,7 @@ mod tests {
     use ralph_workflow::reducer::boundary::MainEffectHandler;
     use ralph_workflow::reducer::effect::{Effect, EffectHandler};
     use ralph_workflow::reducer::event::{AgentEvent, PipelineEvent};
+    use ralph_workflow::runtime::environment::RealGitEnvironment;
     use ralph_workflow::workspace::{Workspace, WorkspaceFs};
     use ralph_workflow::RealProcessExecutor;
     use tempfile::TempDir;
@@ -113,6 +114,7 @@ mod tests {
         repo_root: PathBuf,
         run_log_context: RunLogContext,
         cloud: ralph_workflow::config::types::CloudConfig,
+        mock_env: RealGitEnvironment,
     }
 
     impl TestFixture {
@@ -144,6 +146,7 @@ mod tests {
                 repo_root: PathBuf::from("/mock/repo"),
                 run_log_context,
                 cloud: ralph_workflow::config::types::CloudConfig::disabled(),
+                mock_env: RealGitEnvironment,
             }
         }
 
@@ -170,7 +173,7 @@ mod tests {
                 run_log_context: &self.run_log_context,
                 cloud_reporter: None,
                 cloud: &self.cloud,
-                env: &ralph_workflow::runtime::environment::mock::MockGitEnvironment::new(),
+                env: &self.mock_env,
             }
         }
     }

@@ -61,6 +61,7 @@ pub fn make_variable_info(
         line,
         has_default: default_value.is_some(),
         default_value,
+        placeholder: var_name.to_string(),
     }
 }
 
@@ -128,19 +129,22 @@ pub fn format_files_summary_impl(detail: &ModifiedFilesDetail) -> Option<String>
     }
 
     let s = format!("  Files: {total_files} changed");
-    let s = match (added_count > 0, modified_count > 0, deleted_count > 0) {
-        (true, true, true) => format!(
-            "{s} ({added_count} added) ({modified_count} modified) ({deleted_count} deleted)"
-        ),
-        (true, true, false) => format!("{s} ({added_count} added) ({modified_count} modified)"),
-        (true, false, true) => format!("{s} ({added_count} added) ({deleted_count} deleted)"),
-        (true, false, false) => format!("{s} ({added_count} added)"),
-        (false, true, true) => format!("{s} ({modified_count} modified) ({deleted_count} deleted)"),
-        (false, true, false) => format!("{s} ({modified_count} modified)"),
-        (false, false, true) => format!("{s} ({deleted_count} deleted)"),
-        (false, false, false) => s,
+    let mut parts = Vec::new();
+    if added_count > 0 {
+        parts.push(format!("({added_count} added)"));
+    }
+    if modified_count > 0 {
+        parts.push(format!("({modified_count} modified)"));
+    }
+    if deleted_count > 0 {
+        parts.push(format!("({deleted_count} deleted)"));
+    }
+    let suffix = if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", parts.join(" "))
     };
-    Some(format!("{s}\n"))
+    Some(format!("{s}{suffix}\n"))
 }
 
 pub fn format_issues_summary_impl(issues: &IssuesSummary) -> Option<String> {
@@ -160,24 +164,11 @@ pub fn format_issues_summary_impl(issues: &IssuesSummary) -> Option<String> {
 // Pure extraction helpers - extracted from io.rs boundary
 // ============================================================================
 
-fn is_var_char(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
-}
-
-fn find_var_end(bytes: &[u8], start: usize) -> usize {
-    start
-        + bytes[start..]
-            .iter()
-            .take_while(|&&b| is_var_char(b))
-            .count()
-}
-
-fn skip_whitespace(bytes: &[u8], start: usize) -> usize {
-    start
-        + bytes[start..]
-            .iter()
-            .take_while(|&&b| b == b' ' || b == b'\t')
-            .count()
+fn find_variable_end(bytes: &[u8], start: usize) -> Option<usize> {
+    bytes[start..]
+        .windows(2)
+        .position(|w| w[0] == b'}' && w[1] == b'}')
+        .map(|i| start + i)
 }
 
 fn find_comment_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -228,24 +219,17 @@ fn extract_vars_iterative(bytes: &[u8]) -> Vec<VariableInfo> {
                 None => break,
             }
         } else if bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-            let j = i + 2;
-            let j = skip_whitespace(bytes, j);
-            let name_start = j;
-            let j = skip_whitespace(bytes, j);
-
-            let var_end = find_var_end(bytes, j);
-            if var_end > j {
-                if let Some((var_name, default_value)) =
-                    std::str::from_utf8(&bytes[name_start..var_end])
-                        .ok()
-                        .and_then(parse_variable_spec_impl)
-                {
-                    results.push(VariableInfo {
-                        name: var_name.to_string(),
-                        line,
-                        has_default: default_value.is_some(),
-                        default_value,
-                    });
+            if let Some(var_end) = find_variable_end(bytes, i + 2) {
+                if let Ok(raw_spec) = std::str::from_utf8(&bytes[i + 2..var_end]) {
+                    if let Some((var_name, default_value)) = parse_variable_spec_impl(raw_spec) {
+                        results.push(VariableInfo {
+                            name: var_name.to_string(),
+                            line,
+                            has_default: default_value.is_some(),
+                            default_value,
+                            placeholder: raw_spec.trim().to_string(),
+                        });
+                    }
                 }
                 i = var_end + 2;
                 continue;
@@ -294,12 +278,7 @@ fn extract_partials_iterative(bytes: &[u8], content: &str) -> Vec<String> {
 
                 let name_start = j;
 
-                let j = j + bytes[j..]
-                    .iter()
-                    .take_while(|&&b| {
-                        b != b'}' && !(b == b'}' && j + 1 < bytes.len() && bytes[j + 1] == b'}')
-                    })
-                    .count();
+                let j = j + bytes[j..].iter().take_while(|&&b| b != b'}').count();
 
                 if j < bytes.len()
                     && bytes[j] == b'}'
@@ -331,20 +310,11 @@ pub enum ValidationError {
     InvalidLoop { line: usize, syntax: String },
 }
 
+#[derive(Default)]
 pub struct ValidationState {
     pub errors: Vec<ValidationError>,
     pub conditional_stack: Vec<(usize, &'static str)>,
     pub loop_stack: Vec<(usize, &'static str)>,
-}
-
-impl Default for ValidationState {
-    fn default() -> Self {
-        Self {
-            errors: Vec::new(),
-            conditional_stack: Vec::new(),
-            loop_stack: Vec::new(),
-        }
-    }
 }
 
 pub fn validate_template_bytes(content: &str, bytes: &[u8]) -> ValidationState {

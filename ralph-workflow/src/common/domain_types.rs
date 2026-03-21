@@ -64,12 +64,6 @@ impl fmt::Display for GitOid {
     }
 }
 
-impl AsRef<str> for GitOid {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
 impl From<String> for GitOid {
     fn from(value: String) -> Self {
         Self(value)
@@ -130,11 +124,6 @@ impl GitOid {
         Ok(Self(value.to_string()))
     }
 
-    #[must_use]
-    pub fn as_ref(&self) -> &str {
-        &self.0
-    }
-
     fn validate(value: &str) -> Result<(), GitOidParseError> {
         if value.len() != Self::LENGTH {
             return Err(GitOidParseError {
@@ -158,6 +147,12 @@ impl GitOid {
                     },
                 })
             })
+    }
+}
+
+impl AsRef<str> for GitOid {
+    fn as_ref(&self) -> &str {
+        &self.0
     }
 }
 
@@ -416,8 +411,8 @@ mod tests {
 
     #[test]
     fn test_git_oid_valid_hex_characters() {
-        let hex_oid = "0123456789abcdef".repeat(2) + &"0123456789abcdef".repeat(1);
-        let oid = GitOid::try_from_str(&hex_oid).unwrap();
+        let hex_oid = "0123456789abcdef0123456789abcdef01234567";
+        let oid = GitOid::try_from_str(hex_oid).unwrap();
         assert_eq!(oid.as_str().len(), 40);
     }
 

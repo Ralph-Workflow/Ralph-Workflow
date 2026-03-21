@@ -232,7 +232,7 @@ pub(crate) fn cleanup_stray_tmp_files(ralph_dir: &Path) {
     if let Ok(entries) = fs::read_dir(ralph_dir) {
         entries
             .flatten()
-            .filter(|entry| is_stray_tmp_file(entry))
+            .filter(is_stray_tmp_file)
             .for_each(|entry| {
                 cleanup_stray_tmp_entry(&entry);
             });

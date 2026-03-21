@@ -114,7 +114,7 @@ fn render_issues_grouped_by_file(
                         .collect::<Vec<_>>()
                         .join("\n");
 
-                    format!("{}", parts)
+                    parts.to_string()
                 })
                 .collect::<Vec<_>>()
                 .join("\n");

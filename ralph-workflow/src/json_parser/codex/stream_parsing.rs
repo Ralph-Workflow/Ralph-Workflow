@@ -83,7 +83,7 @@ impl CodexParser {
         }
 
         if self.verbosity.is_debug() {
-            let colors = self.colors.clone();
+            let colors = self.colors;
             self.with_printer_mut(|printer| {
                 writeln!(
                     printer,

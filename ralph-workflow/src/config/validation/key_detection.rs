@@ -29,7 +29,7 @@ pub fn detect_unknown_and_deprecated_keys(
     };
 
     // Separate valid sections from unknown ones - build unknown and deprecated separately
-    let unknown: KeyLocationList = table
+    let base_unknown = table
         .iter()
         .filter(|(key, _value)| {
             !matches!(
@@ -43,8 +43,7 @@ pub fn detect_unknown_and_deprecated_keys(
                     | "agent_drains"
             )
         })
-        .map(|(key, _)| (key.clone(), String::new()))
-        .collect();
+        .map(|(key, _)| (key.clone(), String::new()));
 
     let (section_unknown, section_deprecated): (KeyLocationList, KeyLocationList) = table
         .iter()
@@ -62,10 +61,8 @@ pub fn detect_unknown_and_deprecated_keys(
             },
         );
 
-    let unknown = unknown.into_iter().chain(section_unknown).collect();
-    let deprecated = std::iter::empty::<(String, String)>()
-        .chain(section_deprecated)
-        .collect::<KeyLocationList>();
+    let unknown = base_unknown.chain(section_unknown).collect();
+    let deprecated = section_deprecated;
 
     (unknown, deprecated)
 }

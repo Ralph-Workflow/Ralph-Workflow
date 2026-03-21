@@ -50,6 +50,7 @@
 use clap::error::ErrorKind;
 use clap::Parser;
 use ralph_workflow::reducer::state::{PipelineState, PromptPermissionsState};
+use ralph_workflow::runtime::environment::mock::MockGitEnvironment;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -69,6 +70,7 @@ pub struct IntegrationFixture {
     pub workspace: Arc<dyn ralph_workflow::workspace::Workspace>,
     pub run_log_context: ralph_workflow::logging::RunLogContext,
     pub cloud: ralph_workflow::config::CloudConfig,
+    pub git_env: MockGitEnvironment,
 }
 
 impl IntegrationFixture {
@@ -103,6 +105,7 @@ impl IntegrationFixture {
             workspace,
             run_log_context,
             cloud: ralph_workflow::config::CloudConfig::disabled(),
+            git_env: MockGitEnvironment::new(),
         }
     }
 
@@ -135,6 +138,7 @@ impl IntegrationFixture {
             run_log_context: &self.run_log_context,
             cloud_reporter,
             cloud: &self.cloud,
+            env: &self.git_env,
         }
     }
 }

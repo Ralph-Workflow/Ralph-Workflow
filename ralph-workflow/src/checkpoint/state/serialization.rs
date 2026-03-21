@@ -15,36 +15,39 @@
 fn load_checkpoint_with_fallback(
     content: &str,
 ) -> Result<PipelineCheckpoint, Box<dyn std::error::Error>> {
-    let checkpoint: PipelineCheckpoint = serde_json::from_str(content)?;
+    let parsed_value: serde_json::Value = serde_json::from_str(content)?;
+    let version = parsed_value
+        .get("version")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            "Invalid checkpoint format: missing or invalid version field. \
+             Supported versions: 2 (migrated) and 3 (current)."
+                .to_string()
+        })? as u32;
 
-    if checkpoint.version == 2 {
-        let migrated = PipelineCheckpoint {
-            version: 3,
-            ..checkpoint
-        };
-        return Ok(migrated);
-    }
-
-    if checkpoint.version == 3 {
+    if version == 2 {
+        let mut checkpoint: PipelineCheckpoint = serde_json::from_str(content)
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        checkpoint.version = 3;
         return Ok(checkpoint);
-    }
-
-    if checkpoint.version > 3 {
+    } else if version == 3 {
+        let checkpoint: PipelineCheckpoint = serde_json::from_str(content)
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        return Ok(checkpoint);
+    } else if version > 3 {
         return Err(format!(
-            "Invalid checkpoint format: version {} is newer than this binary supports. \
+            "Invalid checkpoint format: version {version} is newer than this binary supports. \
              Supported versions: 2 (migrated) and 3 (current). \
-             Please upgrade Ralph Workflow to resume this checkpoint.",
-            checkpoint.version
+             Please upgrade Ralph Workflow to resume this checkpoint."
         )
         .into());
     }
 
     Err(format!(
-        "Invalid checkpoint format: version {} is no longer supported (v1 and earlier). \
+        "Invalid checkpoint format: version {version} is no longer supported (v1 and earlier). \
          Supported versions: 2 (best-effort migration) and 3 (current). \
          Legacy checkpoint formats are no longer supported. \
-         To start fresh without data loss: cp .agent/checkpoint.json .agent/checkpoint.backup.json && rm .agent/checkpoint.json",
-        checkpoint.version
+         To start fresh without data loss: cp .agent/checkpoint.json .agent/checkpoint.backup.json && rm .agent/checkpoint.json"
     )
     .into())
 }

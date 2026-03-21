@@ -1,4 +1,4 @@
-use super::printer::StdoutPrinter;
+use super::printer::{shared_stdout, Printable, SharedPrinter};
 use io::GeminiParserState;
 
 /// Gemini event parser
@@ -9,18 +9,18 @@ pub struct GeminiParser {
     display_name: String,
     state: GeminiParserState,
     show_streaming_metrics: bool,
-    printer: StdoutPrinter,
+    printer: SharedPrinter,
 }
 
 impl GeminiParser {
     pub(crate) fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, StdoutPrinter::new())
+        Self::with_printer(colors, verbosity, shared_stdout())
     }
 
     pub(crate) fn with_printer(
         colors: Colors,
         verbosity: Verbosity,
-        printer: StdoutPrinter,
+        printer: SharedPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
 
@@ -61,7 +61,7 @@ impl GeminiParser {
     pub fn with_printer_for_test(
         colors: Colors,
         verbosity: Verbosity,
-        printer: StdoutPrinter,
+        printer: SharedPrinter,
     ) -> Self {
         Self::with_printer(colors, verbosity, printer)
             .with_terminal_mode(crate::json_parser::TerminalMode::Full)
@@ -76,7 +76,7 @@ impl GeminiParser {
 
     #[cfg(feature = "test-utils")]
     pub fn parse_stream_for_test<R: std::io::BufRead>(
-        &self,
+        &mut self,
         reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> std::io::Result<()> {
@@ -84,12 +84,13 @@ impl GeminiParser {
     }
 
     #[cfg(feature = "test-utils")]
-    pub fn printer(&self) -> StdoutPrinter {
+    pub fn printer(&self) -> SharedPrinter {
         self.printer.clone()
     }
 
-    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
-        f(&mut self.printer)
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {
+        let mut printer_ref = self.printer.borrow_mut();
+        f(&mut *printer_ref)
     }
 
     #[cfg(feature = "test-utils")]

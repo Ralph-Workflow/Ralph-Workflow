@@ -27,7 +27,7 @@ fn test_append_only_works_when_ansi_stripped() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -112,7 +112,7 @@ fn test_thinking_append_only_works_when_ansi_stripped() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -171,7 +171,7 @@ fn test_multiple_content_blocks_ansi_stripped() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 

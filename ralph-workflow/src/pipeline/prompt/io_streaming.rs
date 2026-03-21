@@ -24,11 +24,11 @@ use crate::pipeline::idle_timeout::SharedActivityTimestamp;
 
 pub type StreamingLineReader<R> = crate::runtime::streaming::StreamingLineReader<R>;
 pub type CancelAwareReceiverBufRead = crate::runtime::streaming::CancelAwareReceiverBufRead;
+type StdoutChunkResult = Result<Vec<u8>, std::io::Error>;
+type StdoutTx = std::sync::mpsc::SyncSender<StdoutChunkResult>;
+type StdoutRx = std::sync::mpsc::Receiver<StdoutChunkResult>;
 
-pub fn create_stdout_channel() -> (
-    std::sync::mpsc::SyncSender<Result<Vec<u8>, std::io::Error>>,
-    std::sync::mpsc::Receiver<Result<Vec<u8>, std::io::Error>>,
-) {
+pub fn create_stdout_channel() -> (StdoutTx, StdoutRx) {
     crate::runtime::streaming::create_stdout_channel()
 }
 

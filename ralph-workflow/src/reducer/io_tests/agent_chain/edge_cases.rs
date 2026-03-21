@@ -465,26 +465,29 @@ fn test_backoff_wait_does_not_cause_infinite_loop_in_event_loop_simulation() {
     };
 
     let max_iterations = 20;
+    let mut current_state = state;
+    let mut backoff_cycles = 0u32;
+    let mut iterations = 0;
 
-    let Some((final_state, _)) =
-        (0..max_iterations).try_fold((state, 0u32), |(current_state, count), _| {
-            let effect = determine_next_effect(&current_state);
-            match effect {
-                Effect::BackoffWait { role, cycle, .. } => {
-                    if count + 1 > 2 {
-                        return None;
-                    }
-                    let new_state = reduce(
-                        current_state,
-                        PipelineEvent::agent_retry_cycle_started(role, cycle),
-                    );
-                    Some((new_state, count + 1))
-                }
-                _ => None,
+    let final_state = loop {
+        if iterations >= max_iterations {
+            panic!("exceeded max iterations waiting for a non-backoff effect");
+        }
+        iterations += 1;
+
+        let effect = determine_next_effect(&current_state);
+        match effect {
+            Effect::BackoffWait { role, cycle, .. } => {
+                assert!(backoff_cycles < 2, "backoff wait repeated more than twice");
+                backoff_cycles += 1;
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::agent_retry_cycle_started(role, cycle),
+                );
             }
-        })
-    else {
-        panic!("expected Some")
+            Effect::InvokeDevelopmentAgent { .. } => break current_state,
+            other => panic!("unexpected effect during backoff simulation: {other:?}"),
+        }
     };
 
     // Verify backoff_pending_ms was cleared

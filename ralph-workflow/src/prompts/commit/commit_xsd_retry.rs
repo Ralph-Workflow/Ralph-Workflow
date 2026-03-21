@@ -50,8 +50,7 @@ pub fn prompt_commit_xsd_retry_with_log(
                         ))
                     } else {
                         None
-                    }
-                    .into_iter(),
+                    },
                 )
                 .chain(if !last_output_exists {
                     std::iter::once(if used_processed {
@@ -228,8 +227,7 @@ pub fn prompt_commit_xsd_retry_with_context(
                         ))
                     } else {
                         None
-                    }
-                    .into_iter(),
+                    },
                 )
                 .chain(if !last_output_exists {
                     if used_processed {

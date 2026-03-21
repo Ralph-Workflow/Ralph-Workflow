@@ -45,11 +45,8 @@ impl ValidationResult {
     /// Add a warning to the result.
     #[must_use]
     pub fn with_warning(self, msg: impl Into<String>) -> Self {
-        let warnings = self
-            .warnings
-            .into_iter()
-            .chain(std::iter::once(msg.into()))
-            .collect();
+        let mut warnings = self.warnings;
+        warnings.push(msg.into());
         Self {
             warnings,
             is_valid: self.is_valid,
@@ -61,8 +58,10 @@ impl ValidationResult {
     #[must_use]
     pub fn merge(self, other: Self) -> Self {
         let is_valid = self.is_valid && other.is_valid;
-        let warnings = self.warnings.into_iter().chain(other.warnings).collect();
-        let errors = self.errors.into_iter().chain(other.errors).collect();
+        let mut warnings = self.warnings;
+        warnings.extend(other.warnings);
+        let mut errors = self.errors;
+        errors.extend(other.errors);
         Self {
             is_valid,
             warnings,
@@ -197,7 +196,7 @@ pub fn validate_agent_config(
         ));
     };
 
-    let config_warnings: Vec<ValidationResult> = [
+    [
         if current_config.cmd != saved_config.cmd {
             Some(ValidationResult::ok().with_warning(format!(
                 "Agent '{}' command changed: '{}' -> '{}'",
@@ -225,11 +224,7 @@ pub fn validate_agent_config(
     ]
     .into_iter()
     .flatten()
-    .collect();
-
-    config_warnings
-        .into_iter()
-        .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
+    .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
 }
 
 /// Validate iteration counts between checkpoint and current config.
@@ -244,7 +239,7 @@ pub fn validate_iteration_counts(
     let saved_dev_iters = checkpoint.cli_args.developer_iters;
     let saved_rev_reviews = checkpoint.cli_args.reviewer_reviews;
 
-    let iteration_warnings: Vec<ValidationResult> = [
+    [
         if saved_dev_iters > 0 && saved_dev_iters != current_config.developer_iters {
             Some(ValidationResult::ok().with_warning(format!(
                 "Developer iterations changed: {} (checkpoint) vs {} (current config). Using checkpoint value.",
@@ -260,11 +255,7 @@ pub fn validate_iteration_counts(
     ]
     .into_iter()
     .flatten()
-    .collect();
-
-    iteration_warnings
-        .into_iter()
-        .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
+    .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
 }
 
 #[cfg(test)]

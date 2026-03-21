@@ -112,7 +112,7 @@ pub fn get_conflict_markers_for_file(path: &Path) -> io::Result<String> {
                 }
             },
         )
-        .filter_map(|x| Some(x))
+        .filter_map(Some)
         .collect::<Vec<_>>();
 
     if conflict_sections.is_empty() {

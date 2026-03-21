@@ -9,9 +9,7 @@ pub fn copy_to_clipboard(
     prompt: &str,
     clipboard_cmd: ClipboardCommand,
 ) -> std::io::Result<()> {
-    let mut child = executor
-        .spawn(clipboard_cmd.binary, clipboard_cmd.args, &[], None)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let mut child = executor.spawn(clipboard_cmd.binary, clipboard_cmd.args, &[], None)?;
     if let Some(ref mut stdin) = child.stdin {
         std::io::Write::write_all(stdin, prompt.as_bytes())?;
     }

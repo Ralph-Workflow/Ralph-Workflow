@@ -205,7 +205,7 @@ impl ClaudeParser {
             self.state
                 .with_session_mut(|session| self.finalize_in_place_full_mode(session))
         };
-        let c = self.colors.clone();
+        let c = self.colors;
         let prefix = &self.display_name;
 
         let output = match event {
@@ -358,10 +358,7 @@ impl ClaudeParser {
             | StreamInnerEvent::Ping
             | StreamInnerEvent::TextDelta { text: None }
             | StreamInnerEvent::Error { error: None } => String::new(),
-            StreamInnerEvent::MessageStop => {
-                let result = self.handle_message_stop_inner();
-                result
-            }
+            StreamInnerEvent::MessageStop => self.handle_message_stop_inner(),
             StreamInnerEvent::Error {
                 error: Some(err), ..
             } => self.handle_error_event(err),
@@ -395,7 +392,7 @@ impl ClaudeParser {
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> std::io::Result<()> {
-        let c = self.colors.clone();
+        let c = self.colors;
         let monitor = HealthMonitor::new("Claude");
         let logging_enabled = self.log_path.is_some();
         let mut log_buffer: Vec<u8> = Vec::new();
@@ -456,10 +453,8 @@ impl ClaudeParser {
                         } else if subtype.as_deref() == Some("success") {
                             seen_success_result.set(true);
                             false
-                        } else if is_spurious_glm_error {
-                            true
                         } else {
-                            false
+                            is_spurious_glm_error
                         }
                     } else {
                         false

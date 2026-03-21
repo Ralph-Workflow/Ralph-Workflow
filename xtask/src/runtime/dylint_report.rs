@@ -22,8 +22,7 @@ pub fn run_dylint_capture(repo_root: &Path) -> std::io::Result<String> {
     let combined = format!("{}{}", stdout, stderr);
 
     if !output.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             "dylint failed to compile - compilation errors must be fixed first",
         ));
     }

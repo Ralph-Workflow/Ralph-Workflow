@@ -508,21 +508,20 @@ impl MainEffectHandler {
             None,
             prompt,
         )?;
-        let result = result
-            .additional_events
-            .iter()
-            .any(|e| {
-                matches!(
-                    e,
-                    PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-                )
-            })
-            .then(|| {
+        let result = if result.additional_events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+            )
+        }) {
+            {
                 result
                     .clone()
                     .with_additional_event(PipelineEvent::fix_agent_invoked(pass))
-            })
-            .unwrap_or(result);
+            }
+        } else {
+            result
+        };
         Ok(result)
     }
 

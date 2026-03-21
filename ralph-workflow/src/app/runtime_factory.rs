@@ -12,6 +12,17 @@ use crate::workspace::Workspace;
 use crate::ProcessExecutor;
 use std::sync::Arc;
 
+pub struct PipelineRuntimeFactoryParams<'a> {
+    pub timer: &'a mut crate::pipeline::Timer,
+    pub logger: &'a Logger,
+    pub colors: &'a Colors,
+    pub config: &'a Config,
+    pub executor: &'a dyn ProcessExecutor,
+    pub executor_arc: Arc<dyn ProcessExecutor>,
+    pub workspace: &'a dyn Workspace,
+    pub workspace_arc: Arc<dyn Workspace>,
+}
+
 pub fn create_agent_registry() -> Result<AgentRegistry, anyhow::Error> {
     AgentRegistry::new().map_err(|e| {
         anyhow::anyhow!("Failed to load built-in default agents config (examples/agents.toml): {e}")
@@ -27,15 +38,19 @@ pub fn create_git_helpers() -> crate::git_helpers::GitHelpers {
 }
 
 pub fn create_pipeline_runtime<'a>(
-    timer: &'a mut crate::pipeline::Timer,
-    logger: &'a Logger,
-    colors: &'a Colors,
-    config: &'a Config,
-    executor: &'a dyn ProcessExecutor,
-    executor_arc: Arc<dyn ProcessExecutor>,
-    workspace: &'a dyn Workspace,
-    workspace_arc: Arc<dyn Workspace>,
+    params: PipelineRuntimeFactoryParams<'a>,
 ) -> PipelineRuntime<'a> {
+    let PipelineRuntimeFactoryParams {
+        timer,
+        logger,
+        colors,
+        config,
+        executor,
+        executor_arc,
+        workspace,
+        workspace_arc,
+    } = params;
+
     PipelineRuntime {
         timer,
         logger,

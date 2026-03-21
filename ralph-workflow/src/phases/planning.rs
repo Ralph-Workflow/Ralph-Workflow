@@ -47,6 +47,8 @@ mod tests {
 <context>Add a new feature</context>
 <scope-items>
 <scope-item count="1" category="files">files to modify</scope-item>
+<scope-item count="2" category="functions">functions to update</scope-item>
+<scope-item count="1" category="tests">tests to add</scope-item>
 </scope-items>
 </ralph-summary>
 <ralph-implementation-steps>

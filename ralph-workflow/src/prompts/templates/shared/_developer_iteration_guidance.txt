@@ -6,7 +6,7 @@
 {#   Shared implementation guidance used by developer iteration prompts.       #}
 {#                                                                             #}
 {# USAGE:                                                                      #}
-{#   {{> shared/_developer_iteration_guidance}}                                #}
+{#   Include shared/_developer_iteration_guidance inside developer prompts.    #}
 {#                                                                             #}
 {# VARIABLES: None                                                             #}
 {# ============================================================================ #}

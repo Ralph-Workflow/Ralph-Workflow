@@ -119,7 +119,7 @@ impl OpenCodeParser {
             return Ok(());
         }
 
-        let c = self.colors.clone();
+        let c = self.colors;
         self.with_printer_mut(|printer| {
             writeln!(
                 printer,

@@ -54,33 +54,69 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
     let mut risks_mitigations = None;
     let mut verification_strategy = None;
     let mut skills_mcp = None;
-    let mut found_root = false;
+
+    let root_found = loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-plan" => {
+                buf.clear();
+                break true;
+            }
+            Ok(Event::Eof) => break false,
+            Ok(Event::Text(_) | Event::Empty(_) | Event::End(_) | _) => {}
+            Err(e) => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MalformedXml,
+                    element_path: "ralph-plan".to_string(),
+                    expected: "valid XML".to_string(),
+                    found: format!("parse error: {e}"),
+                    suggestion: "Check XML syntax".to_string(),
+                    example: None,
+                });
+            }
+        }
+        buf.clear();
+    };
+
+    if !root_found {
+        return Err(XsdValidationError {
+            error_type: XsdErrorType::MissingRequiredElement,
+            element_path: "ralph-plan".to_string(),
+            expected: "<ralph-plan> as root element".to_string(),
+            found: "no <ralph-plan> found".to_string(),
+            suggestion: "Wrap your plan in <ralph-plan> tags".to_string(),
+            example: None,
+        });
+    }
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"ralph-plan" => {
-                    found_root = true;
-                }
-                b"ralph-summary" if found_root => {
+                b"ralph-summary" => {
                     summary = Some(parse_summary(&mut reader, b"ralph-summary")?);
                 }
-                b"skills-mcp" if found_root => {
+                b"skills-mcp" => {
                     skills_mcp = Some(parse_skills_mcp(&mut reader));
                 }
-                b"ralph-implementation-steps" if found_root => {
+                b"ralph-implementation-steps" => {
                     steps = Some(parse_steps(&mut reader, b"ralph-implementation-steps")?);
                 }
-                b"ralph-critical-files" if found_root => {
-                    critical_files = Some(parse_critical_files(&mut reader, b"ralph-critical-files")?);
+                b"ralph-critical-files" => {
+                    critical_files =
+                        Some(parse_critical_files(&mut reader, b"ralph-critical-files")?);
                 }
-                b"ralph-risks-mitigations" if found_root => {
-                    risks_mitigations = Some(parse_risks_mitigations(&mut reader, b"ralph-risks-mitigations")?);
+                b"ralph-risks-mitigations" => {
+                    risks_mitigations = Some(parse_risks_mitigations(
+                        &mut reader,
+                        b"ralph-risks-mitigations",
+                    )?);
                 }
-                b"ralph-verification-strategy" if found_root => {
-                    verification_strategy = Some(parse_verification_strategy(&mut reader, b"ralph-verification-strategy")?);
+                b"ralph-verification-strategy" => {
+                    verification_strategy = Some(parse_verification_strategy(
+                        &mut reader,
+                        b"ralph-verification-strategy",
+                    )?);
                 }
-                _ if found_root => {
+                _ => {
                     // Tolerant: try fuzzy tag matching before skipping.
                     // If the tag is a known tag with minor typo, route to correct handler.
                     let element_name = e.name();
@@ -98,13 +134,18 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
                                 steps = Some(parse_steps(&mut reader, e.name().as_ref())?);
                             }
                             "ralph-critical-files" => {
-                                critical_files = Some(parse_critical_files(&mut reader, e.name().as_ref())?);
+                                critical_files =
+                                    Some(parse_critical_files(&mut reader, e.name().as_ref())?);
                             }
                             "ralph-risks-mitigations" => {
-                                risks_mitigations = Some(parse_risks_mitigations(&mut reader, e.name().as_ref())?);
+                                risks_mitigations =
+                                    Some(parse_risks_mitigations(&mut reader, e.name().as_ref())?);
                             }
                             "ralph-verification-strategy" => {
-                                verification_strategy = Some(parse_verification_strategy(&mut reader, e.name().as_ref())?);
+                                verification_strategy = Some(parse_verification_strategy(
+                                    &mut reader,
+                                    e.name().as_ref(),
+                                )?);
                             }
                             _ => {
                                 // Should not happen - canonical tags are from our known list
@@ -116,13 +157,9 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
                         let _ = skip_to_end(&mut reader, e.name().as_ref());
                     }
                 }
-                _ => {
-                    // Skip unknown elements before root is found
-                    let _ = skip_to_end(&mut reader, e.name().as_ref());
-                }
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"skills-mcp" if found_root => {
+                b"skills-mcp" => {
                     // Self-closing <skills-mcp/> - empty skills-mcp
                     use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
                     skills_mcp = Some(SkillsMcp {
@@ -150,17 +187,6 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
             }
         }
         buf.clear();
-    }
-
-    if !found_root {
-        return Err(XsdValidationError {
-            error_type: XsdErrorType::MissingRequiredElement,
-            element_path: "ralph-plan".to_string(),
-            expected: "<ralph-plan> as root element".to_string(),
-            found: "no <ralph-plan> found".to_string(),
-            suggestion: "Wrap your plan in <ralph-plan> tags".to_string(),
-            example: None,
-        });
     }
 
     let summary = summary.ok_or_else(|| XsdValidationError {

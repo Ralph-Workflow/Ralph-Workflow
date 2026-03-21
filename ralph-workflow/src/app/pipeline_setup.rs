@@ -13,6 +13,7 @@ use crate::cli::Args;
 use crate::config::Config;
 use crate::git_helpers::GitHelpers;
 use crate::guidelines::ReviewGuidelines;
+use crate::logger::Colors;
 use crate::phases::PhaseContext;
 use crate::pipeline::Timer;
 use crate::reducer::MainEffectHandler;
@@ -113,18 +114,35 @@ pub fn setup_agent_phase_for_workspace_boundary(
     git_helpers
 }
 
+pub struct RepoCommandBoundaryParams<'a> {
+    pub args: &'a Args,
+    pub config: &'a Config,
+    pub registry: &'a AgentRegistry,
+    pub developer_agent: &'a str,
+    pub reviewer_agent: &'a str,
+    pub logger: &'a crate::logger::Logger,
+    pub colors: Colors,
+    pub executor: &'a std::sync::Arc<dyn crate::executor::ProcessExecutor>,
+    pub repo_root: &'a std::path::Path,
+    pub workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
+}
+
 pub fn handle_repo_commands_boundary(
-    args: &crate::cli::Args,
-    config: &Config,
-    registry: &crate::agents::AgentRegistry,
-    developer_agent: &str,
-    reviewer_agent: &str,
-    logger: &crate::logger::Logger,
-    colors: crate::logger::Colors,
-    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
-    repo_root: &std::path::Path,
-    workspace: &std::sync::Arc<dyn crate::workspace::Workspace>,
+    params: RepoCommandBoundaryParams<'_>,
 ) -> anyhow::Result<bool> {
+    let RepoCommandBoundaryParams {
+        args,
+        config,
+        registry,
+        developer_agent,
+        reviewer_agent,
+        logger,
+        colors,
+        executor,
+        repo_root,
+        workspace,
+    } = params;
+
     let mut cleanup_guard =
         crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
 
@@ -204,19 +222,23 @@ pub struct PipelineAndRepoRoot {
     pub repo_root: PathBuf,
 }
 
+pub struct RunPipelineWithHandlerParams {
+    pub args: Args,
+    pub config: Config,
+    pub registry: AgentRegistry,
+    pub developer_agent: String,
+    pub reviewer_agent: String,
+    pub developer_display: String,
+    pub reviewer_display: String,
+    pub config_path: std::path::PathBuf,
+    pub colors: crate::logger::Colors,
+    pub logger: crate::logger::Logger,
+    pub executor: Arc<dyn crate::executor::ProcessExecutor>,
+    pub template_context: crate::prompts::TemplateContext,
+}
+
 pub fn run_pipeline_with_handler_boundary(
-    args: Args,
-    config: Config,
-    registry: AgentRegistry,
-    developer_agent: String,
-    reviewer_agent: String,
-    _developer_display: String,
-    _reviewer_display: String,
-    config_path: std::path::PathBuf,
-    colors: crate::logger::Colors,
-    logger: crate::logger::Logger,
-    executor: Arc<dyn crate::executor::ProcessExecutor>,
-    _template_context: crate::prompts::TemplateContext,
+    params: RunPipelineWithHandlerParams,
 ) -> anyhow::Result<PipelineAndRepoRoot> {
     use crate::app::effect::{AppEffect, AppEffectResult};
     use crate::app::runner::command_handlers::handle_plumbing_commands;
@@ -226,6 +248,21 @@ pub fn run_pipeline_with_handler_boundary(
     };
     use crate::app::runner::pipeline_execution::{PipelinePreparationParams, RepoCommandParams};
     use crate::app::runner::AgentSetupParams;
+
+    let RunPipelineWithHandlerParams {
+        args,
+        config,
+        registry,
+        developer_agent,
+        reviewer_agent,
+        developer_display: _,
+        reviewer_display: _,
+        config_path,
+        colors,
+        logger,
+        executor,
+        template_context: _,
+    } = params;
 
     let mut handler = crate::app::runtime_factory::create_effect_handler();
 

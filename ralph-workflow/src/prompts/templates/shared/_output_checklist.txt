@@ -7,7 +7,7 @@
 {#   Specifies prioritized checklist format with file:line references.         #}
 {#                                                                             #}
 {# USAGE:                                                                      #}
-{#   {{> shared/_output_checklist}}                                            #}
+{#   Include shared/_output_checklist when review output should be a checklist. #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   None (this is a static template)                                          #}

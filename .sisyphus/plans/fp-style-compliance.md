@@ -7,6 +7,12 @@ functional programming principles. The goal is **real architectural quality** �
 thin flat boundaries, explicit effects, typed failures, testable design. Dylint is a diagnostic
 tool, not the definition of success.
 
+## Latest Checkpoint (2026-03-20)
+
+- `cargo xtask verify` backend-first staging behavior is in place (GUI checks gated behind `--gui`).
+- Integration lane regressions encountered during this effort are resolved; `test-integration` passes.
+- Verification pipeline is currently green (`cargo xtask verify` passes all 10 checks).
+
 **Critical constraints:**
 - Do NOT modify `lints/ralph_lints/`. Dylint lints are being developed in parallel.
 - Do NOT move pure-but-imperative code into `boundary/` to silence lints. That is explicitly
@@ -899,6 +905,54 @@ pub fn handle_effect(effect: Effect, workspace: &dyn Workspace) -> Result<Event,
 }
 ```
 
+#### Phase 4 Task Checklist (manual + lint-guided, style-guide-first)
+
+- [x] **P4-lint-policy-shape** — Strengthen `forbid_boundary_policy_calls` heuristic so branch-driven
+  effect selection (`if`/`match`) is detected using effect-category awareness, not only narrow call-name
+  matching.
+
+- [x] **P4-lint-retry-shape** — Strengthen `forbid_boundary_retry_loops` heuristic to catch helper-mediated
+  retry wrappers (loop calls helper, helper performs effect), not just inline retry loops.
+
+- [x] **P4-lint-verify-incrementally** — Keep lint crate compiling/testing after each heuristic update
+  (`RUSTUP_TOOLCHAIN=nightly cargo check` + targeted lint tests).
+
+- [x] **P4-manual-policy-inventory** — Manually enumerate boundary policy violations across
+  `reducer/boundary/`, `runtime/`, `io/`, `executor/` style boundaries. Record file:line + why it is policy
+  (decision/fallback/branching) and proposed extraction target.
+
+- [x] **P4-manual-retry-inventory** — Manually enumerate boundary retry-policy ownership patterns
+  (direct loops, helper-based retries, fallback chains, attempt counters/backoff) and classify legitimate
+  polling vs policy retry.
+
+- [x] **P4-crosscheck-manual-vs-lint** — Build three lists: (a) manual-only (lint false negatives),
+  (b) lint-only (possible false positives), (c) overlap true positives. Use this as the source of truth
+  for the Phase 4 burn-down queue.
+
+- [x] **P4-fix-policy-violations** — Remove all confirmed boundary policy decisions by pushing decisions
+  into reducer/orchestrator/effect selection and keeping boundaries thin (IMPURE -> PURE -> IMPURE).
+  - [x] **P4-policy-commit-promptmode-guard** — Removed commit-boundary PromptMode admissibility policy
+    from `reducer/boundary/commit.rs`; orchestrator invariant now owns mode filtering and boundary enforces
+    only a precondition assertion in debug.
+  - [x] **P4-policy-development-promptmode-branches** — Split development PromptMode branching into
+    pre-decided orchestration/effect routing.
+  - [x] **P4-policy-cloud-exitcode-triway** — Move cloud exit-code interpretation decisions out of boundary.
+
+- [x] **P4-fix-retry-violations** — Remove boundary-owned retry policy by converting retries into state-machine
+  transitions (single-attempt boundary effect + reducer/orchestrator retry scheduling).
+  - [x] **P4-R10-run-review-xsd-fallback** — Moved XSD retry input fallback selection in
+    `reducer/boundary/run_review.rs` into pure domain strategy helper
+    (`phases/review/xsd_retry_input_strategy.rs`) and added focused tests.
+  - [x] **P4-retry-remaining-manual-candidates** — Re-check ambiguous/manual retry candidates and
+    either fix them or explicitly classify as legitimate boundary polling.
+
+- [x] **P4-close-lint-gaps-from-inventory** — For every confirmed manual false negative, either:
+  (1) improve the lint heuristic with tests, or (2) document why structural detection is out-of-scope and
+  add a compensating review pattern. Goal: lint as useful tool aligned to style-guide intent.
+
+- [x] **P4-regression-proofing** — Add/expand tests around newly fixed policy/retry boundaries and lint
+  fixtures for new detection patterns so regressions are caught quickly.
+
 **Phase 4 done when:**
 ```bash
 cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
@@ -962,28 +1016,103 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
   `bare_content_xml`, `raw_text_parts`: If reading bytes from a `Read` trait — that is
   boundary code and `let mut buf` is legitimate there. If operating on an already-read
   `String`/`&str` — replace with `.lines()`, `.chars()`, `.split()`, `scan()`, `fold()`.
+  - [x] **P5-parse-state-runtime-render-loop-item** — Refactored
+    `ralph-workflow/src/prompts/runtime.rs::render_loop_item` from mutable parse-state
+    string assembly to `fold`-based value composition with focused unit tests.
+  - [x] **P5-parse-state-opencode-accumulate-text** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xml_extraction_plan.rs::OpenCodeStrategy::accumulate_text`
+    from mutable accumulation to iterator composition with focused parsing tests.
+  - [x] **P5-parse-state-json-result-extract** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xml_extraction_plan.rs::JsonResultStrategy::extract`
+    from nested imperative line/field scanning to nested `find_map` value-transformation style,
+    with focused multi-field search test coverage.
+  - [x] **P5-parse-state-development-result-json-scan** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xml_extraction_development_result.rs::try_extract_from_json_string`
+    from imperative NDJSON line/field scanning to iterator/find_map composition with focused
+    alternate-field extraction test coverage.
+  - [x] **P5-parse-state-fix-result-json-scan** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xml_extraction_fix_result.rs::try_extract_from_json_string`
+    from imperative NDJSON line/field scanning to iterator/find_map composition with focused
+    content-field extraction test coverage.
+  - [x] **P5-parse-state-issues-result-json-scan** — Verified
+    `ralph-workflow/src/files/llm_output_extraction/xml_extraction_issues.rs::try_extract_from_json_string`
+    is in iterator/find_map value-transformation style with helper-closure fallback extraction
+    and passing focused module tests.
 
 - [ ] **P5-accumulators** — vars like `result`, `output`, `summary`, `elements`, `parts`,
   `body`, `cells`, `collected`, `accumulated`, `content_fragments`: Almost always replaceable
   with `map`/`filter_map`/`flat_map`/`fold`/`collect` pipelines or `[a, b, c].into_iter()
   .filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n")` for multi-section assembly.
+  - [x] **P5-accumulators-step-parser-attrs-string** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/step_parsers.rs::attrs_to_string`
+    from mutable string accumulation to iterator/value-transformation composition while preserving
+    exact spacing and quoting output semantics.
+  - [x] **P5-accumulators-section-inline-elements** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/section_parsers.rs::parse_inline_elements`
+    from mutable inline-element accumulation to iterator-driven cursor iteration with
+    equivalent inline text/emphasis/code/link parsing behavior.
+  - [x] **P5-accumulators-language-detector-extension-scan** — Refactored
+    `ralph-workflow/src/language_detector/io.rs::count_extensions_with_workspace`
+    to thread queue/count/file-scan state through recursive value returns rather than
+    in-loop mutable reassignment, preserving extension-count semantics.
+  - [x] **P5-accumulators-language-detector-test-scan** — Refactored
+    `ralph-workflow/src/language_detector/io.rs::detect_tests_with_workspace`
+    to thread queue/scan state through recursive value returns and composed queue-merge
+    helper logic instead of in-loop mutable reassignment.
 
 - [ ] **P5-flags** — vars like `has_entries`, `found_root`, `in_tag`, `in_content`,
   `no_issues_found`, `files_changed_present`: Replace scanning flags with `any()`, `all()`,
   `find()`, `find_map()`, or `position()`. A flag that records "did we see X in the loop"
   is always replaceable with `items.iter().any(|x| is_X(x))`.
+  - [x] **P5-flags-main-validator-root-detection** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/main_validator.rs::validate_plan_xml`
+    to remove mutable `found_root` scanning state in favor of pre-scan root detection and
+    root-scoped parsing while preserving missing-root error behavior.
+  - [x] **P5-flags-xml-formatter-mode-state** — Refactored
+    `ralph-workflow/src/files/llm_output_extraction/xml_formatter.rs::pretty_print_xml`
+    from mutable boolean flag tracking (`in_tag`, `in_content`) to explicit mode-state
+    transitions while preserving formatting output semantics.
+  - [x] **P5-flags-diff-truncation-file-state** — Refactored
+    `ralph-workflow/src/phases/commit/diff_truncation.rs::truncate_diff_to_model_budget`
+    to remove boolean `in_file` tracking in favor of value-encoded current-file state,
+    with regression coverage for header-only trailing diff blocks.
 
 - [ ] **P5-builders** — vars like `config`, `handler`, `phase_ctx`, `opts`, `diff_opts`:
   Use `with_*` consuming builder pattern or struct-update syntax. Check if the type already
   has `with_*` methods; if not, add them per the pattern in
   `docs/code-style/functional-transformations.md` ("The with_* method pattern").
+  - [x] **P5-builders-git-snapshot-status-options** — Refactored
+    `ralph-workflow/src/git_helpers/repo/snapshot.rs::git_snapshot_impl`
+    to use extracted configured status-options builder construction, preserving
+    `include_untracked`/`recurse_untracked_dirs`/`include_ignored` semantics.
+  - [x] **P5-builders-git-diff-options-helper** — Refactored
+    `ralph-workflow/src/git_helpers/repo/diff.rs` call sites to use shared
+    `configured_diff_options()` builder construction instead of repeated mutable
+    option setup blocks.
+  - [x] **P5-builders-git-commit-status-options** — Refactored
+    `ralph-workflow/src/git_helpers/repo/commit.rs::git_add_all_impl`
+    to use shared `configured_status_options()` builder construction instead of
+    in-function repeated mutable status-options setup.
 
 - [ ] **P5-git** — vars like `git_helpers`, `index`, `perms`, `files`, `diff_opts`:
   Many of these are in `git_helpers/` which is being comprehensively refactored in Phase 9.
   Coordinate with that phase — fix the architecture first, then the style follows.
+  - [x] **P5-git-snapshot-options-slice** — Completed one atomic options cleanup in
+    `ralph-workflow/src/git_helpers/repo/snapshot.rs` as a low-risk pre-Phase-9
+    value-style builder alignment slice.
+  - [x] **P5-git-diff-options-slice** — Completed one atomic options cleanup in
+    `ralph-workflow/src/git_helpers/repo/diff.rs` by centralizing repeated
+    diff-options construction while preserving git diff semantics.
+  - [x] **P5-git-commit-options-slice** — Completed one atomic options cleanup in
+    `ralph-workflow/src/git_helpers/repo/commit.rs` by centralizing status-options
+    construction while preserving git add staging semantics.
 
 - [ ] **P5-misc** — remaining `let mut` vars: investigate each individually. Document any
   that are false positives with a comment explaining why.
+  - [x] **P5-misc-git-cleanup-track-issues-accumulator** — Refactored
+    `ralph-workflow/src/git_helpers/cleanup.rs::check_track_file_issues`
+    from mutable vec accumulation + conditional push to iterator/value composition
+    while preserving issue ordering and emitted message strings.
 
 ---
 
@@ -1023,6 +1152,14 @@ cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
 
 - [ ] **P5-loops-for**: For each `for` loop encountered during Phase 5 module work — identify
   its purpose from the table above and apply the correct replacement.
+  - [x] **P5-loops-for-ps-children-grouping** — Refactored
+    `ralph-workflow/src/executor/ps.rs::build_children_lookup` from explicit
+    `for`-loop grouping into iterator `fold` composition while preserving
+    parent-PID grouping semantics.
+  - [x] **P5-loops-for-runtime-loop-rendering** — Refactored
+    `ralph-workflow/src/prompts/runtime.rs::process_loops_with_log` item accumulation
+    from explicit `for` loop into iterator `map` + `unzip` + `flatten` composition
+    while preserving rendered-output and unsubstituted-variable ordering semantics.
 
 - [ ] **P5-loops-bare**: Each bare `loop` in domain code is almost certainly retry policy
   (→ Phase 4 state machine) or a streaming I/O loop (→ boundary module). Classify and fix.
@@ -1031,6 +1168,10 @@ cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
   - `while condition { mutate }` → recursive step or `successors()`
   - `while let Some(x) = iter.next()` → `for x in iter` or combinator
   - `while bytes_read > 0` → streaming I/O (boundary)
+  - [x] **P5-loops-while-config-entries-iteration** — Refactored
+    `ralph-workflow/src/git_helpers/config_state.rs::collect_config_entries`
+    from `while let Some(entry) = entries.next()` accumulation to iterator
+    `from_fn(...).collect()` value composition preserving error mapping semantics.
 
 **Combined Phase 5 acceptance criteria (both let-mut AND loops):**
 ```bash

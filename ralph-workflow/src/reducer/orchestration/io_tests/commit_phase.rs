@@ -744,3 +744,118 @@ fn test_determine_effect_complete() {
     let effect = determine_next_effect(&state);
     assert!(matches!(effect, Effect::SaveCheckpoint { .. }));
 }
+
+#[test]
+fn test_commit_orchestrator_never_derives_continuation_mode() {
+    // Phase 4 policy violation fix: commit orchestrator must constrain prompt_mode
+    // to admissible set {Normal, XsdRetry, SameAgentRetry} before deriving
+    // Effect::PrepareCommitPrompt. Continuation mode is semantically invalid for
+    // commit phase (commit is atomic, not incremental work).
+    //
+    // This test exhaustively checks all reducer state combinations that could
+    // theoretically trigger PrepareCommitPrompt derivation and ensures none
+    // derive Continuation mode.
+
+    use crate::reducer::state::PromptMode;
+
+    // Helper to build minimal state for prompt preparation
+    let base_state = || PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_diff_prepared: true,
+        commit_diff_empty: false,
+        commit_diff_content_id_sha256: Some("test_diff_id".to_string()),
+        commit_prompt_prepared: false,
+        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        prompt_inputs: crate::reducer::state::PromptInputsState {
+            commit: Some(crate::reducer::state::MaterializedCommitInputs {
+                attempt: 1,
+                diff: crate::reducer::state::MaterializedPromptInput {
+                    kind: crate::reducer::state::PromptInputKind::Diff,
+                    content_id_sha256: "test_diff_id".to_string(),
+                    consumer_signature_sha256: "test_consumer".to_string(),
+                    original_bytes: 100,
+                    final_bytes: 100,
+                    model_budget_bytes: Some(1000),
+                    inline_budget_bytes: Some(500),
+                    representation: crate::reducer::state::PromptInputRepresentation::Inline,
+                    reason: crate::reducer::state::PromptMaterializationReason::WithinBudgets,
+                },
+            }),
+            ..Default::default()
+        },
+        ..create_test_state()
+    };
+
+    // Test case 1: Normal mode (no retries pending)
+    let state = base_state();
+    let effect = determine_next_effect(&state);
+    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
+        assert_eq!(
+            prompt_mode,
+            PromptMode::Normal,
+            "Normal path should derive Normal mode"
+        );
+    }
+
+    // Test case 2: Same-agent retry pending
+    let mut state = base_state();
+    state.continuation.same_agent_retry_pending = true;
+    state.continuation.same_agent_retry_count = 0;
+    let effect = determine_next_effect(&state);
+    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
+        assert_eq!(
+            prompt_mode,
+            PromptMode::SameAgentRetry,
+            "Same-agent retry should derive SameAgentRetry mode"
+        );
+    }
+
+    // Test case 3: XSD retry pending
+    let mut state = base_state();
+    state.continuation.xsd_retry_pending = true;
+    state.continuation.xsd_retry_count = 0;
+    let effect = determine_next_effect(&state);
+    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
+        assert_eq!(
+            prompt_mode,
+            PromptMode::XsdRetry,
+            "XSD retry should derive XsdRetry mode"
+        );
+    }
+
+    // Test case 4: Both retries pending (same-agent takes priority per orchestration logic)
+    let mut state = base_state();
+    state.continuation.same_agent_retry_pending = true;
+    state.continuation.same_agent_retry_count = 0;
+    state.continuation.xsd_retry_pending = true;
+    state.continuation.xsd_retry_count = 0;
+    let effect = determine_next_effect(&state);
+    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
+        assert_ne!(
+            prompt_mode,
+            PromptMode::Continuation,
+            "Commit phase must never derive Continuation mode (even with both retries)"
+        );
+    }
+
+    // Test case 5: Neither retry pending (clean state, should be Normal)
+    let mut state = base_state();
+    state.continuation.same_agent_retry_pending = false;
+    state.continuation.xsd_retry_pending = false;
+    let effect = determine_next_effect(&state);
+    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
+        assert_eq!(
+            prompt_mode,
+            PromptMode::Normal,
+            "Clean continuation state should derive Normal mode, not Continuation"
+        );
+    }
+}

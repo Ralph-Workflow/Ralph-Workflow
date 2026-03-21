@@ -168,7 +168,7 @@ fn write_run_metadata_best_effort(
 /// - Required files/directories cannot be created
 /// - Run log context creation fails
 /// - Checkpoint save fails (when updating `log_run_id`)
-pub(crate) fn prepare_pipeline_or_exit<H: AppEffectHandler>(
+pub(crate) fn prepare_pipeline_or_exit<H: crate::app::effect::AppEffectHandler>(
     params: PipelinePreparationParams<'_, H>,
 ) -> anyhow::Result<Option<PipelineContext>> {
     let PipelinePreparationParams {

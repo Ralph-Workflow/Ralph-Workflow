@@ -4,8 +4,9 @@
 //! Each module tests a specific aspect of the reducer's event handling.
 
 // Re-export common types for test modules
+use crate::agents::AgentRole;
 pub use crate::reducer::event::{PipelineEvent, PipelinePhase};
-pub use crate::reducer::state::{CommitState, PipelineState, RebaseState};
+pub use crate::reducer::state::{AgentChainState, CommitState, PipelineState, RebaseState};
 pub use crate::reducer::state_reduction::reduce;
 
 // Test modules organized by phase
@@ -28,6 +29,14 @@ mod review_phase;
 #[must_use]
 pub fn create_test_state() -> PipelineState {
     let mut state = PipelineState::initial(5, 2);
+    state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["agent1".to_string(), "agent2".to_string()],
+        vec![
+            vec!["model1".to_string(), "model2".to_string()],
+            vec!["fallback".to_string()],
+        ],
+        AgentRole::Developer,
+    );
     // Tests in this module typically simulate mid-pipeline scenarios
     state.prompt_permissions.locked = true;
     state.prompt_permissions.restore_needed = true;

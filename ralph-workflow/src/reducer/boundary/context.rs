@@ -133,15 +133,13 @@ impl MainEffectHandler {
         // Delete ALL .xml files in .agent/tmp/ to prevent context pollution via workspace
         let tmp_dir = Path::new(".agent/tmp");
         let xml_cleaned = if ctx.workspace.exists(tmp_dir) {
-            let entries: Vec<_> = ctx
-                .workspace
-                .read_dir(tmp_dir)
-                .map_err(|err| ErrorEvent::WorkspaceReadFailed {
-                    path: tmp_dir.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                })?
-                .into_iter()
-                .collect();
+            let entries =
+                ctx.workspace
+                    .read_dir(tmp_dir)
+                    .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+                        path: tmp_dir.display().to_string(),
+                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                    })?;
 
             let xml_cleaned: Result<usize, ErrorEvent> = entries
                 .into_iter()
@@ -157,10 +155,7 @@ impl MainEffectHandler {
                         .map(|()| count + 1)
                 });
 
-            match xml_cleaned {
-                Ok(count) => count,
-                Err(err) => return Err(err.into()),
-            }
+            xml_cleaned?
         } else {
             0
         };
@@ -441,7 +436,13 @@ impl MainEffectHandler {
                 ));
             } else {
                 ctx.logger
-                    .warn(&format!("Failed to write .gitignore (continuing anyway)"));
+                    .warn("Failed to write .gitignore (continuing anyway)");
+                // Write failed: report no entries actually added (write was not persisted)
+                return EffectResult::event(PipelineEvent::gitignore_entries_ensured(
+                    Vec::new(),
+                    already_present,
+                    file_created,
+                ));
             }
         }
 

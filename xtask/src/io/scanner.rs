@@ -1710,8 +1710,11 @@ mod tests {
     use std::fs;
 
     fn make_temp_dir(name: &str) -> PathBuf {
-        let base = std::env::temp_dir().join(format!("xtask-scanner-{name}"));
-        let _ = fs::remove_dir_all(&base);
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("xtask-scanner-{name}-{unique}"));
         fs::create_dir_all(&base).unwrap();
         base
     }

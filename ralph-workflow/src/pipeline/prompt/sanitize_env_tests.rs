@@ -49,21 +49,18 @@ fn test_sanitize_command_env_removes_anthropic_vars_when_not_explicitly_set() {
 #[test]
 fn test_sanitize_command_env_preserves_explicitly_set_anthropic_vars() {
     let env_vars = std::env::vars()
-        .chain(
-            [
-                ("ANTHROPIC_API_KEY".to_string(), "parent-key".to_string()),
-                (
-                    "ANTHROPIC_BASE_URL".to_string(),
-                    "https://parent.example.com".to_string(),
-                ),
-                (
-                    "ANTHROPIC_AUTH_TOKEN".to_string(),
-                    "parent-token".to_string(),
-                ),
-                ("PATH".to_string(), "/usr/bin:/bin".to_string()),
-            ]
-            .into_iter(),
-        )
+        .chain([
+            ("ANTHROPIC_API_KEY".to_string(), "parent-key".to_string()),
+            (
+                "ANTHROPIC_BASE_URL".to_string(),
+                "https://parent.example.com".to_string(),
+            ),
+            (
+                "ANTHROPIC_AUTH_TOKEN".to_string(),
+                "parent-token".to_string(),
+            ),
+            ("PATH".to_string(), "/usr/bin:/bin".to_string()),
+        ])
         .collect();
     let agent_env_vars = HashMap::from([
         (

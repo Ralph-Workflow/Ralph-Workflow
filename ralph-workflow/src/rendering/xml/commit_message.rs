@@ -16,10 +16,6 @@ const BOX_WIDTH: usize = 47;
 const SEPARATOR_CHAR: char = '─';
 
 /// Extract all occurrences of a tag from XML content.
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "bounds-checked index arithmetic"
-)]
 fn extract_all_tag_content(content: &str, tag_name: &str) -> Vec<String> {
     let start_tag = format!("<{tag_name}>");
     let end_tag = format!("</{tag_name}>");

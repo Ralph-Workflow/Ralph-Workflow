@@ -5,7 +5,7 @@ pub fn create_run_dir_with_collision_handling(
     workspace: &dyn Workspace,
     base_run_id: &crate::logging::RunId,
 ) -> Result<(crate::logging::RunId, PathBuf), anyhow::Error> {
-    let candidates: Vec<(crate::logging::RunId, PathBuf)> = (0..=99)
+    (0..=99)
         .map(|counter| {
             let run_id = if counter == 0 {
                 base_run_id.clone()
@@ -15,10 +15,6 @@ pub fn create_run_dir_with_collision_handling(
             let run_dir = PathBuf::from(format!(".agent/logs-{run_id}"));
             (run_id, run_dir)
         })
-        .collect();
-
-    candidates
-        .into_iter()
         .find(|(_run_id, run_dir)| {
             let agents_dir = run_dir.join("agents");
 

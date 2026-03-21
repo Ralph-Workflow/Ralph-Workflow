@@ -8,7 +8,7 @@
 {#   This is a minimal fallback to ensure system continues working.             #}
 {#                                                                             #}
 {# WHEN USED:                                                                  #}
-{#   During rebase operations when merge conflicts occur AND the main           #}
+{#   When merge conflicts occur and the main                                #}
 {#   conflict_resolution.txt template fails to render.                          #}
 {#                                                                             #}
 {# TRIGGER:                                                                    #}
@@ -22,8 +22,9 @@
 {#   JSON object with "resolved_files" mapping paths to resolved content.       #}
 {#                                                                             #}
 {# NOTES:                                                                      #}
-{#   - Agent MUST NOT know we're in a rebase (security requirement)             #}
-{#   - Prompt frames conflicts as "merge conflicts" not rebase conflicts         #}
+{#   - Agent MUST NOT know the precise git operation that triggered the conflict #}
+{#   - Prompt frames conflicts as "merge conflicts" without tying them to a      #}
+{#     specific operation                                                      #}
 {#   - Each resolved file must contain COMPLETE content, not just diffs         #}
 {#   - This is a GRACEFUL FALLBACK when template system has issues             #}
 {# ============================================================================ #}

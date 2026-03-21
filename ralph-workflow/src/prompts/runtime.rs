@@ -70,11 +70,13 @@ fn render_loop_item(
     var_name: &str,
     variables: &HashMap<&str, String>,
 ) -> String {
-    let mut item_content = body.to_string();
-    for (key, val) in variables {
-        item_content = item_content.replace(&format!("{{{{{}}}}}", key), val);
-    }
-    item_content.replace(&format!("{{{}}}", var_name), item)
+    // First apply all variable substitutions via fold, then apply item substitution
+    let after_vars = variables
+        .iter()
+        .fold(body.to_string(), |content, (key, val)| {
+            content.replace(&format!("{{{{{}}}}}", key), val)
+        });
+    after_vars.replace(&format!("{{{}}}", var_name), item)
 }
 
 fn find_unsubstituted_vars(item_content: &str, variables: &HashMap<&str, String>) -> Vec<String> {
@@ -322,19 +324,26 @@ impl Template {
                 let full_match = &result[for_start..for_end + 2];
 
                 if let Some((header, body)) = parse_loop_header(full_match) {
-                    if let Some(var_name) = header.trim().split_whitespace().next() {
+                    if let Some(var_name) = header.split_whitespace().next() {
                         if let Some(values) = variables.get(var_name) {
                             let items = split_loop_items(values);
-                            let mut rendered_items = Vec::new();
-                            let mut unsubstituted = Vec::new();
-
-                            for item in items {
-                                let item_content =
-                                    render_loop_item(body, item, var_name, variables);
-                                unsubstituted
-                                    .extend(find_unsubstituted_vars(&item_content, variables));
-                                rendered_items.push(item_content);
-                            }
+                            let (rendered_items, unsubstituted_blocks): (
+                                Vec<String>,
+                                Vec<Vec<String>>,
+                            ) = items
+                                .iter()
+                                .map(|item| {
+                                    let item_content =
+                                        render_loop_item(body, item, var_name, variables);
+                                    let unsubstituted =
+                                        find_unsubstituted_vars(&item_content, variables);
+                                    (item_content, unsubstituted)
+                                })
+                                .unzip();
+                            let unsubstituted = unsubstituted_blocks
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<_>>();
 
                             let loop_token = format!("__LOOP_TOKEN_{}__", token_counter);
                             token_counter += 1;
@@ -374,56 +383,55 @@ impl Template {
     fn process_conditionals(content: &str, variables: &HashMap<&str, String>) -> String {
         let mut result = content.to_string();
 
-        while let Some(if_start) = result.find("{% if ") {
-            if let Some(end_pos) = result[if_start..].find("%}") {
-                let if_end = if_start + end_pos;
-                let full_match = &result[if_start..if_end + 2];
+        loop {
+            let Some(if_start) = result.find("{% if ") else {
+                break;
+            };
 
-                if let Some(then_pos) = full_match.find("%}") {
-                    let condition = &full_match[6..then_pos];
-                    let body_start = then_pos + 2;
+            // Find the end of the {% if CONDITION %} tag header (first %} after {% if)
+            let Some(tag_end_offset) = result[if_start..].find("%}") else {
+                break;
+            };
+            let tag_close = if_start + tag_end_offset + 2; // byte pos right after the closing %}
 
-                    let else_block = full_match.find("{% else %}");
-                    let endif_block = full_match.find("{% endif %}");
+            // Extract condition string from the tag header
+            let tag = &result[if_start..tag_close];
+            let Some(cond_end) = tag.find("%}") else {
+                break;
+            };
+            let condition = tag[6..cond_end].trim(); // skip leading "{% if "
 
-                    let (condition_true, body) = if let Some(else_pos) = else_block {
-                        let cond = condition.trim();
-                        (
-                            eval_conditional(cond, variables),
-                            &full_match[body_start..else_pos],
-                        )
-                    } else if let Some(endif_pos) = endif_block {
-                        let cond = condition.trim();
-                        (
-                            eval_conditional(cond, variables),
-                            &full_match[body_start..endif_pos],
-                        )
-                    } else {
-                        break;
-                    };
+            // Find the matching {% endif %} searching from the start of this if block.
+            // Simple (non-nested) implementation: first {% endif %} wins.
+            let rest_from_if = &result[if_start..];
+            let Some(endif_offset) = rest_from_if.find("{% endif %}") else {
+                break;
+            };
+            let endif_abs = if_start + endif_offset;
+            let full_end = endif_abs + 11; // "{% endif %}" is 11 chars
 
-                    let replacement = if condition_true { body.trim() } else { "" };
-                    result = result.replace(full_match, replacement);
+            // Clone full_match to avoid borrow-after-mutate
+            let full_match = result[if_start..full_end].to_string();
+
+            // Body is between end of tag header and start of {% endif %}
+            let body_and_maybe_else = &result[tag_close..endif_abs];
+
+            // Check for {% else %} within the body to split then/else branches
+            let replacement = if let Some(else_offset) = body_and_maybe_else.find("{% else %}") {
+                let then_body = &body_and_maybe_else[..else_offset];
+                let else_body = &body_and_maybe_else[else_offset + 10..]; // 10 = "{% else %}"
+                if eval_conditional(condition, variables) {
+                    then_body.trim().to_string()
                 } else {
-                    break;
+                    else_body.trim().to_string()
                 }
+            } else if eval_conditional(condition, variables) {
+                body_and_maybe_else.trim().to_string()
             } else {
-                break;
-            }
-        }
+                String::new()
+            };
 
-        while let Some(else_pos) = result.find("{% else %}") {
-            if let Some(endif_pos) = result[else_pos..].find("{% endif %}") {
-                let endif_pos = else_pos + endif_pos;
-                let full_match = &result[else_pos..endif_pos + 11];
-                result = result.replace(full_match, "");
-            } else {
-                break;
-            }
-        }
-
-        while result.contains("{% endif %}") {
-            result = result.replace("{% endif %}", "");
+            result = result.replacen(&full_match, &replacement, 1);
         }
 
         result
@@ -439,42 +447,38 @@ impl Template {
 
         let vars = extract_variables(&result);
         for var in vars {
-            let placeholder = format!("{{{{{}}}}}", var.name);
-            let placeholder_with_default = format!("{{{{{}}}}}", var.name);
+            let raw_token = format!("{{{{{}}}}}", var.placeholder);
+            let clean_token = format!("{{{{{}}}}}", var.name);
 
-            if result.contains(&placeholder_with_default) {
-                if let Some(value) = variables.get(var.name.as_str()) {
-                    result = result.replace(&placeholder_with_default, value);
-                    substituted.push(SubstitutionEntry {
-                        name: var.name.clone(),
-                        source: if value.is_empty() {
-                            crate::prompts::template_validator::SubstitutionSource::EmptyWithDefault
-                        } else if var.has_default {
-                            crate::prompts::template_validator::SubstitutionSource::Default
-                        } else {
-                            crate::prompts::template_validator::SubstitutionSource::Value
-                        },
-                    });
-                } else if var.has_default {
-                    let default_val = var.default_value.unwrap_or_default();
-                    result = result.replace(&placeholder_with_default, &default_val);
-                    substituted.push(SubstitutionEntry {
-                        name: var.name.clone(),
-                        source: crate::prompts::template_validator::SubstitutionSource::Default,
-                    });
-                } else {
-                    unsubstituted.push(var.name.clone());
-                }
-            } else if result.contains(&placeholder) {
-                if let Some(value) = variables.get(var.name.as_str()) {
-                    result = result.replace(&placeholder, value);
-                    substituted.push(SubstitutionEntry {
-                        name: var.name.clone(),
-                        source: crate::prompts::template_validator::SubstitutionSource::Value,
-                    });
-                } else {
-                    unsubstituted.push(var.name.clone());
-                }
+            let token_to_replace = if result.contains(&raw_token) {
+                raw_token.clone()
+            } else if result.contains(&clean_token) {
+                clean_token.clone()
+            } else {
+                continue;
+            };
+
+            if let Some(value) = variables.get(var.name.as_str()) {
+                result = result.replace(&token_to_replace, value);
+                substituted.push(SubstitutionEntry {
+                    name: var.name.clone(),
+                    source: if value.is_empty() {
+                        crate::prompts::template_validator::SubstitutionSource::EmptyWithDefault
+                    } else if var.has_default {
+                        crate::prompts::template_validator::SubstitutionSource::Default
+                    } else {
+                        crate::prompts::template_validator::SubstitutionSource::Value
+                    },
+                });
+            } else if var.has_default {
+                let default_val = var.default_value.clone().unwrap_or_default();
+                result = result.replace(&token_to_replace, &default_val);
+                substituted.push(SubstitutionEntry {
+                    name: var.name.clone(),
+                    source: crate::prompts::template_validator::SubstitutionSource::Default,
+                });
+            } else {
+                unsubstituted.push(var.name.clone());
             }
         }
 
@@ -669,8 +673,7 @@ impl BriefDescription for StepOutcome {
                 output,
                 ..
             } => {
-                let files: Option<Vec<String>> =
-                    files_modified.as_ref().map(|b| b.iter().cloned().collect());
+                let files: Option<Vec<String>> = files_modified.as_ref().map(|b| b.to_vec());
                 let output_str: Option<String> = output.as_ref().map(|b| b.to_string());
                 OutcomeDescription::from_outcome(
                     &files,
@@ -747,5 +750,49 @@ impl BriefDescription for StepOutcome {
                 .unwrap_or_default()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_loop_item_substitutes_variables_and_item() {
+        let body = "Name: {item}, Age: {{age}}, City: {{city}}";
+        let item = "Alice";
+        let var_name = "item";
+        let mut variables = HashMap::new();
+        variables.insert("age", "30".to_string());
+        variables.insert("city", "NYC".to_string());
+
+        let result = render_loop_item(body, item, var_name, &variables);
+
+        assert_eq!(result, "Name: Alice, Age: 30, City: NYC");
+    }
+
+    #[test]
+    fn test_render_loop_item_no_variables() {
+        let body = "Item: {item}";
+        let item = "value";
+        let var_name = "item";
+        let variables = HashMap::new();
+
+        let result = render_loop_item(body, item, var_name, &variables);
+
+        assert_eq!(result, "Item: value");
+    }
+
+    #[test]
+    fn test_render_loop_item_no_item_placeholder() {
+        let body = "Age: {{age}}";
+        let item = "unused";
+        let var_name = "item";
+        let mut variables = HashMap::new();
+        variables.insert("age", "25".to_string());
+
+        let result = render_loop_item(body, item, var_name, &variables);
+
+        assert_eq!(result, "Age: 25");
     }
 }

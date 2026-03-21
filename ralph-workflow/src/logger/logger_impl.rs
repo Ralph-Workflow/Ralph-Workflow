@@ -401,7 +401,7 @@ mod tests {
                 .with_workspace_log(workspace.clone(), ".agent/logs/test.log");
 
             // Use the Loggable trait to log a message
-            Loggable::info(&mut logger, "test message");
+            Loggable::info(&logger, "test message");
 
             // Verify the message was written to the workspace
             let content = workspace.get_file(".agent/logs/test.log").unwrap();

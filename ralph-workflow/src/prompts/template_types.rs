@@ -29,6 +29,8 @@ pub struct VariableInfo {
     pub has_default: bool,
     /// Default value if present
     pub default_value: Option<String>,
+    /// Raw placeholder content between `{{` and `}}`
+    pub placeholder: String,
 }
 
 /// Template validation error.

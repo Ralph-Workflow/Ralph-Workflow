@@ -3,6 +3,13 @@ use std::path::Path;
 use crate::git_helpers::git2_to_io_error;
 use crate::workspace::Workspace;
 
+fn configured_diff_options() -> git2::DiffOptions {
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts.include_untracked(true);
+    diff_opts.recurse_untracked_dirs(true);
+    diff_opts
+}
+
 /// Get the diff of all changes (unstaged and staged).
 ///
 /// Returns a formatted diff string suitable for LLM analysis.
@@ -185,9 +192,7 @@ fn git_diff_impl(repo: &git2::Repository) -> std::io::Result<String> {
         Ok(head) => Some(head.peel_to_tree().map_err(|e| git2_to_io_error(&e))?),
         Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => {
             // No commits yet: diff an empty tree against the workdir.
-            let mut diff_opts = git2::DiffOptions::new();
-            diff_opts.include_untracked(true);
-            diff_opts.recurse_untracked_dirs(true);
+            let mut diff_opts = configured_diff_options();
 
             let diff = repo
                 .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
@@ -202,9 +207,7 @@ fn git_diff_impl(repo: &git2::Repository) -> std::io::Result<String> {
     };
 
     // For repos with commits, diff HEAD against working tree (staged + unstaged + untracked).
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
+    let mut diff_opts = configured_diff_options();
 
     let diff = repo
         .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))
@@ -220,9 +223,7 @@ fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> std::io::Result
     let start_commit = repo.find_commit(oid).map_err(|e| git2_to_io_error(&e))?;
     let start_tree = start_commit.tree().map_err(|e| git2_to_io_error(&e))?;
 
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
+    let mut diff_opts = configured_diff_options();
 
     let diff = repo
         .diff_tree_to_workdir_with_index(Some(&start_tree), Some(&mut diff_opts))
@@ -247,9 +248,7 @@ fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> std::io::Result
 
 /// Generate a diff from the empty tree (initial commit).
 fn git_diff_from_empty_tree(repo: &git2::Repository) -> std::io::Result<String> {
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
+    let mut diff_opts = configured_diff_options();
 
     let diff = repo
         .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))

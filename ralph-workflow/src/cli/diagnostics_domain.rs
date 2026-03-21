@@ -166,7 +166,7 @@ pub fn get_sorted_agent_availability(
         .into_iter()
         .map(|(name, cfg)| AgentAvailabilityInfo {
             name: name.to_string(),
-            available: registry.is_agent_available(&name),
+            available: registry.is_agent_available(name),
             json_parser: !matches!(
                 cfg.json_parser,
                 crate::agents::parser::JsonParserType::Generic
@@ -440,7 +440,7 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
         vec![]
     } else {
         std::iter::once("  Critical checks (sample):".to_string())
-            .chain(critical_checks_lines.into_iter())
+            .chain(critical_checks_lines)
             .collect()
     };
 

@@ -35,7 +35,6 @@ use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 use crate::reducer::state::{CommitState, PromptMode};
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
-use crate::reducer::PipelineState;
 
 use super::super::MockEffectHandler;
 
@@ -225,6 +224,7 @@ impl MockEffectHandler {
 mod tests {
     use super::*;
     use crate::reducer::event::CommitEvent;
+    use crate::reducer::state::PipelineState;
 
     #[test]
     fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {

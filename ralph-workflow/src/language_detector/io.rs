@@ -45,7 +45,8 @@ fn scan_dirs_step(
     }
 
     let scanned = files_scanned + new_counts.values().sum::<usize>();
-    let next_queue: Vec<_> = queue_tail.iter().chain(subdirs.iter()).cloned().collect();
+    let mut next_queue = queue_tail.to_vec();
+    next_queue.extend(subdirs);
 
     // If next_queue is empty but queue_tail is non-empty, we still have directories
     // to process - the current directory just had no subdirectories.
@@ -113,11 +114,8 @@ fn search_dirs_step(
             let (_, rest) = queue
                 .split_first()
                 .unwrap_or((&(PathBuf::new(), 0usize), &[]));
-            let combined: Vec<_> = if new_queue.is_empty() {
-                rest.to_vec()
-            } else {
-                rest.iter().cloned().chain(new_queue).collect()
-            };
+            let mut combined = rest.to_vec();
+            combined.extend(new_queue);
             if combined.is_empty() {
                 SearchDirsNext::Done
             } else {
@@ -147,25 +145,21 @@ pub(super) fn collect_signature_files_with_workspace(
             } => {
                 let all_entries: Vec<ScanItem> = next_items
                     .into_iter()
-                    .filter_map(|item| {
-                        workspace.read_dir(&item.path).ok().map(|entries| {
-                            entries
-                                .into_iter()
-                                .filter_map(|entry| {
-                                    let path = entry.path();
-                                    let name = entry.file_name()?.to_string_lossy().to_string();
-                                    Some(ScanItem {
-                                        path: path.to_path_buf(),
-                                        name: name.to_lowercase(),
-                                    })
-                                })
-                                .collect::<Vec<_>>()
+                    .filter_map(|item| workspace.read_dir(&item.path).ok())
+                    .flat_map(|entries| {
+                        entries.into_iter().filter_map(|entry| {
+                            let path = entry.path();
+                            let name = entry.file_name()?.to_string_lossy().to_string();
+                            Some(ScanItem {
+                                path: path.to_path_buf(),
+                                name: name.to_lowercase(),
+                            })
                         })
                     })
-                    .flatten()
                     .collect();
-                let next_files = scan(workspace, all_entries, depth + 1);
-                matched.into_iter().chain(next_files.into_iter()).collect()
+                let mut matched = matched;
+                matched.extend(scan(workspace, all_entries, depth + 1));
+                matched
             }
         }
     }
@@ -190,17 +184,10 @@ pub(super) fn collect_signature_files_with_workspace(
 
     let matched_files = scan(workspace, initial_items, 0);
 
-    let by_name_lower: HashMap<String, Vec<PathBuf>> =
-        matched_files
-            .into_iter()
-            .fold(std::collections::HashMap::new(), |map, (path, name)| {
-                let existing = map.get(&name).cloned().unwrap_or_default();
-                let updated: Vec<PathBuf> =
-                    existing.into_iter().chain(std::iter::once(path)).collect();
-                map.into_iter()
-                    .chain(std::iter::once((name, updated)))
-                    .collect()
-            });
+    let mut by_name_lower: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    for (path, name) in matched_files {
+        by_name_lower.entry(name).or_default().push(path);
+    }
 
     SignatureFiles { by_name_lower }
 }
@@ -215,52 +202,55 @@ pub fn count_extensions_with_workspace(
         !should_skip_dir_name(name_lower)
     }
 
-    let mut queue = vec![relative_root.to_path_buf()];
-    let mut counts = HashMap::new();
-    let mut files_scanned = 0usize;
+    fn process_queue(
+        workspace: &dyn Workspace,
+        queue: Vec<PathBuf>,
+        counts: HashMap<String, usize>,
+        files_scanned: usize,
+    ) -> std::io::Result<HashMap<String, usize>> {
+        match queue.split_first() {
+            Some((current, rest)) => {
+                let head = current.clone();
+                let rest_vec: Vec<PathBuf> = rest.to_vec();
+                let entries = match workspace.read_dir(&head) {
+                    Ok(e) => e,
+                    Err(_) => return process_queue(workspace, rest_vec, counts, files_scanned),
+                };
 
-    loop {
-        let (current, rest) = match queue.split_first() {
-            Some((c, r)) => (c.clone(), r.to_vec()),
-            None => return Ok(counts),
-        };
-
-        let entries = match workspace.read_dir(&current) {
-            Ok(e) => e,
-            Err(_) => {
-                queue = rest;
-                continue;
-            }
-        };
-
-        let entry_data: Vec<_> = entries
-            .into_iter()
-            .filter_map(|entry| {
-                let name_os = entry.file_name()?;
-                let name = name_os.to_string_lossy().to_lowercase();
-                if !should_process_entry(&name) {
-                    return None;
+                match scan_dirs_step(
+                    entries.into_iter().filter_map(|entry| {
+                        let name_os = entry.file_name()?;
+                        let name = name_os.to_string_lossy().to_lowercase();
+                        if !should_process_entry(&name) {
+                            return None;
+                        }
+                        let path = entry.path();
+                        let is_dir = entry.is_dir();
+                        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
+                        Some((path.to_path_buf(), is_dir, ext))
+                    }),
+                    &rest_vec,
+                    counts,
+                    files_scanned,
+                ) {
+                    ScanDirsNext::Done(result) => Ok(result),
+                    ScanDirsNext::Continue {
+                        queue: next_queue,
+                        counts: next_counts,
+                        files_scanned: next_scanned,
+                    } => process_queue(workspace, next_queue, next_counts, next_scanned),
                 }
-                let path = entry.path();
-                let is_dir = path.is_dir();
-                let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
-                Some((path.to_path_buf(), is_dir, ext))
-            })
-            .collect();
-
-        match scan_dirs_step(entry_data.into_iter(), &rest, counts, files_scanned) {
-            ScanDirsNext::Done(result) => return Ok(result),
-            ScanDirsNext::Continue {
-                queue: next_queue,
-                counts: next_counts,
-                files_scanned: next_scanned,
-            } => {
-                queue = next_queue;
-                counts = next_counts;
-                files_scanned = next_scanned;
             }
+            None => Ok(counts),
         }
     }
+
+    process_queue(
+        workspace,
+        vec![relative_root.to_path_buf()],
+        HashMap::new(),
+        0,
+    )
 }
 
 pub fn detect_tests_with_workspace(
@@ -268,48 +258,67 @@ pub fn detect_tests_with_workspace(
     relative_root: &Path,
     primary_lang: &str,
 ) -> bool {
-    let mut queue = vec![(relative_root.to_path_buf(), 0)];
-    let mut scanned_files = 0usize;
-
-    loop {
-        let (current, rest) = match queue.split_first() {
-            Some((c, r)) => (c.clone(), r.to_vec()),
-            None => return false,
-        };
-
-        let entries = match workspace.read_dir(&current.0) {
-            Ok(e) => e,
-            Err(_) => {
-                queue = rest;
-                continue;
-            }
-        };
-
-        let file_names: Vec<_> = entries
-            .into_iter()
-            .filter_map(|entry| {
-                let name_os = entry.file_name()?;
-                let name = name_os.to_string_lossy().to_lowercase();
-                Some((entry.path().to_path_buf(), name))
-            })
-            .collect();
-
-        let scanned = scanned_files.saturating_add(file_names.len());
-
-        match search_dirs_step(&queue, &file_names, scanned, primary_lang) {
-            SearchDirsNext::Found => return true,
-            SearchDirsNext::Done => return false,
-            SearchDirsNext::Continue {
-                queue: new_queue,
-                scanned_files: next_scanned,
-            } => {
-                queue = if new_queue.is_empty() {
-                    rest
-                } else {
-                    rest.iter().cloned().chain(new_queue).collect()
+    fn detect(
+        workspace: &dyn Workspace,
+        queue: Vec<(PathBuf, usize)>,
+        scanned_files: usize,
+        primary_lang: &str,
+    ) -> bool {
+        match queue.split_first() {
+            Some((current, rest)) => {
+                let current = current.clone();
+                let entries = match workspace.read_dir(&current.0) {
+                    Ok(e) => e,
+                    Err(_) => return detect(workspace, rest.to_vec(), scanned_files, primary_lang),
                 };
-                scanned_files = next_scanned;
+
+                let file_names: Vec<_> = entries
+                    .into_iter()
+                    .filter_map(|entry| {
+                        let name_os = entry.file_name()?;
+                        let name = name_os.to_string_lossy().to_lowercase();
+                        Some((entry.path().to_path_buf(), name))
+                    })
+                    .collect();
+
+                let scanned = scanned_files.saturating_add(file_names.len());
+
+                match search_dirs_step(&queue, &file_names, scanned, primary_lang) {
+                    SearchDirsNext::Found => true,
+                    SearchDirsNext::Done => false,
+                    SearchDirsNext::Continue {
+                        queue: new_queue,
+                        scanned_files: next_scanned,
+                    } => {
+                        let next_queue = merge_search_queue(rest, new_queue);
+                        detect(workspace, next_queue, next_scanned, primary_lang)
+                    }
+                }
+            }
+            None => false,
+        }
+    }
+
+    fn merge_search_queue(
+        rest: &[(PathBuf, usize)],
+        new_queue: Vec<(PathBuf, usize)>,
+    ) -> Vec<(PathBuf, usize)> {
+        match (rest.is_empty(), new_queue.is_empty()) {
+            (true, true) => Vec::new(),
+            (false, true) => rest.to_vec(),
+            (true, false) => new_queue,
+            (false, false) => {
+                let mut combined = rest.to_vec();
+                combined.extend(new_queue);
+                combined
             }
         }
     }
+
+    detect(
+        workspace,
+        vec![(relative_root.to_path_buf(), 0)],
+        0usize,
+        primary_lang,
+    )
 }

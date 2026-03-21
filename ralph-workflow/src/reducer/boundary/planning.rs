@@ -219,18 +219,16 @@ impl MainEffectHandler {
                             iteration,
                             input,
                         ))
-                        .chain(
-                            (last_output_bytes > inline_budget_bytes)
-                                .then_some(PipelineEvent::prompt_input_oversize_detected(
-                                    PipelinePhase::Planning,
-                                    PromptInputKind::LastOutput,
-                                    content_id_sha256.clone(),
-                                    last_output_bytes,
-                                    inline_budget_bytes,
-                                    "xsd-retry-context".to_string(),
-                                ))
-                                .into_iter(),
-                        )
+                        .chain((last_output_bytes > inline_budget_bytes).then_some(
+                            PipelineEvent::prompt_input_oversize_detected(
+                                PipelinePhase::Planning,
+                                PromptInputKind::LastOutput,
+                                content_id_sha256.clone(),
+                                last_output_bytes,
+                                inline_budget_bytes,
+                                "xsd-retry-context".to_string(),
+                            ),
+                        ))
                         .collect();
                     Some(events)
                 } else {
@@ -629,21 +627,20 @@ impl MainEffectHandler {
             None,
             prompt,
         )?;
-        let result = result
-            .additional_events
-            .iter()
-            .any(|e| {
-                matches!(
-                    e,
-                    PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-                )
-            })
-            .then(|| {
+        let result = if result.additional_events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+            )
+        }) {
+            {
                 result
                     .clone()
                     .with_additional_event(PipelineEvent::planning_agent_invoked(iteration))
-            })
-            .unwrap_or(result);
+            }
+        } else {
+            result
+        };
         Ok(result)
     }
 

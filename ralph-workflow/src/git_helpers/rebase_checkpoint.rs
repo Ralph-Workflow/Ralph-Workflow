@@ -326,32 +326,24 @@ pub fn load_rebase_checkpoint() -> io::Result<Option<RebaseCheckpoint>> {
         Ok(cp) => cp,
         Err(e) => {
             let backup_result = restore_from_backup();
-            return if backup_result.is_err() {
-                Err(io::Error::new(
+            return match backup_result {
+                Err(err) => Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!(
-                        "Checkpoint corrupted: {e}; backup restore failed: {}",
-                        backup_result.unwrap_err()
-                    ),
-                ))
-            } else {
-                backup_result
+                    format!("Checkpoint corrupted: {e}; backup restore failed: {err}",),
+                )),
+                Ok(success) => Ok(success),
             };
         }
     };
 
     if let Err(e) = validate_checkpoint(&loaded_checkpoint) {
         let backup_result = restore_from_backup();
-        return if backup_result.is_err() {
-            Err(io::Error::new(
+        return match backup_result {
+            Err(err) => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "Checkpoint validation failed: {e}; backup restore failed: {}",
-                    backup_result.unwrap_err()
-                ),
-            ))
-        } else {
-            backup_result
+                format!("Checkpoint validation failed: {e}; backup restore failed: {err}",),
+            )),
+            Ok(success) => Ok(success),
         };
     }
 
@@ -595,32 +587,24 @@ pub fn load_rebase_checkpoint_with_workspace(
         Ok(cp) => cp,
         Err(e) => {
             let backup_result = restore_from_backup_with_workspace(workspace);
-            return if backup_result.is_err() {
-                Err(io::Error::new(
+            return match backup_result {
+                Err(err) => Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!(
-                        "Checkpoint corrupted: {e}; backup restore failed: {}",
-                        backup_result.unwrap_err()
-                    ),
-                ))
-            } else {
-                backup_result
+                    format!("Checkpoint corrupted: {e}; backup restore failed: {err}",),
+                )),
+                Ok(success) => Ok(success),
             };
         }
     };
 
     if let Err(e) = validate_checkpoint_impl(&loaded_checkpoint) {
         let backup_result = restore_from_backup_with_workspace(workspace);
-        return if backup_result.is_err() {
-            Err(io::Error::new(
+        return match backup_result {
+            Err(err) => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "Checkpoint validation failed: {e}; backup restore failed: {}",
-                    backup_result.unwrap_err()
-                ),
-            ))
-        } else {
-            backup_result
+                format!("Checkpoint validation failed: {e}; backup restore failed: {err}",),
+            )),
+            Ok(success) => Ok(success),
         };
     }
 

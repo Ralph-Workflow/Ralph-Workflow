@@ -394,11 +394,14 @@ fn test_event_loop_state_consistency_for_review_agent() {
     use crate::reducer::orchestration::determine_next_effect;
 
     // === ITERATION N: InitializeAgentChain ===
-    // State before InitializeAgentChain effect
+    // State before InitializeAgentChain effect.
+    // agent_chain is explicitly cleared to simulate the state after dev->review transition,
+    // which clears the developer chain before the reviewer chain is initialized.
     let mut state = PipelineState {
         phase: PipelinePhase::Review,
         reviewer_pass: 0,
         total_reviewer_passes: 2,
+        agent_chain: crate::reducer::state::AgentChainState::initial(),
         ..create_test_state()
     };
 

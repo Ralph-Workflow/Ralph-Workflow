@@ -15,7 +15,7 @@ use crate::logger::{Colors, Logger};
 use crate::prompts::TemplateContext;
 use crate::ProcessExecutor;
 
-use crate::app::pipeline_setup::PipelineAndRepoRoot;
+use crate::app::pipeline_setup::{PipelineAndRepoRoot, RunPipelineWithHandlerParams};
 // run_pipeline is in scope via include!
 
 /// Main application entry point.
@@ -104,21 +104,23 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     let reviewer_display = registry.display_name(&reviewer_agent);
 
     // Run the full pipeline with handler creation inside the boundary
+    let params = RunPipelineWithHandlerParams {
+        args,
+        config,
+        registry,
+        developer_agent,
+        reviewer_agent,
+        developer_display,
+        reviewer_display,
+        config_path,
+        colors,
+        logger,
+        executor,
+        template_context,
+    };
+
     let PipelineAndRepoRoot { ctx, repo_root: _ } =
-        crate::app::pipeline_setup::run_pipeline_with_handler_boundary(
-            args,
-            config,
-            registry,
-            developer_agent,
-            reviewer_agent,
-            developer_display,
-            reviewer_display,
-            config_path,
-            colors,
-            logger,
-            executor,
-            template_context,
-        )?;
+        crate::app::pipeline_setup::run_pipeline_with_handler_boundary(params)?;
 
     if ctx.args.recovery.inspect_checkpoint {
         crate::app::resume::inspect_checkpoint(ctx.workspace.as_ref(), &ctx.logger)?;

@@ -335,44 +335,66 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             ..state
         },
 
-        CommitEvent::PushCompleted { commit_sha, .. } => PipelineState {
-            pending_push_commit: None,
-            push_count: state.push_count + 1,
-            push_retry_count: 0,
-            last_push_error: None,
-            last_pushed_commit: Some(commit_sha),
-            ..state
-        },
-
-        CommitEvent::PushFailed { error, .. } => {
-            let error = crate::cloud::redaction::redact_secrets(&error);
-            let new_retry_count = state.push_retry_count.saturating_add(1);
-            let at_failure_limit = new_retry_count >= MAX_CONSECUTIVE_PUSH_FAILURES;
-
-            let (pending_push_commit, unpushed_commits, final_retry_count) = if at_failure_limit {
-                let commits: Vec<_> = state
-                    .unpushed_commits
-                    .iter()
-                    .chain(state.pending_push_commit.iter())
-                    .cloned()
-                    .collect();
-                (None, commits, 0)
+        CommitEvent::PushExecuted {
+            commit_sha, result, ..
+        } => {
+            // Reducer interprets raw process output and applies policy-level success/failure.
+            // This separates boundary execution from policy interpretation.
+            if result.exit_code == 0 {
+                // Success path: update state for successful push
+                PipelineState {
+                    pending_push_commit: None,
+                    push_count: state.push_count + 1,
+                    push_retry_count: 0,
+                    last_push_error: None,
+                    last_pushed_commit: Some(commit_sha),
+                    ..state
+                }
             } else {
-                (
-                    state.pending_push_commit.clone(),
-                    state.unpushed_commits.clone(),
-                    new_retry_count,
-                )
-            };
+                // Failure path: apply retry policy
+                let error = crate::cloud::redaction::redact_secrets(&result.stderr);
+                let new_retry_count = state.push_retry_count.saturating_add(1);
+                let at_failure_limit = new_retry_count >= MAX_CONSECUTIVE_PUSH_FAILURES;
 
-            PipelineState {
-                push_retry_count: final_retry_count,
-                last_push_error: Some(error),
-                pending_push_commit,
-                unpushed_commits,
-                ..state
+                let (pending_push_commit, unpushed_commits, final_retry_count) = if at_failure_limit
+                {
+                    let commits: Vec<_> = state
+                        .unpushed_commits
+                        .iter()
+                        .chain(state.pending_push_commit.iter())
+                        .cloned()
+                        .collect();
+                    (None, commits, 0)
+                } else {
+                    (
+                        state.pending_push_commit.clone(),
+                        state.unpushed_commits.clone(),
+                        new_retry_count,
+                    )
+                };
+
+                PipelineState {
+                    push_retry_count: final_retry_count,
+                    last_push_error: Some(error),
+                    pending_push_commit,
+                    unpushed_commits,
+                    ..state
+                }
             }
         }
+
+        // DEPRECATED: PushCompleted is no longer emitted by boundary (as of double-state fix).
+        // The boundary now emits only PushExecuted, and the reducer interprets the result.
+        // This handler is kept ONLY for backward compatibility with old checkpoints.
+        // It is a no-op to prevent double-counting when both PushExecuted and PushCompleted
+        // are present in a checkpoint.
+        CommitEvent::PushCompleted { .. } => state,
+
+        // DEPRECATED: PushFailed is no longer emitted by boundary (as of double-state fix).
+        // The boundary now emits only PushExecuted (or executor-level failure).
+        // This handler is kept ONLY for backward compatibility with old checkpoints.
+        // It is a no-op to prevent double-counting retry logic.
+        CommitEvent::PushFailed { .. } => state,
 
         CommitEvent::PullRequestCreated { url, number } => PipelineState {
             pr_created: true,
@@ -782,5 +804,185 @@ mod tests {
 
         let next = reduce_commit_event(state, CommitEvent::ResidualFilesNone);
         assert!(next.commit_excluded_files.is_empty());
+    }
+
+    /// Proves PushExecuted does NOT double-count push_count when followed by PushCompleted.
+    ///
+    /// Before fix: boundary emitted PushExecuted + PushCompleted as additional event,
+    /// reducer handled both, incrementing push_count twice.
+    ///
+    /// After fix: reducer should handle PushExecuted only (policy interpretation happens there),
+    /// and PushCompleted becomes a no-op for backward compatibility.
+    #[test]
+    fn test_push_executed_does_not_double_count() {
+        let initial = PipelineState {
+            pending_push_commit: Some("abc123".to_string()),
+            push_count: 5,
+            ..PipelineState::initial(1, 0)
+        };
+
+        // Simulate boundary emitting PushExecuted (success case)
+        let after_executed = reduce_commit_event(
+            initial.clone(),
+            CommitEvent::PushExecuted {
+                remote: "origin".to_string(),
+                branch: "main".to_string(),
+                commit_sha: "abc123".to_string(),
+                result: crate::reducer::event::ProcessExecutionResult {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            },
+        );
+
+        // PushExecuted should increment push_count and clear pending
+        assert_eq!(
+            after_executed.push_count, 6,
+            "PushExecuted increments count"
+        );
+        assert_eq!(
+            after_executed.pending_push_commit, None,
+            "PushExecuted clears pending"
+        );
+        assert_eq!(
+            after_executed.last_pushed_commit,
+            Some("abc123".to_string()),
+            "PushExecuted records SHA"
+        );
+
+        // If PushCompleted is emitted as additional event (old behavior), it should NOT
+        // double-increment. Instead, it should be a no-op.
+        let after_completed = reduce_commit_event(
+            after_executed.clone(),
+            CommitEvent::PushCompleted {
+                remote: "origin".to_string(),
+                branch: "main".to_string(),
+                commit_sha: "abc123".to_string(),
+            },
+        );
+
+        assert_eq!(
+            after_completed.push_count, 6,
+            "PushCompleted must NOT increment again (no-op for compat)"
+        );
+        assert_eq!(
+            after_completed.pending_push_commit, None,
+            "state unchanged by PushCompleted"
+        );
+    }
+
+    /// Proves PushExecuted failure path does NOT double-apply retry count.
+    #[test]
+    fn test_push_executed_failure_does_not_double_count() {
+        let initial = PipelineState {
+            pending_push_commit: Some("abc123".to_string()),
+            push_retry_count: 1,
+            ..PipelineState::initial(1, 0)
+        };
+
+        // Simulate boundary emitting PushExecuted with non-zero exit
+        let after_executed = reduce_commit_event(
+            initial.clone(),
+            CommitEvent::PushExecuted {
+                remote: "origin".to_string(),
+                branch: "main".to_string(),
+                commit_sha: "abc123".to_string(),
+                result: crate::reducer::event::ProcessExecutionResult {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "rejected".to_string(),
+                },
+            },
+        );
+
+        // PushExecuted should increment retry count
+        assert_eq!(
+            after_executed.push_retry_count, 2,
+            "PushExecuted increments retry on failure"
+        );
+        assert_eq!(
+            after_executed.last_push_error,
+            Some("rejected".to_string()),
+            "PushExecuted records error"
+        );
+
+        // If PushFailed is emitted as additional event (old behavior), it should NOT
+        // double-increment retry count.
+        let after_failed = reduce_commit_event(
+            after_executed.clone(),
+            CommitEvent::PushFailed {
+                remote: "origin".to_string(),
+                branch: "main".to_string(),
+                error: "rejected".to_string(),
+            },
+        );
+
+        assert_eq!(
+            after_failed.push_retry_count, 2,
+            "PushFailed must NOT increment again (no-op for compat)"
+        );
+    }
+
+    /// Proves reducer interprets exit code policy (0 = success, non-zero = failure).
+    #[test]
+    fn test_reducer_interprets_exit_code_policy() {
+        let base = PipelineState {
+            pending_push_commit: Some("abc123".to_string()),
+            push_count: 0,
+            push_retry_count: 0,
+            ..PipelineState::initial(1, 0)
+        };
+
+        // Exit code 0 = success
+        let success = reduce_commit_event(
+            base.clone(),
+            CommitEvent::PushExecuted {
+                remote: "origin".to_string(),
+                branch: "main".to_string(),
+                commit_sha: "abc123".to_string(),
+                result: crate::reducer::event::ProcessExecutionResult {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            },
+        );
+
+        assert_eq!(success.push_count, 1, "exit 0 = success, count increments");
+        assert_eq!(success.pending_push_commit, None, "pending cleared");
+        assert_eq!(success.push_retry_count, 0, "retry count reset");
+        assert_eq!(success.last_push_error, None, "error cleared");
+
+        // Exit code non-zero = failure
+        let failure = reduce_commit_event(
+            base.clone(),
+            CommitEvent::PushExecuted {
+                remote: "origin".to_string(),
+                branch: "main".to_string(),
+                commit_sha: "abc123".to_string(),
+                result: crate::reducer::event::ProcessExecutionResult {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "auth failed".to_string(),
+                },
+            },
+        );
+
+        assert_eq!(
+            failure.push_count, 0,
+            "exit non-zero = failure, count unchanged"
+        );
+        assert_eq!(
+            failure.pending_push_commit,
+            Some("abc123".to_string()),
+            "pending retained for retry"
+        );
+        assert_eq!(failure.push_retry_count, 1, "retry count increments");
+        assert_eq!(
+            failure.last_push_error,
+            Some("auth failed".to_string()),
+            "error recorded"
+        );
     }
 }

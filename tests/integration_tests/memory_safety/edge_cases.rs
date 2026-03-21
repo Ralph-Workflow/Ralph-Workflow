@@ -190,7 +190,7 @@ struct AppendHistoryHandler {
 }
 
 impl AppendHistoryHandler {
-    const fn new(state: ReducerPipelineState) -> Self {
+    fn new(state: ReducerPipelineState) -> Self {
         Self {
             inner: MockEffectHandler::new(state),
             appended: false,
@@ -212,7 +212,8 @@ impl EffectHandler<'_> for AppendHistoryHandler {
                 "appended_during_loop",
                 CkptStepOutcome::success(Some("appended".to_string()), vec![]),
             );
-            ctx.execution_history
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
         }
         self.inner.execute(effect, ctx)

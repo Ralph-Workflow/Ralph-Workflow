@@ -157,7 +157,7 @@ impl CloudError {
 }
 
 pub fn interpret_http_response(status: u16, body: String) -> Result<(), CloudError> {
-    if status >= 200 && status < 300 {
+    if (200..300).contains(&status) {
         Ok(())
     } else {
         Err(CloudError::HttpError(status, body))

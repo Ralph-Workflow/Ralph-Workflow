@@ -63,6 +63,5 @@ pub fn ensure_prompt_integrity(
             "[PROMPT_INTEGRITY] Error occurred during {phase} phase (iteration {iteration})"
         ));
         logger.error("Pipeline may not function correctly without PROMPT.md");
-        return;
     }
 }

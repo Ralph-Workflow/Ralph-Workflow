@@ -100,7 +100,12 @@ impl std::io::Write for TestLogger {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         self.buffer.borrow_mut().push_str(s);
 
-        while let Some(newline_pos) = self.buffer.borrow().find('\n') {
+        loop {
+            let newline_pos = self.buffer.borrow().find('\n');
+            let Some(newline_pos) = newline_pos else {
+                break;
+            };
+
             let line = self
                 .buffer
                 .borrow_mut()

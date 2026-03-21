@@ -5,7 +5,7 @@
 //! for termination, and interior mutability for global interrupt state.
 
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use super::checkpoint::InterruptContext;
 
@@ -13,21 +13,38 @@ use super::checkpoint::InterruptContext;
 ///
 /// This is set during pipeline initialization and used by the interrupt
 /// handler to save a checkpoint when the user presses Ctrl+C.
-pub(crate) static INTERRUPT_CONTEXT: OnceLock<Option<InterruptContext>> = OnceLock::new();
+pub(crate) static INTERRUPT_CONTEXT: OnceLock<Mutex<Option<InterruptContext>>> = OnceLock::new();
+
+fn interrupt_context_slot() -> &'static Mutex<Option<InterruptContext>> {
+    INTERRUPT_CONTEXT.get_or_init(|| Mutex::new(None))
+}
+
+fn lock_slot<'a>(
+    slot: &'a Mutex<Option<InterruptContext>>,
+) -> std::sync::MutexGuard<'a, Option<InterruptContext>> {
+    slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Set the global interrupt context.
 pub fn set_interrupt_context(context: InterruptContext) {
-    let _ = INTERRUPT_CONTEXT.set(Some(context));
+    let mut guard = lock_slot(interrupt_context_slot());
+    *guard = Some(context);
 }
 
 /// Clear the global interrupt context.
 pub fn clear_interrupt_context() {
-    let _ = INTERRUPT_CONTEXT.set(None);
+    if let Some(slot) = INTERRUPT_CONTEXT.get() {
+        let mut guard = lock_slot(slot);
+        *guard = None;
+    }
 }
 
 /// Get the global interrupt context.
-pub fn get_interrupt_context() -> Option<Option<InterruptContext>> {
-    INTERRUPT_CONTEXT.get().cloned()
+pub fn get_interrupt_context() -> Option<InterruptContext> {
+    INTERRUPT_CONTEXT.get().and_then(|slot| {
+        let guard = lock_slot(slot);
+        guard.clone()
+    })
 }
 
 /// Exit the process with the standard SIGINT exit code.

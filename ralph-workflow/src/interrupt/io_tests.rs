@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::checkpoint::load_checkpoint_with_workspace;
-use crate::interrupt::runtime::INTERRUPT_CONTEXT;
 use crate::workspace::MemoryWorkspace;
 use crate::workspace::Workspace;
 use std::sync::atomic::Ordering;
@@ -60,18 +59,11 @@ fn test_set_and_clear_interrupt_context() {
     };
 
     set_interrupt_context(context);
-    {
-        let ctx = INTERRUPT_CONTEXT.get().unwrap();
-        assert!(ctx.is_some());
-        assert_eq!(
-            ctx.as_ref().unwrap().phase,
-            crate::checkpoint::PipelinePhase::Planning
-        );
-    }
+    let ctx = get_interrupt_context().expect("interrupt context should be installed");
+    assert_eq!(ctx.phase, crate::checkpoint::PipelinePhase::Planning);
 
     clear_interrupt_context();
-    let ctx = INTERRUPT_CONTEXT.get().unwrap();
-    assert!(ctx.is_none());
+    assert!(get_interrupt_context().is_none());
 }
 
 #[test]

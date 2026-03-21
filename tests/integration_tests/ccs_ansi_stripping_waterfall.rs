@@ -15,7 +15,7 @@ use ralph_workflow::config::Verbosity;
 use ralph_workflow::json_parser::claude::ClaudeParser;
 use ralph_workflow::json_parser::printer::TestPrinter;
 use ralph_workflow::json_parser::terminal::TerminalMode;
-use ralph_workflow::logger::output::strip_ansi_codes;
+use ralph_workflow::logger::strip_ansi_codes;
 use ralph_workflow::logger::Colors;
 use ralph_workflow::workspace::MemoryWorkspace;
 use std::cell::RefCell;
@@ -29,7 +29,7 @@ fn test_ansi_stripping_no_spam() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 

@@ -80,7 +80,7 @@ impl Default for FileActivityTracker {
 }
 
 thread_local! {
-    static WARNED: Cell<bool> = Cell::new(false);
+    static WARNED: Cell<bool> = const { Cell::new(false) };
 }
 
 fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
@@ -127,32 +127,32 @@ pub(crate) fn scan_dir_recursive(
         }
     };
 
-    entries
-        .into_iter()
-        .any(|entry| {
-            let path = entry.path();
-            if entry.is_file() {
-                if FileActivityTracker::is_excluded_workspace_file(path) {
-                    return false;
-                }
-                if let Some(mtime) = entry.modified() {
-                    return file_age(now, mtime) <= timeout;
-                }
-                false
-            } else if entry.is_dir() {
-                if FileActivityTracker::is_excluded_workspace_dir(path) {
-                    return false;
-                }
-                remaining_depth.checked_sub(1).is_some_and(|remaining| {
-                    scan_dir_recursive(workspace, entry.path(), now, timeout, remaining, false)
-                        .is_ok_and(|r| r)
-                })
-            } else {
-                false
+    if entries.into_iter().any(|entry| {
+        let path = entry.path();
+        if entry.is_file() {
+            if FileActivityTracker::is_excluded_workspace_file(path) {
+                return false;
             }
-        })
-        .then_some(Ok(true))
-        .unwrap_or(Ok(false))
+            if let Some(mtime) = entry.modified() {
+                return file_age(now, mtime) <= timeout;
+            }
+            false
+        } else if entry.is_dir() {
+            if FileActivityTracker::is_excluded_workspace_dir(path) {
+                return false;
+            }
+            remaining_depth.checked_sub(1).is_some_and(|remaining| {
+                scan_dir_recursive(workspace, entry.path(), now, timeout, remaining, false)
+                    .is_ok_and(|r| r)
+            })
+        } else {
+            false
+        }
+    }) {
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 pub(crate) const MAX_SCAN_DEPTH_CONST: usize = MAX_SCAN_DEPTH;

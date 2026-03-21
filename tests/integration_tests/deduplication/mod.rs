@@ -52,7 +52,7 @@ pub fn create_parser_with_vterm() -> (ClaudeParser, Rc<RefCell<VirtualTerminal>>
 
 /// Parse events and return the `VirtualTerminal` for inspection.
 pub fn parse_events(events: &[&str]) -> Rc<RefCell<VirtualTerminal>> {
-    let (parser, vterm) = create_parser_with_vterm();
+    let (mut parser, vterm) = create_parser_with_vterm();
     let workspace = MemoryWorkspace::new_test();
     let input = events.join("\n");
     let cursor = Cursor::new(input);

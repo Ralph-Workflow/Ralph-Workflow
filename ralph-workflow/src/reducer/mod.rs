@@ -167,6 +167,10 @@ pub use state::PromptMode;
 pub use state_reduction::reduce;
 pub use ui_event::UIEvent;
 
+pub mod handler {
+    pub use super::MainEffectHandler;
+}
+
 // Re-export CheckpointTrigger for external use
 pub use event::CheckpointTrigger;
 

@@ -920,3 +920,31 @@ fn test_prepare_commit_prompt_invalidates_materialized_inputs_when_diff_file_ref
         result.event
     );
 }
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "Orchestrator must filter Continuation mode")]
+fn test_prepare_commit_prompt_asserts_continuation_precondition_in_debug() {
+    // GREEN test proving Phase-4 fix: boundary now documents the precondition via
+    // debug_assert instead of implementing policy validation. Orchestrator ensures
+    // Continuation is never passed (verified by orchestration tests).
+
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    // In debug builds, this triggers the precondition assertion.
+    // In release builds, behavior is undefined (orchestrator guarantees this never happens).
+    let _ = handler.prepare_commit_prompt(&ctx, PromptMode::Continuation);
+}

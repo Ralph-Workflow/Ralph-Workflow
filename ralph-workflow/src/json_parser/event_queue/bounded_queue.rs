@@ -131,8 +131,12 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
                 self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
                 self
             }
-            Err(e) => {
-                panic!("Try send failed: {:?}", e);
+            Err(mpsc::TrySendError::Full(_)) => {
+                self.metrics.backpressure_count = self.metrics.backpressure_count.saturating_add(1);
+                self
+            }
+            Err(mpsc::TrySendError::Disconnected(event)) => {
+                panic!("Try send failed: {:?}", event);
             }
         }
     }

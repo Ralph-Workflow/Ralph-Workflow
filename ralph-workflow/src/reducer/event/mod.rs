@@ -70,7 +70,8 @@ mod types;
 pub use types::{
     default_timeout_output_kind, AgentErrorKind, AwaitingDevFixEvent, CheckpointTrigger,
     CommitEvent, ConflictStrategy, LifecycleEvent, MaterializedPromptInput, PlanningEvent,
-    PromptInputEvent, PromptInputKind, RebaseEvent, RebasePhase, TimeoutOutputKind,
+    ProcessExecutionResult, PromptInputEvent, PromptInputKind, RebaseEvent, RebasePhase,
+    TimeoutOutputKind,
 };
 
 // ============================================================================

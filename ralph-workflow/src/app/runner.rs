@@ -50,5 +50,12 @@ pub use pipeline_execution::CommandExitCleanupGuard;
 // Re-exports from pipeline_execution (initialization is included via include!)
 pub use pipeline_execution::PipelinePreparationParams;
 
+// Re-export test entry points when the helpers feature is enabled.
+#[cfg(feature = "test-utils")]
+pub use pipeline_execution::{
+    run_pipeline_with_effect_handler, run_with_config, run_with_config_and_handlers,
+    run_with_config_and_resolver, RunWithHandlersParams,
+};
+
 // Re-exports from setup_helpers
 pub use setup_helpers::{validate_and_setup_agents, AgentSetupParams};

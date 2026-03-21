@@ -68,9 +68,9 @@ impl CodexParser {
     pub fn with_printer_for_test(
         colors: Colors,
         verbosity: Verbosity,
-        printer: StdoutPrinter,
+        printer: SharedPrinter,
     ) -> Self {
-        Self::with_printer(colors, verbosity, Rc::new(RefCell::new(printer)))
+        Self::with_printer(colors, verbosity, printer)
     }
 
     #[cfg(any(test, feature = "test-utils"))]

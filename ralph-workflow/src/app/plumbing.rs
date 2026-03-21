@@ -76,10 +76,9 @@ fn resolve_commit_message_agents(registry: &AgentRegistry, reviewer_agent: &str)
 #[cfg(any(test, feature = "test-utils"))]
 #[must_use]
 pub fn resolve_commit_message_agents_for_testing(
-    registry: &AgentRegistry,
-    reviewer_agent: &str,
+    config: &CommitGenerationConfig<'_>,
 ) -> Vec<String> {
-    resolve_commit_message_agents(registry, reviewer_agent)
+    resolve_commit_message_agents(config.registry, config.reviewer_agent)
 }
 
 /// Handles the `--show-commit-msg` command using workspace abstraction.

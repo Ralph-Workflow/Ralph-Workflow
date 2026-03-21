@@ -248,7 +248,7 @@ impl MainEffectHandler {
             log_prefix: "agent",
             model_index,
             attempt,
-            logfile: "/tmp/agent.log",
+            logfile: &logfile,
         };
 
         // Build pipeline runtime
@@ -313,7 +313,7 @@ impl MainEffectHandler {
         );
 
         // Build result with started event first, then the execution result(s).
-        let events: Vec<_> = std::iter::once(event)
+        let result = std::iter::once(event)
             .chain(session_id.into_iter().flat_map(|sid| {
                 std::iter::once(PipelineEvent::agent_session_established(
                     role,
@@ -321,12 +321,10 @@ impl MainEffectHandler {
                     sid.to_string(),
                 ))
             }))
-            .collect();
-
-        let result = events.into_iter().fold(
-            EffectResult::with_ui(started_event, vec![ui_event]),
-            |r, ev| r.with_additional_event(ev),
-        );
+            .fold(
+                EffectResult::with_ui(started_event, vec![ui_event]),
+                |r, ev| r.with_additional_event(ev),
+            );
 
         Ok(result)
     }

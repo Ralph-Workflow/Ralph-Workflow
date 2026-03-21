@@ -57,8 +57,8 @@ pub fn compute_reasoning_incremental_delta(
     previous_content: &str,
     current_content: &str,
 ) -> String {
-    if current_content.starts_with(previous_content) {
-        current_content[previous_content.len()..].to_string()
+    if let Some(stripped) = current_content.strip_prefix(previous_content) {
+        stripped.to_string()
     } else {
         current_content.to_string()
     }

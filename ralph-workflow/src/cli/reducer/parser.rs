@@ -34,7 +34,7 @@ use super::event::CliEvent;
 /// A vector of `CliEvents` representing all specified CLI arguments.
 #[must_use]
 pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
-    let verbosity_events: Vec<CliEvent> = std::iter::empty()
+    let verbosity_events = std::iter::empty()
         .chain(
             args.verbosity_shorthand
                 .quiet
@@ -50,14 +50,9 @@ pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
                 .debug
                 .then_some(CliEvent::DebugModeEnabled),
         )
-        .chain(
-            args.verbosity
-                .clone()
-                .map(|level| CliEvent::VerbositySet { level }),
-        )
-        .collect();
+        .chain(args.verbosity.map(|level| CliEvent::VerbositySet { level }));
 
-    let preset_events: Vec<CliEvent> = std::iter::empty()
+    let preset_events = std::iter::empty()
         .chain(
             args.quick_presets
                 .quick
@@ -82,10 +77,9 @@ pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
             args.standard_presets
                 .thorough
                 .then_some(CliEvent::ThoroughPresetApplied),
-        )
-        .collect();
+        );
 
-    let iteration_events: Vec<CliEvent> = std::iter::empty()
+    let iteration_events = std::iter::empty()
         .chain(
             args.developer_iters
                 .map(|v| CliEvent::DeveloperItersSet { value: v }),
@@ -93,10 +87,9 @@ pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
         .chain(
             args.reviewer_reviews
                 .map(|v| CliEvent::ReviewerReviewsSet { value: v }),
-        )
-        .collect();
+        );
 
-    let agent_events: Vec<CliEvent> = std::iter::empty()
+    let agent_events = std::iter::empty()
         .chain(
             args.developer_agent
                 .clone()
@@ -131,19 +124,17 @@ pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
             args.reviewer_json_parser
                 .clone()
                 .map(|p| CliEvent::ReviewerJsonParserSet { parser: p }),
-        )
-        .collect();
+        );
 
-    let preset_selection_events: Vec<CliEvent> = args
+    let preset_selection_events = args
         .preset
         .as_ref()
         .map(|p| CliEvent::AgentPresetSet {
             preset: format!("{p:?}"),
         })
-        .into_iter()
-        .collect();
+        .into_iter();
 
-    let config_events: Vec<CliEvent> = std::iter::empty()
+    let config_events = std::iter::empty()
         .chain(args.no_isolation.then_some(CliEvent::IsolationModeDisabled))
         .chain(
             args.review_depth
@@ -167,8 +158,7 @@ pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
         .chain(
             args.show_streaming_metrics
                 .then_some(CliEvent::StreamingMetricsEnabled),
-        )
-        .collect();
+        );
 
     verbosity_events
         .into_iter()

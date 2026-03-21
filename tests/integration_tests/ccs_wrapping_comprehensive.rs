@@ -33,7 +33,7 @@ fn test_claude_wrapping_exactly_at_boundary() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -90,7 +90,7 @@ fn test_claude_wrapping_one_char_over() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -139,7 +139,7 @@ fn test_claude_wrapping_multi_line() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -184,7 +184,7 @@ fn test_claude_wrapping_with_unicode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -228,7 +228,7 @@ fn test_claude_wrapping_multiple_deltas() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -277,7 +277,7 @@ fn test_claude_wrapping_very_narrow_terminal() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, terminal.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -326,7 +326,7 @@ fn test_codex_wrapping_exactly_at_boundary() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
+        let mut parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -364,7 +364,7 @@ fn test_codex_wrapping_multi_line() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
+        let mut parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::Full);
 
@@ -400,7 +400,7 @@ fn test_codex_wrapping_multiple_deltas() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
+        let mut parser = CodexParser::with_printer_for_test(colors, verbosity, terminal.clone())
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::Full);
 

@@ -3,7 +3,7 @@
 //! This module satisfies the dylint boundary-module check for code that uses
 //! imperative patterns (while loops, mutable state, byte parsing).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use crate::prompts::template_registry::TemplateError;
 pub use crate::prompts::template_validator::TemplateMetadata;
@@ -21,11 +21,11 @@ pub fn get_xdg_config_home() -> Option<PathBuf> {
         })
 }
 
-pub fn template_exists(path: &PathBuf) -> bool {
-    std::path::Path::exists(path.as_path())
+pub fn template_exists(path: &Path) -> bool {
+    path.exists()
 }
 
-pub fn load_template(path: &PathBuf) -> Result<String, String> {
+pub fn load_template(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| e.to_string())
 }
 

@@ -293,12 +293,16 @@ impl MainEffectHandler {
                     &self.state.agent_chain.consumer_signature_sha256(),
                 );
 
+                // Track whether the generator determined that template validation is needed.
+                // When the previous on-disk prompt matches current inputs (reuse path),
+                // we skip TemplateRendered emission because no new rendering occurred.
+                let local_should_validate = std::cell::Cell::new(true);
                 let (prompt, was_replayed) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
                     Some(&current_prompt_content_id),
                     || {
-                        let (base_prompt, _local_should_validate) = ctx
+                        let (base_prompt, should_val) = ctx
                                 .workspace
                                 .read(Path::new(".agent/tmp/review_prompt.txt"))
                                 .map_or_else(
@@ -327,10 +331,11 @@ impl MainEffectHandler {
                                         }
                                     },
                                 );
+                        local_should_validate.set(should_val);
                         format!("{retry_preamble}\n{base_prompt}")
                     },
                 );
-                let should_validate = !was_replayed;
+                let should_validate = !was_replayed && local_should_validate.get();
 
                 let rendered_log = if !was_replayed && should_validate {
                     let rendered = crate::prompts::prompt_review_xml_with_references_and_log(

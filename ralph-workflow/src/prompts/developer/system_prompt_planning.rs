@@ -274,8 +274,7 @@ pub fn prompt_planning_xsd_retry_with_context_files(
                         ))
                     } else {
                         None
-                    }
-                    .into_iter(),
+                    },
                 )
                 .chain(if !last_output_exists {
                     Some(format!(
@@ -383,8 +382,7 @@ pub fn prompt_planning_xsd_retry_with_context_files_and_log(
                         ))
                     } else {
                         None
-                    }
-                    .into_iter(),
+                    },
                 )
                 .chain(if !last_output_exists {
                     Some(format!(

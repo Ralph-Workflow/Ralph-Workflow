@@ -10,9 +10,7 @@ use crate::ProcessExecutor;
 use crate::RealProcessExecutor;
 
 fn command_available(available_commands: &[&str], command: &str) -> bool {
-    available_commands
-        .iter()
-        .any(|candidate| *candidate == command)
+    available_commands.contains(&command)
 }
 
 fn detect_platform(os_name: &str, available_commands: &[&str]) -> Platform {

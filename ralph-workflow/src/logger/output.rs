@@ -96,7 +96,7 @@ pub use output_formatting::{argv_requests_json, format_generic_json_for_display}
 
 #[cfg(test)]
 mod tests {
-    use crate::logger::runtime::strip_ansi_codes;
+    use crate::logger::strip_ansi_codes;
 
     #[test]
     fn test_strip_ansi_codes() {

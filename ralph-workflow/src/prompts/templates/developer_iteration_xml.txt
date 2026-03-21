@@ -9,8 +9,8 @@
 {#   Developer agent executes plan and makes code changes.                       #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   PROMPT - Original user request from PROMPT.md (required)                   #}
-{#   PLAN   - Implementation plan from .agent/PLAN.md (required)                #}
+{#   PROMPT - Original user request (required)                                 #}
+{#   PLAN   - Implementation plan (required)                                   #}
 {#                                                                             #}
 {# OUTPUT:                                                                      #}
 {#   Development agent produces code changes only. No structured output required. #}

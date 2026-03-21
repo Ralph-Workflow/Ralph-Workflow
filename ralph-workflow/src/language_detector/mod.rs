@@ -111,9 +111,9 @@ impl ProjectStack {
         );
 
         std::iter::once(self.primary_language.clone())
-            .chain(secondary.into_iter())
-            .chain(frameworks.into_iter())
-            .chain(tests.into_iter())
+            .chain(secondary)
+            .chain(frameworks)
+            .chain(tests)
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -161,17 +161,12 @@ pub fn detect_stack_with_workspace(
 ) -> std::io::Result<ProjectStack> {
     let extension_counts = count_extensions_with_workspace(workspace, root)?;
 
-    let language_counts: BTreeMap<String, usize> = extension_counts
-        .iter()
-        .filter_map(|(ext, count)| {
-            extension_to_language(ext).map(|lang| (lang.to_string(), *count))
-        })
-        .fold(BTreeMap::new(), |acc, (lang, count)| {
-            let existing = acc.get(&lang).copied().unwrap_or(0);
-            acc.into_iter()
-                .chain(std::iter::once((lang, existing + count)))
-                .collect()
-        });
+    let mut language_counts = BTreeMap::new();
+    for (lang, count) in extension_counts.iter().filter_map(|(ext, count)| {
+        extension_to_language(ext).map(|lang| (lang.to_string(), *count))
+    }) {
+        *language_counts.entry(lang).or_insert(0) += count;
+    }
 
     let language_vec: Vec<_> = language_counts
         .into_iter()

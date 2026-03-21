@@ -1,6 +1,52 @@
-use crate::agents::AgentRegistry;
-use crate::app::effect::AppEffectHandler;
+#[cfg(feature = "test-utils")]
+use std::path::{Path, PathBuf};
 
+use crate::agents::AgentRegistry;
+#[cfg(feature = "test-utils")]
+use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult};
+#[cfg(feature = "test-utils")]
+use crate::app::effect_handler::RealAppEffectHandler;
+#[cfg(feature = "test-utils")]
+use crate::app::runner::command_handlers::handle_plumbing_commands;
+#[cfg(feature = "test-utils")]
+use crate::app::runner::{validate_and_setup_agents, AgentSetupParams};
+
+#[cfg(feature = "test-utils")]
+fn set_current_dir_with_handler(
+    handler: &mut dyn AppEffectHandler,
+    path: &Path,
+) -> anyhow::Result<()> {
+    match handler.execute(AppEffect::SetCurrentDir {
+        path: path.to_path_buf(),
+    }) {
+        AppEffectResult::Ok => Ok(()),
+        AppEffectResult::Error(err) => anyhow::bail!("Failed to set working directory: {err}"),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(feature = "test-utils")]
+fn discover_repo_root_for_workspace(
+    override_dir: Option<&Path>,
+    handler: &mut dyn AppEffectHandler,
+) -> anyhow::Result<PathBuf> {
+    if let Some(dir) = override_dir {
+        set_current_dir_with_handler(handler, dir)?;
+        return Ok(dir.to_path_buf());
+    }
+
+    if let AppEffectResult::Error(err) = handler.execute(AppEffect::GitRequireRepo) {
+        anyhow::bail!("Not in a git repository: {err}");
+    }
+
+    let root = match handler.execute(AppEffect::GitGetRepoRoot) {
+        AppEffectResult::Path(path) => path,
+        AppEffectResult::Error(err) => anyhow::bail!("Failed to get repo root: {err}"),
+        _ => anyhow::bail!("Unexpected result from GitGetRepoRoot"),
+    };
+    set_current_dir_with_handler(handler, &root)?;
+    Ok(root)
+}
 /// Test-only entry point that accepts a pre-built Config.
 ///
 /// This function is for integration testing only. It bypasses environment variable
@@ -35,7 +81,7 @@ pub fn run_with_config(
     registry: AgentRegistry,
 ) -> anyhow::Result<()> {
     // Use real path resolver and effect handler by default
-    let handler = RealAppEffectHandler::new();
+    let mut handler = RealAppEffectHandler::new();
     run_with_config_and_resolver(
         args,
         executor,
@@ -277,7 +323,7 @@ pub struct RunWithHandlersParams<'a, 'ctx, P, A, E>
 where
     P: crate::config::ConfigEnvironment,
     A: AppEffectHandler,
-    E: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
+    E: crate::reducer::EffectHandler<'ctx> + crate::app::StatefulHandler,
 {
     pub args: Args,
     pub executor: std::sync::Arc<dyn ProcessExecutor>,
@@ -332,7 +378,7 @@ pub fn run_with_config_and_handlers<'a, 'ctx, P, A, E>(
 where
     P: crate::config::ConfigEnvironment,
     A: AppEffectHandler,
-    E: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
+    E: crate::reducer::EffectHandler<'ctx> + crate::app::StatefulHandler,
 {
     use crate::cli::{
         handle_extended_help, handle_init_global_with, handle_init_local_config_with,

@@ -33,38 +33,40 @@ pub fn next_logfile_attempt_index(
     let safe_agent = sanitize_agent_name(&agent_name.to_lowercase());
     let start = format!("{prefix_filename}_{safe_agent}_{model_index}_a");
 
-    let max_attempt = workspace
-        .read_dir(parent)
-        .ok()
-        .map(|entries: Vec<crate::workspace::DirEntry>| {
-            entries
-                .into_iter()
-                .filter_map(|entry: crate::workspace::DirEntry| {
-                    if !entry.is_file() {
-                        return None;
-                    }
-                    let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
-                        return None;
-                    };
-                    let has_log_ext = entry
-                        .path()
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
-                    if !filename.starts_with(&start) || !has_log_ext {
-                        return None;
-                    }
+    let max_attempt =
+        workspace
+            .read_dir(parent)
+            .ok()
+            .and_then(|entries: Vec<crate::workspace::DirEntry>| {
+                entries
+                    .into_iter()
+                    .filter_map(|entry: crate::workspace::DirEntry| {
+                        if !entry.is_file() {
+                            return None;
+                        }
+                        let filename = entry.file_name().and_then(|s| s.to_str())?;
+                        let has_log_ext = entry
+                            .path()
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
+                        if !filename.starts_with(&start) || !has_log_ext {
+                            return None;
+                        }
 
-                    let attempt_digits = &filename[start.len()..filename.len().saturating_sub(4)];
-                    if attempt_digits.is_empty()
-                        || !attempt_digits.chars().all(|c| c.is_ascii_digit())
-                    {
-                        return None;
-                    }
-                    attempt_digits.parse::<u32>().ok()
-                })
-                .max()
-        })
-        .flatten();
+                        filename
+                            .strip_suffix(".log")
+                            .and_then(|without_ext| without_ext.strip_prefix(&start))
+                            .and_then(|digits| {
+                                if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit())
+                                {
+                                    None
+                                } else {
+                                    digits.parse::<u32>().ok()
+                                }
+                            })
+                    })
+                    .max()
+            });
 
     max_attempt.map_or(0, |n| n.saturating_add(1))
 }
@@ -114,19 +116,23 @@ pub fn next_simplified_logfile_attempt_index(
                         .path()
                         .extension()
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
-                    let is_attempt_file = filename.starts_with(&start)
-                        && filename.len() > start.len() + 4
-                        && has_log_ext;
+                    let attempt_digits_opt = if has_log_ext {
+                        filename
+                            .strip_suffix(".log")
+                            .and_then(|without_ext| without_ext.strip_prefix(&start))
+                    } else {
+                        None
+                    };
 
                     if is_base_file {
                         return (max_attempt, true);
                     }
 
-                    if !is_attempt_file {
-                        return (max_attempt, base_file_exists);
-                    }
+                    let attempt_digits = match attempt_digits_opt {
+                        Some(digits) => digits,
+                        None => return (max_attempt, base_file_exists),
+                    };
 
-                    let attempt_digits = &filename[start.len()..filename.len().saturating_sub(4)];
                     if attempt_digits.is_empty()
                         || !attempt_digits.chars().all(|c| c.is_ascii_digit())
                     {

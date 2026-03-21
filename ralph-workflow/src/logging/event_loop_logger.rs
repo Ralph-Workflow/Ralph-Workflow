@@ -14,32 +14,34 @@ pub struct LogEffectParams<'a> {
     pub timestamp: &'a str,
 }
 
-fn format_log_line_content(
-    seq: u64,
-    ts: &str,
-    phase: &PipelinePhase,
-    effect: &str,
-    primary_event: &str,
-    extra_events: &[String],
-    context: &[(&str, &str)],
-    duration_ms: u64,
-) -> String {
-    let extra = if extra_events.is_empty() {
+fn format_log_line_content(seq: u64, params: &LogEffectParams<'_>) -> String {
+    let extra = if params.extra_events.is_empty() {
         String::new()
     } else {
-        format!(" extra=[{}]", extra_events.join(","))
+        format!(" extra=[{}]", params.extra_events.join(","))
     };
 
-    let ctx = if context.is_empty() {
+    let ctx = if params.context.is_empty() {
         String::new()
     } else {
-        let pairs: Vec<String> = context.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        let pairs: Vec<String> = params
+            .context
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
         format!(" ctx={}", pairs.join(","))
     };
 
     format!(
         "{} ts={} phase={} effect={} event={}{}{} ms={}\n",
-        seq, ts, phase, effect, primary_event, extra, ctx, duration_ms
+        seq,
+        params.timestamp,
+        params.phase,
+        params.effect,
+        params.primary_event,
+        extra,
+        ctx,
+        params.duration_ms
     )
 }
 
@@ -83,16 +85,7 @@ impl EventLoopLogger {
     }
 
     pub fn log_effect(self, params: &LogEffectParams<'_>) -> Result<(Self, u64), std::io::Error> {
-        let line = format_log_line_content(
-            self.seq,
-            params.timestamp,
-            &params.phase,
-            params.effect,
-            params.primary_event,
-            params.extra_events,
-            params.context,
-            params.duration_ms,
-        );
+        let line = format_log_line_content(self.seq, params);
 
         params
             .workspace

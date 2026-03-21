@@ -187,7 +187,7 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
                 template_name,
                 colors.reset()
             );
-            return create_prompt_from_template("feature-spec", colors);
+            create_prompt_from_template("feature-spec", colors)
         }
         diagnostics_domain::CreatePromptResult::SkippedBecauseExists => {
             let mut stdout = stdout();
@@ -197,7 +197,7 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
                 colors.yellow(),
                 colors.reset()
             );
-            return Ok(());
+            Ok(())
         }
         diagnostics_domain::CreatePromptResult::Created => {
             let Some(template) = get_template(template_name) else {

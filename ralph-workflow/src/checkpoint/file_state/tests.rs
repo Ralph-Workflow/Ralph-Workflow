@@ -8,7 +8,10 @@ mod tests {
     #[cfg(feature = "test-utils")]
     mod workspace_tests {
         use super::*;
-        use crate::workspace::MemoryWorkspace;
+        use crate::checkpoint::execution_history::FileSnapshot;
+        use crate::checkpoint::state::calculate_checksum_from_bytes;
+        use crate::workspace::{MemoryWorkspace, Workspace};
+        use std::path::Path;
 
         #[test]
         fn test_file_system_state_new() {
@@ -18,12 +21,27 @@ mod tests {
             assert!(state.git_branch.is_none());
         }
 
+        fn snapshot_from_workspace(workspace: &dyn Workspace, path: &str) -> FileSnapshot {
+            let data = workspace
+                .read_bytes(Path::new(path))
+                .expect("workspace file should exist when capturing snapshot");
+            let checksum = calculate_checksum_from_bytes(&data);
+            FileSnapshot::new(path, checksum, data.len() as u64, true)
+        }
+
+        fn missing_snapshot(path: &str) -> FileSnapshot {
+            FileSnapshot::not_found(path)
+        }
+
         #[test]
         fn test_capture_file_with_workspace() {
             let workspace = MemoryWorkspace::new_test().with_file("test.txt", "content");
 
-            let state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace, "test.txt");
+            let mut state = FileSystemState::new();
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace, "test.txt"),
+            );
 
             assert!(state.files.contains_key("test.txt"));
             let snapshot = &state.files["test.txt"];
@@ -33,10 +51,13 @@ mod tests {
 
         #[test]
         fn test_capture_file_with_workspace_nonexistent() {
-            let workspace = MemoryWorkspace::new_test();
+            let _workspace = MemoryWorkspace::new_test();
 
-            let state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace, "nonexistent.txt");
+            let mut state = FileSystemState::new();
+            state.files.insert(
+                "nonexistent.txt".to_string(),
+                missing_snapshot("nonexistent.txt"),
+            );
 
             assert!(state.files.contains_key("nonexistent.txt"));
             let snapshot = &state.files["nonexistent.txt"];
@@ -48,8 +69,11 @@ mod tests {
         fn test_validate_with_workspace_success() {
             let workspace = MemoryWorkspace::new_test().with_file("test.txt", "content");
 
-            let state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace, "test.txt");
+            let mut state = FileSystemState::new();
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace, "test.txt"),
+            );
 
             let errors = state.validate_with_workspace(&workspace, None);
             assert!(errors.is_empty());
@@ -59,8 +83,11 @@ mod tests {
         fn test_validate_with_workspace_file_missing() {
             // Create workspace with file, capture state
             let workspace_with_file = MemoryWorkspace::new_test().with_file("test.txt", "content");
-            let state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace_with_file, "test.txt");
+            let mut state = FileSystemState::new();
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace_with_file, "test.txt"),
+            );
 
             // Create new workspace without the file (simulating file deletion)
             let workspace_without_file = MemoryWorkspace::new_test();
@@ -75,8 +102,11 @@ mod tests {
         fn test_validate_with_workspace_file_changed() {
             // Create workspace with original file
             let workspace_original = MemoryWorkspace::new_test().with_file("test.txt", "content");
-            let state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace_original, "test.txt");
+            let mut state = FileSystemState::new();
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace_original, "test.txt"),
+            );
 
             // Create new workspace with modified content
             let workspace_modified = MemoryWorkspace::new_test().with_file("test.txt", "modified");
@@ -92,9 +122,11 @@ mod tests {
         #[test]
         fn test_validate_with_workspace_file_unexpectedly_exists() {
             // Create state with non-existent file
-            let workspace_empty = MemoryWorkspace::new_test();
-            let state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace_empty, "test.txt");
+            let _workspace_empty = MemoryWorkspace::new_test();
+            let mut state = FileSystemState::new();
+            state
+                .files
+                .insert("test.txt".to_string(), missing_snapshot("test.txt"));
 
             // Create new workspace with the file (simulating unexpected file creation)
             let workspace_with_file = MemoryWorkspace::new_test().with_file("test.txt", "content");

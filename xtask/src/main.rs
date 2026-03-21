@@ -113,16 +113,21 @@ fn main() -> ExitCode {
                 );
                 return ExitCode::SUCCESS;
             }
-            // Total check count = native checks + 1 (native-scan) + all group checks.
-            let total_checks = verify::NATIVE_REQUIRED_CHECKS.len()
+            let include_gui = args.contains(&"--gui".to_string());
+            let backend_checks = verify::NATIVE_REQUIRED_CHECKS.len()
                 + 1
                 + verify::FMT_CHECKS.len()
                 + verify::CORE_CARGO_CHECKS.len()
-                + verify::XTASK_CARGO_CHECKS.len()
-                + verify::GUI_CARGO_CHECKS.len()
-                + verify::FRONTEND_INSTALL_CHECKS.len()
-                + verify::FRONTEND_POST_INSTALL_CHECKS.len()
-                + verify::RELEASE_CHECKS.len();
+                + verify::XTASK_CARGO_CHECKS.len();
+            let gui_checks = if include_gui {
+                verify::GUI_CARGO_CHECKS.len()
+                    + verify::FRONTEND_INSTALL_CHECKS.len()
+                    + verify::FRONTEND_POST_INSTALL_CHECKS.len()
+                    + verify::RELEASE_CHECKS.len()
+            } else {
+                0
+            };
+            let total_checks = backend_checks + gui_checks;
             let reporter: Arc<dyn ProgressReporter> =
                 Arc::new(verify::StderrProgressReporter::new(total_checks));
             let real_runner = RealRunner::new(Arc::clone(&reporter));
@@ -134,27 +139,58 @@ fn main() -> ExitCode {
             eprintln!("=== cargo xtask verify ===");
             let verify_start = std::time::Instant::now();
             let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
-            let groups = verify::CheckGroups {
+
+            let backend_groups = verify::CheckGroups {
                 fmt: verify::FMT_CHECKS,
                 core_cargo: verify::CORE_CARGO_CHECKS,
                 xtask_cargo: verify::XTASK_CARGO_CHECKS,
-                gui_cargo: verify::GUI_CARGO_CHECKS,
-                frontend_install: verify::FRONTEND_INSTALL_CHECKS,
-                frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
-                release: verify::RELEASE_CHECKS,
+                gui_cargo: &[],
+                frontend_install: &[],
+                frontend_post_install: &[],
+                release: &[],
             };
-            let report = match verify::verify_fast(
+
+            let backend_report = match verify::verify_fast_with_options(
                 runner_for_verify,
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,
-                &groups,
+                &backend_groups,
                 reporter.as_ref(),
+                true,
             ) {
                 Ok(report) => report,
                 Err(err) => {
                     eprintln!("xtask error: {err:#}");
                     return ExitCode::from(1);
                 }
+            };
+
+            let report = if backend_report.exit == VerifyExitCode::Success && include_gui {
+                let gui_groups = verify::CheckGroups {
+                    fmt: &[],
+                    core_cargo: &[],
+                    xtask_cargo: &[],
+                    gui_cargo: verify::GUI_CARGO_CHECKS,
+                    frontend_install: verify::FRONTEND_INSTALL_CHECKS,
+                    frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
+                    release: verify::RELEASE_CHECKS,
+                };
+                match verify::verify_fast_with_options(
+                    runner.clone(),
+                    &repo_root,
+                    &[],
+                    &gui_groups,
+                    reporter.as_ref(),
+                    false,
+                ) {
+                    Ok(report) => report,
+                    Err(err) => {
+                        eprintln!("xtask error: {err:#}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else {
+                backend_report
             };
             let total_elapsed = verify_start.elapsed();
 

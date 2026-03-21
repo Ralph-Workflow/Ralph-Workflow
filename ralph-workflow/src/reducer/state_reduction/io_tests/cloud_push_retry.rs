@@ -1,5 +1,5 @@
 use crate::config::{CloudStateConfig, GitAuthStateMethod, GitRemoteStateConfig};
-use crate::reducer::event::CommitEvent;
+use crate::reducer::event::{CommitEvent, ProcessExecutionResult};
 use crate::reducer::io_tests::create_test_state;
 use crate::reducer::{reduce, PipelineEvent};
 
@@ -27,10 +27,15 @@ fn test_push_failed_keeps_pending_push_commit_for_retry() {
 
     let next = reduce(
         state,
-        PipelineEvent::Commit(CommitEvent::PushFailed {
+        PipelineEvent::Commit(CommitEvent::PushExecuted {
             remote: "origin".to_string(),
             branch: "main".to_string(),
-            error: "boom".to_string(),
+            commit_sha: "abc123".to_string(),
+            result: ProcessExecutionResult {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: "boom".to_string(),
+            },
         }),
     );
 
@@ -66,10 +71,15 @@ fn test_push_failed_eventually_records_unpushed_commit_and_clears_pending() {
     for i in 0..3 {
         state = reduce(
             state,
-            PipelineEvent::Commit(CommitEvent::PushFailed {
+            PipelineEvent::Commit(CommitEvent::PushExecuted {
                 remote: "origin".to_string(),
                 branch: "main".to_string(),
-                error: format!("boom-{i}"),
+                commit_sha: "abc123".to_string(),
+                result: ProcessExecutionResult {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: format!("boom-{i}"),
+                },
             }),
         );
     }
@@ -108,10 +118,15 @@ fn test_push_failed_error_is_redacted_before_storing_in_state() {
 
     let next = reduce(
         state,
-        PipelineEvent::Commit(CommitEvent::PushFailed {
+        PipelineEvent::Commit(CommitEvent::PushExecuted {
             remote: "origin".to_string(),
             branch: "main".to_string(),
-            error: "fatal: could not read Username for 'https://token@github.com/org/repo.git': terminal prompts disabled".to_string(),
+            commit_sha: "abc123".to_string(),
+            result: ProcessExecutionResult {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: "fatal: could not read Username for 'https://token@github.com/org/repo.git': terminal prompts disabled".to_string(),
+            },
         }),
     );
 

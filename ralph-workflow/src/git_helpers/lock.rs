@@ -4,7 +4,7 @@
 //! All functions here may use mutation, imperative loops, and I/O.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Rebase lock file name.
 const REBASE_LOCK_FILE: &str = "rebase.lock";
@@ -16,8 +16,8 @@ const DEFAULT_LOCK_TIMEOUT_SECONDS: u64 = 1800;
 ///
 /// The lock is stored in `.agent/rebase.lock`
 /// relative to the current working directory.
-fn rebase_lock_path() -> String {
-    format!(".agent/{REBASE_LOCK_FILE}")
+fn rebase_lock_path() -> PathBuf {
+    PathBuf::from(".agent").join(REBASE_LOCK_FILE)
 }
 
 fn build_lock_content() -> String {
@@ -30,7 +30,7 @@ fn should_acquire_lock(lock_path: &Path) -> std::io::Result<bool> {
     if !lock_path.exists() {
         return Ok(true);
     }
-    is_lock_stale().map(|stale| stale)
+    is_lock_stale()
 }
 
 /// Acquire the rebase lock.
@@ -44,23 +44,22 @@ fn should_acquire_lock(lock_path: &Path) -> std::io::Result<bool> {
 /// - The lock file exists and is not stale
 /// - The lock file cannot be created
 pub fn acquire_rebase_lock() -> std::io::Result<()> {
-    let lock_path_str = rebase_lock_path();
-    let lock_path = Path::new(&lock_path_str);
+    let lock_path = rebase_lock_path();
 
     if let Some(parent) = lock_path.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    if !should_acquire_lock(lock_path)? {
+    if !should_acquire_lock(&lock_path)? {
         return Err(lock_already_held_error());
     }
 
     if lock_path.exists() {
-        fs::remove_file(lock_path)?;
+        fs::remove_file(&lock_path)?;
     }
 
     let lock_content = build_lock_content();
-    let mut file = fs::File::create(lock_path)?;
+    let mut file = fs::File::create(&lock_path)?;
     std::io::Write::write_all(&mut file, lock_content.as_bytes())?;
     file.sync_all()?;
 
@@ -84,10 +83,9 @@ fn lock_already_held_error() -> std::io::Error {
 /// Returns an error if the lock file exists but cannot be removed.
 pub fn release_rebase_lock() -> std::io::Result<()> {
     let lock_path = rebase_lock_path();
-    let path = Path::new(&lock_path);
 
-    if path.exists() {
-        fs::remove_file(path)?;
+    if lock_path.exists() {
+        fs::remove_file(&lock_path)?;
     }
 
     Ok(())

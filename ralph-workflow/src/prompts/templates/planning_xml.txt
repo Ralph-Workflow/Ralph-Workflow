@@ -8,7 +8,7 @@
 {#   Uses structured XML with rich content elements for comprehensive plans.   #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   {{PROMPT}} - User requirements from PROMPT.md (required)                  #}
+{#   {{PROMPT}} - User requirements from the request (required)                #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                              #}
 {#   <ralph-plan>                                                              #}

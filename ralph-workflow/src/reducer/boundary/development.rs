@@ -6,6 +6,9 @@ use crate::phases::development::boundary_domain::{
     derive_development_status, parse_files_changed_lines, select_representation_by_inline_budget,
     PromptModeData, PromptModeResult,
 };
+use crate::phases::development::prompt_mode_strategy::{
+    derive_development_prompt_execution_path, DevelopmentPromptExecutionPath,
+};
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
 use crate::reducer::effect::{ContinuationContextData, EffectResult};
@@ -263,11 +266,22 @@ impl MainEffectHandler {
         iteration: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
-        let mode_result = match prompt_mode {
-            PromptMode::Continuation => self.prompt_mode_continuation(ctx, iteration),
-            PromptMode::XsdRetry => self.prompt_mode_xsd_retry(ctx, iteration)?,
-            PromptMode::SameAgentRetry => self.prompt_mode_same_agent_retry(ctx, iteration)?,
-            PromptMode::Normal => self.prompt_mode_normal(ctx, iteration)?,
+        // PRECONDITION: Orchestrator has pre-decided prompt_mode based on state.
+        // Pure domain helper converts mode into execution path, removing policy branching from boundary.
+        let execution_path = derive_development_prompt_execution_path(prompt_mode);
+
+        // Execute the pre-decided path (dispatch to mode-specific helper based on domain decision).
+        let mode_result = match execution_path {
+            DevelopmentPromptExecutionPath::Continuation => {
+                self.prompt_mode_continuation(ctx, iteration)
+            }
+            DevelopmentPromptExecutionPath::XsdRetry => {
+                self.prompt_mode_xsd_retry(ctx, iteration)?
+            }
+            DevelopmentPromptExecutionPath::SameAgentRetry => {
+                self.prompt_mode_same_agent_retry(ctx, iteration)?
+            }
+            DevelopmentPromptExecutionPath::Normal => self.prompt_mode_normal(ctx, iteration)?,
         };
         let PromptModeData {
             prompt: dev_prompt,
@@ -493,18 +507,16 @@ impl MainEffectHandler {
                     iteration,
                     input,
                 ))
-                .chain(
-                    (last_output_bytes > inline_budget_bytes)
-                        .then_some(PipelineEvent::prompt_input_oversize_detected(
-                            crate::reducer::event::PipelinePhase::Development,
-                            PromptInputKind::LastOutput,
-                            content_id_sha256.clone(),
-                            last_output_bytes,
-                            inline_budget_bytes,
-                            "xsd-retry-context".to_string(),
-                        ))
-                        .into_iter(),
-                )
+                .chain((last_output_bytes > inline_budget_bytes).then_some(
+                    PipelineEvent::prompt_input_oversize_detected(
+                        crate::reducer::event::PipelinePhase::Development,
+                        PromptInputKind::LastOutput,
+                        content_id_sha256.clone(),
+                        last_output_bytes,
+                        inline_budget_bytes,
+                        "xsd-retry-context".to_string(),
+                    ),
+                ))
                 .collect();
             Some(events)
         } else {

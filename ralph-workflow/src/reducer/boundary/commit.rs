@@ -77,21 +77,20 @@ impl crate::reducer::boundary::MainEffectHandler {
             None,
             prompt,
         )?;
-        let result = result
-            .additional_events
-            .iter()
-            .any(|e| {
-                matches!(
-                    e,
-                    PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-                )
-            })
-            .then(|| {
+        let result = if result.additional_events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+            )
+        }) {
+            {
                 result
                     .clone()
                     .with_additional_event(PipelineEvent::commit_agent_invoked(attempt))
-            })
-            .unwrap_or(result);
+            }
+        } else {
+            result
+        };
         Ok(result)
     }
 
@@ -108,9 +107,14 @@ impl crate::reducer::boundary::MainEffectHandler {
         use crate::agents::AgentRole;
         use std::io::Write;
 
-        if matches!(prompt_mode, PromptMode::Continuation) {
-            return Err(ErrorEvent::CommitContinuationNotSupported.into());
-        }
+        // Precondition: orchestrator ensures prompt_mode is never Continuation.
+        // Commit is atomic (not incremental work), so Continuation is semantically invalid.
+        // See phase_effects/commit.rs where mode is derived from retry state.
+        debug_assert!(
+            !matches!(prompt_mode, PromptMode::Continuation),
+            "Orchestrator must filter Continuation mode before deriving PrepareCommitPrompt effect"
+        );
+
         let attempt = current_commit_attempt(&self.state.commit);
 
         if matches!(prompt_mode, PromptMode::XsdRetry) {
@@ -428,7 +432,12 @@ impl crate::reducer::boundary::MainEffectHandler {
                 )
                 }
                 PromptMode::Continuation => {
-                    return Err(ErrorEvent::CommitContinuationNotSupported.into());
+                    // Precondition violation: orchestrator must never derive Continuation mode
+                    // for commit phase (validated by debug_assert above and orchestration tests).
+                    unreachable!(
+                        "Continuation mode is invalid for commit phase; \
+                         orchestrator should constrain to {{Normal, XsdRetry, SameAgentRetry}}"
+                    )
                 }
             };
 

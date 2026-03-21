@@ -17,9 +17,70 @@
 // - build_ccs_agent_config
 
 /// Result type for CCS command resolution with diagnostics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CcsCommandResult {
     pub command: String,
+}
+
+impl PartialEq<&str> for CcsCommandResult {
+    fn eq(&self, other: &&str) -> bool {
+        self.command == *other
+    }
+}
+
+impl PartialEq<String> for CcsCommandResult {
+    fn eq(&self, other: &String) -> bool {
+        self.command == *other
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CcsEnvVarDebugSummary {
+    pub whitelisted_keys_present: Vec<String>,
+    pub redacted_sensitive_keys: usize,
+    pub hidden_non_whitelisted_keys: usize,
+}
+
+#[must_use]
+pub fn ccs_env_var_debug_summary(env_vars: &HashMap<String, String>) -> CcsEnvVarDebugSummary {
+    let whitelisted_prefixes = ["ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"];
+    let sensitive_markers = ["token", "key", "secret", "password", "auth"];
+
+    let whitelisted_keys_present = env_vars
+        .keys()
+        .filter(|key| {
+            whitelisted_prefixes
+                .iter()
+                .any(|prefix| key.eq_ignore_ascii_case(prefix))
+        })
+        .cloned()
+        .collect();
+
+    let redacted_sensitive_keys = env_vars
+        .keys()
+        .filter(|key| {
+            let lower = key.to_ascii_lowercase();
+            sensitive_markers.iter().any(|m| lower.contains(m))
+        })
+        .count();
+
+    let hidden_non_whitelisted_keys = env_vars
+        .keys()
+        .filter(|key| {
+            !whitelisted_prefixes
+                .iter()
+                .any(|prefix| key.eq_ignore_ascii_case(prefix))
+                && !sensitive_markers
+                    .iter()
+                    .any(|m| key.to_ascii_lowercase().contains(m))
+        })
+        .count();
+
+    CcsEnvVarDebugSummary {
+        whitelisted_keys_present,
+        redacted_sensitive_keys,
+        hidden_non_whitelisted_keys,
+    }
 }
 
 /// Resolve a CCS alias to an `AgentConfig`.
@@ -98,7 +159,6 @@ pub fn resolve_ccs_agent<S: std::hash::BuildHasher>(
 /// leakage of sensitive credential values. Keys containing patterns like "token",
 /// "key", "secret", "password", "auth" are always filtered out regardless of
 /// their actual value, to protect against custom credential formats.
-
 const fn is_glm_alias(alias_name: &str) -> bool {
     alias_name.eq_ignore_ascii_case("glm")
 }

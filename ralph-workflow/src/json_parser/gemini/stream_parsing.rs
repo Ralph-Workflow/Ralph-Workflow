@@ -20,7 +20,7 @@ impl GeminiParser {
     ) -> std::io::Result<()> {
         use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 
-        let c = self.colors.clone();
+        let c = self.colors;
         let monitor = HealthMonitor::new("Gemini");
         // Accumulate log content in memory, write to workspace at the end
         let logging_enabled = self.log_path.is_some();

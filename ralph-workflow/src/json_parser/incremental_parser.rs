@@ -333,11 +333,13 @@ mod tests {
     #[test]
     fn test_incremental_parser_byte_by_byte() {
         let input = b"{\"type\": \"delta\"}\n";
-        let all_events: Vec<String> = input
-            .iter()
-            .map(|&b| IncrementalNdjsonParser::new().feed(b))
-            .flat_map(|mut parser| parser.drain_results())
-            .collect();
+        let mut parser = IncrementalNdjsonParser::new();
+        let mut all_events = Vec::new();
+
+        for &byte in input {
+            parser = parser.feed(byte);
+            all_events.extend(parser.drain_results());
+        }
 
         assert_eq!(all_events.len(), 1);
         assert_eq!(all_events[0], "{\"type\": \"delta\"}");

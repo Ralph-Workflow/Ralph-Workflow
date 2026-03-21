@@ -106,6 +106,7 @@ pub fn load_config_from_path(
 /// Returns `Err(ConfigLoadWithValidationError)` if any config file has validation errors
 /// (invalid TOML, type mismatches, unknown keys). Per requirements, Ralph refuses to start
 /// if ANY config file has errors.
+#[derive(Default)]
 struct GlobalLoadResult {
     unified: Option<UnifiedConfig>,
     content: Option<String>,
@@ -175,33 +176,12 @@ fn load_global_config(
     GlobalLoadResult::default()
 }
 
-impl Default for GlobalLoadResult {
-    fn default() -> Self {
-        Self {
-            unified: None,
-            content: None,
-            warnings: Vec::new(),
-            validation_errors: Vec::new(),
-        }
-    }
-}
-
+#[derive(Default)]
 struct LocalLoadResult {
     unified: Option<UnifiedConfig>,
     content: Option<String>,
     warnings: Vec<String>,
     validation_errors: Vec<ConfigValidationError>,
-}
-
-impl Default for LocalLoadResult {
-    fn default() -> Self {
-        Self {
-            unified: None,
-            content: None,
-            warnings: Vec::new(),
-            validation_errors: Vec::new(),
-        }
-    }
 }
 
 fn load_local_config(env: &dyn ConfigEnvironment) -> LocalLoadResult {
@@ -267,9 +247,22 @@ pub fn load_config_from_path_with_env(
         LocalLoadResult::default()
     };
 
+    let GlobalLoadResult {
+        unified: global_unified,
+        content: global_content,
+        warnings: global_warnings,
+        validation_errors: global_validation_errors,
+    } = global;
+
+    let LocalLoadResult {
+        unified: local_unified,
+        content: local_content,
+        warnings: local_warnings,
+        validation_errors: local_validation_errors,
+    } = local;
+
     // Combine warnings and validation errors
-    let initial_warnings: Vec<String> = global.warnings.into_iter().chain(local.warnings).collect();
-    let all_validation_errors = [global.validation_errors, local.validation_errors].concat();
+    let all_validation_errors = [global_validation_errors, local_validation_errors].concat();
 
     // Fail-fast: if there are any validation errors, return them immediately
     if !all_validation_errors.is_empty() {
@@ -279,7 +272,7 @@ pub fn load_config_from_path_with_env(
     }
 
     // Step 3: Merge configs (local overrides global)
-    let merged_unified = match (global.unified, global.content, local.unified, local.content) {
+    let merged_unified = match (global_unified, global_content, local_unified, local_content) {
         (Some(global_cfg), Some(global_raw_content), Some(local_cfg), Some(local_content)) => {
             let normalized_global =
                 merge_global_with_built_in_agent_chain_defaults(&global_cfg, &global_raw_content);
@@ -346,11 +339,10 @@ pub fn load_config_from_path_with_env(
     }
 
     // Combine all warnings from all sources
-    let all_warnings: Vec<String> = initial_warnings
-        .into_iter()
-        .chain(conversion_result.warnings)
-        .chain(override_result.warnings)
-        .collect();
+    let mut all_warnings = global_warnings;
+    all_warnings.extend(local_warnings);
+    all_warnings.extend(conversion_result.warnings);
+    all_warnings.extend(override_result.warnings);
 
     Ok((config, merged_unified, all_warnings))
 }

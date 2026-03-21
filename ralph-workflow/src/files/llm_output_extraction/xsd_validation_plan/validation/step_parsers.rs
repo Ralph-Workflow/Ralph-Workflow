@@ -156,15 +156,18 @@ fn reconstruct_element(name: &[u8], attrs_str: &str, inner: &str) -> String {
 
 /// Extract attribute string from a quick-xml `BytesStart` for re-serialization.
 fn attrs_to_string(e: &quick_xml::events::BytesStart<'_>) -> String {
-    let mut result = String::new();
-    for attr in e.attributes().flatten() {
-        result.push(' ');
-        result.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-        result.push_str("=\"");
-        result.push_str(&String::from_utf8_lossy(&attr.value));
-        result.push('"');
-    }
-    result
+    e.attributes()
+        .flatten()
+        .map(|attr| {
+            format!(
+                " {name}={quote}{value}{quote}",
+                name = String::from_utf8_lossy(attr.key.as_ref()),
+                value = String::from_utf8_lossy(&attr.value),
+                quote = '"'
+            )
+        })
+        .collect::<Vec<_>>()
+        .concat()
 }
 
 /// Parse a single step element.

@@ -537,10 +537,9 @@ impl UnifiedConfig {
                 .collect::<Result<HashMap<_, _>, _>>()?;
 
             let all_drains = AgentDrain::all();
-            let bindings = (0..all_drains.len()).fold(
-                Ok(bindings),
-                |acc, _| {
-                    let current_bindings = acc?;
+            let bindings = (0..all_drains.len()).try_fold(
+                bindings,
+                |current_bindings, _| {
                     let unresolved: Vec<AgentDrain> = all_drains
                         .iter()
                         .filter(|drain| !current_bindings.contains_key(drain))
@@ -572,7 +571,7 @@ impl UnifiedConfig {
                         ));
                     }
 
-                    let next_bindings = current_bindings
+                    let next_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = current_bindings
                         .clone()
                         .into_iter()
                         .chain(new_bindings)
@@ -585,7 +584,7 @@ impl UnifiedConfig {
             let all_have_valid_bindings = AgentDrain::all().iter().all(|drain| {
                 bindings
                     .get(drain)
-                    .map_or(false, |binding| !binding.agents.is_empty())
+                    .is_some_and(|binding| !binding.agents.is_empty())
             });
 
             if !all_have_valid_bindings {
@@ -593,9 +592,9 @@ impl UnifiedConfig {
                 let invalid_drain = all_drains
                     .iter()
                     .find(|drain| {
-                        !bindings
+                        bindings
                             .get(drain)
-                            .map_or(false, |binding| !binding.agents.is_empty())
+                            .is_none_or(|binding| binding.agents.is_empty())
                     })
                     .expect(
                         "at least one drain must be invalid since all_have_valid_bindings is false",
@@ -604,7 +603,7 @@ impl UnifiedConfig {
                 return Err(
                     if bindings
                         .get(invalid_drain)
-                        .map_or(true, |b| b.agents.is_empty())
+                        .is_none_or(|b| b.agents.is_empty())
                     {
                         format!(
                             "agent_drains.{} must not resolve to an empty chain (chain '{}')",
@@ -648,7 +647,8 @@ impl UnifiedConfig {
             .filter(|fallback| fallback.uses_legacy_role_schema())
             .map(|fallback| {
                 let resolved = fallback.resolve_drains();
-                let updated = if !self.general.provider_fallback.is_empty() {
+
+                if !self.general.provider_fallback.is_empty() {
                     ResolvedDrainConfig {
                         bindings: resolved.bindings,
                         provider_fallback: self.general.provider_fallback.clone(),
@@ -668,8 +668,7 @@ impl UnifiedConfig {
                         max_backoff_ms: self.general.max_backoff_ms,
                         max_cycles: self.general.max_cycles,
                     }
-                };
-                updated
+                }
             }))
     }
 }

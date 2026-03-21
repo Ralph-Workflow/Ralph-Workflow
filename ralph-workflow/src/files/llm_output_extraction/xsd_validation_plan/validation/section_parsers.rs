@@ -63,60 +63,99 @@ pub(super) fn strip_block_elements_for_inline_parsing(content: &str) -> String {
 
 /// Parse inline content elements (text, emphasis, code, link)
 fn parse_inline_elements(content: &str) -> Vec<InlineElement> {
-    let mut elements = Vec::new();
-    let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(false);
-    let mut buf = Vec::new();
-    let mut current_text = String::new();
+    InlineElementCursor::new(content).collect()
+}
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                // Flush any accumulated text
-                if !current_text.trim().is_empty() {
-                    elements.push(InlineElement::Text(current_text.trim().to_string()));
-                }
-                current_text.clear();
+struct InlineElementCursor<'a> {
+    reader: Reader<&'a [u8]>,
+    buf: Vec<u8>,
+    current_text: String,
+    pending_start: Option<quick_xml::events::BytesStart<'static>>,
+}
 
-                match e.name().as_ref() {
-                    b"emphasis" => {
-                        if let Ok(text) = read_text_until_end(&mut reader, b"emphasis") {
-                            elements.push(InlineElement::Emphasis(text));
-                        }
-                    }
-                    b"code" => {
-                        if let Ok(text) = read_text_until_end(&mut reader, b"code") {
-                            elements.push(InlineElement::Code(text));
-                        }
-                    }
-                    b"link" => {
-                        let attrs = get_attributes(&e);
-                        let href = attrs.get("href").cloned().unwrap_or_default();
-                        if let Ok(text) = read_text_until_end(&mut reader, b"link") {
-                            elements.push(InlineElement::Link { href, text });
-                        }
-                    }
-                    _ => {
-                        // Skip unknown inline elements
-                        let _ = skip_to_end(&mut reader, e.name().as_ref());
-                    }
-                }
-            }
-            Ok(Event::Text(e)) => {
-                current_text.push_str(&e.unescape().unwrap_or_default());
-            }
-            Ok(Event::End(_) | Event::Eof) | Err(_) => break,
-            Ok(_) => {}
+impl<'a> InlineElementCursor<'a> {
+    fn new(content: &'a str) -> Self {
+        let mut reader = Reader::from_str(content);
+        reader.config_mut().trim_text(false);
+        Self {
+            reader,
+            buf: Vec::new(),
+            current_text: String::new(),
+            pending_start: None,
         }
-        buf.clear();
     }
 
-    // Flush any remaining text
-    if !current_text.trim().is_empty() {
-        elements.push(InlineElement::Text(current_text.trim().to_string()));
+    fn take_text(&mut self) -> Option<InlineElement> {
+        let trimmed = self.current_text.trim();
+        if trimmed.is_empty() {
+            self.current_text.clear();
+            return None;
+        }
+        let text = trimmed.to_string();
+        self.current_text.clear();
+        Some(InlineElement::Text(text))
     }
 
-    elements
+    fn handle_start(
+        &mut self,
+        start: quick_xml::events::BytesStart<'static>,
+    ) -> Option<InlineElement> {
+        match start.name().as_ref() {
+            b"emphasis" => read_text_until_end(&mut self.reader, b"emphasis")
+                .ok()
+                .map(InlineElement::Emphasis),
+            b"code" => read_text_until_end(&mut self.reader, b"code")
+                .ok()
+                .map(InlineElement::Code),
+            b"link" => {
+                let attrs = get_attributes(&start);
+                let href = attrs.get("href").cloned().unwrap_or_default();
+                read_text_until_end(&mut self.reader, b"link")
+                    .ok()
+                    .map(|text| InlineElement::Link { href, text })
+            }
+            _ => {
+                let _ = skip_to_end(&mut self.reader, start.name().as_ref());
+                None
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for InlineElementCursor<'a> {
+    type Item = InlineElement;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(start) = self.pending_start.take() {
+            if let Some(element) = self.handle_start(start) {
+                return Some(element);
+            }
+        }
+
+        loop {
+            self.buf.clear();
+            match self.reader.read_event_into(&mut self.buf) {
+                Ok(Event::Start(e)) => {
+                    let owned = e.to_owned();
+                    if !self.current_text.trim().is_empty() {
+                        self.pending_start = Some(owned);
+                        return self.take_text();
+                    }
+                    if let Some(element) = self.handle_start(owned) {
+                        return Some(element);
+                    }
+                }
+                Ok(Event::Text(e)) => {
+                    self.current_text
+                        .push_str(&e.unescape().unwrap_or_default());
+                }
+                Ok(Event::End(_) | Event::Eof) | Err(_) => {
+                    return self.take_text();
+                }
+                Ok(_) => {}
+            }
+        }
+    }
 }
 
 /// Parse rich content from a <content> element
@@ -188,7 +227,9 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                         // Tolerant: try fuzzy tag matching before skipping.
                         // If the tag is a known sub-element with minor typo, route to correct handler.
                         let tag_name = String::from_utf8_lossy(other);
-                        if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS) {
+                        if let Some(canonical) =
+                            normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS)
+                        {
                             // Re-parse with the canonical tag name
                             match canonical {
                                 "paragraph" => {
@@ -199,7 +240,11 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                                 }
                                 "code-block" => {
                                     let attrs = get_attributes(&e);
-                                    let code = read_text_until_end_fuzzy(&mut reader, b"code-block", other)?;
+                                    let code = read_text_until_end_fuzzy(
+                                        &mut reader,
+                                        b"code-block",
+                                        other,
+                                    )?;
                                     elements.push(ContentElement::CodeBlock(CodeBlock {
                                         content: code,
                                         language: attrs.get("language").cloned(),
@@ -208,10 +253,13 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                                 }
                                 "heading" => {
                                     let attrs = get_attributes(&e);
-                                    let raw_level: u8 =
-                                        attrs.get("level").and_then(|s| s.parse().ok()).unwrap_or(3);
+                                    let raw_level: u8 = attrs
+                                        .get("level")
+                                        .and_then(|s| s.parse().ok())
+                                        .unwrap_or(3);
                                     let level = raw_level.clamp(2, 4);
-                                    let text = read_text_until_end_fuzzy(&mut reader, b"heading", other)?;
+                                    let text =
+                                        read_text_until_end_fuzzy(&mut reader, b"heading", other)?;
                                     elements.push(ContentElement::Heading(Heading { level, text }));
                                 }
                                 "list" => {
@@ -392,10 +440,12 @@ fn parse_table(reader: &mut Reader<&[u8]>) -> Result<Table, XsdValidationError> 
                     // Tolerant: try fuzzy tag matching before skipping.
                     // If the tag is a known sub-element with minor typo, route to correct handler.
                     let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS) {
+                    if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS)
+                    {
                         match canonical {
                             "caption" => {
-                                caption = Some(read_text_until_end_fuzzy(reader, b"caption", other)?);
+                                caption =
+                                    Some(read_text_until_end_fuzzy(reader, b"caption", other)?);
                             }
                             "columns" => {
                                 columns = parse_columns(reader)?;
@@ -505,7 +555,10 @@ fn parse_row(reader: &mut Reader<&[u8]>) -> Result<Row, XsdValidationError> {
 ///
 /// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
 /// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
-fn parse_summary(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<PlanSummary, XsdValidationError> {
+fn parse_summary(
+    reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
+) -> Result<PlanSummary, XsdValidationError> {
     let canonical_tag = b"ralph-summary";
     let mut context = None;
     let mut scope_items = Vec::new();
@@ -537,10 +590,12 @@ fn parse_summary(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Plan
                     // Tolerant: try fuzzy tag matching before skipping.
                     // If the tag is a known sub-element with minor typo, route to correct handler.
                     let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS) {
+                    if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS)
+                    {
                         match canonical {
                             "context" => {
-                                context = Some(read_text_until_end_fuzzy(reader, b"context", other)?);
+                                context =
+                                    Some(read_text_until_end_fuzzy(reader, b"context", other)?);
                             }
                             "scope-items" => {
                                 let mut wrapped = parse_scope_items(reader)?;
@@ -548,7 +603,8 @@ fn parse_summary(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Plan
                             }
                             "scope-item" => {
                                 let attrs = get_attributes(&e);
-                                let description = read_text_until_end_fuzzy(reader, b"scope-item", other)?;
+                                let description =
+                                    read_text_until_end_fuzzy(reader, b"scope-item", other)?;
                                 scope_items.push(ScopeItem {
                                     description,
                                     count: attrs.get("count").cloned(),

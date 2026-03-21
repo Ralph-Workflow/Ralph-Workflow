@@ -12,14 +12,16 @@ pub fn run_pipeline_for_commit_message<'a>(
 ) -> anyhow::Result<PipelineRuntime<'a>> {
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*config.executor;
     let runtime = crate::app::runtime_factory::create_pipeline_runtime(
-        timer,
-        config.logger,
-        &config.colors,
-        config.config,
-        executor_ref,
-        std::sync::Arc::clone(&config.executor),
-        config.workspace,
-        std::sync::Arc::clone(&config.workspace_arc),
+        crate::app::runtime_factory::PipelineRuntimeFactoryParams {
+            timer,
+            logger: config.logger,
+            colors: &config.colors,
+            config: config.config,
+            executor: executor_ref,
+            executor_arc: std::sync::Arc::clone(&config.executor),
+            workspace: config.workspace,
+            workspace_arc: std::sync::Arc::clone(&config.workspace_arc),
+        },
     );
     Ok(runtime)
 }

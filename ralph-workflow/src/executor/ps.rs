@@ -78,12 +78,12 @@ fn module_level_descendant_pid_signature(descendants: &[u32]) -> u64 {
 fn build_children_lookup(
     entries: &[ProcessEntry],
 ) -> std::collections::HashMap<u32, Vec<ProcessEntry>> {
-    let mut lookup: std::collections::HashMap<u32, Vec<ProcessEntry>> =
-        std::collections::HashMap::new();
-    for entry in entries {
-        lookup.entry(entry.parent_pid).or_default().push(*entry);
-    }
-    lookup
+    entries
+        .iter()
+        .fold(std::collections::HashMap::new(), |mut lookup, entry| {
+            lookup.entry(entry.parent_pid).or_default().push(*entry);
+            lookup
+        })
 }
 
 fn compute_child_process_info(
@@ -199,8 +199,24 @@ pub fn parse_pgrep_output(stdout: &str) -> Option<Vec<u32>> {
     Some(child_pids)
 }
 
-pub fn child_info_from_descendant_pids(_descendants: &[u32]) -> ChildProcessInfo {
-    ChildProcessInfo::NONE
+fn canonical_descendant_signature(descendants: &[u32]) -> u64 {
+    let mut sorted = descendants.to_vec();
+    sorted.sort_unstable();
+    module_level_descendant_pid_signature(&sorted)
+}
+
+pub fn child_info_from_descendant_pids(descendants: &[u32]) -> ChildProcessInfo {
+    if descendants.is_empty() {
+        return ChildProcessInfo::NONE;
+    }
+
+    let child_count = u32::try_from(descendants.len()).unwrap_or(u32::MAX);
+    ChildProcessInfo {
+        child_count,
+        active_child_count: 0,
+        cpu_time_ms: 0,
+        descendant_pid_signature: canonical_descendant_signature(descendants),
+    }
 }
 
 pub fn warn_child_process_detection_conservative() {}

@@ -25,7 +25,7 @@ impl TestPrinter {
     #[must_use]
     pub fn get_output(&self) -> String {
         let mut result = self.buffer.clone();
-        for line in self.output.iter() {
+        for line in &self.output {
             result.push_str(line);
         }
         result

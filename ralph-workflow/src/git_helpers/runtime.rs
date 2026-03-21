@@ -7,6 +7,8 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+pub use crate::git_helpers::hooks;
+
 /// Process-global repo root set during `start_agent_phase` for signal handler fallback.
 ///
 /// The signal handler needs a reliable repo root when CWD-based discovery may fail.

@@ -305,20 +305,16 @@ fn extract_error_code(value: &Value) -> Option<String> {
 /// # Returns
 /// `true` if the pattern is found and is followed by a file extension pattern
 fn contains_provider_prefixed_usage_limit(text_lower: &str) -> bool {
-    text_lower
-        .match_indices(": usage limit")
-        .map(|(pos, _)| {
-            let usage_limit_pos = pos + ": ".len();
-            !is_followed_by_file_extension_generic_at(text_lower, usage_limit_pos, "usage limit")
-        })
-        .any(|is_valid| is_valid)
+    text_lower.match_indices(": usage limit").any(|(pos, _)| {
+        let usage_limit_pos = pos + ": ".len();
+        !is_followed_by_file_extension_generic_at(text_lower, usage_limit_pos, "usage limit")
+    })
 }
 
 fn has_non_filename_occurrence(text_lower: &str, pattern: &str) -> bool {
     text_lower
         .match_indices(pattern)
-        .map(|(pos, _)| !is_followed_by_file_extension_generic_at(text_lower, pos, pattern))
-        .any(|is_valid| is_valid)
+        .any(|(pos, _)| !is_followed_by_file_extension_generic_at(text_lower, pos, pattern))
 }
 
 fn is_followed_by_file_extension_generic_at(

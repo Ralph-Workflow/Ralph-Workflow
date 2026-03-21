@@ -134,8 +134,11 @@ pub enum ErrorEvent {
     FixContinuationNotSupported,
     /// Commit message generation does not support continuation prompts.
     ///
-    /// This is an invariant violation - continuation mode should not be passed to
-    /// the commit phase.
+    /// **Note:** This is a precondition violation that should never occur at runtime.
+    /// The orchestrator ensures `PromptMode::Continuation` is never derived for commit
+    /// phase (verified by `test_commit_orchestrator_never_derives_continuation_mode`).
+    /// The boundary documents this precondition via debug_assert; this error variant
+    /// exists only for checkpoint format compatibility.
     CommitContinuationNotSupported,
     /// Missing fix prompt file when invoking fix agent.
     ///

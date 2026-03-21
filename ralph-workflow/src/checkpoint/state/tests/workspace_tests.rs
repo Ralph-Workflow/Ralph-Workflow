@@ -1,23 +1,22 @@
-use super::*;
+use crate::checkpoint::state::calculate_file_checksum_with_workspace;
 use crate::checkpoint::{
-    AgentConfigSnapshot, CliArgsSnapshot, PipelineCheckpointParams, PipelinePhase,
-    PipelinePipelineCheckpoint, RebaseState,
+    checkpoint_exists_with_workspace, clear_checkpoint_with_workspace,
+    load_checkpoint_with_workspace, save_checkpoint_with_workspace, AgentConfigSnapshot,
+    CheckpointParams, CliArgsSnapshot, PipelineCheckpoint, PipelinePhase, RebaseState,
 };
-use crate::workspace::MemoryWorkspace;
+use crate::workspace::{MemoryWorkspace, Workspace};
+use serde_json;
 use std::path::Path;
 
 /// Helper function to create a checkpoint for workspace tests.
-fn make_test_checkpoint_for_workspace(
-    phase: PipelinePhase,
-    iteration: u32,
-) -> PipelinePipelineCheckpoint {
+fn make_test_checkpoint_for_workspace(phase: PipelinePhase, iteration: u32) -> PipelineCheckpoint {
     let cli_args = CliArgsSnapshot::new(5, 2, None, true, 2, false, None);
     let dev_config =
         AgentConfigSnapshot::new("claude".into(), "cmd".into(), "-o".into(), None, true);
     let rev_config =
         AgentConfigSnapshot::new("codex".into(), "cmd".into(), "-o".into(), None, true);
     let run_id = uuid::Uuid::new_v4().to_string();
-    PipelinePipelineCheckpoint::from_params(PipelineCheckpointParams {
+    PipelineCheckpoint::from_params(CheckpointParams {
         phase,
         iteration,
         total_iterations: 5,
@@ -477,7 +476,7 @@ fn test_optimized_serialization_round_trip_preserves_data() {
         .map(|i| {
             let outcome = StepOutcome::Success {
                 output: Some(format!("output{i}").into()),
-                files_modified: Some(vec![format!("file{i}.rs", i)].into_boxed_slice()),
+                files_modified: Some(vec![format!("file{i}.rs")].into_boxed_slice()),
                 exit_code: Some(0),
             };
             ExecutionStep::new(&format!("Phase{i}"), i, &format!("step{i}"), outcome)
@@ -541,11 +540,25 @@ fn test_optimized_serialization_round_trip_preserves_data() {
                         .collect::<Vec<_>>()),
                     Some(vec![format!("file{i}.rs").as_str()])
                 );
-                assert_eq!(*exit_code, Some(0));
+                assert_eq!(exit_code, &Some(0));
             } else {
                 panic!("Expected Success outcome");
             }
         });
+}
+
+const MAX_CHECKPOINT_ESTIMATE_BYTES: usize = 2_097_152;
+
+fn estimate_checkpoint_size(checkpoint: &PipelineCheckpoint) -> usize {
+    serde_json::to_string(checkpoint)
+        .map(|json| json.len())
+        .unwrap_or_default()
+}
+
+fn estimate_checkpoint_size_from_history_len(history_len: usize) -> usize {
+    history_len
+        .saturating_mul(1_000)
+        .min(MAX_CHECKPOINT_ESTIMATE_BYTES)
 }
 
 #[test]

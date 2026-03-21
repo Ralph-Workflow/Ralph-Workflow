@@ -47,17 +47,13 @@ pub fn find_most_recent_logfile(log_prefix: &Path, workspace: &dyn Workspace) ->
                     if !entry.is_file() {
                         return None;
                     }
-                    let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
-                        return None;
-                    };
+                    let filename = entry.file_name().and_then(|s| s.to_str())?;
                     let has_log_ext = entry
                         .path()
                         .extension()
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
-                    if !filename.starts_with(prefix_str)
-                        || filename.len() <= prefix_str.len()
-                        || !has_log_ext
-                    {
+                    let remainder = filename.strip_prefix(prefix_str)?;
+                    if remainder.is_empty() || !has_log_ext {
                         return None;
                     }
                     entry

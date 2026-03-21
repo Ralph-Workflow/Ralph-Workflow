@@ -52,87 +52,77 @@ fn unquote_c_style(s: &str) -> Option<String> {
         return None;
     }
     let inner = &bytes[1..bytes.len() - 1];
-    let result = process_bytes(inner, 0, false, None);
-    String::from_utf8(result).ok()
-}
+    let mut result = Vec::with_capacity(inner.len());
+    let mut i = 0;
 
-fn process_bytes(
-    bytes: &[u8],
-    i: usize,
-    in_escape: bool,
-    octal_val: Option<(u32, usize, usize)>,
-) -> Vec<u8> {
-    if i >= bytes.len() {
-        return Vec::new();
-    }
+    while i < inner.len() {
+        let b = inner[i];
+        if b != b'\\' {
+            result.push(b);
+            i += 1;
+            continue;
+        }
 
-    let b = bytes[i];
-    let mut result = Vec::new();
+        if i + 1 >= inner.len() {
+            result.push(b'\\');
+            break;
+        }
 
-    if in_escape {
-        match b {
+        let next = inner[i + 1];
+        match next {
             b'\\' => {
                 result.push(b'\\');
-                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                i += 2;
             }
             b'"' => {
                 result.push(b'"');
-                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                i += 2;
             }
             b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
                 result.push(b'\\');
-                result.push(b);
-                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                result.push(next);
+                i += 2;
             }
             b'0'..=b'7' => {
-                let octal = (u32::from(b - b'0'), 1, i);
-                result.extend_from_slice(&process_bytes(bytes, i + 1, true, Some(octal)));
+                let start = i + 1;
+                let mut consumed = 0;
+                let mut octal_val = 0u32;
+                while consumed < 3 && start + consumed < inner.len() {
+                    let digit = inner[start + consumed];
+                    if !(b'0'..=b'7').contains(&digit) {
+                        break;
+                    }
+                    octal_val = (octal_val * 8) + u32::from(digit - b'0');
+                    consumed += 1;
+                }
+
+                if consumed > 0 {
+                    if let Ok(byte) = u8::try_from(octal_val) {
+                        if byte < 0x20 || byte == 0x7F {
+                            result.push(b'\\');
+                            result.extend_from_slice(&inner[start..start + consumed]);
+                        } else {
+                            result.push(byte);
+                        }
+                    } else {
+                        result.push(b'\\');
+                        result.extend_from_slice(&inner[start..start + consumed]);
+                    }
+                    i = start + consumed;
+                } else {
+                    result.push(b'\\');
+                    i += 1;
+                }
             }
             _ => {
                 result.push(b'\\');
-                result.push(b);
-                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                result.push(next);
+                i += 2;
             }
-        }
-    } else if let Some((val, consumed, start_idx)) = octal_val {
-        if b.is_ascii_digit() && consumed < 3 {
-            let new_val = (val * 8) + u32::from(b - b'0');
-            let new_consumed = consumed + 1;
-            result.extend_from_slice(&process_bytes(
-                bytes,
-                i + 1,
-                true,
-                Some((new_val, new_consumed, start_idx)),
-            ));
-        } else {
-            if let Ok(byte) = u8::try_from(val) {
-                if byte < 0x20 || byte == 0x7F {
-                    result.push(b'\\');
-                    result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
-                } else {
-                    result.push(byte);
-                }
-            } else {
-                result.push(b'\\');
-                result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
-            }
-            if b == b'\\' {
-                result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
-            } else {
-                result.push(b);
-                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-            }
-        }
-    } else {
-        if b == b'\\' {
-            result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
-        } else {
-            result.push(b);
-            result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
         }
     }
 
-    result
+    String::from_utf8(result).ok()
 }
 
 fn parse_status_line(line: &str) -> Option<String> {
@@ -173,16 +163,22 @@ fn parse_path_component(raw: &str) -> String {
 
 /// Implementation of git snapshot.
 fn git_snapshot_impl(repo: &git2::Repository) -> std::io::Result<String> {
+    let statuses = {
+        let mut opts = configured_status_options();
+        repo.statuses(Some(&mut opts))
+            .map_err(|e| git2_to_io_error(&e))?
+    };
+
+    let lines = collect_status_lines(statuses)?;
+    Ok(lines.into_iter().collect())
+}
+
+fn configured_status_options() -> git2::StatusOptions {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true)
         .recurse_untracked_dirs(true)
         .include_ignored(false);
-    let statuses = repo
-        .statuses(Some(&mut opts))
-        .map_err(|e| git2_to_io_error(&e))?;
-
-    let lines = collect_status_lines(statuses)?;
-    Ok(lines.into_iter().collect())
+    opts
 }
 
 fn collect_status_lines(statuses: git2::Statuses) -> std::io::Result<Vec<String>> {

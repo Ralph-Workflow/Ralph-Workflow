@@ -189,7 +189,9 @@ pub(crate) fn verify_ralph_dir_removed(repo_root: &Path) -> Vec<String> {
     if dir_issues.is_empty() {
         remaining
     } else {
-        remaining.into_iter().chain(dir_issues).collect()
+        let mut remaining = remaining;
+        remaining.extend(dir_issues);
+        remaining
     }
 }
 
@@ -217,18 +219,17 @@ fn check_track_file_issues(track_file: &Path) -> Vec<String> {
         return Vec::new();
     }
 
-    let mut issues = vec![format!("track file still exists: {}", track_file.display())];
+    let base_issue = format!("track file still exists: {}", track_file.display());
+    let dir_issue = fs::read_to_string(track_file).ok().and_then(|content| {
+        let dir = PathBuf::from(content.trim());
+        dir.exists()
+            .then(|| format!("wrapper temp dir still exists: {}", dir.display()))
+    });
 
-    let content = match fs::read_to_string(track_file) {
-        Ok(c) => c,
-        Err(_) => return issues,
-    };
-
-    let dir = PathBuf::from(content.trim());
-    if dir.exists() {
-        issues.push(format!("wrapper temp dir still exists: {}", dir.display()));
+    let mut issues = vec![base_issue];
+    if let Some(dir_issue) = dir_issue {
+        issues.push(dir_issue);
     }
-
     issues
 }
 

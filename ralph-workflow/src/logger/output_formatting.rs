@@ -22,9 +22,7 @@ pub fn argv_requests_json(argv: &[String]) -> bool {
     let dominated_by_output_format = args
         .iter()
         .position(|&arg| arg == "--output-format")
-        .map_or(false, |i| {
-            args.get(i + 1).map_or(false, |next| next.contains("json"))
-        });
+        .is_some_and(|i| args.get(i + 1).is_some_and(|next| next.contains("json")));
 
     dominated_by_output_format
         || args.iter().any(|&arg| {

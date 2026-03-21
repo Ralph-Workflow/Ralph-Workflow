@@ -228,7 +228,19 @@ fn test_logging_backend_emits_warnings_above_threshold() {
         c.record_and_emit(&s, &backend)
     });
 
-    let snap = MemorySnapshot::from_pipeline_state(&state);
+    let state_with_history = state.clone().with_execution_step(
+        ExecutionStep::new(
+            "Development",
+            0,
+            "agent_invoked",
+            StepOutcome::success(
+                Some("output with sufficient content for the memory metrics threshold check".to_string()),
+                vec!["file.rs".to_string()],
+            ),
+        ),
+        1000,
+    );
+    let snap = MemorySnapshot::from_pipeline_state(&state_with_history);
     assert!(
         snap.execution_history_heap_bytes > 100,
         "Test setup should create heap usage > 100 bytes"

@@ -459,22 +459,23 @@ fn test_state_machine_tracks_conflict_resolution() {
         use ralph_workflow::git_helpers::RebaseStateMachine;
 
         with_temp_cwd(|_dir| {
-            let mut machine = RebaseStateMachine::new("main".to_string());
+            let machine = RebaseStateMachine::new("main".to_string());
 
             // Record conflicts
-            machine.record_conflict("file1.rs".to_string());
-            machine.record_conflict("file2.rs".to_string());
+            let machine = machine
+                .record_conflict("file1.rs".to_string())
+                .record_conflict("file2.rs".to_string());
 
             assert_eq!(machine.unresolved_conflict_count(), 2);
 
             // Resolve one
-            machine.record_resolution("file1.rs".to_string());
+            let machine = machine.record_resolution("file1.rs".to_string());
 
             assert_eq!(machine.unresolved_conflict_count(), 1);
             assert!(!machine.all_conflicts_resolved());
 
             // Resolve the other
-            machine.record_resolution("file2.rs".to_string());
+            let machine = machine.record_resolution("file2.rs".to_string());
 
             assert_eq!(machine.unresolved_conflict_count(), 0);
             assert!(machine.all_conflicts_resolved());

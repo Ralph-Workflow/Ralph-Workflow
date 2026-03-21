@@ -6,6 +6,7 @@ mod common;
 
 mod analysis_handler;
 mod cloud;
+mod cloud_push_policy;
 mod commit_handler;
 mod completion_marker;
 mod context_cleanup;
@@ -20,4 +21,5 @@ mod planning_prompt;
 mod prompt_permissions;
 mod review_prompt;
 mod review_validation;
+mod run_review_xsd_retry_input;
 mod stale_xml_cleanup;

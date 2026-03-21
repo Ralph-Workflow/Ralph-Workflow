@@ -221,10 +221,7 @@ impl AgentConfig {
         let merged_env_vars: HashMap<_, _> =
             toml.env_vars.into_iter().chain(ccs_env_vars).collect();
 
-        let all_warnings: Vec<_> = ccs_warnings
-            .into_iter()
-            .chain(warnings.into_iter())
-            .collect();
+        let all_warnings: Vec<_> = ccs_warnings.into_iter().chain(warnings).collect();
 
         (
             Self {

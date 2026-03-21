@@ -325,21 +325,20 @@ impl MainEffectHandler {
             None,
             prompt,
         )?;
-        let result = result
-            .additional_events
-            .iter()
-            .any(|e| {
-                matches!(
-                    e,
-                    PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-                )
-            })
-            .then(|| {
+        let result = if result.additional_events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+            )
+        }) {
+            {
                 result
                     .clone()
                     .with_additional_event(PipelineEvent::review_agent_invoked(pass))
-            })
-            .unwrap_or(result);
+            }
+        } else {
+            result
+        };
         Ok(result)
     }
 
@@ -546,31 +545,45 @@ impl MainEffectHandler {
         pass: u32,
     ) -> Result<Vec<PipelineEvent>> {
         use crate::phases::review::boundary_domain::XsdRetryMaterializationSignature;
+        use crate::phases::review::xsd_retry_input_strategy::{
+            decide_xsd_retry_input_source, XsdRetryInputSource,
+        };
 
-        let last_output = match ctx.workspace.read(Path::new(xml_paths::ISSUES_XML)) {
-            Ok(output) => output,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                let processed_path = Path::new(".agent/tmp/issues.xml.processed");
-                ctx.workspace.read(processed_path).map_or_else(
-                    |_| {
-                        ctx.logger.warn(
-                            "Missing .agent/tmp/issues.xml and .processed fallback; using empty output for review XSD retry",
-                        );
-                        String::new()
-                    },
-                    |output| {
-                        ctx.logger
-                            .info("XSD retry: using archived .processed file as last output");
-                        output
-                    },
-                )
+        // Pure domain decision: which source to use
+        let primary_path = Path::new(xml_paths::ISSUES_XML);
+        let archived_path = Path::new(".agent/tmp/issues.xml.processed");
+        let source = decide_xsd_retry_input_source(
+            ctx.workspace.exists(primary_path),
+            ctx.workspace.exists(archived_path),
+            primary_path,
+            archived_path,
+        );
+
+        // Boundary execution: read from decided source
+        let last_output = match source {
+            XsdRetryInputSource::Primary { ref path } => {
+                ctx.workspace
+                    .read(path)
+                    .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+                        path: path.display().to_string(),
+                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                    })?
             }
-            Err(err) => {
-                return Err(ErrorEvent::WorkspaceReadFailed {
-                    path: xml_paths::ISSUES_XML.to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-                .into());
+            XsdRetryInputSource::ArchivedFallback { ref path } => {
+                ctx.logger
+                    .info("XSD retry: using archived .processed file as last output");
+                ctx.workspace
+                    .read(path)
+                    .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+                        path: path.display().to_string(),
+                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                    })?
+            }
+            XsdRetryInputSource::EmptyFallback => {
+                ctx.logger.warn(
+                    "Missing .agent/tmp/issues.xml and .processed fallback; using empty output for review XSD retry",
+                );
+                String::new()
             }
         };
 

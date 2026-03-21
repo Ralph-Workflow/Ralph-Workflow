@@ -45,7 +45,7 @@ mod rebase;
 pub use rebase::{ConflictStrategy, RebaseEvent, RebasePhase};
 
 mod commit;
-pub use commit::CommitEvent;
+pub use commit::{CommitEvent, ProcessExecutionResult};
 
 mod awaiting_dev_fix;
 pub use awaiting_dev_fix::AwaitingDevFixEvent;

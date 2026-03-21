@@ -46,73 +46,54 @@ pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
         return diff.to_string();
     }
 
-    let lines: Vec<&str> = diff.lines().collect();
-
     #[derive(Default)]
     struct Accumulator {
         files: Vec<DiffFile>,
-        current_file: DiffFile,
-        in_file: bool,
+        current_file: Option<DiffFile>,
     }
 
     impl Accumulator {
-        fn process_line(self, line: &str) -> Self {
+        fn process_line(mut self, line: &str) -> Self {
             if line.starts_with("diff --git ") {
-                let files = if self.in_file && !self.current_file.lines.is_empty() {
-                    self.files.into_iter().chain([self.current_file]).collect()
-                } else {
-                    self.files
-                };
-                let (path, priority) = line
+                if let Some(previous_file) = self.current_file.take() {
+                    if !previous_file.lines.is_empty() {
+                        self.files.push(previous_file);
+                    }
+                }
+                let priority = line
                     .split(" b/")
                     .nth(1)
-                    .map(|p| (p.to_string(), prioritize_file_path(p)))
+                    .map(prioritize_file_path)
                     .unwrap_or_default();
-                Self {
-                    files,
-                    current_file: DiffFile {
-                        path,
-                        priority,
-                        lines: vec![line.to_string()],
-                    },
-                    in_file: true,
-                }
-            } else if self.in_file {
-                let updated_lines = self
-                    .current_file
-                    .lines
-                    .into_iter()
-                    .chain([line.to_string()])
-                    .collect();
-                Self {
-                    current_file: DiffFile {
-                        lines: updated_lines,
-                        path: self.current_file.path,
-                        priority: self.current_file.priority,
-                    },
-                    files: self.files,
-                    in_file: self.in_file,
-                }
+                self.current_file = Some(DiffFile {
+                    priority,
+                    lines: vec![line.to_string()],
+                });
+                self
+            } else if let Some(current) = self.current_file.as_mut() {
+                current.lines.push(line.to_string());
+                self
             } else {
                 self
             }
         }
     }
 
-    let final_acc = lines
-        .iter()
+    let final_acc = diff
+        .lines()
         .fold(Accumulator::default(), |acc, line| acc.process_line(line));
 
     let sorted_files: Vec<_> = {
-        let all_files = if final_acc.in_file && !final_acc.current_file.lines.is_empty() {
-            final_acc
-                .files
-                .into_iter()
-                .chain([final_acc.current_file])
-                .collect::<Vec<_>>()
-        } else {
-            final_acc.files
-        };
+        let Accumulator {
+            files,
+            current_file,
+        } = final_acc;
+        let mut all_files = files;
+        if let Some(current_file) = current_file {
+            if !current_file.lines.is_empty() {
+                all_files.push(current_file);
+            }
+        }
         all_files
             .into_iter()
             .sorted_by_key(|f| -f.priority)
@@ -167,7 +148,9 @@ pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
         }
     };
 
-    if files_included < total_files {
+    let was_truncated = result.len() < diff.len();
+
+    if files_included < total_files || was_truncated {
         let summary = format!("\n[Truncated: {files_included} of {total_files} files shown]\n");
         if summary.len() <= max_size {
             if result.len() + summary.len() > max_size {
@@ -201,7 +184,6 @@ pub fn truncate_diff_to_model_budget(diff: &str, max_size_bytes: u64) -> (String
 
 #[derive(Default)]
 struct DiffFile {
-    path: String,
     priority: i32,
     lines: Vec<String>,
 }
@@ -275,29 +257,29 @@ pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
 
     let adjusted: Vec<String> = if current_size + suffix_len > max_size {
         let target_bytes = max_size.saturating_sub(suffix_len);
-        let kept: Vec<_> = result
-            .iter()
-            .rev()
-            .scan(0usize, |size, line| {
-                let line_size = line.len() + 1;
-                if *size + line_size <= target_bytes {
-                    *size += line_size;
-                    Some(line.clone())
-                } else if *size == 0 {
-                    let max_for_line = target_bytes.saturating_sub(1);
-                    let new_line = truncate_to_utf8_boundary(line, max_for_line);
-                    if !new_line.is_empty() {
-                        *size = new_line.len() + 1;
-                        Some(new_line)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+        let mut kept: Vec<String> = Vec::new();
+        let mut accumulated = 0usize;
+        for line in result.iter().rev() {
+            let line_size = line.len() + 1;
+            if accumulated + line_size <= target_bytes {
+                accumulated += line_size;
+                kept.push(line.clone());
+                continue;
+            }
+
+            if accumulated == 0 {
+                let max_for_line = target_bytes.saturating_sub(1);
+                let new_line = truncate_to_utf8_boundary(line, max_for_line);
+                if !new_line.is_empty() {
+                    kept.push(new_line);
                 }
-            })
-            .collect();
-        kept.into_iter().rev().collect()
+            }
+
+            break;
+        }
+
+        kept.reverse();
+        kept
     } else {
         result
     };
@@ -475,6 +457,20 @@ mod diff_truncation_tests {
         assert!(
             std::str::from_utf8(truncated.as_bytes()).is_ok(),
             "truncated output should be valid UTF-8"
+        );
+    }
+
+    #[test]
+    fn truncate_diff_preserves_header_only_file() {
+        let diff = "diff --git a/src/existing.rs b/src/existing.rs\n+line\n".to_string();
+        let header_only = "diff --git a/src/header_only.rs b/src/header_only.rs\n";
+        let combined = format!("{diff}{header_only}");
+
+        let (result, was_truncated) = truncate_diff_to_model_budget(&combined, 512);
+        assert!(!was_truncated, "diff should fit within budget");
+        assert!(
+            result.contains(header_only),
+            "header-only file should still be present"
         );
     }
 
