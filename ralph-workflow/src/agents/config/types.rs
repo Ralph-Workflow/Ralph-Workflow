@@ -209,11 +209,15 @@ impl AgentConfig {
             None => (HashMap::new(), Vec::new()),
         };
 
-        let warnings = if ccs_env_vars.is_empty() && toml.ccs_profile.is_some() {
-            vec![CcsEnvWarning::LoadFailed {
-                profile: toml.ccs_profile.clone().unwrap(),
-                error: "no environment variables loaded".to_string(),
-            }]
+        let warnings = if ccs_env_vars.is_empty() {
+            if let Some(ref profile) = toml.ccs_profile {
+                vec![CcsEnvWarning::LoadFailed {
+                    profile: profile.clone(),
+                    error: "no environment variables loaded".to_string(),
+                }]
+            } else {
+                Vec::new()
+            }
         } else {
             Vec::new()
         };

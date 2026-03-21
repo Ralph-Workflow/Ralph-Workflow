@@ -146,7 +146,14 @@ development = "shared_dev"
         .resolve_agent_drains_checked()
         .expect_err("singular agent_chain typo should fail");
 
-    assert!(error.contains("did you mean [agent_chains]?"));
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::SingularAgentChainWithDrains
+        ),
+        "expected SingularAgentChainWithDrains variant, got: {error}"
+    );
+    assert!(error.to_string().contains("did you mean [agent_chains]?"));
 }
 
 #[test]

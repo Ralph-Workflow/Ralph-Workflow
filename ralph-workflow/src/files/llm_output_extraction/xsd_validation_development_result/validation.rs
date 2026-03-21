@@ -113,9 +113,7 @@ pub fn validate_development_result_xml(
         crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp,
     > = None;
     let mut files_changed: Option<String> = None;
-    let mut files_changed_present = false;
     let mut next_steps: Option<String> = None;
-    let mut next_steps_present = false;
 
     loop {
         buf.clear();
@@ -144,23 +142,21 @@ pub fn validate_development_result_xml(
                     skills_mcp_value = Some(parse_skills_mcp(&mut reader));
                 }
                 b"ralph-files-changed" => {
-                    if files_changed_present {
+                    if files_changed.is_some() {
                         return Err(duplicate_element_error(
                             "ralph-files-changed",
                             "ralph-development-result",
                         ));
                     }
-                    files_changed_present = true;
                     files_changed = Some(read_text_until_end(&mut reader, b"ralph-files-changed")?);
                 }
                 b"ralph-next-steps" => {
-                    if next_steps_present {
+                    if next_steps.is_some() {
                         return Err(duplicate_element_error(
                             "ralph-next-steps",
                             "ralph-development-result",
                         ));
                     }
-                    next_steps_present = true;
                     next_steps = Some(read_text_until_end(&mut reader, b"ralph-next-steps")?);
                 }
                 other => {
@@ -201,13 +197,12 @@ pub fn validate_development_result_xml(
                                 skills_mcp_value = Some(parse_skills_mcp(&mut reader));
                             }
                             "ralph-files-changed" => {
-                                if files_changed_present {
+                                if files_changed.is_some() {
                                     return Err(duplicate_element_error(
                                         "ralph-files-changed",
                                         "ralph-development-result",
                                     ));
                                 }
-                                files_changed_present = true;
                                 files_changed = Some(read_text_until_end_fuzzy(
                                     &mut reader,
                                     b"ralph-files-changed",
@@ -215,13 +210,12 @@ pub fn validate_development_result_xml(
                                 )?);
                             }
                             "ralph-next-steps" => {
-                                if next_steps_present {
+                                if next_steps.is_some() {
                                     return Err(duplicate_element_error(
                                         "ralph-next-steps",
                                         "ralph-development-result",
                                     ));
                                 }
-                                next_steps_present = true;
                                 next_steps = Some(read_text_until_end_fuzzy(
                                     &mut reader,
                                     b"ralph-next-steps",
@@ -269,23 +263,21 @@ pub fn validate_development_result_xml(
                     });
                 }
                 b"ralph-files-changed" => {
-                    if files_changed_present {
+                    if files_changed.is_some() {
                         return Err(duplicate_element_error(
                             "ralph-files-changed",
                             "ralph-development-result",
                         ));
                     }
-                    files_changed_present = true;
                     files_changed = Some(String::new());
                 }
                 b"ralph-next-steps" => {
-                    if next_steps_present {
+                    if next_steps.is_some() {
                         return Err(duplicate_element_error(
                             "ralph-next-steps",
                             "ralph-development-result",
                         ));
                     }
-                    next_steps_present = true;
                     next_steps = Some(String::new());
                 }
                 other => {
@@ -392,15 +384,25 @@ pub fn validate_development_result_xml(
         summary
     };
 
+    let (files_changed, files_changed_present) =
+        normalize_optional_text_and_presence(files_changed);
+    let (next_steps, next_steps_present) = normalize_optional_text_and_presence(next_steps);
+
     Ok(DevelopmentResultElements {
         status,
         summary,
         skills_mcp: skills_mcp_value,
-        files_changed: files_changed.filter(|s| !s.is_empty()),
+        files_changed,
         files_changed_present,
-        next_steps: next_steps.filter(|s| !s.is_empty()),
+        next_steps,
         next_steps_present,
     })
+}
+
+fn normalize_optional_text_and_presence(value: Option<String>) -> (Option<String>, bool) {
+    let is_present = value.is_some();
+    let normalized = value.filter(|s| !s.is_empty());
+    (normalized, is_present)
 }
 
 /// Validate continuation-mode development result XML.
@@ -465,4 +467,30 @@ fn unwrap_cdata_wrapper(content: &str) -> Cow<'_, str> {
         return Cow::Borrowed(trimmed);
     };
     Cow::Borrowed(inner.trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_optional_text_and_presence_none() {
+        assert_eq!(normalize_optional_text_and_presence(None), (None, false));
+    }
+
+    #[test]
+    fn normalize_optional_text_and_presence_empty_string() {
+        assert_eq!(
+            normalize_optional_text_and_presence(Some(String::new())),
+            (None, true)
+        );
+    }
+
+    #[test]
+    fn normalize_optional_text_and_presence_non_empty_string() {
+        assert_eq!(
+            normalize_optional_text_and_presence(Some("src/lib.rs".to_string())),
+            (Some("src/lib.rs".to_string()), true)
+        );
+    }
 }

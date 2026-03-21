@@ -9,7 +9,7 @@
 //! enabling pure unit tests without real filesystem access. Production code
 //! uses [`RealCacheEnvironment`], tests use [`MemoryCacheEnvironment`].
 
-use crate::agents::opencode_api::fetch::{fetch_api_catalog, CatalogHttpClient};
+use crate::agents::opencode_api::fetch::CatalogHttpClient;
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
 use crate::agents::{CacheEnvironment, RealCacheEnvironment};
@@ -88,7 +88,7 @@ fn load_api_catalog_with_env(
     match load_cached_catalog_with_env(env, &cache_path, ttl_seconds, fetcher) {
         Ok(result) => Ok((result.catalog, result.warnings)),
         Err(_) => {
-            let (catalog, warnings) = fetch_api_catalog(fetcher, ttl_seconds)?;
+            let (catalog, warnings) = fetcher.fetch_api_catalog(ttl_seconds)?;
             Ok((catalog, warnings))
         }
     }
@@ -134,7 +134,7 @@ fn load_cached_catalog_with_env(
         serde_json::from_str::<ApiCatalog>(&content).map(|c| ApiCatalog { ttl_seconds, ..c })?;
 
     if catalog.is_expired() {
-        match fetch_api_catalog(fetcher, ttl_seconds) {
+        match fetcher.fetch_api_catalog(ttl_seconds) {
             Ok((fresh, fetch_warnings)) => {
                 if let Some(warning) = fetch_warnings.into_iter().last() {
                     return Ok(LoadCatalogResult {

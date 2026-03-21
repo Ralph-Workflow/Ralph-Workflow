@@ -3,38 +3,34 @@
 
 use regex::Regex;
 use std::collections::BTreeSet;
-use std::sync::LazyLock;
-
-// Static regex patterns for file path extraction.
-// These are compiled once at first use and reused for all subsequent calls.
 
 /// Pattern 1: Bracketed format with optional line numbers.
 /// Matches: [src/main.rs:42], [src/lib.rs], [path/to/file.rs:100]
-static BRACKET_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn bracket_pattern() -> Regex {
     Regex::new(r"\[([^\]]+?\.[a-z]+(?::\d+)?)\]")
         .expect("BRACKET_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Pattern 2: Parenthesized format.
 /// Matches: (src/main.rs), (path/to/file.rs)
-static PAREN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn paren_pattern() -> Regex {
     Regex::new(r"\(([^\)]+?\.[a-z]+)\)")
         .expect("PAREN_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Pattern 3: Backtick format (used by some agents like Codex).
 /// Matches: `src/main.rs:42`, `path/to/file.rs`
-static BACKTICK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn backtick_pattern() -> Regex {
     Regex::new(r"`([^`]+?\.[a-z]+(?::\d+)?)`")
         .expect("BACKTICK_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Pattern 4: Bare colon format (file.rs:line).
 /// Matches: src/main.rs:42, lib.rs:123 (but not URLs or similar)
-static BARE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn bare_pattern() -> Regex {
     Regex::new(r"\b([\w/-]+?\.[a-z]+:\d+)\b")
         .expect("BARE_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Extract file paths from ISSUES markdown content.
 ///
@@ -75,10 +71,14 @@ static BARE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 /// assert_eq!(files, vec!["src/lib.rs", "src/main.rs", "src/utils.rs"]);
 /// ```
 pub fn extract_file_paths_from_issues(content: &str) -> Vec<String> {
+    let bracket_pattern = bracket_pattern();
+    let paren_pattern = paren_pattern();
+    let backtick_pattern = backtick_pattern();
+    let bare_pattern = bare_pattern();
     let mut files = BTreeSet::new();
 
     // Extract from bracketed format
-    for caps in BRACKET_PATTERN.captures_iter(content) {
+    for caps in bracket_pattern.captures_iter(content) {
         if let Some(file_ref) = caps.get(1) {
             let path = file_ref.as_str().trim();
             // Remove line number if present
@@ -90,7 +90,7 @@ pub fn extract_file_paths_from_issues(content: &str) -> Vec<String> {
     }
 
     // Extract from parenthesized format
-    for caps in PAREN_PATTERN.captures_iter(content) {
+    for caps in paren_pattern.captures_iter(content) {
         if let Some(file_ref) = caps.get(1) {
             let path = file_ref.as_str().trim();
             if looks_like_file_path(path) {
@@ -100,7 +100,7 @@ pub fn extract_file_paths_from_issues(content: &str) -> Vec<String> {
     }
 
     // Extract from backtick format
-    for caps in BACKTICK_PATTERN.captures_iter(content) {
+    for caps in backtick_pattern.captures_iter(content) {
         if let Some(file_ref) = caps.get(1) {
             let path = file_ref.as_str().trim();
             // Remove line number if present
@@ -112,7 +112,7 @@ pub fn extract_file_paths_from_issues(content: &str) -> Vec<String> {
     }
 
     // Extract from bare colon format
-    for caps in BARE_PATTERN.captures_iter(content) {
+    for caps in bare_pattern.captures_iter(content) {
         if let Some(file_ref) = caps.get(1) {
             let path = file_ref.as_str().trim();
             // Remove line number

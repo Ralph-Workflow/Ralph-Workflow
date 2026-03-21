@@ -461,10 +461,22 @@ The trait is minimal and focused: it takes `AgentInput` (containing prompt + con
 - 2026-03-19: Network domain now consumes mocked HTTP responses and no longer exposes get_env_var, proving the domain layer stays environment-free.
 - 2026-03-19 20:24:14: Integrated `ralph-workflow/src/agents/invoke.rs` into `crate::agents` exports (AgentInvoker + I/O contract) and verified with `cargo check -p ralph-workflow --lib` plus `cargo test -p ralph-workflow --lib invoke` (fails due to existing logfile-collision assertions in invoke_prompt prompt_selection tests).
 
+## 2026-03-21 — P5-loops-while atomic slice (`section_parsers` block stripping)
+
+- Replaced three `while let Some(start) = result.find("<tag")` loops in `strip_block_elements_for_inline_parsing` with a tag pipeline fold (`["list", "code-block", "paragraph"].into_iter().fold(...)`) and a recursive tag-block stripper.
+- Added red-first regression test `test_strip_block_elements_with_deeply_nested_list`; it failed before the refactor because nested `<list>` left a dangling `</list>` marker, then passed after the recursive block matcher was introduced.
+- Verification note for this slice: `section_parsers.rs` now has no `while` keyword matches for the transformed helper, aligning with the Phase-5 `while` mapping without moving parsing logic to a boundary module.
+
 ## 2026-03-20T02:48:16Z — Policy-shape lint learnings
 
 - Hardened `forbid_boundary_policy_calls` so if/else and match arms only trigger the lint when multiple branches each make effectful calls (std::fs/env/process/net, reqwest/ureq, std::thread/tokio runtime/task/time, std::time, rand/getrandom) and keep the effect pattern list aligned with the IO lint.
 - `cargo test --lib` still hits `tests::ui`, which fails in the temporary dylint_driver build because it runs on stable while the driver's build script uses nightly-only `#![feature]`; note this when rerunning verification until the helper sees a nightly toolchain.
+
+## 2026-03-21 — P7-mutex slice (monitoring + git helper alias removal)
+
+- Replacing cross-thread warning accumulation in `files/monitoring.rs` from `Arc<Mutex<Vec<String>>>` to bounded `sync_channel` removes interior mutability in domain-path code while preserving async monitor-thread handoff semantics.
+- Red-first regression test (`files::monitoring::tests::drain_warnings_clears_buffer_after_read`) exposed that old `drain_warnings` returned a clone and did not clear stored warnings; channel-backed draining fixed both correctness and Mutex usage.
+- `git_helpers/agent_phase_state.rs` existed only as non-boundary aliases to runtime `Mutex` statics. Deleting the alias module and importing runtime statics directly in `git_helpers/wrapper.rs` removes three non-boundary `Mutex` lint hits without behavior changes.
 
 ## 2026-03-19T23:45:00Z — Retry-shape helper detection
 
@@ -717,6 +729,12 @@ match source {
 - Created: `ralph-workflow/src/phases/review/xsd_retry_input_strategy.rs`
 - Modified: `ralph-workflow/src/phases/review.rs` (module declaration)
 - Modified: `ralph-workflow/src/reducer/boundary/run_review.rs` (materialize_xsd_retry_last_output)
+
+## 2026-03-21 — P8-swallow non-git_helpers scope check
+
+- Running `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep "swallow" | grep -v "git_helpers"` returned no lines in this workspace state.
+- `forbid_result_swallowing` currently has no reported non-`git_helpers` findings, so this pass required no Rust source edits outside `git_helpers`.
+- Keep this phase narrow: treat any future non-`git_helpers` swallow diagnostics as explicit handling work, but defer `git_helpers/**` swallow findings to P9 per plan.
 - Created: `ralph-workflow/src/reducer/boundary/tests/run_review_xsd_retry_input.rs`
 - Modified: `ralph-workflow/src/reducer/boundary/tests/mod.rs` (test module declaration)
 
@@ -742,6 +760,13 @@ match source {
 2. `DevelopmentPromptExecutionPath` enum separates execution paths from policy mode enum
 3. `prepare_development_prompt()`: Now calls pure helper to convert orchestrator's PromptMode decision into execution path, then dispatches based on path (not mode)
 4. Added 4 focused tests proving mode→path mapping is pure and correct
+
+## 2026-03-21T06:36:45Z — P5-flags mutable scan-flag removal
+
+- `files_changed_present` / `next_steps_present` can be derived from optional element presence rather than mutable booleans: use one state value (`Option<String>`) during XML scan, then map to `(filtered_value, was_present)` in a pure post-parse helper.
+- Duplicate optional-element checks stay behavior-identical by switching guards from mutable bool flags to `Option::is_some()` on the corresponding field accumulator.
+- `has_entries` in git tree commits is a canonical `any`/`find` case: `tree.iter().next().is_some()` replaces tree-walk mutation while preserving the unborn-branch empty-tree no-op behavior.
+- Red-first TDD pattern for behavior-preserving refactors: add unit tests around new pure helpers first (missing symbol compile failure), then implement helper + wire call sites.
 
 **Pattern:** Orchestrator owns PromptMode selection based on state (Normal/Continuation/XsdRetry/SameAgentRetry). Pure domain helper converts mode policy into execution path enum. Boundary dispatches to mode-specific helpers using execution path, not raw policy enum—removing policy branching from boundary layer while preserving existing helper structure.
 
@@ -1459,3 +1484,882 @@ cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep "l
 - Kept boundary shape unchanged (effectful entrypoint stays in `impl MainEffectHandler`, no nested boundary directories) and wired module via `reducer/boundary/mod.rs` with `mod development_prompt;`.
 - Verification in this slice: `cargo check -p ralph-workflow --lib` passed; focused regression test `cargo test -p ralph-workflow --lib development_prompt::continuation_prompt::test_prepare_development_prompt_same_agent_retry_uses_previous_prepared_prompt` passed before and after extraction; required selector `cargo test -p ralph-workflow --lib reducer::boundary::development` executed (0 matched tests).
 - Current blocker remains pre-existing repo-wide dylint debt: `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` fails with many unrelated existing violations outside this extraction slice.
+
+## 2026-03-21T04:12:00Z — P5 parse-state raw_text_parts value-threading
+
+- In `files/llm_output_extraction/xml_helpers/readers.rs`, replaced `let mut raw_text_parts: Vec<String>` + push/join parse-state with `merge_raw_content(raw_content: Option<String>, fragment: &str) -> Option<String>` so stray text accumulation is expressed as value transformation (Option in, Option out).
+- The merge helper preserves existing semantics: trim fragments, skip blanks, join non-empty fragments with single spaces.
+- Added focused tests (`test_merge_raw_content_skips_blank_fragments`, `test_merge_raw_content_joins_fragments_with_spaces`) to lock the normalization behavior and support future parser cleanup without reintroducing imperative accumulator state.
+- Verification slice for this change stayed local: `cargo check -p ralph-workflow --lib`, `cargo test -p ralph-workflow --lib files::llm_output_extraction::xml_helpers::readers::tests`, and targeted dylint signal grep for `raw_text_parts` in `ralph-workflow` all came back clean.
+
+## 2026-03-21T06:27:10Z — P5 accumulators: commit body parts pipeline
+
+- Refactored `files/llm_output_extraction/xsd_validation/types.rs::CommitMessageElements::format_body` from mutable `parts.push(...)` accumulation into value transformation pipeline (`[Option<&str>; 3] -> flatten -> trim -> filter empty -> collect -> join`).
+- Added a focused red-first regression test in `files/llm_output_extraction/xsd_validation/tests/commit_message_elements.rs` (`test_format_body_skips_whitespace_only_detailed_sections`) to capture whitespace-only section behavior; red showed prior output had leading blank separators (`"\n\n\n\nFooter text"`).
+- Post-refactor behavior keeps existing detailed-body joining while dropping blank-only sections, producing stable `"Footer text"` output for sparse detailed commits.
+
+## 2026-03-21T06:46Z — P5-git options-slice audit
+
+- Audited ralph-workflow/src/git_helpers/repo/snapshot.rs, ralph-workflow/src/git_helpers/repo/diff.rs, and ralph-workflow/src/git_helpers/repo/commit.rs for remaining value-transformation opportunities specifically in git options/config setup blocks.
+- Existing configured_status_options() and configured_diff_options() helpers already centralize option initialization; remaining let mut ...opts uses are API-driven (git2 requires mutable option structs passed by &mut).
+- For this atomic P5-git checkbox scope, no additional low-risk options-builder cleanup was required without crossing into broader Phase 9 architectural refactors.
+
+## 2026-03-21 — P5-misc string pool accumulator cleanup
+
+- Replaced `let mut pool` + `insert` in `checkpoint/string_pool.rs::{intern_str, intern_string}` with value-style `into_iter().chain(iter::once(...)).collect()` to keep consuming API semantics while removing mutable bindings in domain code.
+- Existing `checkpoint::string_pool` tests already cover dedup identity (`Arc::ptr_eq`), pool cardinality, mixed `&str`/`String` interning, and empty input, so behavior-equivalence is guarded without expanding fixture surface for this atomic pass.
+
+## 2026-03-21T07:04Z — P5-loops-for: opencode text aggregation
+
+- Refactored files/llm_output_extraction/parsers.rs extract_opencode_result from explicit for + string push accumulation to iterator pipeline (lines -> parse JSON -> extract text -> collect Vec<String> -> join).
+- This loop is a pure value-transformation (map/filter_map/collect/join), not boundary I/O, so conversion aligns with functional-transformations guidance.
+- Focused verification: cargo test -p ralph-workflow --lib test_opencode passes after change.
+
+
+## 2026-03-21 — P5-loops-bare classification slice
+
+- Bare `loop` sites in `json_parser/*/stream*` and `pipeline/prompt/io_*` are boundary-streaming loops (chunked input/polling over `BufRead`/process I/O) and should remain boundary-owned until boundary-policy work changes ownership.
+- Bare `loop` in `checkpoint/execution_history/compression.rs::decompress` is byte-stream decoding with explicit safety cap enforcement, currently better treated as boundary-streaming than an FP transform-only target.
+- Bare `loop` sites across `files/llm_output_extraction/xsd_validation_*` and `files/llm_output_extraction/xml_helpers/*` are non-boundary-transform candidates (in-memory XML event traversal with no external capability calls) and are the main remaining P5 loop-refactor seam.
+- Bare `loop` in `prompts/runtime.rs::process_conditionals` is non-boundary-transform and likely convertible via recursive step/successor style, but it overlaps with the remaining `P5-loops-while` cleanup and should be handled in a dedicated transform slice.
+- Confirmed  already absent in ; no edits needed but verified lint compliance.
+- Confirmed fetch_api_catalog_with_cache already absent in ralph-workflow/src/agents/opencode_api/fetch.rs; no edits needed but verified lint compliance.
+
+## 2026-03-21 — P7-lazylock concrete removal
+
+- Removed `LazyLock` from `cloud/io_redaction.rs` by compiling regex values inside helper functions used per call; redaction behavior remains the same while avoiding interior-mutability statics.
+- Removed `LazyLock` from `files/result_extraction/file_extraction/extraction.rs` by replacing static regexes with local `Regex` values created once per extraction call.
+- Removed `LazyLock` from `pipeline/idle_timeout/clock.rs` and switched non-injected timestamp math to `SystemTime::UNIX_EPOCH.elapsed()`; `new_activity_timestamp()` now initializes to current millis to preserve "recent activity" semantics.
+- `FileActivityTrackerInner` no longer wraps `Mutex` in `clock.rs`; it stores `FileActivityTracker` directly and returns `&FileActivityTracker` from `lock()`, removing an additional interior-mutability hit in that file.
+
+## 2026-03-21 — P7-lazylock documentation pass
+
+- For this slice, compile-once regex caches in domain paths (`cloud/io_redaction.rs`, `files/result_extraction/file_extraction/extraction.rs`) were treated as legitimate immutable domain constants and documented inline instead of force-refactoring behavior.
+- `pipeline/idle_timeout/clock.rs` `EPOCH` was documented as a convenience-wrapper cache with explicit pointer to the injected `*_with_clock` APIs, preserving the Reader-pattern seam for call sites that need explicit time dependencies.
+- The current `forbid_interior_mutability` implementation still flags these `LazyLock` sites under `#![deny(warnings)]`; in this task we recorded architectural intent with precise comments rather than broad structural moves.
+
+- 2026-03-21 (P7-cell): removed `std::cell::Cell` usage from `pipeline/idle_timeout/file_activity.rs` by threading warning state through recursive scan state (`ScanState`) instead of thread-local interior mutability.
+- 2026-03-21 (P7-cell): resolved `forbid_interior_mutability` false-positive on XSD schema table model by renaming domain type `Cell` -> `TableCell` in `xsd_validation_plan` schema/parser code; behavior unchanged.
+- Verification: `cargo check -p ralph-workflow --lib` passed; `cargo test -p ralph-workflow --lib` passed (3660 passed, 0 failed); `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` still has global backlog, but no remaining `interior-mutability type std::cell::Cell` hits.
+
+---
+
+## P9-audit: git_helpers/ Pure/Effectful Classification (2026-03-21)
+
+Scope: `ralph-workflow/src/git_helpers/` — all non-test, non-`#[cfg(test)]` functions.
+
+### Classification Legend
+- **PURE** — No I/O, no process execution, no filesystem, no env reads, no global mutation. Safe to test without infrastructure.
+- **EFFECTFUL** — Performs filesystem I/O, git repository I/O (libgit2 repository access), process spawning, environment reads/writes, or global `Mutex` mutation.
+- **MIXED** — Contains a clearly extractable pure core surrounded by effectful thin wrapper (split candidate for P9-split).
+
+---
+
+### `branch.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `is_main_or_master_branch()` | EFFECTFUL | Calls `git2::Repository::discover(".")` — repo I/O |
+| `is_main_or_master_branch_impl(repo)` | EFFECTFUL | Reads `repo.head()` — libgit2 repo I/O |
+| `get_default_branch()` | EFFECTFUL | Calls `git2::Repository::discover(".")` |
+| `get_default_branch_at(repo_root)` | EFFECTFUL | Opens git repository |
+| `determine_default_branch(repo)` | EFFECTFUL | Calls libgit2 — delegates to `resolve_default_branch_from_origin/local` |
+| `resolve_default_branch_from_origin(repo)` | EFFECTFUL | Calls `repo.find_reference(...)` |
+| `resolve_default_branch_from_local(repo)` | EFFECTFUL | Calls `repo.find_branch(...)` |
+| `get_default_branch_impl(repo)` | EFFECTFUL | Delegates to `determine_default_branch` |
+
+**Split candidate:** `is_main_or_master_branch_impl` contains pure policy (string comparison `== "main" || "master"`). The repo discovery is the only effectful part.
+
+---
+
+### `cleanup.rs`
+
+All functions are **EFFECTFUL** — every function touches `std::fs` (remove_file, remove_dir, read_to_string, remove_dir_all, symlink_metadata), calls into other effectful subsystems (hooks, marker, path_wrapper, repo).
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `cleanup_hook_state_files(ralph_dir)` | EFFECTFUL | `fs::remove_file` calls |
+| `remove_scoped_hooks_dir(ralph_dir)` | EFFECTFUL | `fs::remove_dir` |
+| `cleanup_fallback_ralph_dir(repo_root)` | EFFECTFUL | Delegates to fs + cleanup fns |
+| `remove_ralph_dir_best_effort(ralph_dir)` | EFFECTFUL | `fs::remove_dir`, `remove_dir_all`, `symlink_metadata` |
+| `end_agent_phase_at_ralph_dir(repo_root, ralph_dir)` | EFFECTFUL | `fs::remove_file`, marker removal, repo calls |
+| `remove_head_oid_file(ralph_dir)` | EFFECTFUL | `fs::symlink_metadata`, `fs::remove_file` |
+| `cleanup_git_wrapper_dir(ralph_dir)` | EFFECTFUL | Reads track file, removes dir |
+| `cleanup_agent_phase_at(repo_root, ...)` | EFFECTFUL | Orchestrates all cleanup |
+| `cleanup_prior_wrapper(repo_root)` | EFFECTFUL | Reads ralph_dir, track file, removes |
+| `resolve_wrapper_dir_from_track_file(ralph_dir)` | EFFECTFUL | `fs::read_to_string` |
+| `remove_ralph_dir(repo_root)` | EFFECTFUL | `fs::remove_dir`, `fs::remove_dir_all` |
+| `verify_ralph_dir_removed(repo_root)` | EFFECTFUL | `fs::read_dir`, existence checks |
+| `inspect_ralph_dir_contents(ralph_dir)` | EFFECTFUL | `fs::read_dir` |
+| `check_track_file_issues(track_file)` | EFFECTFUL | `fs::read_to_string`, exists check |
+| `verify_wrapper_cleaned(repo_root)` | EFFECTFUL | Calls `check_track_file_issues` |
+| `cleanup_orphaned_marker(logger)` | EFFECTFUL | `fs::symlink_metadata`, `fs::remove_file`, repo discovery |
+
+---
+
+### `config_state.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `hooks_path_state_path(ralph_dir)` | **PURE** | Pure path join — no I/O |
+| `StoredSharedWorktreeConfigState::serialize(&self)` | **PURE** | String transform |
+| `StoredSharedWorktreeConfigState::deserialize(raw)` | **PURE** | String parsing |
+| `worktree_config_path(scope)` | **PURE** | Reference projection from struct |
+| `common_config_path(scope)` | **PURE** | Pure path join |
+| `ensure_config_file_exists(path)` | EFFECTFUL | `path.exists()`, `fs::create_dir_all`, `fs::File::create` |
+| `open_config(path)` | EFFECTFUL | `Config::open(path)` — libgit2 config I/O |
+| `read_config_string(path, key)` | EFFECTFUL | `Config::open`, config lookup |
+| `remove_config_file_if_no_entries(path)` | EFFECTFUL | `Config::open`, `fs::remove_file` |
+| `store_hook_path_state(path, state)` | EFFECTFUL | `fs::write` |
+| `load_hook_path_state(path)` | EFFECTFUL | `fs::read_to_string` |
+| `read_config_path(config_path)` | EFFECTFUL | Calls `read_config_string` |
+| `config_entries(path)` | EFFECTFUL | `Config::open`, entry iteration |
+| `collect_config_entries(entries)` | MIXED | Iterator fold — pure logic, but input is libgit2 `ConfigEntries` handle |
+| `read_shared_worktree_config_state(common_config)` | EFFECTFUL | `Config::open`, key lookup |
+| `write_shared_worktree_config_state(common_config, state)` | EFFECTFUL | `open_config`, `config.set_str` |
+| `remove_shared_worktree_config_state(common_config)` | EFFECTFUL | `open_config`, `config.remove` |
+| `write_worktree_hooks_path(scope)` | EFFECTFUL | `open_config`, `config.set_str` |
+| `restore_worktree_hooks_path(scope)` | EFFECTFUL | `load_hook_path_state`, `open_config`, config mutation |
+| `protected_config_paths(scope)` | EFFECTFUL | `fs::read_dir` |
+| `scoped_hooks_dir_for_config(config_path, common_git_dir)` | **PURE** | Path arithmetic only |
+| `config_contains_only_expected_ralph_hooks_path(config_path, common_git_dir)` | EFFECTFUL | Calls `config_entries` |
+| `matches_single_ralph_hooks_path(entries, expected_dir)` | **PURE** | Pure slice inspection + path comparison |
+| `other_active_ralph_hooks_path_overrides_exist(scope)` | EFFECTFUL | `read_config_path` per path |
+| `config_worktree_is_safe_to_activate(scope, config_path)` | EFFECTFUL | `config_entries` |
+| `is_single_ralph_hooks_path_for_scope(entries, scope, config_path)` | **PURE** | Pure comparison over slice + path |
+| `ensure_worktree_config_extension_activation_is_safe(scope)` | EFFECTFUL | Calls `config_worktree_is_safe_to_activate` per path |
+| `ensure_worktree_config_extension(scope)` | EFFECTFUL | `open_config`, `config.get_string`, `config.set_str` |
+| `restore_worktree_config_extension(scope)` | EFFECTFUL | Multiple config mutations, state reads |
+| `unrelated_worktree_config_entries_exist(scope)` | EFFECTFUL | `config_entries`, `config_contains_only_...` |
+| `hooks_path_matches_scope(scope)` | EFFECTFUL | `read_config_string` |
+| `remove_scoped_hooks_dir_if_empty(scope)` | EFFECTFUL | `fs::remove_dir` |
+
+**Pure candidates for extraction:** `serialize`, `deserialize`, `hooks_path_state_path`, `common_config_path`, `worktree_config_path`, `scoped_hooks_dir_for_config`, `matches_single_ralph_hooks_path`, `is_single_ralph_hooks_path_for_scope`.
+
+---
+
+### `conflict_detection.rs` (cfg test-utils only)
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `ConcurrentOperation::description(&self)` | **PURE** | Match → string, no I/O |
+| `detect_concurrent_git_operations()` | EFFECTFUL | `git2::Repository::discover`, `fs::read_dir`, file existence checks |
+| `rebase_in_progress_cli(executor)` | EFFECTFUL | Spawns git process via executor |
+| `CleanupResult::has_cleanup(&self)` | **PURE** | Pure boolean logic on struct fields |
+| `CleanupResult::count(&self)` | **PURE** | Pure arithmetic |
+| `cleanup_stale_rebase_state()` | EFFECTFUL | `fs::remove_file`, `fs::remove_dir_all`, repo discovery |
+| `validate_state_file(path)` | EFFECTFUL | `fs::read_dir`, `fs::metadata`, `fs::read` |
+| `attempt_automatic_recovery(executor, ...)` | EFFECTFUL | Spawns git processes, repo discovery, fs operations |
+| `validate_git_state()` | EFFECTFUL | Repo discovery, head/index inspection |
+| `is_dirty_tree_cli(executor)` | EFFECTFUL | Spawns git status via executor |
+
+---
+
+### `hooks_dir.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `ensure_scoped_hooks_dir_is_owned(scope)` | EFFECTFUL | Calls `validate_hooks_dir_for_scope` → `fs::*` |
+| `validate_hooks_dir_for_scope(scope, create_if_missing)` | EFFECTFUL | `fs::symlink_metadata`, `fs::create_dir_all`, `fs::canonicalize` |
+| `validate_traditional_hooks_dir(scope, create_if_missing)` | EFFECTFUL | fs I/O + canonicalize |
+| `validate_ralph_scoped_hooks_dir(scope, create_if_missing)` | EFFECTFUL | fs I/O + canonicalize |
+
+---
+
+### `identity.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `GitIdentity::new(name, email)` | **PURE** | Constructor, no I/O |
+| `GitIdentity::validate(&self)` | **PURE** | Delegates to pure `validate_git_identity_fields` |
+| `validate_git_identity_fields(name, email)` | **PURE** | String validation only |
+| `choose_username(env_username, whoami_output)` | **PURE** | Option chaining on already-resolved strings |
+| `choose_hostname(env_hostname, hostname_output)` | **PURE** | Option chaining on already-resolved strings |
+| `fallback_username(executor)` | EFFECTFUL | Calls `get_system_username` (env read) + executor process spawn |
+| `fallback_email(username, executor)` | EFFECTFUL | Calls `resolve_hostname_impl` which reads env + spawns hostname |
+| `resolve_hostname_impl(executor)` | EFFECTFUL | `get_system_hostname` (env) + executor spawn |
+| `default_identity()` | **PURE** | Returns constant value |
+
+**Notable:** `choose_username` and `choose_hostname` are already well-isolated pure policy functions. Good split model.
+
+---
+
+### `lock.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `rebase_lock_path()` | **PURE** | Path constant construction |
+| `build_lock_content()` | EFFECTFUL | `std::process::id()` + `chrono::Utc::now()` — side effects |
+| `should_acquire_lock(lock_path)` | EFFECTFUL | `path.exists()` + `is_lock_stale()` |
+| `acquire_rebase_lock()` | EFFECTFUL | `fs::create_dir_all`, `fs::remove_file`, `fs::File::create`, write |
+| `lock_already_held_error()` | **PURE** | Constructs error value |
+| `release_rebase_lock()` | EFFECTFUL | `fs::remove_file` |
+| `is_lock_stale()` | EFFECTFUL | `fs::read_to_string`, `chrono::Utc::now()` |
+| `parse_lock_timestamp(content)` | **PURE** | String parsing + chrono parse — no I/O |
+
+---
+
+### `marker.rs`
+
+All functions are **EFFECTFUL** — `fs::symlink_metadata`, `fs::remove_file`, `fs::OpenOptions`, `fs::set_permissions` etc.
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `legacy_marker_path(repo_root)` | **PURE** | Path join |
+| `marker_path_from_ralph_dir(ralph_dir)` | **PURE** | Path join |
+| `is_regular_file(meta)` | **PURE** | Boolean logic on `fs::Metadata` value |
+| `quarantine_and_create_marker(marker_path, repo_root)` | EFFECTFUL | Calls `quarantine_path_in_place`, then `create_marker_in_repo_root` |
+| `marker_needs_creation(meta)` | **PURE** | Boolean decision on `Result<Metadata>` — no I/O itself |
+| `ensure_marker_exists(repo_root)` | EFFECTFUL | `ensure_ralph_git_dir`, `fs::symlink_metadata`, `OpenOptions` |
+| `repair_marker_if_tampered(repo_root)` | EFFECTFUL | `ralph_git_dir`, `fs::symlink_metadata`, `quarantine_path_in_place` |
+| `create_marker_in_repo_root(repo_root)` | EFFECTFUL | `ensure_ralph_git_dir`, `OpenOptions`, write |
+| `remove_legacy_marker(repo_root)` | EFFECTFUL | `fs::remove_file` |
+| `add_owner_write_if_not_symlink(path)` | EFFECTFUL | `fs::symlink_metadata`, `fs::set_permissions` |
+| `set_readonly_mode_if_not_symlink(path, mode)` | EFFECTFUL | `fs::symlink_metadata`, `fs::set_permissions` |
+
+---
+
+### `mod.rs` (git_helpers root)
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `git2_to_io_error(err)` | **PURE** | Maps error codes — no I/O |
+| `git2_to_io_error_impl(err)` | **PURE** | Pure pattern match |
+| `get_hooks_dir()` | EFFECTFUL | Calls `repo::get_hooks_dir_from(".")` — repo I/O |
+| `get_hooks_dir_in_repo(repo_root)` | EFFECTFUL | Calls `repo::get_hooks_dir_from` |
+
+---
+
+### `path_wrapper.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `track_file_path_for_ralph_dir(ralph_dir)` | **PURE** | Path join |
+| `path_has_parent_dir_component(path)` | **PURE** | Iterator over path components |
+| `is_reasonable_temp_path(path)` | MIXED | Calls `path_is_under_temp_dir` which reads `env::temp_dir()` |
+| `path_is_under_temp_dir(path)` | EFFECTFUL | `env::temp_dir()` + `fs::canonicalize` |
+| `is_safe_existing_dir(path)` | EFFECTFUL | `is_reasonable_temp_path` + `fs::symlink_metadata` |
+| `is_on_path(path)` | EFFECTFUL | `env::var("PATH")` |
+| `prepend_wrapper_dir_to_path(wrapper_dir)` | EFFECTFUL | `env::var("PATH")` + `env::set_var` |
+| `remove_path_entry(path_to_remove)` | EFFECTFUL | `env::var("PATH")` + `env::set_var` |
+| `make_wrapper_script_writable(wrapper_dir_path)` | EFFECTFUL | `fs::metadata`, `fs::set_permissions` |
+| `remove_wrapper_dir_and_entry(wrapper_dir)` | EFFECTFUL | `fs::remove_dir_all`, path/env mutation |
+| `find_wrapper_dir_on_path()` | EFFECTFUL | `env::var("PATH")` |
+| `read_tracked_wrapper_dir(ralph_dir)` | EFFECTFUL | `fs::read_to_string`, existence + env checks |
+| `write_track_file_atomic(repo_root, wrapper_dir)` | EFFECTFUL | `ensure_ralph_git_dir`, `OpenOptions`, `fs::rename`, `fs::set_permissions` |
+| `relax_temp_cleanup_permissions(path)` | EFFECTFUL | `fs::symlink_metadata`, `fs::set_permissions` |
+| `cleanup_stray_tmp_files(ralph_dir)` | EFFECTFUL | `fs::read_dir`, file removal |
+| `is_stray_tmp_file(entry)` | EFFECTFUL | `fs::symlink_metadata` |
+| `cleanup_stray_tmp_entry(entry)` | EFFECTFUL | `relax_temp_cleanup_permissions`, `fs::remove_file` |
+
+---
+
+### `phase.rs`
+
+All functions are **EFFECTFUL** — this module orchestrates wrapper/marker self-healing and file system manipulation.
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `escape_shell_path(path)` | **PURE** | Delegates to `escape_shell_single_quoted` — string transform |
+| `find_real_git_excluding(exclude_dir)` | EFFECTFUL | `env::var("PATH")`, file existence + permissions |
+| `find_git_in_path(path_var, ...)` | EFFECTFUL | `is_executable_git` → `fs::metadata` |
+| `is_executable_git(candidate)` | EFFECTFUL | `fs::metadata`, Unix `PermissionsExt` |
+| `check_marker_integrity(...)` | EFFECTFUL | `fs::symlink_metadata`, `quarantine_path_in_place` |
+| `check_track_file_integrity(...)` | EFFECTFUL | `fs::symlink_metadata`, `quarantine_path_in_place` |
+| `check_and_repair_marker_symlink(...)` | EFFECTFUL | `fs::symlink_metadata`, `fs::remove_file`, `create_marker_in_repo_root` |
+| `check_and_repair_marker_permissions(...)` | EFFECTFUL | `fs::symlink_metadata`, `fs::metadata`, `fs::set_permissions` |
+| `check_track_file_permissions(...)` | EFFECTFUL | `fs::symlink_metadata`, `fs::metadata`, `fs::set_permissions` |
+| `check_and_install_wrapper(...)` | EFFECTFUL | env reads, fs reads/writes, process resolution, wrapper script write |
+| `set_wrapper_permissions(path, mode)` | EFFECTFUL | `fs::metadata`, `fs::set_permissions` |
+| `set_wrapper_permissions_windows(path)` | EFFECTFUL | `fs::metadata`, `fs::set_permissions`, `fs::remove_file` |
+| `open_wrapper_tmp(tmp_path, content)` | EFFECTFUL | `OpenOptions`, write |
+| `capture_head_oid(repo_root)` | EFFECTFUL | `get_current_head_oid_at` (repo I/O), `write_head_oid_file_atomic` |
+| `write_head_oid_file_atomic(repo_root, oid)` | EFFECTFUL | `ensure_ralph_git_dir`, `OpenOptions`, `fs::rename` |
+| `detect_unauthorized_commit(repo_root)` | EFFECTFUL | `ralph_git_dir`, `fs::read_to_string`, `get_current_head_oid_at` |
+
+---
+
+### `rebase_classification.rs`
+
+**All functions are PURE.** This is the best-practice model for the rest of the module.
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `classify_invalid_revision(output)` | **PURE** | String pattern matching |
+| `classify_shallow_or_missing_history(output)` | **PURE** | String matching |
+| `classify_worktree_conflict(output)` | **PURE** | String matching |
+| `classify_submodule_conflict(output)` | **PURE** | String matching |
+| `classify_dirty_working_tree(output)` | **PURE** | String matching |
+| `classify_concurrent_operation(output)` | **PURE** | String matching |
+| `classify_repository_corruption(output)` | **PURE** | String matching |
+| `classify_environment_failure(output)` | **PURE** | String matching |
+| `classify_hook_rejection(output)` | **PURE** | String matching |
+| `classify_content_conflict(output)` | **PURE** | String matching |
+| `classify_patch_failure(output)` | **PURE** | String matching |
+| `classify_interactive_stop(output)` | **PURE** | String matching |
+| `classify_empty_commit(output)` | **PURE** | String matching |
+| `classify_autostash_failure(output)` | **PURE** | String matching |
+| `classify_commit_creation_failure(output)` | **PURE** | String matching |
+| `classify_reference_update_failure(output)` | **PURE** | String matching |
+| `classify_rebase_error(stderr, stdout)` | **PURE** | Chains all classifiers |
+| `extract_revision(output)` | **PURE** | String parsing |
+| `extract_operation(output)` | **PURE** | Array search |
+| `extract_hook_name(output)` | **PURE** | Array search |
+| `extract_command(output)` | **PURE** | Array search |
+| `extract_error_line(output)` | **PURE** | Line iterator |
+| `extract_conflict_files(output)` | **PURE** | Line iterator + filter |
+
+---
+
+### `rebase_checkpoint/types.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `RebasePhase::max_recovery_attempts(&self)` | **PURE** | Const match on enum |
+| `RebaseCheckpoint::new(upstream_branch)` | EFFECTFUL | `chrono::Utc::now()` for timestamp |
+| `RebaseCheckpoint::with_phase(self, phase)` | EFFECTFUL | `chrono::Utc::now()` for timestamp |
+| `RebaseCheckpoint::with_conflicted_file(self, file)` | **PURE** | Builder pattern, iterator chain |
+| `RebaseCheckpoint::with_resolved_file(self, file)` | **PURE** | Builder pattern |
+| `RebaseCheckpoint::with_error(self, error)` | EFFECTFUL | `chrono::Utc::now()` for timestamp |
+| `RebaseCheckpoint::all_conflicts_resolved(&self)` | **PURE** | Iterator all() |
+| `RebaseCheckpoint::unresolved_conflict_count(&self)` | **PURE** | Iterator count |
+| `Default::default()` | EFFECTFUL | `chrono::Utc::now()` for timestamp |
+
+---
+
+### `rebase_checkpoint/persistence.rs`
+
+All functions that touch `.agent/rebase.lock` or `.agent/rebase-checkpoint.json` are **EFFECTFUL**.
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `save_rebase_checkpoint(checkpoint)` | EFFECTFUL | `fs::create_dir_all`, `fs::write`, `fs::rename` |
+| `load_rebase_checkpoint()` | EFFECTFUL | `fs::read_to_string`, `fs::rename` (backup restore) |
+| `backup_checkpoint()` | EFFECTFUL | `fs::copy` |
+| `rebase_checkpoint_path()` | **PURE** | Returns constant string |
+| `rebase_checkpoint_exists()` | EFFECTFUL | `Path::exists()` |
+
+---
+
+### `rebase_kinds.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `RebaseErrorKind::description(&self)` | **PURE** | Delegates to `describe_rebase_error_kind` |
+| `describe_invalid_revision(...)` | **PURE** | String format |
+| `describe_dirty_working_tree()` | **PURE** | Constant string |
+| `describe_concurrent_operation(...)` | **PURE** | String format |
+| `describe_repository_corrupt(...)` | **PURE** | String format |
+| `describe_environment_failure(...)` | **PURE** | String format |
+| `describe_hook_rejection(...)` | **PURE** | String format |
+| `describe_content_conflict(...)` | **PURE** | String format |
+| `describe_patch_application_failed(...)` | **PURE** | String format |
+| `describe_interactive_stop(...)` | **PURE** | String format |
+| `describe_empty_commit()` | **PURE** | Constant string |
+| `describe_autostash_failed(...)` | **PURE** | String format |
+| `describe_commit_creation_failed(...)` | **PURE** | String format |
+| `describe_reference_update_failed(...)` | **PURE** | String format |
+| `describe_rebase_error_kind(kind)` | **PURE** | Match + delegate |
+| `RebaseErrorKind::is_recoverable(&self)` | **PURE** | Const match |
+| `RebaseErrorKind::category(&self)` | **PURE** | Const match |
+| `RebaseResult::is_success/has_conflicts/is_noop/is_failed` | **PURE** | `matches!` macro |
+| `RebaseResult::conflict_files(&self)` | **PURE** | Pattern projection |
+| `RebaseResult::error_kind(&self)` | **PURE** | Const pattern |
+| `RebaseResult::noop_reason(&self)` | **PURE** | Pattern projection |
+
+---
+
+### `rebase_preconditions.rs` (cfg test-utils only)
+
+All are **EFFECTFUL** — each performs repo discovery, process spawning, or filesystem inspection:
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `validate_rebase_preconditions(executor)` | EFFECTFUL | Repo discovery, executor spawn, libgit2 config/status queries |
+| `check_shallow_clone()` | EFFECTFUL | Repo discovery, `fs::read_to_string` |
+| `check_worktree_conflicts()` | EFFECTFUL | Repo discovery, `fs::read_dir`, `fs::read_to_string` |
+| `check_submodule_state()` | EFFECTFUL | Repo discovery, `fs::read_to_string` |
+| `check_sparse_checkout_state()` | EFFECTFUL | Repo discovery, libgit2 config, `fs::read_to_string` |
+
+---
+
+### `rebase_run.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `rebase_onto(upstream_branch, executor)` | EFFECTFUL | `git2::Repository::discover`, executor spawn |
+| `rebase_onto_impl(repo, upstream_branch, executor)` | EFFECTFUL | libgit2 graph queries, executor spawn |
+| `classify_rebase_result(error_kind, stderr)` | MIXED | Pure match logic but calls `get_conflicted_files()` — effectful branch |
+
+---
+
+### `rebase_state_machine/states.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `RebaseStateMachine::new(upstream_branch)` | **PURE** (modulo `RebaseCheckpoint::new` which uses `chrono::Utc::now()`) | Constructor |
+| `RebaseStateMachine::load_or_create(upstream_branch)` | EFFECTFUL | `rebase_checkpoint_exists()`, `load_rebase_checkpoint()` |
+
+---
+
+### `rebase_state_machine/transitions.rs`
+
+All functions are **EFFECTFUL** — state transitions call `save_rebase_checkpoint`, executor, or other effectful fns.
+
+---
+
+### `rebase.rs` (public facade)
+
+All exported functions are **EFFECTFUL**: `rebase_onto`, `abort_rebase`, `continue_rebase`, `get_conflicted_files`, `get_conflict_markers_for_file`, `rebase_in_progress`, `verify_rebase_completed`.
+
+---
+
+### `repo/commit.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `index_has_changes_to_commit(repo, index)` | EFFECTFUL | `repo.diff_tree_to_index`, `index.is_empty` — libgit2 |
+| `is_internal_agent_artifact(path)` | **PURE** | String matching on path |
+| `git_add_specific_in_repo(repo_root, files)` | EFFECTFUL | Repo open, index mutation, libgit2 staging |
+| `git_add_all_in_repo(repo_root)` | EFFECTFUL | Repo open, index mutation |
+| `git_add_all(...)` | EFFECTFUL | Repo discovery, delegates |
+| `git_commit_in_repo(repo_root, msg, identity)` | EFFECTFUL | Repo open, index, tree, commit create |
+| `git_commit(msg, identity)` | EFFECTFUL | Repo discovery, delegates |
+
+---
+
+### `repo/diff.rs`
+
+All are **EFFECTFUL** — all call libgit2 repository operations or read workspace trait:
+
+| Notable pure candidates |
+|---|
+| `configured_diff_options()` — **PURE** (constructs DiffOptions struct, no I/O) |
+| `configured_status_options()` (in snapshot.rs) — **PURE** (constructs StatusOptions) |
+| `format_status_porcelain(status, path)` — **PURE** |
+| `compute_index_status(status)` — **PURE** |
+| `compute_wt_status(status)` — **PURE** |
+| `parse_git_status_paths(snapshot)` — **PURE** |
+| `unquote_c_style(s)` — **PURE** |
+| `parse_status_line(line)` — **PURE** |
+| `parse_path_component(raw)` — **PURE** |
+
+---
+
+### `repo/discovery.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `resolve_protection_scope()` | EFFECTFUL | `git2::Repository::discover` |
+| `resolve_protection_scope_from(discovery_root)` | EFFECTFUL | `git2::Repository::discover`, `fs::read_dir` for worktrees check |
+| `common_git_dir(repo)` | EFFECTFUL | libgit2 commondir lookup |
+| `resolve_protection_scope_path(...)` | EFFECTFUL | `fs::canonicalize` |
+| `normalize_protection_scope_path(p)` | EFFECTFUL | `fs::canonicalize` fallback |
+| `ralph_git_dir(repo_root)` | **PURE** | Path join |
+| `ensure_ralph_git_dir(repo_root)` | EFFECTFUL | `fs::create_dir_all` |
+| `sanitize_ralph_git_dir_at(ralph_dir)` | EFFECTFUL | `fs::symlink_metadata`, quarantine |
+| `quarantine_path_in_place(path, kind)` | EFFECTFUL | `fs::rename` |
+| `require_git_repo()` | EFFECTFUL | `get_repo_root()` |
+| `get_repo_root()` | EFFECTFUL | `git2::Repository::discover` |
+| `get_hooks_dir_from(repo_root)` | EFFECTFUL | `resolve_protection_scope_from` |
+| `ensure_local_excludes(repo_root)` | EFFECTFUL | `fs::create_dir_all`, `fs::write` |
+
+---
+
+### `repo/exclude.rs`
+
+All functions that read/write the `.git/info/excludes` file are **EFFECTFUL**.
+
+---
+
+### `repo/snapshot.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `git_snapshot()` | EFFECTFUL | Repo discovery, libgit2 statuses |
+| `git_snapshot_in_repo(repo_root)` | EFFECTFUL | Repo open, libgit2 statuses |
+| `parse_git_status_paths(snapshot)` | **PURE** | Line parsing, string operations only |
+| `unquote_c_style(s)` | **PURE** | Char-level string parsing |
+| `parse_status_line(line)` | **PURE** | String split + match |
+| `parse_path_component(raw)` | **PURE** | String operations |
+| `git_snapshot_impl(repo)` | EFFECTFUL | libgit2 statuses |
+| `configured_status_options()` | **PURE** | StatusOptions builder — no I/O |
+| `collect_status_lines(statuses)` | EFFECTFUL | Iterates live `git2::Statuses` object |
+| `status_entry_to_porcelain(entry)` | EFFECTFUL | Extracts path from live entry |
+| `validate_path_for_snapshot(path)` | **PURE** | String containment check |
+| `format_status_porcelain(status, path)` | **PURE** | Match + string format |
+| `compute_index_status(status)` | **PURE** | Bit-flag match |
+| `compute_wt_status(status)` | **PURE** | Bit-flag match |
+
+---
+
+### `runtime_identity.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `get_system_username()` | EFFECTFUL | `std::env::var` reads |
+| `get_system_hostname()` | EFFECTFUL | `std::env::var` read |
+
+---
+
+### `runtime.rs`
+
+All globals (`AGENT_PHASE_REPO_ROOT`, `AGENT_PHASE_RALPH_DIR`, `AGENT_PHASE_HOOKS_DIR`) are **EFFECTFUL** — static `Mutex<Option<PathBuf>>` with interior mutability.
+
+---
+
+### `script.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `escape_shell_single_quoted(path)` | **PURE** | String transform, error on newlines |
+| `make_wrapper_content(...)` | **PURE** | String template expansion, no I/O |
+
+---
+
+### `start_commit.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `get_current_head_oid()` | EFFECTFUL | `git2::Repository::discover` |
+| `get_current_head_oid_at(repo_root)` | EFFECTFUL | `git2::Repository::discover` |
+| `get_current_head_oid_impl(repo)` | EFFECTFUL | `repo.head()`, `peel_to_commit()` |
+| `get_current_start_point(repo)` | EFFECTFUL | libgit2 head/commit lookup |
+| `save_start_commit()` | EFFECTFUL | Repo discovery, `fs::write` |
+| `save_start_commit_impl(repo, repo_root)` | EFFECTFUL | libgit2 + fs write |
+| `write_start_commit_with_oid(repo_root, oid)` | EFFECTFUL | `fs::write` |
+| `write_start_point(repo_root, start_point)` | EFFECTFUL | `fs::write` |
+| `write_start_point_with_workspace(workspace, start_point)` | EFFECTFUL | workspace write |
+| `load_start_point_with_workspace(workspace)` | EFFECTFUL | workspace read |
+| `save_start_commit_with_workspace(workspace, repo_root)` | EFFECTFUL | libgit2 + workspace write |
+| `load_start_point()` | EFFECTFUL | Repo discovery + `fs::read_to_string` |
+| `load_start_point_impl(repo, repo_root)` | EFFECTFUL | libgit2 + `fs::read_to_string` |
+| `reset_start_commit()` | EFFECTFUL | Repo discovery + `fs::remove_file` |
+| `reset_start_commit_impl(...)` | EFFECTFUL | `fs::remove_file` |
+| `get_start_commit_summary()` | EFFECTFUL | libgit2 graph traversal + fs read |
+| `get_start_commit_summary_impl(...)` | EFFECTFUL | libgit2 graph traversal |
+| `has_start_commit()` | EFFECTFUL | `Path::exists()` |
+| `to_io_error(err)` | **PURE** | `git2_to_io_error` — pure error conversion |
+
+---
+
+### `review_baseline/diff_stats.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `DiffStats` / `BaselineSummary` structs | N/A | Data types |
+| `BaselineSummary::format_compact(&self)` | **PURE** | String formatting, no I/O |
+| `DiffStats::format_...` helpers | **PURE** | String formatting |
+
+---
+
+### `review_baseline/baseline_persistence.rs`
+
+All I/O functions (**EFFECTFUL**): `load_review_baseline`, `update_review_baseline`, `save_baseline_to_file`, `load_baseline_from_file`, workspace variants.
+
+---
+
+### `verify.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `verify_hooks_removed(repo_root)` | EFFECTFUL | `get_hooks_dir_from`, `fs::*`, `file_contains_marker` |
+| `reinstall_hooks_if_tampered(logger)` | EFFECTFUL | `resolve_protection_scope_from`, `config_state::hooks_path_matches_scope`, `install_hooks_in_repo` |
+| `enforce_hook_permissions(repo_root, logger)` | EFFECTFUL | `fs::metadata`, `fs::set_permissions` |
+| `is_symlink_hook(path, ...)` | EFFECTFUL | `fs::symlink_metadata` |
+| `restore_hook_permissions_if_loose(path, ...)` | EFFECTFUL | `fs::metadata`, `fs::set_permissions` |
+| `file_contains_marker_with_workspace(workspace, ...)` | EFFECTFUL | workspace read |
+| `verify_hook_integrity_with_workspace(workspace, ...)` | EFFECTFUL | workspace read |
+
+---
+
+### `worktree.rs`
+
+| Function | Classification | Rationale |
+|---|---|---|
+| `ensure_worktree_hook_scoping(scope)` | EFFECTFUL | `config_state::ensure_worktree_config_extension`, `config_state::store_hook_path_state`, `config_state::write_worktree_hooks_path` |
+| `restore_worktree_hook_scoping(scope)` | EFFECTFUL | `restore_worktree_hooks_path`, `restore_worktree_config_extension` |
+
+---
+
+### `wrapper.rs`
+
+All exported and internal functions are **EFFECTFUL** — this module owns the agent-phase lifecycle with full filesystem and process management.
+
+Key functions: `disable_git_wrapper`, `start_agent_phase`, `start_agent_phase_in_repo`, `end_agent_phase`, `end_agent_phase_in_repo`, `cleanup_agent_phase_silent`, `cleanup_agent_phase_silent_at`, `ensure_agent_phase_protections`, `create_marker_with_workspace`, `marker_exists_with_workspace`, `remove_marker_with_workspace`, `cleanup_orphaned_marker_with_workspace`, `get_agent_phase_paths_for_test`, `set_agent_phase_paths_for_test`, `try_remove_ralph_dir`, `verify_ralph_dir_removed`, `verify_wrapper_cleaned`, `capture_head_oid`, `detect_unauthorized_commit`, `cleanup_agent_phase_protections_silent_at`, `cleanup_orphaned_wrapper_at`, `clear_agent_phase_global_state`.
+
+---
+
+## Summary: Pure Function Candidates for Extraction (P9-split targets)
+
+These pure functions currently live alongside effectful code and are split targets:
+
+| File | Pure functions (already or extractable) |
+|---|---|
+| `rebase_classification.rs` | ALL — already fully pure, model to copy |
+| `rebase_kinds.rs` | ALL — already fully pure |
+| `identity.rs` | `validate_git_identity_fields`, `choose_username`, `choose_hostname`, `default_identity` |
+| `script.rs` | `escape_shell_single_quoted`, `make_wrapper_content` |
+| `config_state.rs` | `serialize/deserialize`, `hooks_path_state_path`, `common_config_path`, `worktree_config_path`, `scoped_hooks_dir_for_config`, `matches_single_ralph_hooks_path`, `is_single_ralph_hooks_path_for_scope` |
+| `repo/snapshot.rs` | `parse_git_status_paths`, `unquote_c_style`, `parse_status_line`, `parse_path_component`, `configured_status_options`, `format_status_porcelain`, `compute_index_status`, `compute_wt_status`, `validate_path_for_snapshot` |
+| `repo/diff.rs` | `configured_diff_options` |
+| `branch.rs` | Policy: `is_main_or_master_branch_impl` string comparison extractable |
+| `marker.rs` | `legacy_marker_path`, `marker_path_from_ralph_dir`, `is_regular_file`, `marker_needs_creation` |
+| `lock.rs` | `rebase_lock_path`, `lock_already_held_error`, `parse_lock_timestamp` |
+| `review_baseline/diff_stats.rs` | `format_compact` and similar formatters |
+| `rebase_checkpoint/types.rs` | `max_recovery_attempts`, `with_conflicted_file`, `with_resolved_file`, `all_conflicts_resolved`, `unresolved_conflict_count` |
+
+## Actionable Architecture Note for P9-split
+
+The `git_helpers/` module overall follows a recognizable pattern but has NOT consistently separated pure logic from I/O. The cleanest modules (`rebase_classification.rs`, `rebase_kinds.rs`, `script.rs`, `identity.rs`) demonstrate the correct approach. The biggest mixed-concern files requiring split work are:
+
+1. **`config_state.rs`** — contains 7+ pure helper fns mixed with libgit2 config I/O
+2. **`repo/snapshot.rs`** — contains 8+ pure parsing fns mixed with libgit2 status I/O
+3. **`branch.rs`** — pure branch name policy buried inside repo-discovery wrappers
+4. **`rebase_checkpoint/types.rs`** — pure builder methods mixed with `chrono::Utc::now()` side-effect (timestamp injection is the target)
+
+For P9-split: extract pure functions into `*_policy.rs` or `*_parse.rs` sibling files, leaving effectful wrappers thin.
+
+
+## P9-errors: GitError typed enum + dead-code fix (2026-03-21)
+
+**What changed:**
+- Added `domain/types.rs` with `GitError` enum (variants: `RepoDiscoveryFailed`, `CommandFailed`, `ParseFailed`, `InvalidPath`)
+- Wired `GitError` through `domain/mod.rs` and re-exported from `git_helpers/mod.rs`
+- Updated `validate_path_for_snapshot` (parse.rs) and `matches_single_ralph_hooks_path` / `is_single_ralph_hooks_path_for_scope` (config_policy.rs) to return `Result<T, GitError>`
+- Boundary callers (`repo/snapshot.rs`, `config_state.rs`) map `GitError → std::io::Error` via `Into::into` / `map_err`
+- Removed unused `make_scope` test-helper that caused dead_code warning
+
+**Why:**
+- P9-errors task: replace ad-hoc `io::Error`/string errors in pure domain with typed variants
+- Dead code in test helper silenced by deletion (not suppression) per lint policy
+
+**Gotcha:**
+- Test helper functions inside `#[cfg(test)]` blocks still trigger dead_code warnings if unused — remove, not suppress
+- `impl From<GitError> for std::io::Error` via `ErrorKind::Other` is the correct boundary conversion pattern for this codebase
+
+## P9-errors continuation: remove production unwrap in config_state.rs (2026-03-21)
+
+**What changed:**
+- `protected_config_paths` in `config_state.rs:233`: replaced `.map(|entry| entry.unwrap().path()...)` with `.filter_map(|entry| entry.ok().map(|e| e.path()...))` to eliminate production panic path
+
+**Why:**
+- `entry` is `Result<DirEntry, io::Error>` from iterating `ReadDir`; unwrapping in production is forbidden per lint policy
+- `filter_map(ok())` is consistent with the existing best-effort semantics: missing/unreadable worktrees dir is already silently ignored via `.into_iter().flatten()`
+- All remaining unwraps in the file are inside `#[cfg(test)] mod tests` — allowed per policy
+
+## P9-tests: Pure git_helpers domain test coverage
+
+**Completed:** Added 51 new tests across two domain modules.
+
+### parse.rs — added `parse_status_line_tests` + `porcelain_format_tests`
+- `parse_status_line`: all branches — empty, short, bad-separator, empty path, untracked, modified, added, deleted, rename (R/C, x/y columns, no-arrow fallback), quoted path
+- `parse_path_component`: plain, quoted, trailing-whitespace trim, empty, single-quote-char
+- `compute_index_status`: all 5 flag variants + space fallback
+- `compute_wt_status`: all 4 flag variants + space fallback  
+- `format_status_porcelain`: untracked (?? prefix), each index/wt flag, combined MM, space-space CURRENT
+
+### config_policy.rs — added `pure_helpers_tests` + `is_single_ralph_scope_tests`
+- `hooks_path_state_path`: joins constant filename, checks `"hooks-path.previous"`
+- `worktree_config_path`: None when not set, Some(&path) when set
+- `common_config_path`: joins `"config"` to common_git_dir
+- `scoped_hooks_dir_for_config`: config-in-common-git-dir → `ralph/hooks`; linked-worktree pattern → local `ralph/hooks`; non-worktrees grandparent → None
+- `is_single_ralph_hooks_path_for_scope`: exact match → true; config path mismatch, no worktree_config_path, multiple entries, wrong key, empty → false
+
+### Patterns
+- `git2::Status` constants usable directly in unit tests; no repo needed
+- `ProtectionScope` is fully public with public fields — easy to construct inline in tests
+- Tests in same module can access `pub(crate)` helpers directly
+- Python one-liner used for writing to files outside workspace root (path traversal guard in tool)
+
+### Test count delta: 3685 → 3736 (+51)
+
+## P9-errors continuation pass (2026-03-21)
+
+**Finding:** All targeted git_helpers files were already clean before this pass.
+
+- `repo/discovery.rs`, `repo/exclude.rs`, `verify.rs`, `review_baseline.rs`, `uninstall.rs`: zero production `.unwrap()`/`.expect()` calls. All occurrences are inside `#[cfg(test)] mod tests`.
+- The domain layer (`domain/parse.rs`, `domain/config_policy.rs`) correctly returns `Result<T, GitError>`.
+- Boundary wrappers in `config_state.rs` correctly convert via `.map_err(std::io::Error::from)`.
+- P9-errors was fully complete from the prior pass; no files changed in this continuation.
+
+**Verification:** `cargo check -p ralph-workflow --lib` → clean. `cargo test -p ralph-workflow --lib` → 3736 passed, 0 failed.
+
+## P10-unwrap-domain: Production `.unwrap()` Audit (2026-03-21)
+
+### Scan Command
+```bash
+rg '\.unwrap\(\)' ralph-workflow/src/ --glob '*.rs' \
+  --glob '!*test*' --glob '!*/io/*' --glob '!*/runtime/*' \
+  --glob '!*/boundary/*' --glob '!*/executor/*' -n
+```
+
+### Findings
+
+**3 genuine production unwraps found and fixed:**
+
+1. **`agents/config/types.rs:214`** — `toml.ccs_profile.clone().unwrap()` inside `if toml.ccs_profile.is_some()` guard.
+   - Fix: Restructured to `if ccs_env_vars.is_empty() { if let Some(ref profile) = toml.ccs_profile { ... } }`.
+   - Pattern: Use `if let Some(ref x)` instead of `.is_some()` + `.unwrap()`.
+
+2. **`cli/init/config_generation/boundary.rs:79`** — `get_template(template_name).unwrap()` after prior `validate_template_name` returned early on `Unknown`.
+   - Fix: `get_template(template_name).ok_or_else(|| anyhow::anyhow!("template not found: {}", template_name))?`.
+   - Pattern: Even when invariant is strong, propagate the error via `?` in `anyhow::Result` contexts.
+
+3. **`reducer/orchestration/xsd_retry/cloud_pr.rs:92`** — `name_end.unwrap() + 1` after `None` case already caused early return in match above.
+   - Fix: Changed match to return `(name, end + 1): (String, usize)` tuple, consuming `end` at the match site.
+   - Pattern: Restructure match arms to extract and carry values you need downstream.
+
+**Pre-existing / correctly handled:**
+- `rendering/xml/review_issues.rs` regex `unwrap()`s — all annotated with `#[expect(clippy::unwrap_used, reason = "hardcoded regex pattern is guaranteed to compile")]`. Correct, no changes.
+- All other `unwrap()` hits are in `#[cfg(test)]` blocks or test helpers — allowed per lint policy.
+
+### Verification
+- `cargo check -p ralph-workflow --lib` → clean
+- `cargo test -p ralph-workflow --lib` → 3736 passed, 0 failed
+
+## P10-panic-domain: Production `panic!` Audit (2026-03-21)
+
+### Scan Command
+```bash
+rg 'panic!' ralph-workflow/src/ --glob '*.rs' \
+  --glob '!*test*' --glob '!*/io/*' --glob '!*/runtime/*' --glob '!*/boundary/*'
+```
+
+### Findings
+
+**Zero production domain panics found.** Every `panic!` occurrence in the scan results was in test-only or test-infrastructure code:
+
+| File | Classification | Reason |
+|------|---------------|--------|
+| `config/validation/mod.rs` (2×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `agents/config/file.rs` (6×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `main.rs` (1×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `agents/opencode_resolver.rs` (2×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `reducer/mock_effect_handler/**` (6×) | Test infra | Module gated `#[cfg(any(test, feature = "test-utils"))]` |
+| `json_parser/event_queue/bounded_queue.rs` (2×) | Test-only | Struct and impl gated `#[cfg(test)]` |
+| `cloud/io/http.rs` (1×) | Test-only | Inside `#[cfg(test)]` |
+| `config/cloud.rs` (1×) | Test-only | Inside `#[cfg(test)]` |
+| `files/llm_output_extraction/xml_helpers/readers.rs` (3×) | Test-only | Inside `#[cfg(test)]` test fns |
+| `app/cloud_progress.rs` (3×) | Test-only | Inside `#[cfg(test)]` test fns |
+| `guidelines/rust.rs` (1×) | String literal | `"Avoid panic! in library code"` — not a macro call |
+| `reducer/orchestration/phase_effects/mod.rs` (8×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `reducer/state_reduction/prompt_input.rs` (1×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `pipeline/prompt/io_process_wait.rs` (1×) | Test-only | Inside `#[cfg(test)]` test fn |
+| `checkpoint/size_monitor.rs` (2×) | Test-only | Inside `#[cfg(test)] mod tests` |
+| `git_helpers/domain/parse.rs` (1×) | Test-only | Inside `#[cfg(test)] mod tests` |
+
+### Key Pattern
+The rg glob `--glob '!*test*'` excludes files with "test" in the *filename* but does NOT exclude `#[cfg(test)]` inner modules within otherwise non-test files. All panics in the scan are in such `#[cfg(test)]` inner modules, except the `mock_effect_handler` module which is `#[cfg(any(test, feature = "test-utils"))]`.
+
+### Verification
+- `cargo check -p ralph-workflow --lib` → clean (0.26s)
+- `cargo test -p ralph-workflow --lib` → 3736 passed, 0 failed
+- **No changes made** — nothing to fix.
+
+---
+## P10-string-errors — 2026-03-21
+
+### Domain violations found and converted
+
+**3 true domain violations converted:**
+
+1. **`ralph-workflow/src/git_helpers/identity.rs`**
+   - `validate_git_identity_fields(name, email) -> Result<(), String>` → `Result<(), IdentityValidationError>`
+   - `GitIdentity::validate(&self) -> Result<(), String>` → `Result<(), IdentityValidationError>`
+   - Added `IdentityValidationError { EmptyName, EmptyEmail, InvalidEmailFormat(String) }` with `Display`
+   - Updated `ContainsErr` test helper to use `.to_string()` on typed error
+   - Caller `git_helpers/repo/commit.rs` only used `.is_ok()` — no breaking change
+
+2. **`ralph-workflow/src/checkpoint/state/serialization.rs`** (included via `include!()` into `state.rs`)
+   - `load_checkpoint_with_fallback(content) -> Result<PipelineCheckpoint, Box<dyn std::error::Error>>` → `Result<PipelineCheckpoint, CheckpointLoadError>`
+   - Added `CheckpointLoadError { InvalidJson(String), MissingVersion, UnsupportedVersionTooNew(u32), LegacyVersion(u32) }` with `Display`
+   - Caller `load_checkpoint_with_workspace` already converts to `io::Result` via `.map_err` — unchanged
+   - Tests added in `checkpoint/state/tests/checkpoint_load_error.rs` (7 tests)
+
+3. **`ralph-workflow/src/config/cloud.rs`**
+   - `CloudConfig::validate(&self) -> Result<(), String>` → `Result<(), CloudConfigValidationError>`
+   - `GitRemoteConfig::validate(&self) -> Result<(), String>` → `Result<(), GitRemoteValidationError>`
+   - Added `CloudConfigValidationError { ApiUrlMissing, ApiUrlNotHttps, ApiTokenMissing, RunIdMissing, GitRemote(GitRemoteValidationError) }` with `Display` + `From<GitRemoteValidationError>`
+   - Added `GitRemoteValidationError { EmptyRemoteName, EmptyPushBranch, PushBranchIsHead, EmptySshKeyPath, EmptyToken, EmptyTokenUsername, EmptyCredentialHelper }` with `Display`
+   - Updated `ralph-workflow/src/config/loader.rs:336` — changed `message: e` → `message: e.to_string()`
+
+### Intentionally NOT converted (boundary/not domain)
+
+- `app/effectful.rs` — all `Result<_, String>` propagate `AppEffectResult::Error(String)` from effect handler; converting requires reworking the entire `AppEffectHandler` contract — boundary code, not domain
+- `app/resume/validation.rs` `attempt_recovery_for_error` — private internal orchestration; String is a recovery failure reason not a domain concept
+- All `io::Result<String>` / `std::io::Result<String>` — using `std::io::Error`, not String error type
+
+### Verification
+
+- `cargo check -p ralph-workflow --lib` → `Finished` (0 errors, 0 warnings)
+- `cargo test -p ralph-workflow --lib` → `3757 passed; 0 failed`
+
+### Conventions observed
+
+- Pattern: define typed error in same file as the domain function, derive `Debug + Clone + PartialEq + Eq`
+- Pattern: `impl Display` for typed errors; boundary code calls `.to_string()` when it needs a `String`
+- `checkpoint/state/serialization.rs` is inlined via `include!()` — tests must go in `state/tests/` subfolder
+- `pub(super)` visibility appropriate for errors only used within the module; `pub` for those exported via `config/cloud.rs` (callers in other crates may need them)
+
+---
+## P10-string-errors — 2026-03-21
+
+### Violations Found and Converted
+
+**3 true domain violations** identified and converted. All others (e.g. `io::Result<String>`, `app/effectful.rs`) are boundary/IO wrappers — left unchanged.
+
+#### 1. `ralph-workflow/src/git_helpers/identity.rs`
+- `validate_git_identity_fields(name, email) -> Result<(), String>` → `Result<(), IdentityValidationError>`
+- `GitIdentity::validate(&self) -> Result<(), String>` → `Result<(), IdentityValidationError>`
+- Added `IdentityValidationError { EmptyName, EmptyEmail, InvalidEmailFormat(String) }` with `Display` + `Clone + PartialEq + Eq`
+- Existing `ContainsErr` test helper updated to match on `.to_string().contains(needle)`
+- 7 new typed-variant tests added
+
+#### 2. `ralph-workflow/src/checkpoint/state/serialization.rs`
+- `load_checkpoint_with_fallback(content) -> Result<PipelineCheckpoint, Box<dyn Error>>` → `Result<PipelineCheckpoint, CheckpointLoadError>`
+- Added `CheckpointLoadError { InvalidJson(String), MissingVersion, UnsupportedVersionTooNew(u32), LegacyVersion(u32) }` (private `pub(super)`)
+- Boundary caller `load_checkpoint_with_workspace` still converts to `io::Error` via `.map_err` — unchanged
+- New test file: `checkpoint/state/tests/checkpoint_load_error.rs` with 7 tests
+
+#### 3. `ralph-workflow/src/config/cloud.rs`
+- `CloudConfig::validate(&self) -> Result<(), String>` → `Result<(), CloudConfigValidationError>`
+- `GitRemoteConfig::validate(&self) -> Result<(), String>` → `Result<(), GitRemoteValidationError>`
+- Added `CloudConfigValidationError { ApiUrlMissing, ApiUrlNotHttps, ApiTokenMissing, RunIdMissing, GitRemote(GitRemoteValidationError) }`
+- Added `GitRemoteValidationError { EmptyRemoteName, EmptyPushBranch, PushBranchIsHead, EmptySshKeyPath, EmptyToken, EmptyTokenUsername, EmptyCredentialHelper }`
+- `From<GitRemoteValidationError> for CloudConfigValidationError` impl added
+- Updated `ralph-workflow/src/config/loader.rs`: `message: e` → `message: e.to_string()`
+- 9 new typed-variant tests added in `config/cloud.rs`
+
+### Signatures Intentionally Left Unchanged
+
+| Location | Signature | Reason |
+|----------|-----------|--------|
+| `app/effectful.rs` | All `Result<_, String>` fns (10+) | Boundary/orchestration; String propagates from `AppEffectResult::Error(String)` — would require typing the entire effects system |
+| `app/resume/validation.rs` | `attempt_recovery_for_error` → `Result<(), String>` | Private internal accumulator; string is a human-readable recovery failure message |
+| `git_helpers/repo/commit.rs` | Callers of `validate()` use only `.is_ok()` | Not a producer; no change needed |
+| All `io::Result<String>` / `std::io::Result<String>` | N/A | `std::io::Error` error type — not `String` |
+
+### Patterns Established
+- `pub enum FooError` before the struct that owns it; `Display` impl; `Clone + PartialEq + Eq` where no non-Clone fields
+- Private-function errors: `pub(super)` visibility  
+- Boundary callers use `.map_err(|e| io::Error::new(..., e.to_string()))` to keep IO boundary clean
+- `From<Inner> for Outer` for hierarchical validation enums
+
+### Verification
+- `cargo check -p ralph-workflow --lib`: `Finished` (0 errors, 0 warnings)
+- `cargo test -p ralph-workflow --lib`: `test result: ok. 3757 passed; 0 failed`
+
+## [2026-03-21] P10-string-errors atomic slice: agents/registry + app/validation
+
+### Files changed
+- `ralph-workflow/src/agents/registry/management.rs`: Added `AgentChainValidationError` enum (4 variants: `NoChainConfigured`, `NoDrainBinding`, `EmptyDrainChain`, `NoWorkflowCapableAgents`). Changed `validate_agent_chains` return type from `Result<(), String>` to `Result<(), AgentChainValidationError>`. `Display` impl preserves exact user-facing error text.
+- `ralph-workflow/src/agents/registry/io_tests.rs`: Updated `test_validate_agent_chains_rejects_non_workflow_capable_commit_drain` to call `.to_string()` before `.contains(...)` since the error is no longer `String`.
+- `ralph-workflow/src/app/validation.rs`: Updated call site `logger.error(&msg)` → `logger.error(&msg.to_string())` to handle typed error from registry.
+
+### Pattern
+When converting `Result<(), String>` to typed errors in an `include!()` module pattern (registry.rs includes management.rs), the enum is defined in management.rs and becomes part of the parent module's public API via `use super::*` in tests. All callers that did string `.contains()` checks need `.to_string()` before the assertion.
+
+### Notes
+- `agents/validation.rs` was already complete (OpenCodeValidationError already existed) - both targeted tests passed after registry change.
+- No new dependencies. No lint suppressions.

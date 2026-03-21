@@ -1,6 +1,56 @@
 // Registry management and lookup operations.
 // Includes the AgentRegistry struct definition and core lookup/management methods.
 
+/// Typed error for agent chain validation failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentChainValidationError {
+    /// No agent chain configured at all (no drain has any binding with agents).
+    NoChainConfigured { searched_sources: String },
+    /// A specific drain has no binding.
+    NoDrainBinding { drain: String, searched_sources: String },
+    /// A specific drain's bound chain is empty.
+    EmptyDrainChain { drain: String, searched_sources: String },
+    /// All agents in a drain have `can_commit=false`.
+    NoWorkflowCapableAgents { drain: String },
+}
+
+impl std::fmt::Display for AgentChainValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoChainConfigured { searched_sources } => write!(
+                f,
+                "No agent chain configured. \
+                Searched: {searched_sources}.\n\
+                Please add [agent_chains] and [agent_drains] sections to your config.\n\
+                Legacy [agent_chain] input is deprecated but still accepted with default drain bindings.\n\
+                Run 'ralph --init-global' to create a default configuration."
+            ),
+            Self::NoDrainBinding { drain, searched_sources } => write!(
+                f,
+                "No {drain} agent chain configured. \
+                Searched: {searched_sources}.\n\
+                Bind the {drain} drain in [agent_drains] to a chain from [agent_chains].\n\
+                Use --list-agents to see available agents."
+            ),
+            Self::EmptyDrainChain { drain, searched_sources } => write!(
+                f,
+                "No {drain} agent chain configured. \
+                Searched: {searched_sources}.\n\
+                Bind the {drain} drain in [agent_drains] to a non-empty chain from [agent_chains].\n\
+                Use --list-agents to see available agents."
+            ),
+            Self::NoWorkflowCapableAgents { drain } => write!(
+                f,
+                "No workflow-capable agents found for {drain}.\n\
+                All agents in the {drain} drain binding have can_commit=false.\n\
+                Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AgentChainValidationError {}
+
 /// Agent registry with CCS alias and `OpenCode` dynamic provider/model support.
 ///
 /// CCS aliases are eagerly resolved and registered as regular agents
@@ -433,7 +483,7 @@ impl AgentRegistry {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), String> {
+    pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), AgentChainValidationError> {
         let drain_bindings: Vec<_> = crate::agents::AgentDrain::all()
             .into_iter()
             .map(|drain| (drain, self.resolved_drain(drain)))
@@ -444,13 +494,9 @@ impl AgentRegistry {
             .any(|(_, binding)| binding.is_some_and(|binding| !binding.agents.is_empty()));
 
         if !has_any_binding {
-            return Err(format!(
-                "No agent chain configured. \
-                Searched: {searched_sources}.\n\
-                Please add [agent_chains] and [agent_drains] sections to your config.\n\
-                Legacy [agent_chain] input is deprecated but still accepted with default drain bindings.\n\
-                Run 'ralph --init-global' to create a default configuration."
-            ));
+            return Err(AgentChainValidationError::NoChainConfigured {
+                searched_sources: searched_sources.to_string(),
+            });
         }
 
         // Validate each drain - fail on first error
@@ -458,21 +504,17 @@ impl AgentRegistry {
             .iter()
             .try_fold((), |(), (drain, binding)| {
                 let binding = binding.ok_or_else(|| {
-                    format!(
-                        "No {drain} agent chain configured. \
-                        Searched: {searched_sources}.\n\
-                        Bind the {drain} drain in [agent_drains] to a chain from [agent_chains].\n\
-                        Use --list-agents to see available agents."
-                    )
+                    AgentChainValidationError::NoDrainBinding {
+                        drain: drain.to_string(),
+                        searched_sources: searched_sources.to_string(),
+                    }
                 })?;
 
                 if binding.agents.is_empty() {
-                    return Err(format!(
-                        "No {drain} agent chain configured. \
-                        Searched: {searched_sources}.\n\
-                        Bind the {drain} drain in [agent_drains] to a non-empty chain from [agent_chains].\n\
-                        Use --list-agents to see available agents."
-                    ));
+                    return Err(AgentChainValidationError::EmptyDrainChain {
+                        drain: drain.to_string(),
+                        searched_sources: searched_sources.to_string(),
+                    });
                 }
 
                 let has_capable = binding
@@ -480,11 +522,9 @@ impl AgentRegistry {
                     .iter()
                     .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
                 if !has_capable {
-                    return Err(format!(
-                        "No workflow-capable agents found for {drain}.\n\
-                        All agents in the {drain} drain binding have can_commit=false.\n\
-                        Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
-                    ));
+                    return Err(AgentChainValidationError::NoWorkflowCapableAgents {
+                        drain: drain.to_string(),
+                    });
                 }
 
                 Ok(())

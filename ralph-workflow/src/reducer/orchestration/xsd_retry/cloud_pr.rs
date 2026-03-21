@@ -70,8 +70,8 @@ fn convert_cloud_pr_template_placeholders(input: &str) -> Option<String> {
                 .position(|&c| c == '}')
                 .map(|offset| pos + offset);
 
-            let name: String = match name_end {
-                Some(end) => chars[pos + 1..end].iter().collect(),
+            let (name, end): (String, usize) = match name_end {
+                Some(end) => (chars[pos + 1..end].iter().collect(), end + 1),
                 None => {
                     return Some(format!(
                         "{{{rest}",
@@ -88,8 +88,6 @@ fn convert_cloud_pr_template_placeholders(input: &str) -> Option<String> {
             } else {
                 format!("{{{name}}}")
             };
-
-            let end = name_end.unwrap() + 1;
             return Some(format!(
                 "{replacement}{rest}",
                 rest = parse_char_by_char(chars, end)?

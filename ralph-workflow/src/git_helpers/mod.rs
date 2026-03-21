@@ -47,8 +47,8 @@ fn git2_to_io_error_impl(err: &git2::Error) -> std::io::Error {
     std::io::Error::new(kind, err.to_string())
 }
 
-pub mod agent_phase_state;
 pub mod branch;
+pub(crate) mod domain;
 pub mod cleanup;
 pub mod config_state;
 pub mod hooks;

@@ -5,7 +5,6 @@
 //! false timeout kills when agents are making progress through file updates.
 
 use crate::workspace::Workspace;
-use std::cell::Cell;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
@@ -79,8 +78,10 @@ impl Default for FileActivityTracker {
     }
 }
 
-thread_local! {
-    static WARNED: Cell<bool> = const { Cell::new(false) };
+#[derive(Clone, Copy)]
+struct ScanState {
+    found_recent_activity: bool,
+    warned_unreadable_dir: bool,
 }
 
 fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
@@ -102,6 +103,32 @@ pub(crate) fn scan_dir_recursive(
     remaining_depth: usize,
     is_root: bool,
 ) -> std::io::Result<bool> {
+    scan_dir_recursive_with_state(
+        workspace,
+        dir,
+        now,
+        timeout,
+        remaining_depth,
+        is_root,
+        false,
+    )
+    .map(|state| state.found_recent_activity)
+}
+
+#[inline(never)]
+#[expect(
+    clippy::print_stderr,
+    reason = "diagnostic warning for filesystem issues"
+)]
+fn scan_dir_recursive_with_state(
+    workspace: &dyn Workspace,
+    dir: &Path,
+    now: SystemTime,
+    timeout: Duration,
+    remaining_depth: usize,
+    is_root: bool,
+    warned_unreadable_dir: bool,
+) -> std::io::Result<ScanState> {
     let entries = match workspace.read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
@@ -109,50 +136,65 @@ pub(crate) fn scan_dir_recursive(
                 return Err(e);
             }
 
-            if !WARNED.with(|w| {
-                if w.get() {
-                    false
-                } else {
-                    w.set(true);
-                    true
-                }
-            }) {
+            if !warned_unreadable_dir {
                 eprintln!(
                     "Warning: workspace scan skipped unreadable directory '{}' ({e}); file-activity detection may be incomplete",
                     dir.display()
                 );
             }
 
-            return Ok(false);
+            return Ok(ScanState {
+                found_recent_activity: false,
+                warned_unreadable_dir: true,
+            });
         }
     };
 
-    if entries.into_iter().any(|entry| {
-        let path = entry.path();
-        if entry.is_file() {
-            if FileActivityTracker::is_excluded_workspace_file(path) {
-                return false;
+    entries.into_iter().try_fold(
+        ScanState {
+            found_recent_activity: false,
+            warned_unreadable_dir,
+        },
+        |state, entry| {
+            if state.found_recent_activity {
+                return Ok(state);
             }
-            if let Some(mtime) = entry.modified() {
-                return file_age(now, mtime) <= timeout;
+
+            let path = entry.path();
+            if entry.is_file() {
+                let found_recent_activity = !FileActivityTracker::is_excluded_workspace_file(path)
+                    && entry
+                        .modified()
+                        .is_some_and(|mtime| file_age(now, mtime) <= timeout);
+                return Ok(ScanState {
+                    found_recent_activity,
+                    warned_unreadable_dir: state.warned_unreadable_dir,
+                });
             }
-            false
-        } else if entry.is_dir() {
-            if FileActivityTracker::is_excluded_workspace_dir(path) {
-                return false;
+
+            if entry.is_dir() {
+                if FileActivityTracker::is_excluded_workspace_dir(path) {
+                    return Ok(state);
+                }
+
+                return remaining_depth
+                    .checked_sub(1)
+                    .map_or(Ok(state), |remaining| {
+                        scan_dir_recursive_with_state(
+                            workspace,
+                            entry.path(),
+                            now,
+                            timeout,
+                            remaining,
+                            false,
+                            state.warned_unreadable_dir,
+                        )
+                    });
             }
-            remaining_depth.checked_sub(1).is_some_and(|remaining| {
-                scan_dir_recursive(workspace, entry.path(), now, timeout, remaining, false)
-                    .is_ok_and(|r| r)
-            })
-        } else {
-            false
-        }
-    }) {
-        Ok(true)
-    } else {
-        Ok(false)
-    }
+
+            Ok(state)
+        },
+    )
 }
 
 pub(crate) const MAX_SCAN_DEPTH_CONST: usize = MAX_SCAN_DEPTH;

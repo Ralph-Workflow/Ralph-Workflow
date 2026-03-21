@@ -53,6 +53,22 @@ fn test_format_body_empty_when_no_body() {
     assert_eq!(elements.format_body(), "");
 }
 
+#[test]
+fn test_format_body_skips_whitespace_only_detailed_sections() {
+    let elements = CommitMessageElements {
+        subject: "feat: test".to_string(),
+        body: None,
+        body_summary: Some("   \n\t".to_string()),
+        body_details: Some("\t  ".to_string()),
+        body_footer: Some("Footer text".to_string()),
+        skip_reason: None,
+        files: vec![],
+        excluded_files: vec![],
+    };
+
+    assert_eq!(elements.format_body(), "Footer text");
+}
+
 // ============================================================================
 // Tests for ralph-files element support
 // ============================================================================

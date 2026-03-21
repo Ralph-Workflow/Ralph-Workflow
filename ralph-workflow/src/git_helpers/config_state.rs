@@ -5,12 +5,13 @@
 //! - Storing/loading the shared worktreeConfig extension state
 //! - Reading/writing git config values for hooks settings
 
+use crate::git_helpers::domain::config_policy;
 use crate::git_helpers::repo::ProtectionScope;
 use git2::Config;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub(crate) const HOOKS_PATH_STATE_FILE: &str = "hooks-path.previous";
+pub(crate) use config_policy::HOOKS_PATH_STATE_FILE;
 pub(crate) const WORKTREE_CONFIG_STATE_KEY: &str = "ralph.worktreeConfigOriginalState";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +21,7 @@ pub(crate) enum StoredHookPath {
 }
 
 pub(crate) fn hooks_path_state_path(ralph_dir: &Path) -> PathBuf {
-    ralph_dir.join(HOOKS_PATH_STATE_FILE)
+    config_policy::hooks_path_state_path(ralph_dir)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,11 +45,11 @@ impl StoredSharedWorktreeConfigState {
 }
 
 pub(crate) fn worktree_config_path(scope: &ProtectionScope) -> Option<&Path> {
-    scope.worktree_config_path.as_deref()
+    config_policy::worktree_config_path(scope)
 }
 
 pub(crate) fn common_config_path(scope: &ProtectionScope) -> PathBuf {
-    scope.common_git_dir.join("config")
+    config_policy::common_config_path(scope)
 }
 
 pub(crate) fn ensure_config_file_exists(path: &Path) -> std::io::Result<()> {
@@ -229,7 +230,7 @@ fn protected_config_paths(scope: &ProtectionScope) -> Vec<PathBuf> {
     let worktree_paths: Vec<PathBuf> = fs::read_dir(worktrees_dir)
         .into_iter()
         .flatten()
-        .map(|entry| entry.unwrap().path().join("config.worktree"))
+        .filter_map(|entry| entry.ok().map(|e| e.path().join("config.worktree")))
         .collect();
 
     std::iter::once(scope.common_git_dir.join("config.worktree"))
@@ -241,13 +242,7 @@ pub(crate) fn scoped_hooks_dir_for_config(
     config_path: &Path,
     common_git_dir: &Path,
 ) -> Option<PathBuf> {
-    let git_dir = config_path.parent()?;
-    if git_dir == common_git_dir {
-        return Some(common_git_dir.join("ralph").join("hooks"));
-    }
-
-    let worktrees_dir = git_dir.parent()?;
-    (worktrees_dir.file_name()? == "worktrees").then(|| git_dir.join("ralph").join("hooks"))
+    config_policy::scoped_hooks_dir_for_config(config_path, common_git_dir)
 }
 
 fn config_contains_only_expected_ralph_hooks_path(
@@ -268,16 +263,8 @@ fn matches_single_ralph_hooks_path(
     entries: &[(String, Option<String>)],
     expected_dir: &Path,
 ) -> std::io::Result<bool> {
-    let expected_hooks_path = expected_dir.to_str().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "hooks path contains invalid UTF-8 characters",
-        )
-    })?;
-
-    Ok(entries.len() == 1
-        && entries[0].0 == "core.hooksPath"
-        && entries[0].1.as_deref() == Some(expected_hooks_path))
+    config_policy::matches_single_ralph_hooks_path(entries, expected_dir)
+        .map_err(std::io::Error::from)
 }
 
 fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> std::io::Result<bool> {
@@ -317,17 +304,8 @@ fn is_single_ralph_hooks_path_for_scope(
     scope: &ProtectionScope,
     config_path: &Path,
 ) -> std::io::Result<bool> {
-    let expected_hooks_path = scope.hooks_dir.to_str().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "hooks path contains invalid UTF-8 characters",
-        )
-    })?;
-
-    Ok(worktree_config_path(scope) == Some(config_path)
-        && entries.len() == 1
-        && entries[0].0 == "core.hooksPath"
-        && entries[0].1.as_deref() == Some(expected_hooks_path))
+    config_policy::is_single_ralph_hooks_path_for_scope(entries, scope, config_path)
+        .map_err(std::io::Error::from)
 }
 
 fn ensure_worktree_config_extension_activation_is_safe(

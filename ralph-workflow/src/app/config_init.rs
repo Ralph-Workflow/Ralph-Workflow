@@ -116,7 +116,7 @@ pub fn initialize_config(
         args,
         colors,
         logger,
-        &RealCatalogLoader,
+        &RealCatalogLoader::default(),
         &RealConfigEnvironment,
     )
 }

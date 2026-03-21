@@ -21,7 +21,7 @@ mod fetch;
 mod types;
 
 pub use cache::{load_api_catalog, CacheError, CacheWarning};
-pub use fetch::CatalogHttpClient;
+pub use fetch::{CatalogHttpClient, RealCatalogFetcher};
 pub use types::{ApiCatalog, Model, Provider};
 
 /// `OpenCode` API endpoint for model catalog.
@@ -56,7 +56,7 @@ pub trait CatalogLoader: Send + Sync {
 /// 3. Cache the fetched result for future use
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RealCatalogLoader {
     fetcher: Arc<dyn fetch::CatalogHttpClient>,
 }
@@ -90,5 +90,11 @@ impl CatalogLoader for RealCatalogLoader {
             }
         });
         Ok(catalog)
+    }
+}
+
+impl Default for RealCatalogLoader {
+    fn default() -> Self {
+        Self::with_fetcher(fetch::RealCatalogFetcher::new())
     }
 }

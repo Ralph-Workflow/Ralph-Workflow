@@ -396,14 +396,7 @@ fn git_commit_impl(
             repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&head_commit])
         }
         Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => {
-            let mut has_entries = false;
-            tree.walk(git2::TreeWalkMode::PreOrder, |_, _| {
-                has_entries = true;
-                1 // Stop iteration after first entry.
-            })
-            .ok();
-
-            if !has_entries {
+            if !tree_has_entries(&tree) {
                 return Ok(None);
             }
             repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[])
@@ -413,4 +406,43 @@ fn git_commit_impl(
     .map_err(|e| git2_to_io_error(&e))?;
 
     Ok(Some(oid))
+}
+
+fn tree_has_entries(tree: &git2::Tree<'_>) -> bool {
+    tree.iter().next().is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    fn tree_has_entries_for_paths(paths: &[&str]) -> bool {
+        let repo_dir = tempfile::TempDir::new().expect("create temp git repo dir");
+        let repo = git2::Repository::init(repo_dir.path()).expect("init repo");
+        let mut index = repo.index().expect("open index");
+
+        paths.iter().for_each(|path| {
+            let absolute_path = repo_dir.path().join(path);
+            if let Some(parent) = absolute_path.parent() {
+                std::fs::create_dir_all(parent).expect("create parent dirs");
+            }
+            std::fs::write(&absolute_path, "content\n").expect("write file");
+            index.add_path(Path::new(path)).expect("stage file path");
+        });
+
+        index.write().expect("write index");
+        let tree_oid = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_oid).expect("find tree");
+        super::tree_has_entries(&tree)
+    }
+
+    #[test]
+    fn tree_has_entries_returns_false_for_empty_tree() {
+        assert!(!tree_has_entries_for_paths(&[]));
+    }
+
+    #[test]
+    fn tree_has_entries_returns_true_for_non_empty_tree() {
+        assert!(tree_has_entries_for_paths(&["src/example.rs"]));
+    }
 }

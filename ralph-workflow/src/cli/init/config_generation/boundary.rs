@@ -76,7 +76,8 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
         }
     }
 
-    let template = get_template(template_name).unwrap();
+    let template = get_template(template_name)
+        .ok_or_else(|| anyhow::anyhow!("template not found: {}", template_name))?;
     env.write_file(prompt_path, template.content())?;
     let _ = writeln!(
         std::io::stdout(),

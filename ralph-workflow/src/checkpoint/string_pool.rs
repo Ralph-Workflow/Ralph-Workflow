@@ -5,6 +5,7 @@
 //! memory usage when the same strings appear many times across execution history.
 
 use std::collections::HashSet;
+use std::iter;
 use std::sync::Arc;
 
 /// String pool for deduplicating commonly repeated strings in execution history.
@@ -75,8 +76,11 @@ impl StringPool {
         }
 
         let interned: Arc<str> = Arc::from(s);
-        let mut pool = self.pool;
-        pool.insert(Arc::clone(&interned));
+        let pool = self
+            .pool
+            .into_iter()
+            .chain(iter::once(Arc::clone(&interned)))
+            .collect();
         (Self { pool }, interned)
     }
 
@@ -90,8 +94,11 @@ impl StringPool {
         }
 
         let interned: Arc<str> = Arc::from(s);
-        let mut pool = self.pool;
-        pool.insert(Arc::clone(&interned));
+        let pool = self
+            .pool
+            .into_iter()
+            .chain(iter::once(Arc::clone(&interned)))
+            .collect();
         (Self { pool }, interned)
     }
 

@@ -11,36 +11,61 @@ use crate::agents::opencode_api::API_URL;
 // where non-boundary code uses boundary capability
 use crate::io::http_fetch::fetch_url;
 
-/// Fetch the API catalog JSON from the provided HTTP client and parse it.
-pub fn fetch_api_catalog(ttl_seconds: u64) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
-    let json = fetch_url(API_URL).map_err(CacheError::FetchError)?;
-
-    let catalog: ApiCatalog = serde_json::from_str(&json).map_err(CacheError::ParseError)?;
-
-    let catalog = ApiCatalog {
-        ttl_seconds,
-        cached_at: Some(chrono::Utc::now()),
-        ..catalog
-    };
-
-    let warnings: Vec<CacheWarning> = save_catalog(&catalog)
-        .err()
-        .map(|e| CacheWarning::CacheSaveFailed {
-            error: e.to_string(),
-        })
-        .into_iter()
-        .collect();
-
-    Ok((catalog, warnings))
+/// Trait for fetching the `OpenCode` API catalog.
+///
+/// This trait enables dependency injection for catalog fetching,
+/// allowing tests to provide mock implementations that don't make network calls.
+pub trait CatalogHttpClient: Send + Sync {
+    /// Fetch the API catalog JSON and parse it.
+    fn fetch_api_catalog(
+        &self,
+        ttl_seconds: u64,
+    ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError>;
 }
 
-/// Fetch the API catalog with cache (deprecated - use `load_api_catalog` from cache module).
-/// Fetch the API catalog with cache (deprecated - use `load_api_catalog` from cache module).
-#[allow(dead_code)]
-pub fn fetch_api_catalog_with_cache(
-    ttl_seconds: u64,
-) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
-    fetch_api_catalog(ttl_seconds)
+/// Production implementation of [`CatalogHttpClient`] that fetches from the network.
+#[derive(Debug, Clone)]
+pub struct RealCatalogFetcher;
+
+impl RealCatalogFetcher {
+    /// Create a new catalog fetcher.
+    #[must_use]
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for RealCatalogFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CatalogHttpClient for RealCatalogFetcher {
+    fn fetch_api_catalog(
+        &self,
+        ttl_seconds: u64,
+    ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
+        let json = fetch_url(API_URL).map_err(CacheError::FetchError)?;
+
+        let catalog: ApiCatalog = serde_json::from_str(&json).map_err(CacheError::ParseError)?;
+
+        let catalog = ApiCatalog {
+            ttl_seconds,
+            cached_at: Some(chrono::Utc::now()),
+            ..catalog
+        };
+
+        let warnings: Vec<CacheWarning> = save_catalog(&catalog)
+            .err()
+            .map(|e| CacheWarning::CacheSaveFailed {
+                error: e.to_string(),
+            })
+            .into_iter()
+            .collect();
+
+        Ok((catalog, warnings))
+    }
 }
 
 #[cfg(test)]

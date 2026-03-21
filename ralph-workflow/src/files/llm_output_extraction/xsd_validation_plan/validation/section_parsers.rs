@@ -30,35 +30,75 @@ const SECTION_SUB_ELEMENT_TAGS: &[&str] = &[
 /// The block elements are removed, leaving only inline content to be parsed.
 // pub(super) for test access from tests submodule
 pub(super) fn strip_block_elements_for_inline_parsing(content: &str) -> String {
-    let mut result = content.to_string();
-    // Remove <list>...</list> blocks (handled separately for nesting)
-    while let Some(start) = result.find("<list") {
-        if let Some(end) = result[start..].find("</list>") {
-            result = format!("{}{}", &result[..start], &result[start + end + 7..]);
-        } else {
-            break;
+    ["list", "code-block", "paragraph"]
+        .into_iter()
+        .fold(content.to_string(), |current, tag| {
+            strip_tag_blocks(&current, tag)
+        })
+}
+
+fn strip_tag_blocks(content: &str, tag: &str) -> String {
+    let open_tag = format!("<{tag}");
+    let close_tag = format!("</{tag}>");
+
+    strip_next_tag_block(content, &open_tag, &close_tag).map_or_else(
+        || content.to_string(),
+        |stripped| strip_tag_blocks(&stripped, tag),
+    )
+}
+
+fn strip_next_tag_block(content: &str, open_tag: &str, close_tag: &str) -> Option<String> {
+    let start = content.find(open_tag)?;
+    let end = find_tag_block_end(content, start, open_tag, close_tag)?;
+
+    Some(format!("{}{}", &content[..start], &content[end..]))
+}
+
+fn find_tag_block_end(
+    content: &str,
+    start: usize,
+    open_tag: &str,
+    close_tag: &str,
+) -> Option<usize> {
+    find_tag_block_end_recursive(content, start + open_tag.len(), open_tag, close_tag, 1)
+}
+
+fn find_tag_block_end_recursive(
+    content: &str,
+    cursor: usize,
+    open_tag: &str,
+    close_tag: &str,
+    depth: usize,
+) -> Option<usize> {
+    let next_open = content[cursor..].find(open_tag).map(|idx| cursor + idx);
+    let next_close = content[cursor..].find(close_tag).map(|idx| cursor + idx);
+
+    match (next_open, next_close) {
+        (_, None) => None,
+        (Some(open_index), Some(close_index)) if open_index < close_index => {
+            find_tag_block_end_recursive(
+                content,
+                open_index + open_tag.len(),
+                open_tag,
+                close_tag,
+                depth.saturating_add(1),
+            )
+        }
+        (_, Some(close_index)) => {
+            let remaining_depth = depth.saturating_sub(1);
+            if remaining_depth == 0 {
+                Some(close_index + close_tag.len())
+            } else {
+                find_tag_block_end_recursive(
+                    content,
+                    close_index + close_tag.len(),
+                    open_tag,
+                    close_tag,
+                    remaining_depth,
+                )
+            }
         }
     }
-
-    // Remove <code-block>...</code-block> blocks
-    while let Some(start) = result.find("<code-block") {
-        if let Some(end) = result[start..].find("</code-block>") {
-            result = format!("{}{}", &result[..start], &result[start + end + 13..]);
-        } else {
-            break;
-        }
-    }
-
-    // Remove <paragraph>...</paragraph> blocks
-    while let Some(start) = result.find("<paragraph") {
-        if let Some(end) = result[start..].find("</paragraph>") {
-            result = format!("{}{}", &result[..start], &result[start + end + 12..]);
-        } else {
-            break;
-        }
-    }
-
-    result
 }
 
 /// Parse inline content elements (text, emphasis, code, link)
@@ -526,7 +566,7 @@ fn parse_row(reader: &mut Reader<&[u8]>) -> Result<Row, XsdValidationError> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.name().as_ref() == b"cell" => {
                 let inner = read_inner_xml(reader, b"cell")?;
-                cells.push(Cell {
+                cells.push(TableCell {
                     content: parse_inline_elements(&inner),
                 });
             }

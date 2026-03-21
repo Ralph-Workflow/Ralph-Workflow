@@ -1,13 +1,11 @@
 use std::path::Path;
 
+use crate::git_helpers::domain::parse as domain_parse;
 use crate::git_helpers::git2_to_io_error;
 use crate::workspace::Workspace;
 
 fn configured_diff_options() -> git2::DiffOptions {
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
-    diff_opts
+    domain_parse::configured_diff_options()
 }
 
 /// Get the diff of all changes (unstaged and staged).

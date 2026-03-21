@@ -62,11 +62,8 @@ pub struct PromptMonitor {
     stop_signal: Arc<AtomicBool>,
     /// Handle to the monitor thread (None if not started)
     monitor_thread: Option<thread::JoinHandle<()>>,
-    /// Warnings from the monitor thread (via thread-safe channel).
-    ///
-    /// Uses Mutex only for thread communication, not to hide state changes.
-    /// This is a documented exception for background thread coordination.
-    warnings: Arc<std::sync::Mutex<Vec<String>>>,
+    warnings_tx: std::sync::mpsc::SyncSender<String>,
+    warnings_rx: std::sync::mpsc::Receiver<String>,
 }
 
 impl PromptMonitor {
@@ -88,11 +85,14 @@ impl PromptMonitor {
             ));
         }
 
+        let (warnings_tx, warnings_rx) = bounded_event_queue();
+
         Ok(Self {
             restoration_detected: Arc::new(AtomicBool::new(false)),
             stop_signal: Arc::new(AtomicBool::new(false)),
             monitor_thread: None,
-            warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
+            warnings_tx,
+            warnings_rx,
         })
     }
 
@@ -117,10 +117,10 @@ impl PromptMonitor {
 
         let restoration_flag = Arc::clone(&self.restoration_detected);
         let stop_signal = Arc::clone(&self.stop_signal);
-        let warnings = Arc::clone(&self.warnings);
+        let warnings = self.warnings_tx.clone();
 
         let handle = thread::spawn(move || {
-            Self::monitor_thread_main(&restoration_flag, &stop_signal, &warnings);
+            Self::monitor_thread_main(&restoration_flag, &stop_signal, warnings);
         });
 
         self.monitor_thread = Some(handle);
@@ -134,7 +134,7 @@ impl PromptMonitor {
     fn monitor_thread_main(
         restoration_detected: &Arc<AtomicBool>,
         stop_signal: &Arc<AtomicBool>,
-        warnings: &Arc<std::sync::Mutex<Vec<String>>>,
+        warnings: std::sync::mpsc::SyncSender<String>,
     ) {
         use notify::Watcher;
 
@@ -155,7 +155,7 @@ impl PromptMonitor {
             Ok(w) => w,
             Err(e) => {
                 push_warning(
-                    warnings,
+                    &warnings,
                     format!(
                         "Failed to create file system watcher: {e}. Falling back to periodic polling for PROMPT.md protection."
                     ),
@@ -169,7 +169,7 @@ impl PromptMonitor {
         // Watch the current directory for events
         if let Err(e) = watcher.watch(Path::new("."), notify::RecursiveMode::NonRecursive) {
             push_warning(
-                warnings,
+                &warnings,
                 format!(
                     "Failed to watch current directory: {e}. Falling back to periodic polling for PROMPT.md protection."
                 ),
@@ -308,7 +308,7 @@ impl PromptMonitor {
     /// Drain any warnings produced by the monitor thread.
     #[must_use]
     pub fn drain_warnings(&self) -> Vec<String> {
-        drain_warnings(&self.warnings)
+        drain_warnings(&self.warnings_rx)
     }
 
     /// Stop monitoring and cleanup resources.
@@ -345,7 +345,7 @@ impl PromptMonitor {
                         )
                     });
                 push_warning(
-                    &self.warnings,
+                    &self.warnings_tx,
                     format!("File monitoring thread panicked: {panic_msg}"),
                 );
             }
@@ -359,17 +359,12 @@ impl PromptMonitor {
 // Helper functions (boundary module - mutation and I/O permitted)
 // ============================================================================
 
-fn push_warning(warnings: &Arc<std::sync::Mutex<Vec<String>>>, warning: String) {
-    if let Ok(mut guard) = warnings.lock() {
-        guard.push(warning);
-    }
+fn push_warning(warnings: &std::sync::mpsc::SyncSender<String>, warning: String) {
+    let _ = warnings.try_send(warning);
 }
 
-fn drain_warnings(warnings: &Arc<std::sync::Mutex<Vec<String>>>) -> Vec<String> {
-    warnings
-        .lock()
-        .map(|guard| std::mem::take(&mut guard.clone()))
-        .unwrap_or_default()
+fn drain_warnings(warnings: &std::sync::mpsc::Receiver<String>) -> Vec<String> {
+    std::iter::from_fn(|| warnings.try_recv().ok()).collect()
 }
 
 fn read_backup_content_secure(path: &Path) -> Option<String> {
@@ -500,3 +495,25 @@ impl Drop for PromptMonitor {
 }
 
 // Tests are in tests/system_tests/file_protection/
+
+#[cfg(test)]
+mod tests {
+    use super::{drain_warnings, push_warning};
+
+    #[test]
+    fn drain_warnings_clears_buffer_after_read() {
+        let (warnings_tx, warnings_rx) = std::sync::mpsc::sync_channel::<String>(16);
+
+        push_warning(&warnings_tx, "first warning".to_string());
+        push_warning(&warnings_tx, "second warning".to_string());
+
+        let first_drain = drain_warnings(&warnings_rx);
+        assert_eq!(first_drain.len(), 2);
+
+        let second_drain = drain_warnings(&warnings_rx);
+        assert!(
+            second_drain.is_empty(),
+            "warnings should be cleared after drain"
+        );
+    }
+}

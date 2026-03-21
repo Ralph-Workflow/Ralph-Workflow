@@ -256,25 +256,14 @@ fn extract_opencode_text_part(json: &JsonValue) -> Option<&str> {
 /// `OpenCode` outputs JSONL with nested part structures. The result comes from:
 /// - `{"type": "text", "part": {"text": "..."}}`
 fn extract_opencode_result(content: &str) -> Option<String> {
-    let mut accumulated_text = String::new();
-
-    for line in content.lines() {
-        let line = line.trim();
-        if !line.starts_with('{') {
-            continue;
-        }
-
-        let Ok(json) = serde_json::from_str::<JsonValue>(line) else {
-            continue;
-        };
-
-        if let Some(text) = extract_opencode_text_part(&json) {
-            if !accumulated_text.is_empty() {
-                accumulated_text.push(' ');
-            }
-            accumulated_text.push_str(text.trim());
-        }
-    }
+    let accumulated_text = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with('{'))
+        .filter_map(|line| serde_json::from_str::<JsonValue>(line).ok())
+        .filter_map(|json| extract_opencode_text_part(&json).map(|text| text.trim().to_string()))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     // Apply thought process filtering to the accumulated text
     if accumulated_text.is_empty() {

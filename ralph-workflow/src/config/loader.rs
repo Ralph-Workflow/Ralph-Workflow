@@ -333,7 +333,7 @@ pub fn load_config_from_path_with_env(
             ConfigValidationError::InvalidValue {
                 file: PathBuf::from("<environment>"),
                 key: "cloud".to_string(),
-                message: e,
+                message: e.to_string(),
             },
         ]));
     }

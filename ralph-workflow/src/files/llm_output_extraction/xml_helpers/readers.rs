@@ -229,6 +229,17 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), Xsd
     Ok(())
 }
 
+fn merge_raw_content(raw_content: Option<String>, fragment: &str) -> Option<String> {
+    let trimmed_fragment = fragment.trim();
+    if trimmed_fragment.is_empty() {
+        return raw_content;
+    }
+
+    raw_content
+        .map(|existing| format!("{existing} {trimmed_fragment}"))
+        .or_else(|| Some(trimmed_fragment.to_string()))
+}
+
 /// Parse a `<skills-mcp>` element's content into a `SkillsMcp` struct.
 ///
 /// This function reads the content of a `<skills-mcp>` element, which may contain
@@ -251,7 +262,7 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
     let mut buf = Vec::new();
     let mut skills: Vec<SkillEntry> = Vec::new();
     let mut mcps: Vec<McpEntry> = Vec::new();
-    let mut raw_text_parts: Vec<String> = Vec::new();
+    let mut raw_content = None;
 
     loop {
         buf.clear();
@@ -302,16 +313,11 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
             Ok(Event::Text(e)) => {
                 // Capture any stray text as raw content
                 let text = e.unescape().unwrap_or_default().to_string();
-                let trimmed = text.trim().to_string();
-                if !trimmed.is_empty() {
-                    raw_text_parts.push(trimmed);
-                }
+                raw_content = merge_raw_content(raw_content, &text);
             }
             Ok(Event::CData(e)) => {
-                let text = String::from_utf8_lossy(&e).trim().to_string();
-                if !text.is_empty() {
-                    raw_text_parts.push(text);
-                }
+                let text = String::from_utf8_lossy(&e).to_string();
+                raw_content = merge_raw_content(raw_content, &text);
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"skills-mcp" => break,
             Ok(Event::Eof) => {
@@ -325,12 +331,6 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
             }
         }
     }
-
-    let raw_content = if raw_text_parts.is_empty() {
-        None
-    } else {
-        Some(raw_text_parts.join(" "))
-    };
 
     SkillsMcp {
         skills,
@@ -449,5 +449,20 @@ mod tests {
         // Should suggest CDATA for code-block element
         assert!(result.suggestion.contains("CDATA"));
         assert!(result.suggestion.contains("code-block"));
+    }
+
+    #[test]
+    fn test_merge_raw_content_skips_blank_fragments() {
+        let merged = merge_raw_content(None, "  ");
+        assert_eq!(merged, None);
+    }
+
+    #[test]
+    fn test_merge_raw_content_joins_fragments_with_spaces() {
+        let merged = merge_raw_content(None, "  first  ");
+        let merged = merge_raw_content(merged, "second");
+        let merged = merge_raw_content(merged, "  third  ");
+
+        assert_eq!(merged, Some("first second third".to_string()));
     }
 }

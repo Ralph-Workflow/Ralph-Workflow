@@ -338,9 +338,17 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
         .resolve_agent_drains_checked()
         .expect_err("missing built-in drains should fail");
 
-    assert!(error.contains("planning"));
-    assert!(error.contains("development"));
-    assert!(error.contains("analysis"));
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::MissingBuiltinCoverage { .. }
+        ),
+        "expected MissingBuiltinCoverage variant, got: {error}"
+    );
+    let msg = error.to_string();
+    assert!(msg.contains("planning"), "expected planning in: {msg}");
+    assert!(msg.contains("development"), "expected development in: {msg}");
+    assert!(msg.contains("analysis"), "expected analysis in: {msg}");
 }
 
 #[test]

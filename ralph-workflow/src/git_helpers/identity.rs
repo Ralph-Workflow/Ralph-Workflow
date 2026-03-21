@@ -24,6 +24,33 @@ use crate::ProcessExecutor;
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;
 
+
+/// Typed error for git identity validation.
+///
+/// Pure validation functions return `Result<(), IdentityValidationError>`.
+/// Callers that need a displayable message can use `.to_string()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentityValidationError {
+    /// Git user name is empty or whitespace-only.
+    EmptyName,
+    /// Git user email is empty or whitespace-only.
+    EmptyEmail,
+    /// Git user email does not match a valid format.
+    InvalidEmailFormat(String),
+}
+
+impl std::fmt::Display for IdentityValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyName => write!(f, "Git user name cannot be empty"),
+            Self::EmptyEmail => write!(f, "Git user email cannot be empty"),
+            Self::InvalidEmailFormat(email) => {
+                write!(f, "Invalid email format: '{email}'")
+            }
+        }
+    }
+}
+
 /// Git user identity information.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitIdentity {
@@ -44,35 +71,37 @@ impl GitIdentity {
     ///
     /// # Errors
     ///
-    /// Returns error if the operation fails.
-    pub fn validate(&self) -> Result<(), String> {
+    /// Returns [`IdentityValidationError`] if name or email is invalid.
+    pub fn validate(&self) -> Result<(), IdentityValidationError> {
         validate_git_identity_fields(&self.name, &self.email)
     }
 }
 
 /// Pure policy: validate git identity name and email fields.
-pub fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), String> {
+///
+/// # Errors
+///
+/// Returns [`IdentityValidationError`] if name or email is invalid.
+pub fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), IdentityValidationError> {
     if name.trim().is_empty() {
-        return Err("Git user name cannot be empty".to_string());
+        return Err(IdentityValidationError::EmptyName);
     }
     if email.trim().is_empty() {
-        return Err("Git user email cannot be empty".to_string());
+        return Err(IdentityValidationError::EmptyEmail);
     }
     let email = email.trim();
     if !email.contains('@') {
-        return Err(format!("Invalid email format: '{email}'"));
+        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
     }
     let parts: Vec<&str> = email.split('@').collect();
     if parts.len() != 2 {
-        return Err(format!("Invalid email format: '{email}'"));
+        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
     }
     if parts[0].trim().is_empty() {
-        return Err(format!(
-            "Invalid email format: '{email}' (missing local part)"
-        ));
+        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
     }
     if parts[1].trim().is_empty() || !parts[1].contains('.') {
-        return Err(format!("Invalid email format: '{email}' (invalid domain)"));
+        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
     }
     Ok(())
 }
@@ -151,10 +180,10 @@ trait ContainsErr {
 }
 
 #[cfg(test)]
-impl ContainsErr for Result<(), String> {
+impl ContainsErr for Result<(), IdentityValidationError> {
     fn contains_err(&self, needle: &str) -> bool {
         match self {
-            Err(e) => e.contains(needle),
+            Err(e) => e.to_string().contains(needle),
             _ => false,
         }
     }
@@ -233,5 +262,54 @@ mod tests {
         let identity = default_identity();
         assert_eq!(identity.name, "Ralph Workflow");
         assert_eq!(identity.email, "ralph@localhost");
+    }
+    // --- Typed error variant tests (TDD RED - will fail until IdentityValidationError is added) ---
+
+    #[test]
+    fn test_validate_empty_name_returns_empty_name_variant() {
+        let result = validate_git_identity_fields("", "test@example.com");
+        assert_eq!(result, Err(IdentityValidationError::EmptyName));
+    }
+
+    #[test]
+    fn test_validate_empty_email_returns_empty_email_variant() {
+        let result = validate_git_identity_fields("Test User", "");
+        assert_eq!(result, Err(IdentityValidationError::EmptyEmail));
+    }
+
+    #[test]
+    fn test_validate_email_no_at_returns_invalid_format_variant() {
+        let result = validate_git_identity_fields("Test User", "invalidemail");
+        assert!(
+            matches!(result, Err(IdentityValidationError::InvalidEmailFormat(_))),
+            "expected InvalidEmailFormat, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_email_no_domain_returns_invalid_format_variant() {
+        let result = validate_git_identity_fields("Test User", "user@");
+        assert!(
+            matches!(result, Err(IdentityValidationError::InvalidEmailFormat(_))),
+            "expected InvalidEmailFormat, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_identity_error_display_empty_name() {
+        let err = IdentityValidationError::EmptyName;
+        assert!(err.to_string().contains("name"));
+    }
+
+    #[test]
+    fn test_validate_identity_error_display_empty_email() {
+        let err = IdentityValidationError::EmptyEmail;
+        assert!(err.to_string().contains("email"));
+    }
+
+    #[test]
+    fn test_validate_identity_error_display_invalid_format() {
+        let err = IdentityValidationError::InvalidEmailFormat("bad@".to_string());
+        assert!(err.to_string().contains("bad@"));
     }
 }

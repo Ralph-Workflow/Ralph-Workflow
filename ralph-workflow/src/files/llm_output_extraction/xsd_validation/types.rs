@@ -46,19 +46,16 @@ impl CommitMessageElements {
         }
 
         // Otherwise, combine detailed elements
-        let mut parts = Vec::new();
-
-        if let Some(ref summary) = self.body_summary {
-            parts.push(summary.trim());
-        }
-
-        if let Some(ref details) = self.body_details {
-            parts.push(details.trim());
-        }
-
-        if let Some(ref footer) = self.body_footer {
-            parts.push(footer.trim());
-        }
+        let parts: Vec<&str> = [
+            self.body_summary.as_deref(),
+            self.body_details.as_deref(),
+            self.body_footer.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect();
 
         if parts.is_empty() {
             String::new()

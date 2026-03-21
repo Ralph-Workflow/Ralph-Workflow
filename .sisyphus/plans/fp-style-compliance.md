@@ -1012,7 +1012,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
 
 **Investigation groups** (check each group, fix genuine violations, document false positives):
 
-- [ ] **P5-parse-state** — vars like `buf`, `reader`, `text`, `content`, `inner_buf`,
+- [x] **P5-parse-state** — vars like `buf`, `reader`, `text`, `content`, `inner_buf`,
   `bare_content_xml`, `raw_text_parts`: If reading bytes from a `Read` trait — that is
   boundary code and `let mut buf` is legitimate there. If operating on an already-read
   `String`/`&str` — replace with `.lines()`, `.chars()`, `.split()`, `scan()`, `fold()`.
@@ -1039,7 +1039,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
     is in iterator/find_map value-transformation style with helper-closure fallback extraction
     and passing focused module tests.
 
-- [ ] **P5-accumulators** — vars like `result`, `output`, `summary`, `elements`, `parts`,
+- [x] **P5-accumulators** — vars like `result`, `output`, `summary`, `elements`, `parts`,
   `body`, `cells`, `collected`, `accumulated`, `content_fragments`: Almost always replaceable
   with `map`/`filter_map`/`flat_map`/`fold`/`collect` pipelines or `[a, b, c].into_iter()
   .filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n")` for multi-section assembly.
@@ -1060,7 +1060,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
     to thread queue/scan state through recursive value returns and composed queue-merge
     helper logic instead of in-loop mutable reassignment.
 
-- [ ] **P5-flags** — vars like `has_entries`, `found_root`, `in_tag`, `in_content`,
+- [x] **P5-flags** — vars like `has_entries`, `found_root`, `in_tag`, `in_content`,
   `no_issues_found`, `files_changed_present`: Replace scanning flags with `any()`, `all()`,
   `find()`, `find_map()`, or `position()`. A flag that records "did we see X in the loop"
   is always replaceable with `items.iter().any(|x| is_X(x))`.
@@ -1077,7 +1077,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
     to remove boolean `in_file` tracking in favor of value-encoded current-file state,
     with regression coverage for header-only trailing diff blocks.
 
-- [ ] **P5-builders** — vars like `config`, `handler`, `phase_ctx`, `opts`, `diff_opts`:
+- [x] **P5-builders** — vars like `config`, `handler`, `phase_ctx`, `opts`, `diff_opts`:
   Use `with_*` consuming builder pattern or struct-update syntax. Check if the type already
   has `with_*` methods; if not, add them per the pattern in
   `docs/code-style/functional-transformations.md` ("The with_* method pattern").
@@ -1094,7 +1094,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
     to use shared `configured_status_options()` builder construction instead of
     in-function repeated mutable status-options setup.
 
-- [ ] **P5-git** — vars like `git_helpers`, `index`, `perms`, `files`, `diff_opts`:
+- [x] **P5-git** — vars like `git_helpers`, `index`, `perms`, `files`, `diff_opts`:
   Many of these are in `git_helpers/` which is being comprehensively refactored in Phase 9.
   Coordinate with that phase — fix the architecture first, then the style follows.
   - [x] **P5-git-snapshot-options-slice** — Completed one atomic options cleanup in
@@ -1107,7 +1107,7 @@ GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually cleare
     `ralph-workflow/src/git_helpers/repo/commit.rs` by centralizing status-options
     construction while preserving git add staging semantics.
 
-- [ ] **P5-misc** — remaining `let mut` vars: investigate each individually. Document any
+- [x] **P5-misc** — remaining `let mut` vars: investigate each individually. Document any
   that are false positives with a comment explaining why.
   - [x] **P5-misc-git-cleanup-track-issues-accumulator** — Refactored
     `ralph-workflow/src/git_helpers/cleanup.rs::check_track_file_issues`
@@ -1150,7 +1150,7 @@ cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
 
 **Investigation tasks (execute during Phase 5 module-by-module pass):**
 
-- [ ] **P5-loops-for**: For each `for` loop encountered during Phase 5 module work — identify
+- [x] **P5-loops-for**: For each `for` loop encountered during Phase 5 module work — identify
   its purpose from the table above and apply the correct replacement.
   - [x] **P5-loops-for-ps-children-grouping** — Refactored
     `ralph-workflow/src/executor/ps.rs::build_children_lookup` from explicit
@@ -1161,10 +1161,10 @@ cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
     from explicit `for` loop into iterator `map` + `unzip` + `flatten` composition
     while preserving rendered-output and unsubstituted-variable ordering semantics.
 
-- [ ] **P5-loops-bare**: Each bare `loop` in domain code is almost certainly retry policy
+- [x] **P5-loops-bare**: Each bare `loop` in domain code is almost certainly retry policy
   (→ Phase 4 state machine) or a streaming I/O loop (→ boundary module). Classify and fix.
 
-- [ ] **P5-loops-while**: Each `while` is either:
+- [x] **P5-loops-while**: Each `while` is either:
   - `while condition { mutate }` → recursive step or `successors()`
   - `while let Some(x) = iter.next()` → `for x in iter` or combinator
   - `while bytes_read > 0` → streaming I/O (boundary)
@@ -1211,20 +1211,20 @@ and should be documented with a comment, not refactored away:
 
 #### Problematic Interior Mutability (MUST fix)
 
-- [ ] **P7-mutex** (~6 `Mutex` instances in domain code): If protecting shared data across
+- [x] **P7-mutex** (~6 `Mutex` instances in domain code): If protecting shared data across
   threads in domain code — the real question is why domain code involves threading. Threading
   is a runtime/boundary concern. Re-model as explicit state flowing through the reducer cycle.
   If `Mutex` wraps a resource needed for I/O (e.g., a connection pool), move it to the
   boundary module that owns that resource.
 
-- [ ] **P7-lazylock** (~4 `LazyLock` instances): 
+- [x] **P7-lazylock** (~4 `LazyLock` instances): 
   - Static data that is truly constant → `const` or `static` (no `LazyLock` needed)
   - Compiled regex that is domain knowledge → `OnceLock<Regex>` in the domain module is
     acceptable IF the regex is actually domain knowledge; WARN lint may fire but document
     with a comment explaining why this is correct
   - Runtime-derived singleton → inject as a parameter (Reader pattern)
 
-- [ ] **P7-cell** (~2 `Cell` instances): `Cell<T>` in domain code usually means a counter
+- [x] **P7-cell** (~2 `Cell` instances): `Cell<T>` in domain code usually means a counter
   or flag that is being threaded through callbacks. Replace by threading the value explicitly
   through function return values.
 
@@ -1266,7 +1266,7 @@ if let Err(e) = result {
 }
 ```
 
-- [ ] **P8-swallow**: For every silent result discard — decide: should this failure propagate
+- [x] **P8-swallow**: For every silent result discard — decide: should this failure propagate
   to the caller? Almost always yes. Add `?` propagation and a typed error variant.
 
 **Note: Phase 8 / Phase 9 overlap.** 190 of the result swallowing matches are in
@@ -1290,14 +1290,14 @@ Returns `0`.
 `git_helpers/config_state.rs` has ~85 `.unwrap()` calls. This module mixes pure git state
 interpretation with effectful git operations, using panic-driven control flow throughout.
 
-- [ ] **P9-audit**: Map every function in `ralph-workflow/src/git_helpers/` as either:
+- [x] **P9-audit**: Map every function in `ralph-workflow/src/git_helpers/` as either:
   - Pure: parsing git status strings, building `CommandSpec` structs, interpreting diff
     output, classifying commit messages — these accept `&str` or structured data
   - Effectful: running `git` processes, reading `.git/` directory, writing refs
 
   Record findings in `.sisyphus/notepads/fp-style-compliance/learnings.md`.
 
-- [ ] **P9-split**: Reorganise the module using **facade preservation strategy**:
+- [x] **P9-split**: Reorganise the module using **facade preservation strategy**:
 
   **CRITICAL:** `git_helpers` is imported in **48 files with 225 matches** across the crate.
   A hard API rename (e.g., `git_helpers::foo` → `git_helpers::domain::foo`) would force
@@ -1322,7 +1322,7 @@ interpretation with effectful git operations, using panic-driven control flow th
   **Only change public import paths AFTER** the internal split is stable and all phases
   are complete. Change one workflow at a time during a follow-up task, not a global rename.
 
-- [ ] **P9-errors**: Create a `GitError` enum:
+- [x] **P9-errors**: Create a `GitError` enum:
   ```rust
   #[derive(Debug, Clone, PartialEq, Eq)]
   pub enum GitError {
@@ -1336,7 +1336,7 @@ interpretation with effectful git operations, using panic-driven control flow th
   Replace every `.unwrap()` in boundary functions with `map_err(GitError::from)` or
   explicit match arms.
 
-- [ ] **P9-tests**: Write unit tests for EVERY pure git_helpers function BEFORE refactoring
+- [x] **P9-tests**: Write unit tests for EVERY pure git_helpers function BEFORE refactoring
   (red-first TDD). Pure git parsers accept `&str` input — no subprocess, no git repository
   needed:
   ```rust
@@ -1360,7 +1360,7 @@ previously pure-but-panicky now returns `Result<T, GitError>` and has a passing 
 typed error enums using primitive payloads. It does NOT need the newtypes from Phase 11 —
 those come next. After Phase 11 introduces strong types, Phase 10B enriches error payloads.
 
-- [ ] **P10-unwrap-domain**: Audit all `.unwrap()` in non-test, non-boundary domain code.
+- [x] **P10-unwrap-domain**: Audit all `.unwrap()` in non-test, non-boundary domain code.
   
   **Find:** 
   ```bash
@@ -1376,7 +1376,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
   - Has a code comment explaining the invariant that guarantees it cannot fail, e.g.:
     `// SAFETY: split_once is called only when line.contains(':'), so this always succeeds`
 
-- [ ] **P10-panic-domain**: Audit `panic!` in non-boundary, non-test, non-xtask domain code.
+- [x] **P10-panic-domain**: Audit `panic!` in non-boundary, non-test, non-xtask domain code.
   ```bash
   rg 'panic!' ralph-workflow/src/ --glob '*.rs' \
     --glob '!*test*' --glob '!*/io/*' --glob '!*/runtime/*' --glob '!*/boundary/*'

@@ -1,5 +1,5 @@
+use crate::git_helpers::domain::parse as domain_parse;
 use crate::git_helpers::git2_to_io_error;
-use itertools::Itertools;
 use std::path::Path;
 
 /// Get a snapshot of the current git status.
@@ -37,148 +37,20 @@ pub fn git_snapshot_in_repo(repo_root: &Path) -> std::io::Result<String> {
 /// extraction can pollute carry-forward state.
 #[must_use]
 pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
-    snapshot
-        .lines()
-        .filter_map(parse_status_line)
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .sorted()
-        .collect()
+    domain_parse::parse_git_status_paths(snapshot)
 }
 
-fn unquote_c_style(s: &str) -> Option<String> {
-    let bytes = s.as_bytes();
-    if bytes.len() < 2 || bytes[0] != b'"' || bytes[bytes.len() - 1] != b'"' {
-        return None;
-    }
-    let inner = &bytes[1..bytes.len() - 1];
-    let mut result = Vec::with_capacity(inner.len());
-    let mut i = 0;
-
-    while i < inner.len() {
-        let b = inner[i];
-        if b != b'\\' {
-            result.push(b);
-            i += 1;
-            continue;
-        }
-
-        if i + 1 >= inner.len() {
-            result.push(b'\\');
-            break;
-        }
-
-        let next = inner[i + 1];
-        match next {
-            b'\\' => {
-                result.push(b'\\');
-                i += 2;
-            }
-            b'"' => {
-                result.push(b'"');
-                i += 2;
-            }
-            b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
-                result.push(b'\\');
-                result.push(next);
-                i += 2;
-            }
-            b'0'..=b'7' => {
-                let start = i + 1;
-                let mut consumed = 0;
-                let mut octal_val = 0u32;
-                while consumed < 3 && start + consumed < inner.len() {
-                    let digit = inner[start + consumed];
-                    if !(b'0'..=b'7').contains(&digit) {
-                        break;
-                    }
-                    octal_val = (octal_val * 8) + u32::from(digit - b'0');
-                    consumed += 1;
-                }
-
-                if consumed > 0 {
-                    if let Ok(byte) = u8::try_from(octal_val) {
-                        if byte < 0x20 || byte == 0x7F {
-                            result.push(b'\\');
-                            result.extend_from_slice(&inner[start..start + consumed]);
-                        } else {
-                            result.push(byte);
-                        }
-                    } else {
-                        result.push(b'\\');
-                        result.extend_from_slice(&inner[start..start + consumed]);
-                    }
-                    i = start + consumed;
-                } else {
-                    result.push(b'\\');
-                    i += 1;
-                }
-            }
-            _ => {
-                result.push(b'\\');
-                result.push(next);
-                i += 2;
-            }
-        }
-    }
-
-    String::from_utf8(result).ok()
-}
-
-fn parse_status_line(line: &str) -> Option<String> {
-    let bytes = line.as_bytes();
-    if bytes.len() < 4 {
-        return None;
-    }
-    if bytes[2] != b' ' {
-        return None;
-    }
-    let x = bytes[0] as char;
-    let y = bytes[1] as char;
-    let path_spec = line[3..].trim_end();
-    if path_spec.is_empty() {
-        return None;
-    }
-
-    let path_spec = if x == 'R' || y == 'R' || x == 'C' || y == 'C' {
-        path_spec
-            .rsplit_once(" -> ")
-            .map_or(path_spec, |(_, new_part)| new_part.trim_end())
-    } else {
-        path_spec
-    };
-
-    let parsed = parse_path_component(path_spec);
-    if parsed.is_empty() {
-        return None;
-    }
-
-    Some(parsed)
-}
-
-fn parse_path_component(raw: &str) -> String {
-    let raw = raw.trim_end();
-    unquote_c_style(raw).unwrap_or_else(|| raw.to_string())
-}
 
 /// Implementation of git snapshot.
 fn git_snapshot_impl(repo: &git2::Repository) -> std::io::Result<String> {
     let statuses = {
-        let mut opts = configured_status_options();
+        let mut opts = domain_parse::configured_status_options();
         repo.statuses(Some(&mut opts))
             .map_err(|e| git2_to_io_error(&e))?
     };
 
     let lines = collect_status_lines(statuses)?;
     Ok(lines.into_iter().collect())
-}
-
-fn configured_status_options() -> git2::StatusOptions {
-    let mut opts = git2::StatusOptions::new();
-    opts.include_untracked(true)
-        .recurse_untracked_dirs(true)
-        .include_ignored(false);
-    opts
 }
 
 fn collect_status_lines(statuses: git2::Statuses) -> std::io::Result<Vec<String>> {
@@ -197,58 +69,8 @@ fn status_entry_to_porcelain(entry: &git2::StatusEntry) -> std::io::Result<Strin
         )
     })?;
     let path = path.to_string();
-    validate_path_for_snapshot(&path)?;
-    Ok(format_status_porcelain(status, &path))
-}
-
-fn validate_path_for_snapshot(path: &str) -> std::io::Result<()> {
-    if path.bytes().any(|b| b < 0x20 || b == 0x7F) {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "control characters in path encountered in git status; cannot safely snapshot",
-        ));
-    }
-    Ok(())
-}
-
-fn format_status_porcelain(status: git2::Status, path: &str) -> String {
-    if status.contains(git2::Status::WT_NEW) {
-        return format!("?? {path}\n");
-    }
-
-    let index_status = compute_index_status(status);
-    let wt_status = compute_wt_status(status);
-    format!("{index_status}{wt_status} {path}\n")
-}
-
-fn compute_index_status(status: git2::Status) -> char {
-    if status.contains(git2::Status::INDEX_NEW) {
-        'A'
-    } else if status.contains(git2::Status::INDEX_MODIFIED) {
-        'M'
-    } else if status.contains(git2::Status::INDEX_DELETED) {
-        'D'
-    } else if status.contains(git2::Status::INDEX_RENAMED) {
-        'R'
-    } else if status.contains(git2::Status::INDEX_TYPECHANGE) {
-        'T'
-    } else {
-        ' '
-    }
-}
-
-fn compute_wt_status(status: git2::Status) -> char {
-    if status.contains(git2::Status::WT_MODIFIED) {
-        'M'
-    } else if status.contains(git2::Status::WT_DELETED) {
-        'D'
-    } else if status.contains(git2::Status::WT_RENAMED) {
-        'R'
-    } else if status.contains(git2::Status::WT_TYPECHANGE) {
-        'T'
-    } else {
-        ' '
-    }
+    domain_parse::validate_path_for_snapshot(&path).map_err(std::io::Error::from)?;
+    Ok(domain_parse::format_status_porcelain(status, &path))
 }
 
 #[cfg(test)]

@@ -336,14 +336,63 @@ fn test_validate_agent_chains_rejects_non_workflow_capable_commit_drain() {
     let registry = registry.apply_unified_config(&unified).unwrap();
 
     let err = registry.validate_agent_chains(TEST_SOURCES).unwrap_err();
+    let err_msg = err.to_string();
     assert!(
-        err.contains("commit"),
-        "error should mention the commit drain: {err}"
+        err_msg.contains("commit"),
+        "error should mention the commit drain: {err_msg}"
     );
     assert!(
-        err.contains("can_commit=false"),
-        "error should explain the workflow-capability requirement: {err}"
+        err_msg.contains("can_commit=false"),
+        "error should explain the workflow-capability requirement: {err_msg}"
     );
+}
+
+#[test]
+fn test_validate_agent_chains_returns_typed_error_for_non_workflow_capable_drain() {
+    let registry = AgentRegistry::new().unwrap().register(
+        "chat-only",
+        AgentConfig {
+            cmd: "echo chat-only".to_string(),
+            output_flag: String::new(),
+            yolo_flag: String::new(),
+            verbose_flag: String::new(),
+            can_commit: false,
+            json_parser: JsonParserType::Generic,
+            model_flag: None,
+            print_flag: String::new(),
+            streaming_flag: String::new(),
+            session_flag: String::new(),
+            env_vars: std::collections::HashMap::new(),
+            display_name: None,
+        },
+    );
+
+    let toml_str = r#"
+        [agent_chains]
+        shared_dev = ["codex"]
+        shared_review = ["claude"]
+        chat_commit = ["chat-only"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        review = "shared_review"
+        fix = "shared_review"
+        commit = "chat_commit"
+        analysis = "shared_dev"
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+
+    let registry = registry.apply_unified_config(&unified).unwrap();
+
+    let err = registry
+        .validate_agent_chains(TEST_SOURCES)
+        .expect_err("chat-only commit drain should fail with typed error");
+
+    assert!(matches!(
+        err,
+        AgentChainValidationError::NoWorkflowCapableAgents { .. }
+    ));
 }
 
 #[test]
