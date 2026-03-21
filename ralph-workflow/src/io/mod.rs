@@ -20,4 +20,5 @@
 //!
 //! This is a boundary module - mutation and I/O are allowed here.
 
+pub mod http_fetch;
 pub mod terminal;

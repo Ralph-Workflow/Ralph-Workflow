@@ -88,7 +88,6 @@ mod config;
 mod error;
 pub mod fallback;
 pub mod invoke;
-pub mod network;
 pub mod opencode_api;
 mod opencode_resolver;
 pub mod parser;
@@ -105,7 +104,6 @@ use std::time::Duration;
 pub use cache_environment::{CacheEnvironment, RealCacheEnvironment};
 pub use ccs_env::{CcsEnvironment, CcsFilesystem};
 pub use ccs_env::{RealCcsEnvironment, RealCcsFilesystem};
-pub use network::fetch_api_catalog_json;
 pub fn production_timer() -> Arc<dyn RetryTimerProviderDebug> {
     Arc::new(ProductionRetryTimer)
 }

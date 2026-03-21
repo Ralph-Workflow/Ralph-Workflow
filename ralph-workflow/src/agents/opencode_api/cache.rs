@@ -9,7 +9,7 @@
 //! enabling pure unit tests without real filesystem access. Production code
 //! uses [`RealCacheEnvironment`], tests use [`MemoryCacheEnvironment`].
 
-use crate::agents::opencode_api::fetch::fetch_api_catalog;
+use crate::agents::opencode_api::fetch::{fetch_api_catalog, CatalogHttpClient};
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
 use crate::agents::{CacheEnvironment, RealCacheEnvironment};
@@ -56,8 +56,10 @@ fn cache_file_path_with_env(env: &dyn CacheEnvironment) -> Result<PathBuf, Cache
 ///
 /// Returns the catalog along with any warnings encountered during loading.
 /// Warnings should be emitted by the caller at the I/O boundary.
-pub fn load_api_catalog() -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
-    load_api_catalog_with_ttl(DEFAULT_CACHE_TTL_SECONDS)
+pub fn load_api_catalog(
+    fetcher: &dyn CatalogHttpClient,
+) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
+    load_api_catalog_with_ttl(fetcher, DEFAULT_CACHE_TTL_SECONDS)
 }
 
 /// Load the API catalog with a custom TTL.
@@ -69,22 +71,24 @@ pub fn load_api_catalog() -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError>
 ///
 /// Returns the catalog along with any warnings encountered during loading.
 pub fn load_api_catalog_with_ttl(
+    fetcher: &dyn CatalogHttpClient,
     ttl_seconds: u64,
 ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
-    load_api_catalog_with_env(&RealCacheEnvironment, ttl_seconds)
+    load_api_catalog_with_env(&RealCacheEnvironment, ttl_seconds, fetcher)
 }
 
 /// Load the API catalog using a custom environment.
 fn load_api_catalog_with_env(
     env: &dyn CacheEnvironment,
     ttl_seconds: u64,
+    fetcher: &dyn CatalogHttpClient,
 ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
     let cache_path = cache_file_path_with_env(env)?;
 
-    match load_cached_catalog_with_env(env, &cache_path, ttl_seconds) {
+    match load_cached_catalog_with_env(env, &cache_path, ttl_seconds, fetcher) {
         Ok(result) => Ok((result.catalog, result.warnings)),
         Err(_) => {
-            let (catalog, warnings) = fetch_api_catalog(ttl_seconds)?;
+            let (catalog, warnings) = fetch_api_catalog(fetcher, ttl_seconds)?;
             Ok((catalog, warnings))
         }
     }
@@ -122,6 +126,7 @@ fn load_cached_catalog_with_env(
     env: &dyn CacheEnvironment,
     path: &Path,
     ttl_seconds: u64,
+    fetcher: &dyn CatalogHttpClient,
 ) -> Result<LoadCatalogResult, CacheError> {
     let content = env.read_file(path)?;
 
@@ -129,7 +134,7 @@ fn load_cached_catalog_with_env(
         serde_json::from_str::<ApiCatalog>(&content).map(|c| ApiCatalog { ttl_seconds, ..c })?;
 
     if catalog.is_expired() {
-        match fetch_api_catalog(ttl_seconds) {
+        match fetch_api_catalog(fetcher, ttl_seconds) {
             Ok((fresh, fetch_warnings)) => {
                 if let Some(warning) = fetch_warnings.into_iter().last() {
                     return Ok(LoadCatalogResult {

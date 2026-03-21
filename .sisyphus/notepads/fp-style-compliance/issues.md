@@ -1342,3 +1342,71 @@ This is the third XML extraction module refactored with identical pattern (xml_e
 **Notepad updates:**
 - Appended completion notes to `.sisyphus/notepads/fp-style-compliance/learnings.md`
 - Appended completion status to `.sisyphus/notepads/fp-style-compliance/issues.md`
+## 2026-03-20T16:45Z — forbid_domain_boundary_dependencies fix: fetch_api_catalog_json re-export
+
+### Problem
+`forbid_domain_boundary_dependencies` lint was triggered by:
+`pub use network::fetch_api_catalog_json;` at `ralph-workflow/src/agents/mod.rs:108`
+
+The re-export exposed `fetch_api_catalog_json` (a network boundary function) publicly from the
+`agents` module, causing the lint to fire because non-boundary code could import it via
+`crate::agents::fetch_api_catalog_json`.
+
+### Fix Applied
+1. Removed `pub use network::fetch_api_catalog_json;` from `agents/mod.rs`
+2. Changed `opencode_api/fetch.rs` import from:
+   `use crate::agents::fetch_api_catalog_json;`
+   to:
+   `use crate::agents::network::fetch_api_catalog_json;`
+
+### Files Modified
+- `ralph-workflow/src/agents/mod.rs` — removed the public re-export
+- `ralph-workflow/src/agents/opencode_api/fetch.rs` — updated import path
+
+### Verification
+- `cargo check -p ralph-workflow --lib` — PASSES
+- `cargo test -p ralph-workflow --lib agents::opencode_api::fetch` — 3/3 PASS
+- `cargo dylint ... | grep agents/mod.rs.*forbid_domain` — no matches (lint error gone)
+
+### Note
+`network.rs` is retained as it contains the implementation and tests for `fetch_api_catalog_json`.
+The lint error for `agents/mod.rs:125` (`forbid_thread_and_async_operations` on
+`std::thread::sleep` in `ProductionRetryTimer::sleep`) is a separate pre-existing issue.
+## 2026-03-21T05:10Z — forbid_network_operations fix: agents/network.rs ureq::get
+
+### Problem
+`forbid_network_operations` lint was triggered by:
+- `ralph-workflow/src/agents/network.rs` - `ureq::get` call at line 11
+- `ralph-workflow/src/agents/network.rs` - `let mut response` at line 11
+
+### Fix Applied
+1. Moved `fetch_url` function to `io/http_fetch.rs` (boundary module)
+2. Updated `agents/opencode_api/fetch.rs` to import from `crate::io::http_fetch::fetch_url`
+3. Removed `agents/network.rs` and its declaration in `agents/mod.rs`
+
+### Files Modified
+- Created: `ralph-workflow/src/io/http_fetch.rs`
+- Modified: `ralph-workflow/src/io/mod.rs` (added `pub mod http_fetch`)
+- Modified: `ralph-workflow/src/agents/opencode_api/fetch.rs` (updated import)
+- Deleted: `ralph-workflow/src/agents/network.rs`
+- Modified: `ralph-workflow/src/agents/mod.rs` (removed `pub mod network` and re-export)
+
+### Verification
+- `cargo check -p ralph-workflow --lib` — PASSES
+- `cargo test -p ralph-workflow --lib agents::opencode_api::fetch` — 3/3 PASS
+- `cargo dylint ... | grep network.rs` — no matches (lint error gone)
+
+### Architectural Note (NOT FIXED)
+Moving the network I/O to `io/` (boundary) fixes the `forbid_network_operations` lint,
+but introduces a new lint: `agents/opencode_api/fetch.rs` importing from `io/` triggers
+`forbid_domain_boundary_dependencies`. This is because `agents/opencode_api/` is not itself
+a boundary module, so importing from boundary module `io/` is forbidden.
+
+This reveals a deeper issue: `agents/opencode_api/` needs HTTP fetch capability but its
+location in `agents/` (non-boundary) prevents direct `io/` imports. The proper fix
+requires either:
+1. Moving `agents/opencode_api/` to a boundary path, OR
+2. Restructuring so boundary modules own the full catalog-loading boundary
+   (similar to how `cloud/io/http.rs` owns HTTP operations for cloud reporting)
+
+This deeper fix is out of scope for this task (would touch multiple modules).

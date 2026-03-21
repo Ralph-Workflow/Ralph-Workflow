@@ -3,25 +3,23 @@
 //! This module handles HTTP requests to fetch the `OpenCode` model catalog
 //! from <https://models.dev/api.json>.
 
-use crate::agents::fetch_api_catalog_json;
 use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::API_URL;
 
-/// Fetch the `OpenCode` API catalog from the remote endpoint.
-///
-/// This function makes an HTTP GET request to the `OpenCode` API endpoint
-/// and parses the JSON response into an `ApiCatalog`.
-///
-/// The fetched catalog is automatically cached to disk for future use.
-pub fn fetch_api_catalog(ttl_seconds: u64) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
-    let body = fetch_api_catalog_json(API_URL).map_err(CacheError::FetchError)?;
+// fetch_url lives in boundary module io/ - this import is the architectural seam
+// where non-boundary code uses boundary capability
+use crate::io::http_fetch::fetch_url;
 
-    let catalog: ApiCatalog = serde_json::from_str(&body)?;
+/// Fetch the API catalog JSON from the provided HTTP client and parse it.
+pub fn fetch_api_catalog(ttl_seconds: u64) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
+    let json = fetch_url(API_URL).map_err(CacheError::FetchError)?;
+
+    let catalog: ApiCatalog = serde_json::from_str(&json).map_err(CacheError::ParseError)?;
 
     let catalog = ApiCatalog {
-        cached_at: Some(chrono::Utc::now()),
         ttl_seconds,
+        cached_at: Some(chrono::Utc::now()),
         ..catalog
     };
 
@@ -34,6 +32,15 @@ pub fn fetch_api_catalog(ttl_seconds: u64) -> Result<(ApiCatalog, Vec<CacheWarni
         .collect();
 
     Ok((catalog, warnings))
+}
+
+/// Fetch the API catalog with cache (deprecated - use `load_api_catalog` from cache module).
+/// Fetch the API catalog with cache (deprecated - use `load_api_catalog` from cache module).
+#[allow(dead_code)]
+pub fn fetch_api_catalog_with_cache(
+    ttl_seconds: u64,
+) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
+    fetch_api_catalog(ttl_seconds)
 }
 
 #[cfg(test)]

@@ -118,6 +118,7 @@ mod cloud;
 mod commit;
 mod context;
 mod development;
+mod development_prompt;
 mod io_agent;
 mod io_cloud;
 mod lifecycle;

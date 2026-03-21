@@ -1308,3 +1308,154 @@ content
 
 ### Note
 - Replaced the `collect_config_entries` `while let` accumulation with `entries.map(...).collect()` so the same (name, value) output and git2 error mapping stay intact while satisfying the P5 iterator guidance.
+
+## 2026-03-20 - agents/network boundary relocation
+
+- Moved fetch_api_catalog_json from agents/network.rs into agents/boundary/network.rs and re-exported it from agents/mod.rs to keep call-site API unchanged while satisfying network-I/O boundary lint rules.
+- Keeping the public entry point as crate::agents::fetch_api_catalog_json avoids new boundary-path imports in agents/opencode_api and preserves existing success/error behavior covered by the same tests.
+
+## 2026-03-20T— development.rs split plan (file_too_long reduction)
+
+### Current State
+- development.rs: 1011 lines (exceeds 1000 line deny threshold)
+- dylint hard error requires reduction below 1000 lines
+
+### File Structure Analysis
+
+| Lines | Content |
+|-------|---------|
+| 1-24 | Imports |
+| 25-97 | impl MainEffectHandler block 1 (4 public methods: prepare_development_context, invoke_development_agent, archive_development_xml, apply_development_outcome) |
+| 98-121 | Standalone function: write_continuation_context_to_workspace |
+| 123-250 | impl MainEffectHandler block 2 (materialize_development_inputs) |
+| 252-261 | More imports (prompt-related) |
+| 262-356 | prepare_development_prompt (dispatcher, 95 lines) |
+| 358-426 | prompt_mode_continuation (69 lines) |
+| 428-601 | prompt_mode_xsd_retry (174 lines) |
+| 602-758 | prompt_mode_same_agent_retry (157 lines) |
+| 759-913 | prompt_mode_normal (155 lines) |
+| 915-916 | CONST: DEVELOPMENT_XSD_ERROR_PATH |
+| 918-1011 | impl MainEffectHandler block 4 (extract_development_xml, validate_development_xml) |
+
+### Extraction Candidate: development_prompt.rs
+
+**Rationale:** The 4 prompt_mode_* helper functions are tightly related to prompt preparation and are only called from prepare_development_prompt. Extracting them to a flat boundary file development_prompt.rs maintains the flat boundary architecture and follows the established pattern from review boundary (run_review.rs + run_review_prompt.rs).
+
+**Functions to extract (555 lines total):**
+1. prompt_mode_continuation (69 lines) - lines 358-426
+2. prompt_mode_xsd_retry (174 lines) - lines 428-601
+3. prompt_mode_same_agent_retry (157 lines) - lines 602-758
+4. prompt_mode_normal (155 lines) - lines 759-913
+
+**Result after extraction:**
+- development.rs: ~456 lines (well below 1000)
+- development_prompt.rs: ~555 lines (new file)
+
+### Module Declaration
+
+Add to reducer/boundary/mod.rs:
+  mod development_prompt;
+
+### Verification Commands
+
+1. Check development.rs line count after split:
+   wc -l ralph-workflow/src/reducer/boundary/development.rs
+   Expected: < 1000
+
+2. Verify compilation:
+   cargo check -p ralph-workflow --lib 2>&1 | grep -E error
+   Expected: no errors related to development files
+
+3. Run dylint check for file_too_long:
+   cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep development
+   Expected: no file_too_long hits
+
+4. Verify integration tests still pass:
+   cargo test -p ralph-workflow-tests --test integration_tests -- development
+   Expected: all tests pass
+
+## 2026-03-20T23:59:00Z — P5-parse-state quick_xml API constraint analysis
+
+### Task: Identify smallest executable next slice for P5-parse-state
+
+**Investigation method:**
+1. Grepped `let mut (buf|reader|text|content|raw_text_parts)` across `ralph-workflow/src`
+2. Filtered to domain code (excluded boundary/io/executor/runtime/checkpoint/test files)
+3. Ran `cargo dylint` to get file:line violations
+4. Inspected each candidate function for FP refactoring opportunity
+
+### Key Finding: quick_xml buffer API constraint
+
+The majority of P5-parse-state violations (~60+ in xsd_validation files) use `quick_xml`'s event-based parsing API:
+
+```rust
+// Pattern in ALL xsd_validation violations:
+let mut buf = Vec::new();
+loop {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Start(e)) => { /* ... */ }
+        Ok(Event::End(e)) => { /* ... */ }
+        Ok(_) => {}
+        Err(e) => return Err(...),
+    }
+    buf.clear();  // ← API-mandated buffer reuse
+}
+```
+
+The `buf.clear()` is **required by quick_xml's API** - `read_event_into` borrows `&mut buf` to read into, and the caller must clear it for the next event. This is NOT mutable parse state that can be eliminated with `.lines()`, `.split()`, `.scan()`, or `.fold()` - those operate on `String`/`&str`, not XML event streams.
+
+### Violation classification
+
+| Category | Count | Example | FP Refactorable? |
+|----------|-------|---------|------------------|
+| Boundary/I/O (legitimate) | ~15 | `compression.rs`, `monitoring.rs`, `io_streaming.rs` | N/A - boundary |
+| quick_xml buffer API (false positive) | ~60 | `read_text_until_end`, `skip_to_end`, `parse_skills_mcp` in xsd_validation files | NO - API constraint |
+| NDJSON/string scanning (already done) | 4 | `try_extract_from_json_string` in xml_extraction_* | N/A - completed |
+
+### The only potentially refactorable candidates
+
+1. **`let mut text`** in `read_text_until_end` (readers.rs:76)
+   - `String` accumulator for XML text content
+   - Could use `.fold()` but same loop context
+   
+2. **`let mut raw_text_parts`** in `parse_skills_mcp` (readers.rs:254)
+   - `Vec<String>` accumulator for stray text between elements
+   - Could use `.fold()` but same loop context
+
+### Why even these are constrained
+
+Even if we refactor `text` to use `.fold()`:
+```rust
+// Hypothetical fold-based approach
+let text = events.map(|e| match e {
+    Ok(Event::Text(t)) => t.unescape().unwrap_or_default(),
+    _ => String::new(),
+}).collect::<String>();
+```
+
+The problem is `reader.read_event_into(&mut buf)` still requires `&mut self` and `&mut buf`, and `buf.clear()` is still called between iterations. The FP violation is in the loop structure, not in the accumulator choice.
+
+### Conclusion
+
+**P5-parse-state violations in xsd_validation files are false positives** - they represent fundamental API constraints of quick_xml's event-based parsing, not mutable parse state that can be eliminated with FP transformations.
+
+**Recommended action:**
+1. Document these as false positives in P5-parse-state
+2. Do NOT move to boundary modules (explicitly forbidden)
+3. The remaining P5-parse-state work should focus on OTHER violation categories (P5-accumulators, P5-flags, P5-builders, P5-git, P5-misc) which have genuine refactoring opportunities
+
+### Verification commands for P5-parse-state:
+```bash
+# Find all let mut parse-state violations
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep "let mut.*is forbidden" | grep -v "buffer\|checkpoint\|monitoring\|io_"
+
+# Count domain violations (should be ~60 quick_xml false positives)
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep "let mut.*is forbidden" | wc -l
+```
+
+## 2026-03-21T03:38:20Z — development prompt helper extraction
+
+- Extracted prompt-mode orchestration and mode-specific helper impls from `reducer/boundary/development.rs` into new flat sibling `reducer/boundary/development_prompt.rs` (`prepare_development_prompt`, `prompt_mode_continuation`, `prompt_mode_xsd_retry`, `prompt_mode_same_agent_retry`, `prompt_mode_normal`).
+- Kept boundary shape unchanged (effectful entrypoint stays in `impl MainEffectHandler`, no nested boundary directories) and wired module via `reducer/boundary/mod.rs` with `mod development_prompt;`.
+- Verification in this slice: `cargo check -p ralph-workflow --lib` passed; focused regression test `cargo test -p ralph-workflow --lib development_prompt::continuation_prompt::test_prepare_development_prompt_same_agent_retry_uses_previous_prepared_prompt` passed before and after extraction; required selector `cargo test -p ralph-workflow --lib reducer::boundary::development` executed (0 matched tests).
+- Current blocker remains pre-existing repo-wide dylint debt: `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` fails with many unrelated existing violations outside this extraction slice.
