@@ -104,11 +104,10 @@ where
 
     let captured_entry = after_prompt_capture(&replay);
 
-    if let Some(entry) = captured_entry {
-        prompt_history_cell.borrow_mut().insert(entry.0, entry.1);
-    }
-
-    let prompt_history = prompt_history_cell.into_inner();
+    let prompt_history: std::collections::HashMap<_, _> = {
+        let base_history = prompt_history_cell.into_inner();
+        base_history.into_iter().chain(captured_entry).collect()
+    };
 
     let resolved = match run_ai_conflict_resolution(&resolution_prompt, ctx) {
         Ok(ConflictResolutionResult::FileEditsOnly) => handle_file_edits_resolution(ctx.logger)?,

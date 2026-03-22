@@ -9,8 +9,8 @@ mod tests {
         build_mixed_content_reconstruction, build_tool_use_reconstruction,
         compute_content_hash_from_accumulated, compute_hash, extract_delta_from_snapshot,
         is_duplicate_text_content, is_likely_snapshot, merge_delta, snapshot_threshold,
-        snapshot_threshold_from_env_fn, sorted_content_keys, ContentType, StreamingSession,
-        DEFAULT_SNAPSHOT_THRESHOLD,
+        snapshot_threshold_from_env_fn, sorted_content_keys, ContentType, SnapshotDeltaError,
+        StreamingSession, DEFAULT_SNAPSHOT_THRESHOLD,
     };
 
     // Tests for StreamingSession lifecycle and content tracking

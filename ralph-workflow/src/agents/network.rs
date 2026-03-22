@@ -1,6 +1,41 @@
-use std::time::Duration;
+use std::{io, time::Duration};
 
-pub fn fetch_api_catalog_json(url: &str) -> Result<String, String> {
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CatalogFetchError {
+    #[error("request failed: {0}")]
+    Request(#[from] ureq::Error),
+    #[error("failed to read catalog body: {0}")]
+    ReadBody(#[from] io::Error),
+    #[error("{message}")]
+    HttpStatus {
+        status: u16,
+        body: Option<String>,
+        message: String,
+    },
+}
+
+impl CatalogFetchError {
+    fn http_status(status: u16, body: String) -> Self {
+        let body_for_message = body.clone();
+        let message = if body.is_empty() {
+            format!("status {}", status)
+        } else {
+            format!("status {}: {}", status, body_for_message)
+        };
+
+        let body = if body.is_empty() { None } else { Some(body) };
+
+        CatalogFetchError::HttpStatus {
+            status,
+            body,
+            message,
+        }
+    }
+}
+
+pub fn fetch_api_catalog_json(url: &str) -> Result<String, CatalogFetchError> {
     let agent = ureq::Agent::new_with_config(
         ureq::config::Config::builder()
             .timeout_global(Some(Duration::from_secs(10)))
@@ -8,23 +43,16 @@ pub fn fetch_api_catalog_json(url: &str) -> Result<String, String> {
             .build(),
     );
 
-    let mut response = agent
-        .get(url)
-        .call()
-        .map_err(|e: ureq::Error| e.to_string())?;
+    let mut response = agent.get(url).call().map_err(CatalogFetchError::Request)?;
 
     let status = response.status();
     let body = response
         .body_mut()
         .read_to_string()
-        .map_err(|e| e.to_string())?;
+        .map_err(CatalogFetchError::ReadBody)?;
 
     if status.is_client_error() || status.is_server_error() {
-        if body.is_empty() {
-            return Err(format!("status {}", status.as_u16()));
-        }
-
-        return Err(format!("status {}: {}", status.as_u16(), body));
+        return Err(CatalogFetchError::http_status(status.as_u16(), body));
     }
 
     Ok(body)
@@ -62,7 +90,18 @@ mod tests {
         let url = format!("{}/catalog", server.url());
         let error = fetch_api_catalog_json(&url).unwrap_err();
 
-        assert!(error.contains("500"));
-        assert!(error.contains("internal"));
+        match error {
+            CatalogFetchError::HttpStatus {
+                status,
+                body,
+                message,
+            } => {
+                assert_eq!(status, 500);
+                assert_eq!(body.as_deref(), Some("internal"));
+                assert!(message.contains("500"));
+                assert!(message.contains("internal"));
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
     }
 }

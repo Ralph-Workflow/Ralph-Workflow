@@ -77,7 +77,7 @@ fn test_analysis_runs_after_first_iteration_when_multiple_iterations() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
-                vec!["claude".to_string()],
+                vec!["claude".into()],
                 3,
                 1_000,
                 2.0,
@@ -129,7 +129,7 @@ fn test_analysis_runs_after_every_iteration() {
                 state,
                 PipelineEvent::agent_chain_initialized(
                     AgentRole::Developer.into(),
-                    vec!["claude".to_string()],
+                    vec!["claude".into()],
                     3,
                     1_000,
                     2.0,
@@ -471,7 +471,7 @@ fn test_analysis_xsd_invalid_triggers_retry() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Analysis.into(),
-                vec!["claude".to_string()],
+                vec!["claude".into()],
                 3,
                 1_000,
                 2.0,
@@ -525,7 +525,7 @@ fn test_analysis_uses_agent_chain_fallback() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
-                vec!["agent1".to_string(), "agent2".to_string()],
+                vec!["agent1".into(), "agent2".into()],
                 3,
                 1000,
                 2.0,
@@ -585,7 +585,7 @@ fn test_complete_pipeline_with_analysis_verification() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
-                vec!["claude".to_string()],
+                vec!["claude".into()],
                 3,
                 1000,
                 2.0,
@@ -622,7 +622,7 @@ fn test_complete_pipeline_with_analysis_verification() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Analysis.into(),
-                vec!["claude".to_string()],
+                vec!["claude".into()],
                 3,
                 1000,
                 2.0,

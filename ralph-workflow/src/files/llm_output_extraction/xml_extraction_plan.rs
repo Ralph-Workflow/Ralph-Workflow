@@ -174,13 +174,10 @@ pub fn extract_plan_xml(content: &str) -> Option<String> {
         &EmbeddedXmlStrategy,
     ];
 
-    for strategy in strategies {
-        if let Some(xml) = strategy.extract(content) {
-            return Some(xml);
-        }
-    }
-
-    None
+    strategies
+        .iter()
+        .filter_map(|strategy| (*strategy).extract(content))
+        .next()
 }
 
 #[cfg(test)]

@@ -59,7 +59,7 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,
@@ -516,7 +516,7 @@ fn test_pipeline_flow_skip_planning_when_zero_iterations() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,

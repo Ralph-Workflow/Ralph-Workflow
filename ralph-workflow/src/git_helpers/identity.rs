@@ -24,7 +24,6 @@ use crate::ProcessExecutor;
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;
 
-
 /// Typed error for git identity validation.
 ///
 /// Pure validation functions return `Result<(), IdentityValidationError>`.
@@ -82,7 +81,10 @@ impl GitIdentity {
 /// # Errors
 ///
 /// Returns [`IdentityValidationError`] if name or email is invalid.
-pub fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), IdentityValidationError> {
+pub fn validate_git_identity_fields(
+    name: &str,
+    email: &str,
+) -> Result<(), IdentityValidationError> {
     if name.trim().is_empty() {
         return Err(IdentityValidationError::EmptyName);
     }
@@ -91,17 +93,25 @@ pub fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), Ident
     }
     let email = email.trim();
     if !email.contains('@') {
-        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
     }
     let parts: Vec<&str> = email.split('@').collect();
     if parts.len() != 2 {
-        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
     }
     if parts[0].trim().is_empty() {
-        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
     }
     if parts[1].trim().is_empty() || !parts[1].contains('.') {
-        return Err(IdentityValidationError::InvalidEmailFormat(email.to_string()));
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
     }
     Ok(())
 }

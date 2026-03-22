@@ -1067,3 +1067,50 @@ fn test_resolve_config_does_not_share_env_vars_between_agents() {
         "claude agent env_vars should remain independent"
     );
 }
+
+// --- Typed error variant tests for AgentChainValidationError ---
+
+#[test]
+fn test_validate_agent_chains_returns_no_chain_configured_when_all_drains_have_empty_agents() {
+    // A legacy [agent_chain] with all empty role arrays forces from_legacy to create
+    // all 6 drains with empty agent lists. validate_agent_chains then fires NoChainConfigured
+    // because has_any_binding is false (no drain has any agents).
+    let toml_str = r#"
+        [agent_chain]
+        developer = []
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+    let registry = AgentRegistry::new().unwrap().apply_unified_config(&unified).unwrap();
+
+    let err = registry
+        .validate_agent_chains("test-sources")
+        .expect_err("registry with no agents should produce NoChainConfigured");
+
+    assert!(
+        matches!(err, AgentChainValidationError::NoChainConfigured { .. }),
+        "expected NoChainConfigured variant, got: {err:?}"
+    );
+}
+
+#[test]
+fn test_validate_agent_chains_returns_empty_drain_chain_when_some_drains_have_no_agents() {
+    // A legacy [agent_chain] with developer non-empty but reviewer empty results in:
+    //   Planning/Development → ["claude"] (non-empty)
+    //   Review/Fix/Commit/Analysis → [] (empty)
+    // has_any_binding = true, but the first empty drain (Review) fires EmptyDrainChain.
+    let toml_str = r#"
+        [agent_chain]
+        developer = ["claude"]
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+    let registry = AgentRegistry::new().unwrap().apply_unified_config(&unified).unwrap();
+
+    let err = registry
+        .validate_agent_chains("test-sources")
+        .expect_err("registry with partial drain coverage should produce EmptyDrainChain");
+
+    assert!(
+        matches!(err, AgentChainValidationError::EmptyDrainChain { .. }),
+        "expected EmptyDrainChain variant, got: {err:?}"
+    );
+}

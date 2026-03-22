@@ -6,10 +6,33 @@
 use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::API_URL;
+use std::fmt;
+use std::sync::Arc;
 
-// fetch_url lives in boundary module io/ - this import is the architectural seam
-// where non-boundary code uses boundary capability
-use crate::io::http_fetch::fetch_url;
+/// HTTP capability abstraction for catalog fetching.
+///
+/// Allows domain code to request HTTP bodies without importing the boundary module.
+pub trait HttpFetcher: Send + Sync {
+    /// Fetch the body of the given URL.
+    fn fetch(&self, url: &str) -> Result<String, HttpFetchError>;
+}
+
+/// Errors produced while fetching HTTP resources.
+#[derive(Debug)]
+pub enum HttpFetchError {
+    /// Underlying HTTP capability failure described by the provider.
+    RequestFailed(String),
+}
+
+impl fmt::Display for HttpFetchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HttpFetchError::RequestFailed(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for HttpFetchError {}
 
 /// Trait for fetching the `OpenCode` API catalog.
 ///
@@ -24,20 +47,31 @@ pub trait CatalogHttpClient: Send + Sync {
 }
 
 /// Production implementation of [`CatalogHttpClient`] that fetches from the network.
-#[derive(Debug, Clone)]
-pub struct RealCatalogFetcher;
+#[derive(Clone)]
+pub struct RealCatalogFetcher {
+    fetcher: Arc<dyn HttpFetcher>,
+}
 
-impl RealCatalogFetcher {
-    /// Create a new catalog fetcher.
-    #[must_use]
-    pub fn new() -> Self {
-        Self
+impl std::fmt::Debug for RealCatalogFetcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RealCatalogFetcher").finish()
     }
 }
 
-impl Default for RealCatalogFetcher {
-    fn default() -> Self {
-        Self::new()
+impl RealCatalogFetcher {
+    /// Build a catalog fetcher backed by the given HTTP capability.
+    #[must_use]
+    pub fn with_fetcher(fetcher: Arc<dyn HttpFetcher>) -> Self {
+        Self { fetcher }
+    }
+
+    /// Build a catalog fetcher from any type that implements [`HttpFetcher`].
+    #[must_use]
+    pub fn with_http_fetcher<F>(fetcher: F) -> Self
+    where
+        F: HttpFetcher + 'static,
+    {
+        Self::with_fetcher(Arc::new(fetcher))
     }
 }
 
@@ -46,7 +80,10 @@ impl CatalogHttpClient for RealCatalogFetcher {
         &self,
         ttl_seconds: u64,
     ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
-        let json = fetch_url(API_URL).map_err(CacheError::FetchError)?;
+        let json = self
+            .fetcher
+            .fetch(API_URL)
+            .map_err(|err| CacheError::FetchError(err.to_string()))?;
 
         let catalog: ApiCatalog = serde_json::from_str(&json).map_err(CacheError::ParseError)?;
 
@@ -74,6 +111,7 @@ mod tests {
     use crate::agents::opencode_api::types::{Model, Provider};
     use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
     use std::collections::HashMap;
+    use std::fs;
 
     /// Create a mock API catalog for testing.
     pub fn mock_api_catalog() -> ApiCatalog {
@@ -178,5 +216,53 @@ mod tests {
     #[test]
     fn test_api_url_constant() {
         assert_eq!(API_URL, "https://models.dev/api.json");
+    }
+
+    #[test]
+    fn test_real_catalog_fetcher_uses_injected_http_fetcher() {
+        struct StubFetcher {
+            payload: &'static str,
+        }
+
+        impl HttpFetcher for StubFetcher {
+            fn fetch(&self, _url: &str) -> Result<String, HttpFetchError> {
+                Ok(self.payload.to_string())
+            }
+        }
+
+        let stub_catalog = r#"{
+            "test-provider": {
+                "id": "test-provider",
+                "name": "Test Provider",
+                "doc": "used for fixture",
+                "models": {
+                    "test-model": {
+                        "id": "test-model",
+                        "name": "Test Model",
+                        "family": "Lorem",
+                        "limit": { "context": 4096 }
+                    }
+                }
+            }
+        }"#;
+
+        let fetcher = RealCatalogFetcher::with_http_fetcher(StubFetcher {
+            payload: stub_catalog,
+        });
+
+        let (catalog, warnings) = fetcher.fetch_api_catalog(1234).unwrap();
+        assert!(warnings.is_empty());
+        assert_eq!(catalog.ttl_seconds, 1234);
+        assert!(catalog.has_provider("test-provider"));
+        assert!(catalog.has_model("test-provider", "test-model"));
+
+        cleanup_opencode_cache_file();
+    }
+
+    fn cleanup_opencode_cache_file() {
+        if let Some(cache_dir) = dirs::cache_dir() {
+            let cache_path = cache_dir.join("ralph-workflow/opencode-api-cache.json");
+            let _ = fs::remove_file(cache_path);
+        }
     }
 }

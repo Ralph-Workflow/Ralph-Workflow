@@ -4,7 +4,8 @@
 //! These checks verify that the environment is suitable for running the review agent
 //! and help diagnose issues early.
 
-use crate::agents::{contains_glm_model, is_glm_like_agent};
+use crate::agents::contains_glm_model;
+use crate::common::domain_types::{AgentDirectoryEntryCount, AgentName, IssueFileSize, ModelName};
 use crate::review_metrics::ReviewMetrics;
 use crate::workspace::Workspace;
 use std::path::Path;
@@ -13,7 +14,7 @@ use std::path::Path;
 const MAX_AGENT_DIR_ENTRY_COUNT: usize = 1000;
 
 /// Result of pre-flight validation
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreflightResult {
     /// All checks passed
     Ok,
@@ -21,6 +22,50 @@ pub enum PreflightResult {
     Warning(String),
     /// Critical error that should halt execution
     Error(String),
+}
+
+/// Diagnostics emitted by [`pre_flight_review_check`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PreflightDiagnostic {
+    ProblematicReviewer {
+        agent: AgentName,
+        model: Option<ModelName>,
+    },
+    GlmAgentDetected {
+        agent: AgentName,
+    },
+    ExistingIssuesFile {
+        size_bytes: IssueFileSize,
+    },
+    EmptyIssuesFile,
+    IssuesFileReadFailure {
+        error: String,
+    },
+    AgentDirectoryTooLarge {
+        entry_count: AgentDirectoryEntryCount,
+    },
+    AgentDirectoryCreationFailed {
+        error: String,
+    },
+    AgentDirectoryNotWritable {
+        error: String,
+    },
+}
+
+/// Wrapper that pairs a domain value with diagnostics that explain non-fatal decisions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithDiagnostics<T, D> {
+    pub value: T,
+    pub diagnostics: Vec<D>,
+}
+
+impl<T, D> WithDiagnostics<T, D> {
+    pub fn new(value: T) -> Self {
+        Self {
+            value,
+            diagnostics: Vec::new(),
+        }
+    }
 }
 
 /// Result of post-flight validation
@@ -37,106 +82,111 @@ pub enum PostflightResult {
 /// Run pre-flight validation checks before starting a review pass.
 ///
 /// These checks verify that the environment is suitable for running
-/// the review agent and help diagnose issues early.
+/// the review agent and return diagnostics that explain warnings or adjustments
+/// instead of logging directly.
 ///
 /// Uses workspace abstraction for file operations, enabling testing with
 /// `MemoryWorkspace`.
 pub fn pre_flight_review_check(
     workspace: &dyn Workspace,
-    logger: &crate::logger::Logger,
     cycle: u32,
     reviewer_agent: &str,
     reviewer_model: Option<&str>,
-) -> PreflightResult {
+) -> WithDiagnostics<PreflightResult, PreflightDiagnostic> {
     let agent_dir = Path::new(".agent");
     let issues_path = Path::new(".agent/ISSUES.md");
 
+    let mut diagnostics = Vec::new();
+
     // Check 0: Agent compatibility warning (non-blocking)
     let is_problematic_reviewer = is_problematic_prompt_target(reviewer_agent, reviewer_model);
-
     if is_problematic_reviewer {
-        logger.warn(&format!(
-            "Note: Reviewer may have compatibility issues with review tasks. (agent='{}', model={})",
-            reviewer_agent,
-            reviewer_model.unwrap_or("none")
-        ));
-        logger.info("If review fails, consider these workarounds:");
-        logger.info("  1. Use Claude/Codex as reviewer: ralph --reviewer-agent codex");
-        logger.info("  2. Try generic parser: ralph --reviewer-json-parser generic");
-        logger.info("  3. Skip review: RALPH_REVIEWER_REVIEWS=0 ralph");
-        // Continue anyway - don't block execution
+        diagnostics.push(PreflightDiagnostic::ProblematicReviewer {
+            agent: AgentName::from(reviewer_agent),
+            model: reviewer_model.map(ModelName::from),
+        });
     }
 
     // Check 0.1: GLM-specific command validation (diagnostic only)
-    if is_glm_like_agent(reviewer_agent) {
-        // Log diagnostic info about GLM agent configuration
-        logger.info(&format!(
-            "GLM agent detected: '{reviewer_agent}'. Command will include '-p' flag for non-interactive mode."
-        ));
-        logger.info("Tip: Use --verbosity debug to see the full command being executed");
+    // Use contains_glm_model (broad) rather than is_glm_like_agent (CCS-only): any agent
+    // whose name contains a GLM-family model should surface this diagnostic.
+    if contains_glm_model(reviewer_agent) {
+        diagnostics.push(PreflightDiagnostic::GlmAgentDetected {
+            agent: AgentName::from(reviewer_agent),
+        });
     }
 
     // Check 0.5: Check for existing ISSUES.md from previous failed run
     if workspace.exists(issues_path) {
-        // Try to read to check if it has content
         match workspace.read(issues_path) {
             Ok(content) if !content.is_empty() => {
-                logger.warn(&format!(
-                    "ISSUES.md already exists from a previous run (size: {} bytes).",
-                    content.len()
-                ));
-                logger
-                    .info("The review agent will overwrite this file. If the previous run failed,");
-                logger.info("consider checking the old ISSUES.md for clues about what went wrong.");
+                diagnostics.push(PreflightDiagnostic::ExistingIssuesFile {
+                    size_bytes: IssueFileSize::from(content.len()),
+                });
             }
             Ok(_) => {
-                // Empty ISSUES.md - warn but continue
-                logger.warn("Found empty ISSUES.md from previous run. Will be overwritten.");
+                diagnostics.push(PreflightDiagnostic::EmptyIssuesFile);
             }
             Err(e) => {
-                logger.warn(&format!("Cannot read ISSUES.md: {e}"));
+                diagnostics.push(PreflightDiagnostic::IssuesFileReadFailure {
+                    error: e.to_string(),
+                });
             }
         }
     }
 
     // Check 1: Verify .agent directory is writable
     if !workspace.is_dir(agent_dir) {
-        // Try to create it
         if let Err(e) = workspace.create_dir_all(agent_dir) {
-            return PreflightResult::Error(format!(
-                "Cannot create .agent directory: {e}. Check directory permissions."
-            ));
+            let error_message = e.to_string();
+            diagnostics.push(PreflightDiagnostic::AgentDirectoryCreationFailed {
+                error: error_message.clone(),
+            });
+            return WithDiagnostics {
+                value: PreflightResult::Error(format!(
+                    "Cannot create .agent directory: {error_message}. Check directory permissions."
+                )),
+                diagnostics,
+            };
         }
     }
 
     // Test write by touching a temp file
     let test_file = agent_dir.join(format!(".write_test_{cycle}"));
-    match workspace.write(&test_file, "test") {
-        Ok(()) => {
-            let _ = workspace.remove(&test_file);
-        }
-        Err(e) => {
-            return PreflightResult::Error(format!(
-                ".agent directory is not writable: {e}. Check file permissions."
-            ));
-        }
+    if let Err(e) = workspace.write(&test_file, "test") {
+        let error_message = e.to_string();
+        diagnostics.push(PreflightDiagnostic::AgentDirectoryNotWritable {
+            error: error_message.clone(),
+        });
+        return WithDiagnostics {
+            value: PreflightResult::Error(format!(
+                ".agent directory is not writable: {error_message}. Check file permissions."
+            )),
+            diagnostics,
+        };
     }
+    let _ = workspace.remove(&test_file);
 
     // Check 2: Check number of files in .agent directory
-    // (workspace read_dir gives us entry count without needing metadata)
     if let Ok(entries) = workspace.read_dir(agent_dir) {
         let entry_count = entries.len();
         if entry_count > MAX_AGENT_DIR_ENTRY_COUNT {
-            logger.warn(&format!(
-                ".agent directory has {entry_count} files. Consider cleaning up old logs."
-            ));
-            return PreflightResult::Warning(
-                "Large .agent directory detected. Review may be slow.".to_string(),
-            );
+            diagnostics.push(PreflightDiagnostic::AgentDirectoryTooLarge {
+                entry_count: AgentDirectoryEntryCount::from(entry_count),
+            });
+            return WithDiagnostics {
+                value: PreflightResult::Warning(
+                    "Large .agent directory detected. Review may be slow.".to_string(),
+                ),
+                diagnostics,
+            };
         }
     }
 
-    PreflightResult::Ok
+    WithDiagnostics {
+        value: PreflightResult::Ok,
+        diagnostics,
+    }
 }
 
 /// Run post-flight validation after a review pass completes.
@@ -264,4 +314,503 @@ pub fn post_flight_review_check(
 /// This function detects those agents for which alternative handling may be needed.
 fn is_problematic_prompt_target(agent: &str, model_flag: Option<&str>) -> bool {
     contains_glm_model(agent) || model_flag.is_some_and(contains_glm_model)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::domain_types::{AgentName, IssueFileSize, ModelName};
+    use crate::workspace::{DirEntry, MemoryWorkspace, Workspace};
+    use std::io;
+    use std::path::{Path, PathBuf};
+
+    // -------------------------------------------------------------------------
+    // Workspace stubs for failure injection
+    // -------------------------------------------------------------------------
+
+    /// Workspace that reports `.agent` as non-existent and fails `create_dir_all`,
+    /// used to exercise the `AgentDirectoryCreationFailed` diagnostic path.
+    struct AgentDirCreationFailingWorkspace {
+        inner: MemoryWorkspace,
+    }
+
+    impl AgentDirCreationFailingWorkspace {
+        fn new() -> Self {
+            Self {
+                inner: MemoryWorkspace::new_test(),
+            }
+        }
+    }
+
+    impl Workspace for AgentDirCreationFailingWorkspace {
+        fn root(&self) -> &Path {
+            self.inner.root()
+        }
+
+        fn read(&self, relative: &Path) -> io::Result<String> {
+            self.inner.read(relative)
+        }
+
+        fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>> {
+            self.inner.read_bytes(relative)
+        }
+
+        fn write(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write(relative, content)
+        }
+
+        fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.write_bytes(relative, content)
+        }
+
+        fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.append_bytes(relative, content)
+        }
+
+        fn exists(&self, relative: &Path) -> bool {
+            self.inner.exists(relative)
+        }
+
+        fn is_file(&self, relative: &Path) -> bool {
+            self.inner.is_file(relative)
+        }
+
+        /// Always reports `.agent` as absent so the creation path is triggered.
+        fn is_dir(&self, _relative: &Path) -> bool {
+            false
+        }
+
+        fn remove(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove(relative)
+        }
+
+        fn remove_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_if_exists(relative)
+        }
+
+        fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all(relative)
+        }
+
+        fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all_if_exists(relative)
+        }
+
+        /// Always fails so `AgentDirectoryCreationFailed` is emitted.
+        fn create_dir_all(&self, _relative: &Path) -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "simulated: cannot create .agent directory",
+            ))
+        }
+
+        fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>> {
+            self.inner.read_dir(relative)
+        }
+
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.inner.rename(from, to)
+        }
+
+        fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write_atomic(relative, content)
+        }
+
+        fn set_readonly(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_readonly(relative)
+        }
+
+        fn set_writable(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_writable(relative)
+        }
+    }
+
+    /// Workspace where `.agent` appears to exist but any write into it fails,
+    /// used to exercise the `AgentDirectoryNotWritable` diagnostic path.
+    struct AgentDirWriteFailingWorkspace {
+        inner: MemoryWorkspace,
+    }
+
+    impl AgentDirWriteFailingWorkspace {
+        fn new() -> Self {
+            Self {
+                inner: MemoryWorkspace::new_test().with_dir(".agent"),
+            }
+        }
+    }
+
+    impl Workspace for AgentDirWriteFailingWorkspace {
+        fn root(&self) -> &Path {
+            self.inner.root()
+        }
+
+        fn read(&self, relative: &Path) -> io::Result<String> {
+            self.inner.read(relative)
+        }
+
+        fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>> {
+            self.inner.read_bytes(relative)
+        }
+
+        /// Fails for every path to simulate a read-only `.agent` directory.
+        fn write(&self, _relative: &Path, _content: &str) -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "simulated: .agent directory is not writable",
+            ))
+        }
+
+        fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.write_bytes(relative, content)
+        }
+
+        fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.append_bytes(relative, content)
+        }
+
+        fn exists(&self, relative: &Path) -> bool {
+            self.inner.exists(relative)
+        }
+
+        fn is_file(&self, relative: &Path) -> bool {
+            self.inner.is_file(relative)
+        }
+
+        fn is_dir(&self, relative: &Path) -> bool {
+            self.inner.is_dir(relative)
+        }
+
+        fn remove(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove(relative)
+        }
+
+        fn remove_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_if_exists(relative)
+        }
+
+        fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all(relative)
+        }
+
+        fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all_if_exists(relative)
+        }
+
+        fn create_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.create_dir_all(relative)
+        }
+
+        fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>> {
+            self.inner.read_dir(relative)
+        }
+
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.inner.rename(from, to)
+        }
+
+        fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write_atomic(relative, content)
+        }
+
+        fn set_readonly(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_readonly(relative)
+        }
+
+        fn set_writable(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_writable(relative)
+        }
+    }
+
+    /// Workspace where a specific path appears to exist (via `exists`) but fails to read,
+    /// used to exercise the `IssuesFileReadFailure` diagnostic path.
+    struct IssuesFileReadFailingWorkspace {
+        inner: MemoryWorkspace,
+        failing_path: PathBuf,
+    }
+
+    impl IssuesFileReadFailingWorkspace {
+        fn new(failing_path: &str) -> Self {
+            Self {
+                inner: MemoryWorkspace::new_test().with_dir(".agent"),
+                failing_path: PathBuf::from(failing_path),
+            }
+        }
+    }
+
+    impl Workspace for IssuesFileReadFailingWorkspace {
+        fn root(&self) -> &Path {
+            self.inner.root()
+        }
+
+        /// Returns `Err` for the configured path to simulate a read failure.
+        fn read(&self, relative: &Path) -> io::Result<String> {
+            if relative == self.failing_path.as_path() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "simulated: cannot read ISSUES.md",
+                ));
+            }
+            self.inner.read(relative)
+        }
+
+        fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>> {
+            self.inner.read_bytes(relative)
+        }
+
+        fn write(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write(relative, content)
+        }
+
+        fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.write_bytes(relative, content)
+        }
+
+        fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.append_bytes(relative, content)
+        }
+
+        /// Reports the configured path as existing even though reads fail.
+        fn exists(&self, relative: &Path) -> bool {
+            relative == self.failing_path.as_path() || self.inner.exists(relative)
+        }
+
+        fn is_file(&self, relative: &Path) -> bool {
+            self.inner.is_file(relative)
+        }
+
+        fn is_dir(&self, relative: &Path) -> bool {
+            self.inner.is_dir(relative)
+        }
+
+        fn remove(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove(relative)
+        }
+
+        fn remove_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_if_exists(relative)
+        }
+
+        fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all(relative)
+        }
+
+        fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all_if_exists(relative)
+        }
+
+        fn create_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.create_dir_all(relative)
+        }
+
+        fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>> {
+            self.inner.read_dir(relative)
+        }
+
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.inner.rename(from, to)
+        }
+
+        fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write_atomic(relative, content)
+        }
+
+        fn set_readonly(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_readonly(relative)
+        }
+
+        fn set_writable(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_writable(relative)
+        }
+    }
+
+    #[test]
+    fn preflight_problematic_reviewer_carries_agent_name_newtype() {
+        let workspace = MemoryWorkspace::new_test();
+        let outcome = pre_flight_review_check(&workspace, 1, "glm-4", Some("glm-4-flash"));
+
+        let found = outcome.diagnostics.iter().find_map(|diag| match diag {
+            PreflightDiagnostic::ProblematicReviewer { agent, model } => Some((agent, model)),
+            _ => None,
+        });
+        let (agent, model) = found.expect("ProblematicReviewer diagnostic expected");
+        assert_eq!(agent, &AgentName::from("glm-4"));
+        assert_eq!(model.as_ref(), Some(&ModelName::from("glm-4-flash")));
+    }
+
+    #[test]
+    fn preflight_glm_agent_detected_carries_agent_name_newtype() {
+        let workspace = MemoryWorkspace::new_test();
+        let outcome = pre_flight_review_check(&workspace, 1, "glm-4", None);
+
+        let found = outcome.diagnostics.iter().find_map(|diag| match diag {
+            PreflightDiagnostic::GlmAgentDetected { agent } => Some(agent),
+            _ => None,
+        });
+        let agent = found.expect("GlmAgentDetected diagnostic expected");
+        assert_eq!(agent, &AgentName::from("glm-4"));
+    }
+
+    #[test]
+    fn preflight_reports_existing_issues_diagnostic() {
+        let content = "previous ISSUES.md contents";
+        let workspace = MemoryWorkspace::new_test().with_file(".agent/ISSUES.md", content);
+
+        let outcome = pre_flight_review_check(&workspace, 1, "reviewer", None);
+
+        assert_eq!(outcome.value, PreflightResult::Ok);
+        assert!(outcome.diagnostics.iter().any(|diag| matches!(
+            diag,
+            PreflightDiagnostic::ExistingIssuesFile { size_bytes } if *size_bytes == IssueFileSize::from(content.len())
+        )));
+    }
+
+    #[test]
+    fn preflight_warns_on_large_agent_directory() {
+        let workspace = (0..=MAX_AGENT_DIR_ENTRY_COUNT)
+            .fold(MemoryWorkspace::new_test(), |workspace, index| {
+                workspace.with_file(&format!(".agent/extra_{index}.log"), "x")
+            });
+
+        let outcome = pre_flight_review_check(&workspace, 2, "reviewer", None);
+
+        assert!(matches!(
+            outcome.value,
+            PreflightResult::Warning(message)
+            if message == "Large .agent directory detected. Review may be slow."
+        ));
+        assert!(outcome.diagnostics.iter().any(|diag| matches!(
+            diag,
+            PreflightDiagnostic::AgentDirectoryTooLarge { entry_count }
+            if entry_count.as_count() > MAX_AGENT_DIR_ENTRY_COUNT
+        )));
+    }
+
+    // -------------------------------------------------------------------------
+    // P12-diagnostics: `.value` shape and empty-diagnostics coverage
+    // -------------------------------------------------------------------------
+
+    /// Fully-valid input (non-problematic reviewer, no existing ISSUES.md,
+    /// writable `.agent` directory) must produce `PreflightResult::Ok` with
+    /// an empty diagnostics list.
+    #[test]
+    fn preflight_clean_env_produces_ok_with_empty_diagnostics() {
+        let workspace = MemoryWorkspace::new_test().with_dir(".agent");
+
+        let outcome = pre_flight_review_check(&workspace, 1, "claude", None);
+
+        assert_eq!(
+            outcome.value,
+            PreflightResult::Ok,
+            "expected Ok for fully-valid input"
+        );
+        assert!(
+            outcome.diagnostics.is_empty(),
+            "expected no diagnostics for fully-valid input, got: {:?}",
+            outcome.diagnostics
+        );
+    }
+
+    /// An empty ISSUES.md from a previous run must produce the `EmptyIssuesFile`
+    /// diagnostic while still allowing the check to proceed (`Ok` result).
+    #[test]
+    fn preflight_empty_issues_file_produces_empty_issues_file_diagnostic() {
+        let workspace = MemoryWorkspace::new_test().with_file(".agent/ISSUES.md", "");
+
+        let outcome = pre_flight_review_check(&workspace, 1, "reviewer", None);
+
+        assert_eq!(
+            outcome.value,
+            PreflightResult::Ok,
+            "an empty ISSUES.md should not block the preflight"
+        );
+        assert!(
+            outcome
+                .diagnostics
+                .iter()
+                .any(|d| matches!(d, PreflightDiagnostic::EmptyIssuesFile)),
+            "expected EmptyIssuesFile diagnostic, got: {:?}",
+            outcome.diagnostics
+        );
+    }
+
+    /// When ISSUES.md is reported as present but its read fails, the check must
+    /// emit an `IssuesFileReadFailure` diagnostic with the underlying error message.
+    #[test]
+    fn preflight_issues_file_read_failure_produces_read_failure_diagnostic() {
+        let workspace = IssuesFileReadFailingWorkspace::new(".agent/ISSUES.md");
+
+        let outcome = pre_flight_review_check(&workspace, 1, "reviewer", None);
+
+        let failure_msg = outcome.diagnostics.iter().find_map(|d| match d {
+            PreflightDiagnostic::IssuesFileReadFailure { error } => Some(error.as_str()),
+            _ => None,
+        });
+        assert!(
+            failure_msg.is_some(),
+            "expected IssuesFileReadFailure diagnostic, got: {:?}",
+            outcome.diagnostics
+        );
+        assert!(
+            failure_msg.unwrap().contains("simulated"),
+            "diagnostic error message should contain the underlying cause"
+        );
+    }
+
+    /// When the `.agent` directory cannot be created, the check must:
+    /// - return `PreflightResult::Error` (not proceed),
+    /// - include an `AgentDirectoryCreationFailed` diagnostic with the error message.
+    #[test]
+    fn preflight_agent_directory_creation_failed_produces_error_and_diagnostic() {
+        let workspace = AgentDirCreationFailingWorkspace::new();
+
+        let outcome = pre_flight_review_check(&workspace, 1, "reviewer", None);
+
+        assert!(
+            matches!(outcome.value, PreflightResult::Error(_)),
+            "expected Error when .agent cannot be created, got: {:?}",
+            outcome.value
+        );
+        let creation_error = outcome.diagnostics.iter().find_map(|d| match d {
+            PreflightDiagnostic::AgentDirectoryCreationFailed { error } => Some(error.as_str()),
+            _ => None,
+        });
+        assert!(
+            creation_error.is_some(),
+            "expected AgentDirectoryCreationFailed diagnostic, got: {:?}",
+            outcome.diagnostics
+        );
+        assert!(
+            creation_error.unwrap().contains("simulated"),
+            "diagnostic should carry the underlying error message"
+        );
+    }
+
+    /// When `.agent` exists but writing into it fails, the check must:
+    /// - return `PreflightResult::Error`,
+    /// - include an `AgentDirectoryNotWritable` diagnostic with the error message.
+    #[test]
+    fn preflight_agent_directory_not_writable_produces_error_and_diagnostic() {
+        let workspace = AgentDirWriteFailingWorkspace::new();
+
+        let outcome = pre_flight_review_check(&workspace, 1, "reviewer", None);
+
+        assert!(
+            matches!(outcome.value, PreflightResult::Error(_)),
+            "expected Error when .agent is not writable, got: {:?}",
+            outcome.value
+        );
+        let write_error = outcome.diagnostics.iter().find_map(|d| match d {
+            PreflightDiagnostic::AgentDirectoryNotWritable { error } => Some(error.as_str()),
+            _ => None,
+        });
+        assert!(
+            write_error.is_some(),
+            "expected AgentDirectoryNotWritable diagnostic, got: {:?}",
+            outcome.diagnostics
+        );
+        assert!(
+            write_error.unwrap().contains("simulated"),
+            "diagnostic should carry the underlying error message"
+        );
+    }
 }

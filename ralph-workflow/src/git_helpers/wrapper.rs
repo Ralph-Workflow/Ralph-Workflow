@@ -42,7 +42,7 @@ use super::phase::{
     check_and_install_wrapper, check_marker_integrity, check_track_file_integrity,
     HEAD_OID_FILENAME,
 };
-use super::runtime::{AGENT_PHASE_HOOKS_DIR, AGENT_PHASE_RALPH_DIR, AGENT_PHASE_REPO_ROOT};
+use super::phase_state::{AGENT_PHASE_HOOKS_DIR, AGENT_PHASE_RALPH_DIR, AGENT_PHASE_REPO_ROOT};
 use super::script::{escape_shell_single_quoted, make_wrapper_content};
 use crate::git_helpers::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
 use crate::git_helpers::repo::{

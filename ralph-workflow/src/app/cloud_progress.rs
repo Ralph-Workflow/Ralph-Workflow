@@ -14,19 +14,21 @@ pub(super) fn report_cloud_progress(
     ui_events: &[UIEvent],
 ) -> Result<()> {
     if let Some(reporter) = ctx.cloud_reporter {
-        ui_events.iter().try_for_each(|ui_event| {
-            if let Some(update) = ui_event_to_progress_update(ui_event, state, ctx.cloud) {
-                if let Err(e) = reporter.report_progress(&update) {
-                    let error = safe_cloud_error_string(&e);
-                    if !ctx.cloud.graceful_degradation {
-                        return Err(anyhow::anyhow!("Cloud progress report failed: {error}"));
+        ui_events
+            .iter()
+            .try_fold((), |(), ui_event| -> Result<(), anyhow::Error> {
+                if let Some(update) = ui_event_to_progress_update(ui_event, state, ctx.cloud) {
+                    if let Err(e) = reporter.report_progress(&update) {
+                        let error = safe_cloud_error_string(&e);
+                        if !ctx.cloud.graceful_degradation {
+                            return Err(anyhow::anyhow!("Cloud progress report failed: {error}"));
+                        }
+                        ctx.logger
+                            .warn(&format!("Cloud progress report failed: {error}"));
                     }
-                    ctx.logger
-                        .warn(&format!("Cloud progress report failed: {error}"));
                 }
-            }
-            Ok(())
-        })?;
+                Ok(())
+            })?;
     }
 
     Ok(())

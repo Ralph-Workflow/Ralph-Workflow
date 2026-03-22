@@ -10,6 +10,7 @@ use crate::phases::review::boundary_domain::{
 };
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
+use crate::reducer::domain::baseline::parse_baseline_oid;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -31,7 +32,10 @@ impl MainEffectHandler {
     }
 
     pub(super) fn fallback_diff_instructions(baseline_oid: &str) -> String {
-        crate::phases::review::boundary_domain::fallback_diff_instructions(baseline_oid)
+        let baseline_oid_option = parse_baseline_oid(baseline_oid).ok();
+        crate::phases::review::boundary_domain::fallback_diff_instructions(
+            baseline_oid_option.as_ref(),
+        )
     }
 
     pub(super) fn prepare_review_context(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
@@ -64,11 +68,16 @@ impl MainEffectHandler {
         }
 
         let baseline_path = Path::new(Self::DIFF_BASELINE_PATH);
-        if baseline_oid.trim().is_empty() {
-            let _ = ctx.workspace.remove_if_exists(baseline_path);
-        } else if let Err(err) = ctx.workspace.write(baseline_path, &baseline_oid) {
-            ctx.logger
-                .warn(&format!("Failed to write review diff baseline: {err}"));
+        match parse_baseline_oid(&baseline_oid) {
+            Ok(parsed_baseline) => {
+                if let Err(err) = ctx.workspace.write(baseline_path, parsed_baseline.as_str()) {
+                    ctx.logger
+                        .warn(&format!("Failed to write review diff baseline: {err}"));
+                }
+            }
+            Err(_) => {
+                let _ = ctx.workspace.remove_if_exists(baseline_path);
+            }
         }
 
         EffectResult::with_ui(

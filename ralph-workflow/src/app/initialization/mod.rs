@@ -28,7 +28,7 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
     config_path: &Path,
     catalog_loader: &L,
 ) -> anyhow::Result<(AgentRegistry, Vec<crate::agents::ConfigSource>)> {
-    let mut registry = if let Some(unified_config) = unified {
+    let registry = if let Some(unified_config) = unified {
         AgentRegistry::new()?.apply_unified_config(unified_config)?
     } else {
         AgentRegistry::new()?
@@ -46,7 +46,7 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
 
     let opencode_refs =
         crate::agents::validation::get_opencode_refs_in_resolved_drains(registry.resolved_drains());
-    if !opencode_refs.is_empty() {
+    let registry = if !opencode_refs.is_empty() {
         let catalog = catalog_loader.load().map_err(|e| {
             anyhow::anyhow!(
                 "Failed to load OpenCode API catalog. \
@@ -54,14 +54,17 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
                  Error: {e}"
             )
         })?;
-        registry.set_opencode_catalog(catalog.clone());
+        let registry = registry.with_opencode_catalog(catalog.clone());
 
         crate::agents::validation::validate_opencode_agents_in_resolved_drains(
             registry.resolved_drains(),
             &catalog,
         )
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    }
+        registry
+    } else {
+        registry
+    };
 
     Ok((registry, config_sources))
 }

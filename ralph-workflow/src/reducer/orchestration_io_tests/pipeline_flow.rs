@@ -5,6 +5,7 @@
 // zero iterations.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::determine_next_effect;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::DevelopmentEvent;
@@ -42,7 +43,7 @@ fn test_complete_pipeline_flow() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,
@@ -407,7 +408,7 @@ fn test_pipeline_skips_planning_dev_when_zero_iterations() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,

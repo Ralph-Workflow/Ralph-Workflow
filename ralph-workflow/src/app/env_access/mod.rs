@@ -10,28 +10,28 @@ pub fn is_terminal_io() -> bool {
 
 #[must_use]
 pub fn get_current_dir() -> std::path::PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    crate::app::runtime::get_current_dir()
 }
 
 pub fn set_current_dir(path: &std::path::Path) -> std::io::Result<()> {
-    std::env::set_current_dir(path)
+    crate::app::runtime::set_current_dir(path)
 }
 
 #[must_use]
 pub fn get_args() -> Vec<String> {
-    std::env::args().collect()
+    crate::app::runtime::get_args()
 }
 
 #[must_use]
 pub fn get_program_args() -> Vec<String> {
-    std::env::args().skip(1).collect()
+    crate::app::runtime::get_program_args()
 }
 
 #[must_use]
 pub fn get_process_id() -> u32 {
-    std::process::id()
+    crate::app::runtime::get_process_id()
 }
 
 pub fn exit_with_code(code: i32) -> ! {
-    std::process::exit(code)
+    crate::app::runtime::exit_with_code(code)
 }

@@ -470,7 +470,10 @@ pub enum ResolveDrainError {
     /// A key in `agent_drains` is not a recognised built-in drain.
     UnknownBuiltinDrain { drain_name: String },
     /// A value in `agent_drains` references a chain absent from `agent_chains`.
-    UnknownChainReference { drain_name: String, chain_name: String },
+    UnknownChainReference {
+        drain_name: String,
+        chain_name: String,
+    },
     /// After iterative default-resolution some built-in drains remain unbound.
     MissingBuiltinCoverage { missing: String },
     /// A built-in drain resolves to an empty agent list via its named chain.
@@ -516,6 +519,14 @@ impl std::fmt::Display for ResolveDrainError {
 }
 
 impl std::error::Error for ResolveDrainError {}
+
+impl ResolveDrainError {
+    /// Helper used by legacy integration assertions that expect `contains`.
+    #[must_use]
+    pub fn contains(&self, needle: &str) -> bool {
+        self.to_string().contains(needle)
+    }
+}
 
 /// Unified configuration file structure.
 ///
@@ -564,7 +575,9 @@ impl UnifiedConfig {
     /// missing coverage for built-in drains after default resolution. A
     /// metadata-only legacy `agent_chain` section is still accepted so named
     /// drains can reuse provider fallback and retry settings.
-    pub fn resolve_agent_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, ResolveDrainError> {
+    pub fn resolve_agent_drains_checked(
+        &self,
+    ) -> Result<Option<ResolvedDrainConfig>, ResolveDrainError> {
         if self.agent_chain.is_some()
             && !self.agent_drains.is_empty()
             && self.agent_chains.is_empty()
@@ -607,47 +620,44 @@ impl UnifiedConfig {
                 .collect::<Result<HashMap<_, _>, _>>()?;
 
             let all_drains = AgentDrain::all();
-            let bindings = (0..all_drains.len()).try_fold(
-                bindings,
-                |current_bindings, _| {
-                    let unresolved: Vec<AgentDrain> = all_drains
+            let bindings = (0..all_drains.len()).try_fold(bindings, |current_bindings, _| {
+                let unresolved: Vec<AgentDrain> = all_drains
+                    .iter()
+                    .filter(|drain| !current_bindings.contains_key(drain))
+                    .cloned()
+                    .collect();
+
+                if unresolved.is_empty() {
+                    return Ok(current_bindings);
+                }
+
+                let new_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = unresolved
+                    .iter()
+                    .filter_map(|drain| {
+                        default_chain_binding_for_drain(self, &current_bindings, *drain)
+                            .map(|binding| (*drain, binding))
+                    })
+                    .collect();
+
+                let resolved_any = !new_bindings.is_empty();
+
+                if !resolved_any {
+                    let missing = unresolved
                         .iter()
-                        .filter(|drain| !current_bindings.contains_key(drain))
-                        .cloned()
-                        .collect();
+                        .map(|drain| drain.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(ResolveDrainError::MissingBuiltinCoverage { missing });
+                }
 
-                    if unresolved.is_empty() {
-                        return Ok(current_bindings);
-                    }
+                let next_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = current_bindings
+                    .clone()
+                    .into_iter()
+                    .chain(new_bindings)
+                    .collect();
 
-                    let new_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = unresolved
-                        .iter()
-                        .filter_map(|drain| {
-                            default_chain_binding_for_drain(self, &current_bindings, *drain)
-                                .map(|binding| (*drain, binding))
-                        })
-                        .collect();
-
-                    let resolved_any = !new_bindings.is_empty();
-
-                    if !resolved_any {
-                        let missing = unresolved
-                            .iter()
-                            .map(|drain| drain.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        return Err(ResolveDrainError::MissingBuiltinCoverage { missing });
-                    }
-
-                    let next_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = current_bindings
-                        .clone()
-                        .into_iter()
-                        .chain(new_bindings)
-                        .collect();
-
-                    Ok(next_bindings)
-                },
-            )?;
+                Ok(next_bindings)
+            })?;
 
             let all_have_valid_bindings = AgentDrain::all().iter().all(|drain| {
                 bindings

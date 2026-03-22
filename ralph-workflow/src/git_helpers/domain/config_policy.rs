@@ -60,11 +60,12 @@ pub(crate) fn matches_single_ralph_hooks_path(
     entries: &[(String, Option<String>)],
     expected_dir: &Path,
 ) -> Result<bool, super::types::GitError> {
-    let expected_hooks_path = expected_dir.to_str().ok_or_else(|| {
-        super::types::GitError::ParseFailed {
-            context: "hooks path contains invalid UTF-8 characters".to_string(),
-        }
-    })?;
+    let expected_hooks_path =
+        expected_dir
+            .to_str()
+            .ok_or_else(|| super::types::GitError::ParseFailed {
+                context: "hooks path contains invalid UTF-8 characters".to_string(),
+            })?;
 
     Ok(entries.len() == 1
         && entries[0].0 == "core.hooksPath"
@@ -80,11 +81,13 @@ pub(crate) fn is_single_ralph_hooks_path_for_scope(
     scope: &ProtectionScope,
     config_path: &Path,
 ) -> Result<bool, super::types::GitError> {
-    let expected_hooks_path = scope.hooks_dir.to_str().ok_or_else(|| {
-        super::types::GitError::ParseFailed {
-            context: "hooks path contains invalid UTF-8 characters".to_string(),
-        }
-    })?;
+    let expected_hooks_path =
+        scope
+            .hooks_dir
+            .to_str()
+            .ok_or_else(|| super::types::GitError::ParseFailed {
+                context: "hooks path contains invalid UTF-8 characters".to_string(),
+            })?;
 
     Ok(worktree_config_path(scope) == Some(config_path)
         && entries.len() == 1
@@ -117,10 +120,7 @@ mod typed_error_tests {
     #[test]
     fn test_matches_single_ralph_hooks_path_returns_ok_true_when_single_matching_entry() {
         let path = Path::new("/hooks/dir");
-        let entries = vec![(
-            "core.hooksPath".to_string(),
-            Some("/hooks/dir".to_string()),
-        )];
+        let entries = vec![("core.hooksPath".to_string(), Some("/hooks/dir".to_string()))];
         let result = matches_single_ralph_hooks_path(&entries, path);
         assert_eq!(result, Ok(true));
     }
@@ -135,10 +135,7 @@ mod typed_error_tests {
     #[test]
     fn test_matches_single_ralph_hooks_path_returns_ok_false_when_wrong_value() {
         let path = Path::new("/hooks/dir");
-        let entries = vec![(
-            "core.hooksPath".to_string(),
-            Some("/other/dir".to_string()),
-        )];
+        let entries = vec![("core.hooksPath".to_string(), Some("/other/dir".to_string()))];
         let result = matches_single_ralph_hooks_path(&entries, path);
         assert_eq!(result, Ok(false));
     }
@@ -199,10 +196,7 @@ mod pure_helpers_tests {
     fn test_hooks_path_state_path_joins_constant_filename() {
         let ralph_dir = Path::new("/repo/.git/ralph");
         let result = hooks_path_state_path(ralph_dir);
-        assert_eq!(
-            result,
-            ralph_dir.join(HOOKS_PATH_STATE_FILE)
-        );
+        assert_eq!(result, ralph_dir.join(HOOKS_PATH_STATE_FILE));
     }
 
     #[test]
@@ -388,4 +382,3 @@ mod is_single_ralph_scope_tests {
         );
     }
 }
-

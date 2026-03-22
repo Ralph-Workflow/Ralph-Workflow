@@ -138,6 +138,7 @@
 //! ```
 
 pub mod boundary;
+pub mod domain;
 pub mod effect;
 pub mod event;
 pub mod fault_tolerant_executor;

@@ -4,6 +4,9 @@ use crate::phases::PhaseContext;
 use crate::phases::{effective_model_budget_bytes, truncate_diff_to_model_budget};
 use crate::prompts::content_reference::{DiffContentReference, MAX_INLINE_CONTENT_SIZE};
 use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode};
+use crate::reducer::domain::residual::{
+    parse_residual_files_status, ResidualFilesStatusParseError,
+};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
@@ -885,27 +888,25 @@ impl crate::reducer::boundary::MainEffectHandler {
                 kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
             })?;
 
-        let has_changes = !status.trim().is_empty();
+        let event = match parse_residual_files_status(&status) {
+            Ok(files) => {
+                let file_count = files.len();
+                ctx.logger.warn(&format!(
+                    "Pre-termination safety check: Uncommitted changes detected ({file_count} files). \
+                     This should never happen - work should be committed before termination."
+                ));
 
-        if has_changes {
-            let file_count = status.lines().count();
-            ctx.logger.warn(&format!(
-                "Pre-termination safety check: Uncommitted changes detected ({file_count} files). \
-                 This should never happen - work should be committed before termination."
-            ));
+                PipelineEvent::pre_termination_uncommitted_changes_detected(file_count)
+            }
+            Err(ResidualFilesStatusParseError::Empty) => {
+                ctx.logger
+                    .info("Pre-termination safety check: No uncommitted changes found.");
 
-            // Route back through the commit phase so unattended runs cannot lose work.
-            return Ok(EffectResult::event(
-                PipelineEvent::pre_termination_uncommitted_changes_detected(file_count),
-            ));
-        }
+                PipelineEvent::pre_termination_safety_check_passed()
+            }
+        };
 
-        ctx.logger
-            .info("Pre-termination safety check: No uncommitted changes found.");
-
-        Ok(EffectResult::event(
-            PipelineEvent::pre_termination_safety_check_passed(),
-        ))
+        Ok(EffectResult::event(event))
     }
 
     /// Emit residual-file events after selective commit passes.
@@ -920,22 +921,23 @@ impl crate::reducer::boundary::MainEffectHandler {
                 kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
             })?;
 
-        if status.trim().is_empty() {
-            ctx.logger.info(&format!(
-                "Residual files check (pass {pass}): Working tree is clean."
-            ));
-            return Ok(EffectResult::event(PipelineEvent::residual_files_none()));
+        match parse_residual_files_status(&status) {
+            Err(ResidualFilesStatusParseError::Empty) => {
+                ctx.logger.info(&format!(
+                    "Residual files check (pass {pass}): Working tree is clean."
+                ));
+                Ok(EffectResult::event(PipelineEvent::residual_files_none()))
+            }
+            Ok(files) => {
+                ctx.logger.warn(&format!(
+                    "Residual files check (pass {pass}): {} uncommitted file(s) remain after selective commit.",
+                    files.len()
+                ));
+
+                Ok(EffectResult::event(PipelineEvent::residual_files_found(
+                    files, pass,
+                )))
+            }
         }
-
-        let files = crate::git_helpers::parse_git_status_paths(&status);
-
-        ctx.logger.warn(&format!(
-            "Residual files check (pass {pass}): {} uncommitted file(s) remain after selective commit.",
-            files.len()
-        ));
-
-        Ok(EffectResult::event(PipelineEvent::residual_files_found(
-            files, pass,
-        )))
     }
 }

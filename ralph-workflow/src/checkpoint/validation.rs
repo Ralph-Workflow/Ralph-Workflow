@@ -45,10 +45,12 @@ impl ValidationResult {
     /// Add a warning to the result.
     #[must_use]
     pub fn with_warning(self, msg: impl Into<String>) -> Self {
-        let mut warnings = self.warnings;
-        warnings.push(msg.into());
         Self {
-            warnings,
+            warnings: self
+                .warnings
+                .into_iter()
+                .chain(std::iter::once(msg.into()))
+                .collect(),
             is_valid: self.is_valid,
             errors: self.errors,
         }
@@ -57,15 +59,10 @@ impl ValidationResult {
     /// Merge another validation result into this one.
     #[must_use]
     pub fn merge(self, other: Self) -> Self {
-        let is_valid = self.is_valid && other.is_valid;
-        let mut warnings = self.warnings;
-        warnings.extend(other.warnings);
-        let mut errors = self.errors;
-        errors.extend(other.errors);
         Self {
-            is_valid,
-            warnings,
-            errors,
+            is_valid: self.is_valid && other.is_valid,
+            warnings: self.warnings.into_iter().chain(other.warnings).collect(),
+            errors: self.errors.into_iter().chain(other.errors).collect(),
         }
     }
 }

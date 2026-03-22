@@ -53,7 +53,14 @@ fn test_reset_start_commit_fails_without_repo() {
     let result = handle_reset_start_commit(&mut handler, None);
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("git repository"));
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("git repository"));
+    match error {
+        AppEffectError::Handler { effect, .. } => {
+            assert!(matches!(effect, AppEffect::GitRequireRepo));
+        }
+        other => panic!("unexpected error variant: {other:?}"),
+    }
 }
 
 #[test]

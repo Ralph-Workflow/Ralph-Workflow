@@ -3,6 +3,7 @@
 //! This module satisfies the dylint boundary-module check for code that uses
 //! imperative patterns (while loops, mutable state, byte parsing).
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 pub use crate::prompts::template_registry::TemplateError;
@@ -25,8 +26,21 @@ pub fn template_exists(path: &Path) -> bool {
     path.exists()
 }
 
-pub fn load_template(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| e.to_string())
+#[derive(Debug, thiserror::Error)]
+pub enum LoadTemplateError {
+    #[error("failed to read template from {path:?}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+}
+
+pub fn load_template(path: &Path) -> Result<String, LoadTemplateError> {
+    std::fs::read_to_string(path).map_err(|source| LoadTemplateError::Io {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 pub fn validate_syntax(content: &str) -> Vec<ValidationError> {
@@ -103,4 +117,36 @@ pub fn extract_metadata(content: &str) -> TemplateMetadata {
     }
 
     TemplateMetadata { version, purpose }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn missing_template_path() -> PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after UNIX_EPOCH")
+            .as_nanos();
+        std::env::temp_dir().join(format!("load_template_missing_{now}"))
+    }
+
+    #[test]
+    fn load_template_missing_file_returns_not_found_error() {
+        let path = missing_template_path();
+        assert!(!path.exists(), "generated path should not already exist");
+
+        let err = load_template(&path).expect_err("expected missing file to return an error");
+        match err {
+            LoadTemplateError::Io {
+                path: err_path,
+                source,
+            } => {
+                assert_eq!(err_path, path);
+                assert_eq!(source.kind(), io::ErrorKind::NotFound);
+            }
+        }
+    }
 }

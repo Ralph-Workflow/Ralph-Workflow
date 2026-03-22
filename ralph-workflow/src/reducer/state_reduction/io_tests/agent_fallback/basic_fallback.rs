@@ -4,6 +4,7 @@
 //! to the next agent in the chain.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::create_test_state;
 use crate::reducer::event::{AgentErrorKind, PipelineEvent, PipelinePhase};
 use crate::reducer::state::{
@@ -15,7 +16,7 @@ use crate::reducer::state_reduction::reduce;
 #[test]
 fn test_reduce_agent_fallback_to_next_model() {
     let state = create_test_state();
-    let initial_agent = state.agent_chain.current_agent().unwrap().clone();
+    let initial_agent = AgentName::from(state.agent_chain.current_agent().unwrap().clone());
     let initial_model_index = state.agent_chain.current_model_index;
 
     let new_state = reduce(
@@ -40,7 +41,7 @@ fn test_reduce_all_agent_failure_scenarios() {
     let state = create_test_state();
     let initial_agent_index = state.agent_chain.current_agent_index;
     let initial_model_index = state.agent_chain.current_model_index;
-    let agent_name = state.agent_chain.current_agent().unwrap().clone();
+    let agent_name = AgentName::from(state.agent_chain.current_agent().unwrap().clone());
 
     let network_error_state = reduce(
         state.clone(),
@@ -101,7 +102,7 @@ fn test_reduce_all_agent_failure_scenarios() {
 #[test]
 fn test_reduce_agent_fallback_triggers_fallback_event() {
     let state = create_test_state();
-    let agent = state.agent_chain.current_agent().unwrap().clone();
+    let agent = AgentName::from(state.agent_chain.current_agent().unwrap().clone());
 
     let new_state = reduce(
         state,
@@ -121,7 +122,7 @@ fn test_reduce_agent_fallback_triggers_fallback_event() {
 fn test_reduce_model_fallback_triggers_for_network_error() {
     let state = create_test_state();
     let initial_model_index = state.agent_chain.current_model_index;
-    let agent_name = state.agent_chain.current_agent().unwrap().clone();
+    let agent_name = AgentName::from(state.agent_chain.current_agent().unwrap().clone());
 
     let new_state = reduce(
         state,
@@ -177,8 +178,8 @@ fn test_fallback_triggered_respects_to_agent_and_resets_retry_state() {
         state,
         PipelineEvent::agent_fallback_triggered(
             AgentRole::Developer,
-            "agent1".to_string(),
-            "agent3".to_string(),
+            AgentName::from("agent1"),
+            AgentName::from("agent3"),
         ),
     );
 

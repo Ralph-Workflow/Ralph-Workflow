@@ -102,174 +102,15 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
     // This provides clear error messages instead of cryptic parse errors
     check_for_illegal_xml_characters(content)?;
 
-    let mut reader = create_reader(content);
-    let mut buf = Vec::new();
-
-    // Find the root element
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-issues" => break,
-            Ok(Event::Start(e)) => {
-                let name_bytes = e.name();
-                let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-issues".to_string(),
-                    expected: "<ralph-issues> as root element".to_string(),
-                    found: format!("<{tag_name}> (wrong root element)"),
-                    suggestion: "Use <ralph-issues> as the root element.".to_string(),
-                    example: Some(EXAMPLE_ISSUES_XML.into()),
-                });
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-issues".to_string(),
-                    expected: "<ralph-issues> as root element".to_string(),
-                    found: format_content_preview(content),
-                    suggestion: "Wrap your issues in <ralph-issues>...</ralph-issues> tags."
-                        .to_string(),
-                    example: Some(EXAMPLE_ISSUES_XML.into()),
-                });
-            }
-            Ok(Event::Text(_) | _) => {
-                // Text before root element or other events - continue to EOF error which is more informative
-            }
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-        buf.clear();
-    }
-
-    // Parse child elements
-    let mut issues: Vec<IssueEntry> = Vec::new();
-    let mut no_issues_found: Option<String> = None;
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                match e.name().as_ref() {
-                    b"ralph-issue" => {
-                        // Cannot mix issues and no-issues-found
-                        if no_issues_found.is_some() {
-                            return Err(XsdValidationError {
-                                error_type: XsdErrorType::UnexpectedElement,
-                                element_path: "ralph-issues/ralph-issue".to_string(),
-                                expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
-                                found: "mixed issues and no-issues-found".to_string(),
-                                suggestion: "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist.".to_string(),
-                                example: Some(EXAMPLE_ISSUES_XML.into()),
-                            });
-                        }
-                        let entry = parse_issue_entry(&mut reader, b"ralph-issue")?;
-                        issues.push(entry);
-                    }
-                    b"ralph-no-issues-found" => {
-                        // Cannot mix issues and no-issues-found
-                        if !issues.is_empty() {
-                            return Err(XsdValidationError {
-                                error_type: XsdErrorType::UnexpectedElement,
-                                element_path: "ralph-issues/ralph-no-issues-found".to_string(),
-                                expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
-                                found: "mixed issues and no-issues-found".to_string(),
-                                suggestion: "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist.".to_string(),
-                                example: Some(EXAMPLE_NO_ISSUES_XML.into()),
-                            });
-                        }
-                        if no_issues_found.is_some() {
-                            return Err(duplicate_element_error(
-                                "ralph-no-issues-found",
-                                "ralph-issues",
-                            ));
-                        }
-                        no_issues_found =
-                            Some(read_text_until_end(&mut reader, b"ralph-no-issues-found")?);
-                    }
-                    other => {
-                        // Tolerant: try fuzzy tag matching before skipping.
-                        // If the tag is a known tag with minor typo, route to correct handler.
-                        let tag_name = String::from_utf8_lossy(other);
-                        if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_ISSUES_TAGS) {
-                            // Re-parse with the canonical tag name
-                            match canonical {
-                                "ralph-issue" => {
-                                    // Cannot mix issues and no-issues-found
-                                    if no_issues_found.is_some() {
-                                        return Err(XsdValidationError {
-                                            error_type: XsdErrorType::UnexpectedElement,
-                                            element_path: "ralph-issues/ralph-issue".to_string(),
-                                            expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
-                                            found: "mixed issues and no-issues-found".to_string(),
-                                            suggestion: "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist.".to_string(),
-                                            example: Some(EXAMPLE_ISSUES_XML.into()),
-                                        });
-                                    }
-                                    let entry = parse_issue_entry(&mut reader, other)?;
-                                    issues.push(entry);
-                                }
-                                "ralph-no-issues-found" => {
-                                    // Cannot mix issues and no-issues-found
-                                    if !issues.is_empty() {
-                                        return Err(XsdValidationError {
-                                            error_type: XsdErrorType::UnexpectedElement,
-                                            element_path: "ralph-issues/ralph-no-issues-found".to_string(),
-                                            expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
-                                            found: "mixed issues and no-issues-found".to_string(),
-                                            suggestion: "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist.".to_string(),
-                                            example: Some(EXAMPLE_NO_ISSUES_XML.into()),
-                                        });
-                                    }
-                                    if no_issues_found.is_some() {
-                                        return Err(duplicate_element_error(
-                                            "ralph-no-issues-found",
-                                            "ralph-issues",
-                                        ));
-                                    }
-                                    no_issues_found = Some(read_text_until_end_fuzzy(
-                                        &mut reader,
-                                        b"ralph-no-issues-found",
-                                        other,
-                                    )?);
-                                }
-                                _ => {
-                                    // Should not happen - canonical tags are from our known list
-                                    let _ = skip_to_end(&mut reader, other);
-                                }
-                            }
-                        } else {
-                            // Tolerant: skip unknown elements instead of rejecting.
-                            // Required elements (ralph-issue or ralph-no-issues-found) are still
-                            // enforced after the loop.
-                            let _ = skip_to_end(&mut reader, other);
-                        }
-                        // Continue parsing — do not return an error for unknown elements.
-                    }
-                }
-            }
-            Ok(Event::Text(e)) => {
-                // Tolerant: ignore stray text between elements.
-                let _ = e;
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-issues" => break,
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-issues".to_string(),
-                    expected: "closing </ralph-issues> tag".to_string(),
-                    found: "end of content without closing tag".to_string(),
-                    suggestion: "Add </ralph-issues> at the end.".to_string(),
-                    example: Some(EXAMPLE_ISSUES_XML.into()),
-                });
-            }
-            Ok(_) => {} // Skip comments, etc.
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-    }
+    let parsed = parse_issues_with_reader(&mut create_reader(content), content)?;
 
     // Filter out empty issues
-    let filtered_issues: Vec<IssueEntry> =
-        issues.into_iter().filter(|e| !e.text.is_empty()).collect();
-    let filtered_no_issues = no_issues_found.filter(|s| !s.is_empty());
+    let filtered_issues: Vec<IssueEntry> = parsed
+        .issues
+        .into_iter()
+        .filter(|entry| !entry.text.is_empty())
+        .collect();
+    let filtered_no_issues = parsed.no_issues_found.filter(|value| !value.is_empty());
 
     // Must have either issues or no-issues-found
     if filtered_issues.is_empty() && filtered_no_issues.is_none() {
@@ -291,6 +132,220 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
     })
 }
 
+#[derive(Default)]
+struct ParsedIssues {
+    issues: Vec<IssueEntry>,
+    no_issues_found: Option<String>,
+}
+
+fn parse_issues_with_reader(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    content: &str,
+) -> Result<ParsedIssues, XsdValidationError> {
+    find_issues_root(reader, content)?;
+    parse_issues_children(reader, ParsedIssues::default())
+}
+
+fn find_issues_root(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    content: &str,
+) -> Result<(), XsdValidationError> {
+    match read_owned_event(reader) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-issues" => Ok(()),
+        Ok(Event::Start(e)) => {
+            let name_bytes = e.name();
+            let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
+            Err(XsdValidationError {
+                error_type: XsdErrorType::MissingRequiredElement,
+                element_path: "ralph-issues".to_string(),
+                expected: "<ralph-issues> as root element".to_string(),
+                found: format!("<{tag_name}> (wrong root element)"),
+                suggestion: "Use <ralph-issues> as the root element.".to_string(),
+                example: Some(EXAMPLE_ISSUES_XML.into()),
+            })
+        }
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MissingRequiredElement,
+            element_path: "ralph-issues".to_string(),
+            expected: "<ralph-issues> as root element".to_string(),
+            found: format_content_preview(content),
+            suggestion: "Wrap your issues in <ralph-issues>...</ralph-issues> tags.".to_string(),
+            example: Some(EXAMPLE_ISSUES_XML.into()),
+        }),
+        Ok(Event::Text(_) | _) => find_issues_root(reader, content),
+        Err(err) => Err(malformed_xml_error(&err)),
+    }
+}
+
+fn parse_issues_children(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+) -> Result<ParsedIssues, XsdValidationError> {
+    match read_owned_event(reader) {
+        Ok(Event::Start(e)) => {
+            let next = process_issue_child_start(reader, parsed, e.name().as_ref())?;
+            parse_issues_children(reader, next)
+        }
+        Ok(Event::Text(_)) => parse_issues_children(reader, parsed),
+        Ok(Event::End(e)) if e.name().as_ref() == b"ralph-issues" => Ok(parsed),
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: "ralph-issues".to_string(),
+            expected: "closing </ralph-issues> tag".to_string(),
+            found: "end of content without closing tag".to_string(),
+            suggestion: "Add </ralph-issues> at the end.".to_string(),
+            example: Some(EXAMPLE_ISSUES_XML.into()),
+        }),
+        Ok(_) => parse_issues_children(reader, parsed),
+        Err(err) => Err(malformed_xml_error(&err)),
+    }
+}
+
+fn process_issue_child_start(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+    tag_name: &[u8],
+) -> Result<ParsedIssues, XsdValidationError> {
+    match tag_name {
+        b"ralph-issue" => parse_canonical_issue(reader, parsed),
+        b"ralph-no-issues-found" => parse_canonical_no_issues(reader, parsed),
+        other => process_fuzzy_or_unknown_child(reader, parsed, other),
+    }
+}
+
+fn process_fuzzy_or_unknown_child(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+    other: &[u8],
+) -> Result<ParsedIssues, XsdValidationError> {
+    let tag_name = String::from_utf8_lossy(other);
+    match normalize_tag_name(&tag_name, KNOWN_ISSUES_TAGS) {
+        Some("ralph-issue") => parse_fuzzy_issue(reader, parsed, other),
+        Some("ralph-no-issues-found") => parse_fuzzy_no_issues(reader, parsed, other),
+        Some(_) => {
+            let _ = skip_to_end(reader, other);
+            Ok(parsed)
+        }
+        None => {
+            let _ = skip_to_end(reader, other);
+            Ok(parsed)
+        }
+    }
+}
+
+fn parse_canonical_issue(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+) -> Result<ParsedIssues, XsdValidationError> {
+    if parsed.no_issues_found.is_some() {
+        return Err(mixed_issue_no_issue_error(
+            "ralph-issues/ralph-issue",
+            EXAMPLE_ISSUES_XML,
+        ));
+    }
+
+    let entry = parse_issue_entry(reader, b"ralph-issue")?;
+    Ok(ParsedIssues {
+        issues: append_item(parsed.issues, entry),
+        no_issues_found: parsed.no_issues_found,
+    })
+}
+
+fn parse_fuzzy_issue(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+    original_tag: &[u8],
+) -> Result<ParsedIssues, XsdValidationError> {
+    if parsed.no_issues_found.is_some() {
+        return Err(mixed_issue_no_issue_error(
+            "ralph-issues/ralph-issue",
+            EXAMPLE_ISSUES_XML,
+        ));
+    }
+
+    let entry = parse_issue_entry(reader, original_tag)?;
+    Ok(ParsedIssues {
+        issues: append_item(parsed.issues, entry),
+        no_issues_found: parsed.no_issues_found,
+    })
+}
+
+fn parse_canonical_no_issues(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+) -> Result<ParsedIssues, XsdValidationError> {
+    if !parsed.issues.is_empty() {
+        return Err(mixed_issue_no_issue_error(
+            "ralph-issues/ralph-no-issues-found",
+            EXAMPLE_NO_ISSUES_XML,
+        ));
+    }
+    if parsed.no_issues_found.is_some() {
+        return Err(duplicate_element_error(
+            "ralph-no-issues-found",
+            "ralph-issues",
+        ));
+    }
+
+    Ok(ParsedIssues {
+        issues: parsed.issues,
+        no_issues_found: Some(read_text_until_end(reader, b"ralph-no-issues-found")?),
+    })
+}
+
+fn parse_fuzzy_no_issues(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    parsed: ParsedIssues,
+    original_tag: &[u8],
+) -> Result<ParsedIssues, XsdValidationError> {
+    if !parsed.issues.is_empty() {
+        return Err(mixed_issue_no_issue_error(
+            "ralph-issues/ralph-no-issues-found",
+            EXAMPLE_NO_ISSUES_XML,
+        ));
+    }
+    if parsed.no_issues_found.is_some() {
+        return Err(duplicate_element_error(
+            "ralph-no-issues-found",
+            "ralph-issues",
+        ));
+    }
+
+    Ok(ParsedIssues {
+        issues: parsed.issues,
+        no_issues_found: Some(read_text_until_end_fuzzy(
+            reader,
+            b"ralph-no-issues-found",
+            original_tag,
+        )?),
+    })
+}
+
+fn mixed_issue_no_issue_error(element_path: &str, example: &str) -> XsdValidationError {
+    XsdValidationError {
+        error_type: XsdErrorType::UnexpectedElement,
+        element_path: element_path.to_string(),
+        expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
+        found: "mixed issues and no-issues-found".to_string(),
+        suggestion:
+            "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist."
+                .to_string(),
+        example: Some(example.into()),
+    }
+}
+
+fn append_item<T>(items: Vec<T>, item: T) -> Vec<T> {
+    items.into_iter().chain(std::iter::once(item)).collect()
+}
+
+fn read_owned_event(
+    reader: &mut quick_xml::Reader<&[u8]>,
+) -> Result<Event<'static>, quick_xml::Error> {
+    reader
+        .read_event_into(&mut Vec::new())
+        .map(quick_xml::events::Event::into_owned)
+}
+
 /// Parse the content of a `<ralph-issue>` element into an `IssueEntry`.
 ///
 /// This handles mixed content: text content and optional `<code>` and `<skills-mcp>` child elements.
@@ -305,82 +360,136 @@ fn parse_issue_entry(
     original_tag: &[u8],
 ) -> Result<IssueEntry, XsdValidationError> {
     let canonical_tag = b"ralph-issue";
-    let mut buf = Vec::new();
-    let mut text_parts: Vec<String> = Vec::new();
-    let mut skills_mcp = None;
+    parse_issue_entry_parts(reader, canonical_tag, original_tag, Vec::new(), None)
+}
 
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Text(e)) => {
-                let t = e.unescape().unwrap_or_default().to_string();
-                if !t.trim().is_empty() {
-                    text_parts.push(t);
-                }
+fn parse_issue_entry_parts(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    canonical_tag: &[u8],
+    original_tag: &[u8],
+    text_parts: Vec<String>,
+    skills_mcp: Option<crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp>,
+) -> Result<IssueEntry, XsdValidationError> {
+    match read_owned_event(reader) {
+        Ok(Event::Text(e)) => {
+            let text = e.unescape().unwrap_or_default().to_string();
+            let next_parts = append_non_empty_text(text_parts, text);
+            parse_issue_entry_parts(reader, canonical_tag, original_tag, next_parts, skills_mcp)
+        }
+        Ok(Event::CData(e)) => {
+            let text = String::from_utf8_lossy(&e).to_string();
+            let next_parts = append_non_empty_text(text_parts, text);
+            parse_issue_entry_parts(reader, canonical_tag, original_tag, next_parts, skills_mcp)
+        }
+        Ok(Event::Start(e)) => parse_issue_entry_started_child(
+            reader,
+            canonical_tag,
+            original_tag,
+            text_parts,
+            skills_mcp,
+            e,
+        ),
+        Ok(Event::Empty(e)) => parse_issue_entry_empty_child(
+            reader,
+            canonical_tag,
+            original_tag,
+            text_parts,
+            skills_mcp,
+            e,
+        ),
+        Ok(Event::End(e)) => {
+            if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                let text = text_parts.join("").trim().to_string();
+                Ok(IssueEntry { text, skills_mcp })
+            } else {
+                parse_issue_entry_parts(reader, canonical_tag, original_tag, text_parts, skills_mcp)
             }
-            Ok(Event::CData(e)) => {
-                let t = String::from_utf8_lossy(&e).to_string();
-                if !t.trim().is_empty() {
-                    text_parts.push(t);
-                }
-            }
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"code" => {
-                    // <code> children contribute to the text
-                    let code_text = read_text_until_end(reader, b"code")?;
-                    if !code_text.trim().is_empty() {
-                        text_parts.push(code_text);
-                    }
-                }
-                b"skills-mcp" => {
-                    skills_mcp = Some(parse_skills_mcp(reader));
-                }
-                other => {
-                    // Skip unknown child elements tolerantly
-                    let _ = skip_to_end(reader, other);
-                }
-            },
-            Ok(Event::Empty(e)) => {
-                if e.name().as_ref() == b"skills-mcp" {
-                    use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
-                    skills_mcp = Some(SkillsMcp {
-                        skills: Vec::new(),
-                        mcps: Vec::new(),
-                        raw_content: None,
-                    });
-                } else {
-                    // Skip unknown empty children
-                }
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag OR original (misspelled) tag
-                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: crate::files::llm_output_extraction::xsd_validation::XsdErrorType::MalformedXml,
-                    element_path: "ralph-issue".to_string(),
-                    expected: format!(
-                        "closing </{}> or </{}>",
-                        String::from_utf8_lossy(canonical_tag),
-                        String::from_utf8_lossy(original_tag)
-                    ),
-                    found: "unexpected end of file".to_string(),
-                    suggestion: format!(
-                        "Ensure the <ralph-issue> element has a matching closing tag (</{}> or </{}>).",
-                        String::from_utf8_lossy(canonical_tag),
-                        String::from_utf8_lossy(original_tag)
-                    ),
-                    example: None,
-                });
-            }
-            Ok(_) => {} // Skip comments, PI, etc.
-            Err(e) => return Err(malformed_xml_error(&e)),
+        }
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type:
+                crate::files::llm_output_extraction::xsd_validation::XsdErrorType::MalformedXml,
+            element_path: "ralph-issue".to_string(),
+            expected: format!(
+                "closing </{}> or </{}>",
+                String::from_utf8_lossy(canonical_tag),
+                String::from_utf8_lossy(original_tag)
+            ),
+            found: "unexpected end of file".to_string(),
+            suggestion: format!(
+                "Ensure the <ralph-issue> element has a matching closing tag (</{}> or </{}>).",
+                String::from_utf8_lossy(canonical_tag),
+                String::from_utf8_lossy(original_tag)
+            ),
+            example: None,
+        }),
+        Ok(_) => {
+            parse_issue_entry_parts(reader, canonical_tag, original_tag, text_parts, skills_mcp)
+        }
+        Err(err) => Err(malformed_xml_error(&err)),
+    }
+}
+
+fn parse_issue_entry_started_child(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    canonical_tag: &[u8],
+    original_tag: &[u8],
+    text_parts: Vec<String>,
+    skills_mcp: Option<crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp>,
+    event: quick_xml::events::BytesStart<'_>,
+) -> Result<IssueEntry, XsdValidationError> {
+    match event.name().as_ref() {
+        b"code" => {
+            let code_text = read_text_until_end(reader, b"code")?;
+            let next_parts = append_non_empty_text(text_parts, code_text);
+            parse_issue_entry_parts(reader, canonical_tag, original_tag, next_parts, skills_mcp)
+        }
+        b"skills-mcp" => {
+            let parsed_skills_mcp = parse_skills_mcp(reader);
+            parse_issue_entry_parts(
+                reader,
+                canonical_tag,
+                original_tag,
+                text_parts,
+                Some(parsed_skills_mcp),
+            )
+        }
+        other => {
+            let _ = skip_to_end(reader, other);
+            parse_issue_entry_parts(reader, canonical_tag, original_tag, text_parts, skills_mcp)
         }
     }
+}
 
-    let text = text_parts.join("").trim().to_string();
-    Ok(IssueEntry { text, skills_mcp })
+fn parse_issue_entry_empty_child(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    canonical_tag: &[u8],
+    original_tag: &[u8],
+    text_parts: Vec<String>,
+    skills_mcp: Option<crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp>,
+    event: quick_xml::events::BytesStart<'_>,
+) -> Result<IssueEntry, XsdValidationError> {
+    if event.name().as_ref() == b"skills-mcp" {
+        use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
+        return parse_issue_entry_parts(
+            reader,
+            canonical_tag,
+            original_tag,
+            text_parts,
+            Some(SkillsMcp {
+                skills: Vec::new(),
+                mcps: Vec::new(),
+                raw_content: None,
+            }),
+        );
+    }
+
+    parse_issue_entry_parts(reader, canonical_tag, original_tag, text_parts, skills_mcp)
+}
+
+fn append_non_empty_text(text_parts: Vec<String>, text: String) -> Vec<String> {
+    if text.trim().is_empty() {
+        text_parts
+    } else {
+        append_item(text_parts, text)
+    }
 }

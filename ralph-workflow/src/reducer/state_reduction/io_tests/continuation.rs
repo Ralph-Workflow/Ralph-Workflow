@@ -234,7 +234,7 @@ fn test_same_agent_retry_uses_same_agent_retry_mode_until_success() {
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "mock".to_string(),
+            AgentName::from("mock"),
             1,
             crate::reducer::event::AgentErrorKind::InternalError,
             false,
@@ -249,7 +249,7 @@ fn test_same_agent_retry_uses_same_agent_retry_mode_until_success() {
 
     let recovered_state = reduce(
         retrying_state,
-        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "mock".to_string()),
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, AgentName::from("mock")),
     );
 
     assert_eq!(
@@ -287,7 +287,7 @@ fn test_xsd_retry_uses_xsd_retry_mode_until_success() {
 
     let recovered_state = reduce(
         retrying_state,
-        PipelineEvent::agent_invocation_succeeded(AgentRole::Analysis, "mock".to_string()),
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Analysis, AgentName::from("mock")),
     );
 
     assert_eq!(

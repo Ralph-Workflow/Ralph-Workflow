@@ -15,6 +15,8 @@ const STEP_SUB_ELEMENT_TAGS: &[&str] = &[
     "file",
 ];
 
+use std::collections::HashSet;
+
 struct ParsedStep {
     step: Step,
     explicit_number: Option<u32>,
@@ -31,7 +33,10 @@ struct ParsedStep {
 ///
 /// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
 /// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
-fn parse_steps(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Vec<Step>, XsdValidationError> {
+fn parse_steps(
+    reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
+) -> Result<Vec<Step>, XsdValidationError> {
     let canonical_tag = b"ralph-implementation-steps";
     let mut steps = Vec::new();
     let mut buf = Vec::new();
@@ -101,43 +106,93 @@ fn parse_steps(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Vec<St
         });
     }
 
-    let mut used_numbers: std::collections::HashSet<u32> = steps
+    let explicit_numbers: HashSet<u32> = steps
         .iter()
         .filter_map(|step| step.explicit_number)
         .collect();
-    let mut next_auto = 1u32;
-    for step in &mut steps {
-        if step.step.number == 0 {
-            while used_numbers.contains(&next_auto) {
-                next_auto = next_auto.saturating_add(1);
-            }
-            step.step.number = next_auto;
-            used_numbers.insert(next_auto);
-            next_auto = next_auto.saturating_add(1);
-        }
-    }
+    let renumbered_steps: Vec<ParsedStep> = steps
+        .into_iter()
+        .scan((explicit_numbers, 1u32), |state, parsed| {
+            let ParsedStep {
+                step,
+                parse_order,
+                dependency_targets,
+                ..
+            } = parsed;
 
-    let final_numbers_by_parse_order: std::collections::HashMap<u32, u32> = steps
+            let assigned_number = if step.number == 0 {
+                next_unused_number(&state.0, state.1)
+            } else {
+                step.number
+            };
+
+            state.0.insert(assigned_number);
+            state.1 = assigned_number.saturating_add(1);
+
+            Some(ParsedStep {
+                step: Step {
+                    number: assigned_number,
+                    ..step
+                },
+                explicit_number: Some(assigned_number),
+                parse_order,
+                dependency_targets,
+            })
+        })
+        .collect();
+
+    let final_numbers_by_parse_order: HashMap<u32, u32> = renumbered_steps
         .iter()
         .map(|step| (step.parse_order, step.step.number))
         .collect();
 
-    Ok(steps
+    Ok(renumbered_steps
         .into_iter()
-        .map(|mut parsed| {
-            parsed.step.depends_on = parsed
-                .dependency_targets
+        .map(|parsed| {
+            let ParsedStep {
+                step,
+                dependency_targets,
+                ..
+            } = parsed;
+            let Step {
+                depends_on,
+                number,
+                kind,
+                priority,
+                title,
+                target_files,
+                location,
+                rationale,
+                content,
+            } = step;
+            let depends_on = dependency_targets
                 .into_iter()
-                .zip(parsed.step.depends_on.iter().copied())
+                .zip(depends_on)
                 .map(|(target, original)| {
                     target.map_or(original, |parse_order| {
                         final_numbers_by_parse_order[&parse_order]
                     })
                 })
                 .collect();
-            parsed.step
+            Step {
+                number,
+                kind,
+                priority,
+                title,
+                target_files,
+                location,
+                rationale,
+                content,
+                depends_on,
+            }
         })
         .collect())
+}
+
+fn next_unused_number(used: &HashSet<u32>, start: u32) -> u32 {
+    std::iter::successors(Some(start), |value| value.checked_add(1))
+        .find(|value| !used.contains(value))
+        .unwrap_or(u32::MAX)
 }
 
 /// Content element names that can appear directly under a step (without a `<content>` wrapper).
@@ -296,14 +351,18 @@ fn parse_single_step(
                                 target_files.append(&mut wrapped);
                             }
                             "location" => {
-                                location = Some(read_text_until_end_fuzzy(reader, b"location", other)?);
+                                location =
+                                    Some(read_text_until_end_fuzzy(reader, b"location", other)?);
                             }
                             "rationale" => {
-                                rationale = Some(read_text_until_end_fuzzy(reader, b"rationale", other)?);
+                                rationale =
+                                    Some(read_text_until_end_fuzzy(reader, b"rationale", other)?);
                             }
                             "depends-on" => {
                                 let dep_attrs = get_attributes(&e);
-                                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
+                                if let Some(step_num) =
+                                    dep_attrs.get("step").and_then(|s| s.parse().ok())
+                                {
                                     depends_on.push(step_num);
                                 }
                                 let _ = skip_to_end(reader, b"depends-on");
@@ -345,7 +404,9 @@ fn parse_single_step(
                         match canonical {
                             "depends-on" => {
                                 let dep_attrs = get_attributes(&e);
-                                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
+                                if let Some(step_num) =
+                                    dep_attrs.get("step").and_then(|s| s.parse().ok())
+                                {
                                     depends_on.push(step_num);
                                 }
                             }
@@ -428,18 +489,20 @@ fn resolve_dependency_parse_order(
     dependency_number: u32,
     parsed_steps: &[ParsedStep],
 ) -> Option<u32> {
-    let mut matches = parsed_steps.iter().filter_map(|parsed_step| {
-        let is_match = parsed_step.explicit_number == Some(dependency_number)
-            || (parsed_step.explicit_number.is_none()
-                && parsed_step.parse_order == dependency_number);
-        is_match.then_some(parsed_step.parse_order)
-    });
+    let matches: Vec<_> = parsed_steps
+        .iter()
+        .filter_map(|parsed_step| {
+            let is_match = parsed_step.explicit_number == Some(dependency_number)
+                || (parsed_step.explicit_number.is_none()
+                    && parsed_step.parse_order == dependency_number);
+            is_match.then_some(parsed_step.parse_order)
+        })
+        .take(2)
+        .collect();
 
-    let first = matches.next()?;
-    if matches.next().is_some() {
-        None
-    } else {
-        Some(first)
+    match matches.as_slice() {
+        [only] => Some(*only),
+        _ => None,
     }
 }
 
@@ -533,7 +596,10 @@ fn parse_target_files(reader: &mut Reader<&[u8]>) -> Result<Vec<TargetFile>, Xsd
 ///
 /// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
 /// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
-fn parse_critical_files(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<CriticalFiles, XsdValidationError> {
+fn parse_critical_files(
+    reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
+) -> Result<CriticalFiles, XsdValidationError> {
     let canonical_tag = b"ralph-critical-files";
     let mut primary_files = Vec::new();
     let mut reference_files = Vec::new();

@@ -32,7 +32,7 @@ mod io;
 mod runtime;
 
 // Re-export for convenient crate-level access
-pub use boundary::{compliance, dylint, dylint_report, lsp_diagnostics};
+pub use boundary::{compliance, coverage, dylint, dylint_report, lsp_diagnostics};
 pub use io::cache::CachingCommandRunner;
 pub use io::scanner::{LineIndex, NativeScanCheck, NativeScanCheckResult, NativeScanViolation};
 pub use runtime::verify;
@@ -254,11 +254,29 @@ fn main() -> ExitCode {
             }
             dylint_report::generate_dylint_report()
         }
+        Some("coverage") => {
+            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+                eprintln!("Usage: cargo xtask coverage");
+                eprintln!();
+                eprintln!("Run cargo llvm-cov coverage commands in diagnostic mode.");
+                eprintln!();
+                eprintln!("Runs in sequence:");
+                eprintln!("  cargo llvm-cov --all-features --lib -p ralph-workflow --html \\");
+                eprintln!("      --output-dir target/coverage/html");
+                eprintln!("  cargo llvm-cov report --lib -p ralph-workflow");
+                eprintln!();
+                eprintln!("Coverage is diagnostic only — exit is always 0 regardless of result.");
+                eprintln!("This command is NOT a build gate.");
+                return ExitCode::SUCCESS;
+            }
+            coverage::run_coverage()
+        }
         _ => {
             eprintln!("Usage: cargo xtask verify [--gui]");
             eprintln!("       cargo xtask dylint [--verbose]");
             eprintln!("       cargo xtask lsp-forbidden-allow-expect");
             eprintln!("       cargo xtask dylint-report");
+            eprintln!("       cargo xtask coverage");
             eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
             eprintln!("  --verbose, -v    Show detailed dylint output");
             ExitCode::from(2)

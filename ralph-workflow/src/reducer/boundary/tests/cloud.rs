@@ -2,6 +2,8 @@ use super::common::TestFixture;
 use crate::config::types::{CloudConfig, GitAuthMethod, GitRemoteConfig};
 use crate::executor::MockProcessExecutor;
 use crate::reducer::boundary::MainEffectHandler;
+use crate::reducer::event::{CommitEvent, PipelineEvent};
+use crate::reducer::ui_event::UIEvent;
 use std::sync::Arc;
 
 #[test]
@@ -203,4 +205,183 @@ fn test_push_to_remote_emits_ui_event_on_failure_with_redacted_error() {
         }
     }
     assert!(saw, "expected PushFailed UIEvent");
+}
+
+#[test]
+fn handle_create_pull_request_rejects_invalid_title() {
+    let mut fixture = TestFixture::new();
+    fixture.cloud.enabled = true;
+    let ctx = fixture.ctx();
+
+    let result =
+        MainEffectHandler::handle_create_pull_request(&ctx, "main", "feature", "   ", "body");
+
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Commit(CommitEvent::PullRequestFailed { .. })
+    ));
+
+    assert!(result.ui_events.iter().any(|event| matches!(
+        event,
+        UIEvent::PullRequestFailed { error } if error.contains("Non-empty text expected")
+    )));
+
+    assert!(fixture.executor.execute_calls_for("gh").is_empty());
+    assert!(fixture.executor.execute_calls_for("glab").is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Seam tests: handle_create_pull_request executor capability interactions.
+// ---------------------------------------------------------------------------
+
+/// Contract 1 + 3: gh CLI is called; success → PullRequestCreated event + UIEvent.
+#[test]
+fn handle_create_pull_request_gh_success_emits_pull_request_created() {
+    // Arrange: gh CLI returns success with a PR URL.
+    let executor = Arc::new(
+        MockProcessExecutor::new().with_output("gh", "https://github.com/owner/repo/pull/42\n"),
+    );
+    let mut fixture = TestFixture::new();
+    fixture.executor = executor;
+    let ctx = fixture.ctx();
+
+    // Act
+    let result = MainEffectHandler::handle_create_pull_request(
+        &ctx,
+        "main",
+        "feature/my-branch",
+        "Add feature",
+        "PR body",
+    );
+
+    // Contract 1: gh executor was called.
+    let gh_calls = fixture.executor.execute_calls_for("gh");
+    assert_eq!(
+        gh_calls.len(),
+        1,
+        "gh CLI must be called exactly once for PR creation"
+    );
+    let (_cmd, args, _env, _workdir) = &gh_calls[0];
+    assert!(
+        args.contains(&"pr".to_string()) && args.contains(&"create".to_string()),
+        "gh must be called with 'pr create', got: {args:?}"
+    );
+    assert!(
+        args.iter().any(|a| a == "Add feature"),
+        "gh args must include the PR title"
+    );
+
+    // Contract 3: correct typed event on success.
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Commit(CommitEvent::PullRequestCreated { ref url, number })
+                if url.contains("pull/42") && number == 42
+        ),
+        "expected PullRequestCreated event with url and number, got: {:?}",
+        result.event
+    );
+
+    // UI event also emitted.
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PullRequestCreated { url, number }
+                if url.contains("pull/42") && *number == 42
+        )),
+        "expected PullRequestCreated UIEvent"
+    );
+}
+
+/// Contract 2: gh not found (IO error) → falls back to glab; glab success → PullRequestCreated.
+///
+/// The fallback to glab is triggered when `gh` returns an OS-level spawn error (e.g. command
+/// not found), not merely a non-zero exit code.  Non-zero exit from a running `gh` is treated
+/// as a `PullRequestFailed` directly, without a glab fallback.
+#[test]
+fn handle_create_pull_request_falls_back_to_glab_when_gh_fails() {
+    // Arrange: gh CLI unavailable at OS level; glab returns success.
+    let executor = Arc::new(
+        MockProcessExecutor::new()
+            .with_io_error("gh", std::io::ErrorKind::NotFound, "gh: not found")
+            .with_output("glab", "https://gitlab.com/owner/repo/-/merge_requests/7\n"),
+    );
+    let mut fixture = TestFixture::new();
+    fixture.executor = executor;
+    let ctx = fixture.ctx();
+
+    // Act
+    let result = MainEffectHandler::handle_create_pull_request(
+        &ctx,
+        "main",
+        "feature/branch",
+        "My MR",
+        "body",
+    );
+
+    // Contract 2: glab was invoked after gh failure.
+    let glab_calls = fixture.executor.execute_calls_for("glab");
+    assert_eq!(
+        glab_calls.len(),
+        1,
+        "glab must be called as fallback when gh fails"
+    );
+    let (_cmd, args, _env, _workdir) = &glab_calls[0];
+    assert!(
+        args.contains(&"mr".to_string()) && args.contains(&"create".to_string()),
+        "glab must be called with 'mr create', got: {args:?}"
+    );
+
+    // Contract 3: success event from glab fallback.
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Commit(CommitEvent::PullRequestCreated { ref url, number })
+                if url.contains("merge_requests/7") && number == 7
+        ),
+        "expected PullRequestCreated from glab fallback, got: {:?}",
+        result.event
+    );
+}
+
+/// Contract 2: both gh and glab fail → PullRequestFailed with combined error.
+#[test]
+fn handle_create_pull_request_emits_pull_request_failed_when_both_tools_fail() {
+    // Arrange: both gh and glab fail at the OS level (spawn error).
+    let executor = Arc::new(
+        MockProcessExecutor::new()
+            .with_io_error("gh", std::io::ErrorKind::NotFound, "gh: not found")
+            .with_io_error("glab", std::io::ErrorKind::NotFound, "glab: not found"),
+    );
+    let mut fixture = TestFixture::new();
+    fixture.executor = executor;
+    let ctx = fixture.ctx();
+
+    // Act
+    let result = MainEffectHandler::handle_create_pull_request(
+        &ctx,
+        "main",
+        "feature/branch",
+        "My PR",
+        "body",
+    );
+
+    // Contract 2 error path: PullRequestFailed with error describing both failures.
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Commit(CommitEvent::PullRequestFailed { ref error })
+                if error.contains("gh") || error.contains("glab")
+        ),
+        "expected PullRequestFailed when both gh and glab fail, got: {:?}",
+        result.event
+    );
+
+    assert!(
+        result
+            .ui_events
+            .iter()
+            .any(|e| matches!(e, UIEvent::PullRequestFailed { .. })),
+        "expected PullRequestFailed UIEvent"
+    );
 }

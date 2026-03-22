@@ -123,48 +123,46 @@ pub fn restore_prompt_if_needed() -> anyhow::Result<bool> {
         Path::new(".agent/PROMPT.md.backup.2"),
     ];
 
-    for backup_path in &backup_paths {
-        if backup_path.exists() {
-            // Verify backup has content
-            let Ok(backup_content) = fs::read_to_string(backup_path) else {
-                continue;
-            };
-
+    let restored = backup_paths
+        .iter()
+        .filter(|backup_path| backup_path.exists())
+        .find_map(|backup_path| {
+            let backup_content = fs::read_to_string(backup_path).ok()?;
             if backup_content.trim().is_empty() {
-                continue; // Try next backup
+                return None;
             }
 
-            // Restore from backup
-            fs::write(prompt_path, backup_content)?;
+            fs::write(prompt_path, backup_content).ok()?;
+            set_prompt_readonly_permissions(prompt_path);
+            Some(())
+        })
+        .is_some();
 
-            // Set read-only permissions on restored file (best-effort)
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Ok(metadata) = fs::metadata(prompt_path) {
-                    let mut perms = metadata.permissions();
-                    perms.set_mode(0o444);
-                    let _ = fs::set_permissions(prompt_path, perms);
-                }
-            }
-
-            #[cfg(windows)]
-            {
-                if let Ok(metadata) = fs::metadata(prompt_path) {
-                    let mut perms = metadata.permissions();
-                    perms.set_readonly(true);
-                    let _ = fs::set_permissions(prompt_path, perms);
-                }
-            }
-
-            return Ok(false);
-        }
+    if restored {
+        return Ok(false);
     }
 
     // No valid backup available
     anyhow::bail!(
         "PROMPT.md is missing/empty and no valid backup available (tried .agent/PROMPT.md.backup, .agent/PROMPT.md.backup.1, .agent/PROMPT.md.backup.2)"
     );
+}
+
+fn set_prompt_readonly_permissions(prompt_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(prompt_path, fs::Permissions::from_mode(0o444));
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::{PermissionsExt, FILE_ATTRIBUTE_READONLY};
+        let _ = fs::set_permissions(
+            prompt_path,
+            fs::Permissions::from_attributes(FILE_ATTRIBUTE_READONLY),
+        );
+    }
 }
 
 /// Check content for Goal section.
@@ -231,84 +229,89 @@ pub fn validate_prompt_md_with_workspace(
 ) -> PromptValidationResult {
     let prompt_path = Path::new("PROMPT.md");
     let file_exists = workspace.exists(prompt_path);
-    let mut result = PromptValidationResult {
-        file_state: if file_exists {
-            FileState::Empty
-        } else {
-            FileState::Missing
-        },
-        has_goal: false,
-        has_acceptance: false,
-        warnings: Vec::new(),
-        errors: Vec::new(),
-    };
+    let restored_from = (!file_exists)
+        .then(|| try_restore_from_backup_with_workspace(workspace, prompt_path))
+        .flatten();
 
-    if !result.exists() {
-        // Try to restore from backup
-        if let Some(source) = try_restore_from_backup_with_workspace(workspace, prompt_path) {
-            result.file_state = FileState::Empty;
-            result.warnings.push(format!(
-                "PROMPT.md was missing and was automatically restored from {source}"
-            ));
+    if !file_exists && restored_from.is_none() {
+        let error = if interactive && std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+            "PROMPT.md not found. Use 'ralph --init <template>' to create one.".to_string()
         } else {
-            // No backup available
-            if interactive && std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-                result.errors.push(
-                    "PROMPT.md not found. Use 'ralph --init <template>' to create one.".to_string(),
-                );
-            } else {
-                result.errors.push(
-                    "PROMPT.md not found. Run 'ralph --list-work-guides' to see available Work Guides, \
-                     then 'ralph --init <template>' to create one."
-                        .to_string(),
-                );
-            }
-            return result;
-        }
+            "PROMPT.md not found. Run 'ralph --list-work-guides' to see available Work Guides, \
+             then 'ralph --init <template>' to create one."
+                .to_string()
+        };
+
+        return PromptValidationResult {
+            file_state: FileState::Missing,
+            has_goal: false,
+            has_acceptance: false,
+            warnings: Vec::new(),
+            errors: vec![error],
+        };
     }
+
+    let restoration_warnings: Vec<String> = restored_from
+        .into_iter()
+        .map(|source| format!("PROMPT.md was missing and was automatically restored from {source}"))
+        .collect();
 
     let content = match workspace.read(prompt_path) {
         Ok(c) => c,
         Err(e) => {
-            result.errors.push(format!("Failed to read PROMPT.md: {e}"));
-            return result;
+            return PromptValidationResult {
+                file_state: FileState::Empty,
+                has_goal: false,
+                has_acceptance: false,
+                warnings: restoration_warnings,
+                errors: vec![format!("Failed to read PROMPT.md: {e}")],
+            };
         }
     };
 
-    result.file_state = if content.trim().is_empty() {
+    let file_state = if content.trim().is_empty() {
         FileState::Empty
     } else {
         FileState::Present
     };
 
-    if !result.has_content() {
-        result.errors.push("PROMPT.md is empty".to_string());
-        return result;
+    if matches!(file_state, FileState::Empty) {
+        return PromptValidationResult {
+            file_state,
+            has_goal: false,
+            has_acceptance: false,
+            warnings: restoration_warnings,
+            errors: vec!["PROMPT.md is empty".to_string()],
+        };
     }
 
-    // Check for Goal section
-    result.has_goal = check_goal_section(&content);
-    if !result.has_goal {
-        let msg = "PROMPT.md missing '## Goal' section".to_string();
-        if strict {
-            result.errors.push(msg);
-        } else {
-            result.warnings.push(msg);
-        }
-    }
+    let has_goal = check_goal_section(&content);
+    let has_acceptance = check_acceptance_section(&content);
 
-    // Check for Acceptance section
-    result.has_acceptance = check_acceptance_section(&content);
-    if !result.has_acceptance {
-        let msg = "PROMPT.md missing acceptance checks section".to_string();
-        if strict {
-            result.errors.push(msg);
-        } else {
-            result.warnings.push(msg);
-        }
-    }
+    let goal_msg = "PROMPT.md missing '## Goal' section".to_string();
+    let acceptance_msg = "PROMPT.md missing acceptance checks section".to_string();
 
-    result
+    let warnings = restoration_warnings
+        .into_iter()
+        .chain((!strict && !has_goal).then_some(goal_msg.clone()))
+        .chain((!strict && !has_acceptance).then_some(acceptance_msg.clone()))
+        .collect();
+
+    let errors = [
+        (strict && !has_goal).then_some(goal_msg),
+        (strict && !has_acceptance).then_some(acceptance_msg),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    PromptValidationResult {
+        file_state,
+        has_goal,
+        has_acceptance,
+        warnings,
+        errors,
+    }
 }
 
 /// Attempt to restore PROMPT.md from backup files using workspace.
@@ -331,21 +334,13 @@ fn try_restore_from_backup_with_workspace(
         ),
     ];
 
-    for (backup_path, name) in backup_paths {
-        if workspace.exists(backup_path) {
-            let Ok(backup_content) = workspace.read(backup_path) else {
-                continue;
-            };
-
-            if backup_content.trim().is_empty() {
-                continue;
-            }
-
-            if workspace.write(prompt_path, &backup_content).is_ok() {
-                return Some(name.to_string());
-            }
-        }
-    }
-
-    None
+    backup_paths.into_iter().find_map(|(backup_path, name)| {
+        workspace
+            .exists(backup_path)
+            .then(|| workspace.read(backup_path).ok())
+            .flatten()
+            .filter(|backup_content| !backup_content.trim().is_empty())
+            .filter(|backup_content| workspace.write(prompt_path, backup_content).is_ok())
+            .map(|_| name.to_string())
+    })
 }

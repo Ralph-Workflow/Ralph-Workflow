@@ -17,6 +17,7 @@
 
 use std::path::Path;
 
+use crate::common::domain_types::GitOid;
 use crate::workspace::{Workspace, WorkspaceFs};
 
 mod io {
@@ -37,10 +38,10 @@ const START_COMMIT_FILE: &str = ".agent/start_commit";
 /// by treating the starting point as the empty tree.
 const EMPTY_REPO_SENTINEL: &str = "__EMPTY_REPO__";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartPoint {
     /// A concrete commit OID to diff from.
-    Commit(git2::Oid),
+    Commit(GitOid),
     /// An empty repository baseline (diff from the empty tree).
     EmptyRepo,
 }
@@ -98,7 +99,7 @@ fn get_current_start_point(repo: &git2::Repository) -> io::Result<StartPoint> {
     let start_point = match head {
         Ok(head) => {
             let head_commit = head.peel_to_commit().map_err(|e| to_io_error(&e))?;
-            StartPoint::Commit(head_commit.id())
+            StartPoint::Commit(git2_oid_to_git_oid(head_commit.id())?)
         }
         Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => StartPoint::EmptyRepo,
         Err(e) => return Err(to_io_error(&e)),
@@ -198,15 +199,8 @@ pub fn load_start_point_with_workspace(
         return Ok(StartPoint::EmptyRepo);
     }
 
-    // Validate OID format using libgit2.
-    let oid = git2::Oid::from_str(raw).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "Invalid OID format in {START_COMMIT_FILE}: '{raw}'. Run 'ralph --reset-start-commit' to fix."
-            ),
-        )
-    })?;
+    let git_oid = parse_git_oid(raw)?;
+    let oid = git_oid_to_git2_oid(&git_oid)?;
 
     // Ensure the commit still exists in this repository.
     repo.find_commit(oid).map_err(|e| {
@@ -224,7 +218,7 @@ pub fn load_start_point_with_workspace(
         }
     })?;
 
-    Ok(StartPoint::Commit(oid))
+    Ok(StartPoint::Commit(git_oid))
 }
 
 /// Save start commit using workspace abstraction.
@@ -395,7 +389,7 @@ fn reset_start_commit_impl(
 #[derive(Debug, Clone)]
 pub struct StartCommitSummary {
     /// The start commit OID (short form, or None if not set).
-    pub start_oid: Option<String>,
+    pub start_oid: Option<GitOid>,
     /// Number of commits since start commit.
     pub commits_since: usize,
     /// Whether the start commit is stale (>10 commits behind).
@@ -408,7 +402,8 @@ impl StartCommitSummary {
         self.start_oid.as_ref().map_or_else(
             || "Start: not set".to_string(),
             |oid| {
-                let short_oid = &oid[..8.min(oid.len())];
+                let oid_str = oid.as_str();
+                let short_oid = &oid_str[..8.min(oid_str.len())];
                 if self.is_stale {
                     format!(
                         "Start: {} (+{} commits, STALE)",
@@ -446,8 +441,9 @@ fn get_start_commit_summary_impl(
     repo: &git2::Repository,
     repo_root: &Path,
 ) -> io::Result<StartCommitSummary> {
-    let start_oid = match load_start_point_impl(repo, repo_root)? {
-        StartPoint::Commit(oid) => Some(oid.to_string()),
+    let start_point = load_start_point_impl(repo, repo_root)?;
+    let start_oid = match start_point {
+        StartPoint::Commit(oid) => Some(oid),
         StartPoint::EmptyRepo => None,
     };
 
@@ -460,8 +456,7 @@ fn get_start_commit_summary_impl(
             })?)
             .map_err(|e| to_io_error(&e))?;
 
-        let start_commit_oid = git2::Oid::from_str(oid)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid start OID format"))?;
+        let start_commit_oid = git_oid_to_git2_oid(oid)?;
 
         let start_commit = repo
             .find_commit(start_commit_oid)
@@ -493,6 +488,36 @@ fn get_start_commit_summary_impl(
     })
 }
 
+pub(crate) fn git2_oid_to_git_oid(oid: git2::Oid) -> io::Result<GitOid> {
+    let text = oid.to_string();
+    GitOid::try_from_str(&text).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Invalid git2 OID from git: {text} ({err})"),
+        )
+    })
+}
+
+pub fn git_oid_to_git2_oid(oid: &GitOid) -> io::Result<git2::Oid> {
+    git2::Oid::from_str(oid.as_str()).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Stored start commit '{oid}' is not valid for git2"),
+        )
+    })
+}
+
+pub(crate) fn parse_git_oid(raw: &str) -> io::Result<GitOid> {
+    GitOid::try_from_str(raw).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Invalid OID format in {START_COMMIT_FILE}: '{raw}'. Run 'ralph --reset-start-commit' to fix."
+            ),
+        )
+    })
+}
+
 #[cfg(test)]
 fn has_start_commit() -> bool {
     load_start_point().is_ok()
@@ -506,6 +531,7 @@ fn to_io_error(err: &git2::Error) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::domain_types::GitOid;
 
     #[test]
     fn test_start_commit_file_path_defined() {
@@ -540,5 +566,22 @@ mod tests {
     fn test_save_start_commit_returns_result() {
         let result = save_start_commit();
         assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn start_point_commit_holds_git_oid() {
+        let oid_text = "0123456789abcdef0123456789abcdef01234567";
+        let git_oid = match GitOid::try_from_str(oid_text) {
+            Ok(oid) => oid,
+            Err(err) => panic!("Failed to parse valid OID: {err}"),
+        };
+
+        let start_point = StartPoint::Commit(git_oid.clone());
+
+        if let StartPoint::Commit(stored) = start_point {
+            assert_eq!(stored, git_oid);
+        } else {
+            panic!("StartPoint::Commit did not store the GitOid variant");
+        }
     }
 }

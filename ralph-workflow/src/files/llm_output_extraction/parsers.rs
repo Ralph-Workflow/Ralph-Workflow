@@ -272,3 +272,226 @@ fn extract_opencode_result(content: &str) -> Option<String> {
         Some(remove_thought_process_patterns(&accumulated_text))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::files::llm_output_extraction::types::OutputFormat;
+
+    // --- detect_output_format ---
+
+    #[test]
+    fn detect_output_format_empty_is_generic() {
+        assert_eq!(detect_output_format(""), OutputFormat::Generic);
+    }
+
+    #[test]
+    fn detect_output_format_plain_text_is_generic() {
+        assert_eq!(
+            detect_output_format("Hello world, no JSON here."),
+            OutputFormat::Generic
+        );
+    }
+
+    #[test]
+    fn detect_output_format_claude_result_event() {
+        let line = r#"{"type":"result","result":"done","session_id":"abc"}"#;
+        assert_eq!(detect_output_format(line), OutputFormat::Claude);
+    }
+
+    #[test]
+    fn detect_output_format_codex_turn_started() {
+        let line = r#"{"type":"turn.started","id":"t1"}"#;
+        assert_eq!(detect_output_format(line), OutputFormat::Codex);
+    }
+
+    #[test]
+    fn detect_output_format_codex_item_completed() {
+        let line = r#"{"type":"item.completed","item":{"type":"agent_message","text":"hi"}}"#;
+        assert_eq!(detect_output_format(line), OutputFormat::Codex);
+    }
+
+    #[test]
+    fn detect_output_format_opencode_text_with_session_id() {
+        let line = r#"{"type":"text","part":{"text":"hi"},"sessionID":"s1"}"#;
+        assert_eq!(detect_output_format(line), OutputFormat::OpenCode);
+    }
+
+    // --- extract_by_format ---
+
+    #[test]
+    fn extract_by_format_generic_returns_none() {
+        let result = extract_by_format("some plain text", OutputFormat::Generic);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn extract_by_format_claude_extracts_result() {
+        let content = r#"{"type":"result","result":"final answer","subtype":"success"}"#;
+        let result = extract_by_format(content, OutputFormat::Claude);
+        assert_eq!(result, Some("final answer".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_codex_extracts_agent_message() {
+        let content =
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"codex answer"}}"#;
+        let result = extract_by_format(content, OutputFormat::Codex);
+        assert_eq!(result, Some("codex answer".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_opencode_extracts_text_part() {
+        let content = r#"{"type":"text","part":{"text":"opencode output"}}"#;
+        let result = extract_by_format(content, OutputFormat::OpenCode);
+        assert_eq!(result, Some("opencode output".to_string()));
+    }
+
+    // --- extract_opencode_text_part (private helper via extract_by_format) ---
+
+    #[test]
+    fn extract_by_format_opencode_skips_non_text_events() {
+        let content = concat!(
+            r#"{"type":"step_start","part":{"text":"ignored"}}"#,
+            "\n",
+            r#"{"type":"text","part":{"text":"real output"}}"#,
+        );
+        let result = extract_by_format(content, OutputFormat::OpenCode);
+        assert_eq!(result, Some("real output".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_opencode_empty_text_returns_none() {
+        let content = r#"{"type":"text","part":{"text":"   "}}"#;
+        let result = extract_by_format(content, OutputFormat::OpenCode);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn extract_by_format_opencode_joins_multiple_text_parts() {
+        let content = concat!(
+            r#"{"type":"text","part":{"text":"first"}}"#,
+            "\n",
+            r#"{"type":"text","part":{"text":"second"}}"#,
+        );
+        let result = extract_by_format(content, OutputFormat::OpenCode);
+        assert_eq!(result, Some("first second".to_string()));
+    }
+
+    // --- extract_codex_message_text (private helper via extract_by_format) ---
+
+    #[test]
+    fn extract_by_format_codex_skips_non_item_completed() {
+        let content = concat!(
+            r#"{"type":"turn.started"}"#,
+            "\n",
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"the answer"}}"#,
+        );
+        let result = extract_by_format(content, OutputFormat::Codex);
+        assert_eq!(result, Some("the answer".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_codex_skips_non_agent_message_items() {
+        let content = r#"{"type":"item.completed","item":{"type":"tool_call","text":"ignored"}}"#;
+        let result = extract_by_format(content, OutputFormat::Codex);
+        assert_eq!(result, None);
+    }
+
+    // --- Claude extraction ---
+
+    #[test]
+    fn extract_by_format_claude_prefers_result_over_assistant() {
+        let content = concat!(
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"assistant text"}]}}"#,
+            "\n",
+            r#"{"type":"result","result":"final result","subtype":"success"}"#,
+        );
+        let result = extract_by_format(content, OutputFormat::Claude);
+        assert_eq!(result, Some("final result".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_claude_falls_back_to_assistant_text() {
+        let content = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"assistant answer"}]}}"#;
+        let result = extract_by_format(content, OutputFormat::Claude);
+        assert_eq!(result, Some("assistant answer".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_claude_skips_thinking_blocks() {
+        let content = r#"{"type":"assistant","message":{"content":[{"type":"thinking","text":"internal reasoning"},{"type":"text","text":"visible answer"}]}}"#;
+        let result = extract_by_format(content, OutputFormat::Claude);
+        assert_eq!(result, Some("visible answer".to_string()));
+    }
+
+    // --- Gemini extraction ---
+
+    #[test]
+    fn extract_by_format_gemini_extracts_assistant_content() {
+        let content =
+            r#"{"type":"message","role":"assistant","model":"gemini","content":"gemini answer"}"#;
+        let result = extract_by_format(content, OutputFormat::Gemini);
+        assert_eq!(result, Some("gemini answer".to_string()));
+    }
+
+    #[test]
+    fn extract_by_format_gemini_skips_non_assistant_messages() {
+        let content =
+            r#"{"type":"message","role":"user","model":"gemini","content":"user question"}"#;
+        let result = extract_by_format(content, OutputFormat::Gemini);
+        assert_eq!(result, None);
+    }
+}
+
+#[cfg(test)]
+mod proptest_parsers {
+    use super::{detect_output_format, extract_by_format};
+    use crate::files::llm_output_extraction::types::OutputFormat;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `detect_output_format` must never panic on any string input.
+        #[test]
+        fn detect_output_format_never_panics(s in ".*") {
+            let _ = detect_output_format(&s);
+        }
+
+        /// `extract_by_format` with Claude format must never panic on any string input.
+        #[test]
+        fn extract_by_format_claude_never_panics(s in ".*") {
+            let _ = extract_by_format(&s, OutputFormat::Claude);
+        }
+
+        /// `extract_by_format` with Codex format must never panic on any string input.
+        #[test]
+        fn extract_by_format_codex_never_panics(s in ".*") {
+            let _ = extract_by_format(&s, OutputFormat::Codex);
+        }
+
+        /// `extract_by_format` with Gemini format must never panic on any string input.
+        #[test]
+        fn extract_by_format_gemini_never_panics(s in ".*") {
+            let _ = extract_by_format(&s, OutputFormat::Gemini);
+        }
+
+        /// `extract_by_format` with OpenCode format must never panic on any string input.
+        #[test]
+        fn extract_by_format_opencode_never_panics(s in ".*") {
+            let _ = extract_by_format(&s, OutputFormat::OpenCode);
+        }
+
+        /// `extract_by_format` with Generic format must never panic and always returns None.
+        #[test]
+        fn extract_by_format_generic_always_none(s in ".*") {
+            let result = extract_by_format(&s, OutputFormat::Generic);
+            prop_assert_eq!(result, None);
+        }
+
+        /// Plain text (no leading `{`) always detects as Generic.
+        #[test]
+        fn detect_output_format_plain_text_is_generic(s in "[^{].*") {
+            prop_assert_eq!(detect_output_format(&s), OutputFormat::Generic);
+        }
+    }
+}

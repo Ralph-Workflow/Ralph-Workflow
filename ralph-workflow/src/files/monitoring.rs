@@ -136,8 +136,6 @@ impl PromptMonitor {
         stop_signal: &Arc<AtomicBool>,
         warnings: std::sync::mpsc::SyncSender<String>,
     ) {
-        use notify::Watcher;
-
         // Bounded queue for notify events.
         //
         // The notify crate can emit bursts of events under heavy filesystem activity.
@@ -147,13 +145,9 @@ impl PromptMonitor {
         let (tx, rx) = bounded_event_queue();
         let event_sender = tx;
 
-        // Create a watcher for the current directory
-        let mut watcher = match notify::recommended_watcher(move |res| {
-            // Drop if full to keep memory bounded.
-            let _ = event_sender.try_send(res);
-        }) {
-            Ok(w) => w,
-            Err(e) => {
+        let watcher = match setup_directory_watcher(event_sender) {
+            Ok(watcher) => watcher,
+            Err(MonitorSetupError::Create(e)) => {
                 push_warning(
                     &warnings,
                     format!(
@@ -164,57 +158,51 @@ impl PromptMonitor {
                 Self::polling_monitor(restoration_detected, stop_signal);
                 return;
             }
+            Err(MonitorSetupError::Watch(e)) => {
+                push_warning(
+                    &warnings,
+                    format!(
+                        "Failed to watch current directory: {e}. Falling back to periodic polling for PROMPT.md protection."
+                    ),
+                );
+                Self::polling_monitor(restoration_detected, stop_signal);
+                return;
+            }
         };
 
-        // Watch the current directory for events
-        if let Err(e) = watcher.watch(Path::new("."), notify::RecursiveMode::NonRecursive) {
-            push_warning(
-                &warnings,
-                format!(
-                    "Failed to watch current directory: {e}. Falling back to periodic polling for PROMPT.md protection."
-                ),
-            );
-            Self::polling_monitor(restoration_detected, stop_signal);
-            return;
-        }
+        let _watcher = watcher;
 
-        // Process events until stop signal is received
-        while !stop_signal.load(Ordering::Relaxed) {
-            // Check for events with a short timeout
-            match rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(Ok(event)) => {
-                    Self::handle_fs_event(&event, restoration_detected);
-
-                    // Drain any queued events to coalesce bursts.
-                    while let Ok(next) = rx.try_recv() {
-                        if let Ok(next_event) = next {
-                            Self::handle_fs_event(&next_event, restoration_detected);
-                        }
-                    }
-                }
-                Ok(Err(_)) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    // Error in watcher or timeout - continue anyway
-                }
-                Err(_) => {
-                    // Channel disconnected - stop monitoring
-                    break;
-                }
+        std::iter::from_fn(|| {
+            if stop_signal.load(Ordering::Relaxed) {
+                return None;
             }
-        }
+
+            Some(rx.recv_timeout(Duration::from_millis(100)))
+        })
+        .take_while(|received| {
+            !matches!(
+                received,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+            )
+        })
+        .for_each(|received| {
+            if let Ok(Ok(event)) = received {
+                Self::handle_fs_event(&event, restoration_detected);
+
+                // Drain any queued events to coalesce bursts.
+                std::iter::from_fn(|| rx.try_recv().ok())
+                    .filter_map(Result::ok)
+                    .for_each(|next_event| {
+                        Self::handle_fs_event(&next_event, restoration_detected);
+                    });
+            }
+        });
     }
 
     /// Handle a file system event from the watcher.
     fn handle_fs_event(event: &notify::Event, restoration_detected: &Arc<AtomicBool>) {
-        for path in &event.paths {
-            if is_prompt_md_path(path) {
-                // Check for remove event
-                if matches!(event.kind, notify::EventKind::Remove(_)) {
-                    // PROMPT.md was removed - restore it
-                    if Self::restore_from_backup() {
-                        restoration_detected.store(true, Ordering::Release);
-                    }
-                }
-            }
+        if is_restore_trigger_event(event) && Self::restore_from_backup() {
+            restoration_detected.store(true, Ordering::Release);
         }
     }
 
@@ -223,25 +211,22 @@ impl PromptMonitor {
     /// Some filesystems (NFS, network drives) don't support file system
     /// events. This fallback polls every 100ms to check if PROMPT.md exists.
     fn polling_monitor(restoration_detected: &Arc<AtomicBool>, stop_signal: &Arc<AtomicBool>) {
-        let check_deletion = || {
-            let prompt_exists_now = Path::new("PROMPT.md").exists();
-            (prompt_exists_now, prompt_exists_now)
-        };
+        let previous_exists = AtomicBool::new(Path::new("PROMPT.md").exists());
 
-        let mut previous_exists = Path::new("PROMPT.md").exists();
-
-        while !stop_signal.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(100));
-
-            let (current_exists, _) = check_deletion();
-
-            // Detect deletion (transition from exists to not exists)
-            if previous_exists && !current_exists && Self::restore_from_backup() {
-                restoration_detected.store(true, Ordering::Release);
+        std::iter::from_fn(|| {
+            if stop_signal.load(Ordering::Relaxed) {
+                return None;
             }
 
-            previous_exists = current_exists;
-        }
+            thread::sleep(Duration::from_millis(100));
+            Some(Path::new("PROMPT.md").exists())
+        })
+        .for_each(|current_exists| {
+            let previous = previous_exists.swap(current_exists, Ordering::AcqRel);
+            if previous && !current_exists && Self::restore_from_backup() {
+                restoration_detected.store(true, Ordering::Release);
+            }
+        });
     }
 
     /// Restore PROMPT.md from backup.
@@ -265,23 +250,13 @@ impl PromptMonitor {
 
         let prompt_path = Path::new("PROMPT.md");
 
-        for backup_path in &backup_paths {
-            let Some(backup_content) = read_backup_content_secure(backup_path) else {
-                continue;
-            };
-
-            if backup_content.trim().is_empty() {
-                continue;
-            }
-
-            if restore_prompt_content_atomic(prompt_path, backup_content.as_bytes()).is_err() {
-                continue;
-            }
-
-            return true;
-        }
-
-        false
+        backup_paths
+            .iter()
+            .filter_map(|backup_path| read_backup_content_secure(backup_path))
+            .filter(|backup_content| !backup_content.trim().is_empty())
+            .any(|backup_content| {
+                restore_prompt_content_atomic(prompt_path, backup_content.as_bytes()).is_ok()
+            })
     }
 
     /// Check if any restoration events were detected and reset the flag.
@@ -355,6 +330,41 @@ impl PromptMonitor {
     }
 }
 
+enum MonitorSetupError {
+    Create(notify::Error),
+    Watch(notify::Error),
+}
+
+fn setup_directory_watcher(
+    event_sender: std::sync::mpsc::SyncSender<notify::Result<notify::Event>>,
+) -> std::result::Result<notify::RecommendedWatcher, MonitorSetupError> {
+    notify::recommended_watcher(move |res| {
+        // Drop if full to keep memory bounded.
+        let _ = event_sender.try_send(res);
+    })
+    .map_err(MonitorSetupError::Create)
+    .and_then(|watcher| {
+        watcher
+            .with_current_directory_watch()
+            .map_err(MonitorSetupError::Watch)
+    })
+}
+
+trait WatcherRegistrationExt {
+    fn with_current_directory_watch(self) -> notify::Result<Self>
+    where
+        Self: Sized;
+}
+
+impl WatcherRegistrationExt for notify::RecommendedWatcher {
+    fn with_current_directory_watch(mut self) -> notify::Result<Self> {
+        use notify::Watcher;
+
+        self.watch(Path::new("."), notify::RecursiveMode::NonRecursive)?;
+        Ok(self)
+    }
+}
+
 // ============================================================================
 // Helper functions (boundary module - mutation and I/O permitted)
 // ============================================================================
@@ -376,7 +386,7 @@ fn read_backup_content_secure(path: &Path) -> Option<String> {
     {
         use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NOFOLLOW)
             .open(path)
@@ -390,9 +400,7 @@ fn read_backup_content_secure(path: &Path) -> Option<String> {
             return None;
         }
 
-        let mut buf = String::new();
-        std::io::Read::read_to_string(&mut file, &mut buf).ok()?;
-        Some(buf)
+        std::io::read_to_string(file).ok()
     }
 
     #[cfg(not(unix))]
@@ -405,10 +413,7 @@ fn read_backup_content_secure(path: &Path) -> Option<String> {
             return None;
         }
 
-        let mut file = std::fs::File::open(path).ok()?;
-        let mut buf = String::new();
-        std::io::Read::read_to_string(&mut file, &mut buf).ok()?;
-        Some(buf)
+        std::fs::read_to_string(path).ok()
     }
 }
 
@@ -424,22 +429,20 @@ fn restore_prompt_content_atomic(prompt_path: &Path, content: &[u8]) -> std::io:
     let temp_path = Path::new(&temp_name);
 
     // Create temp file in the same directory to keep rename on same filesystem.
-    let mut file = OpenOptions::new()
+    fs::write(temp_path, content)?;
+    let _ = OpenOptions::new()
         .write(true)
-        .create_new(true)
-        .open(temp_path)?;
-    std::io::Write::write_all(&mut file, content)?;
-    std::io::Write::flush(&mut file)?;
-    let _ = file.sync_all();
-    drop(file);
+        .open(temp_path)
+        .and_then(|file| file.sync_all());
 
     // Make the temp file read-only before publishing it.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(temp_path)?.permissions();
-        perms.set_mode(0o444);
-        fs::set_permissions(temp_path, perms)?;
+        fs::set_permissions(
+            temp_path,
+            <fs::Permissions as PermissionsExt>::from_mode(0o444),
+        )?;
     }
 
     #[cfg(windows)]
@@ -483,6 +486,11 @@ fn is_prompt_md_path(path: &Path) -> bool {
     matches!(path.file_name(), Some(name) if name == "PROMPT.md")
 }
 
+fn is_restore_trigger_event(event: &notify::Event) -> bool {
+    matches!(event.kind, notify::EventKind::Remove(_))
+        && event.paths.iter().any(|path| is_prompt_md_path(path))
+}
+
 impl Drop for PromptMonitor {
     fn drop(&mut self) {
         // Signal the thread to stop when dropped
@@ -498,7 +506,22 @@ impl Drop for PromptMonitor {
 
 #[cfg(test)]
 mod tests {
-    use super::{drain_warnings, push_warning};
+    use super::{drain_warnings, is_restore_trigger_event, push_warning};
+    use std::path::PathBuf;
+
+    fn remove_event(paths: Vec<&str>) -> notify::Event {
+        paths.into_iter().map(PathBuf::from).fold(
+            notify::Event::new(notify::EventKind::Remove(notify::event::RemoveKind::Any)),
+            |event, path| event.add_path(path),
+        )
+    }
+
+    fn create_event(paths: Vec<&str>) -> notify::Event {
+        paths.into_iter().map(PathBuf::from).fold(
+            notify::Event::new(notify::EventKind::Create(notify::event::CreateKind::Any)),
+            |event, path| event.add_path(path),
+        )
+    }
 
     #[test]
     fn drain_warnings_clears_buffer_after_read() {
@@ -515,5 +538,17 @@ mod tests {
             second_drain.is_empty(),
             "warnings should be cleared after drain"
         );
+    }
+
+    #[test]
+    fn restore_trigger_event_requires_remove_kind_and_prompt_path() {
+        let remove_prompt = remove_event(vec!["PROMPT.md"]);
+        assert!(is_restore_trigger_event(&remove_prompt));
+
+        let remove_other = remove_event(vec!["README.md"]);
+        assert!(!is_restore_trigger_event(&remove_other));
+
+        let create_prompt = create_event(vec!["PROMPT.md"]);
+        assert!(!is_restore_trigger_event(&create_prompt));
     }
 }

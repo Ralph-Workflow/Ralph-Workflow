@@ -170,13 +170,9 @@ Development is different. Once a plan exists, cheaper models can follow it with 
 
 I recommend using Ralph Workflow on different Git worktrees so you can work on multiple features at the same time. Due to its unattended nature, Ralph Workflow naturally takes longer than interacting with an AI agent directly. While you can run it on the main branch, it reduces your ability to work on multiple features simultaneously.
 
-## Origin
+## History
 
-I started this project as a side project with a bunch of shell scripts while working on my main project, testing out the concept. Then I decided I wanted it working on separate parts of the project like different worktrees. As a result, this became increasingly complex and I changed it to Rust (no, this isn't one of those rewrite-everything-in-Rust stories; shell scripts genuinely do not scale well in big codebases).
-
-## About Me
-
-I'm Mistlight, a Senior Software Engineer with over a decade of industry experience. I specialize in Software Engineering and AI, with a passion for solving AI workflows. 
+Ralph Workflow is inspired by the original [Ralph](https://ghuntley.com/ralph/) loop concept by Geoffrey Huntley. What started as a shell script prototype exploring that idea evolved into a full Rust implementation with structured phases, deterministic state management, and a layered Plan → Develop → Verify cycle. The project grew beyond its origins to support complex multi-iteration workflows across isolated Git worktrees.
 
 ## LICENSE
 

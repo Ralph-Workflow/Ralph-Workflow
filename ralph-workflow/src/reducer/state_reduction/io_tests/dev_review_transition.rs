@@ -115,9 +115,9 @@ fn test_chain_initialized_populates_reviewer_chain() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![
-                "codex".to_string(),
-                "opencode".to_string(),
-                "claude".to_string(),
+                AgentName::from("codex"),
+                AgentName::from("opencode"),
+                AgentName::from("claude"),
             ],
             3,
             1000,
@@ -182,7 +182,7 @@ fn test_auth_failure_during_review_advances_reducer_chain() {
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Reviewer,
-            "codex".to_string(),
+            AgentName::from("codex"),
             1,
             AgentErrorKind::Authentication,
             false,

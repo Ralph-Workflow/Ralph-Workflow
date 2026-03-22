@@ -291,12 +291,13 @@ pub fn load_config_from_path_with_env(
 
     if let Some(unified_cfg) = merged_unified.as_ref() {
         if let Err(message) = unified_cfg.resolve_agent_drains_checked() {
-            let key = if message.contains("references unknown chain") {
-                message
+            let message_str = message.to_string();
+            let key = if message_str.contains("references unknown chain") {
+                message_str
                     .split_whitespace()
                     .next()
                     .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
-            } else if message.contains("cannot be combined") {
+            } else if message_str.contains("cannot be combined") {
                 "agent_chain".to_string()
             } else {
                 "agent_drains".to_string()
@@ -306,7 +307,7 @@ pub fn load_config_from_path_with_env(
                 ConfigValidationError::InvalidValue {
                     file: PathBuf::from("<merged-config>"),
                     key,
-                    message,
+                    message: message_str.clone(),
                 },
             ]));
         }
@@ -339,10 +340,12 @@ pub fn load_config_from_path_with_env(
     }
 
     // Combine all warnings from all sources
-    let mut all_warnings = global_warnings;
-    all_warnings.extend(local_warnings);
-    all_warnings.extend(conversion_result.warnings);
-    all_warnings.extend(override_result.warnings);
+    let all_warnings = global_warnings
+        .into_iter()
+        .chain(local_warnings)
+        .chain(conversion_result.warnings)
+        .chain(override_result.warnings)
+        .collect();
 
     Ok((config, merged_unified, all_warnings))
 }

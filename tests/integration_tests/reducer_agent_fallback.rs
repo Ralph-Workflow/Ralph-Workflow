@@ -125,7 +125,7 @@ fn test_auth_failure_triggers_reducer_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Authentication,
                 false,
@@ -286,10 +286,7 @@ fn test_chain_initialized_event_populates_state() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
-                EXPECTED_AGENTS
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect(),
+                EXPECTED_AGENTS.iter().map(|s| (*s).into()).collect(),
                 3,
                 1000,
                 2.0,
@@ -344,7 +341,7 @@ fn test_rate_limit_fallback_preserves_prompt() {
             state,
             PipelineEvent::agent_rate_limited(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 Some("continue this work".to_string()),
             ),
         );
@@ -389,7 +386,7 @@ fn test_auth_fallback_switches_agent_without_prompt() {
 
         let new_state = reduce(
             state,
-            PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".to_string()),
+            PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".into()),
         );
 
         // Should switch to next agent
@@ -438,7 +435,7 @@ fn test_success_clears_continuation_prompt() {
             state,
             PipelineEvent::agent_rate_limited(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 Some("saved prompt".to_string()),
             ),
         );
@@ -449,7 +446,7 @@ fn test_success_clears_continuation_prompt() {
         // Act: success on agent2 should clear continuation prompt
         let new_state = reduce(
             state,
-            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".to_string()),
+            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".into()),
         );
 
         assert!(
@@ -490,7 +487,7 @@ fn test_exhausted_chain_triggers_checkpoint() {
                 state,
                 PipelineEvent::agent_invocation_failed(
                     AgentRole::Developer,
-                    "agent1".to_string(),
+                    "agent1".into(),
                     1,
                     AgentErrorKind::Authentication,
                     false,
@@ -555,7 +552,7 @@ fn test_full_agent_fallback_flow() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "claude".to_string(),
+                "claude".into(),
                 1,
                 AgentErrorKind::Authentication,
                 false,
@@ -568,7 +565,7 @@ fn test_full_agent_fallback_flow() {
         // Second agent succeeds
         state = reduce(
             state,
-            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "codex".to_string()),
+            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "codex".into()),
         );
 
         // Should still be on second agent (success doesn't advance)

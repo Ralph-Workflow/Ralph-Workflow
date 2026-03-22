@@ -58,177 +58,9 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
     // Check for illegal XML characters BEFORE parsing
     check_for_illegal_xml_characters(content)?;
 
-    let mut reader = create_reader(content);
-    let mut buf = Vec::new();
-
-    // Find the root element
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-fix-result" => break,
-            Ok(Event::Start(e)) => {
-                let name_bytes = e.name();
-                let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-fix-result".to_string(),
-                    expected: "<ralph-fix-result> as root element".to_string(),
-                    found: format!("<{tag_name}> (wrong root element)"),
-                    suggestion: "Use <ralph-fix-result> as the root element.".to_string(),
-                    example: Some(EXAMPLE_FIX_RESULT_XML.into()),
-                });
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-fix-result".to_string(),
-                    expected: "<ralph-fix-result> as root element".to_string(),
-                    found: format_content_preview(content),
-                    suggestion:
-                        "Wrap your result in <ralph-fix-result>...</ralph-fix-result> tags."
-                            .to_string(),
-                    example: Some(EXAMPLE_FIX_RESULT_XML.into()),
-                });
-            }
-            Ok(Event::Text(_) | _) => {
-                // Text before root element or other events - continue to find root or reach EOF
-                // EOF will give a more informative "missing root element" error
-            }
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-        buf.clear();
-    }
-
-    // Parse child elements
-    let mut status: Option<String> = None;
-    let mut summary: Option<String> = None;
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"ralph-status" => {
-                    if status.is_some() {
-                        return Err(duplicate_element_error("ralph-status", "ralph-fix-result"));
-                    }
-                    status = Some(read_text_until_end(&mut reader, b"ralph-status")?);
-                }
-                b"ralph-summary" => {
-                    if summary.is_some() {
-                        return Err(duplicate_element_error("ralph-summary", "ralph-fix-result"));
-                    }
-                    summary = Some(read_text_until_end(&mut reader, b"ralph-summary")?);
-                }
-                other => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known tag with minor typo, route to correct handler.
-                    let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_FIX_RESULT_TAGS) {
-                        // Re-parse with the canonical tag name
-                        match canonical {
-                            "ralph-status" => {
-                                if status.is_some() {
-                                    return Err(duplicate_element_error(
-                                        "ralph-status",
-                                        "ralph-fix-result",
-                                    ));
-                                }
-                                status = Some(read_text_until_end_fuzzy(
-                                    &mut reader,
-                                    b"ralph-status",
-                                    other,
-                                )?);
-                            }
-                            "ralph-summary" => {
-                                if summary.is_some() {
-                                    return Err(duplicate_element_error(
-                                        "ralph-summary",
-                                        "ralph-fix-result",
-                                    ));
-                                }
-                                summary = Some(read_text_until_end_fuzzy(
-                                    &mut reader,
-                                    b"ralph-summary",
-                                    other,
-                                )?);
-                            }
-                            _ => {
-                                // Should not happen - canonical tags are from our known list
-                                let _ = skip_to_end(&mut reader, other);
-                            }
-                        }
-                    } else {
-                        // Tolerant: skip unknown elements instead of rejecting.
-                        // Required elements (status) are still enforced after the loop.
-                        let _ = skip_to_end(&mut reader, other);
-                    }
-                    // Continue parsing — do not return an error for unknown elements.
-                }
-            },
-            Ok(Event::Text(e)) => {
-                // Tolerant: ignore stray text between elements.
-                let _ = e;
-            }
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"ralph-status" => {
-                    if status.is_some() {
-                        return Err(duplicate_element_error("ralph-status", "ralph-fix-result"));
-                    }
-                    status = Some(String::new());
-                }
-                b"ralph-summary" => {
-                    if summary.is_some() {
-                        return Err(duplicate_element_error("ralph-summary", "ralph-fix-result"));
-                    }
-                    summary = Some(String::new());
-                }
-                other => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known tag with minor typo, route to correct handler.
-                    let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_FIX_RESULT_TAGS) {
-                        // Handle canonical tag for self-closing element
-                        match canonical {
-                            "ralph-status" => {
-                                if status.is_some() {
-                                    return Err(duplicate_element_error(
-                                        "ralph-status",
-                                        "ralph-fix-result",
-                                    ));
-                                }
-                                status = Some(String::new());
-                            }
-                            "ralph-summary" => {
-                                if summary.is_some() {
-                                    return Err(duplicate_element_error(
-                                        "ralph-summary",
-                                        "ralph-fix-result",
-                                    ));
-                                }
-                                summary = Some(String::new());
-                            }
-                            _ => {
-                                // Should not happen - canonical tags are from our known list
-                            }
-                        }
-                    }
-                    // Else: skip unknown self-closing element
-                }
-            },
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-fix-result" => break,
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-fix-result".to_string(),
-                    expected: "closing </ralph-fix-result> tag".to_string(),
-                    found: "end of content without closing tag".to_string(),
-                    suggestion: "Add </ralph-fix-result> at the end.".to_string(),
-                    example: Some(EXAMPLE_FIX_RESULT_XML.into()),
-                });
-            }
-            Ok(_) => {} // Skip comments, etc.
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-    }
+    let parsed_state =
+        parse_fix_result_state(content, &mut create_reader(content), &mut Vec::new())?;
+    let FixResultParseState { status, summary } = parsed_state;
 
     // Validate required element: status
     let status = status.ok_or_else(|| {
@@ -275,6 +107,201 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
         status,
         summary: summary.filter(|s| !s.is_empty()),
     })
+}
+
+#[derive(Debug, Default)]
+struct FixResultParseState {
+    status: Option<String>,
+    summary: Option<String>,
+}
+
+fn parse_fix_result_state(
+    content: &str,
+    reader: &mut quick_xml::Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+) -> Result<FixResultParseState, XsdValidationError> {
+    find_fix_root(content, reader, buf)
+        .and_then(|_| parse_fix_children(reader, buf, FixResultParseState::default()))
+}
+
+fn find_fix_root(
+    content: &str,
+    reader: &mut quick_xml::Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+) -> Result<(), XsdValidationError> {
+    *buf = Vec::new();
+    match reader.read_event_into(buf) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-fix-result" => Ok(()),
+        Ok(Event::Start(e)) => {
+            let name_bytes = e.name();
+            let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
+            Err(XsdValidationError {
+                error_type: XsdErrorType::MissingRequiredElement,
+                element_path: "ralph-fix-result".to_string(),
+                expected: "<ralph-fix-result> as root element".to_string(),
+                found: format!("<{tag_name}> (wrong root element)"),
+                suggestion: "Use <ralph-fix-result> as the root element.".to_string(),
+                example: Some(EXAMPLE_FIX_RESULT_XML.into()),
+            })
+        }
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MissingRequiredElement,
+            element_path: "ralph-fix-result".to_string(),
+            expected: "<ralph-fix-result> as root element".to_string(),
+            found: format_content_preview(content),
+            suggestion: "Wrap your result in <ralph-fix-result>...</ralph-fix-result> tags."
+                .to_string(),
+            example: Some(EXAMPLE_FIX_RESULT_XML.into()),
+        }),
+        Ok(_) => find_fix_root(content, reader, buf),
+        Err(e) => Err(malformed_xml_error(&e)),
+    }
+}
+
+fn parse_fix_children(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    state: FixResultParseState,
+) -> Result<FixResultParseState, XsdValidationError> {
+    *buf = Vec::new();
+    match reader.read_event_into(buf) {
+        Ok(Event::Start(e)) => {
+            let next_state = parse_fix_start_child(reader, &state, e.name().as_ref())?;
+            parse_fix_children(reader, buf, next_state)
+        }
+        Ok(Event::Text(_)) => parse_fix_children(reader, buf, state),
+        Ok(Event::Empty(e)) => {
+            let next_state = parse_fix_empty_child(&state, e.name().as_ref())?;
+            parse_fix_children(reader, buf, next_state)
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == b"ralph-fix-result" => Ok(state),
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: "ralph-fix-result".to_string(),
+            expected: "closing </ralph-fix-result> tag".to_string(),
+            found: "end of content without closing tag".to_string(),
+            suggestion: "Add </ralph-fix-result> at the end.".to_string(),
+            example: Some(EXAMPLE_FIX_RESULT_XML.into()),
+        }),
+        Ok(_) => parse_fix_children(reader, buf, state),
+        Err(e) => Err(malformed_xml_error(&e)),
+    }
+}
+
+fn parse_fix_start_child(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    state: &FixResultParseState,
+    tag: &[u8],
+) -> Result<FixResultParseState, XsdValidationError> {
+    match tag {
+        b"ralph-status" => with_status(
+            state,
+            read_text_until_end(reader, b"ralph-status")?,
+            "ralph-status",
+        ),
+        b"ralph-summary" => with_summary(
+            state,
+            read_text_until_end(reader, b"ralph-summary")?,
+            "ralph-summary",
+        ),
+        other => parse_fix_start_child_fuzzy(reader, state, other),
+    }
+}
+
+fn parse_fix_start_child_fuzzy(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    state: &FixResultParseState,
+    original_tag: &[u8],
+) -> Result<FixResultParseState, XsdValidationError> {
+    match normalize_fix_child_tag(original_tag) {
+        Some("ralph-status") => with_status(
+            state,
+            read_text_until_end_fuzzy(reader, b"ralph-status", original_tag)?,
+            "ralph-status",
+        ),
+        Some("ralph-summary") => with_summary(
+            state,
+            read_text_until_end_fuzzy(reader, b"ralph-summary", original_tag)?,
+            "ralph-summary",
+        ),
+        Some(_) => {
+            let _ = skip_to_end(reader, original_tag);
+            Ok(FixResultParseState {
+                status: state.status.clone(),
+                summary: state.summary.clone(),
+            })
+        }
+        None => {
+            let _ = skip_to_end(reader, original_tag);
+            Ok(FixResultParseState {
+                status: state.status.clone(),
+                summary: state.summary.clone(),
+            })
+        }
+    }
+}
+
+fn parse_fix_empty_child(
+    state: &FixResultParseState,
+    tag: &[u8],
+) -> Result<FixResultParseState, XsdValidationError> {
+    match tag {
+        b"ralph-status" => with_status(state, String::new(), "ralph-status"),
+        b"ralph-summary" => with_summary(state, String::new(), "ralph-summary"),
+        other => match normalize_fix_child_tag(other) {
+            Some("ralph-status") => with_status(state, String::new(), "ralph-status"),
+            Some("ralph-summary") => with_summary(state, String::new(), "ralph-summary"),
+            Some(_) | None => Ok(FixResultParseState {
+                status: state.status.clone(),
+                summary: state.summary.clone(),
+            }),
+        },
+    }
+}
+
+fn with_status(
+    state: &FixResultParseState,
+    status: String,
+    element_name: &'static str,
+) -> Result<FixResultParseState, XsdValidationError> {
+    state
+        .status
+        .as_ref()
+        .map(|_| duplicate_element_error(element_name, "ralph-fix-result"))
+        .map_or_else(
+            || {
+                Ok(FixResultParseState {
+                    status: Some(status),
+                    summary: state.summary.clone(),
+                })
+            },
+            Err,
+        )
+}
+
+fn with_summary(
+    state: &FixResultParseState,
+    summary: String,
+    element_name: &'static str,
+) -> Result<FixResultParseState, XsdValidationError> {
+    state
+        .summary
+        .as_ref()
+        .map(|_| duplicate_element_error(element_name, "ralph-fix-result"))
+        .map_or_else(
+            || {
+                Ok(FixResultParseState {
+                    status: state.status.clone(),
+                    summary: Some(summary),
+                })
+            },
+            Err,
+        )
+}
+
+fn normalize_fix_child_tag(tag: &[u8]) -> Option<&'static str> {
+    let tag_name = String::from_utf8_lossy(tag);
+    normalize_tag_name(&tag_name, KNOWN_FIX_RESULT_TAGS)
 }
 
 /// Parsed fix result elements from valid XML.
@@ -753,5 +780,10 @@ mod tests {
         let elements = result.unwrap();
         // Self-closing misspelled tag should be treated as empty and skipped
         assert!(elements.summary.is_none());
+    }
+
+    #[test]
+    fn test_normalize_fix_child_tag_unknown_returns_none() {
+        assert_eq!(normalize_fix_child_tag(b"ralph-banana"), None);
     }
 }

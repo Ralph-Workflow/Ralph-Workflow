@@ -1,4 +1,5 @@
 use super::*;
+use crate::common::domain_types::AgentName;
 use crate::reducer::state::{ContinuationState, PipelineState};
 
 #[test]
@@ -81,7 +82,7 @@ fn test_reduce_agent_not_found_advances_agent_chain_instead_of_terminating() {
     let new_state = reduce_error(
         &state,
         &ErrorEvent::AgentNotFound {
-            agent: "missing".to_string(),
+            agent: AgentName::from("missing"),
         },
     );
 

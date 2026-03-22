@@ -49,6 +49,19 @@ mod workspace_tests {
     }
 
     #[test]
+    fn test_validate_prompt_md_with_workspace_uses_next_backup_when_first_is_empty() {
+        let workspace = MemoryWorkspace::new_test()
+            .with_file(".agent/PROMPT.md.backup", "  \n")
+            .with_file(".agent/PROMPT.md.backup.1", "## Goal\nRestored");
+
+        let result = validate_prompt_md_with_workspace(&workspace, false, false);
+
+        assert!(result.warnings.iter().any(|w| w.contains("backup.1")));
+        assert!(result.has_goal);
+        assert!(workspace.exists(Path::new("PROMPT.md")));
+    }
+
+    #[test]
     fn test_validate_prompt_md_with_workspace_empty() {
         let workspace = MemoryWorkspace::new_test().with_file("PROMPT.md", "   \n\n  ");
 

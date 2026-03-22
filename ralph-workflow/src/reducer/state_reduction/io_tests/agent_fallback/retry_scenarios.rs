@@ -4,6 +4,7 @@
 //! and retry budget management.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::create_test_state;
 use crate::reducer::event::{AgentErrorKind, PipelineEvent, PipelinePhase, TimeoutOutputKind};
 use crate::reducer::state::{
@@ -21,7 +22,7 @@ fn test_rate_limit_fallback_switches_agent() {
         state,
         PipelineEvent::agent_rate_limited(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             Some("test prompt".to_string()),
         ),
     );
@@ -49,7 +50,7 @@ fn test_rate_limit_fallback_with_no_prompt_context() {
 
     let new_state = reduce(
         state,
-        PipelineEvent::agent_rate_limited(AgentRole::Developer, "agent1".to_string(), None),
+        PipelineEvent::agent_rate_limited(AgentRole::Developer, AgentName::from("agent1"), None),
     );
 
     // Should still switch to next agent
@@ -78,7 +79,7 @@ fn test_success_clears_rate_limit_continuation_prompt() {
 
     let new_state = reduce(
         state,
-        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent1".to_string()),
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, AgentName::from("agent1")),
     );
 
     assert!(
@@ -112,7 +113,7 @@ fn test_legacy_rate_limit_failure_clears_stale_rate_limit_continuation_prompt() 
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             429,
             AgentErrorKind::RateLimit,
             false,
@@ -150,7 +151,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
         state,
         PipelineEvent::agent_rate_limited(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             Some("saved prompt".to_string()),
         ),
     );
@@ -169,7 +170,11 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
 
     let after_started = reduce(
         after_rate_limit,
-        PipelineEvent::agent_invocation_started(AgentRole::Developer, "agent2".to_string(), None),
+        PipelineEvent::agent_invocation_started(
+            AgentRole::Developer,
+            AgentName::from("agent2"),
+            None,
+        ),
     );
     assert_eq!(
         after_started.agent_chain.rate_limit_continuation_prompt,
@@ -185,7 +190,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
         after_started,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent2".to_string(),
+            AgentName::from("agent2"),
             139,
             AgentErrorKind::InternalError,
             false,
@@ -208,7 +213,11 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
 
     let after_retry_started = reduce(
         after_failure,
-        PipelineEvent::agent_invocation_started(AgentRole::Developer, "agent2".to_string(), None),
+        PipelineEvent::agent_invocation_started(
+            AgentRole::Developer,
+            AgentName::from("agent2"),
+            None,
+        ),
     );
     assert_eq!(
         after_retry_started
@@ -224,7 +233,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
 
     let after_success = reduce(
         after_retry_started,
-        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".to_string()),
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, AgentName::from("agent2")),
     );
     assert!(
         after_success
@@ -261,7 +270,7 @@ fn test_auth_fallback_clears_session_and_advances_agent() {
 
     let new_state = reduce(
         state,
-        PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".to_string()),
+        PipelineEvent::agent_auth_failed(AgentRole::Developer, AgentName::from("agent1")),
     );
 
     // Should advance to next agent
@@ -304,7 +313,7 @@ fn test_rate_limit_fallback_clears_session_id() {
         state,
         PipelineEvent::agent_rate_limited(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             Some("preserved prompt".to_string()),
         ),
     );
@@ -342,7 +351,7 @@ fn test_auth_fallback_does_not_set_continuation_prompt() {
     // Auth fallback should NOT set a continuation prompt
     let new_state = reduce(
         state,
-        PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".to_string()),
+        PipelineEvent::agent_auth_failed(AgentRole::Developer, AgentName::from("agent1")),
     );
 
     // Key assertion: AuthFailed does NOT set prompt context (unlike RateLimited).
@@ -379,7 +388,7 @@ fn test_rate_limit_vs_auth_fallback_prompt_semantics() {
         state1,
         PipelineEvent::agent_rate_limited(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             Some("preserved prompt".to_string()),
         ),
     );
@@ -403,7 +412,7 @@ fn test_rate_limit_vs_auth_fallback_prompt_semantics() {
 
     let after_auth = reduce(
         state2,
-        PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".to_string()),
+        PipelineEvent::agent_auth_failed(AgentRole::Developer, AgentName::from("agent1")),
     );
 
     assert!(
@@ -446,7 +455,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -468,7 +477,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
         after_first_timeout,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -516,7 +525,7 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             139,
             AgentErrorKind::InternalError,
             false,
@@ -538,7 +547,7 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
         after_first_failure,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             139,
             AgentErrorKind::InternalError,
             false,
@@ -575,7 +584,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -615,7 +624,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
         after_first_timeout,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -666,7 +675,7 @@ fn test_internal_error_retries_same_agent_until_retry_budget_exhausted() {
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             139,
             AgentErrorKind::InternalError,
             false,
@@ -694,7 +703,7 @@ fn test_internal_error_retries_same_agent_until_retry_budget_exhausted() {
         after_first_failure,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             139,
             AgentErrorKind::InternalError,
             false,
@@ -739,7 +748,7 @@ fn test_non_auth_non_rate_limit_non_retriable_error_retries_same_agent_until_bud
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::ParsingError,
             false,
@@ -763,7 +772,7 @@ fn test_non_auth_non_rate_limit_non_retriable_error_retries_same_agent_until_bud
         after_first_failure,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::ParsingError,
             false,
@@ -869,7 +878,7 @@ fn test_no_output_timeout_triggers_immediate_agent_switch() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             TimeoutOutputKind::NoOutput,
             None,
             None,
@@ -934,7 +943,7 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             TimeoutOutputKind::NoOutput,
             None,
             None,

@@ -1,5 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::AgentDrain;
+use crate::common::domain_types::AgentName;
 use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
@@ -13,14 +14,24 @@ impl MainEffectHandler {
         let resolved_drains = ctx.registry.resolved_drains();
 
         // Resolve the concrete chain for this drain.
-        let agents = ctx
-            .registry
-            .resolved_drain(drain)
-            .map_or_else(Vec::new, |binding| binding.agents.clone());
+        let agents: Vec<AgentName> =
+            ctx.registry
+                .resolved_drain(drain)
+                .map_or_else(Vec::new, |binding| {
+                    binding
+                        .agents
+                        .iter()
+                        .map(|s| AgentName::from(s.clone()))
+                        .collect()
+                });
 
         ctx.logger.info(&format!(
             "Agent fallback chain for drain {drain}: {}",
-            agents.join(", ")
+            agents
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
 
         // Log drain transition when switching to a different drain

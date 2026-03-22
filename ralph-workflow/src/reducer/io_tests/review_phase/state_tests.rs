@@ -7,6 +7,12 @@
 // - Event loop state consistency
 // - Complete flow from development through review
 
+use crate::common::domain_types::AgentName;
+
+fn agent_names_from_strings(strings: &[String]) -> Vec<AgentName> {
+    strings.iter().cloned().map(AgentName::from).collect()
+}
+
 // Agent chain clearing on phase transition tests (BUG: agent chain not cleared)
 
 /// Test that verifies the agent chain is cleared when transitioning from Development
@@ -209,7 +215,7 @@ fn test_auth_failure_during_review_advances_agent_chain() {
         state,
         PipelineEvent::agent_invocation_failed(
             crate::agents::AgentRole::Reviewer,
-            "codex".to_string(),
+            AgentName::from("codex"),
             1,
             AgentErrorKind::Authentication,
             false, // Not retriable - switch to next agent
@@ -229,7 +235,7 @@ fn test_auth_failure_during_review_advances_agent_chain() {
         state,
         PipelineEvent::agent_invocation_failed(
             crate::agents::AgentRole::Reviewer,
-            "opencode".to_string(),
+            AgentName::from("opencode"),
             1,
             AgentErrorKind::Authentication,
             false,
@@ -252,6 +258,11 @@ fn test_auth_failure_during_review_advances_agent_chain() {
 #[test]
 fn test_handler_reads_correct_agent_from_state_after_chain_initialized() {
     // Simulate the state after ChainInitialized event is processed
+    let reviewers = vec![
+        "codex".to_string(),
+        "opencode".to_string(),
+        "claude".to_string(),
+    ];
     let state = reduce(
         PipelineState {
             phase: PipelinePhase::Review,
@@ -261,11 +272,7 @@ fn test_handler_reads_correct_agent_from_state_after_chain_initialized() {
         },
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
-            vec![
-                "codex".to_string(),
-                "opencode".to_string(),
-                "claude".to_string(),
-            ],
+            agent_names_from_strings(&reviewers),
             3,
             1000,
             2.0,
@@ -343,15 +350,16 @@ fn test_full_pipeline_flow_uses_correct_reviewer_agent() {
     );
 
     // Simulate initializing the reviewer chain with different agents
+    let review_agents = vec![
+        "codex".to_string(),
+        "opencode".to_string(),
+        "claude".to_string(),
+    ];
     state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
-            vec![
-                "codex".to_string(),
-                "opencode".to_string(),
-                "claude".to_string(),
-            ],
+            agent_names_from_strings(&review_agents),
             3,
             1000,
             2.0,
@@ -426,13 +434,14 @@ fn test_event_loop_state_consistency_for_review_agent() {
 
     // Handler executes InitializeAgentChain, emits ChainInitialized event
     // (simulating what handler.initialize_agent_chain does)
+    let review_agents = vec![
+        "codex".to_string(),
+        "opencode".to_string(),
+        "claude".to_string(),
+    ];
     let event = PipelineEvent::agent_chain_initialized(
         crate::agents::AgentDrain::Review,
-        vec![
-            "codex".to_string(),
-            "opencode".to_string(),
-            "claude".to_string(),
-        ],
+        agent_names_from_strings(&review_agents),
         3,
         1000,
         2.0,
@@ -663,15 +672,16 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
     );
 
     // === STEP 5: Agent chain initialized with reviewer agents ===
+    let last_reviewer_agents = vec![
+        "codex".to_string(),
+        "opencode".to_string(),
+        "claude".to_string(),
+    ];
     state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
-            vec![
-                "codex".to_string(),
-                "opencode".to_string(),
-                "claude".to_string(),
-            ],
+            agent_names_from_strings(&last_reviewer_agents),
             3,
             1000,
             2.0,

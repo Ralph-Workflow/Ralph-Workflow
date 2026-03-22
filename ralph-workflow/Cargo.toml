@@ -1,6 +1,6 @@
 [package]
 name = "ralph-workflow"
-version = "0.7.12"
+version = "0.7.13"
 edition = "2021"
 description = "PROMPT-driven multi-agent orchestrator for git repos"
 authors = ["Mistlight"]
@@ -109,3 +109,4 @@ test-helpers = { path = "../test-helpers" }
 # Serial test execution for tests that modify global state (env vars)
 serial_test = "3"
 mockito = "1.7"
+proptest = "1"

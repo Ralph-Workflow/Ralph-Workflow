@@ -184,8 +184,9 @@ fn ralph_save_start_commit_handles_empty_repo() {
         // Try to require repo - should fail
         let result = require_repo(&mut handler);
         assert!(result.is_err(), "should fail without a git repository");
+        let err = result.unwrap_err().to_string();
         assert!(
-            result.unwrap_err().contains("git repository"),
+            err.contains("git repository"),
             "error message should mention git repository"
         );
 

@@ -18,7 +18,7 @@ use std::fmt;
 /// Agent identifier string (e.g., "claude", "opencode", "openai/gpt-4").
 ///
 /// Used in agent configuration, chain management, and pipeline execution.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AgentName(String);
 
 impl AgentName {
@@ -49,6 +49,336 @@ impl From<String> for AgentName {
 impl From<&str> for AgentName {
     fn from(value: &str) -> Self {
         Self(value.to_string())
+    }
+}
+
+/// File size in bytes for artifacts such as `.agent/ISSUES.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IssueFileSize(usize);
+
+impl IssueFileSize {
+    #[must_use]
+    pub fn as_bytes(&self) -> usize {
+        self.0
+    }
+}
+
+impl fmt::Display for IssueFileSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} bytes", self.0)
+    }
+}
+
+impl From<usize> for IssueFileSize {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
+/// Count of entries inside the `.agent` directory for preflight diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AgentDirectoryEntryCount(usize);
+
+impl AgentDirectoryEntryCount {
+    #[must_use]
+    pub fn as_count(&self) -> usize {
+        self.0
+    }
+}
+
+impl fmt::Display for AgentDirectoryEntryCount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} entries", self.0)
+    }
+}
+
+impl From<usize> for AgentDirectoryEntryCount {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
+/// Non-empty text string preserved from user input.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NonEmptyString(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmptyStringParseError {
+    pub value: String,
+    pub reason: NonEmptyStringParseErrorReason,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NonEmptyStringParseErrorReason {
+    Empty,
+    WhitespaceOnly,
+}
+
+impl fmt::Display for NonEmptyStringParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Non-empty text expected, but got '{}' ({:?})",
+            self.value, self.reason
+        )
+    }
+}
+
+impl std::error::Error for NonEmptyStringParseError {}
+
+impl NonEmptyString {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn try_from_str(value: &str) -> Result<Self, NonEmptyStringParseError> {
+        Self::validate(value)?;
+        Ok(Self(value.to_string()))
+    }
+
+    fn validate(value: &str) -> Result<(), NonEmptyStringParseError> {
+        if value.is_empty() {
+            return Err(NonEmptyStringParseError {
+                value: value.to_string(),
+                reason: NonEmptyStringParseErrorReason::Empty,
+            });
+        }
+
+        if value.trim().is_empty() {
+            return Err(NonEmptyStringParseError {
+                value: value.to_string(),
+                reason: NonEmptyStringParseErrorReason::WhitespaceOnly,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for NonEmptyString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for NonEmptyString {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for NonEmptyString {
+    type Error = NonEmptyStringParseError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from_str(value)
+    }
+}
+
+impl TryFrom<String> for NonEmptyString {
+    type Error = NonEmptyStringParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from_str(&value)
+    }
+}
+
+/// HTTPS URL string (must start with https://).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HttpsUrl(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HttpsUrlParseError {
+    Empty,
+    NotHttps,
+}
+
+impl fmt::Display for HttpsUrlParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "HTTPS URL cannot be empty"),
+            Self::NotHttps => write!(f, "HTTPS URL must start with https://"),
+        }
+    }
+}
+
+impl std::error::Error for HttpsUrlParseError {}
+
+impl HttpsUrl {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn try_from_str(value: &str) -> Result<Self, HttpsUrlParseError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(HttpsUrlParseError::Empty);
+        }
+
+        if !trimmed.to_ascii_lowercase().starts_with("https://") {
+            return Err(HttpsUrlParseError::NotHttps);
+        }
+
+        Ok(Self(trimmed.to_string()))
+    }
+}
+
+impl fmt::Display for HttpsUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for HttpsUrl {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for HttpsUrl {
+    type Error = HttpsUrlParseError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from_str(value)
+    }
+}
+
+impl TryFrom<String> for HttpsUrl {
+    type Error = HttpsUrlParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from_str(&value)
+    }
+}
+
+/// Git remote name (non-empty string).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RemoteName(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteNameParseError {
+    Empty,
+}
+
+impl fmt::Display for RemoteNameParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Remote name cannot be empty")
+    }
+}
+
+impl std::error::Error for RemoteNameParseError {}
+
+impl RemoteName {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn try_from_str(value: &str) -> Result<Self, RemoteNameParseError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(RemoteNameParseError::Empty);
+        }
+
+        Ok(Self(trimmed.to_string()))
+    }
+}
+
+impl fmt::Display for RemoteName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for RemoteName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for RemoteName {
+    type Error = RemoteNameParseError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from_str(value)
+    }
+}
+
+impl TryFrom<String> for RemoteName {
+    type Error = RemoteNameParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from_str(&value)
+    }
+}
+
+/// Branch name used for pushes (must not be HEAD).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PushBranch(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PushBranchParseError {
+    Empty,
+    IsHead,
+}
+
+impl fmt::Display for PushBranchParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "Push branch cannot be empty"),
+            Self::IsHead => write!(f, "Push branch cannot be HEAD"),
+        }
+    }
+}
+
+impl std::error::Error for PushBranchParseError {}
+
+impl PushBranch {
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn try_from_str(value: &str) -> Result<Self, PushBranchParseError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(PushBranchParseError::Empty);
+        }
+        if trimmed == "HEAD" {
+            return Err(PushBranchParseError::IsHead);
+        }
+
+        Ok(Self(trimmed.to_string()))
+    }
+}
+
+impl fmt::Display for PushBranch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl AsRef<str> for PushBranch {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<&str> for PushBranch {
+    type Error = PushBranchParseError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from_str(value)
+    }
+}
+
+impl TryFrom<String> for PushBranch {
+    type Error = PushBranchParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from_str(&value)
     }
 }
 
@@ -196,7 +526,7 @@ impl From<&str> for BranchName {
 /// AI model identifier string (e.g., "claude-3-5-sonnet-20241022", "gpt-4o").
 ///
 /// Used in agent configuration and model selection.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ModelName(String);
 
 impl ModelName {
@@ -485,6 +815,20 @@ mod tests {
     }
 
     #[test]
+    fn issue_file_size_formats_bytes() {
+        let size = IssueFileSize::from(1024);
+        assert_eq!(size.as_bytes(), 1024);
+        assert!(format!("{size}").contains("1024"));
+    }
+
+    #[test]
+    fn agent_directory_entry_count_formats_entries() {
+        let count = AgentDirectoryEntryCount::from(7);
+        assert_eq!(count.as_count(), 7);
+        assert!(format!("{count}").contains("7"));
+    }
+
+    #[test]
     fn test_git_oid_clone() {
         let oid1 = GitOid::try_from_str(&"d".repeat(40)).unwrap();
         let oid2 = oid1.clone();
@@ -537,5 +881,55 @@ mod tests {
         assert!(display.contains("abc"));
         assert!(display.contains("40"));
         assert!(display.contains("3"));
+    }
+
+    #[test]
+    fn non_empty_string_accepts_text() {
+        let text = NonEmptyString::try_from_str("Valid Title").unwrap();
+        assert_eq!(text.as_str(), "Valid Title");
+    }
+
+    #[test]
+    fn non_empty_string_rejects_empty() {
+        let result = NonEmptyString::try_from_str("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn non_empty_string_rejects_whitespace() {
+        let result = NonEmptyString::try_from_str("   ");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn https_url_rejects_http() {
+        assert!(matches!(
+            HttpsUrl::try_from_str("http://example.com"),
+            Err(HttpsUrlParseError::NotHttps)
+        ));
+    }
+
+    #[test]
+    fn https_url_rejects_empty() {
+        assert!(matches!(
+            HttpsUrl::try_from_str("   "),
+            Err(HttpsUrlParseError::Empty)
+        ));
+    }
+
+    #[test]
+    fn remote_name_rejects_empty() {
+        assert!(matches!(
+            RemoteName::try_from_str(""),
+            Err(RemoteNameParseError::Empty)
+        ));
+    }
+
+    #[test]
+    fn push_branch_rejects_head() {
+        assert!(matches!(
+            PushBranch::try_from_str("HEAD"),
+            Err(PushBranchParseError::IsHead)
+        ));
     }
 }

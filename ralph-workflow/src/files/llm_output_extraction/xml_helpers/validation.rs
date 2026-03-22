@@ -39,8 +39,8 @@ use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValid
 ///
 /// See the unit tests in this module for working examples.
 pub fn check_for_illegal_xml_characters(content: &str) -> Result<(), XsdValidationError> {
-    for (byte_index, ch) in content.char_indices() {
-        let is_illegal = matches!(
+    if let Some((byte_index, ch)) = content.char_indices().find(|&(_, ch)| {
+        matches!(
             ch as u32,
             0x00                // NUL byte
             | 0x01..=0x08      // Control characters
@@ -48,12 +48,12 @@ pub fn check_for_illegal_xml_characters(content: &str) -> Result<(), XsdValidati
             | 0x0E..=0x1F      // Other control characters
             | 0xD800..=0xDFFF  // UTF-16 surrogates
             | 0xFFFE | 0xFFFF  // Non-characters
-        );
-        if is_illegal {
-            return Err(illegal_character_error(ch, byte_index, content));
-        }
+        )
+    }) {
+        Err(illegal_character_error(ch, byte_index, content))
+    } else {
+        Ok(())
     }
-    Ok(())
 }
 
 /// Create a detailed error message for an illegal XML character.
@@ -107,19 +107,30 @@ fn illegal_character_error(ch: char, byte_index: usize, content: &str) -> XsdVal
 }
 
 /// Find the nearest character boundary at or before the given index.
-const fn floor_char_boundary(content: &str, mut index: usize) -> usize {
-    while index > 0 && !content.is_char_boundary(index) {
-        index = index.saturating_sub(1);
+fn floor_char_boundary(content: &str, index: usize) -> usize {
+    if index >= content.len() {
+        return content.len();
     }
-    index
+
+    content
+        .char_indices()
+        .map(|(pos, _)| pos)
+        .take_while(|&pos| pos <= index)
+        .last()
+        .unwrap_or(0)
 }
 
 /// Find the nearest character boundary at or after the given index.
-const fn ceil_char_boundary(content: &str, mut index: usize) -> usize {
-    while index < content.len() && !content.is_char_boundary(index) {
-        index = index.saturating_add(1);
+fn ceil_char_boundary(content: &str, index: usize) -> usize {
+    if index >= content.len() {
+        return content.len();
     }
-    index
+
+    content
+        .char_indices()
+        .map(|(pos, _)| pos)
+        .find(|&pos| pos >= index)
+        .unwrap_or(content.len())
 }
 
 #[cfg(test)]

@@ -40,7 +40,6 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
     domain_parse::parse_git_status_paths(snapshot)
 }
 
-
 /// Implementation of git snapshot.
 fn git_snapshot_impl(repo: &git2::Repository) -> std::io::Result<String> {
     let statuses = {

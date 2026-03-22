@@ -26,7 +26,7 @@ fn test_effects_are_single_task() {
         let effects: Vec<Effect> = vec![
             Effect::AgentInvocation {
                 role: AgentRole::Developer,
-                agent: "test".to_string(),
+                agent: "test".into(),
                 model: None,
                 prompt: "test".to_string(),
             },
@@ -324,8 +324,8 @@ fn test_agent_fallback_only_via_reducer_events() {
             state,
             PipelineEvent::Agent(AgentEvent::FallbackTriggered {
                 role: AgentRole::Developer,
-                from_agent: "agent-a".to_string(),
-                to_agent: "agent-b".to_string(),
+                from_agent: "agent-a".into(),
+                to_agent: "agent-b".into(),
             }),
         );
 
@@ -341,7 +341,7 @@ fn test_agent_fallback_only_via_reducer_events() {
             state,
             PipelineEvent::Agent(AgentEvent::InvocationFailed {
                 role: AgentRole::Developer,
-                agent: "agent-b".to_string(),
+                agent: "agent-b".into(),
                 exit_code: 1,
                 error_kind: ralph_workflow::reducer::event::AgentErrorKind::FileSystem,
                 retriable: false,
@@ -371,7 +371,7 @@ fn test_agent_fallback_only_via_reducer_events() {
             after_first_failure,
             PipelineEvent::Agent(AgentEvent::InvocationFailed {
                 role: AgentRole::Developer,
-                agent: "agent-b".to_string(),
+                agent: "agent-b".into(),
                 exit_code: 1,
                 error_kind: ralph_workflow::reducer::event::AgentErrorKind::FileSystem,
                 retriable: false,
@@ -398,7 +398,7 @@ fn test_agent_fallback_only_via_reducer_events() {
             state,
             PipelineEvent::Agent(AgentEvent::InvocationFailed {
                 role: AgentRole::Developer,
-                agent: "primary".to_string(),
+                agent: "primary".into(),
                 exit_code: 1,
                 error_kind: ralph_workflow::reducer::event::AgentErrorKind::Network,
                 retriable: true,

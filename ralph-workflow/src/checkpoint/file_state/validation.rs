@@ -59,8 +59,8 @@ impl FileSystemState {
             if let Some(current_oid) = crate::checkpoint::git_capture::git_head_oid(executor) {
                 if current_oid != *expected_oid {
                     return Err(ValidationError::GitHeadChanged {
-                        expected: expected_oid.clone(),
-                        actual: current_oid,
+                        expected: crate::common::domain_types::GitOid::from(expected_oid.as_str()),
+                        actual: crate::common::domain_types::GitOid::from(current_oid.as_str()),
                     });
                 }
             }

@@ -86,6 +86,7 @@ mod tests {
     use ralph_workflow::agents::{AgentDrain, AgentRegistry};
     use ralph_workflow::checkpoint::execution_history::ExecutionHistory;
     use ralph_workflow::checkpoint::RunContext;
+    use ralph_workflow::common::domain_types::AgentName;
     use ralph_workflow::config::Config;
     use ralph_workflow::logger::{Colors, Logger};
     use ralph_workflow::logging::RunLogContext;
@@ -178,7 +179,7 @@ mod tests {
         }
     }
 
-    fn initialized_agents_for_drain(mut fixture: TestFixture, drain: AgentDrain) -> Vec<String> {
+    fn initialized_agents_for_drain(mut fixture: TestFixture, drain: AgentDrain) -> Vec<AgentName> {
         let result =
             MainEffectHandler::new(ralph_workflow::reducer::state::PipelineState::initial(1, 1))
                 .execute(Effect::InitializeAgentChain { drain }, &mut fixture.ctx())
@@ -219,10 +220,10 @@ mod tests {
 
         let review_fixture = TestFixture::new(review_config);
         let review_agents = initialized_agents_for_drain(review_fixture, AgentDrain::Review);
-        assert_eq!(review_agents, vec!["claude".to_string()]);
+        assert_eq!(review_agents, vec![AgentName::from("claude")]);
 
         let commit_fixture = TestFixture::new(commit_config);
         let commit_agents = initialized_agents_for_drain(commit_fixture, AgentDrain::Commit);
-        assert_eq!(commit_agents, vec!["opencode".to_string()]);
+        assert_eq!(commit_agents, vec![AgentName::from("opencode")]);
     }
 }

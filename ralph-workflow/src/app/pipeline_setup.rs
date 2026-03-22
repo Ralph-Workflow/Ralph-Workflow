@@ -6,7 +6,6 @@
 use crate::agents::AgentRegistry;
 use crate::app::config::{EventLoopConfig, MAX_EVENT_LOOP_ITERATIONS};
 use crate::app::context::PipelineContext;
-use crate::app::core::run_event_loop_with_handler;
 use crate::app::effect::AppEffectHandler;
 use crate::checkpoint::{PipelineCheckpoint, RunContext};
 use crate::cli::Args;
@@ -25,6 +24,30 @@ use std::sync::Arc;
 pub struct PhaseContextWithTimer<'ctx> {
     pub phase_ctx: PhaseContext<'ctx>,
     pub timer: Timer,
+}
+
+fn prepare_git_helpers_for_workspace(
+    repo_root: &std::path::Path,
+    workspace: &dyn crate::workspace::Workspace,
+    logger: &crate::logger::Logger,
+    mut git_helpers: GitHelpers,
+    restore_prompt_permissions: bool,
+) -> GitHelpers {
+    crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
+        repo_root,
+        workspace,
+        logger,
+        &mut git_helpers,
+        restore_prompt_permissions,
+    );
+    git_helpers
+}
+
+fn mark_cleanup_guard_owned<'a>(
+    mut cleanup_guard: crate::app::runner::CommandExitCleanupGuard<'a>,
+) -> crate::app::runner::CommandExitCleanupGuard<'a> {
+    cleanup_guard.mark_owned();
+    cleanup_guard
 }
 
 pub fn setup_git_and_agent_phase<'a>(
@@ -69,17 +92,10 @@ pub fn run_event_loop_with_handler_boundary<'r, 'ctx>(
     phase_ctx: &'r mut PhaseContext<'ctx>,
     initial_state: PipelineState,
 ) -> anyhow::Result<crate::app::EventLoopResult> {
-    let mut handler =
-        crate::app::runtime_factory::create_main_effect_handler(initial_state.clone());
     let event_loop_config = EventLoopConfig {
         max_iterations: MAX_EVENT_LOOP_ITERATIONS,
     };
-    run_event_loop_with_handler(
-        phase_ctx,
-        Some(initial_state),
-        event_loop_config,
-        &mut handler,
-    )
+    crate::app::core::run_event_loop(phase_ctx, Some(initial_state), event_loop_config)
 }
 
 pub fn create_cleanup_guard_boundary<'a>(
@@ -103,15 +119,13 @@ pub fn setup_agent_phase_for_workspace_boundary(
     workspace: &dyn crate::workspace::Workspace,
     logger: &crate::logger::Logger,
 ) -> GitHelpers {
-    let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
-    crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
+    prepare_git_helpers_for_workspace(
         repo_root,
         workspace,
         logger,
-        &mut git_helpers,
+        crate::app::runtime_factory::create_git_helpers(),
         false,
-    );
-    git_helpers
+    )
 }
 
 pub struct RepoCommandBoundaryParams<'a> {
@@ -143,9 +157,6 @@ pub fn handle_repo_commands_boundary(
         workspace,
     } = params;
 
-    let mut cleanup_guard =
-        crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
-
     if args.recovery.dry_run {
         crate::cli::handle_dry_run(
             logger,
@@ -160,15 +171,16 @@ pub fn handle_repo_commands_boundary(
     }
 
     if args.rebase_flags.rebase_only {
-        let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
-        crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
+        let _cleanup_guard = mark_cleanup_guard_owned(
+            crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false),
+        );
+        let _git_helpers = prepare_git_helpers_for_workspace(
             repo_root,
             workspace.as_ref(),
             logger,
-            &mut git_helpers,
+            crate::app::runtime_factory::create_git_helpers(),
             false,
         );
-        cleanup_guard.mark_owned();
         let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
             config.user_templates_dir().cloned(),
         );
@@ -185,15 +197,16 @@ pub fn handle_repo_commands_boundary(
     }
 
     if args.commit_plumbing.generate_commit_msg {
-        let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
-        crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
+        let _cleanup_guard = mark_cleanup_guard_owned(
+            crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false),
+        );
+        let _git_helpers = prepare_git_helpers_for_workspace(
             repo_root,
             workspace.as_ref(),
             logger,
-            &mut git_helpers,
+            crate::app::runtime_factory::create_git_helpers(),
             false,
         );
-        cleanup_guard.mark_owned();
         let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
             config.user_templates_dir().cloned(),
         );
@@ -264,7 +277,7 @@ pub fn run_pipeline_with_handler_boundary(
         template_context: _,
     } = params;
 
-    let mut handler = crate::app::runtime_factory::create_effect_handler();
+    let handler = &mut crate::app::runtime_factory::create_effect_handler();
 
     let early_repo_root = {
         if let Some(dir) = args.working_dir_override.as_deref() {
@@ -293,13 +306,7 @@ pub fn run_pipeline_with_handler_boundary(
     let workspace: Arc<dyn Workspace> =
         Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root.clone()));
 
-    if handle_plumbing_commands(
-        &args,
-        &logger,
-        colors,
-        &mut handler,
-        Some(workspace.as_ref()),
-    )? {
+    if handle_plumbing_commands(&args, &logger, colors, handler, Some(workspace.as_ref()))? {
         anyhow::bail!("plumbing commands should not return from run_pipeline");
     }
 
@@ -331,7 +338,7 @@ pub fn run_pipeline_with_handler_boundary(
             logger: &logger,
             working_dir_override: args.working_dir_override.as_deref(),
         },
-        &mut handler,
+        handler,
     )? {
         Some(root) => root,
         None => anyhow::bail!("agent validation/setup failed"),
@@ -348,7 +355,7 @@ pub fn run_pipeline_with_handler_boundary(
         executor,
         repo_root,
         workspace,
-        handler: &mut handler,
+        handler,
     };
 
     let ctx = prepare_pipeline_or_exit(params)?

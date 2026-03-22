@@ -4,9 +4,10 @@
 //! and fallback scenarios.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::ModelName;
 use crate::reducer::event::AgentErrorKind;
 use crate::reducer::io_tests::{
-    create_test_state, reduce, PipelineEvent, PipelinePhase, PipelineState,
+    create_test_state, reduce, AgentName, PipelineEvent, PipelinePhase, PipelineState,
 };
 
 #[test]
@@ -42,8 +43,8 @@ fn test_agent_invocation_started_preserves_agent_chain_indices() {
         state,
         PipelineEvent::agent_invocation_started(
             AgentRole::Developer,
-            "agent1".to_string(),
-            Some("model1".to_string()),
+            AgentName::from("agent1"),
+            Some(ModelName::from("model1")),
         ),
     );
 
@@ -68,7 +69,7 @@ fn test_agent_invocation_succeeded_preserves_indices() {
     let state = create_test_state();
     let new_state = reduce(
         state.clone(),
-        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent1".to_string()),
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, AgentName::from("agent1")),
     );
 
     assert_eq!(
@@ -97,7 +98,7 @@ fn test_agent_invocation_failed_with_retriable_network_advances_model() {
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::Network,
             true,
@@ -125,8 +126,8 @@ fn test_agent_fallback_triggered_switches_agent() {
         state,
         PipelineEvent::agent_fallback_triggered(
             AgentRole::Developer,
-            "agent1".to_string(),
-            "agent2".to_string(),
+            AgentName::from("agent1"),
+            AgentName::from("agent2"),
         ),
     );
 
@@ -204,9 +205,9 @@ fn test_agent_model_fallback_triggered_advances_to_next_model() {
         state,
         PipelineEvent::agent_model_fallback_triggered(
             AgentRole::Developer,
-            "agent1".to_string(),
-            "model1".to_string(),
-            "model2".to_string(),
+            AgentName::from("agent1"),
+            ModelName::from("model1"),
+            ModelName::from("model2"),
         ),
     );
 
@@ -276,7 +277,7 @@ fn test_agent_invocation_failed_non_retriable_retries_same_agent_until_budget_ex
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::ParsingError,
             false,
@@ -290,7 +291,7 @@ fn test_agent_invocation_failed_non_retriable_retries_same_agent_until_budget_ex
         after_first_failure,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::ParsingError,
             false,

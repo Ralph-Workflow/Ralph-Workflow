@@ -34,6 +34,28 @@ The release lane is intentionally narrower than the full workspace: `release-bui
 
 ---
 
+## Optional Developer Tools
+
+### Coverage tooling
+
+For local coverage analysis (diagnostic, not a CI gate):
+
+```bash
+cargo install cargo-llvm-cov --locked
+```
+
+This is an optional developer setup step for inspecting code coverage locally. It is **not required** for CI verification and is not a required dependency.
+
+After touching any module refactored under the fp-style-compliance plan, run:
+
+```bash
+cargo xtask coverage
+```
+
+Low coverage on a module is a signal to ask *"do we understand the failure modes here?"* — it is a prompt for investigation, not a gate to block PRs.
+
+---
+
 ## Reference: underlying commands
 
 Run git rebase on main if on feature branch.

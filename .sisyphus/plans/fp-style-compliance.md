@@ -7,11 +7,41 @@ functional programming principles. The goal is **real architectural quality** �
 thin flat boundaries, explicit effects, typed failures, testable design. Dylint is a diagnostic
 tool, not the definition of success.
 
-## Latest Checkpoint (2026-03-20)
+## Latest Checkpoint (2026-03-22)
 
-- `cargo xtask verify` backend-first staging behavior is in place (GUI checks gated behind `--gui`).
-- Integration lane regressions encountered during this effort are resolved; `test-integration` passes.
-- Verification pipeline is currently green (`cargo xtask verify` passes all 10 checks).
+- `cargo xtask coverage` and associated verification docs landed (Phase 14 instrumentation work exists).
+- Reality check run on current tree: `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` fails with
+  `error: could not compile \`ralph-workflow\` (lib) due to 1263 previous errors`.
+- Current dominant failure clusters from this run:
+  - 259 `forbid_mut_binding` (`let mut`) violations
+  - 88 `forbid_imperative_loops` (`for`/`while`/`loop`) violations
+  - boundary import violations still present (for example `agents/opencode_api/mod.rs` importing `io::http_fetch`)
+- Conclusion: prior checkmarks are historical progress markers, not current-revision completion proof.
+
+### Recovery Reset (mandatory before Final Verification Wave)
+
+The plan is reopened. Do **not** enter Final Verification Wave until the recovery checklist below is complete.
+
+- [x] **R1-rebaseline-dylint**: Capture a fresh full dylint log to file and summarize by lint category + top files.
+  Use this as the source-of-truth backlog for recovery slices.
+
+- [x] **R2-reader-boundary-imports**: Eliminate remaining `forbid_domain_boundary_dependencies` errors
+  (starting with `ralph-workflow/src/agents/opencode_api/mod.rs` and any other current-tree regressions).
+
+- [ ] **R3-app-mut-loop-cluster**: Burn down `app/` cluster (`effectful.rs`, `pipeline_setup.rs`, `plumbing.rs`,
+  `core.rs`, `runner/pipeline_execution/**`) by converting pure-domain mutation/loops to value transformations
+  or relocating true effect code to boundary modules.
+
+- [ ] **R4-files-mut-loop-cluster**: Burn down `files/` cluster (`monitoring.rs`, `protection/validation/helpers.rs`,
+  `llm_output_extraction/xml_*`) with the same rule: pure logic stays domain and becomes transformation-based;
+  true I/O loops move to boundary seams.
+
+- [x] **R5-checkpoint-compression-cluster**: Resolve `checkpoint/` mut/loop violations in
+  `execution_history/compression.rs`, `state/serialization.rs`, and `validation.rs` using IMPURE→PURE→IMPURE split.
+
+- [ ] **R6-reverify-gate**: Re-run all required verification (`cargo check -p ralph-workflow --lib`,
+  `cargo test -p ralph-workflow --lib`, `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet`,
+  and `cargo xtask verify`) and only then resume Final Verification Wave items.
 
 **Critical constraints:**
 - Do NOT modify `lints/ralph_lints/`. Dylint lints are being developed in parallel.
@@ -416,19 +446,19 @@ it becomes `boundary/run_review.rs`.
 
 *(Verify exact paths with: `find ralph-workflow/src -path "*/boundary/commit*" -name "*.rs"`)*
 
-- [ ] Audit each file: separate pure (prompt construction, XML parsing, commit message
+- [x] Audit each file: separate pure (prompt construction, XML parsing, commit message
   formatting, validation of already-parsed values) from effectful (agent invocation,
   file writes, process spawning).
 
-- [ ] Move pure logic into `ralph-workflow/src/phases/commit/` or an appropriate existing
+- [x] Move pure logic into `ralph-workflow/src/phases/commit/` or an appropriate existing
   domain module. Each moved function must have a unit test using plain values.
 
-- [ ] Collapse remaining wiring into `ralph-workflow/src/reducer/boundary/commit.rs`
+- [x] Collapse remaining wiring into `ralph-workflow/src/reducer/boundary/commit.rs`
   (single flat file). The file should contain one to three functions that each follow the
   IMPURE→PURE→IMPURE shape. If it grows beyond ~80 lines of real logic, revisit whether
   more logic should be extracted to domain.
 
-- [ ] Delete the `commit/` subdirectory.
+- [x] Delete the `commit/` subdirectory.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*commit"` → empty.
 
@@ -444,12 +474,12 @@ it becomes `boundary/run_review.rs`.
 
 *(Verify: `find ralph-workflow/src -path "*/boundary/development*" -name "*.rs"`)*
 
-- [ ] Same audit pattern as 2A. Materialization, prompt preparation, mode selection,
+- [x] Same audit pattern as 2A. Materialization, prompt preparation, mode selection,
   input validation on already-parsed values are domain concerns. Move them out.
 
-- [ ] Collapse to `ralph-workflow/src/reducer/boundary/development.rs` (flat file).
+- [x] Collapse to `ralph-workflow/src/reducer/boundary/development.rs` (flat file).
 
-- [ ] Delete the `development/` subdirectory.
+- [x] Delete the `development/` subdirectory.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*development"` → empty.
 
@@ -465,13 +495,13 @@ it becomes `boundary/run_review.rs`.
 
 *(Verify: `find ralph-workflow/src -path "*/boundary/planning*" -name "*.rs"`)*
 
-- [ ] XML validation on already-read strings is pure. Prompt preparation that builds a
+- [x] XML validation on already-read strings is pure. Prompt preparation that builds a
   string from domain types is pure. Output processing that parses an agent response string
   is pure. Move all of these to `ralph-workflow/src/phases/planning/` domain module.
 
-- [ ] Collapse to `ralph-workflow/src/reducer/boundary/planning.rs` (flat file).
+- [x] Collapse to `ralph-workflow/src/reducer/boundary/planning.rs` (flat file).
 
-- [ ] Delete the `planning/` subdirectory.
+- [x] Delete the `planning/` subdirectory.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*planning"` → empty.
 
@@ -491,24 +521,24 @@ it becomes `boundary/run_review.rs`.
 
 *(Verify: `find ralph-workflow/src -path "*/boundary/review*" -name "*.rs"`)*
 
-- [ ] Move pure logic (prompt generation, output rendering/parsing, regex compilation and
+- [x] Move pure logic (prompt generation, output rendering/parsing, regex compilation and
   matching, validation of parsed data, XSD retry decision logic) to
   `ralph-workflow/src/phases/review/` domain module.
 
-- [ ] Note: "regex_cache" is a WARN for interior mutability (`LazyLock`). If the regex is
+- [x] Note: "regex_cache" is a WARN for interior mutability (`LazyLock`). If the regex is
   a compile-time constant, use a `const` or `OnceLock` — but this goes in domain code if
   the regex is domain knowledge, or in the boundary if it's an I/O adapter concern.
 
-- [ ] Collapse to `ralph-workflow/src/reducer/boundary/run_review.rs` and
+- [x] Collapse to `ralph-workflow/src/reducer/boundary/run_review.rs` and
   `ralph-workflow/src/reducer/boundary/run_fix.rs` (flat files, one per effect).
 
-- [ ] Delete the `review/` subdirectory.
+- [x] Delete the `review/` subdirectory.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*review"` → empty.
 
 #### 2E — Flatten `boundary/io/` (2 nested files)
 
-- [ ] Read `ralph-workflow/src/reducer/boundary/io/mod.rs` and `io/cloud.rs`.
+- [x] Read `ralph-workflow/src/reducer/boundary/io/mod.rs` and `io/cloud.rs`.
   If the files contain only re-exports or thin wiring, inline them into the parent
   boundary module or rename to flat files (`boundary/io_cloud.rs`).
   If they contain domain logic, extract it first.
@@ -526,15 +556,15 @@ it becomes `boundary/run_review.rs`.
 
 *(Verify: `find ralph-workflow/src -path "*/claude/delta_handling*" -name "*.rs"`)*
 
-- [ ] Delta parsing (content block interpretation, message finalisation, error classification)
+- [x] Delta parsing (content block interpretation, message finalisation, error classification)
   is pure parsing logic. Move it to `ralph-workflow/src/json_parser/delta_parsing/` domain
   module. These functions accept structured data (e.g., `DeltaEvent`) and return typed
   domain values — no streaming I/O involved.
 
-- [ ] Keep only the streaming glue code (reading bytes/events from the Claude SSE stream
+- [x] Keep only the streaming glue code (reading bytes/events from the Claude SSE stream
   and dispatching to the pure delta parsers) in a flat `claude/delta_handling.rs` single file.
 
-- [ ] Delete the `delta_handling/` subdirectory inside `claude/`.
+- [x] Delete the `delta_handling/` subdirectory inside `claude/`.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*claude"` → empty.
 
@@ -542,15 +572,15 @@ it becomes `boundary/run_review.rs`.
 
 *(Find all files: `find ralph-workflow/src -path "*/streaming_state/session*" -name "*.rs"`)*
 
-- [ ] Read each file. Session state struct definitions and state transitions are pure domain
+- [x] Read each file. Session state struct definitions and state transitions are pure domain
   types. Delta-handling logic (text, thinking, tool deltas) is pure parsing once the raw
   bytes are already decoded. Move pure types and logic to `ralph-workflow/src/streaming/`
   domain module.
 
-- [ ] Keep only the stateful streaming session management (maintaining a live connection,
+- [x] Keep only the stateful streaming session management (maintaining a live connection,
   receiving bytes, dispatching to pure handlers) in a flat `streaming_state/session.rs` file.
 
-- [ ] Delete the `session/` subdirectory inside `streaming_state/`.
+- [x] Delete the `session/` subdirectory inside `streaming_state/`.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*streaming_state"` → empty.
 
@@ -558,13 +588,13 @@ it becomes `boundary/run_review.rs`.
 
 *(Find: `find ralph-workflow/src -path "*/codex/event_handlers*" -name "*.rs"`)*
 
-- [ ] Event interpretation logic (what does a `turn_started` event mean in domain terms?)
+- [x] Event interpretation logic (what does a `turn_started` event mean in domain terms?)
   is pure. Move to `ralph-workflow/src/agents/codex/event_interpretation.rs` domain module.
 
-- [ ] Keep only the HTTP/stream event dispatch (receiving raw Codex API events and calling
+- [x] Keep only the HTTP/stream event dispatch (receiving raw Codex API events and calling
   pure interpreters) in a flat `codex/event_handling.rs` file.
 
-- [ ] Delete the `event_handlers/` subdirectory inside `codex/`.
+- [x] Delete the `event_handlers/` subdirectory inside `codex/`.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*codex"` → empty.
 
@@ -572,19 +602,19 @@ it becomes `boundary/run_review.rs`.
 
 *(Find: `find ralph-workflow/src -path "*/opencode/formatting*" -name "*.rs"`)*
 
-- [ ] Formatting logic (converting domain types to strings for display) is pure domain
+- [x] Formatting logic (converting domain types to strings for display) is pure domain
   rendering. Move to `ralph-workflow/src/agents/opencode/formatting.rs` domain module.
 
-- [ ] Delete the `formatting/` subdirectory inside `opencode/`.
+- [x] Delete the `formatting/` subdirectory inside `opencode/`.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module.*opencode"` → empty.
 
 #### 2J — Flatten `printer/virtual_terminal/` and `runtime/streaming/`
 
-- [ ] `printer/virtual_terminal/mod.rs`: move pure terminal state/rendering logic to
+- [x] `printer/virtual_terminal/mod.rs`: move pure terminal state/rendering logic to
   domain; keep only actual terminal write calls in flat `printer/virtual_terminal.rs`.
 
-- [ ] `runtime/streaming/streaming_line_reader.rs`: move pure line-parsing logic to
+- [x] `runtime/streaming/streaming_line_reader.rs`: move pure line-parsing logic to
   domain; keep only the streaming I/O reads in flat `runtime/streaming.rs`.
 
 **Verify:** `cargo dylint ... 2>&1 | grep "nested module"` → empty for all.
@@ -1384,7 +1414,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
   Replace with `Result` propagation. `panic!` belongs only in test assertions, documented
   compile-time invariants, and entry-point crash-on-unrecoverable-error.
 
-- [ ] **P10-string-errors**: Audit domain functions returning `String` or `Box<dyn Error>` as
+- [x] **P10-string-errors**: Audit domain functions returning `String` or `Box<dyn Error>` as
   the error type. Replace with named error enums:
   ```rust
   // WRONG: fn parse(s: &str) -> Result<Config, String>
@@ -1394,7 +1424,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
   pub fn parse(s: &str) -> Result<Config, ConfigParseError>
   ```
 
-- [ ] **P10A-diagnostics-as-data**: Identify domain functions that call `println!`, `eprintln!`,
+- [x] **P10A-diagnostics-as-data**: Identify domain functions that call `println!`, `eprintln!`,
   `log::warn!`, `tracing::warn!`, or similar with domain-meaningful content (normalisation
   decisions, defaults applied, values clamped). Refactor to return `WithDiagnostics<T>`:
   ```rust
@@ -1422,7 +1452,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
 
 ### Phase 11 — Type-Driven Design at Edges (Parse, Don't Validate)
 
-- [ ] **P11-newtypes**: Audit boundary intake functions for raw types that carry implicit
+- [x] **P11-newtypes**: Audit boundary intake functions for raw types that carry implicit
   invariants (non-empty string, bounded integer, non-empty collection). Create newtypes:
   ```rust
   #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1437,7 +1467,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
   ```
   Once `NonEmptyString` is constructed, downstream code never re-checks emptiness.
 
-- [ ] **P11-parse-at-edge**: For every boundary function with inline presence checks or
+- [x] **P11-parse-at-edge**: For every boundary function with inline presence checks or
   validation of individual fields, extract a `parse_*` domain function:
   ```rust
   // WRONG (validation scattered in boundary):
@@ -1459,7 +1489,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
   }
   ```
 
-- [ ] **P11-raw-types**: For boundary functions that return or pass inward raw capability
+- [x] **P11-raw-types**: For boundary functions that return or pass inward raw capability
   types (`std::process::Output`, `git2::Oid`, raw byte buffers, `http::Response`), translate
   to domain types at the boundary before they cross inward. The WARN lint
   `forbid_raw_effect_types_in_public_apis` flags these — investigate each.
@@ -1471,7 +1501,7 @@ those come next. After Phase 11 introduces strong types, Phase 10B enriches erro
 **Why 10B after Phase 11:** Now that newtypes and parse functions exist (Phase 11), error
 enums can carry domain-typed context instead of raw strings.
 
-- [ ] **P10B-error-payloads**: Revisit error enums created in Phase 10A. Where a variant
+- [x] **P10B-error-payloads**: Revisit error enums created in Phase 10A. Where a variant
   carries a raw `String` or `usize` that now has a corresponding newtype from Phase 11,
   upgrade the payload:
   ```rust
@@ -1492,7 +1522,7 @@ enums can carry domain-typed context instead of raw strings.
   enum GitOidParseError { Invalid(GitOid) }  // GitOid doesn't exist yet!
   ```
 
-- [ ] **P10B-diagnostic-payloads**: Similarly, upgrade `WithDiagnostics<T>` diagnostic
+- [x] **P10B-diagnostic-payloads**: Similarly, upgrade `WithDiagnostics<T>` diagnostic
   enum variants to carry newtype context where it adds clarity. Diagnostic variants that
   describe "what was defaulted" benefit from strong types; variants that describe "what
   raw input was rejected" keep raw types.
@@ -1508,7 +1538,7 @@ mandate was followed and fills any gaps.
 **Audit rule:** For every function touched in Phases 2–11, at least one test must exist.
 If a function was missed during its owning phase, write the test now.
 
-- [ ] **P12-tdd-pure**: For every new or extracted pure domain function — write a red test
+- [x] **P12-tdd-pure**: For every new or extracted pure domain function — write a red test
   first (calling the function with plain values and asserting on the result), then implement.
   Pure function tests need no setup:
   ```rust
@@ -1519,21 +1549,21 @@ If a function was missed during its owning phase, write the test now.
   }
   ```
 
-- [ ] **P12-boundary-seams**: For every new or restructured boundary function — write an
+- [x] **P12-boundary-seams**: For every new or restructured boundary function — write an
   integration test using `MemoryWorkspace` + `MockProcessExecutor` that verifies:
   1. The right capability method is called
   2. Capability errors produce the correct typed boundary error
   3. The correct typed result/event is returned on success
 
-- [ ] **P12-error-variants**: For every new error enum variant — write a test that asserts
+- [x] **P12-error-variants**: For every new error enum variant — write a test that asserts
   the correct variant is produced from the corresponding invalid input.
 
-- [ ] **P12-diagnostics**: For every `WithDiagnostics<T>` function — write:
+- [x] **P12-diagnostics**: For every `WithDiagnostics<T>` function — write:
   - Test that correct `.value` is produced from nominal input
   - Test that correct `.diagnostics` list is produced when defaults/clamping occur
   - Test that `.diagnostics` is empty for fully-valid input
 
-- [ ] **P12-no-serial**: All tests in `ralph-workflow/src/` and `tests/integration_tests/`
+- [x] **P12-no-serial**: All tests in `ralph-workflow/src/` and `tests/integration_tests/`
   must pass with no `#[serial]`. Use env-injection and `MemoryWorkspace`. If you find
   yourself wanting `#[serial]`, that is a signal to refactor the production code.
 
@@ -1541,10 +1571,10 @@ If a function was missed during its owning phase, write the test now.
 
 ### Phase 13 — Add Property-Based Testing
 
-- [ ] **P13-proptest-dep**: Add `proptest = "1"` to `[dev-dependencies]` in
+- [x] **P13-proptest-dep**: Add `proptest = "1"` to `[dev-dependencies]` in
   `ralph-workflow/Cargo.toml`. Verify `cargo test -p ralph-workflow --lib` still passes.
 
-- [ ] **P13-parsers**: Add property tests for parser functions — the ones extracted in
+- [x] **P13-parsers**: Add property tests for parser functions — the ones extracted in
   Phases 2–9. A parser should never panic on arbitrary input:
   ```rust
   use proptest::prelude::*;
@@ -1561,7 +1591,7 @@ If a function was missed during its owning phase, write the test now.
   }
   ```
 
-- [ ] **P13-reducers**: Add property tests for key reducers — verify state invariants hold
+- [x] **P13-reducers**: Add property tests for key reducers — verify state invariants hold
   after any event:
   ```rust
   proptest! {
@@ -1581,11 +1611,11 @@ If a function was missed during its owning phase, write the test now.
 
 ### Phase 14 — Add Code Coverage Instrumentation
 
-- [ ] **P14-llvm-cov**: Document `cargo install cargo-llvm-cov --locked` in
+- [x] **P14-llvm-cov**: Document `cargo install cargo-llvm-cov --locked` in
   `docs/agents/verification.md` as a dev-tool setup step. Do not add it as a required
   CI dependency — it is an investigation tool.
 
-- [ ] **P14-xtask-coverage**: Add `cargo xtask coverage` subcommand:
+- [x] **P14-xtask-coverage**: Add `cargo xtask coverage` subcommand:
   ```bash
   cargo llvm-cov --all-features --lib -p ralph-workflow \
     --html --output-dir target/coverage/html
@@ -1593,7 +1623,7 @@ If a function was missed during its owning phase, write the test now.
   ```
   Coverage is a diagnostic signal — not a build gate. The command exits 0 always.
 
-- [ ] **P14-docs**: Add to `docs/agents/verification.md`: "Run `cargo xtask coverage` after
+- [x] **P14-docs**: Add to `docs/agents/verification.md`: "Run `cargo xtask coverage` after
   touching any module refactored in the fp-style-compliance plan. Low coverage on a module
   is a signal to ask 'do we understand the failure modes here?' — not a gate to block PR."
 

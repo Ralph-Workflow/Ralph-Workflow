@@ -40,6 +40,7 @@
 //! - **`TriggerDevFixFlow`** panics (requires real workspace access)
 //! - **`ReportAgentChainExhausted`** panics (should not occur in normal test flow)
 
+use crate::common::domain_types::AgentName;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{
     AwaitingDevFixEvent, CheckpointTrigger, CommitEvent, DevelopmentEvent, PipelineEvent,
@@ -113,7 +114,7 @@ impl MockEffectHandler {
                     message: format!("Completed {role} task"),
                 }];
                 Some((
-                    PipelineEvent::agent_invocation_succeeded(role, agent),
+                    PipelineEvent::agent_invocation_succeeded(role, AgentName::from(agent.clone())),
                     ui,
                     vec![],
                 ))
@@ -144,7 +145,7 @@ impl MockEffectHandler {
                 Some((
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["mock_agent".to_string()],
+                        vec![AgentName::from("mock_agent")],
                         3,
                         1000,
                         2.0,

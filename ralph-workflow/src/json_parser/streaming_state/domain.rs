@@ -2,7 +2,26 @@ use crate::json_parser::deduplication::DeltaDeduplicator;
 use crate::json_parser::types::ContentType;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnapshotDeltaError {
+    NonSnapshot { key: String, text: String },
+}
+
+impl fmt::Display for SnapshotDeltaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NonSnapshot { key, text } => write!(
+                f,
+                "extract_delta_from_snapshot called on non-snapshot text. key={key:?}, text={text:?}. Snapshot detection may have had a false positive."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SnapshotDeltaError {}
 
 pub(super) fn merge_delta(
     accumulated: &mut HashMap<(ContentType, String), String>,
@@ -180,7 +199,7 @@ pub(super) fn extract_delta_from_snapshot(
     accumulated: &HashMap<(ContentType, String), String>,
     text: &str,
     key: &str,
-) -> Result<usize, String> {
+) -> Result<usize, SnapshotDeltaError> {
     let content_key = (ContentType::Text, key.to_string());
 
     if let Some(previous) = accumulated.get(&content_key) {
@@ -192,7 +211,8 @@ pub(super) fn extract_delta_from_snapshot(
         }
     }
 
-    Err(format!(
-        "extract_delta_from_snapshot called on non-snapshot text. key={key:?}, text={text:?}. Snapshot detection may have had a false positive."
-    ))
+    Err(SnapshotDeltaError::NonSnapshot {
+        key: key.to_string(),
+        text: text.to_string(),
+    })
 }

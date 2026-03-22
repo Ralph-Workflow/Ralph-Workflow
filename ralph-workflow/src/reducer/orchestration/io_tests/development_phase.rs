@@ -429,7 +429,7 @@ fn test_development_runs_exactly_n_iterations() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,

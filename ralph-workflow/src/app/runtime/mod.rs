@@ -61,6 +61,7 @@ struct LoopRuntime {
     event_loop_logger: EventLoopLogger,
 }
 
+#[derive(PartialEq, Eq)]
 enum IterationResult {
     Continue,
     Break,
@@ -263,6 +264,91 @@ where
     handler.update_state(runtime.state.clone());
 }
 
+const AWAITING_DEV_FIX_INTERRUPTION_WARNING: &str =
+    "Interrupted phase reached from AwaitingDevFix without checkpoint saved. SaveCheckpoint effect should execute on next iteration.";
+
+fn completion_transition_warning(state: &PipelineState) -> Option<&'static str> {
+    if matches!(state.phase, PipelinePhase::Interrupted)
+        && matches!(state.previous_phase, Some(PipelinePhase::AwaitingDevFix))
+        && state.checkpoint_saved_count == 0
+    {
+        Some(AWAITING_DEV_FIX_INTERRUPTION_WARNING)
+    } else {
+        None
+    }
+}
+
+fn log_ui_events(ctx: &PhaseContext<'_>, ui_events: &[crate::reducer::ui_event::UIEvent]) {
+    ui_events.iter().for_each(|ui_event| {
+        ctx.logger
+            .info(&crate::rendering::render_ui_event(ui_event));
+    });
+}
+
+fn finalize_iteration<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+    effect_str: &str,
+    event: PipelineEvent,
+    additional_events: Vec<PipelineEvent>,
+    duration_ms: u64,
+    ui_events: &[crate::reducer::ui_event::UIEvent],
+) -> Result<bool>
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    log_ui_events(ctx, ui_events);
+
+    process_primary_event(
+        ctx,
+        handler,
+        runtime,
+        effect_str,
+        event,
+        &additional_events,
+        duration_ms,
+    );
+    process_additional_events(handler, runtime, effect_str, additional_events);
+    update_loop_detection_state(handler, runtime);
+    report_cloud_progress(ctx, &runtime.state, ui_events)?;
+
+    Ok(log_completion_transition_if_needed(ctx, &runtime.state))
+}
+
+fn iteration_duration(start_time: Instant) -> u64 {
+    u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn prepare_next_effect(state: &PipelineState) -> (crate::reducer::effect::Effect, String, Instant) {
+    let effect = determine_next_effect(state);
+    let effect_str = format!("{effect:?}");
+    (effect, effect_str, Instant::now())
+}
+
+fn pre_iteration_check<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+) -> Option<IterationResult>
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    if should_exit_before_effect(&runtime.state) {
+        ctx.logger.info(&format!(
+            "Event loop: state already complete (phase: {:?}, checkpoint_saved_count: {})",
+            runtime.state.phase, runtime.state.checkpoint_saved_count
+        ));
+        return Some(IterationResult::Break);
+    }
+
+    if handle_user_interrupt(ctx, handler, runtime) {
+        return Some(IterationResult::Continue);
+    }
+
+    None
+}
+
 fn log_completion_transition_if_needed(ctx: &PhaseContext<'_>, state: &PipelineState) -> bool {
     if !should_exit_after_effect(state) {
         return false;
@@ -273,17 +359,78 @@ fn log_completion_transition_if_needed(ctx: &PhaseContext<'_>, state: &PipelineS
         state.phase, state.checkpoint_saved_count
     ));
 
-    if matches!(state.phase, PipelinePhase::Interrupted)
-        && matches!(state.previous_phase, Some(PipelinePhase::AwaitingDevFix))
-        && state.checkpoint_saved_count == 0
-    {
-        ctx.logger.warn(
-            "Interrupted phase reached from AwaitingDevFix without checkpoint saved. \
-             SaveCheckpoint effect should execute on next iteration.",
-        );
+    if let Some(warning) = completion_transition_warning(state) {
+        ctx.logger.warn(warning);
     }
 
     true
+}
+
+enum RecoveryImpact {
+    Applied {
+        state: PipelineState,
+        events_processed: usize,
+        trace_dumped: bool,
+        failed: bool,
+    },
+    NotNeeded,
+}
+
+fn recovery_impact(result: RecoveryResult) -> RecoveryImpact {
+    match result {
+        RecoveryResult::Success(state, events_processed, dumped) => RecoveryImpact::Applied {
+            state,
+            events_processed,
+            trace_dumped: dumped,
+            failed: false,
+        },
+        RecoveryResult::FailedUnrecoverable(state, events_processed, dumped) => {
+            RecoveryImpact::Applied {
+                state,
+                events_processed,
+                trace_dumped: dumped,
+                failed: true,
+            }
+        }
+        RecoveryResult::NotNeeded => RecoveryImpact::NotNeeded,
+    }
+}
+
+fn execute_effect_and_capture_result<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+    effect_str: &str,
+    start_time: Instant,
+    effect: crate::reducer::effect::Effect,
+) -> Option<crate::reducer::effect::EffectResult>
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    match execute_effect_with_recovery(ctx, handler, runtime, effect_str, start_time, effect) {
+        EffectExecutionOutcome::Continue => None,
+        EffectExecutionOutcome::EffectResult(result) => Some(*result),
+    }
+}
+
+fn execute_effect_and_finalize<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+    effect_str: &str,
+    start_time: Instant,
+    effect: crate::reducer::effect::Effect,
+) -> Result<IterationResult>
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    let Some(result) =
+        execute_effect_and_capture_result(ctx, handler, runtime, effect_str, start_time, effect)
+    else {
+        return Ok(IterationResult::Continue);
+    };
+
+    finalize_effect_result(ctx, handler, runtime, effect_str, start_time, result)
 }
 
 fn execute_single_iteration<'ctx, H>(
@@ -294,60 +441,43 @@ fn execute_single_iteration<'ctx, H>(
 where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
-    if should_exit_before_effect(&runtime.state) {
-        ctx.logger.info(&format!(
-            "Event loop: state already complete (phase: {:?}, checkpoint_saved_count: {})",
-            runtime.state.phase, runtime.state.checkpoint_saved_count
-        ));
-        return Ok(IterationResult::Break);
+    if let Some(pre_check) = pre_iteration_check(ctx, handler, runtime) {
+        return Ok(pre_check);
     }
 
-    if handle_user_interrupt(ctx, handler, runtime) {
-        return Ok(IterationResult::Continue);
-    }
+    let (effect, effect_str, start_time) = prepare_next_effect(&runtime.state);
 
-    let effect = determine_next_effect(&runtime.state);
-    let effect_str = format!("{effect:?}");
-    let start_time = Instant::now();
+    execute_effect_and_finalize(ctx, handler, runtime, &effect_str, start_time, effect)
+}
 
-    let result = match execute_effect_with_recovery(
-        ctx,
-        handler,
-        runtime,
-        &effect_str,
-        start_time,
-        effect,
-    ) {
-        EffectExecutionOutcome::Continue => return Ok(IterationResult::Continue),
-        EffectExecutionOutcome::EffectResult(result) => *result,
-    };
-
+fn finalize_effect_result<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+    effect_str: &str,
+    start_time: Instant,
+    result: crate::reducer::effect::EffectResult,
+) -> Result<IterationResult>
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
     let crate::reducer::effect::EffectResult {
         event,
         additional_events,
         ui_events,
     } = result;
 
-    ui_events.iter().for_each(|ui_event| {
-        ctx.logger
-            .info(&crate::rendering::render_ui_event(ui_event));
-    });
-
-    let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
-    process_primary_event(
+    let duration_ms = iteration_duration(start_time);
+    if finalize_iteration(
         ctx,
         handler,
         runtime,
-        &effect_str,
+        effect_str,
         event,
-        &additional_events,
+        additional_events,
         duration_ms,
-    );
-    process_additional_events(handler, runtime, &effect_str, additional_events);
-    update_loop_detection_state(handler, runtime);
-    report_cloud_progress(ctx, &runtime.state, &ui_events)?;
-
-    if log_completion_transition_if_needed(ctx, &runtime.state) {
+        &ui_events,
+    )? {
         return Ok(IterationResult::Break);
     }
 
@@ -359,18 +489,18 @@ fn apply_recovery_result(
     runtime: &mut LoopRuntime,
     trace_already_dumped: bool,
 ) -> (bool, bool) {
-    match recovery {
-        RecoveryResult::Success(new_state, new_events_processed, dumped) => {
-            runtime.state = new_state;
-            runtime.events_processed = new_events_processed;
-            (trace_already_dumped || dumped, false)
+    match recovery_impact(recovery) {
+        RecoveryImpact::Applied {
+            state,
+            events_processed,
+            trace_dumped,
+            failed,
+        } => {
+            runtime.state = state;
+            runtime.events_processed = events_processed;
+            (trace_already_dumped || trace_dumped, failed)
         }
-        RecoveryResult::FailedUnrecoverable(new_state, new_events_processed, dumped) => {
-            runtime.state = new_state;
-            runtime.events_processed = new_events_processed;
-            (trace_already_dumped || dumped, true)
-        }
-        RecoveryResult::NotNeeded => (trace_already_dumped, false),
+        RecoveryImpact::NotNeeded => (trace_already_dumped, false),
     }
 }
 
@@ -383,12 +513,40 @@ fn handle_max_iteration_recovery<'ctx, H>(
 where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
-    if runtime.events_processed < config.max_iterations {
+    if !exceeded_max_iterations(runtime, &config) {
         return MaxIterationRecovery {
             recovery_failed: false,
         };
     }
 
+    let context = collect_max_iteration_recovery_context(ctx, handler, runtime);
+
+    ensure_trace_dumped_after_max_iterations(
+        ctx,
+        runtime,
+        context.trace_already_dumped,
+        config.max_iterations,
+    );
+
+    log_max_iterations_exit_if_needed(ctx, runtime, context.forced_completion);
+
+    MaxIterationRecovery {
+        recovery_failed: context.recovery_failed,
+    }
+}
+
+fn exceeded_max_iterations(runtime: &LoopRuntime, config: &EventLoopConfig) -> bool {
+    runtime.events_processed >= config.max_iterations
+}
+
+fn attempt_forced_checkpoint_recovery<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+) -> (bool, bool)
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
     let checkpoint_result = handle_forced_checkpoint_after_completion(
         ctx,
         handler,
@@ -396,52 +554,137 @@ where
         runtime.events_processed,
         &mut runtime.trace,
     );
-    let (trace_already_dumped, recovery_failed) =
-        apply_recovery_result(checkpoint_result, runtime, false);
+    apply_recovery_result(checkpoint_result, runtime, false)
+}
 
-    let forced_completion = if !runtime.state.is_complete() && !recovery_failed {
-        let dev_fix_result = handle_max_iterations_in_awaiting_dev_fix(
-            ctx,
-            handler,
-            runtime.state.clone(),
-            runtime.events_processed,
-            &mut runtime.trace,
-        );
-        let (_trace_already_dumped, recovery_failed) =
-            apply_recovery_result(dev_fix_result, runtime, trace_already_dumped);
-        !recovery_failed
-    } else {
-        false
-    };
-
-    let _trace_already_dumped = if trace_already_dumped {
-        true
-    } else {
-        let dumped = dump_event_loop_trace(ctx, &runtime.trace, &runtime.state, "max_iterations");
-        if dumped {
-            let trace_path = ctx.run_log_context.event_loop_trace();
-            ctx.logger.warn(&format!(
-                "Event loop reached max iterations ({}) without completion (trace: {})",
-                config.max_iterations,
-                trace_path.display()
-            ));
-        } else {
-            ctx.logger.warn(&format!(
-                "Event loop reached max iterations ({}) without completion",
-                config.max_iterations
-            ));
-        }
-        dumped
-    };
-
-    if !forced_completion && !runtime.state.is_complete() {
-        ctx.logger.error(&format!(
-            "Event loop exiting: reason=max_iterations, phase={:?}, checkpoint_saved_count={}, events_processed={}",
-            runtime.state.phase, runtime.state.checkpoint_saved_count, runtime.events_processed
-        ));
+fn attempt_dev_fix_completion<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+    trace_already_dumped: bool,
+    recovery_failed: bool,
+) -> (bool, bool, bool)
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    if runtime.state.is_complete() || recovery_failed {
+        return (trace_already_dumped, recovery_failed, false);
     }
 
-    MaxIterationRecovery { recovery_failed }
+    let dev_fix_result = handle_max_iterations_in_awaiting_dev_fix(
+        ctx,
+        handler,
+        runtime.state.clone(),
+        runtime.events_processed,
+        &mut runtime.trace,
+    );
+    let (trace_already_dumped, recovery_failed) =
+        apply_recovery_result(dev_fix_result, runtime, trace_already_dumped);
+    (trace_already_dumped, recovery_failed, !recovery_failed)
+}
+
+struct MaxIterationRecoveryContext {
+    trace_already_dumped: bool,
+    recovery_failed: bool,
+    forced_completion: bool,
+}
+
+fn collect_max_iteration_recovery_context<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    runtime: &mut LoopRuntime,
+) -> MaxIterationRecoveryContext
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    let (trace_already_dumped, recovery_failed) =
+        attempt_forced_checkpoint_recovery(ctx, handler, runtime);
+
+    let (trace_already_dumped, recovery_failed, forced_completion) =
+        attempt_dev_fix_completion(ctx, handler, runtime, trace_already_dumped, recovery_failed);
+
+    MaxIterationRecoveryContext {
+        trace_already_dumped,
+        recovery_failed,
+        forced_completion,
+    }
+}
+
+fn ensure_trace_dumped_after_max_iterations<'ctx>(
+    ctx: &mut PhaseContext<'_>,
+    runtime: &LoopRuntime,
+    trace_already_dumped: bool,
+    max_iterations: usize,
+) {
+    if trace_already_dumped {
+        return;
+    }
+
+    let dumped = dump_event_loop_trace(ctx, &runtime.trace, &runtime.state, "max_iterations");
+    if dumped {
+        let trace_path = ctx.run_log_context.event_loop_trace();
+        ctx.logger.warn(&format!(
+            "Event loop reached max iterations ({}) without completion (trace: {})",
+            max_iterations,
+            trace_path.display()
+        ));
+    } else {
+        ctx.logger.warn(&format!(
+            "Event loop reached max iterations ({}) without completion",
+            max_iterations
+        ));
+    }
+}
+
+fn log_max_iterations_exit(ctx: &PhaseContext<'_>, runtime: &LoopRuntime) {
+    ctx.logger.error(&format!(
+        "Event loop exiting: reason=max_iterations, phase={:?}, checkpoint_saved_count={}, events_processed={}",
+        runtime.state.phase,
+        runtime.state.checkpoint_saved_count,
+        runtime.events_processed
+    ));
+}
+
+fn log_max_iterations_exit_if_needed(
+    ctx: &PhaseContext<'_>,
+    runtime: &LoopRuntime,
+    forced_completion: bool,
+) {
+    if forced_completion || runtime.state.is_complete() {
+        return;
+    }
+
+    log_max_iterations_exit(ctx, runtime);
+}
+
+fn create_loop_runtime<'ctx>(
+    ctx: &PhaseContext<'_>,
+    initial_state: Option<PipelineState>,
+) -> LoopRuntime {
+    LoopRuntime {
+        state: initial_state.unwrap_or_else(|| create_initial_state_with_config(ctx)),
+        events_processed: 0,
+        trace: EventTraceBuffer::new(DEFAULT_EVENT_LOOP_TRACE_CAPACITY),
+        event_loop_logger: create_event_loop_logger(ctx),
+    }
+}
+
+fn run_event_loop_iterations<'ctx, H>(
+    ctx: &mut PhaseContext<'_>,
+    handler: &mut H,
+    config: &EventLoopConfig,
+    runtime: &mut LoopRuntime,
+) -> Result<()>
+where
+    H: EffectHandler<'ctx> + StatefulHandler,
+{
+    for _ in 0..config.max_iterations {
+        if execute_single_iteration(ctx, handler, runtime)? == IterationResult::Break {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn run_event_loop_driver<'ctx, H>(
@@ -453,43 +696,20 @@ pub fn run_event_loop_driver<'ctx, H>(
 where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
-    let mut runtime = LoopRuntime {
-        state: initial_state.unwrap_or_else(|| create_initial_state_with_config(ctx)),
-        events_processed: 0,
-        trace: EventTraceBuffer::new(DEFAULT_EVENT_LOOP_TRACE_CAPACITY),
-        event_loop_logger: create_event_loop_logger(ctx),
-    };
+    let mut runtime = create_loop_runtime(ctx, initial_state);
 
     handler.update_state(runtime.state.clone());
     ctx.logger.info("Starting reducer-based event loop");
 
     let _event_loop_guard = crate::interrupt::event_loop_active_guard();
 
-    while runtime.events_processed < config.max_iterations {
-        match execute_single_iteration(ctx, handler, &mut runtime)? {
-            IterationResult::Continue => {}
-            IterationResult::Break => break,
-        }
-    }
+    run_event_loop_iterations(ctx, handler, &config, &mut runtime)?;
 
     let recovery = handle_max_iteration_recovery(ctx, handler, config, &mut runtime);
     let completed = runtime.state.is_complete() && !recovery.recovery_failed;
 
     if !completed {
-        ctx.logger.warn(&format!(
-            "Event loop exiting without completion: phase={:?}, checkpoint_saved_count={}, \
-             previous_phase={:?}, events_processed={}, recovery_failed={}",
-            runtime.state.phase,
-            runtime.state.checkpoint_saved_count,
-            runtime.state.previous_phase,
-            runtime.events_processed,
-            recovery.recovery_failed
-        ));
-        ctx.logger.info(&format!(
-            "Final state: agent_chain.retry_cycle={}, agent_chain.active_role={:?}",
-            runtime.state.agent_chain.retry_cycle,
-            runtime.state.agent_chain.active_role()
-        ));
+        log_event_loop_non_completion(ctx, &runtime, recovery.recovery_failed);
     }
 
     Ok(EventLoopResult {
@@ -498,4 +718,25 @@ where
         final_phase: runtime.state.phase,
         final_state: runtime.state.clone(),
     })
+}
+
+fn log_event_loop_non_completion(
+    ctx: &PhaseContext<'_>,
+    runtime: &LoopRuntime,
+    recovery_failed: bool,
+) {
+    ctx.logger.warn(&format!(
+        "Event loop exiting without completion: phase={:?}, checkpoint_saved_count={}, \
+             previous_phase={:?}, events_processed={}, recovery_failed={}",
+        runtime.state.phase,
+        runtime.state.checkpoint_saved_count,
+        runtime.state.previous_phase,
+        runtime.events_processed,
+        recovery_failed
+    ));
+    ctx.logger.info(&format!(
+        "Final state: agent_chain.retry_cycle={}, agent_chain.active_role={:?}",
+        runtime.state.agent_chain.retry_cycle,
+        runtime.state.agent_chain.active_role()
+    ));
 }

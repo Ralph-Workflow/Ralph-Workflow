@@ -347,7 +347,10 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
     );
     let msg = error.to_string();
     assert!(msg.contains("planning"), "expected planning in: {msg}");
-    assert!(msg.contains("development"), "expected development in: {msg}");
+    assert!(
+        msg.contains("development"),
+        "expected development in: {msg}"
+    );
     assert!(msg.contains("analysis"), "expected analysis in: {msg}");
 }
 
@@ -372,11 +375,21 @@ fn test_resolve_agent_drains_checked_rejects_empty_named_drain_binding() {
         .expect_err("empty built-in drain bindings should fail");
 
     assert!(
-        error.contains("agent_drains.planning"),
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::EmptyChainBinding { .. }
+        ),
+        "expected EmptyChainBinding variant, got: {error}"
+    );
+
+    let msg = error.to_string();
+
+    assert!(
+        msg.contains("agent_drains.planning"),
         "unexpected error: {error}"
     );
     assert!(
-        error.contains("must not resolve to an empty chain"),
+        msg.contains("must not resolve to an empty chain"),
         "unexpected error: {error}"
     );
 }

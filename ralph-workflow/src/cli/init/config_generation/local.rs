@@ -167,12 +167,14 @@ fn resolve_template_drains(
     match effective.resolve_agent_drains_checked() {
         Ok(Some(resolved)) => Ok(resolved),
         Ok(None) => Ok(default_drains.clone()),
-        Err(message)
-            if named_chain_template_can_fall_back_to_defaults(effective, message.as_str()) =>
-        {
-            Ok(default_drains.clone())
+        Err(message) => {
+            let message_string = message.to_string();
+            if named_chain_template_can_fall_back_to_defaults(effective, &message_string) {
+                Ok(default_drains.clone())
+            } else {
+                Err(anyhow::Error::msg(message))
+            }
         }
-        Err(message) => Err(anyhow::Error::msg(message)),
     }
 }
 

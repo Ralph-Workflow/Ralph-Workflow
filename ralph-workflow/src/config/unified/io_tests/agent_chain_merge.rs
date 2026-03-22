@@ -181,6 +181,104 @@ commit = "developer"
         .resolve_agent_drains_checked()
         .expect_err("conflicting chain names should fail");
 
-    assert!(error.contains("conflicting agent chain definitions"));
-    assert!(error.contains("developer"));
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::ConflictingLegacyChainNames { .. }
+        ),
+        "expected ConflictingLegacyChainNames variant, got: {error}"
+    );
+    assert!(error
+        .to_string()
+        .contains("conflicting agent chain definitions"));
+    assert!(error.to_string().contains("developer"));
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_legacy_role_combined_with_named_schema() {
+    // [agent_chain] has legacy developer role AND [agent_chains] has non-conflicting
+    // named keys → LegacyRoleCombinedWithNamedSchema
+    let config: UnifiedConfig = toml::from_str(
+        r#"
+[agent_chain]
+developer = ["codex"]
+
+[agent_chains]
+shared_review = ["claude"]
+
+[agent_drains]
+review = "shared_review"
+fix = "shared_review"
+commit = "shared_review"
+planning = "shared_review"
+development = "shared_review"
+analysis = "shared_review"
+"#,
+    )
+    .unwrap();
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("mixing legacy roles with named schema should fail");
+
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::LegacyRoleCombinedWithNamedSchema
+        ),
+        "expected LegacyRoleCombinedWithNamedSchema variant, got: {error}"
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_unknown_builtin_drain() {
+    let config: UnifiedConfig = toml::from_str(
+        r#"
+[agent_chains]
+shared_dev = ["codex"]
+
+[agent_drains]
+planning = "shared_dev"
+not_a_real_drain = "shared_dev"
+"#,
+    )
+    .unwrap();
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("unknown drain name should fail");
+
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::UnknownBuiltinDrain { .. }
+        ),
+        "expected UnknownBuiltinDrain variant, got: {error}"
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_unknown_chain_reference() {
+    let config: UnifiedConfig = toml::from_str(
+        r#"
+[agent_chains]
+shared_dev = ["codex"]
+
+[agent_drains]
+planning = "nonexistent_chain"
+"#,
+    )
+    .unwrap();
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("reference to missing chain should fail");
+
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::UnknownChainReference { .. }
+        ),
+        "expected UnknownChainReference variant, got: {error}"
+    );
 }

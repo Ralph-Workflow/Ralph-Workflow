@@ -1,4 +1,5 @@
 use crate::files::llm_output_extraction::IssuesElements;
+use crate::reducer::domain::baseline::BaselineOid;
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::rendering::xml::render_skills_mcp_markdown;
 use regex::Regex;
@@ -20,16 +21,8 @@ pub(crate) fn sentinel_plan_content(_isolation_mode: bool) -> String {
     }
 }
 
-pub(crate) fn fallback_diff_instructions(_baseline_oid: &str) -> String {
-    if _baseline_oid.is_empty() {
-        "[DIFF NOT AVAILABLE - Use git to obtain changes]\n\n\
-         Run: git diff HEAD~1..HEAD  # Changes in last commit\n\
-         Or:  git diff --staged      # Staged changes\n\
-         Or:  git diff               # Unstaged changes\n\
-         And: git ls-files --others --exclude-standard  # Untracked files\n\n\
-         Review the diff and identify any issues."
-            .to_string()
-    } else {
+pub(crate) fn fallback_diff_instructions(baseline_oid: Option<&BaselineOid>) -> String {
+    if let Some(baseline) = baseline_oid {
         format!(
             "[DIFF NOT AVAILABLE - Use git to obtain changes]\n\n\
              1) Committed changes since baseline:\n\
@@ -41,8 +34,18 @@ pub(crate) fn fallback_diff_instructions(_baseline_oid: &str) -> String {
              4) Untracked files (not shown by git diff):\n\
                 git ls-files --others --exclude-standard\n\n\
              Review the full change set (committed + working tree + untracked).",
-            _baseline_oid, _baseline_oid, _baseline_oid
+            baseline.as_str(),
+            baseline.as_str(),
+            baseline.as_str(),
         )
+    } else {
+        "[DIFF NOT AVAILABLE - Use git to obtain changes]\n\n\
+         Run: git diff HEAD~1..HEAD  # Changes in last commit\n\
+         Or:  git diff --staged      # Staged changes\n\
+         Or:  git diff               # Unstaged changes\n\
+         And: git ls-files --others --exclude-standard  # Untracked files\n\n\
+         Review the diff and identify any issues."
+            .to_string()
     }
 }
 
@@ -214,6 +217,7 @@ pub(crate) fn parse_development_result_status(_status: &str) -> crate::reducer::
 mod tests {
     use super::*;
     use crate::files::llm_output_extraction::{IssueEntry, SkillsMcp};
+    use crate::reducer::domain::baseline::parse_baseline_oid;
 
     #[test]
     fn sentinel_plan_content_uses_isolation_hint_when_enabled() {
@@ -226,9 +230,17 @@ mod tests {
 
     #[test]
     fn fallback_diff_instructions_include_baseline_when_available() {
-        let content = fallback_diff_instructions("abc123");
+        let baseline = parse_baseline_oid("abc123").expect("baseline should parse");
+        let content = fallback_diff_instructions(Some(&baseline));
         assert!(content.contains("git diff abc123..HEAD"));
         assert!(content.contains("git diff --cached abc123"));
+    }
+
+    #[test]
+    fn fallback_diff_instructions_omits_baseline_steps_when_missing() {
+        let content = fallback_diff_instructions(None);
+        assert!(content.contains("Run: git diff HEAD~1..HEAD"));
+        assert!(!content.contains("git diff --cached"));
     }
 
     #[test]

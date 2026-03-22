@@ -66,102 +66,110 @@ fn pretty_print_xml(xml_content: &str) -> String {
         Content,
     }
 
-    let mut result = String::new();
-    let mut indent: usize = 0;
-    let chars: Vec<char> = xml_content.chars().collect();
-    let mut i = 0;
-    let mut mode = XmlMode::Outside;
-
-    while i < chars.len() {
-        let c = chars[i];
-
-        match c {
-            '<' => {
-                let next_char = chars.get(i + 1).copied();
-                let is_closing_tag = matches!(next_char, Some('/'));
-
-                if is_closing_tag {
-                    if matches!(mode, XmlMode::Content) && indent > 0 {
-                        result.push('\n');
-                    }
-                    indent = indent.saturating_sub(1);
-                } else if matches!(mode, XmlMode::Content) {
-                    result.push('\n');
-                }
-
-                mode = XmlMode::Tag { start: i };
-            }
-            '>' => {
-                if let XmlMode::Tag { start } = mode {
-                    let char_after_lt = chars.get(start + 1).copied().unwrap_or('\0');
-                    let is_self_closing = i > 0 && chars[i - 1] == '/';
-                    let is_declaration =
-                        matches!(chars.get(start + 1), Some('?')) && i > 0 && chars[i - 1] == '?';
-
-                    let skips_prefix = char_after_lt == '/' || char_after_lt == '?';
-                    let tag_name_start = if skips_prefix { start + 2 } else { start + 1 };
-                    let tag_name_end = i;
-                    let tag_name: String = if tag_name_start < tag_name_end {
-                        chars[tag_name_start..tag_name_end]
-                            .iter()
-                            .take_while(|&ch| !ch.is_whitespace() && *ch != '/')
-                            .collect()
-                    } else {
-                        String::new()
-                    };
-
-                    let should_indent =
-                        !is_self_closing && !is_declaration && !char_after_lt.is_whitespace();
-                    if should_indent {
-                        if !result.ends_with('\n') && !result.is_empty() {
-                            result.push('\n');
-                        }
-                        for _ in 0..indent {
-                            result.push_str("  ");
-                        }
-                    }
-
-                    result.extend(chars[start..=i].iter().copied());
-
-                    let should_increase_indent = !is_self_closing
-                        && !is_declaration
-                        && char_after_lt != '/'
-                        && !tag_name.is_empty();
-                    mode = if should_increase_indent {
-                        indent = indent.saturating_add(1);
-                        XmlMode::Content
-                    } else {
-                        XmlMode::Outside
-                    };
-                } else {
-                    result.push(c);
-                }
-            }
-            '\n' | '\r' | '\t' => {}
-            ' ' => {
-                if matches!(mode, XmlMode::Tag { .. }) {
-                    result.push(c);
-                } else if matches!(mode, XmlMode::Content) {
-                    if let Some(last_char) = result.chars().last() {
-                        if last_char != ' ' && last_char != '\n' {
-                            result.push(c);
-                        }
-                    } else {
-                        result.push(c);
-                    }
-                }
-            }
-            _ => {
-                if matches!(mode, XmlMode::Tag { .. } | XmlMode::Content) {
-                    result.push(c);
-                }
-            }
-        }
-
-        i = i.saturating_add(1);
+    struct FormatterState {
+        result: String,
+        indent: usize,
+        mode: XmlMode,
     }
 
-    result
+    let chars: Vec<char> = xml_content.chars().collect();
+    let final_state = chars.iter().enumerate().fold(
+        FormatterState {
+            result: String::new(),
+            indent: 0,
+            mode: XmlMode::Outside,
+        },
+        |mut state, (i, &c)| {
+            match c {
+                '<' => {
+                    let next_char = chars.get(i + 1).copied();
+                    let is_closing_tag = matches!(next_char, Some('/'));
+
+                    if is_closing_tag {
+                        if matches!(state.mode, XmlMode::Content) && state.indent > 0 {
+                            state.result += "\n";
+                        }
+                        state.indent = state.indent.saturating_sub(1);
+                    } else if matches!(state.mode, XmlMode::Content) {
+                        state.result += "\n";
+                    }
+
+                    state.mode = XmlMode::Tag { start: i };
+                }
+                '>' => {
+                    if let XmlMode::Tag { start } = state.mode {
+                        let char_after_lt = chars.get(start + 1).copied().unwrap_or('\0');
+                        let is_self_closing = i > 0 && chars[i - 1] == '/';
+                        let is_declaration = matches!(chars.get(start + 1), Some('?'))
+                            && i > 0
+                            && chars[i - 1] == '?';
+
+                        let skips_prefix = char_after_lt == '/' || char_after_lt == '?';
+                        let tag_name_start = if skips_prefix { start + 2 } else { start + 1 };
+                        let tag_name_end = i;
+                        let tag_name: String = if tag_name_start < tag_name_end {
+                            chars[tag_name_start..tag_name_end]
+                                .iter()
+                                .take_while(|&ch| !ch.is_whitespace() && *ch != '/')
+                                .collect()
+                        } else {
+                            String::new()
+                        };
+
+                        let should_indent =
+                            !is_self_closing && !is_declaration && !char_after_lt.is_whitespace();
+                        if should_indent {
+                            if !state.result.ends_with('\n') && !state.result.is_empty() {
+                                state.result += "\n";
+                            }
+                            state.result += &"  ".repeat(state.indent);
+                        }
+
+                        let segment: String = chars[start..=i].iter().collect();
+                        state.result += &segment;
+
+                        let should_increase_indent = !is_self_closing
+                            && !is_declaration
+                            && char_after_lt != '/'
+                            && !tag_name.is_empty();
+                        if should_increase_indent {
+                            state.indent = state.indent.saturating_add(1);
+                            state.mode = XmlMode::Content;
+                        } else {
+                            state.mode = XmlMode::Outside;
+                        }
+                    } else {
+                        let addition = c.to_string();
+                        state.result += addition.as_str();
+                    }
+                }
+                '\n' | '\r' | '\t' => {}
+                ' ' => {
+                    if matches!(state.mode, XmlMode::Tag { .. }) {
+                        state.result += " ";
+                    } else if matches!(state.mode, XmlMode::Content) {
+                        if let Some(last_char) = state.result.chars().last() {
+                            if last_char != ' ' && last_char != '\n' {
+                                state.result += " ";
+                            }
+                        } else {
+                            state.result += " ";
+                        }
+                    }
+                }
+                _ => {
+                    if matches!(state.mode, XmlMode::Tag { .. } | XmlMode::Content) {
+                        let addition = c.to_string();
+                        state.result += addition.as_str();
+                    }
+                }
+            }
+
+            state
+        },
+    );
+
+    final_state.result
 }
 
 #[cfg(test)]

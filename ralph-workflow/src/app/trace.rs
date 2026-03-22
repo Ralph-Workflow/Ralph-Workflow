@@ -46,13 +46,18 @@ impl EventTraceBuffer {
         }
     }
 
-    pub(super) fn append(mut self, entry: EventTraceEntry) -> Self {
-        self.entries.push_back(entry);
-        let overflow = self.entries.len().saturating_sub(self.capacity);
-        if overflow > 0 {
-            self.entries.drain(0..overflow);
+    pub(super) fn append(self, entry: EventTraceEntry) -> Self {
+        let all_entries = self
+            .entries
+            .into_iter()
+            .chain(std::iter::once(entry))
+            .collect::<Vec<_>>();
+        let start = all_entries.len().saturating_sub(self.capacity);
+        let entries = all_entries.into_iter().skip(start).collect::<VecDeque<_>>();
+        Self {
+            capacity: self.capacity,
+            entries,
         }
-        self
     }
 
     pub(super) const fn entries(&self) -> &VecDeque<EventTraceEntry> {
@@ -157,5 +162,43 @@ pub(super) fn dump_event_loop_trace(
                 .error(&format!("Failed to write event loop trace: {err}"));
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EventTraceBuffer, EventTraceEntry};
+
+    fn test_entry(iteration: usize) -> EventTraceEntry {
+        EventTraceEntry {
+            iteration,
+            effect: format!("effect-{iteration}"),
+            event: format!("event-{iteration}"),
+            phase: "phase".into(),
+            xsd_retry_pending: false,
+            xsd_retry_count: 0,
+            invalid_output_attempts: 0,
+            agent_index: 0,
+            model_index: 0,
+            retry_cycle: 0,
+        }
+    }
+
+    #[test]
+    fn append_trims_overflowing_entries() {
+        let buffer = EventTraceBuffer::new(2)
+            .append(test_entry(1))
+            .append(test_entry(2));
+
+        assert_eq!(buffer.entries().len(), 2);
+
+        let buffer = buffer.append(test_entry(3));
+        assert_eq!(buffer.entries().len(), 2);
+        let kept_iterations: Vec<_> = buffer
+            .entries()
+            .iter()
+            .map(|entry| entry.iteration)
+            .collect();
+        assert_eq!(kept_iterations, vec![2, 3]);
     }
 }

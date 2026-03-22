@@ -4,6 +4,7 @@
 // and agent chain exhaustion.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::create_test_state;
 use crate::reducer::determine_next_effect;
 use crate::reducer::effect::Effect;
@@ -281,7 +282,7 @@ fn test_development_runs_exactly_n_iterations() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,
@@ -396,7 +397,7 @@ fn test_development_timeout_retry_does_not_use_xsd_retry_prompt_mode() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-a".to_string(),
+            AgentName::from("agent-a"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,

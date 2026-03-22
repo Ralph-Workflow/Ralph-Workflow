@@ -45,6 +45,7 @@
 //! Future error events for recoverable conditions (network timeouts, transient file I/O)
 //! will implement retry/fallback strategies in the reducer.
 
+use crate::common::domain_types::AgentName;
 use serde::{Deserialize, Serialize};
 
 /// Serializable subset of `std::io::ErrorKind`.
@@ -99,7 +100,7 @@ impl WorkspaceIoErrorKind {
 ///    success events and decides recovery strategy.
 /// 4. **Typed, not strings**: String errors prevent the reducer from handling different
 ///    failure modes appropriately.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum ErrorEvent {
     /// User requested interruption (Ctrl+C / SIGINT).
     ///
@@ -206,7 +207,7 @@ pub enum ErrorEvent {
     GitStatusFailed { kind: WorkspaceIoErrorKind },
 
     /// Agent registry lookup failed (unknown agent).
-    AgentNotFound { agent: String },
+    AgentNotFound { agent: AgentName },
 
     /// Planning inputs not materialized before preparing/invoking planning prompt.
     PlanningInputsNotMaterialized { iteration: u32 },

@@ -68,7 +68,7 @@ impl AgentsConfigFile {
             return crate::config::UnifiedConfig::default()
                 .merge_with_content(raw_toml, &parsed)
                 .resolve_agent_drains_checked()
-                .map_err(AgentConfigError::InvalidDrainConfig);
+                .map_err(|err| AgentConfigError::InvalidDrainConfig(err.to_string()));
         }
 
         crate::config::UnifiedConfig {
@@ -78,7 +78,7 @@ impl AgentsConfigFile {
             ..crate::config::UnifiedConfig::default()
         }
         .resolve_agent_drains_checked()
-        .map_err(AgentConfigError::InvalidDrainConfig)
+        .map_err(|err| AgentConfigError::InvalidDrainConfig(err.to_string()))
     }
 
     /// Load agents config from a file, returning None if file doesn't exist.

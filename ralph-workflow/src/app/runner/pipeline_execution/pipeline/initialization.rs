@@ -118,14 +118,16 @@ fn create_resume_or_fresh_run_log_context(
 }
 
 fn configure_logger_for_run(
-    state: &mut PipelinePreparationState,
+    mut state: PipelinePreparationState,
     run_log_context: &crate::logging::RunLogContext,
-) {
+) -> PipelinePreparationState {
     let current_logger = std::mem::replace(&mut state.logger, Logger::new(state.colors));
     state.logger = current_logger.with_workspace_log(
         std::sync::Arc::clone(&state.workspace),
         &run_log_context.pipeline_log().to_string_lossy(),
     );
+
+    state
 }
 
 fn write_run_metadata_best_effort(
@@ -193,7 +195,7 @@ pub(crate) fn prepare_pipeline_or_exit<H: crate::app::effect::AppEffectHandler>(
             .map_err(|e| anyhow::anyhow!("{e}"))?;
     }
 
-    let mut state = PipelinePreparationState {
+    let state = PipelinePreparationState {
         args,
         config,
         registry,
@@ -207,7 +209,7 @@ pub(crate) fn prepare_pipeline_or_exit<H: crate::app::effect::AppEffectHandler>(
     };
 
     let run_log_context = create_resume_or_fresh_run_log_context(&state)?;
-    configure_logger_for_run(&mut state, &run_log_context);
+    let state = configure_logger_for_run(state, &run_log_context);
     write_run_metadata_best_effort(&state, &run_log_context);
 
     let template_context =

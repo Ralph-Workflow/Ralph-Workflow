@@ -42,9 +42,9 @@ fn build_template_variables(
 
     let required_output = if is_continuation {
         r"<ralph-development-result>
-  <ralph-status>partial|failed</ralph-status>
-  <ralph-summary>Brief factual blocker-focused explanation of why the fix did not address the review issues</ralph-summary>
-  <ralph-next-steps>comprehensive, detailed, ordered checklist that should resolve the remaining issues when completed, including remaining non-issue follow-up work uncovered during verification and any failed verification commands or checks</ralph-next-steps>
+  <ralph-status>completed|partial|failed</ralph-status>
+  <ralph-summary>Brief factual summary of what was fixed vs what the review identified</ralph-summary>
+  <ralph-next-steps>comprehensive, detailed, ordered checklist that should resolve the remaining issues when completed, including remaining non-issue follow-up work uncovered during verification and any failed verification commands or checks (optional when status is completed)</ralph-next-steps>
 </ralph-development-result>"
     } else {
         r"<ralph-development-result>
@@ -114,9 +114,9 @@ pub fn generate_fix_analysis_prompt(
             });
             let required_output = if is_continuation {
                 r"<ralph-development-result>
-  <ralph-status>partial|failed</ralph-status>
-  <ralph-summary>Brief factual blocker-focused explanation of why the fix did not address the review issues</ralph-summary>
-  <ralph-next-steps>comprehensive, detailed, ordered checklist that should resolve the remaining issues when completed, including remaining non-issue follow-up work uncovered during verification and any failed verification commands or checks</ralph-next-steps>
+  <ralph-status>completed|partial|failed</ralph-status>
+  <ralph-summary>Brief factual summary of what was fixed vs what the review identified</ralph-summary>
+  <ralph-next-steps>comprehensive, detailed, ordered checklist that should resolve the remaining issues when completed, including remaining non-issue follow-up work uncovered during verification and any failed verification commands or checks (optional when status is completed)</ralph-next-steps>
 </ralph-development-result>"
             } else {
                 r"<ralph-development-result>

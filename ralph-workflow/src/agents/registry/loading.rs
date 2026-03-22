@@ -85,7 +85,9 @@ impl AgentRegistry {
 
         let resolved_drains = unified
             .resolve_agent_drains_checked()
-            .map_err(AgentConfigError::InvalidDrainConfig)?
+            .map_err(|err: crate::config::unified::types::ResolveDrainError| {
+                AgentConfigError::InvalidDrainConfig(err.to_string())
+            })?
             .unwrap_or_else(|| {
                 Self::merge_general_runtime_settings(&registry.resolved_drains, &unified.general)
             });

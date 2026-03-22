@@ -1,5 +1,43 @@
 # Issues and Gotchas
 
+## 2026-03-22 — Plan reality reset after fresh dylint run
+
+- Fresh run: `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet`
+  ended with `error: could not compile \`ralph-workflow\` (lib) due to 1263 previous errors`.
+- Quick category sampling from full log:
+  - 259 `let mut` (`forbid_mut_binding`)
+  - 88 loop violations (`forbid_imperative_loops`)
+  - boundary import violations still present (for example `agents/opencode_api/mod.rs`).
+- Action taken: `.sisyphus/plans/fp-style-compliance.md` now includes a Recovery Reset checklist
+  (`R1`..`R6`) that blocks Final Verification Wave until this backlog is burned down.
+
+### R1 rebaseline snapshot (full log: `/Users/mistlight/.local/share/opencode/tool-output/tool_d14b717e8001Tw2N1k5GRZZxUR`)
+
+- Top repeated diagnostics in this run:
+  - `call to &mut self method push is forbidden` (152)
+  - `call to &mut self method clear is forbidden` (52)
+  - `loop loop is forbidden` (46)
+  - `let mut buf is forbidden` (35)
+  - `call to &mut self method push_str is forbidden` (34)
+  - `for loop is forbidden` (30)
+- Top files by error-site count:
+  - `ralph-workflow/src/git_helpers/phase.rs` (98)
+  - `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/section_parsers.rs` (69)
+  - `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/step_parsers.rs` (69)
+  - `ralph-workflow/src/git_helpers/path_wrapper.rs` (51)
+  - `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/xml_helpers.rs` (49)
+  - `ralph-workflow/src/workspace/files.rs` (43)
+  - `ralph-workflow/src/files/monitoring.rs` (33)
+  - `ralph-workflow/src/files/llm_output_extraction/xsd_validation/validator.rs` (33)
+  - `ralph-workflow/src/git_helpers/wrapper.rs` (33)
+  - `ralph-workflow/src/git_helpers/marker.rs` (31)
+
+## 2026-03-22T21:32:00Z — R4 files/boundary experiment issue
+
+- Moved `files/monitoring.rs` and the entire `files/llm_output_extraction/*` tree under a temporary `files/boundary/` path and updated every `include_str!` call to use the new boundary-aware layout.
+- `cargo check -p ralph-workflow --lib` and `cargo test -p ralph-workflow --lib` still pass, but `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` immediately spikes with `forbid_nested_boundary_modules`, `forbid_domain_boundary_dependencies`, and the same backlog of `let mut`/`loop` diagnostics because the XML helpers and monitoring logic still contain forbidden mutation/loops.
+- Rolled the files back to their original locations (restored the original include paths). The lint backlog remains; this experiment confirmed that moving the files alone does not resolve the warnings—rebuilding the helpers using iterator pipelines or isolating mutations behind pure helpers is still required.
+
 ## 2026-03-20 — Verify orchestration + integration lane stabilization
 
 ### Verify behavior checkpoint
@@ -184,12 +222,28 @@ All other Phase 3 boundary import violations have already been resolved in prior
 - `cargo test -p ralph-workflow --lib --all-features` currently aborts with a cascade of compile errors (hundreds of unresolved imports/private items across app/runner, checkpoint, files/monitoring, workspace tests, etc.). Full log: `/Users/mistlight/.local/share/opencode/tool-output/tool_d0959078f001kMP6UDUW3Nf2Vp`.
 - `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet | grep "let mut.*is forbidden"` also fails because the lint suite reports dozens of pre-existing `forbid_mut_binding`, `forbid_imperative_loops`, and interior-mutability hits across many modules. See `/Users/mistlight/.local/share/opencode/tool-output/tool_d095949570015uOO9EQFeH1n9D` for details.
 
+## 2026-03-21 — P10-string-errors load_template risk
+
+- The new `prompts/io::LoadTemplateError` is only referenced by the regression test right now; no other production code consumes `load_template`, so future slices that rely on this helper will have to wire up the new error type before use or they will hit compilation mismatches.
+- Verified `cargo test -p ralph-workflow load_template_missing_file_returns_not_found_error` and `cargo check -p ralph-workflow --lib`; no additional runtime issues surfaced.
+
+## 2026-03-21T20:05Z — P10-string-errors template_registry follow-up
+
+- The regression test reads `/nonexistent-template-file`. If the workspace ever creates an artifact at that absolute path, the test would no longer exercise the `LoadTemplateError::Io` branch; keep the file path unique when adding test fixtures or environment artifacts.
+- `LoadTemplateError` is private to `template_registry.rs`. Future callers that want the typed error will need to be updated together with this helper (or the enum re-exported) to avoid compile errors from the new signature.
+
 ## 2026-03-19T22:30Z — P4 Manual Policy Inventory (Boundary Policy Violations)
 
 ### Methodology
 Conducted manual code-reading inventory of boundary policy violations across `reducer/boundary/`, `runtime/`, `io/`, `executor/`, and `app/boundary/` directories. Searched for decision/fallback/branching policy patterns (if/match on domain conditions, PromptMode matching, validation decisions, retry conditions, etc.) and identified concrete violations with file:line references.
 
-### HIGH-CONFIDENCE CANDIDATES (Policy at Boundary)
+## 2026-03-21 — P13-proptest dependency prep
+
+- Added `proptest = "1"` to `ralph-workflow/Cargo.toml` dev-dependencies so the crate can add property tests in future slices.
+- Dozens of reducer/io tests (agent_fallback, agent_chain, review state tests, phase transitions, commit-phase helpers) had to be updated to pass the new `AgentName`/`ModelName` newtypes to event constructors; `AgentName::from` wrappers were added, helper conversions introduced, and `Vec<String>` fences were mapped to `Vec<AgentName>` before raising events.
+- Verification: `cargo check -p ralph-workflow --lib` (pass) and `cargo test -p ralph-workflow --lib` (pass, 3799 tests).
+
+ ### HIGH-CONFIDENCE CANDIDATES (Policy at Boundary)
 
 #### 1. PromptMode branching in development.rs
 **File:** ralph-workflow/src/reducer/boundary/development.rs:266-277
@@ -1521,3 +1575,961 @@ cargo check -p ralph-workflow --lib 2>&1 | grep "^error"  # returns nothing
   - `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep -E "forbid_interior_mutability|interior-mutability" | grep -E "cloud/io_redaction|file_extraction/extraction|idle_timeout/clock|LazyLock"` returned no output (no targeted interior-mutability hits for these files).
 
 - 2026-03-21 (P7-cell): full dylint run remains noisy with unrelated pre-existing violations, so validation for this slice used targeted confirmation that `std::cell::Cell` interior-mutability diagnostics are eliminated.
+
+## 2026-03-21 — OpenCode catalog HTTP integration blockers
+
+- `cargo test -p ralph-workflow --lib` continues to fail because numerous pre-existing `forbid_mut_binding`/`forbid_imperative_loops`/`forbid_domain_boundary_dependencies` diagnostics in `app/*`, `checkpoint/*`, `files/*`, and `git_helpers/*` block the compiler before the new catalog test can run (see `/Users/mistlight/.local/share/opencode/tool-output/tool_d11d2df82001bLnP9DaAjbAwT9`).
+- `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` also fails with the same backlog plus an amount of lazily classified `forbid_interior_mutability` hits; the full output was recorded in `/Users/mistlight/.local/share/opencode/tool-output/tool_d11d2df82001bLnP9DaAjbAwT9`.
+- These verification blockers pre-date this change, so we noted the failure impact while leaving the upstream lint backlog untouched.
+
+## 2026-03-21 — Fetch capability scope correction
+
+- Re-scoped the fix so the `forbid_domain_boundary_dependencies` remediation touches only the `agents/opencode_api/*` slice, keeps production wiring anchored in `mod.rs`, and limits testing to the new catalog fetch seam.
+- Targeted verification `cargo test -p ralph-workflow fetch::tests::test_real_catalog_fetcher_uses_injected_http_fetcher` still cannot complete because the build hits longstanding `ResolveDrainError` type-mismatch diagnostics in `agents/config/file.rs`, `config/loader.rs`, and accompanying validation/registry helpers before reaching the new test.
+## 2026-03-21 — P10-string-errors (snapshot extraction)
+
+- No blockers in this slice.
+- One expected red-phase compiler failure occurred after test-first change: unresolved `SnapshotDeltaError` import in `streaming_state/tests.rs` before implementation.
+- One implementation-phase lint failure occurred: `private_interfaces` because `StreamingSession` public methods returned non-public `SnapshotDeltaError`; resolved by making the enum public.
+2026-03-21T20:39:40Z — Added typed AppEffectError/API helpers and updated tests; verified via `cargo check -p ralph-workflow --lib` and `cargo test -p ralph-workflow app::effectful`; follow-up risk: many other String-returning APIs still await typed error enums.
+
+## 2026-03-21 — P10-string-errors network catalog fetch typed error
+
+### Issue
+- No additional regressions observed; `CatalogFetchError` reuses the previous status/body strings so downstream logging still behaves the same.
+
+## 2026-03-21T13:15Z — P10-string-errors resume validation tests module collision
+
+### Issue
+- `include!("resume/validation.rs")` is brought into `app/resume.rs`, which already has `mod tests` defined in `resume/tests.rs`. Adding another `mod tests` inside `validation.rs` triggered `E0428` duplicate-module errors, so the new regression tests needed their own namespace (`validation_tests`) to avoid the conflict.
+
+## 2026-03-21T21:30Z — Typed HTTP fetch boundary caution
+
+### Issue
+- The typed `HttpFetchError` funnels back into `CacheError::FetchError(String)` via `.to_string()` only inside `RealCatalogFetcher`, so any new consumers of `HttpFetcher` must keep that conversion at the boundary; otherwise `CacheError` and other old APIs would break.
+- RealHttpFetcher still maps the legacy `String` failures into the new enum, which keeps downstream behavior unchanged, but future typed-error slices must remember to convert before exposing user-facing string diagnostics.
+
+## 2026-03-21T23:00Z — P10A-diagnostics-as-data inventory
+
+### Objective
+Identify domain functions that call println!/eprintln!/warn/tracing warn with domain-meaningful content, and are best candidates for first atomic P10A conversion to WithDiagnostics<T>.
+
+### Methodology
+1. Grep'd `ralph-workflow/src` for `println!`, `eprintln!`, `tracing::warn!`, `.warn(`
+2. Read each file to distinguish domain-meaningful diagnostics from boundary transport logs
+3. Classified into three groups: strong-candidates, likely-boundary-ignore, needs-human-judgment
+
+### STRONG CANDIDATES (Domain-meaningful diagnostics → WithDiagnostics<T>)
+
+#### 1. `phases/review/validation.rs` — `pre_flight_review_check`
+
+**File:** `/Users/mistlight/Projects/RalphWithReviewer/wt-68-build-system/ralph-workflow/src/phases/review/validation.rs:44-140`
+
+**Current signature:**
+```rust
+pub fn pre_flight_review_check(
+    workspace: &dyn Workspace,
+    logger: &crate::logger::Logger,
+    cycle: u32,
+    reviewer_agent: &str,
+    reviewer_model: Option<&str>,
+) -> PreflightResult
+```
+
+**Proposed WithDiagnostics signature:**
+```rust
+pub fn pre_flight_review_check(
+    workspace: &dyn Workspace,
+    cycle: u32,
+    reviewer_agent: &str,
+    reviewer_model: Option<&str>,
+) -> WithDiagnostics<PreflightResult>
+```
+
+**Proposed Diagnostic enum: `PreflightDiagnostic`**
+```rust
+pub enum PreflightDiagnostic {
+    ReviewerCompatibilityWarning { agent: String, model: Option<String> },
+    ExistingIssuesMdWarning { size: usize },
+    EmptyIssuesMdWarning,
+    CannotReadIssuesMd { error: String },
+    AgentDirWarning { entry_count: usize },
+}
+```
+
+**Why strong candidate:**
+- Returns structured `PreflightResult` but uses logger.warn as side-channel for domain warnings
+- Warnings carry domain-meaningful content (reviewer compatibility, file state, directory size)
+- Callers need this diagnostic info to present actionable guidance to users
+- Blast radius: LOW — standalone function, testable in isolation, no state dependencies
+
+**Verification command after conversion:**
+```bash
+cargo test -p ralph-workflow --lib pre_flight_review_check
+cargo check -p ralph-workflow --lib
+```
+
+---
+
+#### 2. `phases/review/validation.rs` — `post_flight_review_check`
+
+**File:** `/Users/mistlight/Projects/RalphWithReviewer/wt-68-build-system/ralph-workflow/src/phases/review/validation.rs:148-259`
+
+**Current signature:**
+```rust
+pub fn post_flight_review_check(
+    workspace: &dyn Workspace,
+    logger: &crate::logger::Logger,
+    cycle: u32,
+) -> PostflightResult
+```
+
+**Proposed WithDiagnostics signature:**
+```rust
+pub fn post_flight_review_check(
+    workspace: &dyn Workspace,
+    cycle: u32,
+) -> WithDiagnostics<PostflightResult>
+```
+
+**Proposed Diagnostic enum: `PostflightDiagnostic`**
+```rust
+pub enum PostflightDiagnostic {
+    IssuesMdNotCreated { cycle: u32 },
+    EmptyIssuesMd { cycle: u32 },
+    CannotReadIssuesMd { cycle: u32, error: String },
+    IssuesMdMalformed { cycle: u32, reason: String },
+    NoParseableIssues { cycle: u32, file_size: u64 },
+    FailedToParseIssuesMd { cycle: u32, error: String },
+}
+```
+
+**Why strong candidate:**
+- Returns structured `PostflightResult` but uses logger.warn extensively for domain issues
+- Diagnostic content helps callers understand why review produced no/empty/malformed output
+- Blast radius: LOW — same pattern as pre_flight, testable in isolation
+
+**Verification command after conversion:**
+```bash
+cargo test -p ralph-workflow --lib post_flight_review_check
+cargo check -p ralph-workflow --lib
+```
+
+---
+
+#### 3. `app/rebase/conflicts.rs` — `handle_file_edits_resolution`
+
+**File:** `/Users/mistlight/Projects/RalphWithReviewer/wt-68-build-system/ralph-workflow/src/app/rebase/conflicts.rs:151-165`
+
+**Current signature:**
+```rust
+pub fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool>
+```
+
+**Proposed WithDiagnostics signature:**
+```rust
+pub fn handle_file_edits_resolution() -> WithDiagnostics<anyhow::Result<bool>>
+```
+
+**Proposed Diagnostic enum: `ConflictResolutionDiagnostic`**
+```rust
+pub enum ConflictResolutionDiagnostic {
+    ConflictsRemainAfterResolution { count: usize },
+    AiResolutionFailed,
+    FailedToContinueRebase { error: String },
+}
+```
+
+**Why strong candidate:**
+- `logger.warn` at line 159-162: "X conflicts remain after AI resolution" — domain-meaningful
+- `logger.warn` at line 168: "AI conflict resolution failed" — domain-meaningful
+- Returns bool (resolved or not) but diagnostic carries the conflict count
+- Blast radius: MEDIUM — callers (try_resolve_conflicts) use the bool and could use diagnostics
+
+**Verification command after conversion:**
+```bash
+cargo test -p ralph-workflow --lib handle_file_edits_resolution
+cargo check -p ralph-workflow --lib
+```
+
+---
+
+### LIKELY BOUNDARY-IGNORE (Infrastructure diagnostics, not domain-meaningful)
+
+These are legitimate boundary/infrastructure concerns that should NOT be converted to WithDiagnostics<T>:
+
+#### B1. `prompts/rebase.rs` — template rendering failures
+**File:** `ralph-workflow/src/prompts/rebase.rs:62-73, 112-130, 288-306`
+
+`eprintln!("Warning: Failed to render conflict resolution template: {e}")` and similar are infrastructure errors during prompt construction, not domain logic. Callers receive the fallback prompt string — the error is internal to the prompt-building process.
+
+**Classification:** Infrastructure — template rendering is a utility concern, not domain.
+
+#### B2. `pipeline/idle_timeout/runtime.rs` — runtime monitoring diagnostics
+**File:** `ralph-workflow/src/pipeline/idle_timeout/runtime.rs:325-470`
+
+All `eprintln!` calls in `monitor_idle_timeout_with_interval_and_kill_config_and_observer` are runtime monitoring/status messages about the idle timeout enforcement process. These are boundary infrastructure logs about process state, not domain business logic.
+
+**Classification:** Boundary infrastructure — monitoring is legitimate boundary concern.
+
+#### B3. `interrupt/mod.rs` — interrupt handler messages
+**File:** `ralph-workflow/src/interrupt/mod.rs:233-284`
+
+`eprintln!` messages in `setup_interrupt_handler` are user-facing terminal output about interrupt handling progress. These are terminal/boundary presentation concerns, not domain diagnostics.
+
+**Classification:** Terminal output — user feedback, not domain.
+
+#### B4. `git_helpers/rebase_state_machine.rs` / `states.rs` — checkpoint recovery
+**File:** `ralph-workflow/src/git_helpers/rebase_state_machine.rs:49,92,99,103,108`
+
+`eprintln!` in `load_or_create` and `try_load_backup_or_create_with_workspace` are checkpoint recovery infrastructure messages. These are fault-tolerance infrastructure, not domain-meaningful diagnostics.
+
+**Classification:** Infrastructure — checkpoint loading is boundary concern.
+
+#### B5. `git_helpers/rebase_preconditions.rs` — docstring examples
+**File:** `ralph-workflow/src/git_helpers/rebase_preconditions.rs:44-46`
+
+The docstring example shows `println!/eprintln!` usage — this is documentation, not code. The actual function `validate_rebase_preconditions` is `#[cfg(any(test, feature = "test-utils"))]` only.
+
+**Classification:** Documentation + test-only code — not production domain logic.
+
+#### B6. `agents/ccs/agent_config.rs` — config loading diagnostics
+**File:** `ralph-workflow/src/agents/ccs/agent_config.rs:126-137`
+
+`eprintln!` messages about CCS profile not found / env vars loading failure are configuration infrastructure logs.
+
+**Classification:** Configuration infrastructure — not domain.
+
+#### B7. `agents/opencode_api/mod.rs` — catalog fetch warnings
+**File:** `ralph-workflow/src/agents/opencode_api/mod.rs:87,90`
+
+`eprintln!` about OpenCode API catalog fetch/cache failures are network boundary concerns.
+
+**Classification:** Network boundary infrastructure — not domain.
+
+#### B8. `executor/child_process.rs` — process execution errors
+**File:** `ralph-workflow/src/executor/child_process.rs:52,67`
+
+`eprintln!` for child process execution errors are executor boundary concerns.
+
+**Classification:** Executor boundary — not domain.
+
+### NEEDS-HUMAN-JUDGMENT
+
+#### J1. `app/rebase/conflicts.rs` — `collect_conflict_info_or_error`
+**File:** `ralph-workflow/src/app/rebase/conflicts.rs:203-217`
+
+Uses `logger.error` to emit "Failed to collect conflict info: {e}" then returns `anyhow::Result`. The error IS in the return value via `anyhow::bail!`, so the diagnostic is somewhat redundant. However, callers may log this error again, so eliminating the double-logging would be valuable.
+
+**Decision needed:** Is this a true WithDiagnostics candidate or should we just remove the redundant logger.error call?
+
+#### J2. `json_parser/claude/parser.rs` — single eprintln
+**File:** `ralph-workflow/src/json_parser/claude/parser.rs:467`
+
+Not reviewed in detail — needs closer inspection to determine if domain-meaningful or infrastructure.
+
+---
+
+### RECOMMENDED FIRST IMPLEMENTATION SLICE
+
+**Target:** `phases/review/validation.rs` — `pre_flight_review_check`
+
+**Rationale:**
+1. Lowest blast radius — standalone function with no complex state dependencies
+2. Clear diagnostic boundaries — `PreflightDiagnostic` enum is well-defined from existing logger.warn calls
+3. Testable in isolation — can write TDD tests before and after conversion
+4. Visible domain value — warnings about reviewer compatibility, existing ISSUES.md, directory size are actionable for users
+5. No cascading changes — `PreflightResult` is already a structured type, just needs to carry diagnostics alongside
+
+**Implementation order:**
+1. Define `PreflightDiagnostic` enum in `phases/review/validation.rs`
+2. Define `WithDiagnostics<PreflightResult>` return type (may already exist in codebase)
+3. Refactor `pre_flight_review_check` to return `WithDiagnostics<PreflightResult>` instead of `PreflightResult` + logger.warn side-channel
+4. Update all call sites to handle the diagnostics
+5. Add TDD tests for WithDiagnostics behavior
+6. Verify: `cargo check -p ralph-workflow --lib && cargo test -p ralph-workflow --lib pre_flight_review_check`
+
+### CROSS-REFERENCE WITH PRIOR WORK
+
+- P10-string-errors (completed): Added typed error enums for string-based errors in `app/effectful`, `network/http_fetch`, `snapshot extraction`
+- P10A-diagnostics-as-data (this task): Adds typed diagnostic enums for logger.warn-based diagnostics
+- These are complementary: P10 focuses on error paths, P10A focuses on warning/informational paths
+
+### FILES ANALYZED
+
+Scanned 189 println!, 58 eprintln!, 239 logger.warn calls across 38+ files in ralph-workflow/src.
+
+### COMMAND TO VALIDATE CANDIDATES
+
+```bash
+# Verify pre_flight_review_check is the best first candidate
+cargo test -p ralph-workflow --lib pre_flight_review_check  # Should pass currently
+cargo test -p ralph-workflow --lib post_flight_review_check  # Should pass currently
+
+# After conversion:
+cargo check -p ralph-workflow --lib
+cargo test -p ralph-workflow --lib phases::review::validation::tests
+```
+
+---
+
+## 2026-03-21T — P11-newtypes: Boundary Intake Function Audit
+
+### Objective
+Audit boundary intake functions for raw types that carry implicit invariants (non-empty string, bounded integer, non-empty collection). Produce ranked list of concrete candidates with file:line references and suggested newtype names.
+
+### Methodology
+1. Grep'd `reducer/boundary/`, `io/`, `runtime/` for `is_empty()`, `trim().is_empty()` guards
+2. Read boundary function signatures to identify raw types with implicit invariants
+3. Cross-referenced with existing newtypes in `common/domain_types.rs`
+4. Assessed blast radius per candidate
+
+### EXISTING NEWTYPES (common/domain_types.rs)
+
+| Newtype | Raw Type | Invariant | Validation |
+|---------|----------|-----------|------------|
+| `AgentName` | `String` | None (identifier) | None |
+| `GitOid` | `String` | 40-char hex SHA-1 | `TryFrom` validates length + hex chars |
+| `BranchName` | `String` | None (NO push-semantic validation) | None |
+| `ModelName` | `String` | None (identifier) | None |
+| `ProviderName` | `String` | None (identifier) | None |
+| `Sha256Checksum` | `String` | 64-char hex | None |
+| `IsoTimestamp` | `String` | ISO-8601 format | None |
+
+**Gap:** `BranchName` exists but has NO validation for git push semantics (no whitespace, doesn't start with '-', no ':', etc.). The validation exists in `build_head_push_refspec()` but is not encoded in the type.
+
+---
+
+### TOP-CANDIDATES (Ranked by Impact)
+
+#### 1. `NonEmptyString` ⭐ FIRST SLICE RECOMMENDED
+
+**Invariant:** String must be non-empty after trimming whitespace.
+
+**Implicit invariant carriers:**
+| File:Line | Function | Raw Param | Check |
+|-----------|---------|-----------|-------|
+| `reducer/boundary/cloud.rs:381` | `build_head_push_refspec(branch: &str)` | `branch` | `if trimmed.is_empty()` → returns `None` |
+| `reducer/boundary/commit.rs:703` | `prepare_commit_message()` | `diff.trim().is_empty()` | Used to detect "no changes" |
+| `reducer/boundary/commit.rs:923` | `check_residual_files()` | `status.trim().is_empty()` | Clean vs dirty working tree |
+| `reducer/boundary/run_review.rs:67` | `fallback_diff_instructions(baseline_oid: &str)` | `baseline_oid.trim().is_empty()` | Skip write if empty |
+| `reducer/boundary/cloud.rs:242` | `handle_create_pull_request(title: &str, body: &str)` | `title` | Should be non-empty for PR |
+| `reducer/boundary/agent.rs:25` | `invoke_agent(..., prompt: String)` | `prompt` | Empty prompt = no-op agent |
+
+**Proposed newtype:**
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NonEmptyString(String);
+
+impl NonEmptyString {
+    pub fn try_from(value: &str) -> Result<Self, NonEmptyStringError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            Err(NonEmptyStringError { value: value.to_string() })
+        } else {
+            Ok(Self(trimmed.to_string()))
+        }
+    }
+    pub fn as_str(&self) -> &str { &self.0 }
+}
+```
+
+**Blast radius:** MEDIUM
+- Callers in `agent.rs:invoke_agent`, `cloud.rs:handle_create_pull_request`, `cloud.rs:handle_push_to_remote`, `commit.rs:create_commit`
+- Validation currently happens INSIDE functions; with newtype, validation moves to call sites
+
+---
+
+#### 2. `ValidBranchName` ⭐ HIGH-VALUE
+
+**Invariant:** Git push-safe branch name (no whitespace, doesn't start with '-', no ':', no '\0').
+
+**Current validation location:** `reducer/boundary/cloud.rs:381-408` (`build_head_push_refspec`)
+
+```rust
+fn build_head_push_refspec(branch: &str) -> Option<String> {
+    let trimmed = branch.trim();
+    if trimmed.is_empty() { return None; }
+    if trimmed.starts_with('-') { return None; }
+    if trimmed.contains(':') { return None; }
+    if trimmed.chars().any(|c| c.is_whitespace() || c == '\0') { return None; }
+    // ... strip "refs/heads/" prefix
+}
+```
+
+**Implicit invariant carriers:**
+| File:Line | Function | Raw Param |
+|-----------|---------|-----------|
+| `reducer/boundary/cloud.rs:93` | `handle_push_to_remote(branch: String)` | `branch` |
+| `reducer/boundary/cloud.rs:239` | `handle_create_pull_request(base_branch: &str, head_branch: &str)` | `base_branch`, `head_branch` |
+| `reducer/boundary/rebase.rs:23` | `run_rebase(target_branch: &str)` | `target_branch` |
+
+**Note:** Existing `BranchName` in domain_types.rs has NO validation. This new `ValidBranchName` would be STRICTER (push-semantic validation).
+
+**Proposed newtype:**
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ValidBranchName(String);
+
+impl ValidBranchName {
+    pub fn try_from(value: &str) -> Result<Self, ValidBranchNameError> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(ValidBranchNameError::Empty);
+        }
+        if trimmed.starts_with('-') {
+            return Err(ValidBranchNameError::StartsWithHyphen);
+        }
+        if trimmed.contains(':') {
+            return Err(ValidBranchNameError::ContainsColon);
+        }
+        if trimmed.chars().any(|c| c.is_whitespace() || c == '\0') {
+            return Err(ValidBranchNameError::InvalidChars);
+        }
+        Ok(Self(trimmed.to_string()))
+    }
+}
+```
+
+**Blast radius:** MEDIUM-HIGH
+- Multiple call sites across cloud and rebase boundaries
+- `build_head_push_refspec` currently returns `Option<String>`, would become `Result<ValidBranchName, ...>`
+
+---
+
+#### 3. `NonEmptyFilePaths` / `NonEmptyVec<String>`
+
+**Invariant:** Non-empty collection of file paths.
+
+**Implicit invariant carriers:**
+| File:Line | Function | Raw Param | Check |
+|-----------|---------|-----------|-------|
+| `reducer/boundary/commit.rs:829` | `create_commit(files: &[String], ...)` | `files` | `if files.is_empty()` → uses `git_add_all` instead |
+| `reducer/boundary/run_review.rs:674` | `extract_issue_snippets(issues: &[String], ...)` | `issues` | Empty issues = no-op output |
+
+**Note:** `create_commit` has different behavior for empty vs non-empty files. The empty case (git_add_all) is a meaningful semantic difference, not just a no-op.
+
+**Proposed newtype:**
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmptyFilePaths(Vec<std::path::PathBuf>);
+
+impl NonEmptyFilePaths {
+    pub fn try_from(paths: &[String]) -> Result<Self, EmptyPathsError> {
+        if paths.is_empty() {
+            Err(EmptyPathsError)
+        } else {
+            Ok(Self(paths.iter().map(PathBuf::from).collect()))
+        }
+    }
+    pub fn as_slice(&self) -> &[PathBuf] { &self.0 }
+}
+```
+
+**Blast radius:** LOW-MEDIUM
+- Only 2 call sites, both in boundary commit/review modules
+
+---
+
+#### 4. `PositiveU32` (or `NonZeroU32`)
+
+**Invariant:** Positive integer (>= 1), used for pass numbers.
+
+**Implicit invariant carriers:**
+| File:Line | Function | Raw Param | Context |
+|-----------|---------|-----------|---------|
+| `reducer/boundary/run_review.rs:37` | `prepare_review_context(ctx, pass: u32)` | `pass` | Reviewer pass number |
+| `reducer/boundary/run_review.rs:528` | `extract_fix_result_xml(ctx, pass: u32)` | `pass` | Fix pass number |
+| `reducer/boundary/run_review.rs:660` | `archive_fix_result_xml(ctx, pass: u32)` | `pass` | Fix pass number |
+| `reducer/boundary/run_review.rs:523` | `archive_review_issues_xml(ctx, pass: u32)` | `pass` | Review pass number |
+| `reducer/boundary/commit.rs:914` | `check_residual_files(ctx, pass: u8)` | `pass` | Residual check pass |
+
+**Note:** `u32::MIN = 0`, so these passes are technically bounded. However, pass 0 would be semantically invalid.
+
+**Proposed newtype:**
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PositiveU32(u32);
+
+impl PositiveU32 {
+    pub fn new(value: u32) -> Result<Self, ZeroValueError> {
+        if value == 0 {
+            Err(ZeroValueError)
+        } else {
+            Ok(Self(value))
+        }
+    }
+    pub fn get(self) -> u32 { self.0 }
+}
+```
+
+**Blast radius:** LOW
+- Internal pass tracking, mostly cosmetic type safety
+
+---
+
+### SKIP-WITH-REASON
+
+These were considered but skipped:
+
+| Candidate | Reason |
+|-----------|--------|
+| `NonEmptyPrompt` | `invoke_agent` already uses `prompt` as full text; empty prompt is a valid "no instruction" case |
+| `ValidUrl` | `fetch_url` in `io/http_fetch.rs` already validates URL format via `ureq` library |
+| `ValidSha256` | `Sha256Checksum` already exists, just lacks `TryFrom` validation |
+| `NonNegativeU32` | Most `u32` params in boundary are already bounded by context (e.g., timeout values) |
+
+---
+
+### FIRST-ATOMIC-SLICE RECOMMENDATION
+
+**`NonEmptyString`** as first implementation:
+
+**Rationale:**
+1. **High frequency:** Used in 6+ boundary functions across agent, cloud, commit, review
+2. **Simple validation:** `.trim().is_empty()` check is trivial to encode
+3. **Clear semantics:** Empty string vs non-empty string has meaningful semantic difference
+4. **Low blast radius initially:** Start with ONE boundary function (e.g., `handle_create_pull_request` title parameter) and grow
+
+**Implementation path:**
+1. Add `NonEmptyString` newtype to `common/domain_types.rs`
+2. Add `NonEmptyStringError` error type
+3. Implement `TryFrom<&str>` and `TryFrom<String>`
+4. Pick ONE boundary function to migrate first (suggest: `handle_create_pull_request` title)
+5. Add TDD tests for the newtype
+6. Verify: `cargo check -p ralph-workflow --lib && cargo test -p ralph-workflow --lib non_empty_string`
+
+**Estimated scope:** ~50 lines of newtype code + ~3 call site updates for first slice
+
+---
+
+### FILES ANALYZED
+
+Boundary directories scanned:
+- `ralph-workflow/src/reducer/boundary/` (28 files)
+- `ralph-workflow/src/io/` (28 files)
+- `ralph-workflow/src/checkpoint/io/` (7 files)
+- `ralph-workflow/src/cloud/io/` (3 files)
+
+Key boundary intake functions identified: 15+
+
+---
+
+## 2026-03-21T23:30Z — P11-newtypes: Audit boundary intake functions for raw types
+
+### Objective
+Audit boundary intake functions for raw types that carry implicit invariants and need newtypes. Identify concrete remaining candidates after existing slices (NonEmptyString, branch parser, baseline parser, residual parser).
+
+### Methodology
+1. Read existing newtype implementations in `common/domain_types.rs` and `reducer/domain/`
+2. Grep'd boundary functions for raw `String`, `&str`, numeric `u32` pass/iteration params
+3. Inspected each candidate function to confirm actual invariant checks
+4. Cross-referenced with existing newtypes to avoid duplication
+
+### 1. ALREADY-COVERED (existing slices/implemented)
+
+| Newtype | File | Invariant | Status |
+|---------|------|-----------|--------|
+| `NonEmptyString` | `common/domain_types.rs:57` | Non-empty, non-whitespace-only | ✅ Implemented |
+| `BaselineOid` | `reducer/domain/baseline.rs:2` | Non-empty string (parsed OID) | ✅ Implemented |
+| `PushRefspec` | `reducer/domain/branch.rs:2` | Git push refspec validation (non-empty, no dash-prefix, no colon, no whitespace) | ✅ Implemented |
+| `ResidualFilesStatusParseError` / `parse_residual_files_status` | `reducer/domain/residual.rs:4` | Non-empty git status snapshot | ✅ Implemented |
+
+### 2. REMAINING HIGH-CONFIDENCE CANDIDATES
+
+#### C1. `ContentId` (sha256 hex content identifier) — **HIGHEST PRIORITY**
+
+**File:line evidence:**
+- `reducer/state/enums.rs:315` — `content_id_sha256: String`
+- `reducer/state/pipeline/core_state.rs:159` — `commit_diff_content_id_sha256: Option<String>`
+- `reducer/event/prompt_input.rs:38` — `content_id_sha256: String`
+
+**Raw type:** `String`
+
+**Invariant:** 64 lowercase hex characters (SHA-256 digest)
+
+**Existing type that could be reused:** `Sha256Checksum` in `common/domain_types.rs:360` — **same invariant, same 64-char hex format**. Recommend `ContentId = Sha256Checksum` (type alias) or newtype wrapping it.
+
+**Scope estimate:** 3 fields to change + downstream `.clone()` call sites. `sha256_hex_str()` already returns `String` — would need to return `ContentId` instead.
+
+---
+
+#### C2. `ReviewPass` (0-indexed pass counter for review phase)
+
+**File:line evidence:**
+- `reducer/boundary/run_review.rs:38` — `pub(super) fn prepare_review_context(&self, ctx: &PhaseContext<'_>, pass: u32)`
+- `reducer/boundary/run_review.rs:92` — `pub(super) fn materialize_review_inputs(&self, ctx: &PhaseContext<'_>, pass: u32)`
+- `reducer/boundary/run_review.rs:529` — `pub(super) fn archive_review_issues_xml(ctx: &PhaseContext<'_>, pass: u32)`
+- `reducer/boundary/run_review.rs:538` — `pub(super) const fn apply_review_outcome(_ctx: &mut PhaseContext<'_>, pass: u32, ...)`
+- `reducer/boundary/run_review.rs:551` — `pub(super) fn materialize_xsd_retry_last_output(&self, ctx: &PhaseContext<'_>, pass: u32)`
+
+**Raw type:** `u32`
+
+**Invariant:** 0-indexed (`0 <= reviewer_pass <= total_reviewer_passes`). Displayed as `pass + 1` in UI (`agent.rs:128`).
+
+**Proposed newtype:** `ReviewPass(u32)` with constructor `ReviewPass::new(u32) -> Result<Self, InvalidReviewPass>` that validates `>= 0` (always valid since 0-indexed).
+
+**Note:** `reviewer_pass` field in `CoreState` (`core_state.rs:33`) is already `u32`. Newtype wrapper would be at boundary function params only.
+
+---
+
+#### C3. `FixPass` (0-indexed pass counter for fix phase)
+
+**File:line evidence:**
+- `reducer/boundary/run_fix.rs:21` — `pub(super) fn prepare_fix_prompt(&self, ctx: &PhaseContext<'_>, pass: u32, prompt_mode: PromptMode)`
+- `reducer/boundary/run_fix.rs:528` — `pub(super) fn extract_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32)`
+- `reducer/boundary/run_fix.rs:559` — `pub(super) fn prepare_fix_prompt_impl(..., pass: u32, ...)`
+- `reducer/boundary/run_fix.rs:647` — `pub(super) fn invoke_fix_agent(&self, ctx: &mut PhaseContext<'_>, pass: u32, ...)`
+- `reducer/boundary/run_fix.rs:660` — `pub(super) fn archive_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32)`
+
+**Raw type:** `u32`
+
+**Invariant:** 0-indexed pass counter for fix sub-phase within review.
+
+**Proposed newtype:** `FixPass(u32)` (similar structure to `ReviewPass`)
+
+**Note:** Could potentially share a generic `PassIndex` newtype with `ReviewPass` if both have identical invariants.
+
+---
+
+#### C4. `Iteration` (0-indexed iteration counter)
+
+**File:line evidence:**
+- `reducer/boundary/planning.rs:44` — `pub(in crate::reducer::boundary) fn materialize_planning_inputs(&self, ctx: &PhaseContext<'_>, iteration: u32)`
+- `reducer/boundary/planning.rs:126` — `pub(in crate::reducer::boundary) fn apply_planning_outcome(..., iteration: u32, ...)`
+- `reducer/boundary/development.rs:21` — `pub(in crate::reducer::boundary) fn prepare_development_context(ctx: &PhaseContext<'_>, iteration: u32)`
+- `reducer/boundary/development.rs:30` — `pub(in crate::reducer::boundary) fn invoke_development_agent(&mut self, ctx: &mut PhaseContext<'_>, iteration: u32)`
+- `reducer/boundary/development.rs:66` — `pub(in crate::reducer::boundary) fn archive_development_xml(ctx: &PhaseContext<'_>, iteration: u32)`
+- `reducer/boundary/development.rs:79` — `pub(in crate::reducer::boundary) fn apply_development_outcome(&self, ..., iteration: u32, ...)`
+- `reducer/boundary/development_prompt.rs:126` — `fn prompt_mode_continuation(&self, ctx: &PhaseContext<'_>, iteration: u32)`
+- `reducer/boundary/development_prompt.rs:199` — `pub(in crate::reducer::boundary) fn prepare_development_prompt_impl(&self, ctx: &PhaseContext<'_>, iteration: u32, ...)`
+- `reducer/boundary/development_prompt.rs:373` — `fn build_continuation_prompt(&self, ctx: &PhaseContext<'_>, iteration: u32, ...)`
+- `reducer/boundary/development_prompt.rs:528` — `pub(in crate::reducer::boundary) fn prompt_mode_initial(&self, ctx: &PhaseContext<'_>, iteration: u32)`
+
+**Raw type:** `u32`
+
+**Invariant:** 0-indexed iteration counter (`0 <= iteration < total_iterations`). Displayed as `iteration + 1` in UI (`agent.rs:120,123,125`).
+
+**Proposed newtype:** `Iteration(u32)` with constructor that validates `>= 0` (always valid since 0-indexed).
+
+---
+
+#### C5. `BaselineOid` for boundary parameter — already exists but not used
+
+**File:line evidence:**
+- `reducer/boundary/run_review.rs:34` — `pub(super) fn fallback_diff_instructions(baseline_oid: &str) -> String`
+- `phases/review/boundary_domain.rs:23` — `pub(crate) fn fallback_diff_instructions(_baseline_oid: &str) -> String`
+
+**Raw type:** `&str`
+
+**Invariant:** Non-empty string (should be a valid baseline OID)
+
+**Existing newtype:** `BaselineOid` in `reducer/domain/baseline.rs:2` — **already exists** but `fallback_diff_instructions` still takes raw `&str`.
+
+**Issue:** The `BaselineOid` newtype exists and `parse_baseline_oid()` validates input, but the boundary function signature uses raw `&str` rather than `BaselineOid`. Callers pass `&str` directly without validation.
+
+**Recommended fix:** Change `fallback_diff_instructions(baseline_oid: &str)` to `fallback_diff_instructions(baseline_oid: BaselineOid)` and update call sites to pass parsed `BaselineOid`.
+
+**Note:** This is **lowest risk** because `BaselineOid` already exists and is well-tested.
+
+---
+
+### 3. DEFER WITH REASON
+
+| Candidate | Location | Reason |
+|-----------|----------|--------|
+| `AgentName` | `common/domain_types.rs:22` | Not used in boundary intake functions — no implicit invariant violation found |
+| `ModelName` | `common/domain_types.rs:286` | Not used in boundary intake functions — no implicit invariant violation found |
+| `ProviderName` | `common/domain_types.rs:323` | Not used in boundary intake functions — no implicit invariant violation found |
+| `GitOid` | `common/domain_types.rs:145` | Existing `BaselineOid` in domain handles baseline parsing differently (non-empty string, not 40-char hex). `GitOid` validates 40-char hex format which may be stricter than what `baseline_oid` actually requires in this codebase |
+| `BranchName` | `common/domain_types.rs:249` | `PushRefspec` (in `reducer/domain/branch.rs`) is the actual type used for branch/push refspec validation — `BranchName` is a simpler wrapper not currently used in boundary seams |
+
+### 4. NEXT ATOMIC SLICE RECOMMENDATION
+
+**Recommended next slice: `BaselineOid` boundary parameter adoption (C5)**
+
+**Rationale:**
+1. **Smallest scope:** Only 2 function signatures + ~2 call sites to change
+2. **Lowest risk:** `BaselineOid` newtype already exists with tests, `parse_baseline_oid()` already validates
+3. **High confidence:** The `&str` parameter is clearly meant to be a baseline OID but bypasses the existing newtype
+4. **Immediate benefit:** Prevents empty-string baseline OIDs from reaching `fallback_diff_instructions`
+
+**Implementation path:**
+1. Change `run_review.rs:34` signature: `fn fallback_diff_instructions(baseline_oid: &str)` → `fn fallback_diff_instructions(baseline_oid: BaselineOid)`
+2. Change `phases/review/boundary_domain.rs:23` signature: same
+3. Update call sites at `run_review_prompt.rs:97, 259` to pass `BaselineOid` (parsed via `parse_baseline_oid()` or using the `BaselineOid::from(value)` constructor if whitespace trimming is done at call site)
+
+**Second priority: `ContentId` (C1)**
+- Reuses existing `Sha256Checksum` type
+- Only changes field types in state structs + event structs
+- Higher blast radius than C5 (3 fields, but all same type)
+
+**Third priority: `ReviewPass`/`FixPass`/`Iteration` counter newtypes (C2-C4)**
+- Share identical invariant (0-indexed u32)
+- Could be a single generic `PhaseIndex<T>` newtype if Rust specialization allowed, but simpler to have 3 separate newtypes
+- Higher count of call sites but each change is mechanical
+
+### 5. VERIFICATION COMMANDS
+
+```bash
+# After ContentId slice:
+cargo check -p ralph-workflow --lib  # Should pass
+cargo test -p ralph-workflow --lib   # Should pass
+
+# Grep for remaining raw content_id_sha256 usage:
+rg "content_id_sha256:\s*String" ralph-workflow/src/reducer/
+
+# Grep for remaining raw pass: u32 / iteration: u32 in boundary:
+rg "fn\s+\w+[^)]*pass:\s*u32" ralph-workflow/src/reducer/boundary/
+rg "fn\s+\w+[^)]*iteration:\s*u32" ralph-workflow/src/reducer/boundary/
+```
+
+### 6. SUMMARY
+
+| Category | Count | Notes |
+|----------|-------|-------|
+| Already covered (existing slices) | 4 | NonEmptyString, BaselineOid, PushRefspec, ResidualFilesStatus |
+| Remaining high-confidence candidates | 5 | ContentId, ReviewPass, FixPass, Iteration, BaselineOid param |
+| Defer with reason | 5 | AgentName, ModelName, ProviderName, GitOid, BranchName |
+| **Total actionable** | **5** | All ranked by implementation complexity |
+
+**Recommended next implementation:** C5 (`BaselineOid` boundary parameter adoption) — smallest, safest, highest confidence.
+
+
+## 2026-03-21T23:31:22Z — P11 raw-type issues
+
+- `StartCommitSummary` now exposes `GitOid`, so downstream callers must always go through `git_oid_to_git2_oid` before handing the value to git2; keep this helper in sync if further granularity is required.
+- `git_oid_to_git2_oid` had to be re-exported at the crate root for CLI/diff helpers — keep the API stable and avoid making the helper public beyond the git_helpers crate until additional seams are ready.
+- 2026-03-22: Comment-hook warning fired when documenting the new diag helper types—needed to describe why these wrappers exist (default-context metadata).
+- 2026-03-22: `cargo test -p ralph-workflow --lib` still emits the usual config/git-wrapper warnings from the shared test harness; nothing new introduced by this change.
+
+---
+## P12-tdd-pure [2026-03-22]: resolved issues
+
+**Issue: `preflight_glm_agent_detected_carries_agent_name_newtype` failing**
+- Root cause: `is_glm_like_agent` only matches CCS/claude-prefixed agent strings, not bare "glm-4"
+- Fix: Changed condition to `contains_glm_model` (broad GLM-family detection)
+- Status: RESOLVED — all 4 review/validation tests pass
+
+## P12-error-variants: AgentChainValidationError::NoDrainBinding is unreachable (2026-03-22)
+
+**Variant:** `AgentChainValidationError::NoDrainBinding { drain, searched_sources }`
+
+**Why unreachable:** The variant fires when `self.resolved_drain(drain)` returns `None` for some drain. However:
+- `ResolvedDrainConfig::from_legacy` always iterates `AgentDrain::all()` and inserts ALL 6 drains into the HashMap.
+- `UnifiedConfig::resolve_agent_drains_checked()` either inserts all 6 drains (when named chains resolve) or returns `Err(MissingBuiltinCoverage)` — it never returns a partial map.
+- The `AgentRegistry` struct does not expose a public constructor that accepts a custom `ResolvedDrainConfig`.
+
+**Consequence:** `NoDrainBinding` can only be triggered by directly constructing a `ResolvedDrainConfig` with a partial `bindings` HashMap and injecting it into a registry — which requires internal access. No test was added for this variant since no public-API invalid input produces it.
+
+**Recommendation:** Consider removing this variant if it will never fire, OR add an internal test-only constructor to `AgentRegistry` that accepts a custom `ResolvedDrainConfig` so the variant becomes testable. This is a P12-diagnostics or future-refactor concern.
+
+## 2026-03-22 — P12-diagnostics: no issues
+
+- No blockers encountered.
+- `MemoryWorkspace` doesn't support failure injection natively, but the
+  established pattern of thin wrapper structs inside `#[cfg(test)]` works cleanly.
+- `IssuesFileReadFailure` required an extra `exists` override to report the file
+  as present while making `read` fail — that asymmetry is legitimate for this test.
+
+## 2026-03-22 — P12-no-serial: Pre-existing type errors from P11 (resolved)
+
+P11 raw-type changes (introducing `AgentName`, `ModelName` newtypes) left 88 type errors
+in integration tests where `String` was still passed to event constructors expecting `AgentName`.
+These manifested when running `cargo test -p ralph-workflow-tests --test integration_tests`
+but NOT in `cargo test -p ralph-workflow --lib` (since the lib tests already used proper types).
+
+Also found: `concat!` misuse in `parsers.rs` (clippy `useless_concat`), and a stale `Vec<String>`
+return type in `main.rs` test helper that should have been `Vec<AgentName>`.
+
+All resolved. `cargo xtask verify` is now clean.
+
+## 2026-03-22 — P13-parsers: Issues encountered
+
+### Issue 1: `parse_metadata_line_impl` panic on short/multibyte input (FIXED)
+- **File:** `ralph-workflow/src/prompts/template_parsing.rs`
+- **Cause:** Direct byte-slice indexing `line[2..line.len()-2]` without bounds check
+- **Discovery:** Writing property test `parse_metadata_line_impl_never_panics(s in ".*")`
+  would have caught this; confirmed by code inspection (subtractive underflow + invalid
+  UTF-8 boundary risks)
+- **Fix:** `.get(2..line.len().saturating_sub(2))?` — safe, returns None on bad bounds
+- **Status:** Fixed and verified
+
+### Issue 2: E0716 temporary-value dropped while borrowed (FIXED mid-session)
+- **File:** `ralph-workflow/src/reducer/domain/baseline.rs` proptest
+- **Cause:** `prop_assert_eq!(result.unwrap().as_str(), ...)` — `.unwrap()` creates
+  a temporary `BaselineOid` dropped before assertion comparison
+- **Fix:** Bind to `let oid = result.unwrap();` then use `oid.as_str()`
+- **Status:** Fixed (compiler caught it in test run at end of prior partial session)
+
+## 2026-03-22 — P14-llvm-cov: No gotchas
+- Task was documentation-only (no code changes). No issues encountered.
+- Insertion point: line 37 in verification.md (after parallel execution architecture, before reference commands).
+
+
+## P14-xtask-coverage (2026-03-22)
+
+### Borrow lifetime gotcha with `map(|e| e.to_string()).as_deref()`
+- `outcome.as_ref().err().map(|e| e.to_string()).as_deref()` creates a temporary `String` that is dropped before the function call if used inline.
+- Fix: bind the `Option<String>` to a local variable first, then call `.as_deref()` on the local.
+
+### `ExitCode` is not `PartialEq`
+- Cannot write `assert_eq!(run_coverage(), ExitCode::SUCCESS)` in tests — `ExitCode` does not implement `PartialEq`.
+- Workaround: extract pure helper functions that return `bool` or `String` and test those instead.
+
+### `status()` vs `output()` for coverage
+- Using `.status()` lets llvm-cov stream its output (including coverage percentages) directly to the terminal, which is the right UX for a diagnostic command.
+- `.output()` would capture and suppress it, which is wrong here.
+
+
+## P14-docs (2026-03-22)
+
+### No gotchas
+- This was a pure documentation task: added usage guidance to an existing section in
+  `docs/agents/verification.md`. No code was changed, no verification commands needed.
+- The `cargo xtask coverage` command already existed and was fully documented as non-gating
+  (P14-xtask-coverage). P14-docs only added the "when to run" and "low coverage is investigation signal" guidance.
+- No conflict with existing coverage tooling text — the new text slots naturally after the install instruction.
+
+---
+## F4 Dylint Diagnostic Gate — 2026-03-22
+
+### Command run
+```
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
+```
+
+### Scan result
+**1,263 errors. Build fails:** `could not compile ralph-workflow (lib) due to 1263 previous errors`
+
+`cargo xtask verify` still shows green because all 10 lanes are cache-hits (~70-180µs, impossibly fast for real execution). The cached result predates newly-added lints (forbid_io_effects, forbid_domain_boundary_dependencies, boundary_function_too_complex) which are developed in parallel. Cache is stale relative to current lint library.
+
+### Error volume by lint category
+| Lint | Severity | Count |
+|------|----------|-------|
+| `forbid_mutating_receiver_methods` | Warn→Error | ~300 |
+| `forbid_mut_binding` | Warn→Error | ~260 |
+| `forbid_io_effects` (fs/env/process/thread/time) | Warn→Error | ~375 |
+| `boundary_function_too_complex` | Warn→Error | ~149 |
+| `forbid_imperative_loops` | Warn→Error | ~88 |
+| `forbid_domain_boundary_dependencies` | **Deny** | **2** |
+| `forbid_raw_effect_types_in_public_apis` | Warn→Error | 4 |
+| Other | Warn→Error | ~85 |
+
+Root cause of Warn→Error escalation: `lib.rs` has `#![deny(warnings)]`.
+
+### Confirmed DENY-level violations (genuine architectural issues)
+
+**1. `agents/opencode_api/mod.rs:27`**
+```
+use crate::io::http_fetch::RealHttpFetcher;
+```
+`agents/opencode_api/` is not a boundary module. It imports `RealHttpFetcher` directly from the `io/` boundary. The Default impl at the bottom of the file constructs `RealCatalogFetcher::with_http_fetcher(RealHttpFetcher)` — this concrete I/O type construction should happen in a boundary module/factory, not in the domain-facing module. Classic domain→boundary dependency inversion violation.
+
+**2. `git_helpers/wrapper.rs:45`**
+```
+use super::runtime::{AGENT_PHASE_HOOKS_DIR, AGENT_PHASE_RALPH_DIR, AGENT_PHASE_REPO_ROOT};
+```
+`wrapper.rs` is in `git_helpers/` (not a recognized boundary path) but imports from `git_helpers/runtime` (recognized as boundary). The file does genuine I/O (creates marker files, installs PATH wrappers, spawns processes) — it belongs in a boundary module but hasn't been moved there.
+
+### High-signal genuine issue in domain/ namespace
+
+**3. `git_helpers/domain/parse.rs` — 19 FP lint violations**
+File declares itself "Pure git status and diff parsing functions — no I/O" but uses:
+- `while i < inner.len()` loops for C-style string unquoting
+- `let mut result = Vec::with_capacity(...)` accumulators
+- `let mut opts = git2::StatusOptions::new()` builder mutation
+
+The file IS logically pure (no I/O, no side effects), but violates FP style in a file named `domain/`. The `unquote_c_style` function needs refactoring to an iterator-based approach. Also noteworthy: `git2::StatusOptions::new()` builder pattern at line 148 — this is a builder API that happens to use `&mut self`, not a true mutation signal.
+
+### Pre-existing backlog (not introduced by P1-P14)
+
+- **`git_helpers/` I/O modules** (~100+ violations): cleanup, install, marker, hooks_dir, path_wrapper, phase — all do real filesystem I/O but are not in recognized boundary paths. Pre-existing. Newly surfaced by `forbid_io_effects`.
+- **`files/llm_output_extraction/xsd_validation*/`** (~65 violations): XML/XSD parser state machines with mutable accumulators. Pre-existing.
+- **`reducer/boundary/*.rs`** — `boundary_function_too_complex` (149 instances): these ARE in `boundary/` (exempt from FP lints); the complexity lint fires intentionally on boundary code. Signal: some boundary functions exceed complexity thresholds.
+- **`app/initialization/`, `app/pipeline_setup/`, `app/core.rs`**: orchestration-layer mutation, pre-existing.
+- **`json_parser/incremental_parser.rs`**, **`agents/ccs_env.rs`**, **`diagnostics/system.rs`**, **`logger/mod.rs`**: I/O-adjacent code not yet in recognized boundary paths.
+
+### Follow-up list for next implementation wave
+1. Fix `agents/opencode_api/mod.rs` — move `Default impl` (containing `RealHttpFetcher` construction) to a boundary module or factory; remove direct `io/` import from domain code. (DENY-level, small fix)
+2. Fix `git_helpers/wrapper.rs` — move to a recognized boundary path (e.g. `git_helpers/boundary/wrapper.rs`) since it does real I/O. (DENY-level)
+3. Refactor `git_helpers/domain/parse.rs:unquote_c_style` — replace byte-index while loop with iterator combinators to satisfy FP lints in the declared-pure domain module.
+4. Audit `git_helpers/` non-domain modules — systematically move or mark I/O-heavy files as boundary to clear `forbid_io_effects` backlog.
+5. Investigate `boundary_function_too_complex` in `reducer/boundary/*.rs` — particularly `invoke_agent` and `run_event_loop_driver` functions exceeding complexity thresholds.
+
+---
+## R2 boundary-import fixes — 2026-03-22
+
+### Violations fixed (2 total)
+
+**1. `ralph-workflow/src/agents/opencode_api/mod.rs:27`**
+- Violation: `use crate::io::http_fetch::RealHttpFetcher;` in non-boundary module
+- Root cause: `impl fetch::HttpFetcher for RealHttpFetcher` and `impl Default for RealCatalogLoader` both needed `RealHttpFetcher` from `crate::io` directly in a non-boundary file
+- Fix: Created `agents/opencode_api/boundary.rs` (path contains `boundary` → exempt from lint). Moved both `impl` blocks there. Removed the `use crate::io::...` from `mod.rs`.
+- Key: Rust coherence rules allow `impl` blocks in any module within the same crate. `Default` impl in `boundary.rs` is automatically visible crate-wide.
+
+**2. `ralph-workflow/src/git_helpers/wrapper.rs:45`**
+- Violation: `use super::runtime::{AGENT_PHASE_HOOKS_DIR, AGENT_PHASE_RALPH_DIR, AGENT_PHASE_REPO_ROOT};` — `runtime` is a boundary module by name
+- Root cause: Three `Mutex<Option<PathBuf>>` statics were defined in `runtime.rs`. `wrapper.rs` is a non-boundary file that needed them.
+- Fix: Created `git_helpers/phase_state.rs` (non-boundary name) to house the three statics. Updated `wrapper.rs` to `use super::phase_state::{...}`. Updated `runtime.rs` to remove the statics (nothing else imported them from `runtime` directly except `wrapper.rs`).
+- Key: `runtime.rs` is a boundary module by path name. Moving shared state that doesn't perform I/O to `phase_state.rs` is architecturally correct per dylint docs: "DO NOT add a module to this list because it uses Mutex."
+
+### Verification results
+- `cargo check -p ralph-workflow --lib`: clean
+- `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet`: zero `import from boundary module` errors
+- `cargo test -p ralph-workflow --lib git_helpers`: 221 passed
+- `cargo test -p ralph-workflow --lib agents::opencode_api`: 25 passed
+
+### Files changed
+- NEW: `ralph-workflow/src/git_helpers/phase_state.rs`
+- NEW: `ralph-workflow/src/agents/opencode_api/boundary.rs`
+- MOD: `ralph-workflow/src/git_helpers/runtime.rs` (removed 3 statics + unused imports)
+- MOD: `ralph-workflow/src/git_helpers/mod.rs` (added `pub mod phase_state`)
+- MOD: `ralph-workflow/src/git_helpers/wrapper.rs` (import path changed)
+- MOD: `ralph-workflow/src/agents/opencode_api/mod.rs` (removed boundary use + impl blocks, added `mod boundary`)
+**3. `ralph-workflow/src/app/effectful.rs`**
+- Schema and context-file loops now use `try_for_each`, moving the per-entry `execute_expect_ok` call into iterator closures to satisfy `forbid_imperative_loops` while preserving behavior.
+- `reset_context_for_isolation_effectful` now drives `PathExists`/`DeleteFile` through `try_for_each`, keeping error propagation identical but avoiding the imperative `for` loop.
+
+**4. `ralph-workflow/src/files/llm_output_extraction/xsd_validation_plan/validation/step_parsers.rs`**
+- Removed the redundant `HashMap` import so the include!-expanded module relies on the version already declared in `mod.rs`, leaving only the `HashSet` import needed for helpers.
+- The renumbering path now assigns `state.1 = assigned_number.saturating_add(1)` and `next_unused_number` drops the unusable `.copied()` call, keeping the previous auto-numbering semantics.
+
+### Verification results
+- `cargo check -p ralph-workflow --lib`
+- `cargo xtask verify`
+
+- [2026-03-22T17:48:42Z] No blockers encountered in this atomic slice.
+
+- [2026-03-22T17:48:49Z] No blockers encountered in this atomic slice.
+
+- [2026-03-22T17:51:05Z] Dylint baseline remains globally failing; in monitoring.rs,  findings were cleared, but one  remains at watcher initialization because  currently requires mutable watcher state in-place.
+
+- [2026-03-22T17:51:34Z] Dylint baseline remains globally failing; in monitoring.rs, forbid_imperative_loops findings are cleared but one forbid_mut_binding remains at watcher initialization because notify watcher setup still requires mutable watcher state for watch registration.
+
+- [2026-03-22T18:02:50Z] No blocker for the watcher mut-binding slice; dylint no longer reports `monitoring.rs:151 let mut watcher`, but unrelated/global dylint findings remain (including other monitoring.rs boundary-policy categories).
+
+- 2026-03-22T18:03:41Z — cargo dylint (workspace scope) still reports many pre-existing forbid_mut_binding/loop diagnostics outside plumbing.rs; no plumbing.rs matches in dylint output artifact tool_d16b6f7d20012sWfWi9tqzsKEu.
+
+## 2026-03-22T18:10:52Z - app/core slice verification blocker
+
+- cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet still fails on large pre-existing project backlog outside this atomic file change; no remaining app/core.rs mut-binding hit appeared in the lint output.
+- Full truncated log artifact: /Users/mistlight/.local/share/opencode/tool-output/tool_d16bd9779001Igo4az2kWjPP7G.
+
+## 2026-03-22T18:14:42Z — Verification blocker surfaced during atomic helpers slice
+
+- Running `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` still fails repository-wide with a large pre-existing backlog outside this atomic slice (full output: `/Users/mistlight/.local/share/opencode/tool-output/tool_d16c0387a001eTqd1slV8jyvJm`).
+- For `src/files/protection/validation/helpers.rs`, current diagnostics are now boundary-category (`std::fs`/`std::env`) only; no mut-binding/imperative-loop findings remained in the log for this file.
+
+## 2026-03-22T19:09:14Z — `cargo dylint` still reports massive backlog
+- Running `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` after the loop refactor triggers the existing forbid_mut_binding/forbid_imperative_loops findings across files like `app/runner/...`, `files/llm_output_extraction/...`, `xml_helpers`, and `xsd_validation`. The tool reports mutations/loops in hundreds of places; full log saved at `/Users/mistlight/.local/share/opencode/tool-output/tool_d16f3589d001095qyxyrUd0NqI`.
+- Scope note: the diagnostics predate this slice and cannot be cleared without the broader FP-style cleanup work; they remain blockers for this verification command and must be tracked by the larger diligence plan.
+
+## 2026-03-22T20:05:00Z — cargo dylint atomic-check failure
+- Running `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` now fails before returning clean output because the lint flagging `forbid_mut_binding`/`forbid_imperative_loops` tripped in dozens of existing files (`ralph-workflow/src/app/runner/...`, `../app/...`, `../files/llm_output_extraction/...`, `xml_helpers`, `xsd_validation` modules, etc.).
+- Full log artifact: /Users/mistlight/.local/share/opencode/tool-output/tool_d1722e9e4001ykcysnecFit2eb
+
+## 2026-03-22 — E2E fixture lint fix
+
+- Biome flagged `lint/correctness/noEmptyPattern` inside `ralph-gui/ui/e2e/fixtures.ts` for the unused destructured context argument in the `tauri` and `testRepo` fixtures.
+- Replaced the empty object pattern with an unused `_` parameter to keep the fixtures API identical while satisfying the lint.

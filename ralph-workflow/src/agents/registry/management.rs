@@ -7,9 +7,15 @@ pub enum AgentChainValidationError {
     /// No agent chain configured at all (no drain has any binding with agents).
     NoChainConfigured { searched_sources: String },
     /// A specific drain has no binding.
-    NoDrainBinding { drain: String, searched_sources: String },
+    NoDrainBinding {
+        drain: String,
+        searched_sources: String,
+    },
     /// A specific drain's bound chain is empty.
-    EmptyDrainChain { drain: String, searched_sources: String },
+    EmptyDrainChain {
+        drain: String,
+        searched_sources: String,
+    },
     /// All agents in a drain have `can_commit=false`.
     NoWorkflowCapableAgents { drain: String },
 }
@@ -105,6 +111,13 @@ impl AgentRegistry {
     /// This enables resolution of `opencode/provider/model` agent references.
     pub fn set_opencode_catalog(&mut self, catalog: ApiCatalog) {
         self.opencode_resolver = Some(OpenCodeResolver::new(catalog));
+    }
+
+    /// Returns a new registry with the `OpenCode` catalog set while keeping the original immutably.
+    #[must_use]
+    pub fn with_opencode_catalog(mut self, catalog: ApiCatalog) -> Self {
+        self.set_opencode_catalog(catalog);
+        self
     }
 
     /// Set CCS aliases for the registry.
@@ -483,7 +496,10 @@ impl AgentRegistry {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), AgentChainValidationError> {
+    pub fn validate_agent_chains(
+        &self,
+        searched_sources: &str,
+    ) -> Result<(), AgentChainValidationError> {
         let drain_bindings: Vec<_> = crate::agents::AgentDrain::all()
             .into_iter()
             .map(|drain| (drain, self.resolved_drain(drain)))
@@ -500,35 +516,31 @@ impl AgentRegistry {
         }
 
         // Validate each drain - fail on first error
-        drain_bindings
-            .iter()
-            .try_fold((), |(), (drain, binding)| {
-                let binding = binding.ok_or_else(|| {
-                    AgentChainValidationError::NoDrainBinding {
-                        drain: drain.to_string(),
-                        searched_sources: searched_sources.to_string(),
-                    }
-                })?;
+        drain_bindings.iter().try_fold((), |(), (drain, binding)| {
+            let binding = binding.ok_or_else(|| AgentChainValidationError::NoDrainBinding {
+                drain: drain.to_string(),
+                searched_sources: searched_sources.to_string(),
+            })?;
 
-                if binding.agents.is_empty() {
-                    return Err(AgentChainValidationError::EmptyDrainChain {
-                        drain: drain.to_string(),
-                        searched_sources: searched_sources.to_string(),
-                    });
-                }
+            if binding.agents.is_empty() {
+                return Err(AgentChainValidationError::EmptyDrainChain {
+                    drain: drain.to_string(),
+                    searched_sources: searched_sources.to_string(),
+                });
+            }
 
-                let has_capable = binding
-                    .agents
-                    .iter()
-                    .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
-                if !has_capable {
-                    return Err(AgentChainValidationError::NoWorkflowCapableAgents {
-                        drain: drain.to_string(),
-                    });
-                }
+            let has_capable = binding
+                .agents
+                .iter()
+                .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
+            if !has_capable {
+                return Err(AgentChainValidationError::NoWorkflowCapableAgents {
+                    drain: drain.to_string(),
+                });
+            }
 
-                Ok(())
-            })
+            Ok(())
+        })
     }
 
     /// Check if an agent is available (command exists and is executable).

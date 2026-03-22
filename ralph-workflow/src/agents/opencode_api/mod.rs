@@ -16,6 +16,7 @@
 //! Production code uses [`RealCatalogLoader`] which fetches from the network,
 //! while tests can provide mock implementations.
 
+mod boundary;
 mod cache;
 mod fetch;
 mod types;
@@ -23,6 +24,8 @@ mod types;
 pub use cache::{load_api_catalog, CacheError, CacheWarning};
 pub use fetch::{CatalogHttpClient, RealCatalogFetcher};
 pub use types::{ApiCatalog, Model, Provider};
+
+use std::sync::Arc;
 
 /// `OpenCode` API endpoint for model catalog.
 pub const API_URL: &str = "https://models.dev/api.json";
@@ -54,7 +57,6 @@ pub trait CatalogLoader: Send + Sync {
 /// 1. Check for a valid cached catalog
 /// 2. If cache is missing or expired, fetch from the API
 /// 3. Cache the fetched result for future use
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct RealCatalogLoader {
@@ -90,11 +92,5 @@ impl CatalogLoader for RealCatalogLoader {
             }
         });
         Ok(catalog)
-    }
-}
-
-impl Default for RealCatalogLoader {
-    fn default() -> Self {
-        Self::with_fetcher(fetch::RealCatalogFetcher::new())
     }
 }

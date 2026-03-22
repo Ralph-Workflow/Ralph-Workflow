@@ -101,10 +101,13 @@ fn test_extract_delta_from_snapshot_returns_error_on_non_snapshot() {
 
     // Calling on non-snapshot should return error (not panic)
     let result = session.get_delta_from_snapshot("World", "0");
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("extract_delta_from_snapshot called on non-snapshot text"));
+    assert_eq!(
+        result,
+        Err(SnapshotDeltaError::NonSnapshot {
+            key: "0".to_string(),
+            text: "World".to_string(),
+        })
+    );
 }
 
 #[test]

@@ -1,3 +1,5 @@
+use crate::common::domain_types::GitOid;
+
 /// Validation errors for file system state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ValidationError {
@@ -11,7 +13,7 @@ pub enum ValidationError {
     FileContentChanged { path: String },
 
     /// Git HEAD has changed
-    GitHeadChanged { expected: String, actual: String },
+    GitHeadChanged { expected: GitOid, actual: GitOid },
 
     /// Git working tree has changes (files modified, staged, etc.)
     GitWorkingTreeChanged { changes: String },

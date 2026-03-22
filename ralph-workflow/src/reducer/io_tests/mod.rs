@@ -5,6 +5,7 @@
 
 // Re-export common types for test modules
 use crate::agents::AgentRole;
+pub use crate::common::domain_types::AgentName;
 pub use crate::reducer::event::{PipelineEvent, PipelinePhase};
 pub use crate::reducer::state::{AgentChainState, CommitState, PipelineState, RebaseState};
 pub use crate::reducer::state_reduction::reduce;

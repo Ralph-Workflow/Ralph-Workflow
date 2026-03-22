@@ -4,6 +4,7 @@
 // when no issues found.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
@@ -48,7 +49,7 @@ fn test_review_runs_exactly_n_passes() {
                     current_state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,
@@ -152,7 +153,7 @@ fn test_review_triggers_fix_when_issues_found() {
         state,
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Fix,
-            vec!["claude".to_string()],
+            vec![AgentName::from("claude")],
             3,
             1000,
             2.0,
@@ -188,7 +189,7 @@ fn test_review_triggers_fix_when_issues_found() {
         state,
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Commit,
-            vec!["claude".to_string()],
+            vec![AgentName::from("claude")],
             3,
             1000,
             2.0,

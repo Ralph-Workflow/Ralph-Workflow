@@ -5,18 +5,24 @@
 use std::sync::Arc;
 
 use crate::agents::{AgentDrain, AgentRole};
+use crate::common::domain_types::AgentName;
 use crate::reducer::io_tests::{create_test_state, reduce, PipelineEvent, PipelineState};
+
+fn agent_names_from_strings(agents: &[String]) -> Vec<AgentName> {
+    agents.iter().cloned().map(AgentName::from).collect()
+}
 
 #[test]
 fn test_agent_chain_initialized_for_developer() {
     let state = create_test_state();
     let agents = vec!["agent1".to_string(), "agent2".to_string()];
 
+    let agent_names = agent_names_from_strings(&agents);
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Development,
-            agents.clone(),
+            agent_names.clone(),
             3,
             1000,
             2.0,
@@ -39,7 +45,7 @@ fn test_agent_chain_initialized_for_reviewer() {
         state,
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Review,
-            agents.clone(),
+            agent_names_from_strings(&agents),
             3,
             1000,
             2.0,
@@ -60,7 +66,7 @@ fn test_agent_chain_initialized_for_commit_role() {
         state,
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Commit,
-            agents.clone(),
+            agent_names_from_strings(&agents),
             3,
             1000,
             2.0,
@@ -94,7 +100,7 @@ fn test_agent_chain_initialized_resets_retry_cycle() {
         state,
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Review,
-            new_agents.clone(),
+            agent_names_from_strings(&new_agents),
             3,
             1000,
             2.0,
@@ -119,7 +125,7 @@ fn test_agent_chain_initialized_with_empty_list() {
         state,
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Development,
-            vec![],
+            Vec::<AgentName>::new(),
             3,
             1000,
             2.0,
@@ -147,7 +153,7 @@ fn test_agent_chain_initialized_contains_full_fallback_chain() {
         state,
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Review,
-            agents.clone(),
+            agent_names_from_strings(&agents),
             3,
             1000,
             2.0,

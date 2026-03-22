@@ -37,6 +37,7 @@
 ///
 /// Canonical values: `"completed"`, `"partial"`, `"failed"`
 pub const DEVELOPMENT_STATUS_SYNONYMS: &[(&str, &str)] = &[
+    ("complete", "completed"),
     ("done", "completed"),
     ("success", "completed"),
     ("succeed", "completed"),
@@ -217,22 +218,16 @@ pub fn normalize_enum_value(
         return None;
     }
 
-    // Step 2: Check if it's an exact match (case-insensitive) against valid values
-    for &valid in valid_values {
-        if normalized == valid {
-            return Some(valid.to_string());
-        }
-    }
-
-    // Step 3: Check synonyms table (also case-insensitive)
-    for &(synonym, canonical) in synonyms {
-        if normalized == synonym {
-            return Some(canonical.to_string());
-        }
-    }
-
-    // Step 4: Return None - ambiguous/unknown, caller should reject
-    None
+    valid_values
+        .iter()
+        .find(|&&valid| normalized == valid)
+        .map(|&valid| valid.to_string())
+        .or_else(|| {
+            synonyms
+                .iter()
+                .find(|&&(synonym, _)| normalized == synonym)
+                .map(|&(_, canonical)| canonical.to_string())
+        })
 }
 
 /// Compute the Levenshtein distance between two strings.
@@ -249,7 +244,6 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     let shorter_len = shorter.len();
     let longer_len = longer.len();
 
-    // Special cases
     if shorter_len == 0 {
         return longer_len;
     }
@@ -257,24 +251,25 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
         return shorter_len;
     }
 
-    // Use two rows instead of full matrix for O(min(m,n)) space
-    let mut prev_row: Vec<usize> = (0..=shorter_len).collect();
-    let mut curr_row = vec![0; shorter_len + 1];
+    let initial_row: Vec<usize> = (0..=shorter_len).collect();
 
-    for (i, c2) in longer.chars().enumerate() {
-        curr_row[0] = i + 1;
+    let final_row = longer
+        .chars()
+        .enumerate()
+        .fold(initial_row, |prev_row, (i, c2)| {
+            std::iter::once(i + 1)
+                .chain(shorter.chars().enumerate().scan(i + 1, |last, (j, c1)| {
+                    let insertion = *last + 1;
+                    let deletion = prev_row[j + 1] + 1;
+                    let substitution = prev_row[j] + if c1 == c2 { 0 } else { 1 };
+                    let value = insertion.min(deletion).min(substitution);
+                    *last = value;
+                    Some(value)
+                }))
+                .collect()
+        });
 
-        for (j, c1) in shorter.chars().enumerate() {
-            let cost = if c1 == c2 { 0 } else { 1 };
-            curr_row[j + 1] = (curr_row[j] + 1) // insertion
-                .min(prev_row[j + 1] + 1) // deletion
-                .min(prev_row[j] + cost); // substitution
-        }
-
-        std::mem::swap(&mut prev_row, &mut curr_row);
-    }
-
-    prev_row[shorter_len]
+    final_row[shorter_len]
 }
 
 /// Normalize a tag name to a known tag using fuzzy matching.
@@ -324,28 +319,26 @@ pub fn normalize_tag_name<'a>(tag: &str, known_tags: &'a [&str]) -> Option<&'a s
 
     // Step 2: Check for exact case-insensitive match first (fast path)
     let lower_tag = trimmed.to_ascii_lowercase();
-    for &known in known_tags {
-        if lower_tag == known.to_ascii_lowercase() {
-            return Some(known);
-        }
+    if let Some(&known) = known_tags
+        .iter()
+        .find(|&&known| lower_tag == known.to_ascii_lowercase())
+    {
+        return Some(known);
     }
 
     // Step 3: Find all known tags within edit-distance threshold
     const DISTANCE_THRESHOLD: usize = 1;
-    let mut matches: Vec<&str> = Vec::new();
+    let matches: Vec<&str> = known_tags
+        .iter()
+        .copied()
+        .filter(|&known| {
+            levenshtein_distance(&lower_tag, &known.to_ascii_lowercase()) <= DISTANCE_THRESHOLD
+        })
+        .collect();
 
-    for &known in known_tags {
-        let distance = levenshtein_distance(&lower_tag, &known.to_ascii_lowercase());
-        if distance <= DISTANCE_THRESHOLD {
-            matches.push(known);
-        }
-    }
-
-    // Step 4: Return the match if exactly one, otherwise None (ambiguous or no match)
-    if matches.len() == 1 {
-        Some(matches[0])
-    } else {
-        None
+    match matches.as_slice() {
+        [single] => Some(*single),
+        _ => None,
     }
 }
 

@@ -642,7 +642,7 @@ fn test_full_usage_limit_triggers_agent_fallback() {
             state,
             PipelineEvent::agent_rate_limited(
                 AgentRole::Developer,
-                "opencode-claude".to_string(),
+                "opencode-claude".into(),
                 Some("continue work".to_string()),
             ),
         );

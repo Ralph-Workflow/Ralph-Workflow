@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::git_helpers::domain::parse as domain_parse;
-use crate::git_helpers::git2_to_io_error;
+use crate::git_helpers::{git2_to_io_error, git_oid_to_git2_oid};
 use crate::workspace::Workspace;
 
 fn configured_diff_options() -> git2::DiffOptions {
@@ -78,7 +78,10 @@ pub fn get_git_diff_from_start() -> std::io::Result<String> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
 
     match load_start_point()? {
-        StartPoint::Commit(oid) => git_diff_from(&oid.to_string()),
+        StartPoint::Commit(oid) => {
+            let git2_oid = git_oid_to_git2_oid(&oid)?;
+            git_diff_from_oid(&repo, git2_oid)
+        }
         StartPoint::EmptyRepo => git_diff_from_empty_tree(&repo),
     }
 }
@@ -117,7 +120,12 @@ pub fn get_git_diff_from_start_with_workspace(
     save_start_commit_with_workspace(workspace, &repo)?;
 
     match load_start_point_with_workspace(workspace, &repo)? {
-        StartPoint::Commit(oid) => git_diff_from_oid(&repo, oid),
+        StartPoint::Commit(oid) => {
+            let git2_oid = git_oid_to_git2_oid(&oid).map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string())
+            })?;
+            git_diff_from_oid(&repo, git2_oid)
+        }
         StartPoint::EmptyRepo => git_diff_from_empty_tree(&repo),
     }
 }
@@ -163,7 +171,8 @@ pub fn get_git_diff_for_review_with_workspace(
 
             match load_start_point_with_workspace(workspace, &repo)? {
                 StartPoint::Commit(oid) => {
-                    let diff = git_diff_from_oid(&repo, oid)?;
+                    let git2_oid = git_oid_to_git2_oid(&oid)?;
+                    let diff = git_diff_from_oid(&repo, git2_oid)?;
                     Ok((diff, oid.to_string()))
                 }
                 StartPoint::EmptyRepo => Ok((git_diff_from_empty_tree(&repo)?, String::new())),

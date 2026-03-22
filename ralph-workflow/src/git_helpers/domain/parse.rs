@@ -335,6 +335,20 @@ mod parse_status_line_tests {
 }
 
 #[cfg(test)]
+mod proptest_parse_git_status_paths {
+    use super::parse_git_status_paths;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn parse_git_status_paths_is_panic_free(input in ".*") {
+            let result = parse_git_status_paths(&input);
+            prop_assert!(result.windows(2).all(|win| win[0] <= win[1]));
+        }
+    }
+}
+
+#[cfg(test)]
 mod porcelain_format_tests {
     use super::{compute_index_status, compute_wt_status, format_status_porcelain};
     use git2::Status;
@@ -397,58 +411,82 @@ mod porcelain_format_tests {
     #[test]
     fn test_format_status_porcelain_untracked_uses_question_marks() {
         let result = format_status_porcelain(Status::WT_NEW, "new_file.txt");
-        assert_eq!(result, "?? new_file.txt
-");
+        assert_eq!(
+            result,
+            "?? new_file.txt
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_index_new() {
         let result = format_status_porcelain(Status::INDEX_NEW, "src/added.rs");
-        assert_eq!(result, "A  src/added.rs
-");
+        assert_eq!(
+            result,
+            "A  src/added.rs
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_index_modified() {
         let result = format_status_porcelain(Status::INDEX_MODIFIED, "src/lib.rs");
-        assert_eq!(result, "M  src/lib.rs
-");
+        assert_eq!(
+            result,
+            "M  src/lib.rs
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_wt_modified() {
         let result = format_status_porcelain(Status::WT_MODIFIED, "src/lib.rs");
-        assert_eq!(result, " M src/lib.rs
-");
+        assert_eq!(
+            result,
+            " M src/lib.rs
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_index_deleted() {
         let result = format_status_porcelain(Status::INDEX_DELETED, "src/gone.rs");
-        assert_eq!(result, "D  src/gone.rs
-");
+        assert_eq!(
+            result,
+            "D  src/gone.rs
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_wt_deleted() {
         let result = format_status_porcelain(Status::WT_DELETED, "src/gone.rs");
-        assert_eq!(result, " D src/gone.rs
-");
+        assert_eq!(
+            result,
+            " D src/gone.rs
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_combined_index_and_wt_modified() {
         let result =
             format_status_porcelain(Status::INDEX_MODIFIED | Status::WT_MODIFIED, "src/both.rs");
-        assert_eq!(result, "MM src/both.rs
-");
+        assert_eq!(
+            result,
+            "MM src/both.rs
+"
+        );
     }
 
     #[test]
     fn test_format_status_porcelain_current_status_produces_space_space() {
         let result = format_status_porcelain(Status::CURRENT, "src/untouched.rs");
-        assert_eq!(result, "   src/untouched.rs
-");
+        assert_eq!(
+            result,
+            "   src/untouched.rs
+"
+        );
     }
 }
 

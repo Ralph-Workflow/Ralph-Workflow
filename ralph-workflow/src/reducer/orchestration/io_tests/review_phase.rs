@@ -256,7 +256,7 @@ fn test_review_runs_exactly_n_passes() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["claude".to_string()],
+                        vec![AgentName::from("claude")],
                         3,
                         1000,
                         2.0,

@@ -58,10 +58,9 @@ fn load_checkpoint_with_fallback(
         .ok_or(CheckpointLoadError::MissingVersion)? as u32;
 
     if version == 2 {
-        let mut checkpoint: PipelineCheckpoint = serde_json::from_str(content)
+        let checkpoint: PipelineCheckpoint = serde_json::from_str(content)
             .map_err(|e| CheckpointLoadError::InvalidJson(e.to_string()))?;
-        checkpoint.version = 3;
-        return Ok(checkpoint);
+        return Ok(PipelineCheckpoint { version: 3, ..checkpoint });
     } else if version == 3 {
         let checkpoint: PipelineCheckpoint = serde_json::from_str(content)
             .map_err(|e| CheckpointLoadError::InvalidJson(e.to_string()))?;

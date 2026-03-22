@@ -13,7 +13,9 @@
 
 use super::io_cloud::is_success;
 use super::MainEffectHandler;
+use crate::common::domain_types::NonEmptyString;
 use crate::phases::PhaseContext;
+use crate::reducer::domain::branch::parse_head_push_refspec;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{CommitEvent, PipelineEvent};
 use crate::reducer::ui_event::UIEvent;
@@ -244,6 +246,24 @@ impl MainEffectHandler {
         ctx.logger
             .info(&format!("Creating PR: {head_branch} -> {base_branch}"));
 
+        let validated_title = match NonEmptyString::try_from_str(title) {
+            Ok(valid) => valid,
+            Err(err) => {
+                let error = crate::cloud::redaction::redact_secrets(&err.to_string());
+                ctx.logger
+                    .warn(&format!("Pull request title validation failed: {error}"));
+
+                let ui = UIEvent::PullRequestFailed {
+                    error: error.clone(),
+                };
+
+                return EffectResult::with_ui(
+                    PipelineEvent::Commit(CommitEvent::PullRequestFailed { error }),
+                    vec![ui],
+                );
+            }
+        };
+
         // Try gh CLI first (GitHub)
         let gh_result = ctx.executor.execute(
             "gh",
@@ -255,7 +275,7 @@ impl MainEffectHandler {
                 "--head",
                 head_branch,
                 "--title",
-                title,
+                validated_title.as_str(),
                 "--body",
                 body,
             ],
@@ -313,7 +333,7 @@ impl MainEffectHandler {
                         "--source-branch",
                         head_branch,
                         "--title",
-                        title,
+                        validated_title.as_str(),
                         "--description",
                         body,
                     ],
@@ -379,31 +399,33 @@ impl MainEffectHandler {
 }
 
 fn build_head_push_refspec(branch: &str) -> Option<String> {
-    let trimmed = branch.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    if trimmed.starts_with('-') {
-        return None;
-    }
-    if trimmed.contains(':') {
-        return None;
-    }
-    if trimmed.chars().any(|c| c.is_whitespace() || c == '\0') {
-        return None;
+    parse_head_push_refspec(branch)
+        .map(|refspec| refspec.into_string())
+        .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_head_push_refspec;
+
+    #[test]
+    fn build_head_push_refspec_accepts_simple_branch() {
+        assert_eq!(
+            build_head_push_refspec("main"),
+            Some("HEAD:refs/heads/main".to_string())
+        );
     }
 
-    let full_ref = if let Some(rest) = trimmed.strip_prefix("refs/heads/") {
-        if rest.is_empty() {
-            return None;
-        }
-        trimmed.to_string()
-    } else if trimmed.starts_with("refs/") {
-        // Only refs/heads/* is allowed from config; other ref namespaces are rejected.
-        return None;
-    } else {
-        format!("refs/heads/{trimmed}")
-    };
+    #[test]
+    fn build_head_push_refspec_rejects_invalid_branch() {
+        assert!(build_head_push_refspec(":evil").is_none());
+    }
 
-    Some(format!("HEAD:{full_ref}"))
+    #[test]
+    fn build_head_push_refspec_keeps_explicit_ref_heads() {
+        assert_eq!(
+            build_head_push_refspec("refs/heads/feature"),
+            Some("HEAD:refs/heads/feature".to_string())
+        );
+    }
 }

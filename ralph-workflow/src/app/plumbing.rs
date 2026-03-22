@@ -211,17 +211,16 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         anyhow::bail!("No changes to commit");
     }
 
-    let mut timer = crate::app::runtime_factory::create_timer();
-    let mut runtime =
-        crate::app::plumbing_boundary::run_pipeline_for_commit_message(&mut timer, config)?;
-
     let agents = resolve_commit_message_agents(config.registry, config.reviewer_agent);
 
     // Use the chain-aware commit message generation from phases/commit.rs.
     let result = generate_commit_message_with_chain(
         &diff,
         config.registry,
-        &mut runtime,
+        &mut crate::app::plumbing_boundary::run_pipeline_for_commit_message(
+            &mut crate::app::runtime_factory::create_timer(),
+            config,
+        )?,
         &agents,
         config.template_context,
         config.workspace,

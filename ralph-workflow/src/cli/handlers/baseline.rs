@@ -3,8 +3,10 @@
 //! Handles the --show-baseline CLI flag to display the current
 //! start commit and review baseline state.
 
-use crate::git_helpers::{get_current_head_oid, get_review_baseline_info, load_review_baseline};
-use crate::git_helpers::{load_start_point, ReviewBaseline};
+use crate::git_helpers::{
+    get_current_head_oid, get_review_baseline_info, git_oid_to_git2_oid, load_review_baseline,
+};
+use crate::git_helpers::{load_start_point, ReviewBaseline, StartPoint};
 
 trait StdIoWriteCompat {
     fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
@@ -33,9 +35,14 @@ pub fn handle_show_baseline() -> std::io::Result<()> {
     // Show start commit state
     let _ = writeln!(std::io::stdout(), "Start Commit (.agent/start_commit):");
     match load_start_point() {
-        Ok(crate::git_helpers::StartPoint::Commit(oid)) => {
+        Ok(StartPoint::Commit(oid)) => {
             let _ = writeln!(std::io::stdout(), "  Commit: {oid}");
-            print_commit_info(&oid.to_string());
+            match git_oid_to_git2_oid(&oid) {
+                Ok(parsed_oid) => print_commit_info(parsed_oid),
+                Err(err) => {
+                    let _ = writeln!(std::io::stdout(), "  Warning: {err}");
+                }
+            }
         }
         Ok(crate::git_helpers::StartPoint::EmptyRepo) => {
             let _ = writeln!(
@@ -58,7 +65,7 @@ pub fn handle_show_baseline() -> std::io::Result<()> {
     match load_review_baseline() {
         Ok(ReviewBaseline::Commit(oid)) => {
             let _ = writeln!(std::io::stdout(), "  Commit: {oid}");
-            print_commit_info(&oid.to_string());
+            print_commit_info(oid);
         }
         Ok(ReviewBaseline::NotSet) => {
             let _ = writeln!(
@@ -121,55 +128,52 @@ pub fn handle_show_baseline() -> std::io::Result<()> {
 }
 
 /// Print information about a commit.
-fn print_commit_info(oid: &str) {
+fn print_commit_info(oid: git2::Oid) {
     if let Ok(repo) = git2::Repository::discover(".") {
-        if let Ok(parsed_oid) = git2::Oid::from_str(oid) {
-            if let Ok(commit) = repo.find_commit(parsed_oid) {
-                // Get short ID
-                let short_id = commit
-                    .as_object()
-                    .short_id()
-                    .ok()
-                    .and_then(|buf| buf.as_str().map(std::string::ToString::to_string))
-                    .unwrap_or_else(|| {
-                        let len = 8.min(oid.len());
-                        oid[..len].to_string()
-                    });
+        if let Ok(commit) = repo.find_commit(oid) {
+            // Get short ID
+            let oid_display = oid.to_string();
+            let short_id = commit
+                .as_object()
+                .short_id()
+                .ok()
+                .and_then(|buf| buf.as_str().map(std::string::ToString::to_string))
+                .unwrap_or_else(move || {
+                    let len = 8.min(oid_display.len());
+                    oid_display[..len].to_string()
+                });
 
-                let _ = writeln!(std::io::stdout(), "  Short ID: {short_id}");
+            let _ = writeln!(std::io::stdout(), "  Short ID: {short_id}");
 
-                // Get author info
-                let author = commit.author();
-                let name = author.name().unwrap_or("<unknown>");
-                let when = author.when();
-                let _ = writeln!(std::io::stdout(), "  Author: {name}");
-                let _ = writeln!(
-                    std::io::stdout(),
-                    "  Time: {} seconds since epoch",
-                    when.seconds()
-                );
+            // Get author info
+            let author = commit.author();
+            let name = author.name().unwrap_or("<unknown>");
+            let when = author.when();
+            let _ = writeln!(std::io::stdout(), "  Author: {name}");
+            let _ = writeln!(
+                std::io::stdout(),
+                "  Time: {} seconds since epoch",
+                when.seconds()
+            );
 
-                // Get commit summary
-                let summary = commit.summary().unwrap_or("<no message>");
-                // Truncate long summaries
-                let summary = if summary.len() > 60 {
-                    format!("{}...", &summary[..57.min(summary.len())])
-                } else {
-                    summary.to_string()
-                };
-                let _ = writeln!(std::io::stdout(), "  Summary: {summary}");
+            // Get commit summary
+            let summary = commit.summary().unwrap_or("<no message>");
+            // Truncate long summaries
+            let summary = if summary.len() > 60 {
+                format!("{}...", &summary[..57.min(summary.len())])
             } else {
-                let _ = writeln!(
-                    std::io::stdout(),
-                    "  Warning: Commit not found in repository"
-                );
-                let _ = writeln!(
-                    std::io::stdout(),
-                    "  The OID may reference a deleted commit or be from a different repository"
-                );
-            }
+                summary.to_string()
+            };
+            let _ = writeln!(std::io::stdout(), "  Summary: {summary}");
         } else {
-            let _ = writeln!(std::io::stdout(), "  Warning: Invalid OID format");
+            let _ = writeln!(
+                std::io::stdout(),
+                "  Warning: Commit not found in repository"
+            );
+            let _ = writeln!(
+                std::io::stdout(),
+                "  The OID may reference a deleted commit or be from a different repository"
+            );
         }
     }
 }

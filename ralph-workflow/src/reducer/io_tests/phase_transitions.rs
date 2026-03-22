@@ -1,6 +1,7 @@
 //! Tests for phase transitions and state preservation across the pipeline.
 
 use super::*;
+use crate::common::domain_types::{AgentName, ModelName};
 
 #[test]
 fn test_complete_pipeline_phase_flow() {
@@ -121,8 +122,8 @@ fn test_state_preservation_through_agent_events() {
         state.clone(),
         PipelineEvent::agent_invocation_started(
             crate::agents::AgentRole::Developer,
-            "test".to_string(),
-            Some("test-model".to_string()),
+            AgentName::from("test"),
+            Some(ModelName::from("test-model")),
         ),
     );
 

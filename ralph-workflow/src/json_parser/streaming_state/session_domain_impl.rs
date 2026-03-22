@@ -58,11 +58,19 @@ impl StreamingSession {
         is_likely_snapshot(&self.accumulated, text, key)
     }
 
-    pub fn extract_delta_from_snapshot(&self, text: &str, key: &str) -> Result<usize, String> {
+    pub fn extract_delta_from_snapshot(
+        &self,
+        text: &str,
+        key: &str,
+    ) -> Result<usize, SnapshotDeltaError> {
         extract_delta_from_snapshot(&self.accumulated, text, key)
     }
 
-    pub fn get_delta_from_snapshot<'a>(&self, text: &'a str, key: &str) -> Result<&'a str, String> {
+    pub fn get_delta_from_snapshot<'a>(
+        &self,
+        text: &'a str,
+        key: &str,
+    ) -> Result<&'a str, SnapshotDeltaError> {
         let delta_len = self.extract_delta_from_snapshot(text, key)?;
         Ok(&text[delta_len..])
     }

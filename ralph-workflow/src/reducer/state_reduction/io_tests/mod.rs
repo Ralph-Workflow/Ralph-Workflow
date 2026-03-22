@@ -11,11 +11,13 @@ mod fix_continuation;
 mod gitignore_entries;
 mod output_validation;
 mod prompt_permissions;
+mod proptest_reducers;
 mod rebase_commit;
 mod review_phase;
 mod template_validation;
 
 pub use crate::agents::AgentRole;
+pub use crate::common::domain_types::AgentName;
 pub use crate::reducer::event::{PipelineEvent, PipelinePhase};
 pub use crate::reducer::io_tests::create_test_state;
 pub use crate::reducer::orchestration::determine_next_effect;

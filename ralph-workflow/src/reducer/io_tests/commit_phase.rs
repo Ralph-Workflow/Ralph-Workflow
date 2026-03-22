@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use super::*;
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{ContinuationState, MAX_VALIDATION_RETRY_ATTEMPTS};
 
@@ -541,7 +542,7 @@ fn test_commit_agent_chain_initialized_preserves_role() {
         state,
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Commit,
-            agents.clone(),
+            agents.iter().cloned().map(AgentName::from).collect(),
             3,
             1000,
             2.0,

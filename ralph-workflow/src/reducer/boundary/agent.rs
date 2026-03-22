@@ -1,5 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::{AgentDrain, AgentRole};
+use crate::common::domain_types::{AgentName, ModelName};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -105,7 +106,7 @@ impl MainEffectHandler {
             .registry
             .resolve_config(&effective_agent)
             .ok_or_else(|| ErrorEvent::AgentNotFound {
-                agent: effective_agent.clone(),
+                agent: AgentName::from(effective_agent.clone()),
             })?;
 
         // Determine log file path using per-run log directory.
@@ -306,18 +307,17 @@ impl MainEffectHandler {
             message: outcome_message,
         };
 
-        let started_event = PipelineEvent::agent_invocation_started(
-            role,
-            effective_agent.clone(),
-            model_name.cloned(),
-        );
+        let started_agent = AgentName::from(effective_agent.clone());
+        let started_model = model_name.cloned().map(ModelName::from);
+        let started_event =
+            PipelineEvent::agent_invocation_started(role, started_agent.clone(), started_model);
 
         // Build result with started event first, then the execution result(s).
         let result = std::iter::once(event)
             .chain(session_id.into_iter().flat_map(|sid| {
                 std::iter::once(PipelineEvent::agent_session_established(
                     role,
-                    effective_agent.clone(),
+                    started_agent.clone(),
                     sid.to_string(),
                 ))
             }))

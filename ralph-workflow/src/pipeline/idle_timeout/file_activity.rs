@@ -91,10 +91,6 @@ fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
 const MAX_SCAN_DEPTH: usize = 8;
 
 #[inline(never)]
-#[expect(
-    clippy::print_stderr,
-    reason = "diagnostic warning for filesystem issues"
-)]
 pub(crate) fn scan_dir_recursive(
     workspace: &dyn Workspace,
     dir: &Path,

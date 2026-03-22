@@ -40,9 +40,12 @@ pub fn parse_variable_spec_impl(var_spec: &str) -> Option<(&str, Option<String>)
 
 /// Parse a metadata line from template header comments.
 ///
+/// The line is expected to be a Jinja2-style comment of the form `{# ... #}`.
+/// Returns `None` for lines shorter than 4 bytes or with invalid byte boundaries.
+///
 /// Pure domain function - no I/O or side effects.
 pub fn parse_metadata_line_impl(line: &str) -> Option<(Option<String>, Option<String>)> {
-    let inner = line[2..line.len() - 2].trim();
+    let inner = line.get(2..line.len().saturating_sub(2))?.trim();
     let version = inner.strip_prefix("Version:").map(|s| s.trim().to_string());
     let purpose = inner.strip_prefix("PURPOSE:").map(|s| s.trim().to_string());
     Some((version, purpose))
@@ -556,5 +559,74 @@ impl OutcomeDescription {
             .clone()
             .or_else(|| self.success_with_files.clone())
             .unwrap_or_else(|| self.success_plain.clone())
+    }
+}
+
+#[cfg(test)]
+mod proptest_parsers {
+    use super::{
+        extract_partials_impl, extract_variables_impl, parse_loop_header_impl,
+        parse_metadata_line_impl, parse_variable_spec_impl,
+    };
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `parse_variable_spec_impl` must never panic on any string input.
+        #[test]
+        fn parse_variable_spec_impl_never_panics(s in ".*") {
+            let _ = parse_variable_spec_impl(&s);
+        }
+
+        /// `parse_metadata_line_impl` must never panic on any string input,
+        /// including strings shorter than 4 bytes or with multibyte boundaries.
+        #[test]
+        fn parse_metadata_line_impl_never_panics(s in ".*") {
+            let _ = parse_metadata_line_impl(&s);
+        }
+
+        /// `parse_metadata_line_impl` on a well-formed `{# Version: X #}` line
+        /// always extracts the version.
+        #[test]
+        fn parse_metadata_line_impl_extracts_version(v in "[A-Za-z0-9._-]{1,20}") {
+            let line = format!("{{# Version: {v} #}}");
+            let result = parse_metadata_line_impl(&line);
+            prop_assert!(result.is_some());
+            let (version, _purpose) = result.unwrap();
+            prop_assert_eq!(version, Some(v));
+        }
+
+        /// `parse_loop_header_impl` must never panic on any string input.
+        #[test]
+        fn parse_loop_header_impl_never_panics(s in ".*") {
+            let _ = parse_loop_header_impl(&s);
+        }
+
+        /// `extract_variables_impl` must never panic on any string input.
+        #[test]
+        fn extract_variables_impl_never_panics(s in ".*") {
+            let _ = extract_variables_impl(&s);
+        }
+
+        /// `extract_partials_impl` must never panic on any string input.
+        #[test]
+        fn extract_partials_impl_never_panics(s in ".*") {
+            let _ = extract_partials_impl(&s);
+        }
+
+        /// A string with no `{{` markers produces zero variables.
+        #[test]
+        fn extract_variables_impl_empty_on_no_braces(s in "[^{]*") {
+            let vars = extract_variables_impl(&s);
+            prop_assert!(vars.is_empty());
+        }
+
+        /// `extract_partials_impl` output contains only non-empty names.
+        #[test]
+        fn extract_partials_impl_names_are_nonempty(s in ".*") {
+            let partials = extract_partials_impl(&s);
+            for name in &partials {
+                prop_assert!(!name.is_empty());
+            }
+        }
     }
 }

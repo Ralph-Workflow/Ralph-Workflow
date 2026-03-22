@@ -152,12 +152,13 @@ pub fn validate_config_file(
                 .then(|| config.resolve_agent_drains_checked())
                 .and_then(|result| result.err())
                 .map(|message| {
-                    let key = if message.contains("references unknown chain") {
-                        message
+                    let message_string = message.to_string();
+                    let key = if message_string.contains("references unknown chain") {
+                        message_string
                             .split_whitespace()
                             .next()
                             .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
-                    } else if message.contains("agent_chain") {
+                    } else if message_string.contains("agent_chain") {
                         "agent_chain".to_string()
                     } else {
                         "agent_drains".to_string()
@@ -165,7 +166,7 @@ pub fn validate_config_file(
                     ConfigValidationError::InvalidValue {
                         file: path.to_path_buf(),
                         key,
-                        message,
+                        message: message_string,
                     }
                 });
 

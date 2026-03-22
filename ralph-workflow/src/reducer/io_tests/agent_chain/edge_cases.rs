@@ -4,6 +4,7 @@
 //! and integration-style event loop simulations.
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::AgentName;
 use crate::reducer::event::{AgentErrorKind, PipelinePhase, TimeoutOutputKind};
 use crate::reducer::io_tests::{create_test_state, reduce, PipelineEvent, PipelineState};
 
@@ -29,7 +30,7 @@ fn test_agent_invocation_failed_retriable_network_on_last_model_wraps_to_first_m
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::Network,
             true,
@@ -64,8 +65,8 @@ fn test_agent_fallback_from_last_agent_wraps_and_increments_cycle() {
         state,
         PipelineEvent::agent_fallback_triggered(
             AgentRole::Developer,
-            "agent2".to_string(),
-            "agent1".to_string(),
+            AgentName::from("agent2"),
+            AgentName::from("agent1"),
         ),
     );
 
@@ -91,7 +92,7 @@ fn test_agent_invocation_failed_retriable_network_on_single_model_wraps() {
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            AgentName::from("agent1"),
             1,
             AgentErrorKind::Network,
             true,
@@ -136,7 +137,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-a".to_string(),
+            AgentName::from("agent-a"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -170,7 +171,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
         after_first_timeout,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-a".to_string(),
+            AgentName::from("agent-a"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -210,7 +211,7 @@ fn test_internal_error_retries_same_agent_before_fallback_without_xsd_retry() {
         state,
         PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent-a".to_string(),
+            AgentName::from("agent-a"),
             1,
             AgentErrorKind::InternalError,
             false,
@@ -262,7 +263,7 @@ fn test_timed_out_partial_output_preserves_session_id_for_context_retry() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-a".to_string(),
+            AgentName::from("agent-a"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -315,7 +316,7 @@ fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-a".to_string(),
+            AgentName::from("agent-a"),
             TimeoutOutputKind::NoOutput,
             None,
             None,
@@ -372,7 +373,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-b".to_string(),
+            AgentName::from("agent-b"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
@@ -400,7 +401,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
         after_first_timeout,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
-            "agent-b".to_string(),
+            AgentName::from("agent-b"),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
             None,

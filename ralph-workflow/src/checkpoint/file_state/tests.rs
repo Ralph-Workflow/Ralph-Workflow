@@ -215,6 +215,8 @@ mod tests {
 
     #[test]
     fn test_validation_error_recovery_suggestion() {
+        use crate::common::domain_types::GitOid;
+
         let err = ValidationError::FileMissing {
             path: "test.txt".to_string(),
         };
@@ -222,12 +224,13 @@ mod tests {
         assert!(problem.contains("test.txt"));
         assert!(!commands.is_empty());
 
+        let expected_hex = "a".repeat(40);
         let err = ValidationError::GitHeadChanged {
-            expected: "abc123".to_string(),
-            actual: "def456".to_string(),
+            expected: GitOid::from(expected_hex.as_str()),
+            actual: GitOid::from("b".repeat(40).as_str()),
         };
         let (problem, commands) = err.recovery_commands();
-        assert!(problem.contains("abc123"));
+        assert!(problem.contains(&expected_hex));
         assert!(commands.iter().any(|c| c.contains("git reset")));
     }
 
@@ -246,15 +249,19 @@ mod tests {
 
     #[test]
     fn test_validation_error_recovery_commands_git_head_changed() {
+        use crate::common::domain_types::GitOid;
+
+        let expected_hex = "a".repeat(40);
+        let actual_hex = "b".repeat(40);
         let err = ValidationError::GitHeadChanged {
-            expected: "abc123".to_string(),
-            actual: "def456".to_string(),
+            expected: GitOid::from(expected_hex.as_str()),
+            actual: GitOid::from(actual_hex.as_str()),
         };
         let (problem, commands) = err.recovery_commands();
 
         assert!(problem.contains("changed"));
-        assert!(problem.contains("abc123"));
-        assert!(problem.contains("def456"));
+        assert!(problem.contains(&expected_hex));
+        assert!(problem.contains(&actual_hex));
         assert!(!commands.is_empty());
         assert!(commands.iter().any(|c| c.contains("git reset")));
         assert!(commands.iter().any(|c| c.contains("git log")));
@@ -297,5 +304,32 @@ mod tests {
         assert!(problem.contains("PROMPT.md"));
         assert!(!commands.is_empty());
         assert!(commands.iter().any(|c| c.contains("git diff")));
+    }
+
+    // P10B-error-payloads: GitHeadChanged carries strongly-typed GitOid payloads.
+    #[test]
+    fn test_git_head_changed_payload_types_are_git_oid() {
+        use crate::common::domain_types::GitOid;
+
+        let expected_oid = GitOid::from("a".repeat(40));
+        let actual_oid = GitOid::from("b".repeat(40));
+
+        let err = ValidationError::GitHeadChanged {
+            expected: expected_oid.clone(),
+            actual: actual_oid.clone(),
+        };
+
+        // Payload fields expose GitOid API (as_str), not just raw strings.
+        if let ValidationError::GitHeadChanged { expected, actual } = &err {
+            assert_eq!(expected.as_str(), "a".repeat(40).as_str());
+            assert_eq!(actual.as_str(), "b".repeat(40).as_str());
+        } else {
+            panic!("expected GitHeadChanged variant");
+        }
+
+        // Display still shows the OID strings.
+        let display = err.to_string();
+        assert!(display.contains(&"a".repeat(40)));
+        assert!(display.contains(&"b".repeat(40)));
     }
 }

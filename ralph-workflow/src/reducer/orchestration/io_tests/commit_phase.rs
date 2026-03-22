@@ -482,7 +482,7 @@ fn test_check_commit_diff_emitted_on_each_commit_phase_entry() {
                     state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
-                        vec!["commit-agent".to_string()],
+                        vec![AgentName::from("commit-agent")],
                         3,
                         1000,
                         2.0,

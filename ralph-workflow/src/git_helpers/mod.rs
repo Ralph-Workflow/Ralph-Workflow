@@ -48,9 +48,9 @@ fn git2_to_io_error_impl(err: &git2::Error) -> std::io::Error {
 }
 
 pub mod branch;
-pub(crate) mod domain;
 pub mod cleanup;
 pub mod config_state;
+pub(crate) mod domain;
 pub mod hooks;
 pub mod hooks_dir;
 pub mod identity;
@@ -59,11 +59,12 @@ pub mod lock;
 pub mod marker;
 pub mod path_wrapper;
 pub mod phase;
+/// Runtime module containing OS-boundary code (std::fs, std::process, std::env, Mutex).
+/// This module is exempt from functional Rust dylint rules.
+pub mod phase_state;
 pub mod rebase;
 mod repo;
 mod review_baseline;
-/// Runtime module containing OS-boundary code (std::fs, std::process, std::env, Mutex).
-/// This module is exempt from functional Rust dylint rules.
 pub mod runtime;
 pub mod runtime_identity;
 pub mod script;
@@ -144,8 +145,9 @@ pub use review_baseline::{
 #[cfg(any(test, feature = "test-utils"))]
 pub use start_commit::load_start_point_with_workspace;
 pub use start_commit::{
-    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
-    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
+    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, git_oid_to_git2_oid,
+    load_start_point, reset_start_commit, save_start_commit, save_start_commit_with_workspace,
+    StartPoint,
 };
 pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_protections_silent_at, cleanup_agent_phase_silent,

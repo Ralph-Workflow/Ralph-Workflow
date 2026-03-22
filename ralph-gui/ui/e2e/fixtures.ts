@@ -154,12 +154,12 @@ export const test = base.extend<TestFixtures>({
     await use(waitForWorkspaceLoaded);
   },
 
-  tauri: async ({}, use) => {
+  tauri: async (_, use) => {
     const bridge = createTauriInvokeBridge();
     await use(bridge);
   },
 
-  testRepo: async ({}, use) => {
+  testRepo: async (_, use) => {
     const repo = createTestRepo();
     await use(repo);
     repo.cleanup();

@@ -192,8 +192,14 @@ fn template_exists(path: &std::path::Path) -> bool {
     path.exists()
 }
 
-fn load_template(path: &std::path::Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| e.to_string())
+#[derive(Debug, thiserror::Error)]
+enum LoadTemplateError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+fn load_template(path: &std::path::Path) -> Result<String, LoadTemplateError> {
+    std::fs::read_to_string(path).map_err(LoadTemplateError::from)
 }
 
 impl Default for TemplateRegistry {
@@ -205,6 +211,7 @@ impl Default for TemplateRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_registry_creation() {
@@ -336,5 +343,15 @@ mod tests {
                 let content = result.unwrap();
                 assert!(!content.is_empty(), "Template '{name}' should not be empty");
             });
+    }
+
+    #[test]
+    fn load_template_failure_yields_typed_error() {
+        let path = Path::new("/nonexistent-template-file");
+        let result = load_template(path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, LoadTemplateError::Io { .. }));
+        assert!(err.to_string().contains("No such file"));
     }
 }
