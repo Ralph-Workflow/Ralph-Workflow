@@ -72,7 +72,7 @@ fn main() -> anyhow::Result<()> {
 
     // If the pipeline requested a SIGINT exit code, exit after cleanup has completed.
     if interrupted {
-        std::process::exit(130);
+        exit_pause::exit_with_sigint_code();
     }
 
     result

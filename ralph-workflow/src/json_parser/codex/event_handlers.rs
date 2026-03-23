@@ -1,14 +1,17 @@
-pub mod agent_message;
-
 use crate::common::truncate_text;
 use crate::json_parser::codex::event_interpretation::{
-    interpret_item_completed_type, interpret_item_started_type, ItemCompletedInterpretation,
-    ItemStartedInterpretation,
+    compute_reasoning_incremental_delta, interpret_item_completed_type,
+    interpret_item_started_type, ItemCompletedInterpretation, ItemStartedInterpretation,
 };
-use crate::json_parser::delta_display::{DeltaRenderer, TextDeltaRenderer};
+use crate::json_parser::delta_display::{
+    sanitize_for_display, DeltaRenderer, TextDeltaRenderer, ThinkingDeltaRenderer,
+};
 use crate::json_parser::terminal::TerminalMode;
-use crate::json_parser::types::{format_tool_input, CodexItem, CodexUsage};
+use crate::json_parser::types::{format_tool_input, CodexItem, CodexUsage, ContentType};
 use crate::logger::{CHECK, CROSS};
+
+#[cfg(any(test, debug_assertions))]
+use std::io::Write;
 pub struct EventHandlerContext<'a> {
     pub colors: &'a crate::logger::Colors,
     pub verbosity: crate::config::Verbosity,
@@ -52,12 +55,12 @@ pub fn handle_item_started(
                 let output = handle_command_execution_started(ctx, item.command.clone());
                 (!output.is_empty()).then_some(output)
             }
-            Some(ItemStartedInterpretation::AgentMessage) => Some(
-                agent_message::handle_agent_message_started(ctx, item.text.as_ref()),
-            ),
-            Some(ItemStartedInterpretation::Reasoning) => Some(
-                agent_message::handle_reasoning_started(ctx, item.text.as_ref()),
-            ),
+            Some(ItemStartedInterpretation::AgentMessage) => {
+                Some(handle_agent_message_started(ctx, item.text.as_ref()))
+            }
+            Some(ItemStartedInterpretation::Reasoning) => {
+                Some(handle_reasoning_started(ctx, item.text.as_ref()))
+            }
             Some(ItemStartedInterpretation::FileRead) => {
                 let output = handle_file_io_started(ctx, item.path.clone(), "file_read");
                 (!output.is_empty()).then_some(output)
@@ -93,12 +96,12 @@ pub fn handle_item_completed(
 ) -> Option<String> {
     item.and_then(
         |item| match interpret_item_completed_type(item.item_type.as_deref()) {
-            Some(ItemCompletedInterpretation::AgentMessage) => Some(
-                agent_message::handle_agent_message_completed(ctx, item.text.as_ref()),
-            ),
-            Some(ItemCompletedInterpretation::Reasoning) => Some(
-                agent_message::handle_reasoning_completed(ctx, item.text.as_ref()),
-            ),
+            Some(ItemCompletedInterpretation::AgentMessage) => {
+                Some(handle_agent_message_completed(ctx, item.text.as_ref()))
+            }
+            Some(ItemCompletedInterpretation::Reasoning) => {
+                Some(handle_reasoning_completed(ctx, item.text.as_ref()))
+            }
             Some(ItemCompletedInterpretation::CommandExecution) => {
                 let output = handle_command_execution_completed(ctx);
                 (!output.is_empty()).then_some(output)
@@ -264,7 +267,7 @@ pub fn handle_file_io_started(
 fn format_mcp_tool_input_preview(ctx: &EventHandlerContext<'_>, preview: &str) -> String {
     match ctx.terminal_mode {
         TerminalMode::Full | TerminalMode::Basic => format!(
-            "{}[{}]{} {}  └─ {}{}{}\n",
+            "{}[{}]{} {}  \u{2514}\u{2500} {}{}{}\n",
             ctx.colors.dim(),
             ctx.display_name,
             ctx.colors.reset(),
@@ -273,7 +276,7 @@ fn format_mcp_tool_input_preview(ctx: &EventHandlerContext<'_>, preview: &str) -
             preview,
             ctx.colors.reset()
         ),
-        TerminalMode::None => format!("[{}]   └─ {}\n", ctx.display_name, preview),
+        TerminalMode::None => format!("[{}]   \u{2514}\u{2500} {}\n", ctx.display_name, preview),
     }
 }
 
@@ -516,3 +519,5 @@ pub fn handle_error(
         err
     )
 }
+
+include!("event_handlers_agent_message.rs");

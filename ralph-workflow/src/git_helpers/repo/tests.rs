@@ -2,18 +2,24 @@ use super::*;
 
 #[test]
 fn test_git_diff_returns_string() {
-    // This test verifies the function exists and returns a Result.
-    // The actual content depends on the git state.
+    // We're running inside a git repository, so git_diff should succeed.
     let result = git_diff();
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result.is_ok(),
+        "git_diff failed in a git repo: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_require_git_repo() {
-    // This test verifies we can detect a git repository.
+    // We're running inside a git repository, so require_git_repo should succeed.
     let result = require_git_repo();
-    // We don't assert either way since the test environment varies.
-    let _ = result;
+    assert!(
+        result.is_ok(),
+        "require_git_repo failed in a git repo: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -35,20 +41,13 @@ fn test_git_diff_from_returns_result() {
 
 #[test]
 fn test_git_snapshot_returns_result() {
+    // We're running inside a git repository, so git_snapshot should succeed.
     let result = git_snapshot();
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_git_add_all_returns_result() {
-    let result = git_add_all();
-    assert!(result.is_ok() || result.is_err());
-}
-
-#[test]
-fn test_get_git_diff_from_start_returns_result() {
-    let result = get_git_diff_from_start();
-    assert!(result.is_ok() || result.is_err());
+    assert!(
+        result.is_ok(),
+        "git_snapshot failed in a git repo: {:?}",
+        result.err()
+    );
 }
 
 #[test]

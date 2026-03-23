@@ -353,26 +353,34 @@ struct SpawnedAgentHandles {
 type SpawnAgentResult =
     Result<Result<(SpawnedAgentHandles, Box<dyn std::io::Read + Send>), CommandResult>, std::io::Error>;
 
-/// Returns `Ok(Ok((handles, stdout)))` on success, `Ok(Err(result))` on spawn error.
-fn spawn_agent_with_monitoring(
-    spawn_config: crate::executor::AgentSpawnConfig,
-    runtime: &PipelineRuntime<'_>,
-    argv0: &str,
-) -> SpawnAgentResult {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    let agent_handle = match runtime.executor.spawn_agent(&spawn_config) {
-        Ok(h) => h,
-        Err(e) => return Ok(Err(map_spawn_error_to_result(e, argv0))),
-    };
-    let stdout = agent_handle.stdout;
-    let stderr = agent_handle.stderr;
-    let inner = agent_handle.inner;
+struct SharedMonitorState {
+    child_shared: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    child_for_monitor: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    activity_timestamp: crate::pipeline::idle_timeout::SharedActivityTimestamp,
+    file_activity_config: Option<FileActivityConfig>,
+    stdout_cancel: Arc<std::sync::atomic::AtomicBool>,
+    stdout_cancel_for_monitor: Arc<std::sync::atomic::AtomicBool>,
+    monitor_should_stop: Arc<std::sync::atomic::AtomicBool>,
+    monitor_should_stop_clone: Arc<std::sync::atomic::AtomicBool>,
+    activity_timestamp_clone: crate::pipeline::idle_timeout::SharedActivityTimestamp,
+    child_activity_suppressed: Arc<std::sync::Mutex<Option<crate::executor::ChildProcessInfo>>>,
+    child_activity_suppressed_for_monitor:
+        Arc<std::sync::Mutex<Option<crate::executor::ChildProcessInfo>>>,
+    monitor_executor: Arc<dyn crate::executor::ProcessExecutor>,
+}
+
+fn create_shared_monitor_state(
+    inner: Box<dyn crate::executor::AgentChild>,
+    workspace_arc: &Arc<dyn crate::workspace::Workspace>,
+    executor_arc: &Arc<dyn crate::executor::ProcessExecutor>,
+) -> SharedMonitorState {
+    use std::sync::atomic::AtomicBool;
     let child_shared = Arc::new(std::sync::Mutex::new(inner));
     let child_for_monitor = Arc::clone(&child_shared);
     let activity_timestamp = new_activity_timestamp();
     let file_activity_config = Some(FileActivityConfig {
         tracker: new_file_activity_tracker(),
-        workspace: Arc::clone(&runtime.workspace_arc),
+        workspace: Arc::clone(workspace_arc),
     });
     let stdout_cancel = Arc::new(AtomicBool::new(false));
     let stdout_cancel_for_monitor = Arc::clone(&stdout_cancel);
@@ -381,14 +389,36 @@ fn spawn_agent_with_monitoring(
     let activity_timestamp_clone = activity_timestamp.clone();
     let child_activity_suppressed = Arc::new(std::sync::Mutex::new(None));
     let child_activity_suppressed_for_monitor = Arc::clone(&child_activity_suppressed);
-    spawn_stdout_cancel_watcher(
-        Arc::clone(&stdout_cancel),
-        Arc::clone(&monitor_should_stop),
-        crate::interrupt::is_user_interrupt_requested,
-    );
-    let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
-        std::sync::Arc::clone(&runtime.executor_arc);
-    let monitor_handle = Some(std::thread::spawn(move || {
+    let monitor_executor = Arc::clone(executor_arc) as Arc<dyn crate::executor::ProcessExecutor>;
+    SharedMonitorState {
+        child_shared,
+        child_for_monitor,
+        activity_timestamp,
+        file_activity_config,
+        stdout_cancel,
+        stdout_cancel_for_monitor,
+        monitor_should_stop,
+        monitor_should_stop_clone,
+        activity_timestamp_clone,
+        child_activity_suppressed,
+        child_activity_suppressed_for_monitor,
+        monitor_executor,
+    }
+}
+
+fn spawn_monitor_thread(state: SharedMonitorState) -> std::thread::JoinHandle<MonitorResult> {
+    use std::sync::atomic::Ordering;
+    let SharedMonitorState {
+        child_for_monitor,
+        activity_timestamp_clone,
+        file_activity_config,
+        monitor_should_stop_clone,
+        monitor_executor,
+        stdout_cancel_for_monitor,
+        child_activity_suppressed_for_monitor,
+        ..
+    } = state;
+    std::thread::spawn(move || {
         let result = monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             &activity_timestamp_clone,
             file_activity_config.as_ref(),
@@ -407,23 +437,38 @@ fn spawn_agent_with_monitoring(
             stdout_cancel_for_monitor.store(true, Ordering::Release);
         }
         result
-    }));
-    let stderr_activity_timestamp = activity_timestamp.clone();
-    let stderr_cancel = Arc::new(AtomicBool::new(false));
-    let stderr_cancel_for_thread = Arc::clone(&stderr_cancel);
-    let stderr_join_handle = Some(std::thread::spawn(
-        move || -> Result<String, std::io::Error> {
-            const STDERR_MAX_BYTES: usize = 512 * 1024;
-            let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
-            let reader = std::io::BufReader::new(tracked_stderr);
-            super::io_stderr_collector::collect_stderr_with_cap_and_drain(
-                reader,
-                STDERR_MAX_BYTES,
-                stderr_cancel_for_thread.as_ref(),
-            )
-        },
-    ));
-    let handles = SpawnedAgentHandles {
+    })
+}
+
+fn spawn_stderr_collector_thread(
+    stderr: Box<dyn std::io::Read + Send>,
+    stderr_activity_timestamp: crate::pipeline::idle_timeout::SharedActivityTimestamp,
+    stderr_cancel_for_thread: Arc<std::sync::atomic::AtomicBool>,
+) -> std::thread::JoinHandle<Result<String, std::io::Error>> {
+    std::thread::spawn(move || -> Result<String, std::io::Error> {
+        const STDERR_MAX_BYTES: usize = 512 * 1024;
+        let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
+        let reader = std::io::BufReader::new(tracked_stderr);
+        super::io_stderr_collector::collect_stderr_with_cap_and_drain(
+            reader,
+            STDERR_MAX_BYTES,
+            stderr_cancel_for_thread.as_ref(),
+        )
+    })
+}
+
+fn build_spawned_agent_handles(
+    state: SharedMonitorState,
+    stderr_cancel: Arc<std::sync::atomic::AtomicBool>,
+    stderr_join_handle: Option<std::thread::JoinHandle<Result<String, std::io::Error>>>,
+) -> SpawnedAgentHandles {
+    let child_shared = Arc::clone(&state.child_shared);
+    let activity_timestamp = state.activity_timestamp.clone();
+    let stdout_cancel = Arc::clone(&state.stdout_cancel);
+    let monitor_should_stop = Arc::clone(&state.monitor_should_stop);
+    let child_activity_suppressed = Arc::clone(&state.child_activity_suppressed);
+    let monitor_handle = Some(spawn_monitor_thread(state));
+    SpawnedAgentHandles {
         child_shared,
         activity_timestamp,
         stdout_cancel,
@@ -432,8 +477,38 @@ fn spawn_agent_with_monitoring(
         child_activity_suppressed,
         monitor_handle,
         stderr_join_handle,
+    }
+}
+
+/// Returns `Ok(Ok((handles, stdout)))` on success, `Ok(Err(result))` on spawn error.
+fn spawn_agent_with_monitoring(
+    spawn_config: crate::executor::AgentSpawnConfig,
+    runtime: &PipelineRuntime<'_>,
+    argv0: &str,
+) -> SpawnAgentResult {
+    use std::sync::atomic::AtomicBool;
+    let agent_handle = match runtime.executor.spawn_agent(&spawn_config) {
+        Ok(h) => h,
+        Err(e) => return Ok(Err(map_spawn_error_to_result(e, argv0))),
     };
-    Ok(Ok((handles, stdout)))
+    let state = create_shared_monitor_state(
+        agent_handle.inner,
+        &runtime.workspace_arc,
+        &runtime.executor_arc,
+    );
+    spawn_stdout_cancel_watcher(
+        Arc::clone(&state.stdout_cancel),
+        Arc::clone(&state.monitor_should_stop),
+        crate::interrupt::is_user_interrupt_requested,
+    );
+    let stderr_cancel = Arc::new(AtomicBool::new(false));
+    let stderr_join_handle = Some(spawn_stderr_collector_thread(
+        agent_handle.stderr,
+        state.activity_timestamp.clone(),
+        Arc::clone(&stderr_cancel),
+    ));
+    let handles = build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle);
+    Ok(Ok((handles, agent_handle.stdout)))
 }
 
 fn cleanup_handles(handles: &mut SpawnedAgentHandles, runtime: &PipelineRuntime<'_>) {

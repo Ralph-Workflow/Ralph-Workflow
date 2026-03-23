@@ -200,87 +200,22 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> Result<EffectResult> {
-        // Read prior prompt/input metadata, call pure preamble combinator, then persist retry prompt.
         let retry_preamble =
             super::retry_guidance::same_agent_retry_preamble(&self.state.continuation);
-        let inputs = self
-            .state
-            .prompt_inputs
-            .planning
-            .as_ref()
-            .filter(|p| p.iteration == iteration)
-            .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })?;
-
+        let inputs = get_planning_inputs(self, iteration)?;
         let prompt_ref = build_planning_prompt_ref(ctx, &inputs.prompt)?;
-
-        let scope_key = PromptScopeKey::for_planning(
-            iteration,
-            RetryMode::SameAgent {
-                count: self.state.continuation.same_agent_retry_count,
-            },
-            self.state.recovery_epoch,
-        );
-        let prompt_key = scope_key.to_string();
-
-        let prompt_content_id = planning_prompt_content_id(
-            "planning_same_agent_retry",
-            &inputs.prompt.content_id_sha256,
-            &inputs.prompt.consumer_signature_sha256,
-        );
-
-        let (prompt, was_replayed, should_validate) = get_stored_or_generate_prompt_with_validation(
-            &scope_key,
-            &self.state.prompt_history,
-            Some(&prompt_content_id),
-            || {
-                let (base_prompt, local_should_validate) = ctx
-                    .workspace
-                    .read(Path::new(PLANNING_PROMPT_PATH))
-                    .map_or_else(
-                        |_| {
-                            (
-                                prompt_planning_xml_with_references(
-                                    ctx.template_context,
-                                    &prompt_ref,
-                                    ctx.workspace,
-                                ),
-                                true,
-                            )
-                        },
-                        |previous_prompt| {
-                            (
-                                super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                                    &previous_prompt,
-                                )
-                                .to_string(),
-                                false,
-                            )
-                        },
-                    );
-                (
-                    apply_same_agent_retry_preamble(&retry_preamble, &base_prompt),
-                    local_should_validate,
-                )
-            },
-        );
-
-        let rendered_log = match gen_planning_normal_rendered_log(
+        let (capture, rendered_log) = match build_same_agent_retry_capture(
             ctx,
+            self,
+            iteration,
             &prompt_ref,
-            should_validate && !was_replayed,
-            &prompt_key,
-            was_replayed,
+            &retry_preamble,
+            &inputs.prompt,
         ) {
-            Ok(log) => log,
+            Ok(pair) => pair,
             Err(early) => return Ok(*early),
         };
 
-        let capture = PlanningPromptCapture {
-            prompt,
-            prompt_key: Some(prompt_key),
-            was_replayed,
-            prompt_content_id: Some(prompt_content_id),
-        };
         write_planning_prompt(ctx, &capture.prompt);
         Ok(assemble_planning_prompt_result(
             iteration,
@@ -296,14 +231,7 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> Result<EffectResult> {
-        // Read materialized prompt reference, call pure content-id builder, then render and persist prompt text.
-        let inputs = self
-            .state
-            .prompt_inputs
-            .planning
-            .as_ref()
-            .filter(|p| p.iteration == iteration)
-            .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })?;
+        let inputs = get_planning_inputs(self, iteration)?;
 
         let prompt_ref = build_planning_prompt_ref(ctx, &inputs.prompt)?;
 
@@ -500,16 +428,48 @@ impl MainEffectHandler {
         iteration: u32,
         valid: bool,
     ) -> EffectResult {
-        // Map validity flag to transition UI event and completion event.
-        let ui_events: Vec<_> = valid
-            .then(|| self.phase_transition_ui(PipelinePhase::Development))
-            .into_iter()
-            .collect();
-        EffectResult::with_ui(
-            PipelineEvent::plan_generation_completed(iteration, valid),
-            ui_events,
-        )
+        let (event, ui_events) = planning_outcome(iteration, valid, self.state.phase);
+        EffectResult::with_ui(event, ui_events)
     }
+}
+
+/// Pure outcome mapping: given validity and the current phase, return the
+/// completion event and any UI transition events.
+///
+/// Extracted so callers receive a typed `(PipelineEvent, Vec<UIEvent>)` that can
+/// be unit-tested without constructing `MainEffectHandler` or a `PhaseContext`.
+fn planning_outcome(
+    iteration: u32,
+    valid: bool,
+    current_phase: PipelinePhase,
+) -> (PipelineEvent, Vec<UIEvent>) {
+    let ui_events: Vec<_> = valid
+        .then_some(UIEvent::PhaseTransition {
+            from: Some(current_phase),
+            to: PipelinePhase::Development,
+        })
+        .into_iter()
+        .collect();
+    (
+        PipelineEvent::plan_generation_completed(iteration, valid),
+        ui_events,
+    )
+}
+
+fn get_planning_inputs(
+    handler: &MainEffectHandler,
+    iteration: u32,
+) -> std::result::Result<
+    &crate::reducer::state::MaterializedPlanningInputs,
+    crate::reducer::event::ErrorEvent,
+> {
+    handler
+        .state
+        .prompt_inputs
+        .planning
+        .as_ref()
+        .filter(|p| p.iteration == iteration)
+        .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })
 }
 
 fn apply_planning_oversize_events(
@@ -540,12 +500,114 @@ fn apply_planning_oversize_events(
     }
 }
 
+fn build_same_agent_scope_and_ids(
+    handler: &MainEffectHandler,
+    iteration: u32,
+    prompt_info: &MaterializedPromptInput,
+) -> (PromptScopeKey, String, String) {
+    let scope_key = PromptScopeKey::for_planning(
+        iteration,
+        RetryMode::SameAgent {
+            count: handler.state.continuation.same_agent_retry_count,
+        },
+        handler.state.recovery_epoch,
+    );
+    let prompt_content_id = planning_prompt_content_id(
+        "planning_same_agent_retry",
+        &prompt_info.content_id_sha256,
+        &prompt_info.consumer_signature_sha256,
+    );
+    let prompt_key = scope_key.to_string();
+    (scope_key, prompt_key, prompt_content_id)
+}
+
+fn build_same_agent_retry_capture(
+    ctx: &PhaseContext<'_>,
+    handler: &MainEffectHandler,
+    iteration: u32,
+    prompt_ref: &PromptContentReference,
+    retry_preamble: &str,
+    prompt_info: &MaterializedPromptInput,
+) -> std::result::Result<
+    (
+        PlanningPromptCapture,
+        Option<crate::prompts::SubstitutionLog>,
+    ),
+    Box<EffectResult>,
+> {
+    let (scope_key, prompt_key, prompt_content_id) =
+        build_same_agent_scope_and_ids(handler, iteration, prompt_info);
+    let (prompt, was_replayed, should_validate) = get_stored_or_generate_prompt_with_validation(
+        &scope_key,
+        &handler.state.prompt_history,
+        Some(&prompt_content_id),
+        || load_same_agent_retry_base_prompt(ctx, prompt_ref, retry_preamble),
+    );
+    let rendered_log = gen_planning_normal_rendered_log(
+        ctx,
+        prompt_ref,
+        prompt_needs_validation(should_validate, was_replayed),
+        &prompt_key,
+        was_replayed,
+    )?;
+    let capture = PlanningPromptCapture {
+        prompt,
+        prompt_key: Some(prompt_key),
+        was_replayed,
+        prompt_content_id: Some(prompt_content_id),
+    };
+    Ok((capture, rendered_log))
+}
+
+fn prompt_needs_validation(should_validate: bool, was_replayed: bool) -> bool {
+    should_validate && !was_replayed
+}
+
 fn write_planning_prompt(ctx: &PhaseContext<'_>, prompt: &str) {
     if let Err(err) = ctx.workspace.write(Path::new(PLANNING_PROMPT_PATH), prompt) {
         ctx.logger.warn(&format!(
             "Failed to write planning prompt file: {err}. Pipeline will continue (loop recovery will handle convergence)."
         ));
     }
+}
+
+/// Load the base prompt for a same-agent retry and return (prompt_with_preamble, should_validate).
+///
+/// If a previous prompt exists on disk, strips its preamble and reuses it (no validation needed).
+/// Otherwise generates a fresh prompt from templates (validation required).
+fn load_same_agent_retry_base_prompt(
+    ctx: &PhaseContext<'_>,
+    prompt_ref: &crate::prompts::content_reference::PromptContentReference,
+    retry_preamble: &str,
+) -> (String, bool) {
+    let (base_prompt, should_validate) = ctx
+        .workspace
+        .read(Path::new(PLANNING_PROMPT_PATH))
+        .map_or_else(
+            |_| {
+                (
+                    prompt_planning_xml_with_references(
+                        ctx.template_context,
+                        prompt_ref,
+                        ctx.workspace,
+                    ),
+                    true,
+                )
+            },
+            |previous_prompt| {
+                (
+                    super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                        &previous_prompt,
+                    )
+                    .to_string(),
+                    false,
+                )
+            },
+        );
+    (
+        apply_same_agent_retry_preamble(retry_preamble, &base_prompt),
+        should_validate,
+    )
 }
 
 struct PlanningPromptCapture {
@@ -598,18 +660,13 @@ struct XsdRetryLastOutputParams<'a> {
     last_output_bytes: u64,
 }
 
-fn materialize_planning_xsd_retry_last_output(
+fn is_xsd_retry_last_output_already_materialized(
     handler: &MainEffectHandler,
     ctx: &PhaseContext<'_>,
     iteration: u32,
-    last_output: &str,
-    params: XsdRetryLastOutputParams<'_>,
-) -> Result<Option<Vec<PipelineEvent>>> {
-    let content_id_sha256 = params.content_id_sha256;
-    let consumer_signature_sha256 = params.consumer_signature_sha256;
-    let inline_budget_bytes = params.inline_budget_bytes;
-    let last_output_bytes = params.last_output_bytes;
-    let already_materialized = handler
+    params: &XsdRetryLastOutputParams<'_>,
+) -> bool {
+    handler
         .state
         .prompt_inputs
         .xsd_retry_last_output
@@ -617,36 +674,22 @@ fn materialize_planning_xsd_retry_last_output(
         .is_some_and(|m| {
             m.phase == PipelinePhase::Planning
                 && m.scope_id == iteration
-                && m.last_output.content_id_sha256 == content_id_sha256
-                && m.last_output.consumer_signature_sha256 == consumer_signature_sha256
+                && m.last_output.content_id_sha256 == params.content_id_sha256
+                && m.last_output.consumer_signature_sha256 == params.consumer_signature_sha256
                 && ctx
                     .workspace
                     .exists(std::path::Path::new(".agent/tmp/last_output.xml"))
-        });
-    if already_materialized {
-        return Ok(None);
-    }
-    let last_output_path = Path::new(".agent/tmp/last_output.xml");
-    ctx.workspace
-        .write_atomic(last_output_path, last_output)
-        .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
-            path: last_output_path.display().to_string(),
-            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-        })?;
-    let input = MaterializedPromptInput {
-        kind: PromptInputKind::LastOutput,
-        content_id_sha256: content_id_sha256.to_string(),
-        consumer_signature_sha256: consumer_signature_sha256.to_string(),
-        original_bytes: last_output_bytes,
-        final_bytes: last_output_bytes,
-        model_budget_bytes: None,
-        inline_budget_bytes: Some(inline_budget_bytes),
-        representation: PromptInputRepresentation::FileReference {
-            path: last_output_path.to_path_buf(),
-        },
-        reason: PromptMaterializationReason::PolicyForcedReference,
-    };
-    let events: Vec<_> = std::iter::once(PipelineEvent::xsd_retry_last_output_materialized(
+        })
+}
+
+fn build_xsd_retry_last_output_events(
+    iteration: u32,
+    input: MaterializedPromptInput,
+    content_id_sha256: &str,
+    last_output_bytes: u64,
+    inline_budget_bytes: u64,
+) -> Vec<PipelineEvent> {
+    std::iter::once(PipelineEvent::xsd_retry_last_output_materialized(
         PipelinePhase::Planning,
         iteration,
         input,
@@ -661,8 +704,62 @@ fn materialize_planning_xsd_retry_last_output(
             "xsd-retry-context".to_string(),
         ),
     ))
-    .collect();
-    Ok(Some(events))
+    .collect()
+}
+
+fn materialize_planning_xsd_retry_last_output(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    iteration: u32,
+    last_output: &str,
+    params: XsdRetryLastOutputParams<'_>,
+) -> Result<Option<Vec<PipelineEvent>>> {
+    if is_xsd_retry_last_output_already_materialized(handler, ctx, iteration, &params) {
+        return Ok(None);
+    }
+    let last_output_path = Path::new(".agent/tmp/last_output.xml");
+    ctx.workspace
+        .write_atomic(last_output_path, last_output)
+        .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
+            path: last_output_path.display().to_string(),
+            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        })?;
+    let input = MaterializedPromptInput {
+        kind: PromptInputKind::LastOutput,
+        content_id_sha256: params.content_id_sha256.to_string(),
+        consumer_signature_sha256: params.consumer_signature_sha256.to_string(),
+        original_bytes: params.last_output_bytes,
+        final_bytes: params.last_output_bytes,
+        model_budget_bytes: None,
+        inline_budget_bytes: Some(params.inline_budget_bytes),
+        representation: PromptInputRepresentation::FileReference {
+            path: last_output_path.to_path_buf(),
+        },
+        reason: PromptMaterializationReason::PolicyForcedReference,
+    };
+    Ok(Some(build_xsd_retry_last_output_events(
+        iteration,
+        input,
+        params.content_id_sha256,
+        params.last_output_bytes,
+        params.inline_budget_bytes,
+    )))
+}
+
+fn xsd_retry_incomplete_early_return(
+    log: &crate::prompts::SubstitutionLog,
+    prompt_key: &str,
+    was_replayed: bool,
+) -> Box<EffectResult> {
+    Box::new(
+        planning_template_incomplete_early_return(
+            log,
+            "planning_xsd_retry",
+            prompt_key,
+            was_replayed,
+        )
+        .unwrap_or_else(|| EffectResult::event(PipelineEvent::planning_prompt_prepared(0))),
+    )
 }
 
 fn gen_planning_xsd_retry_rendered_log(
@@ -681,14 +778,10 @@ fn gen_planning_xsd_retry_rendered_log(
     );
     match rendered.log.is_complete() {
         true => Ok(Some(rendered.log)),
-        false => Err(Box::new(
-            planning_template_incomplete_early_return(
-                &rendered.log,
-                "planning_xsd_retry",
-                prompt_key,
-                was_replayed,
-            )
-            .unwrap_or_else(|| EffectResult::event(PipelineEvent::planning_prompt_prepared(0))),
+        false => Err(xsd_retry_incomplete_early_return(
+            &rendered.log,
+            prompt_key,
+            was_replayed,
         )),
     }
 }
@@ -839,5 +932,58 @@ fn build_planning_prompt_ref(
             path.clone(),
             "Original user requirements from PROMPT.md",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reducer::event::PipelinePhase;
+
+    #[test]
+    fn planning_outcome_emits_completion_event_with_valid_flag() {
+        let (event, _) = planning_outcome(2, true, PipelinePhase::Planning);
+        assert!(
+            matches!(
+                event,
+                PipelineEvent::Planning(
+                    crate::reducer::event::PlanningEvent::GenerationCompleted {
+                        iteration: 2,
+                        valid: true
+                    }
+                )
+            ),
+            "valid=true must produce GenerationCompleted(valid=true), got {event:?}"
+        );
+    }
+
+    #[test]
+    fn planning_outcome_includes_phase_transition_when_valid() {
+        let (_, ui_events) = planning_outcome(1, true, PipelinePhase::Planning);
+        assert_eq!(
+            ui_events.len(),
+            1,
+            "valid=true must include one UI phase transition event"
+        );
+        assert!(
+            matches!(
+                ui_events[0],
+                UIEvent::PhaseTransition {
+                    from: Some(PipelinePhase::Planning),
+                    to: PipelinePhase::Development,
+                }
+            ),
+            "UI event must transition Planning → Development, got {:?}",
+            ui_events[0]
+        );
+    }
+
+    #[test]
+    fn planning_outcome_no_ui_transition_when_invalid() {
+        let (_, ui_events) = planning_outcome(1, false, PipelinePhase::Planning);
+        assert!(
+            ui_events.is_empty(),
+            "valid=false must produce no UI transition events"
+        );
     }
 }

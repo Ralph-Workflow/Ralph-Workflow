@@ -1,5 +1,6 @@
 use crate::files::llm_output_extraction::IssuesElements;
 use crate::reducer::domain::baseline::BaselineOid;
+use crate::reducer::event::PipelineEvent;
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::rendering::xml::render_skills_mcp_markdown;
 // Regex lazy-init uses OnceLock — lives in boundary submodule.
@@ -122,6 +123,23 @@ pub(crate) fn should_materialize_xsd_retry_last_output(
     _candidate: &XsdRetryMaterializationSignature,
 ) -> bool {
     !_existing.is_some_and(|existing| existing == _candidate)
+}
+
+/// Map review outcome flags to the appropriate pipeline event.
+///
+/// The orchestrator computes `issues_found` and `clean_no_issues` from the
+/// parsed review output; this pure function encodes the domain rule for which
+/// event each outcome produces.
+pub(crate) fn review_outcome_event(
+    pass: u32,
+    issues_found: bool,
+    clean_no_issues: bool,
+) -> PipelineEvent {
+    if clean_no_issues {
+        PipelineEvent::review_pass_completed_clean(pass)
+    } else {
+        PipelineEvent::review_completed(pass, issues_found)
+    }
 }
 
 pub(crate) fn build_fix_prompt_content_id(
@@ -260,6 +278,50 @@ mod tests {
         assert!(markdown.starts_with("# Issues"));
         assert!(markdown.contains("- [ ] src/lib.rs:42 - Example"));
         assert!(markdown.contains("test-driven-development"));
+    }
+
+    #[test]
+    fn review_outcome_event_emits_clean_event_when_no_issues() {
+        let event = review_outcome_event(2, false, true);
+        assert!(
+            matches!(
+                event,
+                PipelineEvent::Review(crate::reducer::event::ReviewEvent::PassCompletedClean {
+                    pass: 2
+                })
+            ),
+            "clean_no_issues=true must produce PassCompletedClean, got {event:?}"
+        );
+    }
+
+    #[test]
+    fn review_outcome_event_emits_completed_with_issues_found_flag() {
+        let event = review_outcome_event(3, true, false);
+        assert!(
+            matches!(
+                event,
+                PipelineEvent::Review(crate::reducer::event::ReviewEvent::Completed {
+                    pass: 3,
+                    issues_found: true
+                })
+            ),
+            "issues_found=true must produce Completed with issues_found=true, got {event:?}"
+        );
+    }
+
+    #[test]
+    fn review_outcome_event_emits_completed_when_issues_found_false_and_not_clean() {
+        let event = review_outcome_event(1, false, false);
+        assert!(
+            matches!(
+                event,
+                PipelineEvent::Review(crate::reducer::event::ReviewEvent::Completed {
+                    pass: 1,
+                    issues_found: false
+                })
+            ),
+            "clean_no_issues=false must produce Completed (with issues_found=false), got {event:?}"
+        );
     }
 
     #[test]

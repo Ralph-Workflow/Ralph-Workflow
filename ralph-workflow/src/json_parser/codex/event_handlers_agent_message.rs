@@ -1,22 +1,25 @@
-use crate::common::truncate_text;
-use crate::json_parser::codex::event_interpretation::compute_reasoning_incremental_delta;
-use crate::json_parser::delta_display::{
-    sanitize_for_display, DeltaRenderer, TextDeltaRenderer, ThinkingDeltaRenderer,
-};
-use crate::json_parser::terminal::TerminalMode;
-use crate::json_parser::types::ContentType;
-
-use super::EventHandlerContext;
-
-#[cfg(any(test, debug_assertions))]
-use std::io::Write;
-
 #[cfg(debug_assertions)]
 fn warn_if_delta_discontinuity_text(new_suffix: &str, last_rendered: &str, sanitized: &str) {
     if new_suffix.is_empty() && !last_rendered.is_empty() && !sanitized.is_empty() {
         let _ = writeln!(
             std::io::stderr(),
             "Warning: Delta discontinuity detected in Codex text item. \
+             Provider sent non-monotonic content. \
+             Last: {:?} (len={}), Current: {:?} (len={})",
+            &last_rendered[..last_rendered.len().min(40)],
+            last_rendered.len(),
+            &sanitized[..sanitized.len().min(40)],
+            sanitized.len()
+        );
+    }
+}
+
+#[cfg(debug_assertions)]
+fn warn_if_delta_discontinuity_thinking(new_suffix: &str, last_rendered: &str, sanitized: &str) {
+    if new_suffix.is_empty() && !last_rendered.is_empty() && !sanitized.is_empty() {
+        let _ = writeln!(
+            std::io::stderr(),
+            "Warning: Delta discontinuity detected in Codex thinking item. \
              Provider sent non-monotonic content. \
              Last: {:?} (len={}), Current: {:?} (len={})",
             &last_rendered[..last_rendered.len().min(40)],
@@ -214,6 +217,16 @@ fn render_reasoning_delta_full_mode(
     }
 }
 
+fn emit_reasoning_suffix(ctx: &EventHandlerContext<'_>, new_suffix: &str) -> String {
+    if new_suffix.is_empty() {
+        String::new()
+    } else {
+        // Emit only the new suffix (no prefix, no cursor movement)
+        // Use cyan color like ThinkingDeltaRenderer
+        format!("{}{}{}", ctx.colors.cyan(), new_suffix, ctx.colors.reset())
+    }
+}
+
 fn render_reasoning_subsequent_delta(
     ctx: &EventHandlerContext<'_>,
     key: String,
@@ -224,34 +237,14 @@ fn render_reasoning_subsequent_delta(
     let new_suffix =
         crate::json_parser::delta_display::compute_append_only_suffix(&last_rendered, &sanitized);
 
-    // Detect discontinuities in thinking deltas
-    if new_suffix.is_empty() && !last_rendered.is_empty() && !sanitized.is_empty() {
-        #[cfg(debug_assertions)]
-        {
-            let _ = writeln!(
-                std::io::stderr(),
-                "Warning: Delta discontinuity detected in Codex thinking item. \
-             Provider sent non-monotonic content. \
-             Last: {:?} (len={}), Current: {:?} (len={})",
-                &last_rendered[..last_rendered.len().min(40)],
-                last_rendered.len(),
-                &sanitized[..sanitized.len().min(40)],
-                sanitized.len()
-            );
-        }
-    }
+    #[cfg(debug_assertions)]
+    warn_if_delta_discontinuity_thinking(new_suffix, &last_rendered, &sanitized);
 
     ctx.with_last_rendered_content_mut(|v| {
         v.insert(key, sanitized.clone());
     });
 
-    if new_suffix.is_empty() {
-        String::new()
-    } else {
-        // Emit only the new suffix (no prefix, no cursor movement)
-        // Use cyan color like ThinkingDeltaRenderer
-        format!("{}{}{}", ctx.colors.cyan(), new_suffix, ctx.colors.reset())
-    }
+    emit_reasoning_suffix(ctx, new_suffix)
 }
 
 fn text_completion_for_mode(ctx: &EventHandlerContext<'_>) -> String {

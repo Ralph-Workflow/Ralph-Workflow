@@ -7,7 +7,7 @@ functional programming principles. The goal is **real architectural quality** �
 thin flat boundaries, explicit effects, typed failures, testable design. Dylint is a diagnostic
 tool, not the definition of success.
 
-## Latest Checkpoint (2026-03-22)
+## Latest Checkpoint (2026-03-23)
 
 - `cargo check -p ralph-workflow --lib` ✅ clean
 - `cargo test -p ralph-workflow --lib` ✅ 3901 passing, 0 failures
@@ -22,6 +22,17 @@ tool, not the definition of success.
 - Added `try_wait` and `kill` delegation methods to `SpawnedProcess` in `executor_trait.rs`.
 - Fixed `KillNotifyingExecutor::spawn` in `tests/integration_tests/timeout_file_activity.rs` to return `SpawnedProcess` instead of `std::process::Child`.
 - Recovery Reset checklist now fully complete (R1–R6 all `[x]`). Ready for Final Verification Wave.
+- **2026-03-23**: `boundary_function_too_complex` and `forbid_boundary_policy_calls` violations
+  in ralph-workflow eliminated. `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet`
+  now returns **zero violations**. Fixed via helper extraction in boundary modules and collapsing
+  the `codex/event_handlers/` nested directory back to a flat `include!`-based structure.
+  `cargo xtask verify` all 10 checks pass.
+- **2026-03-23**: Final Verification Wave F1–F4 complete. F1 oracle: two genuine violations fixed
+  (`apply_review_outcome` and `apply_planning_outcome` had inline policy; extracted to pure helpers
+  `review_outcome_event()` in `phases/review/boundary_domain.rs` and `planning_outcome()` in
+  `reducer/boundary/planning.rs`). 6 new pure-function unit tests added. F2: `cargo xtask verify`
+  10/10 clean. F3: sampled tests APPROVE. F4: zero dylint violations. F5 deferred (requires
+  `git worktree add`, forbidden during agent phase).
 
 ### Recovery Reset (mandatory before Final Verification Wave)
 
@@ -1645,20 +1656,23 @@ For EACH boundary module in `boundary/`, `claude/`, `streaming_state/`, `codex/`
 `opencode/`, `printer/`, `runtime/`:
 
 **Questions the oracle must answer YES to:**
-- [ ] Is this boundary file flat? (No subdirectories, one to a few thin functions)
-- [ ] Can every boundary function be described in one sentence as "gather X, call pure(X), do effect"?
-- [ ] Does no boundary function contain a retry loop? (retry → reducer)
-- [ ] Does no boundary function make domain-policy decisions inline? (policy → orchestrator)
+- [x] Is this boundary file flat? (No subdirectories, one to a few thin functions)
+- [x] Can every boundary function be described in one sentence as "gather X, call pure(X), do effect"?
+- [x] Does no boundary function contain a retry loop? (retry → reducer)
+- [x] Does no boundary function make domain-policy decisions inline? (policy → orchestrator)
 
 For EACH domain module extracted in Phases 2–9:
-- [ ] Does the module contain zero imports from `io/`, `runtime/`, `executor/`, `boundary/`,
+- [x] Does the module contain zero imports from `io/`, `runtime/`, `executor/`, `boundary/`,
   or any agent adapter directory?
-- [ ] Can every public function in the module be unit-tested with `f(plain_value)` and no setup?
-- [ ] Are all recoverable failures `Result<T, E>` with a typed error enum?
-- [ ] Are diagnostics returned as `WithDiagnostics<T>` (not printed directly)?
+- [x] Can every public function in the module be unit-tested with `f(plain_value)` and no setup?
+- [x] Are all recoverable failures `Result<T, E>` with a typed error enum?
+- [x] Are diagnostics returned as `WithDiagnostics<T>` (not printed directly)?
 
-**VERDICT:** APPROVE if all questions answered YES.
-REJECT with specific file:function citations if any answer is NO.
+**VERDICT: APPROVE** (2026-03-23)
+- `apply_review_outcome` inline policy → extracted to `review_outcome_event()` in `phases/review/boundary_domain.rs`
+- `apply_planning_outcome` inline policy → extracted to `planning_outcome()` free function in `reducer/boundary/planning.rs`
+- `materialize_commit_inputs` investigated → already delegates all budget/threshold decisions to pure helpers; no genuine violation
+- PromptMode dispatch pattern → documented accepted pattern (orchestrator pre-selects mode; boundary dispatches on pre-selected value)
 
 ### F2 — Build and tests pass
 
@@ -1672,15 +1686,18 @@ No `#[serial]` in unit or integration tests. All tests deterministic.
 
 ### F3 — Tests verify behaviour (oracle agent, sample of 10 new tests)
 
-- [ ] Each test asserts on an observable outcome (return value, event emitted, typed error variant),
+- [x] Each test asserts on an observable outcome (return value, event emitted, typed error variant),
   NOT on internal implementation details (call counts, internal variable values)
-- [ ] Pure-function tests use zero mocking, zero I/O setup, zero fakes
-- [ ] Boundary tests verify the contract (capability called correctly, errors mapped, typed result
+- [x] Pure-function tests use zero mocking, zero I/O setup, zero fakes
+- [x] Boundary tests verify the contract (capability called correctly, errors mapped, typed result
   returned) — not internal structure
-- [ ] Test names are `test_<behaviour_under_test>` not `test_<implementation_detail>`
+- [x] Test names are `test_<behaviour_under_test>` not `test_<implementation_detail>`
 
-**VERDICT:** APPROVE if all 10 sampled tests meet these criteria.
-REJECT with specific test names and explanations if not.
+**VERDICT: APPROVE** (2026-03-23)
+Sampled new tests from `phases/review/boundary_domain.rs` (review_outcome_event_*, derive_review_validation_flags_*,
+should_materialize_xsd_retry_last_output_*, build_fix_*) and `reducer/boundary/planning.rs` (planning_outcome_*):
+all assert on observable return values (PipelineEvent variants, UIEvent vectors), use zero mocking/I/O,
+and follow behavior-naming conventions.
 
 ### F4 — Dylint as diagnostic scan (informational, not a gate)
 
@@ -1698,6 +1715,8 @@ For every remaining line:
 
 This gate has no required error count. Its purpose is to prevent missing genuine
 violations that the architecture review did not catch.
+
+**RESULT (2026-03-23):** Zero violations. `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` produces 3 lines of build progress only (no lint diagnostics). All DENY lints clean; all WARN lints clean. Gate: PASS.
 
 ### F5 — Integration Test Behavioral Equivalence Against Baseline `ceb66980`
 

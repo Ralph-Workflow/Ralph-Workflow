@@ -150,23 +150,33 @@ fn find_conditional_block(result: &str, if_start: usize) -> Option<(usize, usize
     Some((tag_close, endif_abs, full_match))
 }
 
+fn eval_conditional_body(
+    condition: &str,
+    body: &str,
+    else_body: Option<&str>,
+    variables: &HashMap<&str, String>,
+) -> String {
+    if eval_conditional(condition, variables) {
+        body.trim().to_string()
+    } else {
+        else_body.map(str::trim).unwrap_or("").to_string()
+    }
+}
+
 fn eval_conditional_replacement(
     condition: &str,
     body_and_maybe_else: &str,
     variables: &HashMap<&str, String>,
 ) -> String {
     if let Some(else_offset) = body_and_maybe_else.find("{% else %}") {
-        let then_body = &body_and_maybe_else[..else_offset];
-        let else_body = &body_and_maybe_else[else_offset + 10..];
-        if eval_conditional(condition, variables) {
-            then_body.trim().to_string()
-        } else {
-            else_body.trim().to_string()
-        }
-    } else if eval_conditional(condition, variables) {
-        body_and_maybe_else.trim().to_string()
+        eval_conditional_body(
+            condition,
+            &body_and_maybe_else[..else_offset],
+            Some(&body_and_maybe_else[else_offset + 10..]),
+            variables,
+        )
     } else {
-        String::new()
+        eval_conditional_body(condition, body_and_maybe_else, None, variables)
     }
 }
 
@@ -191,57 +201,103 @@ struct VarSubResult {
     unsubstituted: Option<String>,
 }
 
+fn determine_substitution_source(value: &str, has_default: bool) -> SubstitutionSource {
+    if value.is_empty() {
+        SubstitutionSource::EmptyWithDefault
+    } else if has_default {
+        SubstitutionSource::Default
+    } else {
+        SubstitutionSource::Value
+    }
+}
+
+fn sub_result_with_value(
+    result: &str,
+    token: &str,
+    name: &str,
+    value: &str,
+    source: SubstitutionSource,
+) -> VarSubResult {
+    VarSubResult {
+        new_result: result.replace(token, value),
+        entry: Some(SubstitutionEntry {
+            name: name.to_string(),
+            source,
+        }),
+        unsubstituted: None,
+    }
+}
+
+fn sub_result_with_default(
+    result: &str,
+    token: &str,
+    name: &str,
+    default_val: String,
+) -> VarSubResult {
+    VarSubResult {
+        new_result: result.replace(token, &default_val),
+        entry: Some(SubstitutionEntry {
+            name: name.to_string(),
+            source: SubstitutionSource::Default,
+        }),
+        unsubstituted: None,
+    }
+}
+
+fn sub_result_unresolved(result: &str, name: &str) -> VarSubResult {
+    VarSubResult {
+        new_result: result.to_string(),
+        entry: None,
+        unsubstituted: Some(name.to_string()),
+    }
+}
+
+fn sub_result_unresolved_none(result: &str) -> VarSubResult {
+    VarSubResult {
+        new_result: result.to_string(),
+        entry: None,
+        unsubstituted: None,
+    }
+}
+
+fn resolve_variable_substitution(
+    result: &str,
+    var: &crate::prompts::template_validator::VariableInfo,
+    variables: &HashMap<&str, String>,
+    token: &str,
+) -> VarSubResult {
+    if let Some(value) = variables.get(var.name.as_str()) {
+        let source = determine_substitution_source(value, var.has_default);
+        sub_result_with_value(result, token, &var.name, value, source)
+    } else if var.has_default {
+        let default_val = var.default_value.clone().unwrap_or_default();
+        sub_result_with_default(result, token, &var.name, default_val)
+    } else {
+        sub_result_unresolved(result, &var.name)
+    }
+}
+
+fn find_variable_token(result: &str, placeholder: &str, name: &str) -> Option<String> {
+    let raw_token = format!("{{{{{}}}}}", placeholder);
+    let clean_token = format!("{{{{{}}}}}", name);
+    if result.contains(&raw_token) {
+        Some(raw_token)
+    } else if result.contains(&clean_token) {
+        Some(clean_token)
+    } else {
+        None
+    }
+}
+
 fn substitute_one_variable(
     result: &str,
     var: &crate::prompts::template_validator::VariableInfo,
     variables: &HashMap<&str, String>,
 ) -> VarSubResult {
-    let raw_token = format!("{{{{{}}}}}", var.placeholder);
-    let clean_token = format!("{{{{{}}}}}", var.name);
-    let token_to_replace = if result.contains(&raw_token) {
-        raw_token
-    } else if result.contains(&clean_token) {
-        clean_token
-    } else {
-        return VarSubResult {
-            new_result: result.to_string(),
-            entry: None,
-            unsubstituted: None,
-        };
-    };
-    if let Some(value) = variables.get(var.name.as_str()) {
-        let source = if value.is_empty() {
-            crate::prompts::template_validator::SubstitutionSource::EmptyWithDefault
-        } else if var.has_default {
-            crate::prompts::template_validator::SubstitutionSource::Default
-        } else {
-            crate::prompts::template_validator::SubstitutionSource::Value
-        };
-        VarSubResult {
-            new_result: result.replace(&token_to_replace, value),
-            entry: Some(SubstitutionEntry {
-                name: var.name.clone(),
-                source,
-            }),
-            unsubstituted: None,
-        }
-    } else if var.has_default {
-        let default_val = var.default_value.clone().unwrap_or_default();
-        VarSubResult {
-            new_result: result.replace(&token_to_replace, &default_val),
-            entry: Some(SubstitutionEntry {
-                name: var.name.clone(),
-                source: crate::prompts::template_validator::SubstitutionSource::Default,
-            }),
-            unsubstituted: None,
-        }
-    } else {
-        VarSubResult {
-            new_result: result.to_string(),
-            entry: None,
-            unsubstituted: Some(var.name.clone()),
-        }
-    }
+    find_variable_token(result, &var.placeholder, &var.name).map_or_else(
+        || sub_result_unresolved_none(result),
+        |token| resolve_variable_substitution(result, var, variables, &token),
+    )
 }
 
 fn build_circular_reference_chain(visited: &[String]) -> String {
@@ -382,6 +438,26 @@ impl Template {
         Ok(())
     }
 
+    fn process_rendered_content(
+        result: &str,
+        variables: &HashMap<&str, String>,
+        literal_segments: &mut Vec<LiteralSegment>,
+    ) -> Result<String, TemplateError> {
+        let (loop_result, loop_logs) =
+            Self::process_loops_with_log(result, variables, literal_segments);
+        let after_cond = Self::process_conditionals(&loop_result, variables);
+        let (result_after_sub, _substituted, unsubstituted) =
+            Self::substitute_variables_allow_empty(&after_cond, variables);
+        let missing = collect_missing_from_loop_logs(&loop_logs, &after_cond, unsubstituted);
+        if let Some(first_missing) = missing.first() {
+            return Err(TemplateError::MissingVariable(first_missing.clone()));
+        }
+        Ok(Self::restore_literal_segments(
+            &result_after_sub,
+            literal_segments,
+        ))
+    }
+
     fn render_with_partials_recursive(
         &self,
         variables: &HashMap<&str, String>,
@@ -400,19 +476,7 @@ impl Template {
                 visited,
             )?;
         }
-        let (loop_result, loop_logs) =
-            Self::process_loops_with_log(&result, variables, &mut literal_segments);
-        let result = Self::process_conditionals(&loop_result, variables);
-        let (result_after_sub, _substituted, unsubstituted) =
-            Self::substitute_variables_allow_empty(&result, variables);
-        let missing = collect_missing_from_loop_logs(&loop_logs, &result, unsubstituted);
-        if let Some(first_missing) = missing.first() {
-            return Err(TemplateError::MissingVariable(first_missing.clone()));
-        }
-        Ok(Self::restore_literal_segments(
-            &result_after_sub,
-            &literal_segments,
-        ))
+        Self::process_rendered_content(&result, variables, &mut literal_segments)
     }
 
     fn expand_one_partial_with_log(

@@ -24,82 +24,8 @@ impl MainEffectHandler {
     ) -> Result<EffectResult> {
         ensure_tmp_dir(ctx)?;
 
-        let xsd_retry_events: Option<Vec<PipelineEvent>> =
-            if matches!(prompt_mode, PromptMode::XsdRetry) {
-                Some(self.materialize_xsd_retry_last_output(ctx, pass)?)
-            } else {
-                None
-            };
-
-        let materialized_inputs = self
-            .state
-            .prompt_inputs
-            .review
-            .as_ref()
-            .filter(|p| p.pass == pass);
-
-        let baseline_oid_for_prompts = read_baseline_oid_for_prompts(ctx)?;
-
-        let (plan_inline, diff_inline) =
-            if matches!(prompt_mode, PromptMode::Normal | PromptMode::SameAgentRetry) {
-                let Some(inputs) = materialized_inputs else {
-                    return Err(ErrorEvent::ReviewInputsNotMaterialized { pass }.into());
-                };
-                let plan_inline = resolve_plan_inline(ctx, &inputs.plan.representation)?;
-                let diff_inline = resolve_diff_inline(
-                    ctx,
-                    &inputs.diff.representation,
-                    &baseline_oid_for_prompts,
-                )?;
-                (plan_inline, diff_inline)
-            } else {
-                (None, None)
-            };
-
-        let continuation_state = &self.state.continuation;
-        let branch_result = match prompt_mode {
-            PromptMode::XsdRetry => build_xsd_retry_prompt(
-                self,
-                ctx,
-                pass,
-                continuation_state,
-                xsd_retry_events.as_ref(),
-            ),
-            PromptMode::SameAgentRetry => {
-                let Some(inputs) = materialized_inputs else {
-                    return Err(ErrorEvent::ReviewInputsNotMaterialized { pass }.into());
-                };
-                build_same_agent_retry_prompt(
-                    self,
-                    ctx,
-                    pass,
-                    continuation_state,
-                    inputs,
-                    ReviewInlineContent {
-                        plan_inline,
-                        diff_inline,
-                        baseline_oid: &baseline_oid_for_prompts,
-                    },
-                )
-            }
-            PromptMode::Normal => {
-                let Some(inputs) = materialized_inputs else {
-                    return Err(ErrorEvent::ReviewInputsNotMaterialized { pass }.into());
-                };
-                build_normal_prompt(
-                    self,
-                    ctx,
-                    pass,
-                    inputs,
-                    plan_inline,
-                    diff_inline,
-                    &baseline_oid_for_prompts,
-                )
-            }
-            PromptMode::Continuation => {
-                return Err(ErrorEvent::ReviewContinuationNotSupported.into());
-            }
-        };
+        let xsd_retry_events = collect_xsd_retry_events(self, ctx, pass, prompt_mode)?;
+        let baseline_oid = read_baseline_oid_for_prompts(ctx)?;
         let (
             prompt_key,
             review_prompt_xml,
@@ -107,9 +33,17 @@ impl MainEffectHandler {
             template_name,
             prompt_content_id,
             rendered_log,
-        ) = match branch_result {
+        ) = match dispatch_prompt_mode(
+            self,
+            ctx,
+            pass,
+            prompt_mode,
+            &baseline_oid,
+            xsd_retry_events.as_ref(),
+        ) {
             Ok(tuple) => tuple,
-            Err(early) => return Ok(*early),
+            Err(DispatchError::EarlyReturn(early)) => return Ok(*early),
+            Err(DispatchError::Other(e)) => return Err(e),
         };
 
         write_review_prompt_file(ctx, &review_prompt_xml);
@@ -123,9 +57,7 @@ impl MainEffectHandler {
             prompt_content_id,
             rendered_log,
         );
-        let result = attach_xsd_retry_events(result, xsd_retry_events);
-
-        Ok(result)
+        Ok(attach_xsd_retry_events(result, xsd_retry_events))
     }
 }
 
@@ -159,27 +91,124 @@ fn read_baseline_oid_for_prompts(ctx: &PhaseContext<'_>) -> Result<String> {
     }
 }
 
+fn collect_xsd_retry_events(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    pass: u32,
+    prompt_mode: PromptMode,
+) -> Result<Option<Vec<PipelineEvent>>> {
+    if matches!(prompt_mode, PromptMode::XsdRetry) {
+        handler
+            .materialize_xsd_retry_last_output(ctx, pass)
+            .map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+fn dispatch_prompt_mode(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    pass: u32,
+    prompt_mode: PromptMode,
+    baseline_oid: &str,
+    xsd_retry_events: Option<&Vec<PipelineEvent>>,
+) -> std::result::Result<BranchResult, DispatchError> {
+    let materialized_inputs = handler
+        .state
+        .prompt_inputs
+        .review
+        .as_ref()
+        .filter(|p| p.pass == pass);
+    let continuation_state = &handler.state.continuation;
+    match prompt_mode {
+        PromptMode::XsdRetry => {
+            build_xsd_retry_prompt(handler, ctx, pass, continuation_state, xsd_retry_events)
+                .map_err(DispatchError::EarlyReturn)
+        }
+        PromptMode::SameAgentRetry => {
+            let Some(inputs) = materialized_inputs else {
+                return Err(DispatchError::Other(
+                    ErrorEvent::ReviewInputsNotMaterialized { pass }.into(),
+                ));
+            };
+            let plan_inline = resolve_plan_inline(ctx, &inputs.plan.representation)
+                .map_err(DispatchError::Other)?;
+            let diff_inline = resolve_diff_inline(ctx, &inputs.diff.representation, baseline_oid)
+                .map_err(DispatchError::Other)?;
+            build_same_agent_retry_prompt(
+                handler,
+                ctx,
+                pass,
+                continuation_state,
+                inputs,
+                ReviewInlineContent {
+                    plan_inline,
+                    diff_inline,
+                    baseline_oid,
+                },
+            )
+            .map_err(DispatchError::EarlyReturn)
+        }
+        PromptMode::Normal => {
+            let Some(inputs) = materialized_inputs else {
+                return Err(DispatchError::Other(
+                    ErrorEvent::ReviewInputsNotMaterialized { pass }.into(),
+                ));
+            };
+            let plan_inline = resolve_plan_inline(ctx, &inputs.plan.representation)
+                .map_err(DispatchError::Other)?;
+            let diff_inline = resolve_diff_inline(ctx, &inputs.diff.representation, baseline_oid)
+                .map_err(DispatchError::Other)?;
+            build_normal_prompt(
+                handler,
+                ctx,
+                pass,
+                inputs,
+                plan_inline,
+                diff_inline,
+                baseline_oid,
+            )
+            .map_err(DispatchError::EarlyReturn)
+        }
+        PromptMode::Continuation => Err(DispatchError::Other(
+            ErrorEvent::ReviewContinuationNotSupported.into(),
+        )),
+    }
+}
+
+enum DispatchError {
+    EarlyReturn(Box<EffectResult>),
+    Other(anyhow::Error),
+}
+
+fn read_workspace_file_or_fallback(
+    ctx: &PhaseContext<'_>,
+    path: &str,
+    fallback: String,
+) -> Result<String> {
+    match ctx.workspace.read(Path::new(path)) {
+        Ok(content) => Ok(content),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(fallback),
+        Err(err) => Err(ErrorEvent::WorkspaceReadFailed {
+            path: path.to_string(),
+            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        }
+        .into()),
+    }
+}
+
 fn resolve_plan_inline(
     ctx: &PhaseContext<'_>,
     representation: &PromptInputRepresentation,
 ) -> Result<Option<String>> {
     match representation {
-        PromptInputRepresentation::Inline => {
-            let plan = match ctx.workspace.read(Path::new(".agent/PLAN.md")) {
-                Ok(plan) => plan,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                    MainEffectHandler::sentinel_plan_content(ctx.config.isolation_mode)
-                }
-                Err(err) => {
-                    return Err(ErrorEvent::WorkspaceReadFailed {
-                        path: ".agent/PLAN.md".to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    }
-                    .into());
-                }
-            };
-            Ok(Some(plan))
-        }
+        PromptInputRepresentation::Inline => read_workspace_file_or_fallback(
+            ctx,
+            ".agent/PLAN.md",
+            MainEffectHandler::sentinel_plan_content(ctx.config.isolation_mode),
+        )
+        .map(Some),
         PromptInputRepresentation::FileReference { .. } => Ok(None),
     }
 }
@@ -190,22 +219,12 @@ fn resolve_diff_inline(
     baseline_oid: &str,
 ) -> Result<Option<String>> {
     match representation {
-        PromptInputRepresentation::Inline => {
-            let diff = match ctx.workspace.read(Path::new(".agent/DIFF.backup")) {
-                Ok(diff) => diff,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                    MainEffectHandler::fallback_diff_instructions(baseline_oid)
-                }
-                Err(err) => {
-                    return Err(ErrorEvent::WorkspaceReadFailed {
-                        path: ".agent/DIFF.backup".to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    }
-                    .into());
-                }
-            };
-            Ok(Some(diff))
-        }
+        PromptInputRepresentation::Inline => read_workspace_file_or_fallback(
+            ctx,
+            ".agent/DIFF.backup",
+            MainEffectHandler::fallback_diff_instructions(baseline_oid),
+        )
+        .map(Some),
         PromptInputRepresentation::FileReference { .. } => Ok(None),
     }
 }
@@ -285,13 +304,20 @@ fn build_xsd_retry_rendered_log(
     was_replayed: bool,
     xsd_retry_events: Option<&Vec<PipelineEvent>>,
 ) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
-    use crate::agents::AgentRole;
-    use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
-
     if was_replayed {
         return Ok(None);
     }
+    render_and_check_xsd_retry_log(ctx, xsd_error, prompt_key, was_replayed, xsd_retry_events)
+}
 
+fn render_and_check_xsd_retry_log(
+    ctx: &PhaseContext<'_>,
+    xsd_error: &str,
+    prompt_key: &str,
+    was_replayed: bool,
+    xsd_retry_events: Option<&Vec<PipelineEvent>>,
+) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
+    use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
     let rendered = prompt_review_xsd_retry_with_context_files_and_log(
         ctx.template_context,
         xsd_error,
@@ -301,30 +327,24 @@ fn build_xsd_retry_rendered_log(
     if rendered.log.is_complete() {
         return Ok(Some(rendered.log));
     }
-    let missing = rendered.log.unsubstituted.clone();
-    let result = EffectResult::event(PipelineEvent::template_rendered(
-        crate::reducer::event::PipelinePhase::Review,
-        "review_xsd_retry".to_string(),
+    let result = build_incomplete_template_result(
         rendered.log,
-    ))
-    .with_ui_event(UIEvent::PromptReplayHit {
-        key: prompt_key.to_string(),
+        "review_xsd_retry",
+        prompt_key,
         was_replayed,
-    })
-    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-        AgentRole::Reviewer,
-        "review_xsd_retry".to_string(),
-        missing,
-        Vec::new(),
-    ));
-    let result = match xsd_retry_events {
-        None => result,
-        Some(events) => events
-            .iter()
-            .cloned()
-            .fold(result, |r, ev| r.with_additional_event(ev)),
-    };
-    Err(Box::new(result))
+    );
+    Err(Box::new(fold_xsd_retry_events(result, xsd_retry_events)))
+}
+
+fn fold_xsd_retry_events(
+    result: EffectResult,
+    xsd_retry_events: Option<&Vec<PipelineEvent>>,
+) -> EffectResult {
+    xsd_retry_events
+        .into_iter()
+        .flatten()
+        .cloned()
+        .fold(result, |r, ev| r.with_additional_event(ev))
 }
 
 type BranchResult = (
@@ -336,10 +356,131 @@ type BranchResult = (
     Option<crate::prompts::SubstitutionLog>,
 );
 
+fn build_incomplete_template_result(
+    log: crate::prompts::SubstitutionLog,
+    template_name: &str,
+    prompt_key: &str,
+    was_replayed: bool,
+) -> EffectResult {
+    use crate::agents::AgentRole;
+    let missing = log.unsubstituted.clone();
+    EffectResult::event(PipelineEvent::template_rendered(
+        crate::reducer::event::PipelinePhase::Review,
+        template_name.to_string(),
+        log,
+    ))
+    .with_ui_event(UIEvent::PromptReplayHit {
+        key: prompt_key.to_string(),
+        was_replayed,
+    })
+    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+        AgentRole::Reviewer,
+        template_name.to_string(),
+        missing,
+        Vec::new(),
+    ))
+}
+
+fn validate_review_xml_template(
+    ctx: &PhaseContext<'_>,
+    refs: &PromptContentReferences,
+    prompt_key: &str,
+    was_replayed: bool,
+    should_validate: bool,
+) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
+    if !should_validate {
+        return Ok(None);
+    }
+    render_and_check_review_xml_log(ctx, refs, prompt_key, was_replayed)
+}
+
+fn render_and_check_review_xml_log(
+    ctx: &PhaseContext<'_>,
+    refs: &PromptContentReferences,
+    prompt_key: &str,
+    was_replayed: bool,
+) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
+    let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
+        ctx.template_context,
+        refs,
+        ctx.workspace,
+        "review_xml",
+    );
+    if rendered.log.is_complete() {
+        return Ok(Some(rendered.log));
+    }
+    Err(Box::new(build_incomplete_template_result(
+        rendered.log,
+        "review_xml",
+        prompt_key,
+        was_replayed,
+    )))
+}
+
 struct ReviewInlineContent<'a> {
     plan_inline: Option<String>,
     diff_inline: Option<String>,
     baseline_oid: &'a str,
+}
+
+fn resolve_xsd_error_text(continuation_state: &crate::reducer::state::ContinuationState) -> &str {
+    continuation_state
+        .last_review_xsd_error
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("XML output failed validation. Provide valid XML output.")
+}
+
+fn compute_xsd_last_output_id(ctx: &PhaseContext<'_>) -> String {
+    let (last_output, last_output_id_seed) = read_last_output_for_xsd_retry(ctx);
+    last_output_id_seed.map_or_else(
+        || sha256_hex_str(&last_output),
+        |seed| sha256_hex_str(&seed),
+    )
+}
+
+fn build_xsd_retry_scope_key(
+    pass: u32,
+    invalid_output_attempts: u32,
+    recovery_epoch: u32,
+) -> crate::prompts::PromptScopeKey {
+    use crate::prompts::{PromptScopeKey, RetryMode};
+    PromptScopeKey::for_review(
+        pass,
+        RetryMode::Xsd {
+            count: invalid_output_attempts,
+        },
+        recovery_epoch,
+    )
+}
+
+fn generate_xsd_retry_prompt_text(ctx: &PhaseContext<'_>, xsd_error: &str) -> String {
+    use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
+    let rendered = prompt_review_xsd_retry_with_context_files_and_log(
+        ctx.template_context,
+        xsd_error,
+        ctx.workspace,
+        "review_xsd_retry",
+    );
+    rendered.content
+}
+
+fn get_xsd_retry_prompt_and_content_id(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    scope_key: &crate::prompts::PromptScopeKey,
+    xsd_error: &str,
+) -> (String, bool, String) {
+    use crate::prompts::get_stored_or_generate_prompt;
+    let current_prompt_content_id =
+        build_review_xsd_retry_prompt_content_id(xsd_error, &compute_xsd_last_output_id(ctx));
+    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+        scope_key,
+        &handler.state.prompt_history,
+        Some(&current_prompt_content_id),
+        || generate_xsd_retry_prompt_text(ctx, xsd_error),
+    );
+    (prompt, was_replayed, current_prompt_content_id)
 }
 
 fn build_xsd_retry_prompt(
@@ -349,62 +490,135 @@ fn build_xsd_retry_prompt(
     continuation_state: &crate::reducer::state::ContinuationState,
     xsd_retry_events: Option<&Vec<PipelineEvent>>,
 ) -> std::result::Result<BranchResult, Box<EffectResult>> {
-    use crate::prompts::{
-        get_stored_or_generate_prompt, prompt_review_xsd_retry_with_context_files_and_log,
-        PromptScopeKey, RetryMode,
-    };
-
-    let scope_key = PromptScopeKey::for_review(
+    let scope_key = build_xsd_retry_scope_key(
         pass,
-        RetryMode::Xsd {
-            count: continuation_state.invalid_output_attempts,
-        },
+        continuation_state.invalid_output_attempts,
         handler.state.recovery_epoch,
     );
-    let prompt_key = scope_key.to_string();
-    let xsd_error = continuation_state
-        .last_review_xsd_error
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("XML output failed validation. Provide valid XML output.");
-
-    let (last_output, last_output_id_seed) = read_last_output_for_xsd_retry(ctx);
-    let last_output_id = last_output_id_seed.map_or_else(
-        || sha256_hex_str(&last_output),
-        |seed| sha256_hex_str(&seed),
-    );
-    let current_prompt_content_id =
-        build_review_xsd_retry_prompt_content_id(xsd_error, &last_output_id);
-
-    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-        &scope_key,
-        &handler.state.prompt_history,
-        Some(&current_prompt_content_id),
-        || {
-            let rendered = prompt_review_xsd_retry_with_context_files_and_log(
-                ctx.template_context,
-                xsd_error,
-                ctx.workspace,
-                "review_xsd_retry",
-            );
-            rendered.content
-        },
-    );
-
+    let xsd_error = resolve_xsd_error_text(continuation_state);
+    let (prompt_key, prompt, was_replayed, content_id) =
+        get_xsd_retry_keyed_prompt(handler, ctx, scope_key, xsd_error);
     let rendered_log =
         build_xsd_retry_rendered_log(ctx, xsd_error, &prompt_key, was_replayed, xsd_retry_events)?;
-
     Ok((
         prompt_key,
         prompt,
         was_replayed,
         "review_xsd_retry",
-        Some(current_prompt_content_id),
+        Some(content_id),
         rendered_log,
     ))
 }
 
+fn get_xsd_retry_keyed_prompt(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    scope_key: crate::prompts::PromptScopeKey,
+    xsd_error: &str,
+) -> (String, String, bool, String) {
+    let prompt_key = scope_key.to_string();
+    let (prompt, was_replayed, content_id) =
+        get_xsd_retry_prompt_and_content_id(handler, ctx, &scope_key, xsd_error);
+    (prompt_key, prompt, was_replayed, content_id)
+}
+
 // --- Same-agent retry prompt branch ---
+
+fn build_same_agent_content_refs(
+    ctx: &PhaseContext<'_>,
+    inputs: &crate::reducer::state::MaterializedReviewInputs,
+    inline: ReviewInlineContent<'_>,
+) -> PromptContentReferences {
+    let plan_ref = build_plan_ref(inputs, inline.plan_inline, ctx.config.isolation_mode);
+    let diff_ref = build_diff_ref(inputs, inline.diff_inline, inline.baseline_oid);
+    PromptContentReferences {
+        prompt: None,
+        plan: Some(plan_ref),
+        diff: Some(diff_ref),
+    }
+}
+
+fn build_same_agent_scope_and_content_id(
+    handler: &MainEffectHandler,
+    pass: u32,
+    continuation_state: &crate::reducer::state::ContinuationState,
+    inputs: &crate::reducer::state::MaterializedReviewInputs,
+    baseline_oid: &str,
+) -> (crate::prompts::PromptScopeKey, String, String) {
+    use crate::prompts::{PromptScopeKey, RetryMode};
+    let scope_key = PromptScopeKey::for_review(
+        pass,
+        RetryMode::SameAgent {
+            count: continuation_state.same_agent_retry_count,
+        },
+        handler.state.recovery_epoch,
+    );
+    let prompt_key = scope_key.to_string();
+    let content_id = build_review_prompt_content_id(
+        "review_same_agent_retry",
+        &inputs.plan.content_id_sha256,
+        &inputs.diff.content_id_sha256,
+        baseline_oid,
+        &handler.state.agent_chain.consumer_signature_sha256(),
+    );
+    (scope_key, prompt_key, content_id)
+}
+
+fn resolve_same_agent_base_prompt(
+    ctx: &PhaseContext<'_>,
+    refs: &PromptContentReferences,
+) -> (String, bool) {
+    use crate::prompts::prompt_review_xml_with_references;
+    ctx.workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .map_or_else(
+            |_| {
+                (
+                    prompt_review_xml_with_references(ctx.template_context, refs, ctx.workspace),
+                    true,
+                )
+            },
+            |previous_prompt| {
+                let previous_base =
+                    crate::reducer::boundary::retry_guidance::strip_existing_same_agent_retry_preamble(
+                        &previous_prompt,
+                    )
+                    .to_string();
+                let freshly_rendered =
+                    prompt_review_xml_with_references(ctx.template_context, refs, ctx.workspace);
+                if previous_base == freshly_rendered {
+                    (previous_base, false)
+                } else {
+                    (freshly_rendered, true)
+                }
+            },
+        )
+}
+
+fn get_same_agent_prompt_and_validate_flag(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    scope_key: &crate::prompts::PromptScopeKey,
+    content_id: &str,
+    refs: &PromptContentReferences,
+    retry_preamble: &str,
+) -> (String, bool, bool) {
+    use crate::prompts::get_stored_or_generate_prompt;
+    let local_should_validate = std::cell::Cell::new(true);
+    let retry_preamble = retry_preamble.to_string();
+    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+        scope_key,
+        &handler.state.prompt_history,
+        Some(content_id),
+        || {
+            let (base_prompt, should_val) = resolve_same_agent_base_prompt(ctx, refs);
+            local_should_validate.set(should_val);
+            format!("{retry_preamble}\n{base_prompt}")
+        },
+    );
+    let should_validate = !was_replayed && local_should_validate.get();
+    (prompt, was_replayed, should_validate)
+}
 
 fn build_same_agent_retry_prompt(
     handler: &MainEffectHandler,
@@ -414,115 +628,32 @@ fn build_same_agent_retry_prompt(
     inputs: &crate::reducer::state::MaterializedReviewInputs,
     inline: ReviewInlineContent<'_>,
 ) -> std::result::Result<BranchResult, Box<EffectResult>> {
-    use crate::agents::AgentRole;
-    use crate::prompts::{
-        get_stored_or_generate_prompt, prompt_review_xml_with_references, PromptScopeKey, RetryMode,
-    };
-
     let retry_preamble =
         crate::reducer::boundary::retry_guidance::same_agent_retry_preamble(continuation_state);
-    let plan_ref = build_plan_ref(inputs, inline.plan_inline, ctx.config.isolation_mode);
-    let diff_ref = build_diff_ref(inputs, inline.diff_inline, inline.baseline_oid);
-    let refs = PromptContentReferences {
-        prompt: None,
-        plan: Some(plan_ref),
-        diff: Some(diff_ref),
-    };
-    let scope_key = PromptScopeKey::for_review(
+    let (scope_key, prompt_key, content_id) = build_same_agent_scope_and_content_id(
+        handler,
         pass,
-        RetryMode::SameAgent {
-            count: continuation_state.same_agent_retry_count,
-        },
-        handler.state.recovery_epoch,
-    );
-    let prompt_key = scope_key.to_string();
-
-    let current_prompt_content_id = build_review_prompt_content_id(
-        "review_same_agent_retry",
-        &inputs.plan.content_id_sha256,
-        &inputs.diff.content_id_sha256,
+        continuation_state,
+        inputs,
         inline.baseline_oid,
-        &handler.state.agent_chain.consumer_signature_sha256(),
     );
-
-    let local_should_validate = std::cell::Cell::new(true);
-    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+    let refs = build_same_agent_content_refs(ctx, inputs, inline);
+    let (prompt, was_replayed, should_validate) = get_same_agent_prompt_and_validate_flag(
+        handler,
+        ctx,
         &scope_key,
-        &handler.state.prompt_history,
-        Some(&current_prompt_content_id),
-        || {
-            let (base_prompt, should_val) = ctx
-                .workspace
-                .read(Path::new(".agent/tmp/review_prompt.txt"))
-                .map_or_else(
-                    |_| {
-                        (
-                            prompt_review_xml_with_references(
-                                ctx.template_context,
-                                &refs,
-                                ctx.workspace,
-                            ),
-                            true,
-                        )
-                    },
-                    |previous_prompt| {
-                        let previous_base = crate::reducer::boundary::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                            .to_string();
-                        let freshly_rendered_base = prompt_review_xml_with_references(
-                            ctx.template_context,
-                            &refs,
-                            ctx.workspace,
-                        );
-                        if previous_base == freshly_rendered_base {
-                            (previous_base, false)
-                        } else {
-                            (freshly_rendered_base, true)
-                        }
-                    },
-                );
-            local_should_validate.set(should_val);
-            format!("{retry_preamble}\n{base_prompt}")
-        },
+        &content_id,
+        &refs,
+        &retry_preamble,
     );
-    let should_validate = !was_replayed && local_should_validate.get();
-
-    let rendered_log = if !was_replayed && should_validate {
-        let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
-            ctx.template_context,
-            &refs,
-            ctx.workspace,
-            "review_xml",
-        );
-        if !rendered.log.is_complete() {
-            let missing = rendered.log.unsubstituted.clone();
-            let result = EffectResult::event(PipelineEvent::template_rendered(
-                crate::reducer::event::PipelinePhase::Review,
-                "review_xml".to_string(),
-                rendered.log,
-            ))
-            .with_ui_event(UIEvent::PromptReplayHit {
-                key: prompt_key.clone(),
-                was_replayed,
-            })
-            .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                AgentRole::Reviewer,
-                "review_xml".to_string(),
-                missing,
-                Vec::new(),
-            ));
-            return Err(Box::new(result));
-        }
-        Some(rendered.log)
-    } else {
-        None
-    };
-
+    let rendered_log =
+        validate_review_xml_template(ctx, &refs, &prompt_key, was_replayed, should_validate)?;
     Ok((
         prompt_key,
         prompt,
         was_replayed,
         "review_xml",
-        Some(current_prompt_content_id),
+        Some(content_id),
         rendered_log,
     ))
 }
@@ -538,7 +669,6 @@ fn build_normal_prompt(
     diff_inline: Option<String>,
     baseline_oid: &str,
 ) -> std::result::Result<BranchResult, Box<EffectResult>> {
-    use crate::agents::AgentRole;
     use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode};
 
     let scope_key =
@@ -574,42 +704,13 @@ fn build_normal_prompt(
         },
     );
 
-    let rendered_log = if was_replayed {
-        None
-    } else {
-        let refs = PromptContentReferences {
-            prompt: None,
-            plan: Some(plan_ref),
-            diff: Some(diff_ref),
-        };
-        let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
-            ctx.template_context,
-            &refs,
-            ctx.workspace,
-            "review_xml",
-        );
-
-        if !rendered.log.is_complete() {
-            let missing = rendered.log.unsubstituted.clone();
-            let result = EffectResult::event(PipelineEvent::template_rendered(
-                crate::reducer::event::PipelinePhase::Review,
-                "review_xml".to_string(),
-                rendered.log,
-            ))
-            .with_ui_event(UIEvent::PromptReplayHit {
-                key: prompt_key.clone(),
-                was_replayed,
-            })
-            .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                AgentRole::Reviewer,
-                "review_xml".to_string(),
-                missing,
-                Vec::new(),
-            ));
-            return Err(Box::new(result));
-        }
-        Some(rendered.log)
+    let refs = PromptContentReferences {
+        prompt: None,
+        plan: Some(plan_ref),
+        diff: Some(diff_ref),
     };
+    let rendered_log =
+        validate_review_xml_template(ctx, &refs, &prompt_key, was_replayed, !was_replayed)?;
 
     Ok((
         prompt_key,
@@ -647,6 +748,23 @@ fn attach_xsd_retry_events(
     }
 }
 
+fn build_prompt_captured_event(
+    was_replayed: bool,
+    prompt_key: &str,
+    review_prompt_xml: String,
+    prompt_content_id: Option<String>,
+) -> Option<PipelineEvent> {
+    (!was_replayed).then(|| {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            crate::reducer::event::PromptInputEvent::PromptCaptured {
+                key: prompt_key.to_string(),
+                content: review_prompt_xml,
+                content_id: prompt_content_id,
+            },
+        )
+    })
+}
+
 fn assemble_review_prompt_result(
     pass: u32,
     prompt_key: String,
@@ -656,36 +774,26 @@ fn assemble_review_prompt_result(
     prompt_content_id: Option<String>,
     rendered_log: Option<crate::prompts::SubstitutionLog>,
 ) -> EffectResult {
-    let prompt_captured_event = if was_replayed {
-        None
-    } else {
-        Some(crate::reducer::event::PipelineEvent::PromptInput(
-            crate::reducer::event::PromptInputEvent::PromptCaptured {
-                key: prompt_key.clone(),
-                content: review_prompt_xml,
-                content_id: prompt_content_id,
-            },
-        ))
-    };
-
-    let result = EffectResult::event(PipelineEvent::review_prompt_prepared(pass)).with_ui_event(
-        UIEvent::PromptReplayHit {
-            key: prompt_key,
-            was_replayed,
-        },
+    let captured_event = build_prompt_captured_event(
+        was_replayed,
+        &prompt_key,
+        review_prompt_xml,
+        prompt_content_id,
     );
-    let result = if let Some(event) = prompt_captured_event {
-        result.with_additional_event(event)
-    } else {
-        result
-    };
-    if let Some(log) = rendered_log {
-        result.with_additional_event(PipelineEvent::template_rendered(
+    let template_event = rendered_log.map(|log| {
+        PipelineEvent::template_rendered(
             crate::reducer::event::PipelinePhase::Review,
             template_name.to_string(),
             log,
-        ))
-    } else {
-        result
-    }
+        )
+    });
+    [captured_event, template_event].into_iter().flatten().fold(
+        EffectResult::event(PipelineEvent::review_prompt_prepared(pass)).with_ui_event(
+            UIEvent::PromptReplayHit {
+                key: prompt_key,
+                was_replayed,
+            },
+        ),
+        |r, ev| r.with_additional_event(ev),
+    )
 }

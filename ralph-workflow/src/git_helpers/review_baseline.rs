@@ -408,18 +408,6 @@ mod tests {
     }
 
     #[test]
-    fn test_load_review_baseline_returns_result() {
-        let result = load_review_baseline();
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[test]
-    fn test_get_review_baseline_info_returns_result() {
-        let result = get_review_baseline_info();
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[test]
     fn test_load_review_baseline_with_workspace_not_set() {
         use crate::workspace::MemoryWorkspace;
 

@@ -16,43 +16,49 @@ fn poll_child_exited(
     matches!(locked_child.try_wait(), Ok(Some(_)))
 }
 
-/// One iteration of the await-exit loop: check exit, maybe resend kill, sleep.
-/// Returns `true` if the child has exited.
-fn await_exit_step(
-    child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+fn resend_kill_if_due(
     executor: &dyn crate::executor::ProcessExecutor,
     pid: u32,
     kill_config: KillConfig,
     last_kill_sent_at: &mut Option<std::time::Instant>,
-) -> bool {
+) {
     use crate::pipeline::idle_timeout::io::force_kill_best_effort;
-    if poll_child_exited(child_arc) {
-        return true;
-    }
     let now = std::time::Instant::now();
-    let due = last_kill_sent_at.is_none_or(|t| now.duration_since(t) >= kill_config.sigkill_resend_interval());
+    let due =
+        last_kill_sent_at.is_none_or(|t| now.duration_since(t) >= kill_config.sigkill_resend_interval());
     if due {
         let _ = force_kill_best_effort(pid, executor);
         *last_kill_sent_at = Some(now);
     }
-    std::thread::sleep(kill_config.poll_interval());
+}
+
+/// Arguments bundle for the await-exit polling loop.
+struct ExitWaitArgs<'a> {
+    child_arc: &'a Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    executor: &'a dyn crate::executor::ProcessExecutor,
+    pid: u32,
+    kill_config: KillConfig,
+}
+
+/// One iteration of the await-exit loop: check exit, maybe resend kill, sleep.
+/// Returns `true` if the child has exited.
+fn await_exit_step(args: &ExitWaitArgs<'_>, last_kill_sent_at: &mut Option<std::time::Instant>) -> bool {
+    if poll_child_exited(args.child_arc) {
+        return true;
+    }
+    resend_kill_if_due(args.executor, args.pid, args.kill_config, last_kill_sent_at);
+    std::thread::sleep(args.kill_config.poll_interval());
     false
 }
 
-fn await_exit_with_sigkill_resend(
-    child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
-    executor: &dyn crate::executor::ProcessExecutor,
-    pid: u32,
-    kill_config: KillConfig,
-) -> bool {
-    let hard_deadline = std::time::Instant::now() + kill_config.post_sigkill_hard_cap();
+fn await_exit_with_sigkill_resend(args: &ExitWaitArgs<'_>) -> bool {
+    let hard_deadline = std::time::Instant::now() + args.kill_config.post_sigkill_hard_cap();
     let mut last_kill_sent_at: Option<std::time::Instant> = None;
-    while std::time::Instant::now() < hard_deadline {
-        if await_exit_step(child_arc, executor, pid, kill_config, &mut last_kill_sent_at) {
-            return true;
-        }
+    let mut exited = false;
+    while !exited && std::time::Instant::now() < hard_deadline {
+        exited = await_exit_step(args, &mut last_kill_sent_at);
     }
-    false
+    exited
 }
 
 pub fn terminate_child_best_effort(
@@ -69,11 +75,10 @@ pub fn terminate_child_best_effort(
         locked_child.id()
     };
 
+    let args = ExitWaitArgs { child_arc, executor, pid, kill_config };
     match kill_process(pid, executor, Some(child_arc), kill_config) {
         KillResult::TerminatedByTerm | KillResult::TerminatedByKill => true,
-        KillResult::SignalsSentAwaitingExit { .. } => {
-            await_exit_with_sigkill_resend(child_arc, executor, pid, kill_config)
-        }
+        KillResult::SignalsSentAwaitingExit { .. } => await_exit_with_sigkill_resend(&args),
         KillResult::Failed => poll_child_exited(child_arc),
     }
 }

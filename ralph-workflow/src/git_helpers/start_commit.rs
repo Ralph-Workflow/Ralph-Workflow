@@ -511,11 +511,6 @@ pub(crate) fn parse_git_oid(raw: &str) -> iot::Result<GitOid> {
     })
 }
 
-#[cfg(test)]
-fn has_start_commit() -> bool {
-    load_start_point().is_ok()
-}
-
 /// Convert git2 error to `iot::Error`.
 fn to_io_error(err: &git2::Error) -> iot::Error {
     iot::Error::other(err.to_string())
@@ -532,33 +527,14 @@ mod tests {
     }
 
     #[test]
-    fn test_has_start_commit_returns_bool() {
-        let result = has_start_commit();
-        let _ = result;
-    }
-
-    #[test]
     fn test_get_current_head_oid_returns_result() {
+        // We're in a git repo with commits, so HEAD OID should always resolve.
         let result = get_current_head_oid();
-        let _ = result;
-    }
-
-    #[test]
-    fn test_load_start_commit_returns_result() {
-        let result = load_start_point();
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[test]
-    fn test_reset_start_commit_returns_result() {
-        let result = reset_start_commit();
-        assert!(result.is_ok() || result.is_err());
-    }
-
-    #[test]
-    fn test_save_start_commit_returns_result() {
-        let result = save_start_commit();
-        assert!(result.is_ok() || result.is_err());
+        assert!(
+            result.is_ok(),
+            "get_current_head_oid failed in a git repo: {:?}",
+            result.err()
+        );
     }
 
     #[test]

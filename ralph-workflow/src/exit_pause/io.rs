@@ -80,6 +80,15 @@ pub fn detect_launch_context_with(
     }
 }
 
+/// Exit the process with the SIGINT exit code (130).
+///
+/// Called when the pipeline was interrupted by Ctrl+C and all cleanup
+/// has completed. Lives in the boundary module because `std::process::exit`
+/// is a process-level I/O effect.
+pub fn exit_with_sigint_code() -> ! {
+    std::process::exit(130);
+}
+
 pub fn pause_for_enter() -> std::io::Result<()> {
     crate::io::terminal::pause_for_enter_with(std::io::stdin(), std::io::stderr())
 }

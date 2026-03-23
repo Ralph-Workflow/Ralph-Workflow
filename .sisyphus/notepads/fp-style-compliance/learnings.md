@@ -39,6 +39,32 @@ quality; lints are a compass for finding violations worth investigating.
 State→Orchestrator decides retry → Effect schedules → Handler executes ONE attempt →
 Event reports outcome → Reducer updates retry count in state → Orchestrator decides again
 
+## 2026-03-23 — boundary_function_too_complex: zero violations achieved
+
+`cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` → **zero violations**.
+`cargo xtask verify` → **all 10 checks pass**.
+
+### Key lessons from this phase
+
+**Lint message disambiguation** (critical — agents got confused by this):
+- "boundary function `X` appears to mix wiring with policy" = `boundary_function_too_complex`
+- "branching on exit code or process status is a policy decision" = `forbid_boundary_policy_calls`
+Never search for "too_complex" string in error output — it does not appear.
+
+**Fix pattern for boundary_function_too_complex**: Extract sub-operations into small private
+helpers in the **same file**. Target: score = top-level statements + decision points < 6.
+Never move code to a boundary-named module just to silence the lint — that creates fake boundaries.
+
+**FORBID_NESTED_BOUNDARY_MODULES**: `codex` is in `BOUNDARY_MODULES`. Converting a flat file
+`codex/event_handlers.rs` to a directory `codex/event_handlers/mod.rs` triggers this lint.
+Fix: use `include!("event_handlers_agent_message.rs")` within the flat file to split content
+across physical files without creating a nested module. The included files live at the same
+directory level (`codex/`), NOT in a subdirectory.
+
+**`cargo dylint --all` includes xtask**: Running `--all` adds 70+ pre-existing xtask violations
+and makes it look like the project is worse than it is. Always use:
+`cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet`
+
 ## 2026-03-19 — Baseline and behavioral equivalence
 
 ### Baseline commit: ceb66980
@@ -3445,3 +3471,93 @@ Low coverage on a module is a signal to ask "do we understand the failure modes 
 - A handler like `Ok(Event::Empty(...)) => Ok(PlanAccum { skills_mcp: Some(...), ..acc })` returns without recursing — all remaining elements (ralph-implementation-steps etc.) are silently dropped, causing spurious `MissingRequiredElement` errors.
 - Fix: always recurse: `Ok(Event::Empty(...)) => parse_plan_events(reader, PlanAccum { skills_mcp: Some(...), ..acc })`.
 - General rule: every branch in a recursive XML event-loop must either recurse or intentionally terminate (e.g., `Event::End` for the root closing tag, `Event::Eof`). Returning a plain `Ok(acc)` mid-stream is always a latent bug.
+
+## 2026-03-23 — Final Verification Wave: F2 and F4 gates pass
+
+### Status
+- **F2 gate**: `cargo xtask verify` (10/10 checks), 3999 lib tests, 1116 integration tests — all pass
+- **F4 gate**: `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` → zero violations
+- **F1/F3**: Oracle review run. F1 noted pre-existing policy complexity in commit.rs, planning.rs, run_review.rs (boundary modules still mix wiring with policy in some functions — architectural debt, not lint violations). F3 found 6/10 sampled tests clean, 4 with issues.
+
+### F3 test quality fixes applied
+
+**Tautological `assert!(result.is_ok() || result.is_err())` pattern**: Always true — equivalent to `assert!(true)`. Found in 12 locations across git_helpers. Fixed by:
+1. Where outcome is deterministic (in a git repo, read-only operations succeed): changed to `assert!(result.is_ok(), "... {:?}", result.err())`
+2. Where outcome is non-deterministic (file may or may not exist): deleted the test (no useful assertion possible without workspace injection)
+3. Destructive operations (`git_add_all`, `save_start_commit`, `reset_start_commit`) in unit tests: deleted entirely (unit tests must not mutate shared git state)
+
+**Dead test file**: `start_commit/tests.rs` was never included/referenced by `start_commit.rs` (which has inline `mod tests { ... }`). File was identical to the inline tests. Deleted as dead code.
+
+**Dead test-only helper**: `has_start_commit()` in `start_commit.rs` was `#[cfg(test)]` and only used in the deleted test. Removed.
+
+### Net test count change
+3999 → 3991 lib tests (8 deleted/dead tests removed). All 3991 pass.
+
+### F5 note
+F5 (baseline comparison against ceb66980) requires `git worktree add` — a write git operation forbidden during agent phase. Deferred to Ralph's commit/review pipeline.
+
+## 2026-03-23 — F1 partial fixes: extract outcome policy to pure helpers
+
+### What was fixed
+
+**F1 oracle had identified two boundary methods with inline policy logic:**
+
+1. `reducer/boundary/run_review.rs::apply_review_outcome()` — was `const fn` that selected between
+   `review_pass_completed_clean` and `review_completed` events based on `clean_no_issues` boolean.
+   No I/O at all. Pure policy inline in boundary.
+
+2. `reducer/boundary/planning.rs::apply_planning_outcome()` — conditional UI phase transition
+   (`Planning → Development`) based on `valid: bool`. Used `self.state.phase` to construct
+   `UIEvent::PhaseTransition`. Pure computation in boundary method.
+
+### Fix applied
+
+**For review**: Extracted `review_outcome_event(pass, issues_found, clean_no_issues) -> PipelineEvent`
+to `phases/review/boundary_domain.rs`. Added 3 unit tests (pure, zero setup). Boundary method
+becomes single-line delegate: `EffectResult::event(review_outcome_event(...))`.
+
+**For planning**: Extracted `planning_outcome(iteration, valid, current_phase) -> (PipelineEvent, Vec<UIEvent>)`
+as a private free function in `planning.rs` (end of file). Added 3 unit tests in inline `#[cfg(test)]`
+block. Boundary method passes `self.state.phase` explicitly: `planning_outcome(iteration, valid, self.state.phase)`.
+
+### Pattern learned
+
+Boundary methods that are `const fn` or only access `self.state` (no workspace/executor) are
+pure-in-disguise. Extract the pure logic to a free function or domain module; boundary method
+passes the state fields explicitly. The improvement: the pure function has testable unit tests
+with no setup, while the boundary method becomes a one-line wiring call.
+
+### What remains (not fixed, requires deeper refactoring)
+
+- `materialize_commit_inputs()` — budget threshold decisions (inline vs file-reference representation)
+- `materialize_review_inputs()` delegates to pure helpers; not a genuine violation
+- PromptMode dispatch in `prepare_planning_prompt()`, `prepare_commit_prompt()` — documented
+  accepted pattern (orchestrator constrains modes, boundary dispatches on pre-selected mode)
+- `materialize_xsd_retry_last_output()` — uses pure domain helper `should_materialize_xsd_retry_last_output`
+  for the decision; the conditional branch is thin wiring on a pure domain result
+
+### F1 verdict after fixes
+
+The two clearest inline-policy violations (apply_review_outcome, apply_planning_outcome) are fixed.
+Remaining candidates are either accepted patterns or require scoped follow-up work.
+
+### materialize_commit_inputs() — F1 investigation result (2026-03-23)
+
+On closer review, `materialize_commit_inputs()` is NOT a genuine F1 violation. The budget/threshold
+decisions are all in pure helper calls:
+- `truncate_diff_to_model_budget(&diff, model_budget_bytes)` — pure
+- `commit_representation_and_reason(final_bytes, inline_budget_bytes, ...)` — pure (in `phases/commit`)
+- `attach_truncated_budget_events(...)` — pure result transform
+- `attach_oversize_inline_events(...)` — pure result transform
+
+The boundary function gathers (read diff, compute budget), calls pure helpers, does I/O (write model_safe),
+and assembles result via pure transforms. This is the intended "gather X, call pure(X), do effect" pattern.
+The previous session's flagging of this function was overly conservative.
+
+### Final gate statuses (2026-03-23)
+
+- F1: ✅ APPROVE — all genuine violations fixed; remaining candidates confirmed as accepted patterns or non-violations
+- F2: ✅ APPROVE — `cargo xtask verify` 10/10 clean
+- F3: ✅ APPROVE — sampled new tests all assert on observable outcomes; pure functions; zero setup; behavior-naming
+- F4: ✅ PASS — zero dylint violations (`cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` returns 3 lines of build progress only)
+- F5: ⏳ Deferred — requires `git worktree add` (forbidden during agent phase; must run via Ralph's commit pipeline)

@@ -5,7 +5,7 @@
 use super::MainEffectHandler;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::review::boundary_domain::{
-    derive_review_validation_flags, render_issues_markdown,
+    derive_review_validation_flags, render_issues_markdown, review_outcome_event,
     should_materialize_xsd_retry_last_output,
 };
 use crate::phases::PhaseContext;
@@ -120,27 +120,13 @@ impl MainEffectHandler {
         pass: u32,
     ) -> EffectResult {
         let issues_xml = Path::new(xml_paths::ISSUES_XML);
-        let content = ctx.workspace.read(issues_xml);
-
-        match content {
+        match ctx.workspace.read(issues_xml) {
             Ok(_) => EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass)),
-            Err(err) => {
-                let detail = if err.kind() == std::io::ErrorKind::NotFound {
-                    None
-                } else {
-                    Some(format!(
-                        "{:?}: {}",
-                        WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                        err
-                    ))
-                };
-
-                EffectResult::event(PipelineEvent::review_issues_xml_missing(
-                    pass,
-                    self.state.continuation.invalid_output_attempts,
-                    detail,
-                ))
-            }
+            Err(err) => issues_xml_missing_result(
+                pass,
+                self.state.continuation.invalid_output_attempts,
+                &err,
+            ),
         }
     }
 
@@ -149,25 +135,13 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         pass: u32,
     ) -> EffectResult {
-        use crate::files::llm_output_extraction::validate_issues_xml;
-
-        let issues_xml = match read_review_issues_xml_for_validation(
-            ctx,
-            self.state.continuation.invalid_output_attempts,
-            pass,
-        ) {
-            Ok(s) => s,
-            Err(result) => return *result,
-        };
-
-        match validate_issues_xml(&issues_xml) {
-            Ok(elements) => build_validation_success(pass, issues_xml, &elements),
-            Err(err) => EffectResult::event(PipelineEvent::review_output_validation_failed(
-                pass,
-                self.state.continuation.invalid_output_attempts,
-                Some(err.format_for_ai_retry()),
-            )),
-        }
+        let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
+        let issues_xml =
+            match read_review_issues_xml_for_validation(ctx, invalid_output_attempts, pass) {
+                Ok(s) => s,
+                Err(result) => return *result,
+            };
+        validate_and_build_result(pass, issues_xml, invalid_output_attempts)
     }
 
     pub(super) fn write_issues_markdown(
@@ -265,16 +239,13 @@ impl MainEffectHandler {
         EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
 
-    pub(super) const fn apply_review_outcome(
+    pub(super) fn apply_review_outcome(
         _ctx: &mut PhaseContext<'_>,
         pass: u32,
         issues_found: bool,
         clean_no_issues: bool,
     ) -> EffectResult {
-        if clean_no_issues {
-            return EffectResult::event(PipelineEvent::review_pass_completed_clean(pass));
-        }
-        EffectResult::event(PipelineEvent::review_completed(pass, issues_found))
+        EffectResult::event(review_outcome_event(pass, issues_found, clean_no_issues))
     }
 
     pub(super) fn materialize_xsd_retry_last_output(
@@ -381,29 +352,10 @@ fn read_review_plan_content(
     ctx: &PhaseContext<'_>,
     is_isolation_mode: bool,
 ) -> std::result::Result<String, anyhow::Error> {
-    use super::MainEffectHandler;
     match ctx.workspace.read(Path::new(".agent/PLAN.md")) {
         Ok(plan_content) => Ok(plan_content),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            ctx.logger
-                .warn("Missing .agent/PLAN.md; using sentinel PLAN content for review");
-            let sentinel = MainEffectHandler::sentinel_plan_content(is_isolation_mode);
-            let agent_dir = Path::new(".agent");
-            if !ctx.workspace.exists(agent_dir) {
-                ctx.workspace.create_dir_all(agent_dir).map_err(|err| {
-                    ErrorEvent::WorkspaceCreateDirAllFailed {
-                        path: agent_dir.display().to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    }
-                })?;
-            }
-            ctx.workspace
-                .write(Path::new(".agent/PLAN.md"), &sentinel)
-                .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
-                    path: ".agent/PLAN.md".to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                })?;
-            Ok(sentinel)
+            write_sentinel_plan_content(ctx, is_isolation_mode)
         }
         Err(err) => Err(ErrorEvent::WorkspaceReadFailed {
             path: ".agent/PLAN.md".to_string(),
@@ -411,6 +363,37 @@ fn read_review_plan_content(
         }
         .into()),
     }
+}
+
+fn write_sentinel_plan_content(
+    ctx: &PhaseContext<'_>,
+    is_isolation_mode: bool,
+) -> std::result::Result<String, anyhow::Error> {
+    use super::MainEffectHandler;
+    ctx.logger
+        .warn("Missing .agent/PLAN.md; using sentinel PLAN content for review");
+    let sentinel = MainEffectHandler::sentinel_plan_content(is_isolation_mode);
+    ensure_agent_dir(ctx)?;
+    ctx.workspace
+        .write(Path::new(".agent/PLAN.md"), &sentinel)
+        .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
+            path: ".agent/PLAN.md".to_string(),
+            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        })?;
+    Ok(sentinel)
+}
+
+fn ensure_agent_dir(ctx: &PhaseContext<'_>) -> std::result::Result<(), anyhow::Error> {
+    let agent_dir = Path::new(".agent");
+    if !ctx.workspace.exists(agent_dir) {
+        ctx.workspace.create_dir_all(agent_dir).map_err(|err| {
+            ErrorEvent::WorkspaceCreateDirAllFailed {
+                path: agent_dir.display().to_string(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            }
+        })?;
+    }
+    Ok(())
 }
 
 fn read_review_baseline_oid(
@@ -480,41 +463,54 @@ fn compute_diff_representation(
     diff_content: &str,
     inline_budget_bytes: u64,
 ) -> std::result::Result<(PromptInputRepresentation, PromptMaterializationReason), anyhow::Error> {
-    let diff_path = Path::new(".agent/tmp/diff.txt");
     if diff_content.len() as u64 > inline_budget_bytes {
-        let tmp_dir = Path::new(".agent/tmp");
-        if !ctx.workspace.exists(tmp_dir) {
-            ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
-                ErrorEvent::WorkspaceCreateDirAllFailed {
-                    path: tmp_dir.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-            })?;
-        }
-        ctx.workspace
-            .write_atomic(diff_path, diff_content)
-            .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
-                path: ".agent/tmp/diff.txt".to_string(),
-                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            })?;
-        ctx.logger.warn(&format!(
-            "DIFF size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
-            (diff_content.len() as u64) / 1024,
-            inline_budget_bytes / 1024,
-            diff_path.display()
-        ));
-        Ok((
-            PromptInputRepresentation::FileReference {
-                path: diff_path.to_path_buf(),
-            },
-            PromptMaterializationReason::InlineBudgetExceeded,
-        ))
+        write_oversize_diff_file(ctx, diff_content, inline_budget_bytes)
     } else {
         Ok((
             PromptInputRepresentation::Inline,
             PromptMaterializationReason::WithinBudgets,
         ))
     }
+}
+
+fn write_oversize_diff_file(
+    ctx: &PhaseContext<'_>,
+    diff_content: &str,
+    inline_budget_bytes: u64,
+) -> std::result::Result<(PromptInputRepresentation, PromptMaterializationReason), anyhow::Error> {
+    let diff_path = Path::new(".agent/tmp/diff.txt");
+    ensure_tmp_agent_dir(ctx)?;
+    ctx.workspace
+        .write_atomic(diff_path, diff_content)
+        .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
+            path: ".agent/tmp/diff.txt".to_string(),
+            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        })?;
+    ctx.logger.warn(&format!(
+        "DIFF size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
+        (diff_content.len() as u64) / 1024,
+        inline_budget_bytes / 1024,
+        diff_path.display()
+    ));
+    Ok((
+        PromptInputRepresentation::FileReference {
+            path: diff_path.to_path_buf(),
+        },
+        PromptMaterializationReason::InlineBudgetExceeded,
+    ))
+}
+
+fn ensure_tmp_agent_dir(ctx: &PhaseContext<'_>) -> std::result::Result<(), anyhow::Error> {
+    let tmp_dir = Path::new(".agent/tmp");
+    if !ctx.workspace.exists(tmp_dir) {
+        ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
+            ErrorEvent::WorkspaceCreateDirAllFailed {
+                path: tmp_dir.display().to_string(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            }
+        })?;
+    }
+    Ok(())
 }
 
 fn build_materialized_plan_input(
@@ -651,6 +647,19 @@ fn read_review_issues_xml_for_validation(
     }
 }
 
+fn issues_xml_missing_result(
+    pass: u32,
+    invalid_output_attempts: u32,
+    err: &std::io::Error,
+) -> EffectResult {
+    let detail = extract_workspace_error_detail(err);
+    EffectResult::event(PipelineEvent::review_issues_xml_missing(
+        pass,
+        invalid_output_attempts,
+        detail,
+    ))
+}
+
 fn extract_workspace_error_detail(err: &std::io::Error) -> Option<String> {
     if err.kind() == std::io::ErrorKind::NotFound {
         None
@@ -709,6 +718,22 @@ fn append_review_invoked_event(result: EffectResult, pass: u32) -> EffectResult 
 }
 
 // --- validate_review_issues_xml helpers ---
+
+fn validate_and_build_result(
+    pass: u32,
+    issues_xml: String,
+    invalid_output_attempts: u32,
+) -> EffectResult {
+    use crate::files::llm_output_extraction::validate_issues_xml;
+    match validate_issues_xml(&issues_xml) {
+        Ok(elements) => build_validation_success(pass, issues_xml, &elements),
+        Err(err) => EffectResult::event(PipelineEvent::review_output_validation_failed(
+            pass,
+            invalid_output_attempts,
+            Some(err.format_for_ai_retry()),
+        )),
+    }
+}
 
 fn build_validation_success(
     pass: u32,
