@@ -158,6 +158,12 @@ impl OpenCodeParser {
             return String::new();
         }
 
+        // Flush any accumulated text from the previous step before clearing state.
+        // Without this, a step that ends without a step_finish event loses all its text
+        // in Basic/None mode (accumulated but never flushed).
+        let terminal_mode = *self.state.terminal_mode.borrow();
+        let flush = self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors);
+
         self.state.with_session_mut(|session| {
             session.on_message_start();
             session.set_current_message_id(Some(step_id));
@@ -170,7 +176,7 @@ impl OpenCodeParser {
             .and_then(|p| p.snapshot.as_ref())
             .map(|s| format!("({s:.8}...)"))
             .unwrap_or_default();
-        format!(
+        let step_start_line = format!(
             "{}[{}]{} {}Step started{} {}{}{}\n",
             colors.dim(),
             prefix,
@@ -180,7 +186,12 @@ impl OpenCodeParser {
             colors.dim(),
             snapshot,
             colors.reset()
-        )
+        );
+        if flush.is_empty() {
+            step_start_line
+        } else {
+            format!("{flush}\n{step_start_line}")
+        }
     }
 
     /// Format a `step_finish` event
@@ -217,9 +228,18 @@ impl OpenCodeParser {
             colors,
         };
 
-        event.part.as_ref().map_or_else(String::new, |part| {
-            self.format_step_finish_payload(part, &render_context)
-        })
+        event.part.as_ref().map_or_else(
+            || {
+                // No part field: still output any accumulated text that was waiting to be flushed.
+                // Without this, accumulated text from a truncated step is silently dropped.
+                if text_flush_non_tty.is_empty() {
+                    String::new()
+                } else {
+                    format!("{text_flush_non_tty}\n")
+                }
+            },
+            |part| self.format_step_finish_payload(part, &render_context),
+        )
     }
 
     pub(super) fn format_text_event(&self, event: &OpenCodeEvent) -> String {
