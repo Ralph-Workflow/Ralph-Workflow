@@ -19,6 +19,32 @@ pub struct ProcessOutput {
     pub stderr: String,
 }
 
+impl ProcessOutput {
+    /// Returns `true` if the process exited with a zero status code.
+    #[must_use]
+    pub fn succeeded(&self) -> bool {
+        self.status.success()
+    }
+
+    /// Returns the process exit code, or `-1` if unavailable.
+    #[must_use]
+    pub fn exit_code(&self) -> i32 {
+        self.status.code().unwrap_or(-1)
+    }
+}
+
+/// Handle to a spawned process that requires stdin interaction.
+///
+/// This wraps a `std::process::Child` to expose only the domain-relevant
+/// surface: stdin writing and process completion. The raw `Child` is kept
+/// private to prevent raw effect types from leaking into domain code.
+pub struct SpawnedProcess {
+    /// The stdin handle for writing input to the process.
+    pub stdin: Option<std::process::ChildStdin>,
+    /// The inner child process handle.
+    pub(crate) inner: std::process::Child,
+}
+
 /// Configuration for spawning an agent process with streaming support.
 ///
 /// This struct contains all the parameters needed to spawn an agent subprocess,

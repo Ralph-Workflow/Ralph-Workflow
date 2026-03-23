@@ -14,68 +14,86 @@ impl ClaudeParser {
         session_id: Option<String>,
         cwd: Option<String>,
     ) -> String {
-        let c = &self.colors;
-        let prefix = &self.display_name;
-
         if subtype.map(std::string::String::as_str) == Some("init") {
-            let sid = session_id.unwrap_or_else(|| "unknown".to_string());
-            let base = format!(
-                "{}[{}]{} {}Session started{} {}({:.8}...){}\n",
-                c.dim(),
-                prefix,
-                c.reset(),
-                c.cyan(),
-                c.reset(),
-                c.dim(),
-                sid,
-                c.reset()
-            );
-            if let Some(cwd) = cwd {
-                let extra = format!(
-                    "{}[{}]{} {}Working dir: {}{}\n",
-                    c.dim(),
-                    prefix,
-                    c.reset(),
-                    c.dim(),
-                    cwd,
-                    c.reset()
-                );
-                format!("{base}{extra}")
-            } else {
-                base
-            }
+            format_system_init_event(&self.display_name, self.colors, session_id, cwd)
         } else {
             let subtype_str = subtype.map_or("system", |s| s.as_str());
-
-            // In full TTY mode, streaming output uses an in-place update pattern which can leave
-            // the cursor positioned on an active line. System events (like `status`) can arrive
-            // at any time; clearing the line defensively avoids leaving remnants (e.g. "statusead").
-            if *self.state.terminal_mode.borrow() == TerminalMode::Full {
-                use crate::json_parser::delta_display::CLEAR_LINE;
-                format!(
-                    "{}\r{}[{}]{} {}{}{}\n",
-                    CLEAR_LINE,
-                    c.dim(),
-                    prefix,
-                    c.reset(),
-                    c.cyan(),
-                    subtype_str,
-                    c.reset()
-                )
-            } else {
-                format!(
-                    "{}[{}]{} {}{}{}\n",
-                    c.dim(),
-                    prefix,
-                    c.reset(),
-                    c.cyan(),
-                    subtype_str,
-                    c.reset()
-                )
-            }
+            let terminal_mode = *self.state.terminal_mode.borrow();
+            format_system_other_event(&self.display_name, self.colors, subtype_str, terminal_mode)
         }
     }
 
+}
+
+fn format_system_init_event(
+    prefix: &str,
+    c: Colors,
+    session_id: Option<String>,
+    cwd: Option<String>,
+) -> String {
+    let sid = session_id.unwrap_or_else(|| "unknown".to_string());
+    let base = format!(
+        "{}[{}]{} {}Session started{} {}({:.8}...){}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.cyan(),
+        c.reset(),
+        c.dim(),
+        sid,
+        c.reset()
+    );
+    if let Some(cwd) = cwd {
+        let extra = format!(
+            "{}[{}]{} {}Working dir: {}{}\n",
+            c.dim(),
+            prefix,
+            c.reset(),
+            c.dim(),
+            cwd,
+            c.reset()
+        );
+        format!("{base}{extra}")
+    } else {
+        base
+    }
+}
+
+fn format_system_other_event(
+    prefix: &str,
+    c: Colors,
+    subtype_str: &str,
+    terminal_mode: TerminalMode,
+) -> String {
+    // In full TTY mode, streaming output uses an in-place update pattern which can leave
+    // the cursor positioned on an active line. System events (like `status`) can arrive
+    // at any time; clearing the line defensively avoids leaving remnants (e.g. "statusead").
+    if terminal_mode == TerminalMode::Full {
+        use crate::json_parser::delta_display::CLEAR_LINE;
+        format!(
+            "{}\r{}[{}]{} {}{}{}\n",
+            CLEAR_LINE,
+            c.dim(),
+            prefix,
+            c.reset(),
+            c.cyan(),
+            subtype_str,
+            c.reset()
+        )
+    } else {
+        format!(
+            "{}[{}]{} {}{}{}\n",
+            c.dim(),
+            prefix,
+            c.reset(),
+            c.cyan(),
+            subtype_str,
+            c.reset()
+        )
+    }
+}
+
+impl ClaudeParser {
     /// Extract content from assistant message for hash-based deduplication.
     ///
     /// This includes both text and `tool_use` blocks, normalized for comparison.
@@ -136,60 +154,45 @@ impl ClaudeParser {
         })
     }
 
+    fn is_duplicate_by_message_id(
+        message: Option<&crate::json_parser::types::AssistantMessage>,
+        session: &StreamingSession,
+    ) -> bool {
+        let Some(ast_msg_id) = message.and_then(|m| m.id.as_ref()) else {
+            return false;
+        };
+        session.is_duplicate_final_message(ast_msg_id)
+            || (session.get_current_message_id() == Some(ast_msg_id)
+                && session.has_any_streamed_content())
+    }
+
+    fn is_duplicate_by_content(
+        content_for_hash: &Option<(String, std::collections::HashMap<usize, String>)>,
+        session: &StreamingSession,
+    ) -> bool {
+        let Some((ref text, ref tool_names)) = *content_for_hash else {
+            return false;
+        };
+        if text.is_empty() {
+            return false;
+        }
+        session.is_assistant_content_rendered(Self::hash_string(text))
+            || session.is_duplicate_by_hash(text, Some(tool_names))
+    }
+
     /// Check if this assistant message is a duplicate of already-streamed content.
     fn is_duplicate_assistant_message(
         &self,
         message: Option<&crate::json_parser::types::AssistantMessage>,
     ) -> bool {
         let session = self.state.streaming_session.borrow();
-
-        // Extract message_id from the assistant message
-        let assistant_msg_id = message.and_then(|m| m.id.as_ref());
-
-        // Check if this assistant event has a message_id that matches the current streaming message
-        // If it does, and we have streamed content, then this assistant event is a duplicate
-        // because the content was already streamed via deltas.
-        if let Some(ast_msg_id) = assistant_msg_id {
-            // Check if message was already marked as displayed (after message_stop)
-            if session.is_duplicate_final_message(ast_msg_id) {
-                return true;
-            }
-
-            // Check if the assistant message_id matches the current streaming message_id
-            if session.get_current_message_id() == Some(ast_msg_id) {
-                // Same message - check if we have streamed any content
-                // If yes, the assistant event is a duplicate
-                if session.has_any_streamed_content() {
-                    return true;
-                }
-            }
+        if Self::is_duplicate_by_message_id(message, &session) {
+            return true;
         }
-
-        // Check if this exact assistant content has been rendered before
-        // This handles the case where GLM sends multiple assistant events during
-        // streaming with the same content but different message_ids
         let content_for_hash = Self::extract_text_content_for_hash(message);
-        if let Some((ref text_content, _)) = content_for_hash {
-            if !text_content.is_empty() {
-                // Compute hash of the assistant event content
-                let content_hash = Self::hash_string(text_content);
-
-                // Check if this content was already rendered
-                if session.is_assistant_content_rendered(content_hash) {
-                    return true;
-                }
-            }
+        if Self::is_duplicate_by_content(&content_for_hash, &session) {
+            return true;
         }
-
-        // If no message_id match, fall back to hash-based deduplication
-        // extract_text_content_for_hash now returns (content, tool_names_by_index)
-        if let Some((ref text_content, ref tool_names)) = content_for_hash {
-            if !text_content.is_empty() {
-                return session.is_duplicate_by_hash(text_content, Some(tool_names));
-            }
-        }
-
-        // Fallback to coarse check
         session.has_any_streamed_content()
     }
 
@@ -207,6 +210,30 @@ impl ClaudeParser {
             preview,
             colors.reset()
         );
+    }
+
+    fn format_tool_input_preview(
+        &self,
+        out: &mut String,
+        input_val: &serde_json::Value,
+        prefix: &str,
+        colors: Colors,
+    ) {
+        let input_str = format_tool_input(input_val);
+        let limit = self.verbosity.truncate_limit("tool_input");
+        let preview = truncate_text(&input_str, limit);
+        if !preview.is_empty() {
+            let _ = writeln!(
+                out,
+                "{}[{}]{} {}  └─ {}{}",
+                colors.dim(),
+                prefix,
+                colors.reset(),
+                colors.dim(),
+                preview,
+                colors.reset()
+            );
+        }
     }
 
     /// Format a tool use content block for assistant output.
@@ -231,27 +258,18 @@ impl ClaudeParser {
             tool_name,
             colors.reset(),
         );
+        self.maybe_append_tool_input_preview(out, input, prefix, colors);
+    }
 
-        // Show tool input details at Normal and above (not just Verbose)
-        // Tool inputs provide crucial context for understanding agent actions
-        if self.verbosity.show_tool_input() {
-            if let Some(input_val) = input {
-                let input_str = format_tool_input(input_val);
-                let limit = self.verbosity.truncate_limit("tool_input");
-                let preview = truncate_text(&input_str, limit);
-                if !preview.is_empty() {
-                    let _ = writeln!(
-                        out,
-                        "{}[{}]{} {}  └─ {}{}",
-                        colors.dim(),
-                        prefix,
-                        colors.reset(),
-                        colors.dim(),
-                        preview,
-                        colors.reset()
-                    );
-                }
-            }
+    fn maybe_append_tool_input_preview(
+        &self,
+        out: &mut String,
+        input: Option<&serde_json::Value>,
+        prefix: &str,
+        colors: Colors,
+    ) {
+        if let Some(input_val) = input.filter(|_| self.verbosity.show_tool_input()) {
+            self.format_tool_input_preview(out, input_val, prefix, colors);
         }
     }
 
@@ -307,6 +325,40 @@ impl ClaudeParser {
         });
     }
 
+    fn mark_assistant_message_rendered(
+        &self,
+        message: Option<&crate::json_parser::types::AssistantMessage>,
+        msg: &crate::json_parser::types::AssistantMessage,
+    ) {
+        self.state
+            .with_session_mut(|session: &mut StreamingSession| {
+                if let Some(ref message_id) = msg.id {
+                    session.mark_message_pre_rendered(message_id);
+                }
+                if let Some((text_content, _)) = Self::extract_text_content_for_hash(message) {
+                    if !text_content.is_empty() {
+                        let content_hash =
+                            crate::json_parser::boundary::compute_hash_str(&text_content);
+                        session.mark_assistant_content_rendered(content_hash);
+                    }
+                }
+            });
+    }
+
+    fn render_assistant_message(
+        &self,
+        message: Option<&crate::json_parser::types::AssistantMessage>,
+    ) -> String {
+        let mut out = String::new();
+        let Some(msg) = message else { return out };
+        let Some(content) = msg.content.as_ref() else { return out };
+        self.format_content_blocks(&mut out, content, &self.display_name, self.colors);
+        if !out.is_empty() {
+            self.mark_assistant_message_rendered(message, msg);
+        }
+        out
+    }
+
     /// Format an assistant event
     fn format_assistant_event(
         &self,
@@ -319,68 +371,99 @@ impl ClaudeParser {
         if self.is_duplicate_assistant_message(message) {
             return String::new();
         }
-
-        let mut out = String::new();
-        if let Some(msg) = message {
-            if let Some(content) = msg.content.as_ref() {
-                self.format_content_blocks(&mut out, content, &self.display_name, self.colors);
-
-                // If we successfully rendered content, mark it as rendered
-                if !out.is_empty() {
-                    self.state
-                        .with_session_mut(|session: &mut StreamingSession| {
-                            // Mark the message as pre-rendered so that ALL subsequent streaming
-                            // deltas for this message are suppressed.
-                            // This handles the case where assistant event arrives BEFORE streaming starts.
-                            if let Some(ref message_id) = msg.id {
-                                session.mark_message_pre_rendered(message_id);
-                            }
-
-                            // Mark the assistant content as rendered by hash to prevent duplicate
-                            // assistant events with the same content but different message_ids
-                            if let Some((text_content, _)) =
-                                Self::extract_text_content_for_hash(message)
-                            {
-                                if !text_content.is_empty() {
-                                    let content_hash =
-                                        crate::json_parser::boundary::compute_hash_str(
-                                            &text_content,
-                                        );
-                                    session.mark_assistant_content_rendered(content_hash);
-                                }
-                            }
-                        });
-                }
-            }
-        }
-        out
+        self.render_assistant_message(message)
     }
 
     /// Format a user event
     fn format_user_event(&self, message: Option<crate::json_parser::types::UserMessage>) -> String {
+        self.extract_user_text(message)
+            .map(|preview| {
+                let c = &self.colors;
+                let prefix = &self.display_name;
+                format!(
+                    "{}[{}]{} {}User{}: {}{}{}\n",
+                    c.dim(),
+                    prefix,
+                    c.reset(),
+                    c.blue(),
+                    c.reset(),
+                    c.dim(),
+                    preview,
+                    c.reset()
+                )
+            })
+            .unwrap_or_default()
+    }
+
+    fn extract_user_text(
+        &self,
+        message: Option<crate::json_parser::types::UserMessage>,
+    ) -> Option<String> {
+        let content = message?.content?;
+        if let Some(ContentBlock::Text { text: Some(text) }) = content.first() {
+            let limit = self.verbosity.truncate_limit("user");
+            Some(truncate_text(text, limit).to_string())
+        } else {
+            None
+        }
+    }
+
+    fn format_result_success_line(
+        &self,
+        duration_m: u64,
+        duration_s_rem: u64,
+        turns: u32,
+        cost: f64,
+    ) -> String {
         let c = &self.colors;
         let prefix = &self.display_name;
+        format!(
+            "{}[{}]{} {}{} Completed{} {}({}m {}s, {} turns, ${:.4}){}\n",
+            c.dim(),
+            prefix,
+            c.reset(),
+            c.green(),
+            CHECK,
+            c.reset(),
+            c.dim(),
+            duration_m,
+            duration_s_rem,
+            turns,
+            cost,
+            c.reset()
+        )
+    }
 
-        if let Some(msg) = message {
-            if let Some(content) = msg.content {
-                if let Some(ContentBlock::Text { text: Some(text) }) = content.first() {
-                    let limit = self.verbosity.truncate_limit("user");
-                    let preview = truncate_text(text, limit);
-                    return format!(
-                        "{}[{}]{} {}User{}: {}{}{}\n",
-                        c.dim(),
-                        prefix,
-                        c.reset(),
-                        c.blue(),
-                        c.reset(),
-                        c.dim(),
-                        preview,
-                        c.reset()
-                    );
-                }
-            }
-        }
-        String::new()
+    fn format_result_error_line(
+        &self,
+        subtype: Option<String>,
+        error: Option<String>,
+        duration_m: u64,
+        duration_s_rem: u64,
+    ) -> String {
+        format_result_error_line_impl(
+            &self.display_name,
+            self.colors,
+            subtype,
+            error,
+            duration_m,
+            duration_s_rem,
+        )
+    }
+
+    fn append_result_summary(&self, base: &str, summary: &str) -> String {
+        let c = &self.colors;
+        let limit = self.verbosity.truncate_limit("result");
+        let preview = truncate_text(summary, limit);
+        format!(
+            "{}\n{}Result summary:{}\n{}{}{}",
+            base,
+            c.bold(),
+            c.reset(),
+            c.dim(),
+            preview,
+            c.reset()
+        )
     }
 
     /// Format a result event
@@ -393,9 +476,6 @@ impl ClaudeParser {
         result: Option<String>,
         error: Option<String>,
     ) -> String {
-        let c = &self.colors;
-        let prefix = &self.display_name;
-
         let duration_total_secs = duration_ms.unwrap_or(0) / 1000;
         let duration_m = duration_total_secs / 60;
         let duration_s_rem = duration_total_secs % 60;
@@ -403,54 +483,40 @@ impl ClaudeParser {
         let turns = num_turns.unwrap_or(0);
 
         let base = if subtype.as_deref() == Some("success") {
-            format!(
-                "{}[{}]{} {}{} Completed{} {}({}m {}s, {} turns, ${:.4}){}\n",
-                c.dim(),
-                prefix,
-                c.reset(),
-                c.green(),
-                CHECK,
-                c.reset(),
-                c.dim(),
-                duration_m,
-                duration_s_rem,
-                turns,
-                cost,
-                c.reset()
-            )
+            self.format_result_success_line(duration_m, duration_s_rem, turns, cost)
         } else {
-            let err = error.unwrap_or_else(|| "unknown error".to_string());
-            format!(
-                "{}[{}]{} {}{} {}{}: {} {}({}m {}s){}\n",
-                c.dim(),
-                prefix,
-                c.reset(),
-                c.red(),
-                CROSS,
-                subtype.unwrap_or_else(|| "error".to_string()),
-                c.reset(),
-                err,
-                c.dim(),
-                duration_m,
-                duration_s_rem,
-                c.reset()
-            )
+            self.format_result_error_line(subtype, error, duration_m, duration_s_rem)
         };
 
         result
-            .map(|r| {
-                let limit = self.verbosity.truncate_limit("result");
-                let preview = truncate_text(&r, limit);
-                format!(
-                    "{}\n{}Result summary:{}\n{}{}{}",
-                    base,
-                    c.bold(),
-                    c.reset(),
-                    c.dim(),
-                    preview,
-                    c.reset()
-                )
-            })
-            .unwrap_or(base)
+            .as_deref()
+            .map_or(base.clone(), |r| self.append_result_summary(&base, r))
     }
+}
+
+fn format_result_error_line_impl(
+    prefix: &str,
+    c: Colors,
+    subtype: Option<String>,
+    error: Option<String>,
+    duration_m: u64,
+    duration_s_rem: u64,
+) -> String {
+    let err = error.unwrap_or_else(|| "unknown error".to_string());
+    let subtype_str = subtype.unwrap_or_else(|| "error".to_string());
+    format!(
+        "{}[{}]{} {}{} {}{}: {} {}({}m {}s){}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.red(),
+        CROSS,
+        subtype_str,
+        c.reset(),
+        err,
+        c.dim(),
+        duration_m,
+        duration_s_rem,
+        c.reset()
+    )
 }

@@ -21,7 +21,7 @@ pub struct ProcessExecutionResult {
 impl From<crate::executor::ProcessOutput> for ProcessExecutionResult {
     fn from(output: crate::executor::ProcessOutput) -> Self {
         Self {
-            exit_code: output.status.code().unwrap_or(-1),
+            exit_code: output.exit_code(),
             stdout: output.stdout,
             stderr: output.stderr,
         }

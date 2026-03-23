@@ -96,19 +96,21 @@ pub(super) fn advance_search(
         }
     });
 
-    let mut new_queue = Vec::new();
-    for (path, name_lower) in file_names {
-        if path.is_dir()
-            && !should_skip_dir_name(name_lower)
-            && !matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__")
-            && queue
-                .first()
-                .is_some_and(|(_, depth)| *depth < MAX_SIGNATURE_SEARCH_DEPTH)
-        {
+    let new_queue: Vec<(PathBuf, usize)> = file_names
+        .iter()
+        .filter(|(path, name_lower)| {
+            path.is_dir()
+                && !should_skip_dir_name(name_lower)
+                && !matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__")
+                && queue
+                    .first()
+                    .is_some_and(|(_, depth)| *depth < MAX_SIGNATURE_SEARCH_DEPTH)
+        })
+        .map(|(path, _)| {
             let depth = queue.first().map_or(0, |(_, d)| *d);
-            new_queue.push((path.clone(), depth + 1));
-        }
-    }
+            (path.clone(), depth + 1)
+        })
+        .collect();
 
     if found {
         SearchResult::Found

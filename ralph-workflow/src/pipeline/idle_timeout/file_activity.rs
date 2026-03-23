@@ -22,8 +22,9 @@ impl FileActivityTracker {
         &self,
         workspace: &dyn Workspace,
         timeout: Duration,
+        now: SystemTime,
     ) -> std::io::Result<bool> {
-        check_for_recent_activity(workspace, timeout)
+        check_for_recent_activity_with_time(workspace, timeout, now)
     }
 
     fn is_ai_generated_file(path: &Path) -> bool {
@@ -250,11 +251,4 @@ pub(crate) fn check_for_recent_activity_with_time(
     }
 
     Ok(false)
-}
-
-pub(crate) fn check_for_recent_activity(
-    workspace: &dyn Workspace,
-    timeout: Duration,
-) -> std::io::Result<bool> {
-    check_for_recent_activity_with_time(workspace, timeout, SystemTime::now())
 }

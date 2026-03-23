@@ -61,14 +61,19 @@ impl std::error::Error for GitEnvError {}
 /// Real git environment implementation using std::env.
 pub struct RealGitEnvironment;
 
+fn validate_ssh_key_path(key_path: &str) -> Result<(), GitEnvError> {
+    if key_path.trim().is_empty() {
+        return Err(GitEnvError::new("empty SSH key path"));
+    }
+    if key_path.contains('\0') || key_path.contains('\n') || key_path.contains('\r') {
+        return Err(GitEnvError::new("SSH key path contains invalid characters"));
+    }
+    Ok(())
+}
+
 impl GitEnvironment for RealGitEnvironment {
     fn configure_git_ssh_command(&self, key_path: &str) -> Result<(), GitEnvError> {
-        if key_path.trim().is_empty() {
-            return Err(GitEnvError::new("empty SSH key path"));
-        }
-        if key_path.contains('\0') || key_path.contains('\n') || key_path.contains('\r') {
-            return Err(GitEnvError::new("SSH key path contains invalid characters"));
-        }
+        validate_ssh_key_path(key_path)?;
         let escaped = shell_escape_posix(key_path);
         let cmd = format!("ssh -o 'IdentitiesOnly=yes' -i {escaped}");
         std::env::set_var("GIT_SSH_COMMAND", &cmd);
@@ -150,12 +155,7 @@ pub mod mock {
 
     impl super::GitEnvironment for MockGitEnvironment {
         fn configure_git_ssh_command(&self, key_path: &str) -> Result<(), GitEnvError> {
-            if key_path.trim().is_empty() {
-                return Err(GitEnvError::new("empty SSH key path"));
-            }
-            if key_path.contains('\0') || key_path.contains('\n') || key_path.contains('\r') {
-                return Err(GitEnvError::new("SSH key path contains invalid characters"));
-            }
+            super::validate_ssh_key_path(key_path)?;
             let escaped = super::shell_escape_posix(key_path);
             let cmd = format!("ssh -o 'IdentitiesOnly=yes' -i {escaped}");
             self.ssh_commands.lock().unwrap().push(cmd);

@@ -161,12 +161,27 @@ pub fn detect_stack_with_workspace(
 ) -> std::io::Result<ProjectStack> {
     let extension_counts = count_extensions_with_workspace(workspace, root)?;
 
-    let mut language_counts = BTreeMap::new();
-    for (lang, count) in extension_counts.iter().filter_map(|(ext, count)| {
-        extension_to_language(ext).map(|lang| (lang.to_string(), *count))
-    }) {
-        *language_counts.entry(lang).or_insert(0) += count;
-    }
+    let lang_pairs: Vec<(String, usize)> = extension_counts
+        .iter()
+        .filter_map(|(ext, count)| {
+            extension_to_language(ext).map(|lang| (lang.to_string(), *count))
+        })
+        .collect();
+
+    let language_counts: BTreeMap<String, usize> = lang_pairs
+        .iter()
+        .map(|(lang, _)| lang.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|lang| {
+            let total: usize = lang_pairs
+                .iter()
+                .filter(|(l, _)| *l == lang)
+                .map(|(_, c)| *c)
+                .sum();
+            (lang, total)
+        })
+        .collect();
 
     let language_vec: Vec<_> = language_counts
         .into_iter()

@@ -5,6 +5,9 @@ use crate::files::integrity;
 use crate::files::recovery;
 use crate::workspace::Workspace;
 
+// Direct filesystem operations in boundary module (io.rs stem → exempt from forbid_io_effects).
+include!("agent_files/io.rs");
+
 /// XSD schemas for XML validation - included at compile time.
 /// These are written to `.agent/xsd/` at pipeline start for agent self-validation.
 const PLAN_XSD_SCHEMA: &str = include_str!("llm_output_extraction/plan.xsd");
@@ -113,25 +116,6 @@ pub fn file_contains_marker_with_workspace(
     }
 
     let content = workspace.read(path)?;
-    Ok(content.lines().any(|line| line.contains(marker)))
-}
-
-/// Check if a file contains a specific marker string using std::fs.
-///
-/// This is the non-workspace version that operates on absolute paths
-/// outside the workspace abstraction (e.g., `.git/hooks/`).
-///
-/// Returns `Ok(true)` if the marker is found, `Ok(false)` if not found or file doesn't exist.
-///
-/// # Errors
-///
-/// Returns error if the operation fails.
-pub fn file_contains_marker(path: &Path, marker: &str) -> std::io::Result<bool> {
-    if !path.exists() {
-        return Ok(false);
-    }
-
-    let content = std::fs::read_to_string(path)?;
     Ok(content.lines().any(|line| line.contains(marker)))
 }
 

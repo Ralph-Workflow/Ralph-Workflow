@@ -120,12 +120,7 @@ fn prompt_for_template_name(colors: Colors) -> Option<String> {
     Some(template_name.to_string())
 }
 
-#[must_use]
-pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
-    if !diagnostics_domain::should_offer_template_prompt(is_terminal()) {
-        return None;
-    }
-
+fn prompt_for_template_creation_consent(colors: Colors) -> Option<String> {
     let mut stdout = stdout();
     let _ = writeln!(stdout);
     let _ = writeln!(
@@ -146,30 +141,75 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
     if flush_stdout().is_err() {
         return None;
     }
+    Some(read_line().unwrap_or_default())
+}
 
-    let input = read_line();
-    let response = input.unwrap_or_default();
+fn resolve_template_selection(template_input: &str, colors: Colors) -> TemplateSelectionResult {
+    let templates = list_templates();
+    match diagnostics_domain::resolve_selected_template(template_input, &templates) {
+        diagnostics_domain::TemplateSelectionOutcome::Selected(selected) => Some(selected),
+        diagnostics_domain::TemplateSelectionOutcome::UseDefault { default } => {
+            let mut stdout = stdout();
+            let _ = writeln!(
+                stdout,
+                "{}Unknown template. Using {} as default.{}",
+                colors.yellow(),
+                default,
+                colors.reset()
+            );
+            Some(default)
+        }
+    }
+}
+
+#[must_use]
+pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
+    if !diagnostics_domain::should_offer_template_prompt(is_terminal()) {
+        return None;
+    }
+
+    let response = prompt_for_template_creation_consent(colors)?;
 
     match diagnostics_domain::evaluate_template_creation_response(&response) {
         diagnostics_domain::TemplatePromptResponseDecision::Declined => None,
         diagnostics_domain::TemplatePromptResponseDecision::Selected => {
             let template_input = prompt_for_template_name(colors)?;
-            let templates = list_templates();
-            match diagnostics_domain::resolve_selected_template(&template_input, &templates) {
-                diagnostics_domain::TemplateSelectionOutcome::Selected(selected) => Some(selected),
-                diagnostics_domain::TemplateSelectionOutcome::UseDefault { default } => {
-                    let _ = writeln!(
-                        stdout,
-                        "{}Unknown template. Using {} as default.{}",
-                        colors.yellow(),
-                        default,
-                        colors.reset()
-                    );
-                    Some(default)
-                }
-            }
+            resolve_template_selection(&template_input, colors)
         }
     }
+}
+
+fn write_created_prompt_message(template_name: &str, colors: Colors) -> anyhow::Result<()> {
+    let Some(template) = get_template(template_name) else {
+        return Err(anyhow::anyhow!("Template '{template_name}' not found"));
+    };
+    let prompt_path = Path::new("PROMPT.md");
+    write(prompt_path, template.content())?;
+
+    let mut stdout = stdout();
+    let _ = writeln!(stdout);
+    let _ = writeln!(
+        stdout,
+        "{}Created PROMPT.md from template: {}{}{}",
+        colors.green(),
+        colors.bold(),
+        template_name,
+        colors.reset()
+    );
+    let _ = writeln!(stdout);
+    let _ = writeln!(
+        stdout,
+        "Template: {}{}{}  {}",
+        colors.cyan(),
+        template.name(),
+        colors.reset(),
+        template.description()
+    );
+    let _ = writeln!(stdout);
+    let _ = writeln!(stdout, "Next steps:");
+    let _ = writeln!(stdout, " 1. Edit PROMPT.md with your task details");
+    let _ = writeln!(stdout, " 2. Run ralph again with your commit message");
+    Ok(())
 }
 
 pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyhow::Result<()> {
@@ -200,38 +240,7 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
             Ok(())
         }
         diagnostics_domain::CreatePromptResult::Created => {
-            let Some(template) = get_template(template_name) else {
-                return Err(anyhow::anyhow!("Template '{template_name}' not found"));
-            };
-
-            let content = template.content();
-            write(prompt_path, content)?;
-
-            let mut stdout = stdout();
-            let _ = writeln!(stdout);
-            let _ = writeln!(
-                stdout,
-                "{}Created PROMPT.md from template: {}{}{}",
-                colors.green(),
-                colors.bold(),
-                template_name,
-                colors.reset()
-            );
-            let _ = writeln!(stdout);
-            let _ = writeln!(
-                stdout,
-                "Template: {}{}{}  {}",
-                colors.cyan(),
-                template.name(),
-                colors.reset(),
-                template.description()
-            );
-            let _ = writeln!(stdout);
-            let _ = writeln!(stdout, "Next steps:");
-            let _ = writeln!(stdout, " 1. Edit PROMPT.md with your task details");
-            let _ = writeln!(stdout, " 2. Run ralph again with your commit message");
-
-            Ok(())
+            write_created_prompt_message(template_name, colors)
         }
     }
 }

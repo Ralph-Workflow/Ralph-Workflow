@@ -1,18 +1,6 @@
-//! Clipboard operations for prompt saving.
-//!
-//! This is a boundary module - process operations are allowed here.
+// io_clipboard — production implementation.
+//
+// All I/O lives in `io_clipboard/io.rs` (boundary module — file stem `io`
+// is recognized as a boundary by forbid_io_effects).
 
-use crate::pipeline::clipboard::ClipboardCommand;
-
-pub fn copy_to_clipboard(
-    executor: &dyn crate::executor::ProcessExecutor,
-    prompt: &str,
-    clipboard_cmd: ClipboardCommand,
-) -> std::io::Result<()> {
-    let mut child = executor.spawn(clipboard_cmd.binary, clipboard_cmd.args, &[], None)?;
-    if let Some(ref mut stdin) = child.stdin {
-        std::io::Write::write_all(stdin, prompt.as_bytes())?;
-    }
-    let _ = child.wait();
-    Ok(())
-}
+include!("io_clipboard/io.rs");

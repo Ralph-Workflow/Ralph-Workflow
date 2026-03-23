@@ -28,7 +28,6 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         files: &[String],
     ) -> EffectResult {
-        // Delete all specified files
         files.iter().for_each(|file_path| {
             let path = Path::new(file_path);
             if ctx.workspace.exists(path) {
@@ -36,55 +35,7 @@ impl MainEffectHandler {
             }
         });
 
-        // Emit the appropriate event based on current phase
-        match self.state.phase {
-            PipelinePhase::Planning => {
-                let iteration = self.state.iteration;
-                EffectResult::event(PipelineEvent::Planning(PlanningEvent::PlanXmlCleaned {
-                    iteration,
-                }))
-            }
-            PipelinePhase::Development => {
-                let iteration = self.state.iteration;
-                EffectResult::event(PipelineEvent::Development(DevelopmentEvent::XmlCleaned {
-                    iteration,
-                }))
-            }
-            PipelinePhase::Review => {
-                // Cleanup routing in review phase is drain-owned. The review flag tracks
-                // discovered issues, but explicit fix continuation/retry flows can keep the
-                // fix drain active even after that compatibility flag is cleared.
-                let pass = self.state.reviewer_pass;
-                if self.state.runtime_drain() == AgentDrain::Fix {
-                    EffectResult::event(PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
-                        pass,
-                    }))
-                } else {
-                    EffectResult::event(PipelineEvent::Review(ReviewEvent::IssuesXmlCleaned {
-                        pass,
-                    }))
-                }
-            }
-            PipelinePhase::CommitMessage => {
-                // Get current attempt from commit state
-                let attempt = match &self.state.commit {
-                    crate::reducer::state::CommitState::Generating { attempt, .. } => *attempt,
-                    _ => 1,
-                };
-                EffectResult::event(PipelineEvent::Commit(CommitEvent::CommitXmlCleaned {
-                    attempt,
-                }))
-            }
-            _ => {
-                // Fallback: should not happen in normal operation
-                ctx.logger.warn(&format!(
-                    "CleanupRequiredFiles emitted in unexpected phase: {:?}",
-                    self.state.phase
-                ));
-                // Return a generic event to avoid crashing
-                EffectResult::event(PipelineEvent::context_cleaned())
-            }
-        }
+        cleanup_required_files_event(self, ctx)
     }
 
     pub(super) fn validate_final_state(&self, _ctx: &mut PhaseContext<'_>) -> EffectResult {
@@ -102,65 +53,9 @@ impl MainEffectHandler {
         ctx.logger
             .info("Cleaning up context files to prevent pollution...");
 
-        // Delete PLAN.md via workspace
-        let plan_path = Path::new(".agent/PLAN.md");
-        let plan_cleaned = if ctx.workspace.exists(plan_path) {
-            ctx.workspace
-                .remove(plan_path)
-                .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
-                    path: plan_path.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                })?;
-            true
-        } else {
-            false
-        };
-
-        // Delete ISSUES.md (may not exist if in isolation mode) via workspace
-        let issues_path = Path::new(".agent/ISSUES.md");
-        let issues_cleaned = if ctx.workspace.exists(issues_path) {
-            ctx.workspace
-                .remove(issues_path)
-                .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
-                    path: issues_path.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                })?;
-            true
-        } else {
-            false
-        };
-
-        // Delete ALL .xml files in .agent/tmp/ to prevent context pollution via workspace
-        let tmp_dir = Path::new(".agent/tmp");
-        let xml_cleaned = if ctx.workspace.exists(tmp_dir) {
-            let entries =
-                ctx.workspace
-                    .read_dir(tmp_dir)
-                    .map_err(|err| ErrorEvent::WorkspaceReadFailed {
-                        path: tmp_dir.display().to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    })?;
-
-            let xml_cleaned: Result<usize, ErrorEvent> = entries
-                .into_iter()
-                .filter(|entry| entry.path().extension().and_then(|s| s.to_str()) == Some("xml"))
-                .try_fold(0, |count, entry| {
-                    let path = entry.path();
-                    ctx.workspace
-                        .remove(path)
-                        .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
-                            path: path.display().to_string(),
-                            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                        })
-                        .map(|()| count + 1)
-                });
-
-            xml_cleaned?
-        } else {
-            0
-        };
-
-        // Delete continuation context file (if present) via workspace
+        let plan_cleaned = remove_file_if_exists(ctx, Path::new(".agent/PLAN.md"))?;
+        let issues_cleaned = remove_file_if_exists(ctx, Path::new(".agent/ISSUES.md"))?;
+        let xml_cleaned = remove_xml_files_from_tmp(ctx)?;
         cleanup_continuation_context_file(ctx)?;
 
         let cleaned_count = plan_cleaned as usize + issues_cleaned as usize + xml_cleaned;
@@ -187,24 +82,15 @@ impl MainEffectHandler {
             ctx.logger.warn(msg);
         }
 
-        let event = PipelineEvent::prompt_permissions_restored();
-        let warning = make_prompt_writable_with_workspace(ctx.workspace);
+        self.apply_phase_transition_to_restore_result(build_restore_permissions_result(warning))
+    }
 
-        if let Some(ref msg) = warning {
-            ctx.logger.warn(msg);
-        }
-
-        let result = EffectResult::event(event).maybe_with_additional_event(
-            warning
-                .as_ref()
-                .map(|msg| PipelineEvent::prompt_permissions_restore_warning(msg.clone())),
-        );
-
+    fn apply_phase_transition_to_restore_result(&self, result: EffectResult) -> EffectResult {
         if self.state.phase == PipelinePhase::Finalizing {
-            return result.with_ui_event(self.phase_transition_ui(PipelinePhase::Complete));
+            result.with_ui_event(self.phase_transition_ui(PipelinePhase::Complete))
+        } else {
+            result
         }
-
-        result
     }
 
     pub(super) fn lock_prompt_permissions(ctx: &PhaseContext<'_>) -> EffectResult {
@@ -391,18 +277,8 @@ impl MainEffectHandler {
 
         let gitignore_path = Path::new(".gitignore");
         let required_entries = vec!["/PROMPT*", ".agent/"];
-
-        // Capture file_created status BEFORE any file operations to avoid race condition
         let file_created = !ctx.workspace.exists(gitignore_path);
-
-        // Read existing .gitignore content (or empty string if doesn't exist)
-        let existing_content = if ctx.workspace.exists(gitignore_path) {
-            ctx.workspace
-                .read(gitignore_path)
-                .unwrap_or_else(|_| String::new())
-        } else {
-            String::new()
-        };
+        let existing_content = ctx.workspace.read(gitignore_path).unwrap_or_default();
 
         let (already_present, entries_added): (Vec<_>, Vec<_>) = required_entries
             .into_iter()
@@ -414,43 +290,174 @@ impl MainEffectHandler {
         if entries_added.is_empty() {
             ctx.logger
                 .info("All required .gitignore entries already present");
-        } else {
-            let suffix = if existing_content.is_empty() || existing_content.ends_with('\n') {
-                String::new()
-            } else {
-                "\n".to_string()
-            };
-            let entries_str = format!(
-                "# Ralph-workflow artifacts (auto-generated)\n{}\n",
-                entries_added.join("\n")
-            );
-            let new_content = format!("{existing_content}{suffix}{entries_str}");
-
-            let written = ctx.workspace.write(gitignore_path, &new_content).is_ok();
-
-            if written {
-                ctx.logger.success(&format!(
-                    "Added {} entries to .gitignore: {}",
-                    entries_added.len(),
-                    entries_added.join(", ")
-                ));
-            } else {
-                ctx.logger
-                    .warn("Failed to write .gitignore (continuing anyway)");
-                // Write failed: report no entries actually added (write was not persisted)
-                return EffectResult::event(PipelineEvent::gitignore_entries_ensured(
-                    Vec::new(),
-                    already_present,
-                    file_created,
-                ));
-            }
+            return EffectResult::event(PipelineEvent::gitignore_entries_ensured(
+                entries_added,
+                already_present,
+                file_created,
+            ));
         }
 
+        write_gitignore_entries(
+            ctx,
+            gitignore_path,
+            &existing_content,
+            &entries_added,
+            already_present,
+            file_created,
+        )
+    }
+}
+
+fn build_gitignore_new_content(existing_content: &str, entries_added: &[String]) -> String {
+    let suffix = if existing_content.is_empty() || existing_content.ends_with('\n') {
+        String::new()
+    } else {
+        "\n".to_string()
+    };
+    let entries_str = format!(
+        "# Ralph-workflow artifacts (auto-generated)\n{}\n",
+        entries_added.join("\n")
+    );
+    format!("{existing_content}{suffix}{entries_str}")
+}
+
+fn write_gitignore_entries(
+    ctx: &PhaseContext<'_>,
+    gitignore_path: &Path,
+    existing_content: &str,
+    entries_added: &[String],
+    already_present: Vec<String>,
+    file_created: bool,
+) -> EffectResult {
+    let new_content = build_gitignore_new_content(existing_content, entries_added);
+    if ctx.workspace.write(gitignore_path, &new_content).is_ok() {
+        ctx.logger.success(&format!(
+            "Added {} entries to .gitignore: {}",
+            entries_added.len(),
+            entries_added.join(", ")
+        ));
         EffectResult::event(PipelineEvent::gitignore_entries_ensured(
-            entries_added,
+            entries_added.to_vec(),
             already_present,
             file_created,
         ))
+    } else {
+        ctx.logger
+            .warn("Failed to write .gitignore (continuing anyway)");
+        EffectResult::event(PipelineEvent::gitignore_entries_ensured(
+            Vec::new(),
+            already_present,
+            file_created,
+        ))
+    }
+}
+
+fn build_restore_permissions_result(warning: Option<String>) -> EffectResult {
+    let event = PipelineEvent::prompt_permissions_restored();
+    EffectResult::event(event)
+        .maybe_with_additional_event(warning.map(PipelineEvent::prompt_permissions_restore_warning))
+}
+
+fn remove_file_if_exists(ctx: &PhaseContext<'_>, path: &Path) -> Result<bool> {
+    if ctx.workspace.exists(path) {
+        ctx.workspace
+            .remove(path)
+            .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
+                path: path.display().to_string(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            })?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn remove_xml_files_from_tmp(ctx: &PhaseContext<'_>) -> std::result::Result<usize, ErrorEvent> {
+    let tmp_dir = Path::new(".agent/tmp");
+    if !ctx.workspace.exists(tmp_dir) {
+        return Ok(0);
+    }
+    let entries =
+        ctx.workspace
+            .read_dir(tmp_dir)
+            .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+                path: tmp_dir.display().to_string(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            })?;
+    entries
+        .into_iter()
+        .filter(|entry| entry.path().extension().and_then(|s| s.to_str()) == Some("xml"))
+        .try_fold(0usize, |count, entry| {
+            let path = entry.path();
+            ctx.workspace
+                .remove(path)
+                .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
+                    path: path.display().to_string(),
+                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                })
+                .map(|()| count + 1)
+        })
+}
+
+fn cleanup_required_files_event(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+) -> EffectResult {
+    match handler.state.phase {
+        PipelinePhase::Planning => cleanup_planning_phase_xml_event(handler),
+        PipelinePhase::Development => cleanup_development_phase_xml_event(handler),
+        PipelinePhase::Review => cleanup_review_phase_event(handler),
+        PipelinePhase::CommitMessage => cleanup_commit_phase_xml_event(handler),
+        _ => cleanup_unexpected_phase_event(handler, ctx),
+    }
+}
+
+fn cleanup_planning_phase_xml_event(handler: &MainEffectHandler) -> EffectResult {
+    EffectResult::event(PipelineEvent::Planning(PlanningEvent::PlanXmlCleaned {
+        iteration: handler.state.iteration,
+    }))
+}
+
+fn cleanup_development_phase_xml_event(handler: &MainEffectHandler) -> EffectResult {
+    EffectResult::event(PipelineEvent::Development(DevelopmentEvent::XmlCleaned {
+        iteration: handler.state.iteration,
+    }))
+}
+
+fn cleanup_commit_phase_xml_event(handler: &MainEffectHandler) -> EffectResult {
+    let attempt = match &handler.state.commit {
+        crate::reducer::state::CommitState::Generating { attempt, .. } => *attempt,
+        _ => 1,
+    };
+    EffectResult::event(PipelineEvent::Commit(CommitEvent::CommitXmlCleaned {
+        attempt,
+    }))
+}
+
+fn cleanup_unexpected_phase_event(
+    handler: &MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+) -> EffectResult {
+    ctx.logger.warn(&format!(
+        "CleanupRequiredFiles emitted in unexpected phase: {:?}",
+        handler.state.phase
+    ));
+    EffectResult::event(PipelineEvent::context_cleaned())
+}
+
+fn cleanup_review_phase_event(handler: &MainEffectHandler) -> EffectResult {
+    // Cleanup routing in review phase is drain-owned. The review flag tracks
+    // discovered issues, but explicit fix continuation/retry flows can keep the
+    // fix drain active even after that compatibility flag is cleared.
+    let pass = handler.state.reviewer_pass;
+    if handler.state.runtime_drain() == AgentDrain::Fix {
+        EffectResult::event(PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
+            pass,
+        }))
+    } else {
+        EffectResult::event(PipelineEvent::Review(ReviewEvent::IssuesXmlCleaned {
+            pass,
+        }))
     }
 }
 

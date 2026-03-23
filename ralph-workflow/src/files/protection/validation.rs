@@ -4,4 +4,5 @@
 //! they have the required sections for the pipeline to work effectively.
 
 include!("validation/helpers.rs");
+include!("validation/io.rs");
 include!("validation/tests.rs");

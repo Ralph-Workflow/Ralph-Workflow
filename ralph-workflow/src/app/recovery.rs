@@ -385,7 +385,32 @@ where
     let (new_state, new_events_processed) =
         emit_forced_completion_marker_event(handler, state, events_processed, trace);
 
-    execute_forced_save_checkpoint(ctx, handler, new_state, new_events_processed, trace)
+    // After emitting CompletionMarkerEmitted, the state transitions to Interrupted
+    // with previous_phase = AwaitingDevFix, which satisfies is_complete().
+    // The forced checkpoint save is a best-effort operation - if it fails but we've
+    // already achieved completion conditions, treat the recovery as successful.
+    let checkpoint_result = execute_forced_save_checkpoint(
+        ctx,
+        handler,
+        new_state.clone(),
+        new_events_processed,
+        trace,
+    );
+
+    match checkpoint_result {
+        RecoveryResult::Success(_, _, _) => {
+            RecoveryResult::Success(new_state, new_events_processed, true)
+        }
+        RecoveryResult::FailedUnrecoverable(_, _, dumped) if new_state.is_complete() => {
+            // Checkpoint save failed but we already achieved is_complete() via
+            // CompletionMarkerEmitted transition. Report success with dumped status.
+            RecoveryResult::Success(new_state, new_events_processed, dumped)
+        }
+        RecoveryResult::NotNeeded => RecoveryResult::Success(new_state, new_events_processed, true),
+        RecoveryResult::FailedUnrecoverable(state, events, dumped) => {
+            RecoveryResult::FailedUnrecoverable(state, events, dumped)
+        }
+    }
 }
 
 #[cfg(test)]

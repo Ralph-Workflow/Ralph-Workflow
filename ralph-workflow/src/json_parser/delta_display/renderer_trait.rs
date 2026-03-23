@@ -260,11 +260,13 @@ pub fn compute_append_only_suffix<'a>(last_rendered: &str, current: &'a str) -> 
     if last_rendered.is_empty() {
         return current;
     }
-
     let suffix = current.strip_prefix(last_rendered).unwrap_or_default();
+    debug_log_discontinuity(last_rendered, current, suffix);
+    suffix
+}
 
-    // Debug assertion to help detect unexpected discontinuities during development
-    #[cfg(debug_assertions)]
+#[cfg(debug_assertions)]
+fn debug_log_discontinuity(last_rendered: &str, current: &str, suffix: &str) {
     if suffix.is_empty() && !current.is_empty() && !last_rendered.is_empty() {
         let _ = writeln!(
             std::io::stderr(),
@@ -277,6 +279,8 @@ pub fn compute_append_only_suffix<'a>(last_rendered: &str, current: &'a str) -> 
             current.len()
         );
     }
-
-    suffix
 }
+
+#[cfg(not(debug_assertions))]
+#[inline]
+fn debug_log_discontinuity(_last_rendered: &str, _current: &str, _suffix: &str) {}

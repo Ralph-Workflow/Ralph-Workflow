@@ -1,5 +1,6 @@
 //! Prompt-based command execution.
 
+mod io;
 mod io_agent_spawn;
 
 #[cfg(test)]

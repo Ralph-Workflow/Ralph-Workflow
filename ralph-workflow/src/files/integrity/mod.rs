@@ -8,6 +8,9 @@ use std::path::Path;
 
 use crate::workspace::Workspace;
 
+// Clock-read helper in boundary module (io.rs stem → exempt from forbid_read_clock).
+include!("io.rs");
+
 /// Maximum reasonable file size for agent text files (10MB).
 pub const MAX_AGENT_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
@@ -109,25 +112,11 @@ pub fn check_filesystem_ready_with_workspace(
     workspace.remove(&test_file)?;
 
     // Best-effort stale lock detection: fail only on clear cases.
-    if let Some(lock_file) = workspace.read_dir(path).ok().and_then(|entries| {
-        entries
-            .iter()
-            .filter_map(|entry| {
-                let name = entry.file_name()?;
-                let name = name.to_str()?;
-                if !name.to_ascii_lowercase().ends_with(".lock") {
-                    return None;
-                }
-                let modified = entry.modified()?;
-                let elapsed = modified.elapsed().ok()?;
-                if elapsed > std::time::Duration::from_secs(3600) {
-                    Some(name.to_string())
-                } else {
-                    None
-                }
-            })
-            .next()
-    }) {
+    if let Some(lock_file) = workspace
+        .read_dir(path)
+        .ok()
+        .and_then(|entries| find_stale_lock(&entries))
+    {
         return Err(std::io::Error::other(format!(
             "Stale lock file found: {lock_file}"
         )));

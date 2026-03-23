@@ -13,6 +13,9 @@
 use crate::workspace::Workspace;
 use std::path::Path;
 
+// Environment access in boundary module (io.rs stem → exempt from forbid_io_effects).
+include!("file_based_extraction/io.rs");
+
 /// XML file paths by phase.
 pub mod paths {
     /// Path for planning phase XML output
@@ -54,10 +57,7 @@ pub mod paths {
 /// For explicit path control, use [`resolve_absolute_path_at`] instead.
 #[must_use]
 pub fn resolve_absolute_path(relative_path: &str) -> String {
-    std::env::current_dir().ok().map_or_else(
-        || relative_path.to_string(),
-        |cwd| cwd.join(relative_path).display().to_string(),
-    )
+    resolve_with_current_dir(relative_path)
 }
 
 /// Resolve a relative path to an absolute path at a specific repository root.

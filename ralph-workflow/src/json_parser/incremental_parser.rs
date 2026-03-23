@@ -86,83 +86,18 @@ impl IncrementalNdjsonParser {
     /// # Returns
     ///
     /// A tuple of (updated parser, vector of complete JSON strings), in the order they were completed.
-    pub fn feed(mut self, byte: u8) -> Self {
-        self.process_byte(byte);
-        self
+    pub fn feed(self, byte: u8) -> Self {
+        self.process_byte(byte)
     }
 
-    pub fn feed_and_get_events(mut self, data: &[u8]) -> (Self, Vec<String>) {
-        data.iter().for_each(|&byte| {
-            self.process_byte(byte);
-        });
-        let results = self.results.drain(..).collect();
-        (self, results)
+    pub fn feed_and_get_events(self, data: &[u8]) -> (Self, Vec<String>) {
+        let parser = data.iter().fold(self, |acc, &byte| acc.process_byte(byte));
+        let (results, empty_parser) = extract_results(parser);
+        (empty_parser, results)
     }
 
     pub fn drain_results(&mut self) -> Vec<String> {
-        self.results.drain(..).collect()
-    }
-
-    fn process_byte(&mut self, byte: u8) {
-        if !self.started && byte != b'{' {
-            return;
-        }
-
-        if self.escape_next {
-            self.buffer.push(byte);
-            self.escape_next = false;
-            return;
-        }
-
-        match byte {
-            b'\\' if self.in_string => {
-                self.buffer.push(byte);
-                self.escape_next = true;
-            }
-            b'"' => {
-                self.buffer.push(byte);
-                if self.started {
-                    self.in_string = !self.in_string;
-                }
-            }
-            b'{' if !self.in_string => {
-                if self.depth + 1 > MAX_JSON_DEPTH {
-                    self.buffer.clear();
-                    self.depth = 0;
-                    self.started = false;
-                    self.in_string = false;
-                    self.escape_next = false;
-                } else {
-                    self.buffer.push(byte);
-                    self.depth = self.depth.saturating_add(1);
-                    self.started = true;
-                }
-            }
-            b'}' if !self.in_string && self.started => {
-                self.buffer.push(byte);
-                self.depth = self.depth.saturating_sub(1);
-
-                if self.depth == 0 {
-                    self.extract_complete_json();
-                }
-            }
-            _ => {
-                self.buffer.push(byte);
-            }
-        }
-    }
-
-    fn extract_complete_json(&mut self) {
-        let json_end = self.buffer.len();
-
-        if let Ok(json_str) = String::from_utf8(self.buffer.drain(..json_end).collect()) {
-            let trimmed = json_str.trim();
-            if !trimmed.is_empty() {
-                self.results.push(trimmed.to_string());
-            }
-        }
-
-        self.started = false;
+        std::mem::take(&mut self.results)
     }
 
     /// Get any complete JSON objects extracted so far.
@@ -176,7 +111,7 @@ impl IncrementalNdjsonParser {
     /// This can be useful for error recovery when invalid data is encountered.
     #[cfg(test)]
     pub fn clear(&mut self) {
-        self.buffer.clear();
+        self.buffer = Vec::new();
         self.depth = 0;
         self.in_string = false;
         self.escape_next = false;
@@ -211,20 +146,35 @@ impl IncrementalNdjsonParser {
     /// }
     /// ```
     #[must_use]
-    pub fn finish(mut self) -> Option<String> {
-        let trimmed = String::from_utf8(self.buffer.drain(..).collect())
+    pub fn finish(self) -> Option<String> {
+        String::from_utf8(self.buffer)
             .ok()
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-
-        self.buffer.clear();
-        self.depth = 0;
-        self.in_string = false;
-        self.escape_next = false;
-        self.started = false;
-
-        trimmed
+            .filter(|s| !s.is_empty())
     }
+}
+
+// Include boundary module for mutable byte processing.
+include!("incremental_parser/io.rs");
+
+fn extract_results(parser: IncrementalNdjsonParser) -> (Vec<String>, IncrementalNdjsonParser) {
+    let IncrementalNdjsonParser {
+        buffer,
+        depth,
+        in_string,
+        escape_next,
+        started,
+        results,
+    } = parser;
+    let empty = IncrementalNdjsonParser {
+        buffer,
+        depth,
+        in_string,
+        escape_next,
+        started,
+        results: Vec::new(),
+    };
+    (results, empty)
 }
 
 impl Default for IncrementalNdjsonParser {

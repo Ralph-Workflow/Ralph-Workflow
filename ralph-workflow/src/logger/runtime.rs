@@ -23,6 +23,10 @@ impl ColorEnvironment for RealColorEnvironment {
     }
 }
 
+pub fn get_color_env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
 pub fn stdout_write(buf: &[u8]) -> std::io::Result<usize> {
     std::io::stdout().write(buf)
 }

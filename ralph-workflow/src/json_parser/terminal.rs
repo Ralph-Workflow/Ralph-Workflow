@@ -19,12 +19,9 @@ pub enum TerminalMode {
 impl TerminalMode {
     /// Detect the current terminal mode using the provided environment.
     pub fn detect_with_env(env: &dyn ColorEnvironment) -> Self {
-        // Check NO_COLOR first
         if env.get_var("NO_COLOR").is_some() {
             return Self::None;
         }
-
-        // Check CLICOLOR_FORCE
         if let Some(val) = env.get_var("CLICOLOR_FORCE") {
             if val != "0" {
                 return if env.is_terminal() {
@@ -34,59 +31,13 @@ impl TerminalMode {
                 };
             }
         }
-
-        // Check CLICOLOR
-        if let Some(val) = env.get_var("CLICOLOR") {
-            if val == "0" {
-                return Self::None;
-            }
+        if env.get_var("CLICOLOR").as_deref() == Some("0") {
+            return Self::None;
         }
-
-        // Check if stdout is a terminal
         if !env.is_terminal() {
             return Self::None;
         }
-
-        // Check TERM for capability detection
-        match env.get_var("TERM") {
-            Some(term) => {
-                let term_lower = term.to_lowercase();
-
-                if term_lower == "dumb" {
-                    return Self::Basic;
-                }
-
-                let capable_terminals = [
-                    "xterm",
-                    "xterm-",
-                    "vt100",
-                    "vt102",
-                    "vt220",
-                    "vt320",
-                    "screen",
-                    "tmux",
-                    "ansi",
-                    "rxvt",
-                    "konsole",
-                    "gnome-terminal",
-                    "iterm",
-                    "alacritty",
-                    "kitty",
-                    "wezterm",
-                    "foot",
-                ];
-
-                if capable_terminals
-                    .iter()
-                    .any(|capable| term_lower.starts_with(capable))
-                {
-                    return Self::Full;
-                }
-
-                Self::Basic
-            }
-            None => Self::Basic,
-        }
+        classify_term_var(env.get_var("TERM").as_deref())
     }
 
     /// Detect the current terminal mode from environment.
@@ -102,18 +53,44 @@ impl Default for TerminalMode {
     }
 }
 
-/// Real environment for terminal detection.
-struct RealTerminalEnvironment;
-
-impl ColorEnvironment for RealTerminalEnvironment {
-    fn get_var(&self, name: &str) -> Option<String> {
-        std::env::var(name).ok()
+fn classify_term_var(term: Option<&str>) -> TerminalMode {
+    let Some(term_str) = term else {
+        return TerminalMode::Basic;
+    };
+    let term_lower = term_str.to_lowercase();
+    if term_lower == "dumb" {
+        return TerminalMode::Basic;
     }
-
-    fn is_terminal(&self) -> bool {
-        std::io::IsTerminal::is_terminal(&std::io::stdout())
+    const CAPABLE_TERMINALS: &[&str] = &[
+        "xterm",
+        "vt100",
+        "vt102",
+        "vt220",
+        "vt320",
+        "screen",
+        "tmux",
+        "ansi",
+        "rxvt",
+        "konsole",
+        "gnome-terminal",
+        "iterm",
+        "alacritty",
+        "kitty",
+        "wezterm",
+        "foot",
+    ];
+    if CAPABLE_TERMINALS
+        .iter()
+        .any(|capable| term_lower.starts_with(capable))
+    {
+        TerminalMode::Full
+    } else {
+        TerminalMode::Basic
     }
 }
+
+// Real environment implementation lives in the boundary submodule.
+include!("terminal/io.rs");
 
 #[cfg(test)]
 mod tests {

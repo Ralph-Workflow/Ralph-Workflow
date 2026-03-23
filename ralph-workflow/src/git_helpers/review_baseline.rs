@@ -20,11 +20,14 @@ use std::path::Path;
 
 use crate::workspace::{Workspace, WorkspaceFs};
 
-mod io {
+mod iot {
     pub type Result<T> = std::io::Result<T>;
     pub type Error = std::io::Error;
     pub type ErrorKind = std::io::ErrorKind;
 }
+
+// Boundary module for libgit2 revwalk operations.
+include!("review_baseline/io.rs");
 
 use super::start_commit::get_current_head_oid;
 
@@ -41,18 +44,18 @@ pub enum ReviewBaseline {
     NotSet,
 }
 
-pub fn load_review_baseline() -> io::Result<ReviewBaseline> {
+pub fn load_review_baseline() -> iot::Result<ReviewBaseline> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
     let workspace = WorkspaceFs::new(repo_root.to_path_buf());
     load_review_baseline_with_workspace(&workspace)
 }
 
 pub fn load_review_baseline_with_workspace(
     workspace: &dyn Workspace,
-) -> io::Result<ReviewBaseline> {
+) -> iot::Result<ReviewBaseline> {
     let path = Path::new(REVIEW_BASELINE_FILE);
     if !workspace.exists(path) {
         return Ok(ReviewBaseline::NotSet);
@@ -66,8 +69,8 @@ pub fn load_review_baseline_with_workspace(
     }
 
     let oid = git2::Oid::from_str(raw).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
+        iot::Error::new(
+            iot::ErrorKind::InvalidData,
             format!("Invalid baseline OID in {REVIEW_BASELINE_FILE}: '{raw}'"),
         )
     })?;
@@ -75,25 +78,25 @@ pub fn load_review_baseline_with_workspace(
     Ok(ReviewBaseline::Commit(oid))
 }
 
-pub fn update_review_baseline() -> io::Result<()> {
+pub fn update_review_baseline() -> iot::Result<()> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
     let workspace = WorkspaceFs::new(repo_root.to_path_buf());
     update_review_baseline_with_workspace(&workspace)
 }
 
-pub fn update_review_baseline_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
+pub fn update_review_baseline_with_workspace(workspace: &dyn Workspace) -> iot::Result<()> {
     let path = Path::new(REVIEW_BASELINE_FILE);
     match get_current_head_oid() {
         Ok(oid) => workspace.write(path, oid.trim()),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => workspace.write(path, BASELINE_NOT_SET),
+        Err(e) if e.kind() == iot::ErrorKind::NotFound => workspace.write(path, BASELINE_NOT_SET),
         Err(e) => Err(e),
     }
 }
 
-pub fn get_review_baseline_info() -> io::Result<(Option<String>, usize, bool)> {
+pub fn get_review_baseline_info() -> iot::Result<(Option<String>, usize, bool)> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     match load_review_baseline()? {
         ReviewBaseline::Commit(oid) => {
@@ -106,10 +109,10 @@ pub fn get_review_baseline_info() -> io::Result<(Option<String>, usize, bool)> {
     }
 }
 
-fn count_commits_since(repo: &git2::Repository, baseline_oid: &str) -> io::Result<usize> {
+fn count_commits_since(repo: &git2::Repository, baseline_oid: &str) -> iot::Result<usize> {
     let baseline = git2::Oid::from_str(baseline_oid).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
+        iot::Error::new(
+            iot::ErrorKind::InvalidInput,
             format!("Invalid baseline OID: {baseline_oid}"),
         )
     })?;
@@ -124,15 +127,11 @@ fn count_commits_since(repo: &git2::Repository, baseline_oid: &str) -> io::Resul
         return Ok(ahead);
     }
 
-    let mut walk = repo.revwalk().map_err(|e| to_io_error(&e))?;
-    walk.push(head_oid).map_err(|e| to_io_error(&e))?;
-    walk.hide(baseline).map_err(|e| to_io_error(&e))?;
-    let commits: Vec<_> = walk.collect();
-    Ok(commits.len())
+    revwalk_count_commits(repo, head_oid, baseline)
 }
 
-fn to_io_error(err: &git2::Error) -> io::Error {
-    io::Error::other(err.to_string())
+fn to_io_error(err: &git2::Error) -> iot::Error {
+    iot::Error::other(err.to_string())
 }
 
 // =============================================================================
@@ -262,7 +261,7 @@ impl BaselineSummary {
     }
 }
 
-pub fn get_baseline_summary() -> io::Result<BaselineSummary> {
+pub fn get_baseline_summary() -> iot::Result<BaselineSummary> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     get_baseline_summary_impl(&repo, load_review_baseline()?)
 }
@@ -270,7 +269,7 @@ pub fn get_baseline_summary() -> io::Result<BaselineSummary> {
 fn get_baseline_summary_impl(
     repo: &git2::Repository,
     baseline: ReviewBaseline,
-) -> io::Result<BaselineSummary> {
+) -> iot::Result<BaselineSummary> {
     let baseline_oid = match baseline {
         ReviewBaseline::Commit(oid) => Some(oid.to_string()),
         ReviewBaseline::NotSet => None,
@@ -301,12 +300,15 @@ fn count_lines_in_blob(content: &[u8]) -> usize {
     content.iter().copied().filter(|&c| c == b'\n').count() + 1
 }
 
-fn get_diff_stats(repo: &git2::Repository, baseline_oid: Option<&String>) -> io::Result<DiffStats> {
+fn get_diff_stats(
+    repo: &git2::Repository,
+    baseline_oid: Option<&String>,
+) -> iot::Result<DiffStats> {
     let baseline_tree = match baseline_oid {
         Some(oid) => {
             let oid = git2::Oid::from_str(oid).map_err(|_| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
+                iot::Error::new(
+                    iot::ErrorKind::InvalidInput,
                     format!("Invalid baseline OID: {oid}"),
                 )
             })?;
@@ -471,6 +473,6 @@ mod tests {
 
         let result = load_review_baseline_with_workspace(&workspace);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(result.unwrap_err().kind(), iot::ErrorKind::InvalidData);
     }
 }

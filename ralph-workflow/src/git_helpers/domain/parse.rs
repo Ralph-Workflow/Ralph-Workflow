@@ -26,81 +26,87 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
         .collect()
 }
 
+/// Parse state used while iterating through C-style escape sequences.
+#[derive(Clone)]
+enum UnquoteState {
+    /// Position in the `inner` byte slice to process next.
+    At(usize),
+    /// Sentinel: iteration finished.
+    Done,
+}
+
+/// Decode one "token" of a C-style quoted string and return the bytes it
+/// contributes together with the next parser position.
+///
+/// Returns `None` when the iteration is exhausted.
+fn unquote_step(inner: &[u8], state: &UnquoteState) -> Option<(UnquoteState, Vec<u8>)> {
+    let i = match state {
+        UnquoteState::Done => return None,
+        UnquoteState::At(i) if *i >= inner.len() => return None,
+        UnquoteState::At(i) => *i,
+    };
+
+    let b = inner[i];
+
+    if b != b'\\' {
+        return Some((UnquoteState::At(i + 1), vec![b]));
+    }
+
+    // Trailing backslash with nothing after it.
+    if i + 1 >= inner.len() {
+        return Some((UnquoteState::Done, vec![b'\\']));
+    }
+
+    let next = inner[i + 1];
+    match next {
+        b'\\' => Some((UnquoteState::At(i + 2), vec![b'\\'])),
+        b'"' => Some((UnquoteState::At(i + 2), vec![b'"'])),
+        b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
+            Some((UnquoteState::At(i + 2), vec![b'\\', next]))
+        }
+        b'0'..=b'7' => {
+            let start = i + 1;
+            // Collect up to 3 octal digits.
+            let consumed = (0..3)
+                .take_while(|&k| {
+                    start + k < inner.len() && (b'0'..=b'7').contains(&inner[start + k])
+                })
+                .count();
+            if consumed == 0 {
+                return Some((UnquoteState::At(i + 1), vec![b'\\']));
+            }
+            let octal_val = inner[start..start + consumed]
+                .iter()
+                .fold(0u32, |acc, &d| acc * 8 + u32::from(d - b'0'));
+            let bytes: Vec<u8> = match u8::try_from(octal_val) {
+                Ok(byte) if byte < 0x20 || byte == 0x7F => std::iter::once(b'\\')
+                    .chain(inner[start..start + consumed].iter().copied())
+                    .collect(),
+                Ok(byte) => vec![byte],
+                Err(_) => std::iter::once(b'\\')
+                    .chain(inner[start..start + consumed].iter().copied())
+                    .collect(),
+            };
+            Some((UnquoteState::At(start + consumed), bytes))
+        }
+        _ => Some((UnquoteState::At(i + 2), vec![b'\\', next])),
+    }
+}
+
 fn unquote_c_style(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
     if bytes.len() < 2 || bytes[0] != b'"' || bytes[bytes.len() - 1] != b'"' {
         return None;
     }
     let inner = &bytes[1..bytes.len() - 1];
-    let mut result = Vec::with_capacity(inner.len());
-    let mut i = 0;
 
-    while i < inner.len() {
-        let b = inner[i];
-        if b != b'\\' {
-            result.push(b);
-            i += 1;
-            continue;
-        }
-
-        if i + 1 >= inner.len() {
-            result.push(b'\\');
-            break;
-        }
-
-        let next = inner[i + 1];
-        match next {
-            b'\\' => {
-                result.push(b'\\');
-                i += 2;
-            }
-            b'"' => {
-                result.push(b'"');
-                i += 2;
-            }
-            b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
-                result.push(b'\\');
-                result.push(next);
-                i += 2;
-            }
-            b'0'..=b'7' => {
-                let start = i + 1;
-                let mut consumed = 0;
-                let mut octal_val = 0u32;
-                while consumed < 3 && start + consumed < inner.len() {
-                    let digit = inner[start + consumed];
-                    if !(b'0'..=b'7').contains(&digit) {
-                        break;
-                    }
-                    octal_val = (octal_val * 8) + u32::from(digit - b'0');
-                    consumed += 1;
-                }
-
-                if consumed > 0 {
-                    if let Ok(byte) = u8::try_from(octal_val) {
-                        if byte < 0x20 || byte == 0x7F {
-                            result.push(b'\\');
-                            result.extend_from_slice(&inner[start..start + consumed]);
-                        } else {
-                            result.push(byte);
-                        }
-                    } else {
-                        result.push(b'\\');
-                        result.extend_from_slice(&inner[start..start + consumed]);
-                    }
-                    i = start + consumed;
-                } else {
-                    result.push(b'\\');
-                    i += 1;
-                }
-            }
-            _ => {
-                result.push(b'\\');
-                result.push(next);
-                i += 2;
-            }
-        }
-    }
+    let result: Vec<u8> =
+        std::iter::successors(Some((UnquoteState::At(0), vec![])), |(state, _)| {
+            unquote_step(inner, state)
+        })
+        .skip(1) // skip the seed (empty vec)
+        .flat_map(|(_, bytes)| bytes)
+        .collect();
 
     String::from_utf8(result).ok()
 }
@@ -139,17 +145,6 @@ pub(crate) fn parse_status_line(line: &str) -> Option<String> {
 pub(crate) fn parse_path_component(raw: &str) -> String {
     let raw = raw.trim_end();
     unquote_c_style(raw).unwrap_or_else(|| raw.to_string())
-}
-
-/// Build `StatusOptions` for git snapshot queries.
-///
-/// Pure: returns a configured builder struct, performs no I/O.
-pub(crate) fn configured_status_options() -> git2::StatusOptions {
-    let mut opts = git2::StatusOptions::new();
-    opts.include_untracked(true)
-        .recurse_untracked_dirs(true)
-        .include_ignored(false);
-    opts
 }
 
 /// Validate a path string for use in snapshot output.
@@ -211,16 +206,6 @@ pub(crate) fn compute_wt_status(status: git2::Status) -> char {
     } else {
         ' '
     }
-}
-
-/// Build `DiffOptions` for git diff queries.
-///
-/// Pure: returns a configured builder struct, performs no I/O.
-pub(crate) fn configured_diff_options() -> git2::DiffOptions {
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
-    diff_opts
 }
 
 #[cfg(test)]

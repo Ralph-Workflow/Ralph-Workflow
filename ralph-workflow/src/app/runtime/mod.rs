@@ -285,33 +285,43 @@ fn log_ui_events(ctx: &PhaseContext<'_>, ui_events: &[crate::reducer::ui_event::
     });
 }
 
+/// Bundles iteration event data to reduce function argument count.
+struct IterationEvents {
+    event: PipelineEvent,
+    additional_events: Vec<PipelineEvent>,
+    ui_events: Vec<crate::reducer::ui_event::UIEvent>,
+}
+
 fn finalize_iteration<'ctx, H>(
     ctx: &mut PhaseContext<'_>,
     handler: &mut H,
     runtime: &mut LoopRuntime,
     effect_str: &str,
-    event: PipelineEvent,
-    additional_events: Vec<PipelineEvent>,
+    iteration_events: IterationEvents,
     duration_ms: u64,
-    ui_events: &[crate::reducer::ui_event::UIEvent],
 ) -> Result<bool>
 where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
-    log_ui_events(ctx, ui_events);
+    log_ui_events(ctx, &iteration_events.ui_events);
 
     process_primary_event(
         ctx,
         handler,
         runtime,
         effect_str,
-        event,
-        &additional_events,
+        iteration_events.event,
+        &iteration_events.additional_events,
         duration_ms,
     );
-    process_additional_events(handler, runtime, effect_str, additional_events);
+    process_additional_events(
+        handler,
+        runtime,
+        effect_str,
+        iteration_events.additional_events,
+    );
     update_loop_detection_state(handler, runtime);
-    report_cloud_progress(ctx, &runtime.state, ui_events)?;
+    report_cloud_progress(ctx, &runtime.state, &iteration_events.ui_events)?;
 
     Ok(log_completion_transition_if_needed(ctx, &runtime.state))
 }
@@ -368,7 +378,7 @@ fn log_completion_transition_if_needed(ctx: &PhaseContext<'_>, state: &PipelineS
 
 enum RecoveryImpact {
     Applied {
-        state: PipelineState,
+        state: Box<PipelineState>,
         events_processed: usize,
         trace_dumped: bool,
         failed: bool,
@@ -379,14 +389,14 @@ enum RecoveryImpact {
 fn recovery_impact(result: RecoveryResult) -> RecoveryImpact {
     match result {
         RecoveryResult::Success(state, events_processed, dumped) => RecoveryImpact::Applied {
-            state,
+            state: Box::new(state),
             events_processed,
             trace_dumped: dumped,
             failed: false,
         },
         RecoveryResult::FailedUnrecoverable(state, events_processed, dumped) => {
             RecoveryImpact::Applied {
-                state,
+                state: Box::new(state),
                 events_processed,
                 trace_dumped: dumped,
                 failed: true,
@@ -473,10 +483,12 @@ where
         handler,
         runtime,
         effect_str,
-        event,
-        additional_events,
+        IterationEvents {
+            event,
+            additional_events,
+            ui_events,
+        },
         duration_ms,
-        &ui_events,
     )? {
         return Ok(IterationResult::Break);
     }
@@ -496,7 +508,7 @@ fn apply_recovery_result(
             trace_dumped,
             failed,
         } => {
-            runtime.state = state;
+            runtime.state = *state;
             runtime.events_processed = events_processed;
             (trace_already_dumped || trace_dumped, failed)
         }
@@ -610,7 +622,7 @@ where
     }
 }
 
-fn ensure_trace_dumped_after_max_iterations<'ctx>(
+fn ensure_trace_dumped_after_max_iterations(
     ctx: &mut PhaseContext<'_>,
     runtime: &LoopRuntime,
     trace_already_dumped: bool,
@@ -657,7 +669,7 @@ fn log_max_iterations_exit_if_needed(
     log_max_iterations_exit(ctx, runtime);
 }
 
-fn create_loop_runtime<'ctx>(
+fn create_loop_runtime(
     ctx: &PhaseContext<'_>,
     initial_state: Option<PipelineState>,
 ) -> LoopRuntime {

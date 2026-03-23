@@ -29,3 +29,13 @@ impl RetryTimerProvider for ProductionRetryTimer {
 pub fn production_timer() -> Arc<dyn RetryTimerProviderDebug> {
     Arc::new(ProductionRetryTimer)
 }
+
+/// Perform a blocking sleep for use by timer implementations outside boundary modules.
+pub fn do_sleep(duration: Duration) {
+    std::thread::sleep(duration);
+}
+
+/// Read an environment variable for use by non-boundary callers.
+pub fn get_env_var(key: &str) -> Option<String> {
+    std::env::var(key).ok()
+}

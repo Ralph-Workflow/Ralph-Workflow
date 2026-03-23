@@ -1,13 +1,26 @@
 use std::time::Duration;
 
-pub fn fetch_url(url: &str) -> Result<String, String> {
-    let agent = ureq::Agent::new_with_config(
+fn build_agent() -> ureq::Agent {
+    ureq::Agent::new_with_config(
         ureq::config::Config::builder()
             .timeout_global(Some(Duration::from_secs(10)))
             .http_status_as_error(false)
             .build(),
-    );
+    )
+}
 
+fn check_http_status(status: ureq::http::StatusCode, body: &str) -> Result<(), String> {
+    if status.is_client_error() || status.is_server_error() {
+        if body.is_empty() {
+            return Err(format!("status {}", status.as_u16()));
+        }
+        return Err(format!("status {}: {}", status.as_u16(), body));
+    }
+    Ok(())
+}
+
+pub fn fetch_url(url: &str) -> Result<String, String> {
+    let agent = build_agent();
     let mut response = agent
         .get(url)
         .call()
@@ -19,14 +32,7 @@ pub fn fetch_url(url: &str) -> Result<String, String> {
         .read_to_string()
         .map_err(|e| e.to_string())?;
 
-    if status.is_client_error() || status.is_server_error() {
-        if body.is_empty() {
-            return Err(format!("status {}", status.as_u16()));
-        }
-
-        return Err(format!("status {}: {}", status.as_u16(), body));
-    }
-
+    check_http_status(status, &body)?;
     Ok(body)
 }
 

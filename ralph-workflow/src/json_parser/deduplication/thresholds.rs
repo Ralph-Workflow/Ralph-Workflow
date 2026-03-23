@@ -272,39 +272,33 @@ impl OverlapScore {
 /// assert!(score.is_safe_boundary);
 /// ```
 pub(super) fn score_overlap(delta: &str, accumulated: &str) -> OverlapScore {
-    // Check if delta starts with accumulated (snapshot detection)
-    let overlap_len = if delta.starts_with(accumulated) {
-        accumulated.len()
-    } else {
-        0
-    };
-
-    // Calculate ratio as integer to avoid floating point precision issues
-    // We'll compare overlap * 100 >= delta * MIN_OVERLAP_RATIO_INT
-    // This avoids f64 casting entirely
-    let ratio_met = if delta.is_empty() {
-        false
-    } else {
-        // Check if overlap/delta >= MIN_OVERLAP_RATIO without floating point
-        // By cross-multiplying: overlap * 100 >= delta * MIN_OVERLAP_RATIO_INT
-        let overlap_scaled = overlap_len.saturating_mul(100);
-        let threshold = delta.len().saturating_mul(MIN_OVERLAP_RATIO_INT);
-        overlap_scaled >= threshold
-    };
-
-    // Check if the accumulated string ends at a safe boundary
-    // This is important because we don't want to dedupe if the accumulated
-    // string ends mid-word (e.g., accumulated="Hello" and delta="HelloWorld")
-    let is_safe_boundary = if overlap_len > 0 {
-        // Check if the last character of accumulated is a safe boundary
-        is_safe_boundary(accumulated, accumulated.len())
-    } else {
-        false
-    };
+    let overlap_len = compute_overlap_len(delta, accumulated);
+    let ratio_met = compute_ratio_met(delta, overlap_len);
+    let is_safe_boundary = overlap_len > 0 && is_safe_boundary(accumulated, accumulated.len());
 
     OverlapScore {
         char_count: overlap_len,
         ratio_met,
         is_safe_boundary,
     }
+}
+
+/// Compute the overlap length: number of chars from `accumulated` that prefix `delta`.
+fn compute_overlap_len(delta: &str, accumulated: &str) -> usize {
+    if delta.starts_with(accumulated) {
+        accumulated.len()
+    } else {
+        0
+    }
+}
+
+/// Check if the overlap ratio meets the minimum threshold using integer arithmetic.
+fn compute_ratio_met(delta: &str, overlap_len: usize) -> bool {
+    if delta.is_empty() {
+        return false;
+    }
+    // Cross-multiply to avoid floating point: overlap/delta >= MIN_OVERLAP_RATIO_INT/100
+    let overlap_scaled = overlap_len.saturating_mul(100);
+    let threshold = delta.len().saturating_mul(MIN_OVERLAP_RATIO_INT);
+    overlap_scaled >= threshold
 }

@@ -136,37 +136,60 @@ impl ParserHealth {
         if !self.is_concerning() {
             return None;
         }
+        Some(self.format_warning_message(parser_name, colors))
+    }
 
-        let msg = if self.unknown_events > 0 || self.control_events > 0 || self.partial_events > 0 {
-            format!(
-                "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
-                 Also encountered {} unknown event types (valid JSON but unhandled), \
-                 {} control events (state management), \
-                 and {} partial events (streaming deltas). \
-                 This may indicate a parser mismatch. Consider using a different json_parser in your agent config.",
-                colors.yellow(),
-                colors.reset(),
+    fn format_warning_message(&self, parser_name: &str, colors: Colors) -> String {
+        let has_extra_events =
+            self.unknown_events > 0 || self.control_events > 0 || self.partial_events > 0;
+        if has_extra_events {
+            self.format_warning_with_extra_events(parser_name, colors)
+        } else {
+            format_basic_warning(
                 parser_name,
+                colors,
                 self.parse_errors,
                 self.parse_error_percentage_int(),
                 self.total_events,
-                self.unknown_events,
-                self.control_events,
-                self.partial_events
             )
-        } else {
-            format!(
-                "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
-                 This may indicate malformed JSON output. Consider using a different json_parser in your agent config.",
-                colors.yellow(),
-                colors.reset(),
-                parser_name,
-                self.parse_errors,
-                self.parse_error_percentage_int(),
-                self.total_events
-            )
-        };
-
-        Some(msg)
+        }
     }
+
+    fn format_warning_with_extra_events(&self, parser_name: &str, colors: Colors) -> String {
+        format!(
+            "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
+             Also encountered {} unknown event types (valid JSON but unhandled), \
+             {} control events (state management), \
+             and {} partial events (streaming deltas). \
+             This may indicate a parser mismatch. Consider using a different json_parser in your agent config.",
+            colors.yellow(),
+            colors.reset(),
+            parser_name,
+            self.parse_errors,
+            self.parse_error_percentage_int(),
+            self.total_events,
+            self.unknown_events,
+            self.control_events,
+            self.partial_events
+        )
+    }
+}
+
+fn format_basic_warning(
+    parser_name: &str,
+    colors: Colors,
+    parse_errors: u64,
+    error_pct: u32,
+    total_events: u64,
+) -> String {
+    format!(
+        "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
+         This may indicate malformed JSON output. Consider using a different json_parser in your agent config.",
+        colors.yellow(),
+        colors.reset(),
+        parser_name,
+        parse_errors,
+        error_pct,
+        total_events
+    )
 }

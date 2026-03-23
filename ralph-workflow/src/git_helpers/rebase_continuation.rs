@@ -100,7 +100,7 @@ fn continue_rebase_impl(
 
     let output = executor.execute("git", &["rebase", "--continue"], &[], None)?;
 
-    if output.status.success() {
+    if output.succeeded() {
         Ok(())
     } else {
         Err(io::Error::other(format!(

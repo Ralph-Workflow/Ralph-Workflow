@@ -132,16 +132,20 @@ pub fn format_files_summary_impl(detail: &ModifiedFilesDetail) -> Option<String>
     }
 
     let s = format!("  Files: {total_files} changed");
-    let mut parts = Vec::new();
-    if added_count > 0 {
-        parts.push(format!("({added_count} added)"));
-    }
-    if modified_count > 0 {
-        parts.push(format!("({modified_count} modified)"));
-    }
-    if deleted_count > 0 {
-        parts.push(format!("({deleted_count} deleted)"));
-    }
+    let parts: Vec<String> = [
+        (added_count, "added"),
+        (modified_count, "modified"),
+        (deleted_count, "deleted"),
+    ]
+    .iter()
+    .filter_map(|&(count, label)| {
+        if count > 0 {
+            Some(format!("({count} {label})"))
+        } else {
+            None
+        }
+    })
+    .collect();
     let suffix = if parts.is_empty() {
         String::new()
     } else {
@@ -200,108 +204,229 @@ pub fn extract_variables_impl(content: &str) -> Vec<VariableInfo> {
     extract_vars_iterative(content.as_bytes())
 }
 
-/// Iterative version of variable extraction to avoid stack overflow on large templates.
-fn extract_vars_iterative(bytes: &[u8]) -> Vec<VariableInfo> {
-    let mut results = Vec::new();
-    let mut i = 0;
-    let mut line = 0;
+/// State for the variable extraction cursor.
+struct VarCursorState<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+    line: usize,
+}
 
-    while i < bytes.len().saturating_sub(1) {
-        if bytes[i] == b'\n' {
-            i += 1;
-            line += 1;
-            continue;
-        }
+/// Advance the variable extraction cursor by one logical step, returning the
+/// `VariableInfo` found at this step (if any) and the updated cursor state.
+///
+/// Returns `None` when the cursor has reached the end of the input.
+fn advance_var_cursor(
+    state: VarCursorState<'_>,
+) -> Option<(Option<VariableInfo>, VarCursorState<'_>)> {
+    let VarCursorState { bytes, pos, line } = state;
 
-        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-            match find_comment_end(bytes, i) {
-                Some(next) => {
-                    i = next;
-                    continue;
-                }
-                None => break,
-            }
-        } else if bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-            if let Some(var_end) = find_variable_end(bytes, i + 2) {
-                if let Ok(raw_spec) = std::str::from_utf8(&bytes[i + 2..var_end]) {
-                    if let Some((var_name, default_value)) = parse_variable_spec_impl(raw_spec) {
-                        results.push(VariableInfo {
-                            name: var_name.to_string(),
-                            line,
-                            has_default: default_value.is_some(),
-                            default_value,
-                            placeholder: raw_spec.trim().to_string(),
-                        });
-                    }
-                }
-                i = var_end + 2;
-                continue;
-            }
-        }
-
-        i += 1;
+    if pos >= bytes.len().saturating_sub(1) {
+        return None;
     }
 
-    results
+    // Newline — advance line counter
+    if bytes[pos] == b'\n' {
+        return Some((
+            None,
+            VarCursorState {
+                bytes,
+                pos: pos + 1,
+                line: line + 1,
+            },
+        ));
+    }
+
+    // Comment block — skip over it
+    if pos + 1 < bytes.len() && bytes[pos] == b'{' && bytes[pos + 1] == b'#' {
+        return find_comment_end(bytes, pos).map(|next| {
+            (
+                None,
+                VarCursorState {
+                    bytes,
+                    pos: next,
+                    line,
+                },
+            )
+        });
+    }
+
+    // Variable placeholder `{{ ... }}`
+    if bytes[pos] == b'{' && pos + 1 < bytes.len() && bytes[pos + 1] == b'{' {
+        if let Some(var_end) = find_variable_end(bytes, pos + 2) {
+            let info = std::str::from_utf8(&bytes[pos + 2..var_end])
+                .ok()
+                .and_then(|raw_spec| parse_variable_spec_impl(raw_spec))
+                .map(|(var_name, default_value)| VariableInfo {
+                    name: var_name.to_string(),
+                    line,
+                    has_default: default_value.is_some(),
+                    default_value,
+                    placeholder: bytes[pos + 2..var_end]
+                        .iter()
+                        .copied()
+                        .map(|b| b as char)
+                        .collect::<String>()
+                        .trim()
+                        .to_string(),
+                });
+            return Some((
+                info,
+                VarCursorState {
+                    bytes,
+                    pos: var_end + 2,
+                    line,
+                },
+            ));
+        }
+    }
+
+    // Plain byte — step forward
+    Some((
+        None,
+        VarCursorState {
+            bytes,
+            pos: pos + 1,
+            line,
+        },
+    ))
+}
+
+/// Iterative (cursor-based) version of variable extraction to avoid stack
+/// overflow on large templates.  Implemented as `std::iter::successors` over a
+/// `VarCursorState` so that no `mut` bindings or imperative loops are needed.
+fn extract_vars_iterative(bytes: &[u8]) -> Vec<VariableInfo> {
+    let initial = VarCursorState {
+        bytes,
+        pos: 0,
+        line: 0,
+    };
+    std::iter::successors(Some((None::<VariableInfo>, initial)), |(_, state)| {
+        advance_var_cursor(VarCursorState {
+            bytes: state.bytes,
+            pos: state.pos,
+            line: state.line,
+        })
+    })
+    .filter_map(|(info, _)| info)
+    .collect()
 }
 
 pub fn extract_partials_impl(content: &str) -> Vec<String> {
     extract_partials_iterative(content.as_bytes(), content)
 }
 
-/// Iterative version of partial extraction to avoid stack overflow on large templates.
-fn extract_partials_iterative(bytes: &[u8], content: &str) -> Vec<String> {
-    let mut results = Vec::new();
-    let mut i = 0;
+/// State for the partial extraction cursor.
+struct PartialCursorState<'a> {
+    bytes: &'a [u8],
+    content: &'a str,
+    pos: usize,
+}
 
-    while i < bytes.len().saturating_sub(2) {
-        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-            match skip_comment_partial(bytes, i) {
-                Some(next) => {
-                    i = next;
-                    continue;
-                }
-                None => break,
-            }
-        } else if bytes[i] == b'{' && bytes[i + 1] == b'{' && i + 2 < bytes.len() {
-            let j = i + 2;
+/// Advance the partial extraction cursor by one logical step, returning the
+/// partial name found at this step (if any) and the updated cursor state.
+///
+/// Returns `None` when the cursor has reached the end of the input.
+fn advance_partial_cursor(
+    state: PartialCursorState<'_>,
+) -> Option<(Option<String>, PartialCursorState<'_>)> {
+    let PartialCursorState {
+        bytes,
+        content,
+        pos,
+    } = state;
 
-            let j = j + bytes[j..]
+    if pos >= bytes.len().saturating_sub(2) {
+        return None;
+    }
+
+    // Comment block — skip over it
+    if pos + 1 < bytes.len() && bytes[pos] == b'{' && bytes[pos + 1] == b'#' {
+        return skip_comment_partial(bytes, pos).map(|next| {
+            (
+                None,
+                PartialCursorState {
+                    bytes,
+                    content,
+                    pos: next,
+                },
+            )
+        });
+    }
+
+    // Possible partial `{{ > name }}`
+    if bytes[pos] == b'{' && bytes[pos + 1] == b'{' && pos + 2 < bytes.len() {
+        let after_braces = pos + 2;
+        let after_ws = after_braces
+            + bytes[after_braces..]
                 .iter()
                 .take_while(|&&b| b == b' ' || b == b'\t')
                 .count();
 
-            if j < bytes.len() && bytes[j] == b'>' {
-                let j = j + 1;
-
-                let j = j + bytes[j..]
+        if after_ws < bytes.len() && bytes[after_ws] == b'>' {
+            let after_gt = after_ws + 1;
+            let name_start = after_gt
+                + bytes[after_gt..]
                     .iter()
                     .take_while(|&&b| b == b' ' || b == b'\t')
                     .count();
+            let name_end = name_start
+                + bytes[name_start..]
+                    .iter()
+                    .take_while(|&&b| b != b'}')
+                    .count();
 
-                let name_start = j;
-
-                let j = j + bytes[j..].iter().take_while(|&&b| b != b'}').count();
-
-                if j < bytes.len()
-                    && bytes[j] == b'}'
-                    && j + 1 < bytes.len()
-                    && bytes[j + 1] == b'}'
-                {
-                    let name = content[name_start..j].trim();
-                    if !name.is_empty() {
-                        results.push(name.to_string());
-                    }
-                    i = j + 2;
-                    continue;
-                }
+            if name_end < bytes.len()
+                && bytes[name_end] == b'}'
+                && name_end + 1 < bytes.len()
+                && bytes[name_end + 1] == b'}'
+            {
+                let name = content[name_start..name_end].trim();
+                let partial = if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                };
+                return Some((
+                    partial,
+                    PartialCursorState {
+                        bytes,
+                        content,
+                        pos: name_end + 2,
+                    },
+                ));
             }
         }
-
-        i += 1;
     }
 
-    results
+    // Plain byte — step forward
+    Some((
+        None,
+        PartialCursorState {
+            bytes,
+            content,
+            pos: pos + 1,
+        },
+    ))
+}
+
+/// Iterative (cursor-based) version of partial extraction to avoid stack
+/// overflow on large templates.  Implemented as `std::iter::successors` over a
+/// `PartialCursorState` so that no `mut` bindings or imperative loops are needed.
+fn extract_partials_iterative(bytes: &[u8], content: &str) -> Vec<String> {
+    let initial = PartialCursorState {
+        bytes,
+        content,
+        pos: 0,
+    };
+    std::iter::successors(Some((None::<String>, initial)), |(_, state)| {
+        advance_partial_cursor(PartialCursorState {
+            bytes: state.bytes,
+            content: state.content,
+            pos: state.pos,
+        })
+    })
+    .filter_map(|(partial, _)| partial)
+    .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -332,42 +457,60 @@ pub fn validate_template_bytes(content: &str, bytes: &[u8]) -> ValidationState {
 fn process_byte(
     content: &str,
     bytes: &[u8],
-    mut state: ValidationState,
+    state: ValidationState,
     i: usize,
     _byte: u8,
 ) -> ValidationState {
     if i >= bytes.len() {
-        if let Some((line, _)) = state.conditional_stack.first() {
-            state
-                .errors
-                .push(ValidationError::UnclosedConditional { line: *line });
-        }
-        if let Some((line, _)) = state.loop_stack.first() {
-            state
-                .errors
-                .push(ValidationError::UnclosedLoop { line: *line });
-        }
-        return state;
+        let state = match state.conditional_stack.first() {
+            Some((line, _)) => ValidationState {
+                errors: state
+                    .errors
+                    .into_iter()
+                    .chain(std::iter::once(ValidationError::UnclosedConditional {
+                        line: *line,
+                    }))
+                    .collect(),
+                conditional_stack: state.conditional_stack,
+                loop_stack: state.loop_stack,
+            },
+            None => state,
+        };
+        return match state.loop_stack.first() {
+            Some((line, _)) => ValidationState {
+                errors: state
+                    .errors
+                    .into_iter()
+                    .chain(std::iter::once(ValidationError::UnclosedLoop {
+                        line: *line,
+                    }))
+                    .collect(),
+                conditional_stack: state.conditional_stack,
+                loop_stack: state.loop_stack,
+            },
+            None => state,
+        };
     }
 
     if bytes[i] == b'\n' {
-        state = process_byte(content, bytes, state, i + 1, bytes[i]);
-        return state;
+        return process_byte(content, bytes, state, i + 1, bytes[i]);
     }
 
     if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-        match skip_comment(bytes, i) {
-            Some(next) => {
-                state = process_byte(content, bytes, state, next, bytes[next]);
-                return state;
-            }
-            None => {
-                state
+        return match skip_comment(bytes, i) {
+            Some(next) => process_byte(content, bytes, state, next, bytes[next]),
+            None => ValidationState {
+                errors: state
                     .errors
-                    .push(ValidationError::UnclosedComment { line: 0 });
-                return state;
-            }
-        }
+                    .into_iter()
+                    .chain(std::iter::once(ValidationError::UnclosedComment {
+                        line: 0,
+                    }))
+                    .collect(),
+                conditional_stack: state.conditional_stack,
+                loop_stack: state.loop_stack,
+            },
+        };
     }
 
     if i + 5 < bytes.len()
@@ -378,26 +521,52 @@ fn process_byte(
         && bytes[i + 4] == b'f'
         && bytes[i + 5] == b' '
     {
-        match find_tag_end(bytes, i + 6) {
+        return match find_tag_end(bytes, i + 6) {
             Some(cond_end) => {
                 let condition = &content[i + 6..cond_end].trim();
-                if condition.is_empty() || condition.contains('{') || condition.contains('}') {
-                    state.errors.push(ValidationError::InvalidConditional {
-                        line: 0,
-                        syntax: condition.to_string(),
-                    });
-                }
-                state.conditional_stack.push((0, "if"));
-                state = process_byte(content, bytes, state, cond_end + 2, bytes[cond_end + 2]);
-                return state;
+                let errors =
+                    if condition.is_empty() || condition.contains('{') || condition.contains('}') {
+                        state
+                            .errors
+                            .into_iter()
+                            .chain(std::iter::once(ValidationError::InvalidConditional {
+                                line: 0,
+                                syntax: condition.to_string(),
+                            }))
+                            .collect()
+                    } else {
+                        state.errors
+                    };
+                let conditional_stack = state
+                    .conditional_stack
+                    .into_iter()
+                    .chain(std::iter::once((0usize, "if")))
+                    .collect();
+                let next_state = ValidationState {
+                    errors,
+                    conditional_stack,
+                    loop_stack: state.loop_stack,
+                };
+                process_byte(
+                    content,
+                    bytes,
+                    next_state,
+                    cond_end + 2,
+                    bytes[cond_end + 2],
+                )
             }
-            None => {
-                state
+            None => ValidationState {
+                errors: state
                     .errors
-                    .push(ValidationError::UnclosedConditional { line: 0 });
-                return state;
-            }
-        }
+                    .into_iter()
+                    .chain(std::iter::once(ValidationError::UnclosedConditional {
+                        line: 0,
+                    }))
+                    .collect(),
+                conditional_stack: state.conditional_stack,
+                loop_stack: state.loop_stack,
+            },
+        };
     }
 
     if i + 9 < bytes.len()
@@ -412,9 +581,21 @@ fn process_byte(
         && bytes[i + 8] == b' '
         && bytes[i + 9] == b'%'
     {
-        state.conditional_stack.pop();
-        state = process_byte(content, bytes, state, i + 11, bytes[i + 11]);
-        return state;
+        let conditional_stack: Vec<_> = state
+            .conditional_stack
+            .into_iter()
+            .rev()
+            .skip(1)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let next_state = ValidationState {
+            errors: state.errors,
+            conditional_stack,
+            loop_stack: state.loop_stack,
+        };
+        return process_byte(content, bytes, next_state, i + 11, bytes[i + 11]);
     }
 
     if i + 6 < bytes.len()
@@ -426,24 +607,50 @@ fn process_byte(
         && bytes[i + 5] == b'r'
         && bytes[i + 6] == b' '
     {
-        match find_tag_end(bytes, i + 7) {
+        return match find_tag_end(bytes, i + 7) {
             Some(header_end) => {
                 let condition = &content[i + 7..header_end].trim();
-                if !condition.contains(" in ") || condition.split(" in ").count() != 2 {
-                    state.errors.push(ValidationError::InvalidLoop {
-                        line: 0,
-                        syntax: condition.to_string(),
-                    });
-                }
-                state.loop_stack.push((0, "for"));
-                state = process_byte(content, bytes, state, header_end + 2, bytes[header_end + 2]);
-                return state;
+                let errors = if !condition.contains(" in ") || condition.split(" in ").count() != 2
+                {
+                    state
+                        .errors
+                        .into_iter()
+                        .chain(std::iter::once(ValidationError::InvalidLoop {
+                            line: 0,
+                            syntax: condition.to_string(),
+                        }))
+                        .collect()
+                } else {
+                    state.errors
+                };
+                let loop_stack = state
+                    .loop_stack
+                    .into_iter()
+                    .chain(std::iter::once((0usize, "for")))
+                    .collect();
+                let next_state = ValidationState {
+                    errors,
+                    conditional_stack: state.conditional_stack,
+                    loop_stack,
+                };
+                process_byte(
+                    content,
+                    bytes,
+                    next_state,
+                    header_end + 2,
+                    bytes[header_end + 2],
+                )
             }
-            None => {
-                state.errors.push(ValidationError::UnclosedLoop { line: 0 });
-                return state;
-            }
-        }
+            None => ValidationState {
+                errors: state
+                    .errors
+                    .into_iter()
+                    .chain(std::iter::once(ValidationError::UnclosedLoop { line: 0 }))
+                    .collect(),
+                conditional_stack: state.conditional_stack,
+                loop_stack: state.loop_stack,
+            },
+        };
     }
 
     if i + 10 < bytes.len()
@@ -459,9 +666,21 @@ fn process_byte(
         && bytes[i + 9] == b'r'
         && bytes[i + 10] == b' '
     {
-        state.loop_stack.pop();
-        state = process_byte(content, bytes, state, i + 12, bytes[i + 12]);
-        return state;
+        let loop_stack: Vec<_> = state
+            .loop_stack
+            .into_iter()
+            .rev()
+            .skip(1)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let next_state = ValidationState {
+            errors: state.errors,
+            conditional_stack: state.conditional_stack,
+            loop_stack,
+        };
+        return process_byte(content, bytes, next_state, i + 12, bytes[i + 12]);
     }
 
     state

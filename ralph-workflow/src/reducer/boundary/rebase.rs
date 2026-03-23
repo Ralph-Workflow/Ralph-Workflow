@@ -22,89 +22,10 @@ impl MainEffectHandler {
         phase: RebasePhase,
         target_branch: &str,
     ) -> Result<EffectResult> {
-        use crate::git_helpers::{get_conflicted_files, rebase_onto};
-
         if matches!(phase, RebasePhase::Initial) {
-            let run_context = ctx.run_context.clone();
-            let (run_result, local_prompt_history) = {
-                let mut local_prompt_history = self.state.prompt_history.clone();
-                let run_result = crate::app::rebase::run_initial_rebase(
-                    ctx.logger,
-                    *ctx.colors,
-                    ctx,
-                    &run_context,
-                    ctx.executor,
-                    &mut local_prompt_history,
-                )?;
-                (run_result, local_prompt_history)
-            };
-
-            let event = match run_result.outcome {
-                crate::app::rebase::InitialRebaseOutcome::Succeeded { new_head } => {
-                    PipelineEvent::rebase_succeeded(phase, new_head)
-                }
-                crate::app::rebase::InitialRebaseOutcome::Skipped { reason } => {
-                    PipelineEvent::rebase_skipped(phase, reason)
-                }
-            };
-
-            let result = EffectResult::event(event);
-            let result =
-                run_result
-                    .prompt_replay_hits
-                    .into_iter()
-                    .fold(result, |r, (key, was_replayed)| {
-                        r.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
-                            key,
-                            was_replayed,
-                        })
-                    });
-            let result = prompt_captured_events_for_prompt_history_delta(
-                &self.state.prompt_history,
-                &local_prompt_history,
-            )
-            .into_iter()
-            .fold(result, |r, ev| r.with_additional_event(ev));
-
-            return Ok(result);
+            return run_initial_rebase_phase(self, ctx, phase);
         }
-
-        match rebase_onto(target_branch, ctx.executor) {
-            Ok(_) => {
-                let conflicted_files = get_conflicted_files().unwrap_or_default();
-
-                if conflicted_files.is_empty() {
-                    let new_head = git2::Repository::open(ctx.repo_root).map_or_else(
-                        |_| "unknown".to_string(),
-                        |repo| {
-                            repo.head()
-                                .ok()
-                                .and_then(|head| head.peel_to_commit().ok())
-                                .map_or_else(
-                                    || "unknown".to_string(),
-                                    |commit| commit.id().to_string(),
-                                )
-                        },
-                    );
-
-                    Ok(EffectResult::event(PipelineEvent::rebase_succeeded(
-                        phase, new_head,
-                    )))
-                } else {
-                    let files = conflicted_files
-                        .into_iter()
-                        .map(std::convert::Into::into)
-                        .collect();
-                    Ok(EffectResult::event(
-                        PipelineEvent::rebase_conflict_detected(files),
-                    ))
-                }
-            }
-            Err(e) => Ok(EffectResult::event(PipelineEvent::rebase_failed(
-                phase,
-                e.to_string(),
-            ))),
-        }
+        run_non_initial_rebase_phase(ctx, phase, target_branch)
     }
 
     pub(super) fn resolve_rebase_conflicts(
@@ -114,51 +35,141 @@ impl MainEffectHandler {
         use crate::git_helpers::{abort_rebase, continue_rebase, get_conflicted_files};
 
         match strategy {
-            ConflictStrategy::Continue => match continue_rebase(ctx.executor) {
-                Ok(()) => {
-                    let files = get_conflicted_files()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(std::convert::Into::into)
-                        .collect();
-
-                    EffectResult::event(event_for_continue_strategy_remaining_conflicts(files))
-                }
-                Err(e) => EffectResult::event(PipelineEvent::rebase_failed(
-                    RebasePhase::PostReview,
-                    e.to_string(),
-                )),
-            },
-            ConflictStrategy::Abort => match abort_rebase(ctx.executor) {
-                Ok(()) => {
-                    let restored_to = git2::Repository::open(ctx.repo_root).map_or_else(
-                        |_| "HEAD".to_string(),
-                        |repo| {
-                            repo.head()
-                                .ok()
-                                .and_then(|head| head.peel_to_commit().ok())
-                                .map_or_else(
-                                    || "HEAD".to_string(),
-                                    |commit| commit.id().to_string(),
-                                )
-                        },
-                    );
-
-                    EffectResult::event(PipelineEvent::rebase_aborted(
-                        RebasePhase::PostReview,
-                        restored_to,
-                    ))
-                }
-                Err(e) => EffectResult::event(PipelineEvent::rebase_failed(
-                    RebasePhase::PostReview,
-                    e.to_string(),
-                )),
-            },
+            ConflictStrategy::Continue => {
+                resolve_conflict_continue(ctx, &continue_rebase, &get_conflicted_files)
+            }
+            ConflictStrategy::Abort => resolve_conflict_abort(ctx, &abort_rebase),
             ConflictStrategy::Skip => {
                 EffectResult::event(PipelineEvent::rebase_conflict_resolved(Vec::new()))
             }
         }
     }
+}
+
+fn run_initial_rebase_phase(
+    handler: &MainEffectHandler,
+    ctx: &mut PhaseContext<'_>,
+    phase: RebasePhase,
+) -> Result<EffectResult> {
+    let run_context = ctx.run_context.clone();
+    let mut local_prompt_history = handler.state.prompt_history.clone();
+    let run_result = crate::app::rebase::run_initial_rebase(
+        ctx.logger,
+        *ctx.colors,
+        ctx,
+        &run_context,
+        ctx.executor,
+        &mut local_prompt_history,
+    )?;
+
+    let event = match run_result.outcome {
+        crate::app::rebase::InitialRebaseOutcome::Succeeded { new_head } => {
+            PipelineEvent::rebase_succeeded(phase, new_head)
+        }
+        crate::app::rebase::InitialRebaseOutcome::Skipped { reason } => {
+            PipelineEvent::rebase_skipped(phase, reason)
+        }
+    };
+
+    let result = run_result.prompt_replay_hits.into_iter().fold(
+        EffectResult::event(event),
+        |r, (key, was_replayed)| {
+            r.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                key,
+                was_replayed,
+            })
+        },
+    );
+    let result = prompt_captured_events_for_prompt_history_delta(
+        &handler.state.prompt_history,
+        &local_prompt_history,
+    )
+    .into_iter()
+    .fold(result, |r, ev| r.with_additional_event(ev));
+
+    Ok(result)
+}
+
+fn run_non_initial_rebase_phase(
+    ctx: &PhaseContext<'_>,
+    phase: RebasePhase,
+    target_branch: &str,
+) -> Result<EffectResult> {
+    use crate::git_helpers::rebase_onto;
+    match rebase_onto(target_branch, ctx.executor) {
+        Ok(_) => Ok(rebase_onto_success_result(ctx, phase)),
+        Err(e) => Ok(EffectResult::event(PipelineEvent::rebase_failed(
+            phase,
+            e.to_string(),
+        ))),
+    }
+}
+
+fn rebase_onto_success_result(ctx: &PhaseContext<'_>, phase: RebasePhase) -> EffectResult {
+    use crate::git_helpers::get_conflicted_files;
+    let conflicted_files = get_conflicted_files().unwrap_or_default();
+    if conflicted_files.is_empty() {
+        let new_head = resolve_head_oid(ctx.repo_root, "unknown");
+        EffectResult::event(PipelineEvent::rebase_succeeded(phase, new_head))
+    } else {
+        let files = conflicted_files
+            .into_iter()
+            .map(std::convert::Into::into)
+            .collect();
+        EffectResult::event(PipelineEvent::rebase_conflict_detected(files))
+    }
+}
+
+fn resolve_conflict_continue(
+    ctx: &PhaseContext<'_>,
+    continue_fn: &dyn Fn(&dyn crate::executor::ProcessExecutor) -> std::io::Result<()>,
+    get_conflicts_fn: &dyn Fn() -> std::io::Result<Vec<String>>,
+) -> EffectResult {
+    match continue_fn(ctx.executor) {
+        Ok(()) => {
+            let files = get_conflicts_fn()
+                .unwrap_or_default()
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect();
+            EffectResult::event(event_for_continue_strategy_remaining_conflicts(files))
+        }
+        Err(e) => EffectResult::event(PipelineEvent::rebase_failed(
+            RebasePhase::PostReview,
+            e.to_string(),
+        )),
+    }
+}
+
+fn resolve_conflict_abort(
+    ctx: &PhaseContext<'_>,
+    abort_fn: &dyn Fn(&dyn crate::executor::ProcessExecutor) -> std::io::Result<()>,
+) -> EffectResult {
+    match abort_fn(ctx.executor) {
+        Ok(()) => {
+            let restored_to = resolve_head_oid(ctx.repo_root, "HEAD");
+            EffectResult::event(PipelineEvent::rebase_aborted(
+                RebasePhase::PostReview,
+                restored_to,
+            ))
+        }
+        Err(e) => EffectResult::event(PipelineEvent::rebase_failed(
+            RebasePhase::PostReview,
+            e.to_string(),
+        )),
+    }
+}
+
+fn resolve_head_oid(repo_root: &std::path::Path, fallback: &str) -> String {
+    git2::Repository::open(repo_root).map_or_else(
+        |_| fallback.to_string(),
+        |repo| {
+            repo.head()
+                .ok()
+                .and_then(|head| head.peel_to_commit().ok())
+                .map_or_else(|| fallback.to_string(), |commit| commit.id().to_string())
+        },
+    )
 }
 
 fn prompt_captured_events_for_prompt_history_delta(

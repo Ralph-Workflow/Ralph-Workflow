@@ -13,44 +13,65 @@ pub fn compress(data: &[u8]) -> Result<String, std::io::Error> {
     Ok(STANDARD.encode(&compressed))
 }
 
-pub fn decompress(encoded: &str) -> Result<String, std::io::Error> {
+fn base64_decode(encoded: &str) -> Result<Vec<u8>, std::io::Error> {
     use base64::{engine::general_purpose::STANDARD, Engine};
-    use flate2::read::GzDecoder;
-    use std::io::Read;
-
-    let compressed = STANDARD.decode(encoded).map_err(|e| {
+    STANDARD.decode(encoded).map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Base64 decode error: {e}"),
         )
-    })?;
+    })
+}
 
-    let mut decoder = GzDecoder::new(compressed.as_slice());
+fn check_size_limit(current_len: usize, n: usize) -> Result<(), std::io::Error> {
+    if current_len.saturating_add(n) > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "Decompressed payload exceeds max size ({MAX_DECOMPRESSED_SNAPSHOT_BYTES} bytes)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn read_chunk<R: std::io::Read>(
+    reader: &mut R,
+    buf: &mut [u8],
+    decompressed: &mut Vec<u8>,
+) -> Result<bool, std::io::Error> {
+    let n = reader.read(buf)?;
+    if n == 0 {
+        return Ok(false);
+    }
+    check_size_limit(decompressed.len(), n)?;
+    decompressed.extend_from_slice(&buf[..n]);
+    Ok(true)
+}
+
+fn gz_decompress(compressed: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    use flate2::read::GzDecoder;
+
+    let mut decoder = GzDecoder::new(compressed);
     let mut decompressed = Vec::new();
     let mut buf = [0u8; 8 * 1024];
 
-    loop {
-        let n = decoder.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
+    while read_chunk(&mut decoder, &mut buf, &mut decompressed)? {}
 
-        if decompressed.len().saturating_add(n) > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Decompressed payload exceeds max size ({MAX_DECOMPRESSED_SNAPSHOT_BYTES} bytes)"
-                ),
-            ));
-        }
+    Ok(decompressed)
+}
 
-        decompressed.extend_from_slice(&buf[..n]);
-    }
-
+fn bytes_to_utf8(decompressed: Vec<u8>) -> Result<String, std::io::Error> {
     String::from_utf8(decompressed).map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!("UTF-8 decode error: {e}"),
         )
     })
+}
+
+pub fn decompress(encoded: &str) -> Result<String, std::io::Error> {
+    let compressed = base64_decode(encoded)?;
+    let decompressed = gz_decompress(&compressed)?;
+    bytes_to_utf8(decompressed)
 }

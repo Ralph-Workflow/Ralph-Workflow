@@ -59,17 +59,6 @@ impl MainEffectHandler {
         failed_role: crate::agents::AgentRole,
         retry_cycle: u32,
     ) -> EffectResult {
-        /// Helper function to detect agent unavailability from error messages.
-        /// Checks for quota/usage/rate limit indicators in error text.
-        fn is_agent_unavailable_error(err_msg: &str) -> bool {
-            let err_msg_lower = err_msg.to_lowercase();
-            err_msg_lower.contains("usage limit")
-                || err_msg_lower.contains("quota exceeded")
-                || err_msg_lower.contains("rate limit")
-                || err_msg_lower.contains("limit exceeded")
-                || err_msg_lower.contains("workspace write failed")
-        }
-
         ctx.logger.warn(&format!(
             "Pipeline failure detected (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle})"
         ));
@@ -77,153 +66,11 @@ impl MainEffectHandler {
         ctx.logger
             .info("Dispatching dev-fix agent for remediation...");
 
-        // Helper to read workspace files with fallback on error
-        let read_or_fallback = |path: &str, label: &str| -> String {
-            match ctx.workspace.read(std::path::Path::new(path)) {
-                Ok(content) => content,
-                Err(err) => {
-                    ctx.logger.warn(&format!(
-                        "Dev-fix prompt fallback: failed to read {label}: {err}"
-                    ));
-                    format!("(Missing {label}: {err})")
-                }
-            }
-        };
-
-        let prompt_content = read_or_fallback("PROMPT.md", "PROMPT.md");
-        let plan_content = read_or_fallback(".agent/PLAN.md", ".agent/PLAN.md");
-        let issues_content = format!(
-            "# Issues\n\n- [High] Pipeline failure (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle}).\n  Diagnose the root cause and fix the failure.\n"
-        );
-        let dev_fix_prompt = crate::prompts::prompt_fix_with_context(
-            ctx.template_context,
-            &prompt_content,
-            &plan_content,
-            &issues_content,
-            ctx.workspace,
-        );
-
-        if let Err(err) = ctx.workspace.write(
-            std::path::Path::new(".agent/tmp/dev_fix_prompt.txt"),
-            &dev_fix_prompt,
-        ) {
-            ctx.logger.warn(&format!(
-                "Failed to write dev-fix prompt to workspace: {err}"
-            ));
-        }
-
-        // Dev-fix remediation must run under the configured developer agent.
-        // Do not reuse the current agent chain selection here: the failure may have
-        // occurred under a different role (Commit/Reviewer/Analysis).
+        let dev_fix_prompt = build_dev_fix_prompt(ctx, failed_phase, failed_role, retry_cycle);
         let agent = ctx.developer_agent.to_string();
 
-        let agent_result = match self.invoke_agent(
-            ctx,
-            crate::agents::AgentDrain::Development,
-            crate::agents::AgentRole::Developer,
-            &agent,
-            None,
-            dev_fix_prompt,
-        ) {
-            Ok(result) => Ok(result),
-            Err(err) => {
-                let unavailable = is_agent_unavailable_error(&err.to_string());
-
-                if unavailable {
-                    ctx.logger.warn(&format!(
-                        "Dev-fix agent unavailable: {err}. Continuing unattended recovery loop without dev-fix agent."
-                    ));
-                } else {
-                    ctx.logger
-                        .warn(&format!("Dev-fix agent invocation failed: {err}"));
-                }
-                Err(err)
-            }
-        };
-
-        let is_agent_unavailable = agent_result
-            .as_ref()
-            .err()
-            .is_some_and(|err| is_agent_unavailable_error(&err.to_string()));
-
-        // Dev-fix "success" cannot be determined at invocation time.
-        //
-        // The agent invocation result only tells us whether the dev-fix agent ran without a
-        // tool/transport error (e.g., spawn failure, quota unavailable). It does NOT guarantee
-        // the underlying pipeline failure is fixed.
-
-        // Extract error reason for logging and summary
-        let error_reason = agent_result
-            .as_ref()
-            .err()
-            .map(std::string::ToString::to_string);
-
-        // In unattended mode, we need a concrete reducer-visible signal that a dev-fix
-        // attempt completed so the recovery loop can advance attempt counters and
-        // derive recovery effects. "Success" here means the dev-fix agent invocation
-        // completed without error (not that the underlying failure is fixed).
-        let dev_fix_completed = crate::reducer::event::AwaitingDevFixEvent::DevFixCompleted {
-            success: agent_result.is_ok() && !is_agent_unavailable,
-            summary: if agent_result.is_ok() {
-                Some("Dev-fix agent invocation completed".to_string())
-            } else {
-                error_reason.clone()
-            },
-        };
-
-        let result = agent_result.as_ref().map_or_else(
-            |_| {
-                EffectResult::event(PipelineEvent::AwaitingDevFix(
-                    crate::reducer::event::AwaitingDevFixEvent::DevFixTriggered {
-                        failed_phase,
-                        failed_role,
-                    },
-                ))
-            },
-            |result| {
-                EffectResult::with_ui(
-                    PipelineEvent::AwaitingDevFix(
-                        crate::reducer::event::AwaitingDevFixEvent::DevFixTriggered {
-                            failed_phase,
-                            failed_role,
-                        },
-                    ),
-                    result.ui_events.clone(),
-                )
-            },
-        );
-
-        let result = if let Ok(ref result_events) = agent_result {
-            result_events.additional_events.iter().fold(
-                result.with_additional_event(result_events.event.clone()),
-                |r, event| r.with_additional_event(event.clone()),
-            )
-        } else {
-            result
-        };
-
-        // Emit an additional event when the dev-fix agent is unavailable.
-        let result = if is_agent_unavailable {
-            // Agent unavailable (quota/usage limit)
-            result.with_additional_event(PipelineEvent::AwaitingDevFix(
-                crate::reducer::event::AwaitingDevFixEvent::DevFixAgentUnavailable {
-                    failed_phase,
-                    reason: error_reason.unwrap_or_else(|| "unknown".to_string()),
-                },
-            ))
-        } else {
-            result
-        };
-        // Note: DevFixCompleted IS emitted here to advance the reducer-visible recovery loop.
-        // It represents completion of the dev-fix agent invocation, not a guarantee that the
-        // pipeline will succeed on retry.
-
-        // CompletionMarkerEmitted is NOT emitted here. Internal pipeline failures
-        // must continue through the unattended recovery loop; completion markers are
-        // reserved for explicit external/catastrophic termination via
-        // Effect::EmitCompletionMarkerAndTerminate.
-
-        result.with_additional_event(PipelineEvent::AwaitingDevFix(dev_fix_completed))
+        let agent_result = invoke_dev_fix_agent(self, ctx, &agent, dev_fix_prompt);
+        assemble_dev_fix_result(agent_result, failed_phase, failed_role)
     }
 
     /// Emit completion marker and terminate pipeline.
@@ -246,35 +93,206 @@ impl MainEffectHandler {
         is_failure: bool,
         reason: Option<String>,
     ) -> EffectResult {
-        // Write completion marker to .agent/tmp/completion_marker
-        let content = if is_failure {
-            format!(
-                "failure\n{}",
-                reason.unwrap_or_else(|| "unknown".to_string())
-            )
-        } else {
-            "success\n".to_string()
-        };
+        let content = completion_marker_content(is_failure, reason);
+        completion_marker_result(ctx, &content, is_failure)
+    }
+}
 
-        match Self::write_completion_marker(ctx, &content, is_failure) {
-            Ok(()) => {
-                // Emit event to transition to Interrupted
-                EffectResult::event(PipelineEvent::AwaitingDevFix(
-                    crate::reducer::event::AwaitingDevFixEvent::CompletionMarkerEmitted {
-                        is_failure,
-                    },
-                ))
-            }
-            Err(error) => {
-                // Do NOT transition to Interrupted if the marker was not written.
-                // External orchestration relies on the marker for termination semantics.
-                EffectResult::event(PipelineEvent::AwaitingDevFix(
-                    crate::reducer::event::AwaitingDevFixEvent::CompletionMarkerWriteFailed {
-                        is_failure,
-                        error,
-                    },
-                ))
-            }
+fn is_agent_unavailable_error(err_msg: &str) -> bool {
+    let lower = err_msg.to_lowercase();
+    lower.contains("usage limit")
+        || lower.contains("quota exceeded")
+        || lower.contains("rate limit")
+        || lower.contains("limit exceeded")
+        || lower.contains("workspace write failed")
+}
+
+fn read_workspace_or_fallback(ctx: &PhaseContext<'_>, path: &str, label: &str) -> String {
+    match ctx.workspace.read(std::path::Path::new(path)) {
+        Ok(content) => content,
+        Err(err) => {
+            ctx.logger.warn(&format!(
+                "Dev-fix prompt fallback: failed to read {label}: {err}"
+            ));
+            format!("(Missing {label}: {err})")
         }
+    }
+}
+
+fn build_dev_fix_prompt(
+    ctx: &mut PhaseContext<'_>,
+    failed_phase: PipelinePhase,
+    failed_role: crate::agents::AgentRole,
+    retry_cycle: u32,
+) -> String {
+    let prompt_content = read_workspace_or_fallback(ctx, "PROMPT.md", "PROMPT.md");
+    let plan_content = read_workspace_or_fallback(ctx, ".agent/PLAN.md", ".agent/PLAN.md");
+    let issues_content = format!(
+        "# Issues\n\n- [High] Pipeline failure (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle}).\n  Diagnose the root cause and fix the failure.\n"
+    );
+    let prompt = crate::prompts::prompt_fix_with_context(
+        ctx.template_context,
+        &prompt_content,
+        &plan_content,
+        &issues_content,
+        ctx.workspace,
+    );
+    if let Err(err) = ctx.workspace.write(
+        std::path::Path::new(".agent/tmp/dev_fix_prompt.txt"),
+        &prompt,
+    ) {
+        ctx.logger.warn(&format!(
+            "Failed to write dev-fix prompt to workspace: {err}"
+        ));
+    }
+    prompt
+}
+
+fn invoke_dev_fix_agent(
+    handler: &MainEffectHandler,
+    ctx: &mut PhaseContext<'_>,
+    agent: &str,
+    dev_fix_prompt: String,
+) -> anyhow::Result<EffectResult> {
+    handler.invoke_agent(
+        ctx,
+        crate::agents::AgentDrain::Development,
+        crate::agents::AgentRole::Developer,
+        agent,
+        None,
+        dev_fix_prompt,
+    ).map_err(|err| {
+        let unavailable = is_agent_unavailable_error(&err.to_string());
+        if unavailable {
+            ctx.logger.warn(&format!(
+                "Dev-fix agent unavailable: {err}. Continuing unattended recovery loop without dev-fix agent."
+            ));
+        } else {
+            ctx.logger.warn(&format!("Dev-fix agent invocation failed: {err}"));
+        }
+        err
+    })
+}
+
+fn assemble_dev_fix_result(
+    agent_result: anyhow::Result<EffectResult>,
+    failed_phase: PipelinePhase,
+    failed_role: crate::agents::AgentRole,
+) -> EffectResult {
+    let is_agent_unavailable = agent_result
+        .as_ref()
+        .err()
+        .is_some_and(|err| is_agent_unavailable_error(&err.to_string()));
+    let error_reason = agent_result
+        .as_ref()
+        .err()
+        .map(std::string::ToString::to_string);
+    let dev_fix_completed =
+        build_dev_fix_completed(&agent_result, is_agent_unavailable, &error_reason);
+    let triggered_event = build_dev_fix_triggered_event(failed_phase, failed_role);
+    let result = build_initial_dev_fix_result(&agent_result, triggered_event);
+    let result = fold_agent_events_into_result(result, &agent_result);
+    let result =
+        maybe_add_unavailable_event(result, is_agent_unavailable, failed_phase, error_reason);
+    result.with_additional_event(PipelineEvent::AwaitingDevFix(dev_fix_completed))
+}
+
+fn build_dev_fix_completed(
+    agent_result: &anyhow::Result<EffectResult>,
+    is_agent_unavailable: bool,
+    error_reason: &Option<String>,
+) -> crate::reducer::event::AwaitingDevFixEvent {
+    crate::reducer::event::AwaitingDevFixEvent::DevFixCompleted {
+        success: agent_result.is_ok() && !is_agent_unavailable,
+        summary: if agent_result.is_ok() {
+            Some("Dev-fix agent invocation completed".to_string())
+        } else {
+            error_reason.clone()
+        },
+    }
+}
+
+fn build_dev_fix_triggered_event(
+    failed_phase: PipelinePhase,
+    failed_role: crate::agents::AgentRole,
+) -> PipelineEvent {
+    PipelineEvent::AwaitingDevFix(
+        crate::reducer::event::AwaitingDevFixEvent::DevFixTriggered {
+            failed_phase,
+            failed_role,
+        },
+    )
+}
+
+fn build_initial_dev_fix_result(
+    agent_result: &anyhow::Result<EffectResult>,
+    triggered_event: PipelineEvent,
+) -> EffectResult {
+    match agent_result.as_ref() {
+        Ok(r) => EffectResult::with_ui(triggered_event, r.ui_events.clone()),
+        Err(_) => EffectResult::event(triggered_event),
+    }
+}
+
+fn fold_agent_events_into_result(
+    result: EffectResult,
+    agent_result: &anyhow::Result<EffectResult>,
+) -> EffectResult {
+    if let Ok(ref r) = agent_result {
+        r.additional_events
+            .iter()
+            .fold(result.with_additional_event(r.event.clone()), |acc, ev| {
+                acc.with_additional_event(ev.clone())
+            })
+    } else {
+        result
+    }
+}
+
+fn maybe_add_unavailable_event(
+    result: EffectResult,
+    is_agent_unavailable: bool,
+    failed_phase: PipelinePhase,
+    error_reason: Option<String>,
+) -> EffectResult {
+    if is_agent_unavailable {
+        result.with_additional_event(PipelineEvent::AwaitingDevFix(
+            crate::reducer::event::AwaitingDevFixEvent::DevFixAgentUnavailable {
+                failed_phase,
+                reason: error_reason.unwrap_or_else(|| "unknown".to_string()),
+            },
+        ))
+    } else {
+        result
+    }
+}
+
+fn completion_marker_content(is_failure: bool, reason: Option<String>) -> String {
+    if is_failure {
+        format!(
+            "failure\n{}",
+            reason.unwrap_or_else(|| "unknown".to_string())
+        )
+    } else {
+        "success\n".to_string()
+    }
+}
+
+fn completion_marker_result(
+    ctx: &PhaseContext<'_>,
+    content: &str,
+    is_failure: bool,
+) -> EffectResult {
+    use crate::reducer::boundary::MainEffectHandler;
+    match MainEffectHandler::write_completion_marker(ctx, content, is_failure) {
+        Ok(()) => EffectResult::event(PipelineEvent::AwaitingDevFix(
+            crate::reducer::event::AwaitingDevFixEvent::CompletionMarkerEmitted { is_failure },
+        )),
+        Err(error) => EffectResult::event(PipelineEvent::AwaitingDevFix(
+            crate::reducer::event::AwaitingDevFixEvent::CompletionMarkerWriteFailed {
+                is_failure,
+                error,
+            },
+        )),
     }
 }

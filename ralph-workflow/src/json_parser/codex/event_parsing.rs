@@ -1,23 +1,12 @@
 impl CodexParser {
-    /// Parse and display a single Codex JSON event
-    ///
-    /// Returns `Some(formatted_output)` for valid events, or None for:
-    /// - Malformed JSON (non-JSON text passed through if meaningful)
-    /// - Unknown event types
-    /// - Empty or whitespace-only output
-    pub(crate) fn parse_event(&self, line: &str) -> Option<String> {
-        let event: CodexEvent = if let Ok(e) = serde_json::from_str(line) {
-            e
-        } else {
-            // Non-JSON line - pass through as-is if meaningful
-            let trimmed = line.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('{') {
-                return Some(format!("{trimmed}\n"));
-            }
-            return None;
-        };
+    fn parse_non_json_line(line: &str) -> Option<String> {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with('{') { Some(format!("{trimmed}\n")) }
+        else { None }
+    }
 
-        let ctx = EventHandlerContext {
+    fn make_event_ctx(&self) -> EventHandlerContext<'_> {
+        EventHandlerContext {
             colors: &self.colors,
             verbosity: self.verbosity,
             display_name: &self.display_name,
@@ -26,42 +15,38 @@ impl CodexParser {
             terminal_mode: *self.state.terminal_mode.borrow(),
             show_streaming_metrics: self.show_streaming_metrics,
             last_rendered_content: &self.state.last_rendered_content,
-        };
-
-        match event {
-            CodexEvent::ThreadStarted { thread_id } => {
-                Self::optional_output(handle_thread_started(&ctx, thread_id))
-            }
-            CodexEvent::TurnStarted {} => {
-                let turn_id = self.state.with_turn_counter_mut(|counter| {
-                    let id = format!("turn-{}", *counter);
-                    *counter = counter.saturating_add(1);
-                    id
-                });
-                Self::optional_output(handle_turn_started(&ctx, turn_id))
-            }
-            CodexEvent::TurnCompleted { usage } => {
-                Self::optional_output(handle_turn_completed(&ctx, usage))
-            }
-            CodexEvent::TurnFailed { error } => {
-                Self::optional_output(handle_turn_failed(&ctx, error))
-            }
-            CodexEvent::ItemStarted { item } => handle_item_started(&ctx, item.as_ref()),
-            CodexEvent::ItemCompleted { item } => handle_item_completed(&ctx, item.as_ref()),
-            CodexEvent::Error { message, error } => {
-                Self::optional_output(handle_error(&ctx, message, error))
-            }
-            CodexEvent::Result { result } => self.format_result_event(result),
-            CodexEvent::Unknown => {
-                let output = format_unknown_json_event(
-                    line,
-                    &self.display_name,
-                    self.colors,
-                    self.verbosity.is_verbose(),
-                );
-                Self::optional_output(output)
-            }
         }
+    }
+
+    fn dispatch_event(&self, event: CodexEvent, line: &str, ctx: &EventHandlerContext<'_>) -> Option<String> {
+        match event {
+            CodexEvent::ThreadStarted { thread_id } => Self::optional_output(handle_thread_started(ctx, thread_id)),
+            CodexEvent::TurnStarted {} => {
+                let turn_id = self.state.with_turn_counter_mut(|counter| { let id = format!("turn-{}", *counter); *counter = counter.saturating_add(1); id });
+                Self::optional_output(handle_turn_started(ctx, turn_id))
+            }
+            CodexEvent::TurnCompleted { usage } => Self::optional_output(handle_turn_completed(ctx, usage)),
+            CodexEvent::TurnFailed { error } => Self::optional_output(handle_turn_failed(ctx, error)),
+            CodexEvent::ItemStarted { item } => handle_item_started(ctx, item.as_ref()),
+            CodexEvent::ItemCompleted { item } => handle_item_completed(ctx, item.as_ref()),
+            CodexEvent::Error { message, error } => Self::optional_output(handle_error(ctx, message, error)),
+            CodexEvent::Result { result } => self.format_result_event(result),
+            CodexEvent::Unknown => Self::optional_output(format_unknown_json_event(line, &self.display_name, self.colors, self.verbosity.is_verbose())),
+        }
+    }
+
+    /// Parse and display a single Codex JSON event
+    ///
+    /// Returns `Some(formatted_output)` for valid events, or None for:
+    /// - Malformed JSON (non-JSON text passed through if meaningful)
+    /// - Unknown event types
+    /// - Empty or whitespace-only output
+    pub(crate) fn parse_event(&self, line: &str) -> Option<String> {
+        let Ok(event) = serde_json::from_str::<CodexEvent>(line) else {
+            return Self::parse_non_json_line(line);
+        };
+        let ctx = self.make_event_ctx();
+        self.dispatch_event(event, line, &ctx)
     }
 
     /// Format a Result event for display.

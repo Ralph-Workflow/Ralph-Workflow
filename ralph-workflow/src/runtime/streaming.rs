@@ -79,6 +79,36 @@ fn check_buffer_size_limit(current_size: usize) -> io::Result<()> {
     Ok(())
 }
 
+fn check_line_size_limit(line_len: usize) -> io::Result<()> {
+    if line_len >= MAX_BUFFER_SIZE {
+        return Err(io::Error::other(format!(
+            "StreamingLineReader line exceeded maximum size of {MAX_BUFFER_SIZE} bytes. \
+             This may indicate malformed input or an agent that is not sending newlines."
+        )));
+    }
+    Ok(())
+}
+
+fn check_chunk_size_limit(line_len: usize, to_take: usize) -> io::Result<()> {
+    let remaining = MAX_BUFFER_SIZE - line_len;
+    if to_take > remaining {
+        return Err(io::Error::other(format!(
+            "StreamingLineReader line would exceed maximum size of {MAX_BUFFER_SIZE} bytes. \
+             This may indicate malformed input or an agent that is not sending newlines."
+        )));
+    }
+    Ok(())
+}
+
+fn parse_utf8_chunk(chunk: &[u8]) -> io::Result<&str> {
+    std::str::from_utf8(chunk).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("agent output is not valid UTF-8: {e}"),
+        )
+    })
+}
+
 impl<R: Read> Read for StreamingLineReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let available = self.buffer.len() - self.consumed;
@@ -128,46 +158,52 @@ impl<R: Read> BufRead for StreamingLineReader<R> {
 
     fn read_line(&mut self, buf: &mut String) -> io::Result<usize> {
         let start_len = buf.len();
-
         loop {
-            let line_len = buf.len() - start_len;
-            if line_len >= MAX_BUFFER_SIZE {
-                return Err(io::Error::other(format!(
-                    "StreamingLineReader line exceeded maximum size of {MAX_BUFFER_SIZE} bytes. \
-                     This may indicate malformed input or an agent that is not sending newlines."
-                )));
-            }
-
-            let available = self.fill_buf()?;
-            if available.is_empty() {
-                return Ok(buf.len() - start_len);
-            }
-
-            let newline_pos = available.iter().position(|&b| b == b'\n');
-            let to_take = newline_pos.map_or(available.len(), |i| i + 1);
-
-            let remaining = MAX_BUFFER_SIZE - (buf.len() - start_len);
-            if to_take > remaining {
-                return Err(io::Error::other(format!(
-                    "StreamingLineReader line would exceed maximum size of {MAX_BUFFER_SIZE} bytes. \
-                     This may indicate malformed input or an agent that is not sending newlines."
-                )));
-            }
-
-            let chunk = &available[..to_take];
-            let chunk_str = std::str::from_utf8(chunk).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("agent output is not valid UTF-8: {e}"),
-                )
-            })?;
-            buf.push_str(chunk_str);
-            self.consume(to_take);
-
-            if newline_pos.is_some() {
-                return Ok(buf.len() - start_len);
+            match read_line_step(self, buf, start_len)? {
+                ReadLineStep::Done => return Ok(buf.len() - start_len),
+                ReadLineStep::Continue => {}
             }
         }
+    }
+}
+
+enum ReadLineStep {
+    Done,
+    Continue,
+}
+
+fn read_line_step<R: Read>(
+    reader: &mut StreamingLineReader<R>,
+    buf: &mut String,
+    start_len: usize,
+) -> io::Result<ReadLineStep> {
+    check_line_size_limit(buf.len() - start_len)?;
+    let available = reader.fill_buf()?;
+    if available.is_empty() {
+        return Ok(ReadLineStep::Done);
+    }
+    let newline_pos = available.iter().position(|&b| b == b'\n');
+    let to_take = newline_pos.map_or(available.len(), |i| i + 1);
+    check_chunk_size_limit(buf.len() - start_len, to_take)?;
+    buf.push_str(parse_utf8_chunk(&available[..to_take])?);
+    reader.consume(to_take);
+    Ok(newline_pos.map_or(ReadLineStep::Continue, |_| ReadLineStep::Done))
+}
+
+/// Outcome of a single fill attempt.
+enum FillStepOutcome {
+    /// Loop should stop; return this accumulated total.
+    Stop(usize),
+    /// Loop should continue with this updated total.
+    Continue(usize),
+}
+
+fn classify_fill_step(n: usize, total_read: usize, has_newline: bool) -> FillStepOutcome {
+    match n {
+        0 if total_read == 0 => FillStepOutcome::Stop(0),
+        0 => FillStepOutcome::Stop(total_read),
+        _ if has_newline => FillStepOutcome::Stop(total_read + n),
+        _ => FillStepOutcome::Continue(total_read + n),
     }
 }
 
@@ -177,15 +213,10 @@ fn fill_buffer_with_retry(
 ) -> io::Result<usize> {
     let mut total_read = 0;
     for _ in 0..max_attempts {
-        match reader.fill_buffer()? {
-            0 if total_read == 0 => return Ok(0),
-            0 => break,
-            n => {
-                total_read += n;
-                if reader.buffer.contains(&b'\n') {
-                    break;
-                }
-            }
+        let n = reader.fill_buffer()?;
+        match classify_fill_step(n, total_read, reader.buffer.contains(&b'\n')) {
+            FillStepOutcome::Stop(v) => return Ok(v),
+            FillStepOutcome::Continue(next) => total_read = next,
         }
     }
     Ok(total_read)
@@ -231,6 +262,30 @@ impl CancelAwareReceiverBufRead {
         }
     }
 
+    fn apply_cancel_if_needed(&mut self) {
+        if self.cancel.load(Ordering::Acquire) {
+            self.buffer.clear();
+            self.consumed = 0;
+            self.eof = true;
+        }
+    }
+
+    fn recv_loop(&mut self) -> io::Result<()> {
+        loop {
+            if self.cancel.load(Ordering::Acquire) {
+                self.eof = true;
+                return Ok(());
+            }
+            if apply_recv_step(
+                self.rx.recv_timeout(self.poll_interval),
+                &mut self.buffer,
+                &mut self.eof,
+            )? {
+                return Ok(());
+            }
+        }
+    }
+
     fn refill_if_needed(&mut self) -> io::Result<()> {
         if should_cancel_or_eof(
             self.cancel.load(Ordering::Acquire),
@@ -238,44 +293,57 @@ impl CancelAwareReceiverBufRead {
             self.consumed,
             &self.buffer,
         ) {
-            if self.cancel.load(Ordering::Acquire) {
-                self.buffer.clear();
-                self.consumed = 0;
-                self.eof = true;
-            }
+            self.apply_cancel_if_needed();
             return Ok(());
         }
 
         self.buffer.clear();
         self.consumed = 0;
-
-        loop {
-            if self.cancel.load(Ordering::Acquire) {
-                self.eof = true;
-                return Ok(());
-            }
-            match self.rx.recv_timeout(self.poll_interval) {
-                Ok(Ok(chunk)) => {
-                    if chunk.is_empty() {
-                        self.eof = true;
-                        return Ok(());
-                    }
-                    self.buffer = chunk;
-                    return Ok(());
-                }
-                Ok(Err(e)) => return Err(e),
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    self.eof = true;
-                    return Ok(());
-                }
-            }
-        }
+        self.recv_loop()
     }
 }
 
 fn should_cancel_or_eof(cancelled: bool, eof: bool, consumed: usize, buffer: &[u8]) -> bool {
     cancelled || eof || consumed < buffer.len()
+}
+
+enum RecvStep {
+    Done(Vec<u8>),
+    Eof,
+    Continue,
+}
+
+fn apply_recv_result(
+    result: Result<io::Result<Vec<u8>>, mpsc::RecvTimeoutError>,
+) -> io::Result<RecvStep> {
+    match result {
+        Ok(Ok(chunk)) if chunk.is_empty() => Ok(RecvStep::Eof),
+        Ok(Ok(chunk)) => Ok(RecvStep::Done(chunk)),
+        Ok(Err(e)) => Err(e),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(RecvStep::Continue),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Ok(RecvStep::Eof),
+    }
+}
+
+/// Apply a single receive result to the buffer state.
+///
+/// Returns `Ok(true)` when the loop should stop (done or eof), `Ok(false)` to continue.
+fn apply_recv_step(
+    result: Result<io::Result<Vec<u8>>, mpsc::RecvTimeoutError>,
+    buffer: &mut Vec<u8>,
+    eof: &mut bool,
+) -> io::Result<bool> {
+    match apply_recv_result(result)? {
+        RecvStep::Done(chunk) => {
+            *buffer = chunk;
+            Ok(true)
+        }
+        RecvStep::Eof => {
+            *eof = true;
+            Ok(true)
+        }
+        RecvStep::Continue => Ok(false),
+    }
 }
 
 impl Read for CancelAwareReceiverBufRead {
@@ -364,7 +432,30 @@ fn detach_message_for_logger(detached: bool) -> Option<&'static str> {
     detached.then_some("Stdout pump thread did not exit; detaching thread")
 }
 
+fn wait_for_pump_deadline(pump_handle: &std::thread::JoinHandle<()>, deadline: std::time::Instant) {
+    while !pump_handle.is_finished() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn finalize_pump(pump_handle: std::thread::JoinHandle<()>, logger: &crate::logger::Logger) {
+    if pump_handle.is_finished() {
+        let _ = pump_handle.join();
+    } else {
+        if let Some(msg) = detach_message_for_logger(true) {
+            logger.warn(msg);
+        }
+        drop(pump_handle);
+    }
+}
+
 /// Clean up the stdout pump thread.
+fn join_or_detach_pump(pump_handle: std::thread::JoinHandle<()>, logger: &crate::logger::Logger) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    wait_for_pump_deadline(&pump_handle, deadline);
+    finalize_pump(pump_handle, logger);
+}
+
 pub fn cleanup_stdout_pump(
     pump_handle: std::thread::JoinHandle<()>,
     cancel: &Arc<AtomicBool>,
@@ -377,18 +468,7 @@ pub fn cleanup_stdout_pump(
 
     let should_detach = pump_should_detach(cancel.load(Ordering::Acquire), parse_result);
     if should_detach {
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        while !pump_handle.is_finished() && std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        if pump_handle.is_finished() {
-            let _ = pump_handle.join();
-        } else {
-            if let Some(msg) = detach_message_for_logger(true) {
-                logger.warn(msg);
-            }
-            drop(pump_handle);
-        }
+        join_or_detach_pump(pump_handle, logger);
     } else {
         let _ = pump_handle.join();
     }

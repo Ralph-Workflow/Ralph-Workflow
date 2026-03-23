@@ -218,7 +218,7 @@ impl ProcessExecutor for KillNotifyingExecutor {
         args: &[&str],
         env: &[(String, String)],
         workdir: Option<&Path>,
-    ) -> std::io::Result<std::process::Child> {
+    ) -> std::io::Result<ralph_workflow::executor::SpawnedProcess> {
         self.inner.spawn(command, args, env, workdir)
     }
 

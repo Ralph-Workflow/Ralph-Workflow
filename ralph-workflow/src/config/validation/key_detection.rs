@@ -54,10 +54,11 @@ pub fn detect_unknown_and_deprecated_keys(
         })
         .fold(
             (KeyLocationList::new(), KeyLocationList::new()),
-            |(mut unks, mut deps), (unk, dep)| {
-                unks.extend(unk);
-                deps.extend(dep);
-                (unks, deps)
+            |(unks, deps), (unk, dep)| {
+                (
+                    unks.into_iter().chain(unk).collect(),
+                    deps.into_iter().chain(dep).collect(),
+                )
             },
         );
 

@@ -96,96 +96,178 @@ pub fn pre_flight_review_check(
     let agent_dir = Path::new(".agent");
     let issues_path = Path::new(".agent/ISSUES.md");
 
-    let mut diagnostics = Vec::new();
+    // Each check returns Ok(non_fatal_diagnostics) to continue, or
+    // Err(terminal_result_with_diagnostics) to halt.
+    // We thread these checks, accumulating diagnostics along the way.
 
     // Check 0: Agent compatibility warning (non-blocking)
-    let is_problematic_reviewer = is_problematic_prompt_target(reviewer_agent, reviewer_model);
-    if is_problematic_reviewer {
-        diagnostics.push(PreflightDiagnostic::ProblematicReviewer {
-            agent: AgentName::from(reviewer_agent),
-            model: reviewer_model.map(ModelName::from),
-        });
-    }
+    let agent_diagnostics: Vec<PreflightDiagnostic> =
+        check_agent_compatibility(reviewer_agent, reviewer_model);
 
-    // Check 0.1: GLM-specific command validation (diagnostic only)
-    // Use contains_glm_model (broad) rather than is_glm_like_agent (CCS-only): any agent
-    // whose name contains a GLM-family model should surface this diagnostic.
-    if contains_glm_model(reviewer_agent) {
-        diagnostics.push(PreflightDiagnostic::GlmAgentDetected {
+    // Check 0.5: Existing ISSUES.md diagnostic (non-blocking)
+    let issues_diagnostics: Vec<PreflightDiagnostic> =
+        check_existing_issues_file(workspace, issues_path);
+
+    // Accumulated non-fatal diagnostics so far.
+    let preamble_diagnostics: Vec<PreflightDiagnostic> = agent_diagnostics
+        .into_iter()
+        .chain(issues_diagnostics)
+        .collect();
+
+    // Check 1: .agent directory must exist and be writable (may halt).
+    check_agent_dir_writable(workspace, agent_dir, cycle, preamble_diagnostics)
+        .and_then(|diagnostics_after_write| {
+            // Check 2: .agent directory must not be too large (may halt).
+            check_agent_dir_size(workspace, agent_dir, diagnostics_after_write)
+        })
+        .unwrap_or_else(|terminal| terminal)
+}
+
+/// Check 0 + 0.1: agent/model compatibility warnings — always non-fatal.
+fn check_agent_compatibility(
+    reviewer_agent: &str,
+    reviewer_model: Option<&str>,
+) -> Vec<PreflightDiagnostic> {
+    let problematic: Option<PreflightDiagnostic> =
+        is_problematic_prompt_target(reviewer_agent, reviewer_model).then(|| {
+            PreflightDiagnostic::ProblematicReviewer {
+                agent: AgentName::from(reviewer_agent),
+                model: reviewer_model.map(ModelName::from),
+            }
+        });
+
+    let glm: Option<PreflightDiagnostic> =
+        contains_glm_model(reviewer_agent).then(|| PreflightDiagnostic::GlmAgentDetected {
             agent: AgentName::from(reviewer_agent),
         });
-    }
 
-    // Check 0.5: Check for existing ISSUES.md from previous failed run
-    if workspace.exists(issues_path) {
-        match workspace.read(issues_path) {
-            Ok(content) if !content.is_empty() => {
-                diagnostics.push(PreflightDiagnostic::ExistingIssuesFile {
-                    size_bytes: IssueFileSize::from(content.len()),
-                });
-            }
-            Ok(_) => {
-                diagnostics.push(PreflightDiagnostic::EmptyIssuesFile);
-            }
+    problematic.into_iter().chain(glm).collect()
+}
+
+/// Check 0.5: existing ISSUES.md — always non-fatal.
+fn check_existing_issues_file(
+    workspace: &dyn Workspace,
+    issues_path: &Path,
+) -> Vec<PreflightDiagnostic> {
+    if !workspace.exists(issues_path) {
+        return vec![];
+    }
+    match workspace.read(issues_path) {
+        Ok(content) if !content.is_empty() => vec![PreflightDiagnostic::ExistingIssuesFile {
+            size_bytes: IssueFileSize::from(content.len()),
+        }],
+        Ok(_) => vec![PreflightDiagnostic::EmptyIssuesFile],
+        Err(e) => vec![PreflightDiagnostic::IssuesFileReadFailure {
+            error: e.to_string(),
+        }],
+    }
+}
+
+/// Check 1: ensure .agent exists and is writable.
+///
+/// Returns `Ok(diagnostics)` when the directory is ready, or
+/// `Err(terminal)` when the run must halt.
+fn check_agent_dir_writable(
+    workspace: &dyn Workspace,
+    agent_dir: &Path,
+    cycle: u32,
+    prior_diagnostics: Vec<PreflightDiagnostic>,
+) -> Result<Vec<PreflightDiagnostic>, WithDiagnostics<PreflightResult, PreflightDiagnostic>> {
+    // Ensure the directory exists.
+    let dir_created_diagnostics: Vec<PreflightDiagnostic> = if !workspace.is_dir(agent_dir) {
+        match workspace.create_dir_all(agent_dir) {
+            Ok(()) => vec![],
             Err(e) => {
-                diagnostics.push(PreflightDiagnostic::IssuesFileReadFailure {
-                    error: e.to_string(),
+                let error_message = e.to_string();
+                return Err(WithDiagnostics {
+                    value: PreflightResult::Error(format!(
+                        "Cannot create .agent directory: {error_message}. Check directory permissions."
+                    )),
+                    diagnostics: prior_diagnostics
+                        .into_iter()
+                        .chain(std::iter::once(
+                            PreflightDiagnostic::AgentDirectoryCreationFailed {
+                                error: error_message,
+                            },
+                        ))
+                        .collect(),
                 });
             }
         }
-    }
+    } else {
+        vec![]
+    };
 
-    // Check 1: Verify .agent directory is writable
-    if !workspace.is_dir(agent_dir) {
-        if let Err(e) = workspace.create_dir_all(agent_dir) {
-            let error_message = e.to_string();
-            diagnostics.push(PreflightDiagnostic::AgentDirectoryCreationFailed {
-                error: error_message.clone(),
-            });
-            return WithDiagnostics {
-                value: PreflightResult::Error(format!(
-                    "Cannot create .agent directory: {error_message}. Check directory permissions."
-                )),
-                diagnostics,
-            };
-        }
-    }
-
-    // Test write by touching a temp file
+    // Test write by touching a temp file.
     let test_file = agent_dir.join(format!(".write_test_{cycle}"));
-    if let Err(e) = workspace.write(&test_file, "test") {
-        let error_message = e.to_string();
-        diagnostics.push(PreflightDiagnostic::AgentDirectoryNotWritable {
-            error: error_message.clone(),
-        });
-        return WithDiagnostics {
-            value: PreflightResult::Error(format!(
-                ".agent directory is not writable: {error_message}. Check file permissions."
-            )),
-            diagnostics,
-        };
-    }
-    let _ = workspace.remove(&test_file);
-
-    // Check 2: Check number of files in .agent directory
-    if let Ok(entries) = workspace.read_dir(agent_dir) {
-        let entry_count = entries.len();
-        if entry_count > MAX_AGENT_DIR_ENTRY_COUNT {
-            diagnostics.push(PreflightDiagnostic::AgentDirectoryTooLarge {
-                entry_count: AgentDirectoryEntryCount::from(entry_count),
-            });
-            return WithDiagnostics {
-                value: PreflightResult::Warning(
-                    "Large .agent directory detected. Review may be slow.".to_string(),
-                ),
-                diagnostics,
-            };
+    match workspace.write(&test_file, "test") {
+        Ok(()) => {
+            let _ = workspace.remove(&test_file);
+            Ok(prior_diagnostics
+                .into_iter()
+                .chain(dir_created_diagnostics)
+                .collect())
+        }
+        Err(e) => {
+            let error_message = e.to_string();
+            Err(WithDiagnostics {
+                value: PreflightResult::Error(format!(
+                    ".agent directory is not writable: {error_message}. Check file permissions."
+                )),
+                diagnostics: prior_diagnostics
+                    .into_iter()
+                    .chain(dir_created_diagnostics)
+                    .chain(std::iter::once(
+                        PreflightDiagnostic::AgentDirectoryNotWritable {
+                            error: error_message,
+                        },
+                    ))
+                    .collect(),
+            })
         }
     }
+}
 
-    WithDiagnostics {
-        value: PreflightResult::Ok,
-        diagnostics,
+/// Check 2: ensure .agent directory is not too large.
+///
+/// Returns `Ok(diagnostics)` when the directory size is acceptable, or
+/// `Err(terminal)` when the run should halt with a warning.
+fn check_agent_dir_size(
+    workspace: &dyn Workspace,
+    agent_dir: &Path,
+    prior_diagnostics: Vec<PreflightDiagnostic>,
+) -> Result<
+    WithDiagnostics<PreflightResult, PreflightDiagnostic>,
+    WithDiagnostics<PreflightResult, PreflightDiagnostic>,
+> {
+    let too_large: Option<(usize, PreflightDiagnostic)> = workspace
+        .read_dir(agent_dir)
+        .ok()
+        .filter(|entries| entries.len() > MAX_AGENT_DIR_ENTRY_COUNT)
+        .map(|entries| {
+            let count = entries.len();
+            (
+                count,
+                PreflightDiagnostic::AgentDirectoryTooLarge {
+                    entry_count: AgentDirectoryEntryCount::from(count),
+                },
+            )
+        });
+
+    match too_large {
+        Some((_, diag)) => Err(WithDiagnostics {
+            value: PreflightResult::Warning(
+                "Large .agent directory detected. Review may be slow.".to_string(),
+            ),
+            diagnostics: prior_diagnostics
+                .into_iter()
+                .chain(std::iter::once(diag))
+                .collect(),
+        }),
+        None => Ok(WithDiagnostics {
+            value: PreflightResult::Ok,
+            diagnostics: prior_diagnostics,
+        }),
     }
 }
 

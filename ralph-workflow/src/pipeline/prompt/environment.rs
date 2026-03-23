@@ -26,14 +26,9 @@ pub fn sanitize_command_env(
     vars_to_sanitize: &[&str],
 ) -> std::collections::HashMap<String, String> {
     let agent_keys: std::collections::HashSet<_> = agent_env_vars.keys().collect();
-    let mut sanitized: std::collections::HashMap<_, _> = env_vars
+    env_vars
         .into_iter()
         .filter(|(key, _)| !vars_to_sanitize.contains(&key.as_str()) || agent_keys.contains(key))
-        .collect();
-
-    agent_env_vars.iter().for_each(|(key, value)| {
-        sanitized.insert(key.clone(), value.clone());
-    });
-
-    sanitized
+        .chain(agent_env_vars.iter().map(|(k, v)| (k.clone(), v.clone())))
+        .collect()
 }

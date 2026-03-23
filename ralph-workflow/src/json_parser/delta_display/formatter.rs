@@ -25,7 +25,7 @@ impl DeltaDisplayFormatter {
     ///
     /// - `TerminalMode::Full` / `TerminalMode::Basic`: May include ANSI colors.
     /// - `TerminalMode::None`: MUST be plain text (no ANSI sequences).
-    #[must_use] 
+    #[must_use]
     pub fn format_thinking(
         &self,
         content: &str,
@@ -34,36 +34,10 @@ impl DeltaDisplayFormatter {
         terminal_mode: crate::json_parser::terminal::TerminalMode,
     ) -> String {
         use crate::json_parser::terminal::TerminalMode;
-
         match terminal_mode {
-            TerminalMode::None => {
-                // Plain-text guarantee: never emit ANSI in None mode, even if colors are enabled.
-                format!("[{prefix}] Thinking: {content}\n")
-            }
+            TerminalMode::None => format!("[{prefix}] Thinking: {content}\n"),
             TerminalMode::Full | TerminalMode::Basic => {
-                if self.mark_partial {
-                    format!(
-                        "{}[{}]{} {}Thinking: {}{}{}\n",
-                        colors.dim(),
-                        prefix,
-                        colors.reset(),
-                        colors.dim(),
-                        colors.cyan(),
-                        content,
-                        colors.reset()
-                    )
-                } else {
-                    format!(
-                        "{}[{}]{} {}Thinking: {}{}{}\n",
-                        colors.dim(),
-                        prefix,
-                        colors.reset(),
-                        colors.cyan(),
-                        colors.reset(),
-                        content,
-                        colors.reset()
-                    )
-                }
+                format_thinking_with_colors(content, prefix, colors, self.mark_partial)
             }
         }
     }
@@ -103,7 +77,7 @@ impl DeltaDisplayFormatter {
     ///
     /// This would require tracking whether the prefix has been displayed
     /// for the current tool block, likely via the streaming session state.
-    #[must_use] 
+    #[must_use]
     pub fn format_tool_input(
         &self,
         content: &str,
@@ -112,39 +86,74 @@ impl DeltaDisplayFormatter {
         terminal_mode: crate::json_parser::terminal::TerminalMode,
     ) -> String {
         use crate::json_parser::terminal::TerminalMode;
-
         match terminal_mode {
-            TerminalMode::Full => {
-                // In Full mode, render tool input deltas as they arrive for real-time feedback
-                if self.mark_partial {
-                    format!(
-                        "{}[{}]{} {}  └─ {}{}{}\n",
-                        colors.dim(),
-                        prefix,
-                        colors.reset(),
-                        colors.dim(),
-                        colors.reset(),
-                        content,
-                        colors.reset()
-                    )
-                } else {
-                    format!(
-                        "{}[{}]{} {}  └─ {}{}\n",
-                        colors.dim(),
-                        prefix,
-                        colors.reset(),
-                        colors.reset(),
-                        content,
-                        colors.reset()
-                    )
-                }
-            }
-            TerminalMode::Basic | TerminalMode::None => {
-                // SUPPRESS per-delta tool input in non-TTY modes.
-                // Tool input will be rendered ONCE at tool completion or message_stop.
-                String::new()
-            }
+            // In Full mode, render tool input deltas as they arrive for real-time feedback
+            TerminalMode::Full => format_tool_input_full(content, prefix, colors, self.mark_partial),
+            // SUPPRESS per-delta tool input in non-TTY modes.
+            // Tool input will be rendered ONCE at tool completion or message_stop.
+            TerminalMode::Basic | TerminalMode::None => String::new(),
         }
+    }
+}
+
+fn format_thinking_with_colors(
+    content: &str,
+    prefix: &str,
+    colors: Colors,
+    mark_partial: bool,
+) -> String {
+    if mark_partial {
+        format!(
+            "{}[{}]{} {}Thinking: {}{}{}\n",
+            colors.dim(),
+            prefix,
+            colors.reset(),
+            colors.dim(),
+            colors.cyan(),
+            content,
+            colors.reset()
+        )
+    } else {
+        format!(
+            "{}[{}]{} {}Thinking: {}{}{}\n",
+            colors.dim(),
+            prefix,
+            colors.reset(),
+            colors.cyan(),
+            colors.reset(),
+            content,
+            colors.reset()
+        )
+    }
+}
+
+fn format_tool_input_full(
+    content: &str,
+    prefix: &str,
+    colors: Colors,
+    mark_partial: bool,
+) -> String {
+    if mark_partial {
+        format!(
+            "{}[{}]{} {}  └─ {}{}{}\n",
+            colors.dim(),
+            prefix,
+            colors.reset(),
+            colors.dim(),
+            colors.reset(),
+            content,
+            colors.reset()
+        )
+    } else {
+        format!(
+            "{}[{}]{} {}  └─ {}{}\n",
+            colors.dim(),
+            prefix,
+            colors.reset(),
+            colors.reset(),
+            content,
+            colors.reset()
+        )
     }
 }
 

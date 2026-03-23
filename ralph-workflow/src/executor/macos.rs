@@ -92,35 +92,47 @@ const fn libproc_state_indicates_current_activity(
     status == SRUN && cpu_time_ms > 0 && num_running_threads > 0
 }
 
+fn call_proc_listchildpids(pid: libc::pid_t, capacity: usize) -> Option<(i32, Vec<libc::pid_t>)> {
+    let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
+    let buffer_size = i32::try_from(byte_len).ok()?;
+    let mut buffer = vec![libc::pid_t::default(); capacity];
+    let bytes_written =
+        unsafe { proc_listchildpids(pid, buffer.as_mut_ptr().cast::<c_void>(), buffer_size) };
+    Some((bytes_written, buffer))
+}
+
+fn collect_child_pids_from_buffer(buffer: Vec<libc::pid_t>, count: usize) -> Vec<u32> {
+    buffer
+        .into_iter()
+        .take(count)
+        .filter_map(|p| u32::try_from(p).ok())
+        .collect()
+}
+
+fn try_read_child_pids(pid: libc::pid_t, capacity: usize) -> Option<Result<Vec<u32>, usize>> {
+    let (bytes_written, buffer) = call_proc_listchildpids(pid, capacity)?;
+    if bytes_written < 0 {
+        return None;
+    }
+    if bytes_written == 0 {
+        return Some(Ok(Vec::new()));
+    }
+    let count = child_pid_entry_count(bytes_written)?;
+    if count < capacity {
+        return Some(Ok(collect_child_pids_from_buffer(buffer, count)));
+    }
+    Some(Err(capacity.checked_mul(2)?))
+}
+
 fn list_child_pids(parent_pid: u32) -> Option<Vec<u32>> {
     let pid = libc::pid_t::try_from(parent_pid).ok()?;
     let mut capacity: usize = 32;
 
     loop {
-        let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
-        let buffer_size = i32::try_from(byte_len).ok()?;
-        let mut buffer = vec![libc::pid_t::default(); capacity];
-
-        let bytes_written =
-            unsafe { proc_listchildpids(pid, buffer.as_mut_ptr().cast::<c_void>(), buffer_size) };
-        if bytes_written < 0 {
-            return None;
+        match try_read_child_pids(pid, capacity)? {
+            Ok(pids) => return Some(pids),
+            Err(new_capacity) => capacity = new_capacity,
         }
-        if bytes_written == 0 {
-            return Some(Vec::new());
-        }
-
-        let count = child_pid_entry_count(bytes_written)?;
-        if count < capacity {
-            buffer.truncate(count);
-            let child_pids = buffer
-                .into_iter()
-                .filter_map(|child_pid| u32::try_from(child_pid).ok())
-                .collect();
-            return Some(child_pids);
-        }
-
-        capacity = capacity.checked_mul(2)?;
     }
 }
 
@@ -189,24 +201,103 @@ fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
     (bytes == expected).then_some(info)
 }
 
+fn process_child_pids(
+    child_pids: Vec<u32>,
+    descendants: &mut Vec<u32>,
+    visited: &mut HashSet<u32>,
+    queue: &mut VecDeque<u32>,
+) {
+    child_pids
+        .into_iter()
+        .filter(|&p| visited.insert(p))
+        .for_each(|p| {
+            descendants.push(p);
+            queue.push_back(p);
+        });
+}
+
+fn drain_pid_queue(
+    queue: &mut VecDeque<u32>,
+    descendants: &mut Vec<u32>,
+    visited: &mut HashSet<u32>,
+) -> Option<()> {
+    while let Some(pid) = queue.pop_front() {
+        let child_pids = list_child_pids(pid)?;
+        process_child_pids(child_pids, descendants, visited, queue);
+    }
+    Some(())
+}
+
 fn collect_descendant_pids(current_pid: u32) -> Option<Vec<u32>> {
     let mut descendants = Vec::new();
     let mut visited = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back(current_pid);
-
-    while let Some(pid) = queue.pop_front() {
-        let child_pids = list_child_pids(pid)?;
-        for child_pid in child_pids {
-            if visited.insert(child_pid) {
-                descendants.push(child_pid);
-                queue.push_back(child_pid);
-            }
-        }
-    }
-
+    let mut queue = VecDeque::from([current_pid]);
+    drain_pid_queue(&mut queue, &mut descendants, &mut visited)?;
     descendants.sort_unstable();
     Some(descendants)
+}
+
+struct DescendantTally {
+    child_count: u32,
+    active_child_count: u32,
+    total_cpu_ms: u64,
+    qualifying_pids: Vec<u32>,
+}
+
+fn pid_qualifies_for_parent(bsd_info: &ProcBsdShortInfo, parent_pid: u32) -> bool {
+    bsd_info.process_group_id == parent_pid && qualifies_libproc_status(bsd_info.status)
+}
+
+fn cpu_time_ms_from_task(task_info: &Option<ProcTaskInfo>) -> u64 {
+    task_info.as_ref().map_or(0, |info| {
+        (info.total_user_time + info.total_system_time) / 1_000_000
+    })
+}
+
+fn running_threads_from_task(task_info: &Option<ProcTaskInfo>) -> i32 {
+    task_info
+        .as_ref()
+        .map_or(0, |info| info.running_thread_count)
+}
+
+fn tally_one_descendant(pid: u32, parent_pid: u32, tally: &mut DescendantTally) {
+    let Some(bsd_info) = fetch_bsd_short_info(pid) else {
+        return;
+    };
+    if !pid_qualifies_for_parent(&bsd_info, parent_pid) {
+        return;
+    }
+    let task_info = fetch_task_info(pid);
+    let cpu_time_ms = cpu_time_ms_from_task(&task_info);
+    let num_running_threads = running_threads_from_task(&task_info);
+    tally.child_count = tally.child_count.saturating_add(1);
+    tally.total_cpu_ms += cpu_time_ms;
+    if libproc_state_indicates_current_activity(bsd_info.status, cpu_time_ms, num_running_threads) {
+        tally.active_child_count = tally.active_child_count.saturating_add(1);
+    }
+    tally.qualifying_pids.push(pid);
+}
+
+fn build_descendant_tally(parent_pid: u32, descendants: &[u32]) -> DescendantTally {
+    let mut tally = DescendantTally {
+        child_count: 0,
+        active_child_count: 0,
+        total_cpu_ms: 0,
+        qualifying_pids: Vec::new(),
+    };
+    descendants
+        .iter()
+        .for_each(|&pid| tally_one_descendant(pid, parent_pid, &mut tally));
+    tally
+}
+
+fn tally_to_child_info(tally: DescendantTally) -> ChildProcessInfo {
+    ChildProcessInfo {
+        child_count: tally.child_count,
+        active_child_count: tally.active_child_count,
+        cpu_time_ms: tally.total_cpu_ms,
+        descendant_pid_signature: descendant_pid_signature(&tally.qualifying_pids),
+    }
 }
 
 fn compute_child_info_from_descendants(
@@ -216,52 +307,11 @@ fn compute_child_info_from_descendants(
     if descendants.is_empty() {
         return None;
     }
-
-    let mut child_count: u32 = 0;
-    let mut active_child_count: u32 = 0;
-    let mut total_cpu_ms: u64 = 0;
-    let mut qualifying_descendants = Vec::new();
-
-    for descendant_pid in descendants {
-        let Some(bsd_info) = fetch_bsd_short_info(*descendant_pid) else {
-            continue;
-        };
-        if bsd_info.process_group_id != parent_pid || !qualifies_libproc_status(bsd_info.status) {
-            continue;
-        }
-
-        let task_info = fetch_task_info(*descendant_pid);
-        let cpu_time_ms = task_info.as_ref().map_or(0, |info| {
-            (info.total_user_time + info.total_system_time) / 1_000_000
-        });
-        let num_running_threads = task_info
-            .as_ref()
-            .map_or(0, |info| info.running_thread_count);
-
-        child_count = child_count.saturating_add(1);
-        total_cpu_ms += cpu_time_ms;
-        let counts_as_current_activity = libproc_state_indicates_current_activity(
-            bsd_info.status,
-            cpu_time_ms,
-            num_running_threads,
-        );
-
-        if counts_as_current_activity {
-            active_child_count = active_child_count.saturating_add(1);
-        }
-        qualifying_descendants.push(*descendant_pid);
-    }
-
-    if child_count == 0 {
+    let tally = build_descendant_tally(parent_pid, descendants);
+    if tally.child_count == 0 {
         return Some(ChildProcessInfo::NONE);
     }
-
-    Some(ChildProcessInfo {
-        child_count,
-        active_child_count,
-        cpu_time_ms: total_cpu_ms,
-        descendant_pid_signature: descendant_pid_signature(&qualifying_descendants),
-    })
+    Some(tally_to_child_info(tally))
 }
 
 pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {

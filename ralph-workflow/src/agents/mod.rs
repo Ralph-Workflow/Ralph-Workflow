@@ -120,7 +120,7 @@ pub struct ProductionRetryTimer;
 
 impl RetryTimerProvider for ProductionRetryTimer {
     fn sleep(&self, duration: Duration) {
-        std::thread::sleep(duration);
+        runtime::do_sleep(duration);
     }
 }
 

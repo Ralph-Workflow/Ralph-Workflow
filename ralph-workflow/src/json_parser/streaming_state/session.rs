@@ -186,73 +186,55 @@ impl StreamingSession {
     /// follows the repeated `MessageStart`. This is a defensive measure to handle
     /// non-standard agent protocols while maintaining correct behavior for legitimate
     /// multi-message scenarios.
-    pub fn on_message_start(&mut self) {
-        // Detect repeated MessageStart during active streaming
-        let is_mid_stream_restart = self.state == StreamingState::Streaming;
+    fn reset_streaming_state_base(&mut self) {
+        self.state = StreamingState::Idle;
+        self.streamed_types.clear();
+        self.current_block = ContentBlockState::NotInBlock;
+        self.accumulated.clear();
+        self.key_order.clear();
+        self.delta_sizes.clear();
+        self.last_rendered.clear();
+        self.deduplicator.clear();
+        self.tool_names.clear();
+    }
 
-        if is_mid_stream_restart {
-            // Track protocol violation
-            self.protocol_violations = self.protocol_violations.saturating_add(1);
-            // Log the contract violation for debugging (only if verbose warnings enabled)
-            if self.verbose_warnings {
-                let _ = writeln!(
-                    std::io::stderr(),
-                    "Warning: Received MessageStart while state is Streaming. \
-                    This indicates a non-standard agent protocol (e.g., GLM sending \
-                    repeated MessageStart events). Preserving output_started_for_key \
-                    to prevent prefix spam. File: state_management.rs, Line: {}",
-                    line!()
-                );
-            }
-
-            // Preserve output_started_for_key to prevent prefix spam.
-            // std::mem::take replaces the HashSet with an empty one and returns the old values,
-            // which we restore after clearing other state. This ensures repeated MessageStart
-            // events don't reset output tracking, preventing duplicate prefix display.
-            let preserved_output_started = std::mem::take(&mut self.output_started_for_key);
-
-            // Also preserve last_delta to detect duplicate deltas across MessageStart boundaries
-            let preserved_last_delta = std::mem::take(&mut self.last_delta);
-
-            // Also preserve rendered_content_hashes to detect duplicate rendering across MessageStart
-            let preserved_rendered_hashes = std::mem::take(&mut self.rendered_content_hashes);
-
-            // Also preserve consecutive_duplicates to detect resend glitches across MessageStart
-            let preserved_consecutive_duplicates = std::mem::take(&mut self.consecutive_duplicates);
-
-            self.state = StreamingState::Idle;
-            self.streamed_types.clear();
-            self.current_block = ContentBlockState::NotInBlock;
-            self.accumulated.clear();
-            self.key_order.clear();
-            self.delta_sizes.clear();
-            self.last_rendered.clear();
-            self.deduplicator.clear();
-            self.tool_names.clear();
-
-            // Restore preserved state
-            self.output_started_for_key = preserved_output_started;
-            self.last_delta = preserved_last_delta;
-            self.rendered_content_hashes = preserved_rendered_hashes;
-            self.consecutive_duplicates = preserved_consecutive_duplicates;
-        } else {
-            // Normal reset for new message
-            self.state = StreamingState::Idle;
-            self.streamed_types.clear();
-            self.current_block = ContentBlockState::NotInBlock;
-            self.accumulated.clear();
-            self.key_order.clear();
-            self.delta_sizes.clear();
-            self.output_started_for_key.clear();
-            self.last_rendered.clear();
-            self.last_delta.clear();
-            self.rendered_content_hashes.clear();
-            self.consecutive_duplicates.clear();
-            self.deduplicator.clear();
-            self.tool_names.clear();
+    fn on_mid_stream_restart(&mut self) {
+        self.protocol_violations = self.protocol_violations.saturating_add(1);
+        if self.verbose_warnings {
+            let _ = writeln!(
+                std::io::stderr(),
+                "Warning: Received MessageStart while state is Streaming. \
+                This indicates a non-standard agent protocol (e.g., GLM sending \
+                repeated MessageStart events). Preserving output_started_for_key \
+                to prevent prefix spam. File: state_management.rs, Line: {}",
+                line!()
+            );
         }
-        // Note: We don't reset current_message_id here - it's set by a separate method
-        // This allows for more flexible message ID handling
+        let preserved_output_started = std::mem::take(&mut self.output_started_for_key);
+        let preserved_last_delta = std::mem::take(&mut self.last_delta);
+        let preserved_rendered_hashes = std::mem::take(&mut self.rendered_content_hashes);
+        let preserved_consecutive_duplicates = std::mem::take(&mut self.consecutive_duplicates);
+        self.reset_streaming_state_base();
+        self.output_started_for_key = preserved_output_started;
+        self.last_delta = preserved_last_delta;
+        self.rendered_content_hashes = preserved_rendered_hashes;
+        self.consecutive_duplicates = preserved_consecutive_duplicates;
+    }
+
+    fn on_normal_message_start(&mut self) {
+        self.reset_streaming_state_base();
+        self.output_started_for_key.clear();
+        self.last_delta.clear();
+        self.rendered_content_hashes.clear();
+        self.consecutive_duplicates.clear();
+    }
+
+    pub fn on_message_start(&mut self) {
+        if self.state == StreamingState::Streaming {
+            self.on_mid_stream_restart();
+        } else {
+            self.on_normal_message_start();
+        }
     }
 
     /// Set the current message ID for tracking.
@@ -517,6 +499,48 @@ impl StreamingSession {
 // StreamingSession impl block: text delta handling
 // ============================================================================
 
+fn update_consecutive_dup_entry(count: &mut usize, prev_hash: &mut u64, delta_hash: u64, threshold: usize) -> bool {
+    if *prev_hash == delta_hash {
+        *count = count.saturating_add(1);
+        *count >= threshold
+    } else {
+        *count = 1;
+        *prev_hash = delta_hash;
+        false
+    }
+}
+
+fn warn_if_verbose_consecutive_dup(verbose: bool, count: usize, threshold: usize, key_str: &str, delta: &str) {
+    if verbose {
+        let _ = writeln!(
+            std::io::stderr(),
+            "Warning: Dropping consecutive duplicate delta (count={count}, threshold={threshold}). \
+            This appears to be a resend glitch. Key: '{key_str}', Delta: {delta:?}",
+        );
+    }
+}
+
+fn is_exact_duplicate_after_message_start(
+    last_delta: &HashMap<(ContentType, String), String>,
+    accumulated: &HashMap<(ContentType, String), String>,
+    content_key: &(ContentType, String),
+    delta: &str,
+) -> bool {
+    if let Some(last) = last_delta.get(content_key) {
+        if delta == last {
+            return accumulated.get(content_key).is_none_or(String::is_empty);
+        }
+    }
+    false
+}
+
+fn warn_large_delta_pattern(verbose: bool, sizes: &[usize], key: &str) {
+    let large_count = sizes.iter().filter(|&&s| s > snapshot_threshold()).count();
+    if sizes.len() >= DEFAULT_PATTERN_DETECTION_MIN_DELTAS && large_count >= DEFAULT_PATTERN_DETECTION_MIN_DELTAS && verbose {
+        let _ = writeln!(std::io::stderr(), "Warning: Detected pattern of {large_count} large deltas for key '{key}'. This strongly suggests a snapshot-as-delta bug.");
+    }
+}
+
 impl StreamingSession {
     pub fn on_text_delta(&mut self, index: u64, delta: &str) -> bool {
         self.on_text_delta_key(&index.to_string(), delta)
@@ -535,44 +559,16 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - The delta should be dropped (consecutive duplicate exceeded threshold)
     /// * `false` - The delta should be processed
-    fn check_consecutive_duplicate(
-        &mut self,
-        content_key: &(ContentType, String),
-        delta: &str,
-        key_str: &str,
-    ) -> bool {
+    fn check_consecutive_duplicate(&mut self, content_key: &(ContentType, String), delta: &str, key_str: &str) -> bool {
         let delta_hash = RollingHashWindow::compute_hash(delta);
-        let thresholds = get_overlap_thresholds();
-
-        if let Some((count, prev_hash)) = self.consecutive_duplicates.get_mut(content_key) {
-            if *prev_hash == delta_hash {
-                *count = count.saturating_add(1);
-                // Check if we've exceeded the consecutive duplicate threshold
-                if *count >= thresholds.consecutive_duplicate_threshold {
-                    // This is a resend glitch - drop the delta entirely
-                    if self.verbose_warnings {
-                        let _ = writeln!(
-                            std::io::stderr(),
-                            "Warning: Dropping consecutive duplicate delta (count={count}, threshold={}). \
-                            This appears to be a resend glitch. Key: '{key_str}', Delta: {delta:?}",
-                            thresholds.consecutive_duplicate_threshold
-                        );
-                    }
-                    // Don't update last_delta - preserve previous for comparison
-                    return true;
-                }
-            } else {
-                // Different delta - reset count and update hash
-                *count = 1;
-                *prev_hash = delta_hash;
-            }
-        } else {
-            // First occurrence of this delta
-            self.consecutive_duplicates
-                .insert(content_key.clone(), (1, delta_hash));
-        }
-
-        false
+        let threshold = get_overlap_thresholds().consecutive_duplicate_threshold;
+        let Some((count, prev_hash)) = self.consecutive_duplicates.get_mut(content_key) else {
+            self.consecutive_duplicates.insert(content_key.clone(), (1, delta_hash));
+            return false;
+        };
+        let exceeded = update_consecutive_dup_entry(count, prev_hash, delta_hash, threshold);
+        if exceeded { warn_if_verbose_consecutive_dup(self.verbose_warnings, *count, threshold, key_str, delta); }
+        exceeded
     }
 
     /// Process a text delta with a string key and return whether prefix should be shown.
@@ -597,157 +593,61 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - Show prefix with this delta (first chunk)
     /// * `false` - Don't show prefix (subsequent chunks)
-    pub fn on_text_delta_key(&mut self, key: &str, delta: &str) -> bool {
-        // Lifecycle enforcement: deltas should only arrive during streaming
-        // or idle (first delta starts streaming), never after finalization
-        self.assert_lifecycle_state(&[StreamingState::Idle, StreamingState::Streaming]);
-
-        let content_key = (ContentType::Text, key.to_string());
-        let delta_size = delta.len();
-
-        // Track delta size and warn on large deltas BEFORE duplicate check
-        // This ensures we track all received deltas even if they're duplicates
-        if delta_size > snapshot_threshold() {
-            self.large_delta_count = self.large_delta_count.saturating_add(1);
-            if self.verbose_warnings {
-                let _ = writeln!(
-                    std::io::stderr(),
-                    "Warning: Large delta ({delta_size} chars) for key '{key}'. \
-                    This may indicate unusual streaming behavior or a snapshot being sent as a delta."
-                );
-            }
+    fn track_large_delta_warning(&mut self, delta_size: usize, key: &str) {
+        if delta_size <= snapshot_threshold() { return; }
+        self.large_delta_count = self.large_delta_count.saturating_add(1);
+        if self.verbose_warnings {
+            let _ = writeln!(std::io::stderr(), "Warning: Large delta ({delta_size} chars) for key '{key}'. This may indicate unusual streaming behavior.");
         }
+    }
 
-        // Track delta size for pattern detection
-        {
-            let sizes = self.delta_sizes.entry(content_key.clone()).or_default();
-            sizes.push(delta_size);
+    fn track_delta_size(&mut self, content_key: &(ContentType, String), delta_size: usize) {
+        let sizes = self.delta_sizes.entry(content_key.clone()).or_default();
+        sizes.push(delta_size);
+        if sizes.len() > self.max_delta_history { sizes.remove(0); }
+    }
 
-            // Keep only the most recent delta sizes
-            if sizes.len() > self.max_delta_history {
-                sizes.remove(0);
-            }
+    fn track_delta_metrics(&mut self, content_key: &(ContentType, String), delta: &str, key: &str) {
+        self.track_large_delta_warning(delta.len(), key);
+        self.track_delta_size(content_key, delta.len());
+    }
+
+    fn warn_snapshot_fallback(&self, e: &SnapshotDeltaError) {
+        if self.verbose_warnings {
+            let _ = writeln!(std::io::stderr(), "Warning: Snapshot extraction failed: {e}. Using original delta.");
         }
+    }
 
-        // Check for exact duplicate delta (same delta sent twice)
-        // This handles the ccs-glm repeated MessageStart scenario where the same
-        // delta is sent multiple times. We skip processing exact duplicates ONLY when
-        // the accumulated content is empty (indicating we just had a MessageStart and
-        // this is a true duplicate, not just a repeated token in normal streaming).
-        if let Some(last) = self.last_delta.get(&content_key) {
-            if delta == last {
-                // Check if accumulated content is empty (just after MessageStart)
-                if let Some(current_accumulated) = self.accumulated.get(&content_key) {
-                    // If accumulated content is empty, this is likely a ccs-glm duplicate
-                    if current_accumulated.is_empty() {
-                        // Skip without updating last_delta (to preserve previous delta for comparison)
-                        return false;
-                    }
-                } else {
-                    // No accumulated content yet, definitely after MessageStart
-                    // Skip without updating last_delta
-                    return false;
-                }
-            }
+    fn resolve_snapshot_or_delta(&mut self, delta: &str, key: &str) -> String {
+        if !self.is_likely_snapshot(delta, key) { return delta.to_string(); }
+        match self.get_delta_from_snapshot(delta, key) {
+            Ok(extracted) => { self.snapshot_repairs_count = self.snapshot_repairs_count.saturating_add(1); extracted.to_string() }
+            Err(e) => { self.warn_snapshot_fallback(&e); delta.to_string() }
         }
+    }
 
-        // Consecutive duplicate detection ("3 strikes" heuristic)
-        // Detects resend glitches where the exact same delta arrives repeatedly.
-        // This is different from the above check - it tracks HOW MANY TIMES
-        // the same delta has arrived consecutively, not just if it matches once.
-        if self.check_consecutive_duplicate(&content_key, delta, key) {
-            return false;
-        }
-
-        // Auto-repair: Check if this is a snapshot being sent as a delta
-        // Do this BEFORE any mutable borrows so we can use immutable methods.
-        // Use content-based detection which is more reliable than size-based alone.
-        let is_snapshot = self.is_likely_snapshot(delta, key);
-        let actual_delta = if is_snapshot {
-            // Extract only the new portion to prevent exponential duplication
-            match self.get_delta_from_snapshot(delta, key) {
-                Ok(extracted) => {
-                    // Track successful snapshot repair
-                    self.snapshot_repairs_count = self.snapshot_repairs_count.saturating_add(1);
-                    extracted.to_string()
-                }
-                Err(e) => {
-                    // Snapshot detection had a false positive - use the original delta
-                    if self.verbose_warnings {
-                        let _ = writeln!(
-                            std::io::stderr(),
-                            "Warning: Snapshot extraction failed: {e}. Using original delta."
-                        );
-                    }
-                    delta.to_string()
-                }
-            }
-        } else {
-            // Genuine delta - use as-is
-            delta.to_string()
-        };
-
-        // Pattern detection: Check if we're seeing repeated large deltas
-        // This indicates the same content is being sent repeatedly (snapshot-as-delta)
-        let sizes = self.delta_sizes.get(&content_key);
-        if let Some(sizes) = sizes {
-            if sizes.len() >= DEFAULT_PATTERN_DETECTION_MIN_DELTAS && self.verbose_warnings {
-                // Check if at least 3 of the last N deltas were large
-                let large_count = sizes.iter().filter(|&&s| s > snapshot_threshold()).count();
-                if large_count >= DEFAULT_PATTERN_DETECTION_MIN_DELTAS {
-                    let _ = writeln!(
-                        std::io::stderr(),
-                        "Warning: Detected pattern of {large_count} large deltas for key '{key}'. \
-                        This strongly suggests a snapshot-as-delta bug where the same \
-                        large content is being sent repeatedly. File: streaming_state.rs, Line: {}",
-                        line!()
-                    );
-                }
-            }
-        }
-
-        // If the actual delta is empty (identical content detected), skip processing
-        if actual_delta.is_empty() {
-            // Return false to indicate no prefix should be shown (content unchanged)
-            return false;
-        }
-
-        // Mark that we're streaming text content
+    fn commit_text_delta(&mut self, content_key: (ContentType, String), actual_delta: String, delta: &str, key: &str) -> bool {
         self.streamed_types.insert(ContentType::Text, true);
         self.state = StreamingState::Streaming;
-
-        // Update block state to track this block and mark output as started
-        self.current_block = ContentBlockState::InBlock {
-            index: key.to_string(),
-            started_output: true,
-        };
-
-        // Check if this is the first delta for this key using output_started_for_key
-        // This is independent of accumulated content to handle cases where accumulated
-        // content may be cleared (e.g., repeated ContentBlockStart for same index)
+        self.current_block = ContentBlockState::InBlock { index: key.to_string(), started_output: true };
         let is_first = !self.output_started_for_key.contains(&content_key);
-
-        // Mark that output has started for this key
         self.output_started_for_key.insert(content_key.clone());
-
-        // Accumulate the delta (using auto-repaired delta if snapshot was detected)
-        self.accumulated
-            .entry(content_key.clone())
-            .and_modify(|buf| buf.push_str(&actual_delta))
-            .or_insert_with(|| actual_delta);
-
-        // Track the last delta for duplicate detection
-        // Use the original delta for tracking (not the auto-repaired version)
-        self.last_delta
-            .insert(content_key.clone(), delta.to_string());
-
-        // Track order
-        if is_first {
-            self.key_order.push(content_key);
-        }
-
-        // Show prefix only on the very first delta
+        self.accumulated.entry(content_key.clone()).and_modify(|buf| buf.push_str(&actual_delta)).or_insert_with(|| actual_delta);
+        self.last_delta.insert(content_key.clone(), delta.to_string());
+        if is_first { self.key_order.push(content_key); }
         is_first
+    }
+
+    pub fn on_text_delta_key(&mut self, key: &str, delta: &str) -> bool {
+        self.assert_lifecycle_state(&[StreamingState::Idle, StreamingState::Streaming]);
+        let content_key = (ContentType::Text, key.to_string());
+        self.track_delta_metrics(&content_key, delta, key);
+        if is_exact_duplicate_after_message_start(&self.last_delta, &self.accumulated, &content_key, delta) { return false; }
+        if self.check_consecutive_duplicate(&content_key, delta, key) { return false; }
+        let actual_delta = self.resolve_snapshot_or_delta(delta, key);
+        warn_large_delta_pattern(self.verbose_warnings, self.delta_sizes.get(&content_key).map_or(&[], |v| v), key);
+        if actual_delta.is_empty() { return false; }
+        self.commit_text_delta(content_key, actual_delta, delta, key)
     }
 }
 

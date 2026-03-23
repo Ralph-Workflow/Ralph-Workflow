@@ -39,7 +39,7 @@ pub struct RealColorEnvironment;
 
 impl ColorEnvironment for RealColorEnvironment {
     fn get_var(&self, name: &str) -> Option<String> {
-        std::env::var(name).ok()
+        runtime::get_color_env_var(name)
     }
 
     fn is_terminal(&self) -> bool {

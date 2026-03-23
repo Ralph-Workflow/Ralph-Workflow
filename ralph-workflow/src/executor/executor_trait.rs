@@ -3,7 +3,10 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
-use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
+use super::{
+    AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild,
+    SpawnedProcess,
+};
 #[cfg(target_os = "macos")]
 use crate::executor::macos::child_info_from_libproc;
 use crate::executor::ps::parse_ps_output;
@@ -50,11 +53,11 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         workdir: Option<&Path>,
     ) -> io::Result<ProcessOutput>;
 
-    /// Spawn a process with stdin input and return the child handle.
+    /// Spawn a process with stdin input and return a handle for interaction.
     ///
-    /// This method is used when you need to write to the process's stdin
-    /// or stream its output in real-time. Unlike `execute()`, this returns
-    /// a `Child` handle for direct interaction.
+    /// This method is used when you need to write to the process's stdin.
+    /// Unlike `execute()`, this returns a `SpawnedProcess` handle that exposes
+    /// only the domain-relevant surface (stdin writing and process completion).
     ///
     /// # Arguments
     ///
@@ -65,7 +68,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     ///
     /// # Returns
     ///
-    /// Returns a `Child` handle that can be used to interact with the process.
+    /// Returns a `SpawnedProcess` handle for writing stdin and waiting.
     ///
     /// # Errors
     ///
@@ -76,12 +79,17 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         args: &[&str],
         env: &[(String, String)],
         workdir: Option<&Path>,
-    ) -> io::Result<std::process::Child> {
-        build_command(command, args, env, workdir)
+    ) -> io::Result<SpawnedProcess> {
+        let mut child = build_command(command, args, env, workdir)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .spawn()
+            .spawn()?;
+        let stdin = child.stdin.take();
+        Ok(SpawnedProcess {
+            stdin,
+            inner: child,
+        })
     }
 
     /// Spawn an agent process with streaming output support.
@@ -104,27 +112,21 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     ///
     /// # Default Implementation
     ///
-    /// The default implementation uses the `spawn()` method with additional
-    /// configuration for agent-specific needs. Mock implementations should
-    /// override this to return mock results without spawning real processes.
+    /// The default implementation spawns the agent command directly.
+    /// Mock implementations should override this to return mock results
+    /// without spawning real processes.
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
-        let child = self.spawn_agent_command_only(config)?;
+        let child = build_agent_command_internal(
+            &config.command,
+            &config.args,
+            &config.env,
+            &config.prompt,
+        )
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
         wrap_agent_child(child)
-    }
-
-    /// Build and spawn an agent command, returning the raw Child handle.
-    ///
-    /// This is used internally by `spawn_agent`. Subclasses may override
-    /// this to add platform-specific spawning behavior.
-    fn spawn_agent_command_only(
-        &self,
-        config: &AgentSpawnConfig,
-    ) -> io::Result<std::process::Child> {
-        build_agent_command_internal(&config.command, &config.args, &config.env, &config.prompt)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
     }
 
     /// Check if a command exists and can be executed.
@@ -161,23 +163,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     /// against false-positive idle kills.
     fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
         #[cfg(unix)]
-        {
-            if let Some(info) = try_ps_output_chain(self, parent_pid) {
-                return info;
-            }
-
-            #[cfg(target_os = "macos")]
-            if let Some(info) = child_info_from_libproc(parent_pid) {
-                return info;
-            }
-
-            if let Some(info) = try_pgrep_fallback(self, parent_pid) {
-                return info;
-            }
-
-            warn_child_process_detection_degraded();
-            ChildProcessInfo::NONE
-        }
+        return get_child_process_info_unix(self, parent_pid);
         #[cfg(not(unix))]
         {
             let _ = parent_pid;
@@ -205,20 +191,50 @@ const PS_ATTEMPTS: [&[&str]; 6] = [
     &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
 ];
 
+fn try_ps_args<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    args: &[&str],
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    let out = executor.execute("ps", args, &[], None).ok()?;
+    out.status
+        .success()
+        .then(|| parse_ps_output(&out.stdout, parent_pid))
+        .flatten()
+}
+
 fn try_ps_output_chain<E: ProcessExecutor + ?Sized>(
     executor: &E,
     parent_pid: u32,
 ) -> Option<ChildProcessInfo> {
-    for args in PS_ATTEMPTS {
-        if let Ok(out) = executor.execute("ps", args, &[], None) {
-            if out.status.success() {
-                if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
-                    return Some(info);
-                }
-            }
-        }
+    PS_ATTEMPTS
+        .iter()
+        .find_map(|&args| try_ps_args(executor, args, parent_pid))
+}
+
+#[cfg(unix)]
+fn try_libproc_fallback(parent_pid: u32) -> Option<ChildProcessInfo> {
+    #[cfg(target_os = "macos")]
+    return child_info_from_libproc(parent_pid);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = parent_pid;
+        None
     }
-    None
+}
+
+#[cfg(unix)]
+fn get_child_process_info_unix<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    parent_pid: u32,
+) -> ChildProcessInfo {
+    try_ps_output_chain(executor, parent_pid)
+        .or_else(|| try_libproc_fallback(parent_pid))
+        .or_else(|| try_pgrep_fallback(executor, parent_pid))
+        .unwrap_or_else(|| {
+            warn_child_process_detection_degraded();
+            ChildProcessInfo::NONE
+        })
 }
 
 fn try_pgrep_fallback<E: ProcessExecutor + ?Sized>(
@@ -231,6 +247,36 @@ fn try_pgrep_fallback<E: ProcessExecutor + ?Sized>(
         return Some(child_info_from_descendant_pids(&descendants));
     }
     None
+}
+
+impl SpawnedProcess {
+    /// Wait for the process to finish, discarding the exit status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the wait operation fails.
+    pub fn wait(&mut self) -> io::Result<()> {
+        self.inner.wait()?;
+        Ok(())
+    }
+
+    /// Check whether the process has exited without blocking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+        self.inner.try_wait()
+    }
+
+    /// Kill the process.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the kill operation fails.
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.inner.kill()
+    }
 }
 
 fn wrap_agent_child(mut child: std::process::Child) -> io::Result<AgentChildHandle> {

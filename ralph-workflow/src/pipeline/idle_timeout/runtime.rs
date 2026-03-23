@@ -10,7 +10,7 @@ use crate::pipeline::idle_timeout::{
 };
 use crate::workspace::Workspace;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 /// Configuration for file activity monitoring during timeout detection.
 ///
@@ -97,28 +97,51 @@ pub enum MonitorResult {
 /// Default check interval for the idle monitor (30 seconds).
 const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
+fn compute_sleep_slice(poll_interval: Duration, deadline: std::time::Instant) -> Option<Duration> {
+    let now = std::time::Instant::now();
+    if now >= deadline {
+        return None;
+    }
+    let remaining = deadline.saturating_duration_since(now);
+    Some(poll_interval.min(remaining))
+}
+
+enum SleepStepOutcome {
+    Stop,
+    DeadlineReached,
+    Slept,
+}
+
+fn sleep_step(
+    should_stop: &std::sync::atomic::AtomicBool,
+    poll_interval: Duration,
+    deadline: std::time::Instant,
+) -> SleepStepOutcome {
+    use std::sync::atomic::Ordering;
+    if should_stop.load(Ordering::Acquire) {
+        return SleepStepOutcome::Stop;
+    }
+    match compute_sleep_slice(poll_interval, deadline) {
+        None => SleepStepOutcome::DeadlineReached,
+        Some(slice) => {
+            std::thread::sleep(slice);
+            SleepStepOutcome::Slept
+        }
+    }
+}
+
 fn sleep_until_next_check_or_stop(
     should_stop: &std::sync::atomic::AtomicBool,
     check_interval: Duration,
 ) -> bool {
-    use std::cmp;
-    use std::sync::atomic::Ordering;
-
-    let poll_interval = cmp::min(check_interval, Duration::from_millis(100));
+    let poll_interval = check_interval.min(Duration::from_millis(100));
     let deadline = std::time::Instant::now() + check_interval;
-
     loop {
-        if should_stop.load(Ordering::Acquire) {
-            return true;
+        match sleep_step(should_stop, poll_interval, deadline) {
+            SleepStepOutcome::Stop => return true,
+            SleepStepOutcome::DeadlineReached => return false,
+            SleepStepOutcome::Slept => {}
         }
-
-        let now = std::time::Instant::now();
-        if now >= deadline {
-            return false;
-        }
-
-        let remaining = deadline.saturating_duration_since(now);
-        std::thread::sleep(cmp::min(poll_interval, remaining));
     }
 }
 
@@ -188,7 +211,688 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+struct TimeoutEnforcementState {
+    pid: u32,
+    escalated: bool,
+    last_sigkill_sent_at: Option<std::time::Instant>,
+    triggered_at: std::time::Instant,
+}
+
+fn try_wait_child(child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>) -> bool {
+    let mut locked_child = child
+        .lock()
+        .expect("child process mutex poisoned - indicates panic in another thread");
+    matches!(locked_child.try_wait(), Ok(Some(_)))
+}
+
+fn maybe_resend_kill(
+    pid: u32,
+    executor: &dyn ProcessExecutor,
+    kill_config: KillConfig,
+    last_kill_sent_at: &mut Option<std::time::Instant>,
+) {
+    let now = std::time::Instant::now();
+    let should_resend = last_kill_sent_at
+        .is_none_or(|t| now.duration_since(t) >= kill_config.sigkill_resend_interval());
+    if should_resend {
+        let _ = force_kill_best_effort(pid, executor);
+        *last_kill_sent_at = Some(now);
+    }
+}
+
+struct ReaperArgs {
+    pid: u32,
+    child: Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    executor: Arc<dyn ProcessExecutor>,
+    should_stop: Arc<std::sync::atomic::AtomicBool>,
+    kill_config: KillConfig,
+}
+
+fn reaper_should_stop(args: &ReaperArgs) -> bool {
+    use std::sync::atomic::Ordering;
+    args.should_stop.load(Ordering::Acquire) || try_wait_child(&args.child)
+}
+
+/// One reaper loop step: check stop/exit, resend kill, sleep.
+/// Returns `true` if the reaper should stop.
+fn reaper_step(args: &ReaperArgs, last_kill_sent_at: &mut Option<std::time::Instant>) -> bool {
+    if reaper_should_stop(args) {
+        return true;
+    }
+    maybe_resend_kill(
+        args.pid,
+        args.executor.as_ref(),
+        args.kill_config,
+        last_kill_sent_at,
+    );
+    std::thread::sleep(args.kill_config.poll_interval());
+    false
+}
+
+fn run_reaper_loop(args: &ReaperArgs, deadline: std::time::Instant) {
+    let mut last_kill_sent_at = None;
+    while std::time::Instant::now() < deadline {
+        if reaper_step(args, &mut last_kill_sent_at) {
+            return;
+        }
+    }
+}
+
+fn run_reaper_thread(
+    pid: u32,
+    child: Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    executor: Arc<dyn ProcessExecutor>,
+    should_stop: Arc<std::sync::atomic::AtomicBool>,
+    kill_config: KillConfig,
+) {
+    let args = ReaperArgs {
+        pid,
+        child,
+        executor,
+        should_stop,
+        kill_config,
+    };
+    run_reaper_loop(
+        &args,
+        std::time::Instant::now() + args.kill_config.post_sigkill_hard_cap(),
+    );
+}
+
+enum TimeoutEnforcementContinuation {
+    Exited,
+    HardCapReached,
+    Continue(TimeoutEnforcementState),
+}
+
+enum KillResultContinuation {
+    TimedOut { escalated: bool },
+    AwaitingExit(TimeoutEnforcementState),
+    ProcessCompleted,
+    Continue,
+}
+
+fn escalate_kill(
+    state: &mut TimeoutEnforcementState,
+    executor: &dyn ProcessExecutor,
+    kill_config: KillConfig,
+) {
+    let now = std::time::Instant::now();
+    if state.escalated {
+        maybe_resend_kill(
+            state.pid,
+            executor,
+            kill_config,
+            &mut state.last_sigkill_sent_at,
+        );
+    } else {
+        let _ = force_kill_best_effort(state.pid, executor);
+        state.escalated = true;
+        state.last_sigkill_sent_at = Some(now);
+    }
+}
+
+fn advance_timeout_enforcement(
+    mut state: TimeoutEnforcementState,
+    child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    executor: &Arc<dyn ProcessExecutor>,
+    kill_config: KillConfig,
+) -> TimeoutEnforcementContinuation {
+    if try_wait_child(child) {
+        return TimeoutEnforcementContinuation::Exited;
+    }
+    escalate_kill(&mut state, executor.as_ref(), kill_config);
+    let hard_cap_exceeded =
+        state.triggered_at.elapsed() >= kill_config.post_sigkill_hard_cap() && state.escalated;
+    if hard_cap_exceeded {
+        return TimeoutEnforcementContinuation::HardCapReached;
+    }
+    TimeoutEnforcementContinuation::Continue(state)
+}
+
+struct MonitorLoopState {
+    timeout_triggered: Option<TimeoutEnforcementState>,
+    last_file_activity: Option<std::time::Instant>,
+    consecutive_idle_count: u32,
+    last_child_observation: Option<ChildProcessInfo>,
+    last_child_info: Option<ChildProcessInfo>,
+    child_startup_grace_available: bool,
+}
+
+impl MonitorLoopState {
+    fn new() -> Self {
+        Self {
+            timeout_triggered: None,
+            last_file_activity: None,
+            consecutive_idle_count: 0,
+            last_child_observation: None,
+            last_child_info: None,
+            child_startup_grace_available: true,
+        }
+    }
+
+    fn reset_idle(&mut self) {
+        self.consecutive_idle_count = 0;
+        self.last_child_observation = None;
+        self.last_child_info = None;
+        self.child_startup_grace_available = true;
+    }
+}
+
+fn replacement_subtree_needs_grace(
+    previous_observation: Option<ChildProcessInfo>,
+    info: ChildProcessInfo,
+) -> bool {
+    previous_observation.is_some_and(|prev| {
+        info.has_currently_active_children()
+            && info.descendant_pid_signature != prev.descendant_pid_signature
+            && info.cpu_time_ms <= prev.cpu_time_ms
+    })
+}
+
 #[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn grant_startup_grace(child_pid: u32, info: ChildProcessInfo, s: &mut MonitorLoopState) {
+    s.child_startup_grace_available = false;
+    s.consecutive_idle_count = 0;
+    s.last_child_observation = Some(info);
+    eprintln!(
+        "Agent has currently active child processes for the first time during idle timeout \
+         (pid {child_pid}, {} active of {} children, cpu {}ms, signature {}); granting startup grace",
+        info.active_child_count, info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+    );
+}
+
+fn record_child_activity_observation(
+    observed_activity: &Arc<std::sync::Mutex<Option<ChildProcessInfo>>>,
+    info: ChildProcessInfo,
+) {
+    *observed_activity
+        .lock()
+        .expect("child activity observer mutex poisoned") = Some(info);
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn apply_fresh_progress(
+    child_pid: u32,
+    info: ChildProcessInfo,
+    previous_observation: Option<ChildProcessInfo>,
+    s: &mut MonitorLoopState,
+    child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+) {
+    s.last_child_observation = if replacement_subtree_needs_grace(previous_observation, info) {
+        None
+    } else {
+        Some(info)
+    };
+    if let Some(observer) = child_activity_suppressed {
+        record_child_activity_observation(observer, info);
+    }
+    s.consecutive_idle_count = 0;
+    s.child_startup_grace_available = true;
+    eprintln!(
+        "Agent has currently active child processes (pid {child_pid}, \
+         {} active of {} children, cpu {}ms, signature {}); continuing monitoring",
+        info.active_child_count, info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+    );
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn log_idle_child_state(child_pid: u32, info: ChildProcessInfo) {
+    if info.has_stalled_children() {
+        eprintln!(
+            "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
+             but none show current work; treating as idle",
+            info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+        );
+    } else if info.has_currently_active_children() {
+        eprintln!(
+            "Agent has child processes (pid {child_pid}, {} active of {} total, cpu {}ms, signature {}) \
+             but they showed no fresh progress since the last idle check; treating as idle",
+            info.active_child_count, info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+        );
+    }
+}
+
+fn check_child_progress(
+    child_pid: u32,
+    info: ChildProcessInfo,
+    previous_observation: Option<ChildProcessInfo>,
+    s: &mut MonitorLoopState,
+    child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+) -> bool {
+    if previous_observation.is_some_and(|prev| info.shows_fresh_progress_since(prev)) {
+        apply_fresh_progress(
+            child_pid,
+            info,
+            previous_observation,
+            s,
+            child_activity_suppressed,
+        );
+        return true;
+    }
+    log_idle_child_state(child_pid, info);
+    s.last_child_observation = Some(info);
+    false
+}
+
+fn is_first_active_child(
+    previous_observation: Option<ChildProcessInfo>,
+    grace_available: bool,
+    info: ChildProcessInfo,
+) -> bool {
+    previous_observation.is_none() && grace_available && info.has_currently_active_children()
+}
+
+fn handle_child_with_children(
+    child_pid: u32,
+    info: ChildProcessInfo,
+    s: &mut MonitorLoopState,
+    child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+) -> bool {
+    s.last_child_info = Some(info);
+    let previous_observation = s.last_child_observation;
+
+    if is_first_active_child(previous_observation, s.child_startup_grace_available, info) {
+        grant_startup_grace(child_pid, info, s);
+        return true;
+    }
+
+    check_child_progress(
+        child_pid,
+        info,
+        previous_observation,
+        s,
+        child_activity_suppressed,
+    )
+}
+
+fn kill_failed_continuation(should_stop: &std::sync::atomic::AtomicBool) -> KillResultContinuation {
+    use std::sync::atomic::Ordering;
+    if should_stop.load(Ordering::Acquire) {
+        KillResultContinuation::ProcessCompleted
+    } else {
+        KillResultContinuation::Continue
+    }
+}
+
+fn awaiting_exit_state(child_id: u32, escalated: bool) -> TimeoutEnforcementState {
+    TimeoutEnforcementState {
+        pid: child_id,
+        escalated,
+        triggered_at: std::time::Instant::now(),
+        last_sigkill_sent_at: escalated.then_some(std::time::Instant::now()),
+    }
+}
+
+fn process_kill_result(
+    kill_result: KillResult,
+    child_id: u32,
+    should_stop: &std::sync::atomic::AtomicBool,
+) -> KillResultContinuation {
+    match kill_result {
+        KillResult::TerminatedByTerm => KillResultContinuation::TimedOut { escalated: false },
+        KillResult::TerminatedByKill => KillResultContinuation::TimedOut { escalated: true },
+        KillResult::SignalsSentAwaitingExit { escalated } => {
+            KillResultContinuation::AwaitingExit(awaiting_exit_state(child_id, escalated))
+        }
+        KillResult::Failed => kill_failed_continuation(should_stop),
+    }
+}
+
+fn try_get_child_id(child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>) -> Option<u32> {
+    let mut locked_child = child
+        .lock()
+        .expect("child process mutex poisoned - indicates panic in another thread");
+    if let Ok(Some(_)) = locked_child.try_wait() {
+        return None;
+    }
+    Some(locked_child.id())
+}
+
+enum EnforcementStep {
+    ReturnResult(MonitorResult),
+    Continue,
+}
+
+fn handle_enforcement_phase(
+    state: TimeoutEnforcementState,
+    last_child_info: Option<ChildProcessInfo>,
+    child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    executor: &Arc<dyn ProcessExecutor>,
+    should_stop: &Arc<std::sync::atomic::AtomicBool>,
+    kill_config: KillConfig,
+) -> (EnforcementStep, Option<TimeoutEnforcementState>) {
+    match advance_timeout_enforcement(state, child, executor, kill_config) {
+        TimeoutEnforcementContinuation::Exited => (
+            EnforcementStep::ReturnResult(MonitorResult::TimedOut {
+                escalated: state.escalated,
+                child_status_at_timeout: last_child_info,
+            }),
+            None,
+        ),
+        TimeoutEnforcementContinuation::HardCapReached => {
+            let pid = state.pid;
+            std::thread::spawn({
+                let child = Arc::clone(child);
+                let executor = Arc::clone(executor);
+                let should_stop = Arc::clone(should_stop);
+                move || run_reaper_thread(pid, child, executor, should_stop, kill_config)
+            });
+            (
+                EnforcementStep::ReturnResult(MonitorResult::TimedOut {
+                    escalated: state.escalated,
+                    child_status_at_timeout: last_child_info,
+                }),
+                None,
+            )
+        }
+        TimeoutEnforcementContinuation::Continue(new_state) => {
+            (EnforcementStep::Continue, Some(new_state))
+        }
+    }
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn apply_file_activity_scan_result(
+    result: Result<bool, impl std::fmt::Display>,
+    file_window: Duration,
+    s: &mut MonitorLoopState,
+) -> bool {
+    match result {
+        Ok(true) => {
+            s.last_file_activity = Some(std::time::Instant::now());
+            s.reset_idle();
+            eprintln!("AI-generated files were updated recently, continuing monitoring");
+            true
+        }
+        Ok(false) => {
+            eprintln!(
+                "No AI-generated file updates in the last {file_window:?}, proceeding with timeout"
+            );
+            false
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: file activity check failed (treating as no recent file activity, proceeding with timeout enforcement): {e}"
+            );
+            false
+        }
+    }
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn check_file_activity(
+    fac: &FileActivityConfig,
+    activity_timestamp: &SharedActivityTimestamp,
+    timeout: Duration,
+    check_interval: Duration,
+    s: &mut MonitorLoopState,
+) -> bool {
+    if s.last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
+        s.reset_idle();
+        eprintln!(
+            "Continuing monitoring: file activity was confirmed within the last timeout window"
+        );
+        return true;
+    }
+
+    let scan_overhead_buffer = Duration::from_secs(1);
+    let cap = timeout + check_interval + scan_overhead_buffer;
+    let actual_idle = time_since_activity(activity_timestamp);
+    let file_window = (actual_idle + scan_overhead_buffer).min(cap);
+    let locked_tracker = fac.tracker.lock();
+    let result = locked_tracker.check_for_recent_activity(
+        fac.workspace.as_ref(),
+        file_window,
+        SystemTime::now(),
+    );
+    apply_file_activity_scan_result(result, file_window, s)
+}
+
+fn check_child_processes_activity(
+    child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    executor: &Arc<dyn ProcessExecutor>,
+    s: &mut MonitorLoopState,
+    child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+) -> bool {
+    let child_pid = {
+        let locked_child = child.lock().expect("child process mutex poisoned");
+        locked_child.id()
+    };
+    let info = executor.get_child_process_info(child_pid);
+    if info.has_children() {
+        handle_child_with_children(child_pid, info, s, child_activity_suppressed)
+    } else {
+        s.last_child_observation = None;
+        s.last_child_info = None;
+        s.child_startup_grace_available = true;
+        false
+    }
+}
+
+fn apply_kill_result(
+    kill_result: KillResult,
+    child_id: u32,
+    last_child_info: Option<ChildProcessInfo>,
+    should_stop: &Arc<std::sync::atomic::AtomicBool>,
+    s: &mut MonitorLoopState,
+) -> Option<MonitorResult> {
+    match process_kill_result(kill_result, child_id, should_stop.as_ref()) {
+        KillResultContinuation::TimedOut { escalated } => Some(MonitorResult::TimedOut {
+            escalated,
+            child_status_at_timeout: last_child_info,
+        }),
+        KillResultContinuation::AwaitingExit(state) => {
+            s.timeout_triggered = Some(state);
+            None
+        }
+        KillResultContinuation::ProcessCompleted => Some(MonitorResult::ProcessCompleted),
+        KillResultContinuation::Continue => None,
+    }
+}
+
+enum MonitorLoopAction {
+    Return(MonitorResult),
+    Continue,
+}
+
+struct MonitorParams<'a> {
+    activity_timestamp: &'a SharedActivityTimestamp,
+    file_activity_config: Option<&'a FileActivityConfig>,
+    child: &'a Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    should_stop: &'a Arc<std::sync::atomic::AtomicBool>,
+    executor: &'a Arc<dyn ProcessExecutor>,
+    child_activity_suppressed: Option<&'a Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+    timeout: Duration,
+    check_interval: Duration,
+    kill_config: KillConfig,
+    required_idle_confirmations: u32,
+    check_child_processes: bool,
+}
+
+fn kill_child_and_apply(
+    child_id: u32,
+    params: &MonitorParams<'_>,
+    s: &mut MonitorLoopState,
+) -> MonitorLoopAction {
+    let kill_result = kill_process(
+        child_id,
+        params.executor.as_ref(),
+        Some(params.child),
+        params.kill_config,
+    );
+    match apply_kill_result(
+        kill_result,
+        child_id,
+        s.last_child_info,
+        params.should_stop,
+        s,
+    ) {
+        Some(result) => MonitorLoopAction::Return(result),
+        None => MonitorLoopAction::Continue,
+    }
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn log_idle_progress(consecutive: u32, required: u32) {
+    eprintln!(
+        "Idle confirmed {consecutive}/{required} times; waiting for next check interval before kill"
+    );
+}
+
+fn handle_idle_confirmed(
+    params: &MonitorParams<'_>,
+    s: &mut MonitorLoopState,
+) -> MonitorLoopAction {
+    s.consecutive_idle_count = s.consecutive_idle_count.saturating_add(1);
+    if s.consecutive_idle_count < params.required_idle_confirmations {
+        log_idle_progress(s.consecutive_idle_count, params.required_idle_confirmations);
+        return MonitorLoopAction::Continue;
+    }
+
+    let Some(child_id) = try_get_child_id(params.child) else {
+        return MonitorLoopAction::Return(MonitorResult::ProcessCompleted);
+    };
+
+    kill_child_and_apply(child_id, params, s)
+}
+
+fn check_file_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
+    params.file_activity_config.is_some_and(|fac| {
+        check_file_activity(
+            fac,
+            params.activity_timestamp,
+            params.timeout,
+            params.check_interval,
+            s,
+        )
+    })
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn activity_resumed_after_file_scan(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
+    if is_idle_timeout_exceeded(params.activity_timestamp, params.timeout) {
+        return false;
+    }
+    s.reset_idle();
+    eprintln!("Output activity detected after file scan; continuing monitoring");
+    true
+}
+
+fn child_processes_still_active(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
+    params.check_child_processes
+        && check_child_processes_activity(
+            params.child,
+            params.executor,
+            s,
+            params.child_activity_suppressed,
+        )
+}
+
+fn check_timeout_suppressors(
+    params: &MonitorParams<'_>,
+    s: &mut MonitorLoopState,
+) -> Option<MonitorLoopAction> {
+    if check_file_activity_suppression(params, s) {
+        return Some(MonitorLoopAction::Continue);
+    }
+    if activity_resumed_after_file_scan(params, s) {
+        return Some(MonitorLoopAction::Continue);
+    }
+    if child_processes_still_active(params, s) {
+        return Some(MonitorLoopAction::Continue);
+    }
+    None
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn handle_timeout_exceeded(
+    params: &MonitorParams<'_>,
+    s: &mut MonitorLoopState,
+) -> MonitorLoopAction {
+    eprintln!(
+        "Idle timeout exceeded: no output activity for {} seconds",
+        time_since_activity(params.activity_timestamp).as_secs()
+    );
+    check_timeout_suppressors(params, s).unwrap_or_else(|| handle_idle_confirmed(params, s))
+}
+
+fn should_stop_before_timeout(params: &MonitorParams<'_>, s: &MonitorLoopState) -> bool {
+    use std::sync::atomic::Ordering;
+    s.timeout_triggered.is_none() && params.should_stop.load(Ordering::Acquire)
+}
+
+fn sleep_check_stops_early(params: &MonitorParams<'_>, s: &MonitorLoopState) -> bool {
+    s.timeout_triggered.is_none()
+        && sleep_until_next_check_or_stop(params.should_stop.as_ref(), params.check_interval)
+}
+
+fn enforcement_step_to_action(step: EnforcementStep) -> MonitorLoopAction {
+    match step {
+        EnforcementStep::ReturnResult(r) => MonitorLoopAction::Return(r),
+        EnforcementStep::Continue => MonitorLoopAction::Continue,
+    }
+}
+
+fn dispatch_enforcement_phase(
+    params: &MonitorParams<'_>,
+    s: &mut MonitorLoopState,
+) -> MonitorLoopAction {
+    let state = match s.timeout_triggered.take() {
+        Some(st) => st,
+        None => return MonitorLoopAction::Continue,
+    };
+    let (step, next_state) = handle_enforcement_phase(
+        state,
+        s.last_child_info,
+        params.child,
+        params.executor,
+        params.should_stop,
+        params.kill_config,
+    );
+    s.timeout_triggered = next_state;
+    enforcement_step_to_action(step)
+}
+
+fn check_stop_conditions(
+    params: &MonitorParams<'_>,
+    s: &MonitorLoopState,
+) -> Option<MonitorLoopAction> {
+    if should_stop_before_timeout(params, s) {
+        return Some(MonitorLoopAction::Return(MonitorResult::ProcessCompleted));
+    }
+    if sleep_check_stops_early(params, s) {
+        return Some(MonitorLoopAction::Return(MonitorResult::ProcessCompleted));
+    }
+    None
+}
+
+fn handle_enforcement_tick(
+    params: &MonitorParams<'_>,
+    s: &mut MonitorLoopState,
+) -> MonitorLoopAction {
+    if let Some(action) = check_stop_conditions(params, s) {
+        return action;
+    }
+    if s.timeout_triggered.is_some() {
+        return dispatch_enforcement_phase(params, s);
+    }
+    if !is_idle_timeout_exceeded(params.activity_timestamp, params.timeout) {
+        s.reset_idle();
+        return MonitorLoopAction::Continue;
+    }
+    handle_timeout_exceeded(params, s)
+}
+
+fn run_monitor_loop(params: &MonitorParams<'_>) -> MonitorResult {
+    let mut s = MonitorLoopState::new();
+    loop {
+        if let MonitorLoopAction::Return(r) = handle_enforcement_tick(params, &mut s) {
+            return r;
+        }
+    }
+}
+
 pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     activity_timestamp: &SharedActivityTimestamp,
     file_activity_config: Option<&FileActivityConfig>,
@@ -198,315 +902,18 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     config: MonitorConfig,
     child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
 ) -> MonitorResult {
-    use std::sync::atomic::Ordering;
-
-    #[derive(Debug, Clone, Copy)]
-    struct TimeoutEnforcementState {
-        pid: u32,
-        escalated: bool,
-        last_sigkill_sent_at: Option<std::time::Instant>,
-        triggered_at: std::time::Instant,
-    }
-
-    let timeout = config.timeout;
-    let check_interval = config.check_interval;
-    let kill_config = config.kill_config;
-    let required_idle_confirmations = config.required_idle_confirmations;
-    let check_child_processes = config.check_child_processes;
-
-    let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
-    let mut last_file_activity: Option<std::time::Instant> = None;
-    let mut consecutive_idle_count: u32 = 0;
-    let mut last_child_observation: Option<ChildProcessInfo> = None;
-    let mut last_child_info: Option<ChildProcessInfo> = None;
-    let mut child_startup_grace_available = true;
-
-    loop {
-        if timeout_triggered.is_none() && should_stop.load(Ordering::Acquire) {
-            return MonitorResult::ProcessCompleted;
-        }
-
-        if timeout_triggered.is_none()
-            && sleep_until_next_check_or_stop(should_stop.as_ref(), check_interval)
-        {
-            return MonitorResult::ProcessCompleted;
-        }
-
-        if let Some(mut state) = timeout_triggered.take() {
-            let status = {
-                let mut locked_child = child
-                    .lock()
-                    .expect("child process mutex poisoned - indicates panic in another thread");
-                locked_child.try_wait()
-            };
-
-            if let Ok(Some(_)) = status {
-                return MonitorResult::TimedOut {
-                    escalated: state.escalated,
-                    child_status_at_timeout: last_child_info,
-                };
-            }
-
-            let now = std::time::Instant::now();
-
-            if state.escalated {
-                let should_resend = state
-                    .last_sigkill_sent_at
-                    .is_none_or(|t| now.duration_since(t) >= kill_config.sigkill_resend_interval());
-                if should_resend {
-                    let _ = force_kill_best_effort(state.pid, executor.as_ref());
-                    state.last_sigkill_sent_at = Some(now);
-                }
-            } else {
-                let _ = force_kill_best_effort(state.pid, executor.as_ref());
-                state.escalated = true;
-                state.last_sigkill_sent_at = Some(now);
-            }
-
-            if now.duration_since(state.triggered_at) >= kill_config.post_sigkill_hard_cap()
-                && state.escalated
-            {
-                let child_for_reaper = Arc::clone(child);
-                let executor_for_reaper = Arc::clone(executor);
-                let should_stop_for_reaper = Arc::clone(should_stop);
-                let config_for_reaper = kill_config;
-                let pid = state.pid;
-                std::thread::spawn(move || {
-                    let deadline =
-                        std::time::Instant::now() + config_for_reaper.post_sigkill_hard_cap();
-                    let mut last_kill_sent_at: Option<std::time::Instant> = None;
-
-                    while std::time::Instant::now() < deadline {
-                        if should_stop_for_reaper.load(Ordering::Acquire) {
-                            return;
-                        }
-
-                        let status = {
-                            let mut locked_child = child_for_reaper.lock().expect(
-                                "child process mutex poisoned - indicates panic in another thread",
-                            );
-                            locked_child.try_wait()
-                        };
-
-                        if let Ok(Some(_)) = status {
-                            return;
-                        }
-                        let now = std::time::Instant::now();
-                        let should_resend = last_kill_sent_at.is_none_or(|t| {
-                            now.duration_since(t) >= config_for_reaper.sigkill_resend_interval()
-                        });
-                        if should_resend {
-                            let _ = force_kill_best_effort(pid, executor_for_reaper.as_ref());
-                            last_kill_sent_at = Some(now);
-                        }
-                        std::thread::sleep(config_for_reaper.poll_interval());
-                    }
-                });
-
-                return MonitorResult::TimedOut {
-                    escalated: state.escalated,
-                    child_status_at_timeout: last_child_info,
-                };
-            }
-
-            timeout_triggered = Some(state);
-            continue;
-        }
-
-        if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
-            consecutive_idle_count = 0;
-            last_child_observation = None;
-            last_child_info = None;
-            child_startup_grace_available = true;
-            continue;
-        }
-
-        let time_since_output = time_since_activity(activity_timestamp);
-        eprintln!(
-            "Idle timeout exceeded: no output activity for {} seconds",
-            time_since_output.as_secs()
-        );
-
-        if let Some(config) = file_activity_config {
-            if last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
-                consecutive_idle_count = 0;
-                last_child_observation = None;
-                last_child_info = None;
-                child_startup_grace_available = true;
-                eprintln!(
-                    "Continuing monitoring: file activity was confirmed within the last timeout window"
-                );
-                continue;
-            }
-
-            let scan_overhead_buffer = Duration::from_secs(1);
-            let cap = timeout + check_interval + scan_overhead_buffer;
-            let actual_idle = time_since_activity(activity_timestamp);
-            let file_window = (actual_idle + scan_overhead_buffer).min(cap);
-
-            let locked_tracker = config.tracker.lock();
-
-            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), file_window) {
-                Ok(true) => {
-                    consecutive_idle_count = 0;
-                    last_file_activity = Some(std::time::Instant::now());
-                    last_child_observation = None;
-                    last_child_info = None;
-                    child_startup_grace_available = true;
-                    eprintln!("AI-generated files were updated recently, continuing monitoring");
-                    continue;
-                }
-                Ok(false) => {
-                    eprintln!(
-                        "No AI-generated file updates in the last {file_window:?}, proceeding with timeout"
-                    );
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Warning: file activity check failed (treating as no recent file activity, proceeding with timeout enforcement): {e}"
-                    );
-                }
-            }
-        }
-
-        if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
-            consecutive_idle_count = 0;
-            last_child_observation = None;
-            last_child_info = None;
-            child_startup_grace_available = true;
-            eprintln!("Output activity detected after file scan; continuing monitoring");
-            continue;
-        }
-
-        if check_child_processes {
-            let child_pid = {
-                let locked_child = child.lock().expect("child process mutex poisoned");
-                locked_child.id()
-            };
-            let info = executor.get_child_process_info(child_pid);
-            if info.has_children() {
-                last_child_info = Some(info);
-                let previous_observation = last_child_observation;
-                let first_active_child_observation = previous_observation.is_none()
-                    && child_startup_grace_available
-                    && info.has_currently_active_children();
-
-                if first_active_child_observation {
-                    child_startup_grace_available = false;
-                    consecutive_idle_count = 0;
-                    last_child_observation = Some(info);
-                    eprintln!(
-                        "Agent has currently active child processes for the first time during idle timeout \
-                         (pid {child_pid}, {} active of {} children, cpu {}ms, signature {}); granting startup grace",
-                        info.active_child_count,
-                        info.child_count,
-                        info.cpu_time_ms,
-                        info.descendant_pid_signature
-                    );
-                    continue;
-                }
-
-                if previous_observation.is_some_and(|prev| info.shows_fresh_progress_since(prev)) {
-                    let replacement_subtree_needs_grace =
-                        previous_observation.is_some_and(|prev| {
-                            info.has_currently_active_children()
-                                && info.descendant_pid_signature != prev.descendant_pid_signature
-                                && info.cpu_time_ms <= prev.cpu_time_ms
-                        });
-                    last_child_observation = if replacement_subtree_needs_grace {
-                        None
-                    } else {
-                        Some(info)
-                    };
-                    if let Some(observed_activity) = child_activity_suppressed.as_ref() {
-                        *observed_activity
-                            .lock()
-                            .expect("child activity observer mutex poisoned") = Some(info);
-                    }
-                    consecutive_idle_count = 0;
-                    child_startup_grace_available = true;
-                    eprintln!(
-                        "Agent has currently active child processes (pid {child_pid}, \
-                         {} active of {} children, cpu {}ms, signature {}); continuing monitoring",
-                        info.active_child_count,
-                        info.child_count,
-                        info.cpu_time_ms,
-                        info.descendant_pid_signature
-                    );
-                    continue;
-                }
-
-                if info.has_stalled_children() {
-                    eprintln!(
-                        "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
-                         but none show current work; treating as idle",
-                        info.child_count,
-                        info.cpu_time_ms,
-                        info.descendant_pid_signature
-                    );
-                } else if info.has_currently_active_children() {
-                    eprintln!(
-                        "Agent has child processes (pid {child_pid}, {} active of {} total, cpu {}ms, signature {}) \
-                         but they showed no fresh progress since the last idle check; treating as idle",
-                        info.active_child_count,
-                        info.child_count,
-                        info.cpu_time_ms,
-                        info.descendant_pid_signature
-                    );
-                }
-                last_child_observation = Some(info);
-            } else {
-                last_child_observation = None;
-                last_child_info = None;
-                child_startup_grace_available = true;
-            }
-        }
-
-        consecutive_idle_count = consecutive_idle_count.saturating_add(1);
-        if consecutive_idle_count < required_idle_confirmations {
-            eprintln!(
-                "Idle confirmed {consecutive_idle_count}/{required_idle_confirmations} times; waiting for next check interval before kill"
-            );
-            continue;
-        }
-
-        let child_id = {
-            let mut locked_child = child
-                .lock()
-                .expect("child process mutex poisoned - indicates panic in another thread");
-            if let Ok(Some(_)) = locked_child.try_wait() {
-                return MonitorResult::ProcessCompleted;
-            }
-            locked_child.id()
-        };
-
-        let kill_result = kill_process(child_id, executor.as_ref(), Some(child), kill_config);
-        match kill_result {
-            KillResult::TerminatedByTerm => {
-                return MonitorResult::TimedOut {
-                    escalated: false,
-                    child_status_at_timeout: last_child_info,
-                }
-            }
-            KillResult::TerminatedByKill => {
-                return MonitorResult::TimedOut {
-                    escalated: true,
-                    child_status_at_timeout: last_child_info,
-                }
-            }
-            KillResult::SignalsSentAwaitingExit { escalated } => {
-                timeout_triggered = Some(TimeoutEnforcementState {
-                    pid: child_id,
-                    escalated,
-                    triggered_at: std::time::Instant::now(),
-                    last_sigkill_sent_at: escalated.then_some(std::time::Instant::now()),
-                });
-            }
-            KillResult::Failed => {
-                if should_stop.load(Ordering::Acquire) {
-                    return MonitorResult::ProcessCompleted;
-                }
-            }
-        }
-    }
+    let params = MonitorParams {
+        activity_timestamp,
+        file_activity_config,
+        child,
+        should_stop,
+        executor,
+        child_activity_suppressed,
+        timeout: config.timeout,
+        check_interval: config.check_interval,
+        kill_config: config.kill_config,
+        required_idle_confirmations: config.required_idle_confirmations,
+        check_child_processes: config.check_child_processes,
+    };
+    run_monitor_loop(&params)
 }

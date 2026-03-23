@@ -10,34 +10,24 @@ impl OpenCodeParser {
     /// - `text`: Streaming text content
     /// - `error`: Session/API error events
     pub(crate) fn parse_event(&self, line: &str) -> Option<String> {
-        let event: OpenCodeEvent = if let Ok(e) = serde_json::from_str(line) {
-            e
-        } else {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('{') {
-                return Some(format!("{trimmed}\n"));
-            }
-            return None;
+        let event = match parse_opencode_event_or_passthrough(line) {
+            Ok(event) => event,
+            Err(passthrough) => return passthrough,
         };
+        let output = self.dispatch_event(&event, line);
+        if output.is_empty() { None } else { Some(output) }
+    }
+
+    fn dispatch_event(&self, event: &OpenCodeEvent, line: &str) -> String {
         let c = &self.colors;
         let prefix = &self.display_name;
-
-        let output = match event.event_type.as_str() {
-            "step_start" => self.format_step_start_event(&event),
-            "step_finish" => self.format_step_finish_event(&event),
-            "tool_use" => self.format_tool_use_event(&event),
-            "text" => self.format_text_event(&event),
-            "error" => self.format_error_event(&event, line),
-            _ => {
-                // Unknown event type - use the generic formatter in verbose mode
-                format_unknown_json_event(line, prefix, *c, self.verbosity.is_verbose())
-            }
-        };
-
-        if output.is_empty() {
-            None
-        } else {
-            Some(output)
+        match event.event_type.as_str() {
+            "step_start" => self.format_step_start_event(event),
+            "step_finish" => self.format_step_finish_event(event),
+            "tool_use" => self.format_tool_use_event(event),
+            "text" => self.format_text_event(event),
+            "error" => self.format_error_event(event, line),
+            _ => format_unknown_json_event(line, prefix, *c, self.verbosity.is_verbose()),
         }
     }
 
@@ -86,9 +76,20 @@ impl OpenCodeParser {
         if trimmed.is_empty() {
             return Ok(());
         }
-
         self.maybe_write_debug_event(line)?;
+        self.parse_and_print_event(line, trimmed, monitor)?;
+        if logging_enabled {
+            writeln!(log_buffer, "{line}")?;
+        }
+        Ok(())
+    }
 
+    fn parse_and_print_event(
+        &mut self,
+        line: &str,
+        trimmed: &str,
+        monitor: &HealthMonitor,
+    ) -> std::io::Result<()> {
         match self.parse_event(line) {
             Some(output) => {
                 Self::record_monitor_event(
@@ -98,20 +99,16 @@ impl OpenCodeParser {
                 self.with_printer_mut(|printer| {
                     write!(printer, "{output}")?;
                     printer.flush()
-                })?;
+                })
             }
             None => {
                 Self::record_monitor_event(
                     monitor,
                     Self::classify_empty_output_for_monitor(line, trimmed),
                 );
+                Ok(())
             }
         }
-
-        if logging_enabled {
-            writeln!(log_buffer, "{line}")?;
-        }
-        Ok(())
     }
 
     fn maybe_write_debug_event(&mut self, line: &str) -> std::io::Result<()> {
@@ -139,14 +136,7 @@ impl OpenCodeParser {
         line: &str,
         trimmed: &str,
     ) -> MonitorEventClassification {
-        if trimmed.starts_with('{') {
-            if let Ok(event) = serde_json::from_str::<OpenCodeEvent>(line) {
-                if Self::is_partial_event(&event) {
-                    return MonitorEventClassification::Partial;
-                }
-            }
-        }
-        MonitorEventClassification::Parsed
+        classify_successful_parse(line, trimmed)
     }
 
     fn classify_empty_output_for_monitor(line: &str, trimmed: &str) -> MonitorEventClassification {
@@ -186,18 +176,11 @@ impl OpenCodeParser {
         log_buffer: &mut Vec<u8>,
     ) -> std::io::Result<crate::json_parser::incremental_parser::IncrementalNdjsonParser> {
         loop {
-            let chunk = reader.fill_buf()?;
-            if chunk.is_empty() {
+            let Some(data) = read_next_chunk(reader)? else {
                 break;
-            }
-
-            let consumed = chunk.len();
-            let data: Vec<u8> = chunk.to_vec();
-            reader.consume(consumed);
-
-            let (new_parser, batch) = parser.feed_and_get_events(&data);
+            };
+            let (new_parser, batch) = feed_chunk_data(parser, &data);
             parser = new_parser;
-
             batch.into_iter().try_for_each(|line| {
                 self.process_stream_json_line(&line, monitor, logging_enabled, log_buffer)
             })?;
@@ -213,33 +196,38 @@ impl OpenCodeParser {
         log_buffer: &mut Vec<u8>,
     ) -> std::io::Result<()> {
         let trimmed = remaining.trim();
-        if trimmed.is_empty()
-            || !trimmed.starts_with('{')
-            || serde_json::from_str::<OpenCodeEvent>(remaining).is_err()
-        {
+        if !is_valid_remaining_event(remaining, trimmed) {
             return Ok(());
         }
+        self.parse_and_emit_remaining(remaining, trimmed, monitor)?;
+        if logging_enabled {
+            writeln!(log_buffer, "{remaining}")?;
+        }
+        Ok(())
+    }
 
+    fn parse_and_emit_remaining(
+        &mut self,
+        remaining: &str,
+        trimmed: &str,
+        monitor: &HealthMonitor,
+    ) -> std::io::Result<()> {
         match self.parse_event(remaining) {
             Some(output) => {
                 monitor.record_parsed();
                 self.with_printer_mut(|printer| {
                     write!(printer, "{output}")?;
                     printer.flush()
-                })?;
+                })
             }
             None => {
                 Self::record_monitor_event(
                     monitor,
                     Self::classify_empty_output_for_monitor(remaining, trimmed),
                 );
+                Ok(())
             }
         }
-
-        if logging_enabled {
-            writeln!(log_buffer, "{remaining}")?;
-        }
-        Ok(())
     }
 
     fn write_log_buffer_if_enabled(
@@ -282,30 +270,45 @@ impl OpenCodeParser {
         &self,
         workspace: &dyn crate::workspace::Workspace,
     ) -> std::io::Result<()> {
-        let accumulated: Option<String> = {
-            let session = self.state.streaming_session.borrow();
-            session
-                .get_accumulated(ContentType::Text, "main")
-                .map(str::to_string)
-        };
-
-        let Some(accumulated) = accumulated else {
+        let Some(accumulated) = self.get_accumulated_text() else {
             return Ok(());
         };
+        let tail = Self::with_xml_tail_bound(&accumulated, MAX_XML_SEARCH_BYTES);
+        self.persist_commit_xml_if_present(workspace, tail)?;
+        self.persist_issues_xml_if_present(workspace, tail)
+    }
 
-        let accumulated_tail = Self::with_xml_tail_bound(&accumulated, MAX_XML_SEARCH_BYTES);
+    fn get_accumulated_text(&self) -> Option<String> {
+        let session = self.state.streaming_session.borrow();
+        session
+            .get_accumulated(ContentType::Text, "main")
+            .map(str::to_string)
+    }
 
-        if let Some(xml) = crate::files::llm_output_extraction::xml_extraction::extract_xml_commit(
-            accumulated_tail,
-        ) {
+    fn persist_commit_xml_if_present(
+        &self,
+        workspace: &dyn crate::workspace::Workspace,
+        tail: &str,
+    ) -> std::io::Result<()> {
+        if let Some(xml) =
+            crate::files::llm_output_extraction::xml_extraction::extract_xml_commit(tail)
+        {
             Self::persist_extracted_xml(
                 workspace,
                 crate::files::llm_output_extraction::file_based_extraction::paths::COMMIT_MESSAGE_XML,
                 &xml,
             )?;
         }
+        Ok(())
+    }
 
-        if let Some(xml) = crate::files::llm_output_extraction::extract_issues_xml(accumulated_tail)
+    fn persist_issues_xml_if_present(
+        &self,
+        workspace: &dyn crate::workspace::Workspace,
+        tail: &str,
+    ) -> std::io::Result<()> {
+        if let Some(xml) =
+            crate::files::llm_output_extraction::extract_issues_xml(tail)
         {
             Self::persist_extracted_xml(
                 workspace,
@@ -313,7 +316,6 @@ impl OpenCodeParser {
                 &xml,
             )?;
         }
-
         Ok(())
     }
 
@@ -361,4 +363,57 @@ impl OpenCodeParser {
         self.write_monitor_warning_if_needed(&monitor)?;
         Ok(())
     }
+}
+
+/// Parse an `OpenCode` event line into an `OpenCodeEvent`, or return a passthrough string for
+/// non-JSON lines that should be forwarded verbatim.
+///
+/// Returns `Ok(event)` if the line is a valid JSON event, or `Err(passthrough)` where
+/// `passthrough` is the output to emit directly (including `None` for empty/silenced lines).
+fn parse_opencode_event_or_passthrough(line: &str) -> Result<OpenCodeEvent, Option<String>> {
+    match serde_json::from_str::<OpenCodeEvent>(line) {
+        Ok(event) => Ok(event),
+        Err(_) => {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('{') {
+                Err(Some(format!("{trimmed}\n")))
+            } else {
+                Err(None)
+            }
+        }
+    }
+}
+
+fn classify_successful_parse(line: &str, trimmed: &str) -> MonitorEventClassification {
+    if trimmed.starts_with('{') {
+        if let Ok(event) = serde_json::from_str::<OpenCodeEvent>(line) {
+            if OpenCodeParser::is_partial_event(&event) {
+                return MonitorEventClassification::Partial;
+            }
+        }
+    }
+    MonitorEventClassification::Parsed
+}
+
+fn read_next_chunk<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Vec<u8>>> {
+    let chunk = reader.fill_buf()?;
+    if chunk.is_empty() {
+        return Ok(None);
+    }
+    let data = chunk.to_vec();
+    reader.consume(data.len());
+    Ok(Some(data))
+}
+
+fn feed_chunk_data(
+    parser: crate::json_parser::incremental_parser::IncrementalNdjsonParser,
+    data: &[u8],
+) -> (crate::json_parser::incremental_parser::IncrementalNdjsonParser, Vec<String>) {
+    parser.feed_and_get_events(data)
+}
+
+fn is_valid_remaining_event(remaining: &str, trimmed: &str) -> bool {
+    !trimmed.is_empty()
+        && trimmed.starts_with('{')
+        && serde_json::from_str::<OpenCodeEvent>(remaining).is_ok()
 }

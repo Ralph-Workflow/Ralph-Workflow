@@ -18,35 +18,35 @@ impl MainEffectHandler {
 
         let result = EffectResult::event(PipelineEvent::checkpoint_saved(trigger));
 
-        // If the pipeline reaches a phase boundary but checkpoint writing is disabled (or the
-        // checkpoint file write is skipped), orchestration can repeatedly derive the
-        // phase-transition checkpoint effect without making progress.
-        //
-        // Emit the phase completion event as a separate reducer event so the state machine
-        // always advances past the boundary.
-        let additional_event = if trigger == CheckpointTrigger::PhaseTransition {
-            match self.state.phase {
-                PipelinePhase::Development
-                    if self.state.iteration >= self.state.total_iterations =>
-                {
-                    Some(PipelineEvent::development_phase_completed())
-                }
-                PipelinePhase::Review
-                    if self.state.reviewer_pass >= self.state.total_reviewer_passes =>
-                {
-                    Some(PipelineEvent::review_phase_completed(
-                        /* early_exit */ false,
-                    ))
-                }
-                _ => None,
-            }
-        } else {
-            None
-        };
-
-        additional_event
+        checkpoint_phase_completion_event(&self.state, trigger)
             .map(|ev| result.clone().with_additional_event(ev))
             .unwrap_or(result)
+    }
+}
+
+/// Emit the phase completion event when transitioning past a phase boundary.
+///
+/// If the pipeline reaches a phase boundary but checkpoint writing is disabled,
+/// orchestration can repeatedly derive the phase-transition effect without making
+/// progress. Emitting the phase completion event ensures the state machine
+/// always advances past the boundary.
+fn checkpoint_phase_completion_event(
+    state: &PipelineState,
+    trigger: CheckpointTrigger,
+) -> Option<PipelineEvent> {
+    if trigger != CheckpointTrigger::PhaseTransition {
+        return None;
+    }
+    match state.phase {
+        PipelinePhase::Development if state.iteration >= state.total_iterations => {
+            Some(PipelineEvent::development_phase_completed())
+        }
+        PipelinePhase::Review if state.reviewer_pass >= state.total_reviewer_passes => {
+            Some(PipelineEvent::review_phase_completed(
+                /* early_exit */ false,
+            ))
+        }
+        _ => None,
     }
 }
 

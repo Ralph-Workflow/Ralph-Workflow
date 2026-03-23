@@ -119,126 +119,163 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> Result<EffectResult> {
-        let prompt_md = ctx.workspace.read(Path::new("PROMPT.md")).map_err(|err| {
-            ErrorEvent::WorkspaceReadFailed {
-                path: "PROMPT.md".to_string(),
-                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            }
-        })?;
-
-        let plan_md = ctx
-            .workspace
-            .read(Path::new(".agent/PLAN.md"))
-            .map_err(|err| ErrorEvent::WorkspaceReadFailed {
-                path: ".agent/PLAN.md".to_string(),
-                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            })?;
         let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
         let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
-        let prompt_backup_path = Path::new(".agent/PROMPT.md.backup");
-        if prompt_md.len() as u64 > inline_budget_bytes {
-            crate::files::create_prompt_backup_with_workspace(ctx.workspace).map_err(|err| {
-                ErrorEvent::WorkspaceWriteFailed {
-                    path: prompt_backup_path.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-            })?;
-            ctx.logger.warn(&format!(
-                "PROMPT size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
-                (prompt_md.len() as u64) / 1024,
-                inline_budget_bytes / 1024,
-                prompt_backup_path.display()
-            ));
-        }
-        let (prompt_representation, prompt_reason) = select_representation_by_inline_budget(
-            prompt_md.len() as u64,
+        let prompt_input = materialize_development_prompt_input(
+            ctx,
             inline_budget_bytes,
-            prompt_backup_path,
-        );
-
-        let plan_path = Path::new(".agent/PLAN.md");
-        if plan_md.len() as u64 > inline_budget_bytes {
-            ctx.logger.warn(&format!(
-                "PLAN size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
-                (plan_md.len() as u64) / 1024,
-                inline_budget_bytes / 1024,
-                plan_path.display()
-            ));
-        }
-        let (plan_representation, plan_reason) = select_representation_by_inline_budget(
-            plan_md.len() as u64,
+            &consumer_signature_sha256,
+        )?;
+        let plan_input = materialize_development_plan_input(
+            ctx,
             inline_budget_bytes,
-            plan_path,
-        );
-        let prompt_input = MaterializedPromptInput {
-            kind: PromptInputKind::Prompt,
-            content_id_sha256: sha256_hex_str(&prompt_md),
-            consumer_signature_sha256: consumer_signature_sha256.clone(),
-            original_bytes: prompt_md.len() as u64,
-            final_bytes: prompt_md.len() as u64,
-            model_budget_bytes: None,
-            inline_budget_bytes: Some(inline_budget_bytes),
-            representation: prompt_representation,
-            reason: prompt_reason,
-        };
-        let plan_input = MaterializedPromptInput {
-            kind: PromptInputKind::Plan,
-            content_id_sha256: sha256_hex_str(&plan_md),
             consumer_signature_sha256,
-            original_bytes: plan_md.len() as u64,
-            final_bytes: plan_md.len() as u64,
-            model_budget_bytes: None,
-            inline_budget_bytes: Some(inline_budget_bytes),
-            representation: plan_representation,
-            reason: plan_reason,
-        };
+        )?;
         let result = EffectResult::event(PipelineEvent::development_inputs_materialized(
             iteration,
             prompt_input.clone(),
             plan_input.clone(),
         ));
-        let result = if prompt_input.original_bytes > inline_budget_bytes {
-            let result = result.with_ui_event(UIEvent::AgentActivity {
-                agent: "pipeline".to_string(),
-                message: format!(
-                    "Oversize PROMPT: {} KB > {} KB; using file reference",
-                    prompt_input.original_bytes / 1024,
-                    inline_budget_bytes / 1024
-                ),
-            });
-            result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::Development,
-                PromptInputKind::Prompt,
-                prompt_input.content_id_sha256.clone(),
-                prompt_input.original_bytes,
-                inline_budget_bytes,
-                "inline-embedding".to_string(),
-            ))
-        } else {
-            result
-        };
-        if plan_input.original_bytes > inline_budget_bytes {
-            let result = result.with_ui_event(UIEvent::AgentActivity {
-                agent: "pipeline".to_string(),
-                message: format!(
-                    "Oversize PLAN: {} KB > {} KB; using file reference",
-                    plan_input.original_bytes / 1024,
-                    inline_budget_bytes / 1024
-                ),
-            });
-            return Ok(result.with_additional_event(
-                PipelineEvent::prompt_input_oversize_detected(
-                    crate::reducer::event::PipelinePhase::Development,
-                    PromptInputKind::Plan,
-                    plan_input.content_id_sha256.clone(),
-                    plan_input.original_bytes,
-                    inline_budget_bytes,
-                    "inline-embedding".to_string(),
-                ),
-            ));
-        }
-
+        let result = apply_oversize_prompt_events(result, &prompt_input, inline_budget_bytes);
+        let result = apply_oversize_plan_events(result, &plan_input, inline_budget_bytes);
         Ok(result)
+    }
+}
+
+fn materialize_development_prompt_input(
+    ctx: &PhaseContext<'_>,
+    inline_budget_bytes: u64,
+    consumer_signature_sha256: &str,
+) -> Result<MaterializedPromptInput, ErrorEvent> {
+    let prompt_md = ctx.workspace.read(Path::new("PROMPT.md")).map_err(|err| {
+        ErrorEvent::WorkspaceReadFailed {
+            path: "PROMPT.md".to_string(),
+            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        }
+    })?;
+    let prompt_backup_path = Path::new(".agent/PROMPT.md.backup");
+    if prompt_md.len() as u64 > inline_budget_bytes {
+        crate::files::create_prompt_backup_with_workspace(ctx.workspace).map_err(|err| {
+            ErrorEvent::WorkspaceWriteFailed {
+                path: prompt_backup_path.display().to_string(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            }
+        })?;
+        ctx.logger.warn(&format!(
+            "PROMPT size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
+            (prompt_md.len() as u64) / 1024,
+            inline_budget_bytes / 1024,
+            prompt_backup_path.display()
+        ));
+    }
+    let (representation, reason) = select_representation_by_inline_budget(
+        prompt_md.len() as u64,
+        inline_budget_bytes,
+        prompt_backup_path,
+    );
+    Ok(MaterializedPromptInput {
+        kind: PromptInputKind::Prompt,
+        content_id_sha256: sha256_hex_str(&prompt_md),
+        consumer_signature_sha256: consumer_signature_sha256.to_string(),
+        original_bytes: prompt_md.len() as u64,
+        final_bytes: prompt_md.len() as u64,
+        model_budget_bytes: None,
+        inline_budget_bytes: Some(inline_budget_bytes),
+        representation,
+        reason,
+    })
+}
+
+fn materialize_development_plan_input(
+    ctx: &PhaseContext<'_>,
+    inline_budget_bytes: u64,
+    consumer_signature_sha256: String,
+) -> Result<MaterializedPromptInput, ErrorEvent> {
+    let plan_path = Path::new(".agent/PLAN.md");
+    let plan_md = ctx
+        .workspace
+        .read(plan_path)
+        .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+            path: ".agent/PLAN.md".to_string(),
+            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        })?;
+    if plan_md.len() as u64 > inline_budget_bytes {
+        ctx.logger.warn(&format!(
+            "PLAN size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
+            (plan_md.len() as u64) / 1024,
+            inline_budget_bytes / 1024,
+            plan_path.display()
+        ));
+    }
+    let (representation, reason) = select_representation_by_inline_budget(
+        plan_md.len() as u64,
+        inline_budget_bytes,
+        plan_path,
+    );
+    Ok(MaterializedPromptInput {
+        kind: PromptInputKind::Plan,
+        content_id_sha256: sha256_hex_str(&plan_md),
+        consumer_signature_sha256,
+        original_bytes: plan_md.len() as u64,
+        final_bytes: plan_md.len() as u64,
+        model_budget_bytes: None,
+        inline_budget_bytes: Some(inline_budget_bytes),
+        representation,
+        reason,
+    })
+}
+
+fn apply_oversize_prompt_events(
+    result: EffectResult,
+    prompt_input: &MaterializedPromptInput,
+    inline_budget_bytes: u64,
+) -> EffectResult {
+    if prompt_input.original_bytes > inline_budget_bytes {
+        let result = result.with_ui_event(UIEvent::AgentActivity {
+            agent: "pipeline".to_string(),
+            message: format!(
+                "Oversize PROMPT: {} KB > {} KB; using file reference",
+                prompt_input.original_bytes / 1024,
+                inline_budget_bytes / 1024
+            ),
+        });
+        result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+            crate::reducer::event::PipelinePhase::Development,
+            PromptInputKind::Prompt,
+            prompt_input.content_id_sha256.clone(),
+            prompt_input.original_bytes,
+            inline_budget_bytes,
+            "inline-embedding".to_string(),
+        ))
+    } else {
+        result
+    }
+}
+
+fn apply_oversize_plan_events(
+    result: EffectResult,
+    plan_input: &MaterializedPromptInput,
+    inline_budget_bytes: u64,
+) -> EffectResult {
+    if plan_input.original_bytes > inline_budget_bytes {
+        let result = result.with_ui_event(UIEvent::AgentActivity {
+            agent: "pipeline".to_string(),
+            message: format!(
+                "Oversize PLAN: {} KB > {} KB; using file reference",
+                plan_input.original_bytes / 1024,
+                inline_budget_bytes / 1024
+            ),
+        });
+        result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+            crate::reducer::event::PipelinePhase::Development,
+            PromptInputKind::Plan,
+            plan_input.content_id_sha256.clone(),
+            plan_input.original_bytes,
+            inline_budget_bytes,
+            "inline-embedding".to_string(),
+        ))
+    } else {
+        result
     }
 }
 
@@ -287,10 +324,6 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
-        use crate::files::llm_output_extraction::{
-            validate_continuation_development_result_xml, validate_development_result_xml,
-        };
-
         let Ok(xml) = ctx
             .workspace
             .read(Path::new(xml_paths::DEVELOPMENT_RESULT_XML))
@@ -301,40 +334,68 @@ impl MainEffectHandler {
             ));
         };
 
-        let validation_result = if self.state.continuation.is_continuation() {
-            validate_continuation_development_result_xml(&xml)
-        } else {
-            validate_development_result_xml(&xml)
-        };
+        let validation_result =
+            dispatch_development_xml_validation(&xml, self.state.continuation.is_continuation());
 
-        match validation_result {
-            Ok(elements) => {
-                let _ = ctx
-                    .workspace
-                    .remove_if_exists(Path::new(DEVELOPMENT_XSD_ERROR_PATH));
-                let status =
-                    derive_development_status(elements.is_completed(), elements.is_partial());
+        apply_development_validation_result(
+            ctx,
+            validation_result,
+            iteration,
+            self.state.continuation.invalid_output_attempts,
+        )
+    }
+}
 
-                let files_changed = parse_files_changed_lines(elements.files_changed.as_deref());
+fn dispatch_development_xml_validation(
+    xml: &str,
+    is_continuation: bool,
+) -> Result<
+    crate::files::llm_output_extraction::DevelopmentResultElements,
+    crate::files::llm_output_extraction::xsd_validation::XsdValidationError,
+> {
+    use crate::files::llm_output_extraction::{
+        validate_continuation_development_result_xml, validate_development_result_xml,
+    };
+    if is_continuation {
+        validate_continuation_development_result_xml(xml)
+    } else {
+        validate_development_result_xml(xml)
+    }
+}
 
-                EffectResult::event(PipelineEvent::development_xml_validated(
-                    iteration,
-                    status,
-                    elements.summary.clone(),
-                    files_changed,
-                    elements.next_steps,
-                ))
-            }
-            Err(err) => {
-                let _ = ctx.workspace.write(
-                    Path::new(DEVELOPMENT_XSD_ERROR_PATH),
-                    &err.format_for_ai_retry(),
-                );
-                EffectResult::event(PipelineEvent::development_output_validation_failed(
-                    iteration,
-                    self.state.continuation.invalid_output_attempts,
-                ))
-            }
+fn apply_development_validation_result(
+    ctx: &PhaseContext<'_>,
+    validation_result: Result<
+        crate::files::llm_output_extraction::DevelopmentResultElements,
+        crate::files::llm_output_extraction::xsd_validation::XsdValidationError,
+    >,
+    iteration: u32,
+    invalid_output_attempts: u32,
+) -> EffectResult {
+    match validation_result {
+        Ok(elements) => {
+            let _ = ctx
+                .workspace
+                .remove_if_exists(Path::new(DEVELOPMENT_XSD_ERROR_PATH));
+            let status = derive_development_status(elements.is_completed(), elements.is_partial());
+            let files_changed = parse_files_changed_lines(elements.files_changed.as_deref());
+            EffectResult::event(PipelineEvent::development_xml_validated(
+                iteration,
+                status,
+                elements.summary.clone(),
+                files_changed,
+                elements.next_steps,
+            ))
+        }
+        Err(err) => {
+            let _ = ctx.workspace.write(
+                Path::new(DEVELOPMENT_XSD_ERROR_PATH),
+                &err.format_for_ai_retry(),
+            );
+            EffectResult::event(PipelineEvent::development_output_validation_failed(
+                iteration,
+                invalid_output_attempts,
+            ))
         }
     }
 }

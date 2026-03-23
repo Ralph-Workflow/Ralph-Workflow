@@ -120,7 +120,7 @@ mod context;
 mod development;
 mod development_prompt;
 mod io_agent;
-mod io_cloud;
+mod io_commit;
 mod lifecycle;
 mod planning;
 mod rebase;
@@ -141,6 +141,63 @@ use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::hash::BuildHasher;
 
+fn execute_backoff_wait(
+    ctx: &mut PhaseContext<'_>,
+    role: crate::agents::AgentRole,
+    cycle: u32,
+    duration_ms: u64,
+) -> Result<EffectResult> {
+    ctx.registry
+        .retry_timer()
+        .sleep(std::time::Duration::from_millis(duration_ms));
+    Ok(EffectResult::event(
+        PipelineEvent::agent_retry_cycle_started(role, cycle),
+    ))
+}
+
+fn execute_write_continuation_context(
+    ctx: &mut PhaseContext<'_>,
+    data: &crate::reducer::effect::ContinuationContextData,
+) -> Result<EffectResult> {
+    development::write_continuation_context_to_workspace(ctx.workspace, ctx.logger, data)?;
+    Ok(EffectResult::event(
+        PipelineEvent::development_continuation_context_written(data.iteration, data.attempt),
+    ))
+}
+
+fn ensure_completion_marker_dir(ctx: &PhaseContext<'_>) {
+    if let Err(err) = ctx
+        .workspace
+        .create_dir_all(std::path::Path::new(".agent/tmp"))
+    {
+        ctx.logger.warn(&format!(
+            "Failed to create completion marker directory: {err}"
+        ));
+    }
+}
+
+fn write_completion_marker_content(
+    ctx: &PhaseContext<'_>,
+    content: &str,
+    is_failure: bool,
+) -> std::result::Result<(), String> {
+    let marker_path = std::path::Path::new(".agent/tmp/completion_marker");
+    match ctx.workspace.write(marker_path, content) {
+        Ok(()) => {
+            ctx.logger.info(&format!(
+                "Completion marker written: {}",
+                if is_failure { "failure" } else { "success" }
+            ));
+            Ok(())
+        }
+        Err(err) => {
+            ctx.logger
+                .warn(&format!("Failed to write completion marker: {err}"));
+            Err(err.to_string())
+        }
+    }
+}
+
 fn get_stored_or_generate_prompt_with_validation<F, S: BuildHasher>(
     scope_key: &PromptScopeKey,
     prompt_history: &std::collections::HashMap<String, PromptHistoryEntry, S>,
@@ -151,20 +208,19 @@ where
     F: FnOnce() -> (String, bool),
 {
     let key = scope_key.to_string();
-    if let Some(entry) = prompt_history.get(&key) {
-        let content_id_mismatch = current_content_id
-            .is_some_and(|current_id| entry.content_id.as_deref() != Some(current_id));
-
-        if content_id_mismatch {
-            let (prompt, should_validate) = generator();
-            (prompt, false, should_validate)
-        } else {
+    match prompt_history.get(&key) {
+        Some(entry) if !content_id_mismatch(entry, current_content_id) => {
             (entry.content.clone(), true, false)
         }
-    } else {
-        let (prompt, should_validate) = generator();
-        (prompt, false, should_validate)
+        _ => {
+            let (prompt, should_validate) = generator();
+            (prompt, false, should_validate)
+        }
     }
+}
+
+fn content_id_mismatch(entry: &PromptHistoryEntry, current_content_id: Option<&str>) -> bool {
+    current_content_id.is_some_and(|current_id| entry.content_id.as_deref() != Some(current_id))
 }
 
 /// Main effect handler implementation.
@@ -218,28 +274,8 @@ impl MainEffectHandler {
         content: &str,
         is_failure: bool,
     ) -> std::result::Result<(), String> {
-        let marker_dir = std::path::Path::new(".agent/tmp");
-        if let Err(err) = ctx.workspace.create_dir_all(marker_dir) {
-            ctx.logger.warn(&format!(
-                "Failed to create completion marker directory: {err}"
-            ));
-        }
-
-        let marker_path = std::path::Path::new(".agent/tmp/completion_marker");
-        match ctx.workspace.write(marker_path, content) {
-            Ok(()) => {
-                ctx.logger.info(&format!(
-                    "Completion marker written: {}",
-                    if is_failure { "failure" } else { "success" }
-                ));
-                Ok(())
-            }
-            Err(err) => {
-                ctx.logger
-                    .warn(&format!("Failed to write completion marker: {err}"));
-                Err(err.to_string())
-            }
-        }
+        ensure_completion_marker_dir(ctx);
+        write_completion_marker_content(ctx, content, is_failure)
     }
 
     fn execute_effect(
@@ -253,113 +289,256 @@ impl MainEffectHandler {
                 agent,
                 model,
                 prompt,
-            } => self.invoke_agent(
-                ctx,
-                crate::agents::AgentDrain::from(role),
-                role,
-                &agent,
-                model.as_deref(),
-                prompt,
-            ),
-
+            } => self.execute_agent_invocation_effect(ctx, role, agent, model, prompt),
             Effect::InitializeAgentChain { drain, .. } => {
                 Ok(self.initialize_agent_chain(ctx, drain))
             }
+            e => self.execute_non_agent_effect(e, ctx),
+        }
+    }
 
+    fn execute_agent_invocation_effect(
+        &mut self,
+        ctx: &mut PhaseContext<'_>,
+        role: crate::agents::AgentRole,
+        agent: String,
+        model: Option<String>,
+        prompt: String,
+    ) -> Result<EffectResult> {
+        self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::from(role),
+            role,
+            &agent,
+            model.as_deref(),
+            prompt,
+        )
+    }
+
+    fn execute_non_agent_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
+            Effect::BackoffWait {
+                role,
+                cycle,
+                duration_ms,
+            } => execute_backoff_wait(ctx, role, cycle, duration_ms),
+            Effect::ReportAgentChainExhausted { role, phase, cycle } => Err(
+                crate::reducer::event::ErrorEvent::AgentChainExhausted { role, phase, cycle }
+                    .into(),
+            ),
+            e => self.execute_phase_effect(e, ctx),
+        }
+    }
+
+    fn execute_phase_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
+            e @ (Effect::PreparePlanningPrompt { .. }
+            | Effect::MaterializePlanningInputs { .. }
+            | Effect::CleanupRequiredFiles { .. }
+            | Effect::InvokePlanningAgent { .. }
+            | Effect::ExtractPlanningXml { .. }
+            | Effect::ValidatePlanningXml { .. }
+            | Effect::WritePlanningMarkdown { .. }
+            | Effect::ArchivePlanningXml { .. }
+            | Effect::ApplyPlanningOutcome { .. }) => self.execute_planning_effect(e, ctx),
+            e @ (Effect::PrepareDevelopmentContext { .. }
+            | Effect::MaterializeDevelopmentInputs { .. }
+            | Effect::PrepareDevelopmentPrompt { .. }
+            | Effect::InvokeDevelopmentAgent { .. }
+            | Effect::InvokeAnalysisAgent { .. }
+            | Effect::ExtractDevelopmentXml { .. }
+            | Effect::ValidateDevelopmentXml { .. }
+            | Effect::ApplyDevelopmentOutcome { .. }
+            | Effect::ArchiveDevelopmentXml { .. }) => self.execute_development_effect(e, ctx),
+            e => self.execute_phase_effect_b(e, ctx),
+        }
+    }
+
+    fn execute_phase_effect_b(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
+            e @ (Effect::PrepareReviewContext { .. }
+            | Effect::MaterializeReviewInputs { .. }
+            | Effect::PrepareReviewPrompt { .. }
+            | Effect::InvokeReviewAgent { .. }
+            | Effect::ExtractReviewIssuesXml { .. }
+            | Effect::ValidateReviewIssuesXml { .. }
+            | Effect::WriteIssuesMarkdown { .. }
+            | Effect::ExtractReviewIssueSnippets { .. }
+            | Effect::ArchiveReviewIssuesXml { .. }
+            | Effect::ApplyReviewOutcome { .. }
+            | Effect::PrepareFixPrompt { .. }
+            | Effect::InvokeFixAgent { .. }
+            | Effect::InvokeFixAnalysisAgent { .. }
+            | Effect::ExtractFixResultXml { .. }
+            | Effect::ValidateFixResultXml { .. }
+            | Effect::ApplyFixOutcome { .. }
+            | Effect::ArchiveFixResultXml { .. }) => self.execute_review_effect(e, ctx),
+            e @ (Effect::PrepareCommitPrompt { .. }
+            | Effect::CheckCommitDiff
+            | Effect::MaterializeCommitInputs { .. }
+            | Effect::InvokeCommitAgent
+            | Effect::ExtractCommitXml
+            | Effect::ValidateCommitXml
+            | Effect::ApplyCommitMessageOutcome
+            | Effect::ArchiveCommitXml
+            | Effect::CreateCommit { .. }
+            | Effect::SkipCommit { .. }
+            | Effect::CheckResidualFiles { .. }
+            | Effect::CheckUncommittedChangesBeforeTermination) => {
+                self.execute_commit_effect(e, ctx)
+            }
+            e @ (Effect::RunRebase { .. } | Effect::ResolveRebaseConflicts { .. }) => {
+                self.execute_rebase_effect(e, ctx)
+            }
+            e => self.execute_lifecycle_effect(e, ctx),
+        }
+    }
+
+    fn execute_planning_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::PreparePlanningPrompt {
                 iteration,
                 prompt_mode,
             } => self.prepare_planning_prompt(ctx, iteration, prompt_mode),
-
             Effect::MaterializePlanningInputs { iteration } => {
                 self.materialize_planning_inputs(ctx, iteration)
             }
-
             Effect::CleanupRequiredFiles { files } => Ok(self.cleanup_required_files(ctx, &files)),
-
             Effect::InvokePlanningAgent { iteration } => self.invoke_planning_agent(ctx, iteration),
+            e => self.execute_planning_effect_b(e, ctx),
+        }
+    }
 
+    fn execute_planning_effect_b(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::ExtractPlanningXml { iteration } => {
                 Ok(self.extract_planning_xml(ctx, iteration))
             }
-
             Effect::ValidatePlanningXml { iteration } => self.validate_planning_xml(ctx, iteration),
-
             Effect::WritePlanningMarkdown { iteration } => {
                 self.write_planning_markdown(ctx, iteration)
             }
-
             Effect::ArchivePlanningXml { iteration } => {
                 Ok(Self::archive_planning_xml(ctx, iteration))
             }
-
             Effect::ApplyPlanningOutcome { iteration, valid } => {
                 Ok(self.apply_planning_outcome(ctx, iteration, valid))
             }
+            _ => unreachable!("execute_planning_effect called with non-planning effect"),
+        }
+    }
 
+    fn execute_development_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::PrepareDevelopmentContext { iteration } => {
                 Ok(Self::prepare_development_context(ctx, iteration))
             }
-
             Effect::MaterializeDevelopmentInputs { iteration } => {
                 self.materialize_development_inputs(ctx, iteration)
             }
-
             Effect::PrepareDevelopmentPrompt {
                 iteration,
                 prompt_mode,
             } => self.prepare_development_prompt(ctx, iteration, prompt_mode),
-
             Effect::InvokeDevelopmentAgent { iteration } => {
                 self.invoke_development_agent(ctx, iteration)
             }
+            e => self.execute_development_effect_b(e, ctx),
+        }
+    }
 
+    fn execute_development_effect_b(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::InvokeAnalysisAgent { iteration } => self.invoke_analysis_agent(ctx, iteration),
-
             Effect::ExtractDevelopmentXml { iteration } => {
                 Ok(self.extract_development_xml(ctx, iteration))
             }
-
             Effect::ValidateDevelopmentXml { iteration } => {
                 Ok(self.validate_development_xml(ctx, iteration))
             }
-
             Effect::ApplyDevelopmentOutcome { iteration } => {
                 self.apply_development_outcome(ctx, iteration)
             }
-
             Effect::ArchiveDevelopmentXml { iteration } => {
                 Ok(Self::archive_development_xml(ctx, iteration))
             }
+            _ => unreachable!("execute_development_effect called with non-development effect"),
+        }
+    }
 
+    fn execute_review_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::PrepareReviewContext { pass } => Ok(self.prepare_review_context(ctx, pass)),
-
             Effect::MaterializeReviewInputs { pass } => self.materialize_review_inputs(ctx, pass),
-
             Effect::PrepareReviewPrompt { pass, prompt_mode } => {
                 self.prepare_review_prompt(ctx, pass, prompt_mode)
             }
-
             Effect::InvokeReviewAgent { pass } => self.invoke_review_agent(ctx, pass),
-
             Effect::ExtractReviewIssuesXml { pass } => {
                 Ok(self.extract_review_issues_xml(ctx, pass))
             }
-
             Effect::ValidateReviewIssuesXml { pass } => {
                 Ok(self.validate_review_issues_xml(ctx, pass))
             }
+            e => self.execute_fix_effect(e, ctx),
+        }
+    }
 
+    fn execute_fix_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::WriteIssuesMarkdown { pass } => self.write_issues_markdown(ctx, pass),
-
             Effect::ExtractReviewIssueSnippets { pass } => {
                 self.extract_review_issue_snippets(ctx, pass)
             }
-
             Effect::ArchiveReviewIssuesXml { pass } => {
                 Ok(Self::archive_review_issues_xml(ctx, pass))
             }
+            e => self.execute_fix_outcome_or_agent_effect(e, ctx),
+        }
+    }
 
+    fn execute_fix_outcome_or_agent_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::ApplyReviewOutcome {
                 pass,
                 issues_found,
@@ -370,154 +549,175 @@ impl MainEffectHandler {
                 issues_found,
                 clean_no_issues,
             )),
+            e => self.execute_fix_agent_effect(e, ctx),
+        }
+    }
 
+    fn execute_fix_agent_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::PrepareFixPrompt { pass, prompt_mode } => {
                 self.prepare_fix_prompt(ctx, pass, prompt_mode)
             }
-
             Effect::InvokeFixAgent { pass } => self.invoke_fix_agent(ctx, pass),
-
             Effect::InvokeFixAnalysisAgent { pass } => self.invoke_fix_analysis_agent(ctx, pass),
-
             Effect::ExtractFixResultXml { pass } => Ok(self.extract_fix_result_xml(ctx, pass)),
-
             Effect::ValidateFixResultXml { pass } => Ok(self.validate_fix_result_xml(ctx, pass)),
-
             Effect::ApplyFixOutcome { pass } => self.apply_fix_outcome(ctx, pass),
-
             Effect::ArchiveFixResultXml { pass } => Ok(self.archive_fix_result_xml(ctx, pass)),
+            _ => unreachable!("execute_fix_effect called with non-fix effect"),
+        }
+    }
 
-            Effect::RunRebase {
-                phase,
-                target_branch,
-            } => self.run_rebase(ctx, phase, &target_branch),
-
-            Effect::ResolveRebaseConflicts { strategy } => {
-                Ok(Self::resolve_rebase_conflicts(ctx, strategy))
-            }
-
+    fn execute_commit_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::PrepareCommitPrompt { prompt_mode } => {
                 self.prepare_commit_prompt(ctx, prompt_mode)
             }
-
             Effect::CheckCommitDiff => Self::check_commit_diff(ctx),
-
             Effect::MaterializeCommitInputs { attempt } => {
                 self.materialize_commit_inputs(ctx, attempt)
             }
-
             Effect::InvokeCommitAgent => self.invoke_commit_agent(ctx),
-
             Effect::ExtractCommitXml => Ok(self.extract_commit_xml(ctx)),
-
             Effect::ValidateCommitXml => Ok(self.validate_commit_xml(ctx)),
+            e => self.execute_commit_finalization_effect(e, ctx),
+        }
+    }
 
+    fn execute_commit_finalization_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::ApplyCommitMessageOutcome => self.apply_commit_message_outcome(ctx),
-
             Effect::ArchiveCommitXml => Ok(self.archive_commit_xml(ctx)),
-
             Effect::CreateCommit {
                 message,
                 files,
                 excluded_files,
             } => Self::create_commit(ctx, message, &files, &excluded_files),
-
             Effect::SkipCommit { reason } => Ok(Self::skip_commit(ctx, reason)),
-
             Effect::CheckResidualFiles { pass } => Self::check_residual_files(ctx, pass),
-
             Effect::CheckUncommittedChangesBeforeTermination => {
                 Self::check_uncommitted_changes_before_termination(ctx)
             }
+            _ => unreachable!("execute_commit_effect called with non-commit effect"),
+        }
+    }
 
-            Effect::BackoffWait {
-                role,
-                cycle,
-                duration_ms,
-            } => {
-                use std::time::Duration;
-                ctx.registry
-                    .retry_timer()
-                    .sleep(Duration::from_millis(duration_ms));
-                Ok(EffectResult::event(
-                    PipelineEvent::agent_retry_cycle_started(role, cycle),
-                ))
+    fn execute_rebase_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
+            Effect::RunRebase {
+                phase,
+                target_branch,
+            } => self.run_rebase(ctx, phase, &target_branch),
+            Effect::ResolveRebaseConflicts { strategy } => {
+                Ok(Self::resolve_rebase_conflicts(ctx, strategy))
             }
+            _ => unreachable!("execute_rebase_effect called with non-rebase effect"),
+        }
+    }
 
-            Effect::ReportAgentChainExhausted { role, phase, cycle } => {
-                use crate::reducer::event::ErrorEvent;
-                Err(ErrorEvent::AgentChainExhausted { role, phase, cycle }.into())
-            }
-
+    fn execute_lifecycle_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::ValidateFinalState => Ok(self.validate_final_state(ctx)),
-
             Effect::SaveCheckpoint { trigger } => Ok(self.save_checkpoint(ctx, trigger)),
-
             Effect::EnsureGitignoreEntries => Ok(Self::ensure_gitignore_entries(ctx)),
-
             Effect::CleanupContext => Self::cleanup_context(ctx),
-
             Effect::LockPromptPermissions => Ok(Self::lock_prompt_permissions(ctx)),
-
             Effect::RestorePromptPermissions => Ok(self.restore_prompt_permissions(ctx)),
-
             Effect::WriteContinuationContext(ref data) => {
-                development::write_continuation_context_to_workspace(
-                    ctx.workspace,
-                    ctx.logger,
-                    data,
-                )?;
-                Ok(EffectResult::event(
-                    PipelineEvent::development_continuation_context_written(
-                        data.iteration,
-                        data.attempt,
-                    ),
-                ))
+                execute_write_continuation_context(ctx, data)
             }
-
             Effect::CleanupContinuationContext => Self::cleanup_continuation_context(ctx),
-
             Effect::WriteTimeoutContext {
                 role,
                 logfile_path,
                 context_path,
             } => Self::write_timeout_context(ctx, role, &logfile_path, &context_path),
+            e => self.execute_lifecycle_effect_b(e, ctx),
+        }
+    }
 
+    fn execute_lifecycle_effect_b(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::TriggerLoopRecovery {
                 detected_loop,
                 loop_count,
             } => Ok(Self::trigger_loop_recovery(ctx, &detected_loop, loop_count)),
-
             Effect::EmitRecoveryReset {
                 reset_type,
                 target_phase,
             } => Ok(self.emit_recovery_reset(ctx, &reset_type, target_phase)),
+            e => self.execute_lifecycle_effect_recovery_or_c(e, ctx),
+        }
+    }
 
+    fn execute_lifecycle_effect_recovery_or_c(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::AttemptRecovery {
                 level,
                 attempt_count,
             } => Ok(self.attempt_recovery(ctx, level, attempt_count)),
-
             Effect::EmitRecoverySuccess {
                 level,
                 total_attempts,
             } => Ok(Self::emit_recovery_success(ctx, level, total_attempts)),
+            e => self.execute_lifecycle_effect_c(e, ctx),
+        }
+    }
 
+    fn execute_lifecycle_effect_c(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::TriggerDevFixFlow {
                 failed_phase,
                 failed_role,
                 retry_cycle,
             } => Ok(self.trigger_dev_fix_flow(ctx, failed_phase, failed_role, retry_cycle)),
-
             Effect::EmitCompletionMarkerAndTerminate { is_failure, reason } => Ok(
                 Self::emit_completion_marker_and_terminate(ctx, is_failure, reason),
             ),
-
-            // Cloud mode effects - only executed when cloud mode is enabled
             Effect::ConfigureGitAuth { auth_method } => {
                 Ok(Self::handle_configure_git_auth(ctx, &auth_method))
             }
+            e => Self::execute_lifecycle_git_effect(ctx, e),
+        }
+    }
 
+    fn execute_lifecycle_git_effect(
+        ctx: &mut PhaseContext<'_>,
+        effect: Effect,
+    ) -> Result<EffectResult> {
+        match effect {
             Effect::PushToRemote {
                 remote,
                 branch,
@@ -526,7 +726,6 @@ impl MainEffectHandler {
             } => Ok(Self::handle_push_to_remote(
                 ctx, remote, branch, force, commit_sha,
             )),
-
             Effect::CreatePullRequest {
                 base_branch,
                 head_branch,
@@ -539,6 +738,7 @@ impl MainEffectHandler {
                 &title,
                 &body,
             )),
+            _ => unreachable!("execute_lifecycle_effect called with unexpected effect"),
         }
     }
 }

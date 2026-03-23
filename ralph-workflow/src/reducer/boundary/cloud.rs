@@ -11,7 +11,6 @@
 //! - Emit events describing outcomes
 //! - No retry logic (reducer decides)
 
-use super::io_cloud::is_success;
 use super::MainEffectHandler;
 use crate::common::domain_types::NonEmptyString;
 use crate::phases::PhaseContext;
@@ -34,53 +33,7 @@ impl MainEffectHandler {
         ctx.logger
             .info(&format!("Configuring git authentication: {auth_method}"));
 
-        // Parse auth method string (format: "method:param")
-        let parts: Vec<&str> = auth_method.splitn(2, ':').collect();
-        let method = parts.first().unwrap_or(&"ssh-key");
-        let param = parts.get(1).unwrap_or(&"default");
-
-        match *method {
-            "ssh-key" => {
-                // Configure SSH key authentication
-                if *param == "default" {
-                    // Use default SSH key (SSH_AUTH_SOCK or ~/.ssh/id_rsa)
-                    ctx.logger
-                        .info("Using default SSH authentication (SSH_AUTH_SOCK or ~/.ssh/id_rsa)");
-                } else {
-                    // Configure GIT_SSH_COMMAND to use specific key via the git environment.
-                    // Git may execute this via a shell; treat the key path as untrusted.
-                    if let Ok(()) = ctx.env.configure_git_ssh_command(param) {
-                        ctx.logger
-                            .info("Set GIT_SSH_COMMAND to use provided SSH key");
-                    } else {
-                        ctx.logger.warn(
-                            "Invalid SSH key path for cloud git auth; falling back to default SSH",
-                        );
-                    }
-                }
-            }
-            "token" => {
-                // Configure token-based authentication.
-                // We intentionally do NOT embed or log the token.
-                // Push operations use a non-persistent credential helper that reads the token
-                // from environment variables at runtime.
-                ctx.logger.info(&format!(
-                    "Configuring token authentication for user: {param}"
-                ));
-                let _ = ctx.env.disable_git_terminal_prompt();
-            }
-            "credential-helper" => {
-                // Configure external credential helper
-                ctx.logger
-                    .info(&format!("Using credential helper: {param}"));
-                let _ = ctx.env.disable_git_terminal_prompt();
-            }
-            _ => {
-                ctx.logger.warn(&format!(
-                    "Unknown auth method: {method}, falling back to default SSH"
-                ));
-            }
-        }
+        configure_git_auth_method(ctx, auth_method);
 
         EffectResult::event(PipelineEvent::Commit(CommitEvent::GitAuthConfigured))
     }
@@ -104,133 +57,18 @@ impl MainEffectHandler {
             if force { " (force)" } else { "" }
         ));
 
-        // Build git push command.
-        // Auth is configured in a checkpoint-safe way:
-        // - ssh-key: via GIT_SSH_COMMAND (set in ConfigureGitAuth)
-        // - token: via ephemeral credential helper that reads token from env
-        // - credential-helper: via per-command credential.helper override
         let Some(refspec) = build_head_push_refspec(&branch) else {
-            let error = crate::cloud::redaction::redact_secrets(&format!(
-                "Invalid push branch name: '{branch}'"
-            ));
-            ctx.logger.warn(&format!("Git push skipped: {error}"));
-
-            let ui = UIEvent::PushFailed {
-                remote: remote.clone(),
-                branch: branch.clone(),
-                error: error.clone(),
-            };
-
-            return EffectResult::with_ui(
-                PipelineEvent::Commit(CommitEvent::PushFailed {
-                    remote,
-                    branch,
-                    error,
-                }),
-                vec![ui],
-            );
+            return push_invalid_branch_result(ctx, remote, branch);
         };
 
-        let argv: Vec<String> = match &ctx.cloud.git_remote.auth_method {
-            crate::config::types::GitAuthMethod::SshKey { .. } => vec![],
-            crate::config::types::GitAuthMethod::Token { .. } => vec![
-                "-c".to_string(),
-                "credential.helper=!f() { echo username=$RALPH_GIT_TOKEN_USERNAME; echo password=$RALPH_GIT_TOKEN; }; f"
-                    .to_string(),
-                "-c".to_string(),
-                "credential.useHttpPath=true".to_string(),
-            ],
-            crate::config::types::GitAuthMethod::CredentialHelper { helper } => vec![
-                "-c".to_string(),
-                format!("credential.helper={helper}"),
-                "-c".to_string(),
-                "credential.useHttpPath=true".to_string(),
-            ],
-        }
-        .into_iter()
-        .chain(std::iter::once("push".to_string()))
-        .chain(std::iter::once(remote.clone()))
-        .chain(std::iter::once(refspec))
-        .chain(force.then(|| "--force".to_string()))
-        .collect();
-
+        let argv = build_push_argv(ctx, remote.clone(), refspec, force);
         let git_args: Vec<&str> = argv.iter().map(std::string::String::as_str).collect();
 
-        // Execute push via executor
         let result = ctx
             .executor
             .execute("git", &git_args, &[], Some(ctx.repo_root));
 
-        match result {
-            Ok(output) => {
-                // Boundary emits domain-shaped outcome with raw process result.
-                // Reducer interprets the result and applies policy-level state transitions.
-                let exit_code = output.status.code().unwrap_or(-1);
-                let success = output.status.success();
-                let stderr = output.stderr.clone();
-
-                ctx.logger.info(&format!(
-                    "Git push executed for {remote}/{branch} (exit: {exit_code})"
-                ));
-
-                let exec_result: crate::reducer::event::ProcessExecutionResult = output.into();
-
-                let primary_event = PipelineEvent::Commit(CommitEvent::PushExecuted {
-                    remote: remote.clone(),
-                    branch: branch.clone(),
-                    commit_sha: commit_sha.clone(),
-                    result: exec_result,
-                });
-
-                // Boundary attaches UI events based on exit code interpretation.
-                // Policy-level state transitions happen in the reducer.
-                if success {
-                    ctx.logger
-                        .info(&format!("Successfully pushed to {remote}/{branch}"));
-
-                    let ui = UIEvent::PushCompleted {
-                        remote,
-                        branch,
-                        commit_sha,
-                    };
-
-                    EffectResult::event(primary_event).with_ui_event(ui)
-                } else {
-                    let error = crate::cloud::redaction::redact_secrets(&stderr);
-                    ctx.logger.warn(&format!("Git push failed: {error}"));
-
-                    let ui = UIEvent::PushFailed {
-                        remote,
-                        branch,
-                        error,
-                    };
-
-                    EffectResult::event(primary_event).with_ui_event(ui)
-                }
-            }
-            Err(e) => {
-                // Executor-level failure (command not found, spawn failure, etc.)
-                // This is still a policy-level failure but at a different layer.
-                let error = crate::cloud::redaction::redact_secrets(&e.to_string());
-                ctx.logger
-                    .warn(&format!("Git push execution failed: {error}"));
-
-                let ui = UIEvent::PushFailed {
-                    remote: remote.clone(),
-                    branch: branch.clone(),
-                    error: error.clone(),
-                };
-
-                EffectResult::with_ui(
-                    PipelineEvent::Commit(CommitEvent::PushFailed {
-                        remote,
-                        branch,
-                        error,
-                    }),
-                    vec![ui],
-                )
-            }
-        }
+        interpret_push_result(ctx, result, remote, branch, commit_sha)
     }
 
     /// Create a pull request on the remote platform.
@@ -252,149 +90,316 @@ impl MainEffectHandler {
                 let error = crate::cloud::redaction::redact_secrets(&err.to_string());
                 ctx.logger
                     .warn(&format!("Pull request title validation failed: {error}"));
-
-                let ui = UIEvent::PullRequestFailed {
-                    error: error.clone(),
-                };
-
-                return EffectResult::with_ui(
-                    PipelineEvent::Commit(CommitEvent::PullRequestFailed { error }),
-                    vec![ui],
-                );
+                return pull_request_failed_result(error);
             }
         };
 
-        // Try gh CLI first (GitHub)
-        let gh_result = ctx.executor.execute(
-            "gh",
-            &[
-                "pr",
-                "create",
-                "--base",
-                base_branch,
-                "--head",
-                head_branch,
-                "--title",
-                validated_title.as_str(),
-                "--body",
-                body,
-            ],
-            &[],
-            Some(ctx.repo_root),
-        );
+        try_gh_then_glab_create_pr(
+            ctx,
+            base_branch,
+            head_branch,
+            validated_title.as_str(),
+            body,
+        )
+    }
+}
 
-        match gh_result {
-            Ok(output) if is_success(&output) => {
-                let url = output.stdout.trim().to_string();
-                ctx.logger.info(&format!("Pull request created: {url}"));
+fn pr_created_result(url: String) -> EffectResult {
+    let number = url
+        .rsplit('/')
+        .next()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
+    let ui = UIEvent::PullRequestCreated {
+        url: url.clone(),
+        number,
+    };
+    EffectResult::with_ui(
+        PipelineEvent::Commit(CommitEvent::PullRequestCreated { url, number }),
+        vec![ui],
+    )
+}
 
-                // Extract PR number from URL if possible
-                let number = url
-                    .rsplit('/')
-                    .next()
-                    .and_then(|s| s.parse::<u32>().ok())
-                    .unwrap_or(0);
+fn pull_request_failed_result(error: String) -> EffectResult {
+    let ui = UIEvent::PullRequestFailed {
+        error: error.clone(),
+    };
+    EffectResult::with_ui(
+        PipelineEvent::Commit(CommitEvent::PullRequestFailed { error }),
+        vec![ui],
+    )
+}
 
-                let ui = UIEvent::PullRequestCreated {
-                    url: url.clone(),
-                    number,
-                };
-
-                EffectResult::with_ui(
-                    PipelineEvent::Commit(CommitEvent::PullRequestCreated { url, number }),
-                    vec![ui],
-                )
-            }
-            Ok(output) => {
-                let error = crate::cloud::redaction::redact_secrets(&output.stderr);
-                ctx.logger.warn(&format!("PR creation failed: {error}"));
-
-                let ui = UIEvent::PullRequestFailed {
-                    error: error.clone(),
-                };
-
-                EffectResult::with_ui(
-                    PipelineEvent::Commit(CommitEvent::PullRequestFailed { error }),
-                    vec![ui],
-                )
-            }
-            Err(e) => {
-                // gh CLI not available, try glab (GitLab)
-                ctx.logger
-                    .info("gh CLI not available, trying glab for GitLab");
-
-                let glab_result = ctx.executor.execute(
-                    "glab",
-                    &[
-                        "mr",
-                        "create",
-                        "--target-branch",
-                        base_branch,
-                        "--source-branch",
-                        head_branch,
-                        "--title",
-                        validated_title.as_str(),
-                        "--description",
-                        body,
-                    ],
-                    &[],
-                    Some(ctx.repo_root),
-                );
-
-                match glab_result {
-                    Ok(output) if is_success(&output) => {
-                        let url = output.stdout.trim().to_string();
-                        ctx.logger.info(&format!("Merge request created: {url}"));
-
-                        let number = url
-                            .rsplit('/')
-                            .next()
-                            .and_then(|s| s.parse::<u32>().ok())
-                            .unwrap_or(0);
-
-                        let ui = UIEvent::PullRequestCreated {
-                            url: url.clone(),
-                            number,
-                        };
-
-                        EffectResult::with_ui(
-                            PipelineEvent::Commit(CommitEvent::PullRequestCreated { url, number }),
-                            vec![ui],
-                        )
-                    }
-                    Ok(output) => {
-                        let error = crate::cloud::redaction::redact_secrets(&output.stderr);
-                        ctx.logger.warn(&format!("MR creation failed: {error}"));
-                        let ui = UIEvent::PullRequestFailed {
-                            error: error.clone(),
-                        };
-
-                        EffectResult::with_ui(
-                            PipelineEvent::Commit(CommitEvent::PullRequestFailed { error }),
-                            vec![ui],
-                        )
-                    }
-                    Err(e2) => {
-                        let e = crate::cloud::redaction::redact_secrets(&e.to_string());
-                        let e2 = crate::cloud::redaction::redact_secrets(&e2.to_string());
-                        ctx.logger.warn(&format!(
-                            "Neither gh nor glab CLI available: gh error: {e}, glab error: {e2}",
-                        ));
-
-                        let error =
-                            format!("Neither gh nor glab CLI available (gh: {e}, glab: {e2})");
-                        let ui = UIEvent::PullRequestFailed {
-                            error: error.clone(),
-                        };
-
-                        EffectResult::with_ui(
-                            PipelineEvent::Commit(CommitEvent::PullRequestFailed { error }),
-                            vec![ui],
-                        )
-                    }
-                }
-            }
+fn try_gh_then_glab_create_pr(
+    ctx: &PhaseContext<'_>,
+    base_branch: &str,
+    head_branch: &str,
+    title: &str,
+    body: &str,
+) -> EffectResult {
+    let gh_result = ctx.executor.execute(
+        "gh",
+        &[
+            "pr",
+            "create",
+            "--base",
+            base_branch,
+            "--head",
+            head_branch,
+            "--title",
+            title,
+            "--body",
+            body,
+        ],
+        &[],
+        Some(ctx.repo_root),
+    );
+    match gh_result {
+        Ok(output) if output.succeeded() => {
+            let url = output.stdout.trim().to_string();
+            ctx.logger.info(&format!("Pull request created: {url}"));
+            pr_created_result(url)
         }
+        Ok(output) => {
+            let error = crate::cloud::redaction::redact_secrets(&output.stderr);
+            ctx.logger.warn(&format!("PR creation failed: {error}"));
+            pull_request_failed_result(error)
+        }
+        Err(gh_err) => {
+            ctx.logger
+                .info("gh CLI not available, trying glab for GitLab");
+            try_glab_create_pr(ctx, base_branch, head_branch, title, body, gh_err)
+        }
+    }
+}
+
+fn try_glab_create_pr(
+    ctx: &PhaseContext<'_>,
+    base_branch: &str,
+    head_branch: &str,
+    title: &str,
+    body: &str,
+    gh_err: std::io::Error,
+) -> EffectResult {
+    let glab_result = ctx.executor.execute(
+        "glab",
+        &[
+            "mr",
+            "create",
+            "--target-branch",
+            base_branch,
+            "--source-branch",
+            head_branch,
+            "--title",
+            title,
+            "--description",
+            body,
+        ],
+        &[],
+        Some(ctx.repo_root),
+    );
+    match glab_result {
+        Ok(output) if output.succeeded() => {
+            let url = output.stdout.trim().to_string();
+            ctx.logger.info(&format!("Merge request created: {url}"));
+            pr_created_result(url)
+        }
+        Ok(output) => {
+            let error = crate::cloud::redaction::redact_secrets(&output.stderr);
+            ctx.logger.warn(&format!("MR creation failed: {error}"));
+            pull_request_failed_result(error)
+        }
+        Err(e2) => {
+            let e = crate::cloud::redaction::redact_secrets(&gh_err.to_string());
+            let e2 = crate::cloud::redaction::redact_secrets(&e2.to_string());
+            ctx.logger.warn(&format!(
+                "Neither gh nor glab CLI available: gh error: {e}, glab error: {e2}",
+            ));
+            let error = format!("Neither gh nor glab CLI available (gh: {e}, glab: {e2})");
+            pull_request_failed_result(error)
+        }
+    }
+}
+
+fn push_invalid_branch_result(
+    ctx: &PhaseContext<'_>,
+    remote: String,
+    branch: String,
+) -> EffectResult {
+    let error =
+        crate::cloud::redaction::redact_secrets(&format!("Invalid push branch name: '{branch}'"));
+    ctx.logger.warn(&format!("Git push skipped: {error}"));
+    let ui = UIEvent::PushFailed {
+        remote: remote.clone(),
+        branch: branch.clone(),
+        error: error.clone(),
+    };
+    EffectResult::with_ui(
+        PipelineEvent::Commit(CommitEvent::PushFailed {
+            remote,
+            branch,
+            error,
+        }),
+        vec![ui],
+    )
+}
+
+fn build_push_argv(
+    ctx: &PhaseContext<'_>,
+    remote: String,
+    refspec: String,
+    force: bool,
+) -> Vec<String> {
+    // Build git push command.
+    // Auth is configured in a checkpoint-safe way:
+    // - ssh-key: via GIT_SSH_COMMAND (set in ConfigureGitAuth)
+    // - token: via ephemeral credential helper that reads token from env
+    // - credential-helper: via per-command credential.helper override
+    let auth_args: Vec<String> = match &ctx.cloud.git_remote.auth_method {
+        crate::config::types::GitAuthMethod::SshKey { .. } => vec![],
+        crate::config::types::GitAuthMethod::Token { .. } => vec![
+            "-c".to_string(),
+            "credential.helper=!f() { echo username=$RALPH_GIT_TOKEN_USERNAME; echo password=$RALPH_GIT_TOKEN; }; f"
+                .to_string(),
+            "-c".to_string(),
+            "credential.useHttpPath=true".to_string(),
+        ],
+        crate::config::types::GitAuthMethod::CredentialHelper { helper } => vec![
+            "-c".to_string(),
+            format!("credential.helper={helper}"),
+            "-c".to_string(),
+            "credential.useHttpPath=true".to_string(),
+        ],
+    };
+    auth_args
+        .into_iter()
+        .chain(std::iter::once("push".to_string()))
+        .chain(std::iter::once(remote))
+        .chain(std::iter::once(refspec))
+        .chain(force.then(|| "--force".to_string()))
+        .collect()
+}
+
+fn interpret_push_result(
+    ctx: &PhaseContext<'_>,
+    result: std::io::Result<crate::executor::ProcessOutput>,
+    remote: String,
+    branch: String,
+    commit_sha: String,
+) -> EffectResult {
+    match result {
+        Ok(output) => {
+            let exit_code = output.status.code().unwrap_or(-1);
+            let success = output.status.success();
+            let stderr = output.stderr.clone();
+            ctx.logger.info(&format!(
+                "Git push executed for {remote}/{branch} (exit: {exit_code})"
+            ));
+            let exec_result: crate::reducer::event::ProcessExecutionResult = output.into();
+            let primary_event = PipelineEvent::Commit(CommitEvent::PushExecuted {
+                remote: remote.clone(),
+                branch: branch.clone(),
+                commit_sha: commit_sha.clone(),
+                result: exec_result,
+            });
+            push_outcome_result(
+                ctx,
+                primary_event,
+                remote,
+                branch,
+                commit_sha,
+                success,
+                &stderr,
+            )
+        }
+        Err(e) => {
+            let error = crate::cloud::redaction::redact_secrets(&e.to_string());
+            ctx.logger
+                .warn(&format!("Git push execution failed: {error}"));
+            let ui = UIEvent::PushFailed {
+                remote: remote.clone(),
+                branch: branch.clone(),
+                error: error.clone(),
+            };
+            EffectResult::with_ui(
+                PipelineEvent::Commit(CommitEvent::PushFailed {
+                    remote,
+                    branch,
+                    error,
+                }),
+                vec![ui],
+            )
+        }
+    }
+}
+
+fn push_outcome_result(
+    ctx: &PhaseContext<'_>,
+    primary_event: PipelineEvent,
+    remote: String,
+    branch: String,
+    commit_sha: String,
+    success: bool,
+    stderr: &str,
+) -> EffectResult {
+    if success {
+        ctx.logger
+            .info(&format!("Successfully pushed to {remote}/{branch}"));
+        let ui = UIEvent::PushCompleted {
+            remote,
+            branch,
+            commit_sha,
+        };
+        EffectResult::event(primary_event).with_ui_event(ui)
+    } else {
+        let error = crate::cloud::redaction::redact_secrets(stderr);
+        ctx.logger.warn(&format!("Git push failed: {error}"));
+        let ui = UIEvent::PushFailed {
+            remote,
+            branch,
+            error,
+        };
+        EffectResult::event(primary_event).with_ui_event(ui)
+    }
+}
+
+fn configure_git_auth_method(ctx: &PhaseContext<'_>, auth_method: &str) {
+    // Parse auth method string (format: "method:param")
+    let parts: Vec<&str> = auth_method.splitn(2, ':').collect();
+    let method = parts.first().unwrap_or(&"ssh-key");
+    let param = parts.get(1).unwrap_or(&"default");
+
+    match *method {
+        "ssh-key" => configure_ssh_key_auth(ctx, param),
+        "token" => {
+            ctx.logger.info(&format!(
+                "Configuring token authentication for user: {param}"
+            ));
+            let _ = ctx.env.disable_git_terminal_prompt();
+        }
+        "credential-helper" => {
+            ctx.logger
+                .info(&format!("Using credential helper: {param}"));
+            let _ = ctx.env.disable_git_terminal_prompt();
+        }
+        _ => {
+            ctx.logger.warn(&format!(
+                "Unknown auth method: {method}, falling back to default SSH"
+            ));
+        }
+    }
+}
+
+fn configure_ssh_key_auth(ctx: &PhaseContext<'_>, param: &str) {
+    if param == "default" {
+        ctx.logger
+            .info("Using default SSH authentication (SSH_AUTH_SOCK or ~/.ssh/id_rsa)");
+    } else if ctx.env.configure_git_ssh_command(param).is_ok() {
+        ctx.logger
+            .info("Set GIT_SSH_COMMAND to use provided SSH key");
+    } else {
+        ctx.logger
+            .warn("Invalid SSH key path for cloud git auth; falling back to default SSH");
     }
 }
 

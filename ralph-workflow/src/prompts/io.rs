@@ -100,22 +100,26 @@ pub fn extract_partials(content: &str) -> Vec<String> {
     crate::prompts::template_parsing::extract_partials_impl(content)
 }
 
+fn update_metadata_from_line(
+    line: &str,
+    version: &mut Option<String>,
+    purpose: &mut Option<String>,
+) {
+    if !line.starts_with("{#") || !line.ends_with("#}") {
+        return;
+    }
+    if let Some((v, p)) = parse_metadata_line(line) {
+        *version = version.take().or(v);
+        *purpose = purpose.take().or(p);
+    }
+}
+
 pub fn extract_metadata(content: &str) -> TemplateMetadata {
     let mut version = None;
     let mut purpose = None;
-
     for line in content.lines().take(50) {
-        let line = line.trim();
-        if !line.starts_with("{#") || !line.ends_with("#}") {
-            continue;
-        }
-
-        if let Some((v, p)) = parse_metadata_line(line) {
-            version = version.or(v);
-            purpose = purpose.or(p);
-        }
+        update_metadata_from_line(line.trim(), &mut version, &mut purpose);
     }
-
     TemplateMetadata { version, purpose }
 }
 

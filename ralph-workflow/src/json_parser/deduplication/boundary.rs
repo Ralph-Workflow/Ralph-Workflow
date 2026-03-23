@@ -7,6 +7,64 @@
 
 use std::collections::HashMap;
 
+fn kmp_fail_dispatch(lps: &mut [usize], len: &mut usize, i: &mut usize, byte: u8, prev: u8) {
+    if byte == prev {
+        *len = len.saturating_add(1);
+        lps[*i] = *len;
+        *i = i.saturating_add(1);
+    } else if *len != 0 {
+        *len = lps[*len - 1];
+    } else {
+        lps[*i] = 0;
+        *i = i.saturating_add(1);
+    }
+}
+
+fn kmp_build_failure_table(pattern_bytes: &[u8], m: usize) -> Vec<usize> {
+    let mut lps = vec![0; m];
+    let mut len = 0usize;
+    let mut i = 1usize;
+    while i < m {
+        let (bi, bl) = (pattern_bytes[i], pattern_bytes[len]);
+        kmp_fail_dispatch(&mut lps, &mut len, &mut i, bi, bl);
+    }
+    lps
+}
+
+fn kmp_search_on_match(i: &mut usize, j: &mut usize, m: usize) -> Option<usize> {
+    *i = i.saturating_add(1);
+    *j = j.saturating_add(1);
+    if *j == m {
+        Some(*i - *j)
+    } else {
+        None
+    }
+}
+
+fn kmp_search_miss(failure: &[usize], i: &mut usize, j: &mut usize) {
+    if *j != 0 {
+        *j = failure[*j - 1];
+    } else {
+        *i = i.saturating_add(1);
+    }
+}
+
+fn kmp_search_step(
+    text_bytes: &[u8],
+    pattern_bytes: &[u8],
+    failure: &[usize],
+    i: &mut usize,
+    j: &mut usize,
+    m: usize,
+) -> Option<usize> {
+    if pattern_bytes[*j] == text_bytes[*i] {
+        kmp_search_on_match(i, j, m)
+    } else {
+        kmp_search_miss(failure, i, j);
+        None
+    }
+}
+
 pub struct KMPMatcher {
     pattern: String,
     failure: Vec<usize>,
@@ -25,60 +83,33 @@ impl KMPMatcher {
         if m == 0 {
             return Vec::new();
         }
-
-        let mut lps = vec![0; m];
-        let mut len = 0;
-        let mut i = 1;
-
         let pattern_bytes = pattern.as_bytes();
+        kmp_build_failure_table(pattern_bytes, m)
+    }
 
-        while i < m {
-            if pattern_bytes[i] == pattern_bytes[len] {
-                len = len.saturating_add(1);
-                lps[i] = len;
-                i = i.saturating_add(1);
-            } else if len != 0 {
-                len = lps[len - 1];
-            } else {
-                lps[i] = 0;
-                i = i.saturating_add(1);
-            }
+    fn kmp_srch(&self, text: &[u8], n: usize, m: usize) -> Option<usize> {
+        let (mut i, mut j, mut found) = (0, 0, None);
+        while i < n && found.is_none() {
+            found = kmp_search_step(
+                text,
+                self.pattern.as_bytes(),
+                &self.failure,
+                &mut i,
+                &mut j,
+                m,
+            );
         }
-
-        lps
+        found
     }
 
     #[must_use]
     pub fn find(&self, text: &str) -> Option<usize> {
         let n = text.len();
         let m = self.pattern.len();
-
         if m == 0 || n < m {
             return None;
         }
-
-        let text_bytes = text.as_bytes();
-        let pattern_bytes = self.pattern.as_bytes();
-
-        let mut i = 0;
-        let mut j = 0;
-
-        while i < n {
-            if pattern_bytes[j] == text_bytes[i] {
-                i = i.saturating_add(1);
-                j = j.saturating_add(1);
-
-                if j == m {
-                    return Some(i - j);
-                }
-            } else if j != 0 {
-                j = self.failure[j - 1];
-            } else {
-                i = i.saturating_add(1);
-            }
-        }
-
-        None
+        self.kmp_srch(text.as_bytes(), n, m)
     }
 
     #[cfg(test)]

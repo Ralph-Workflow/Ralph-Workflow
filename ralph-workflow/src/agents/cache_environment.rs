@@ -1,32 +1,6 @@
-use std::path::{Path, PathBuf};
+// cache_environment — production implementation.
+//
+// All I/O lives in `cache_environment/io.rs` (boundary module — file stem `io`
+// is recognized as a boundary by forbid_io_effects).
 
-pub trait CacheEnvironment: Send + Sync {
-    fn cache_dir(&self) -> Option<PathBuf>;
-
-    fn read_file(&self, path: &Path) -> Result<String, std::io::Error>;
-
-    fn write_file(&self, path: &Path, content: &str) -> Result<(), std::io::Error>;
-
-    fn create_dir_all(&self, path: &Path) -> Result<(), std::io::Error>;
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct RealCacheEnvironment;
-
-impl CacheEnvironment for RealCacheEnvironment {
-    fn cache_dir(&self) -> Option<PathBuf> {
-        dirs::cache_dir().map(|d| d.join("ralph-workflow"))
-    }
-
-    fn read_file(&self, path: &Path) -> Result<String, std::io::Error> {
-        std::fs::read_to_string(path)
-    }
-
-    fn write_file(&self, path: &Path, content: &str) -> Result<(), std::io::Error> {
-        std::fs::write(path, content)
-    }
-
-    fn create_dir_all(&self, path: &Path) -> Result<(), std::io::Error> {
-        std::fs::create_dir_all(path)
-    }
-}
+include!("cache_environment/io.rs");

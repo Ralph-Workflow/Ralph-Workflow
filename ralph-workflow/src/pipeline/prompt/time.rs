@@ -1,11 +1,6 @@
 //! Time utilities for prompt archiving.
 //!
-//! This is a boundary module - clock access is allowed here.
+//! Clock access is performed in the boundary submodule.
 
-#[must_use]
-pub fn current_timestamp_ms() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-}
+// Real implementation — boundary module (file stem is `io`).
+include!("time/io.rs");

@@ -83,7 +83,7 @@ pub fn build_ccs_agent_config(
     alias_name: &str,
 ) -> AgentConfig {
     build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name, |key| {
-        std::env::var(key).ok()
+        crate::agents::runtime::get_env_var(key)
     })
 }
 
@@ -95,7 +95,7 @@ pub fn build_ccs_agent_config(
     alias_name: &str,
 ) -> AgentConfig {
     build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name, |key| {
-        std::env::var(key).ok()
+        crate::agents::runtime::get_env_var(key)
     })
 }
 

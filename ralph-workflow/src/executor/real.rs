@@ -3,7 +3,10 @@
 //! This module provides the production implementation that spawns actual processes
 //! using `std::process::Command`.
 
-use super::{AgentChildHandle, AgentSpawnConfig, ProcessExecutor, ProcessOutput, RealAgentChild};
+use super::{
+    AgentChildHandle, AgentSpawnConfig, ProcessExecutor, ProcessOutput, RealAgentChild,
+    SpawnedProcess,
+};
 use std::io;
 use std::path::Path;
 
@@ -38,13 +41,23 @@ fn terminate_child_best_effort(child: &mut std::process::Child) {
 }
 
 #[cfg(unix)]
-fn wait_until_deadline(child: &mut std::process::Child, deadline: std::time::Instant) {
-    use std::time::{Duration, Instant};
+fn poll_child_once(child: &mut std::process::Child) -> bool {
+    use std::time::Duration;
+    match child.try_wait() {
+        Ok(Some(_)) | Err(_) => true,
+        Ok(None) => {
+            std::thread::sleep(Duration::from_millis(10));
+            false
+        }
+    }
+}
 
+#[cfg(unix)]
+fn wait_until_deadline(child: &mut std::process::Child, deadline: std::time::Instant) {
+    use std::time::Instant;
     while Instant::now() < deadline {
-        match child.try_wait() {
-            Ok(Some(_)) | Err(_) => return,
-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+        if poll_child_once(child) {
+            return;
         }
     }
 }
@@ -133,7 +146,7 @@ impl ProcessExecutor for RealProcessExecutor {
         args: &[&str],
         env: &[(String, String)],
         workdir: Option<&Path>,
-    ) -> io::Result<std::process::Child> {
+    ) -> io::Result<SpawnedProcess> {
         let mut cmd = std::process::Command::new(command);
         cmd.args(args);
         env.iter().for_each(|(k, v)| {
@@ -142,40 +155,56 @@ impl ProcessExecutor for RealProcessExecutor {
         if let Some(dir) = workdir {
             cmd.current_dir(dir);
         }
-        cmd.stdin(std::process::Stdio::piped())
+        let mut child = cmd
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .spawn()
+            .spawn()?;
+        let stdin = child.stdin.take();
+        Ok(SpawnedProcess {
+            stdin,
+            inner: child,
+        })
     }
 
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
         let mut cmd = build_agent_command(config);
-        let mut child = spawn_agent_child(&mut cmd)?;
-
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| io::Error::other("Failed to capture stdout"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::io::AsRawFd;
-            ensure_nonblocking_or_terminate(&mut child, stdout.as_raw_fd(), stderr.as_raw_fd())?;
-        }
-
-        #[cfg(not(unix))]
-        let _ = (&child, &stdout, &stderr);
-
-        Ok(AgentChildHandle {
-            stdout: Box::new(stdout),
-            stderr: Box::new(stderr),
-            inner: Box::new(RealAgentChild(child)),
-        })
+        let child = spawn_agent_child(&mut cmd)?;
+        finalize_agent_child(child)
     }
+}
+
+fn take_child_streams(
+    child: &mut std::process::Child,
+) -> io::Result<(std::process::ChildStdout, std::process::ChildStderr)> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("Failed to capture stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
+    Ok((stdout, stderr))
+}
+
+fn finalize_agent_child(mut child: std::process::Child) -> io::Result<AgentChildHandle> {
+    let (stdout, stderr) = take_child_streams(&mut child)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        ensure_nonblocking_or_terminate(&mut child, stdout.as_raw_fd(), stderr.as_raw_fd())?;
+    }
+
+    #[cfg(not(unix))]
+    let _ = (&child, &stdout, &stderr);
+
+    Ok(AgentChildHandle {
+        stdout: Box::new(stdout),
+        stderr: Box::new(stderr),
+        inner: Box::new(RealAgentChild(child)),
+    })
 }
 
 fn build_agent_command(config: &AgentSpawnConfig) -> std::process::Command {

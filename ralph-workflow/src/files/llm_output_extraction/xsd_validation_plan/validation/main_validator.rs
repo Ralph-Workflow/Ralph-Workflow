@@ -17,10 +17,132 @@ const KNOWN_PLAN_TAGS: &[&str] = &[
     "ralph-verification-strategy",
 ];
 
+/// All optional sections accumulated during plan parsing.
+struct PlanAccum {
+    summary: Option<PlanSummary>,
+    steps: Option<Vec<Step>>,
+    critical_files: Option<CriticalFiles>,
+    risks_mitigations: Option<Vec<RiskPair>>,
+    verification_strategy: Option<Vec<Verification>>,
+    skills_mcp: Option<SkillsMcp>,
+}
+
+impl PlanAccum {
+    fn empty() -> Self {
+        Self {
+            summary: None,
+            steps: None,
+            critical_files: None,
+            risks_mitigations: None,
+            verification_strategy: None,
+            skills_mcp: None,
+        }
+    }
+}
+
+fn plan_malformed_xml_error(e: &quick_xml::Error) -> XsdValidationError {
+    XsdValidationError {
+        error_type: XsdErrorType::MalformedXml,
+        element_path: "ralph-plan".to_string(),
+        expected: "valid XML".to_string(),
+        found: format!("parse error: {e}"),
+        suggestion: "Check XML syntax".to_string(),
+        example: None,
+    }
+}
+
+/// Scan events until `<ralph-plan>` is found; return `Ok(false)` on EOF.
+fn find_ralph_plan_root(reader: &mut Reader<&[u8]>) -> Result<bool, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-plan" => Ok(true),
+        Ok(Event::Eof) => Ok(false),
+        Ok(_) => find_ralph_plan_root(reader),
+        Err(e) => Err(plan_malformed_xml_error(&e)),
+    }
+}
+
+/// Recursively parse `<ralph-plan>` body events, accumulating section results.
+fn parse_plan_events(
+    reader: &mut Reader<&[u8]>,
+    acc: PlanAccum,
+) -> Result<PlanAccum, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) => {
+            let tag = e.name().as_ref().to_vec();
+            dispatch_plan_tag(reader, tag, acc)
+        }
+        Ok(Event::Empty(e)) if e.name().as_ref() == b"skills-mcp" => parse_plan_events(
+            reader,
+            PlanAccum {
+                skills_mcp: Some(SkillsMcp {
+                    skills: Vec::new(),
+                    mcps: Vec::new(),
+                    raw_content: None,
+                }),
+                ..acc
+            },
+        ),
+        Ok(Event::End(e)) if e.name().as_ref() == b"ralph-plan" => Ok(acc),
+        Ok(Event::Eof) => Ok(acc),
+        Ok(_) => parse_plan_events(reader, acc),
+        Err(e) => Err(plan_malformed_xml_error(&e)),
+    }
+}
+
+/// Map a tag (exact or fuzzy) to its canonical form; `None` means skip/unknown.
+fn canonical_plan_tag(tag: &[u8]) -> Option<&'static str> {
+    match tag {
+        b"ralph-summary" => Some("ralph-summary"),
+        b"skills-mcp" => Some("skills-mcp"),
+        b"ralph-implementation-steps" => Some("ralph-implementation-steps"),
+        b"ralph-critical-files" => Some("ralph-critical-files"),
+        b"ralph-risks-mitigations" => Some("ralph-risks-mitigations"),
+        b"ralph-verification-strategy" => Some("ralph-verification-strategy"),
+        _ => normalize_tag_name(&String::from_utf8_lossy(tag), KNOWN_PLAN_TAGS),
+    }
+}
+
+/// Route a `Start` tag to its section parser and continue accumulation.
+fn dispatch_plan_tag(
+    reader: &mut Reader<&[u8]>,
+    tag: Vec<u8>,
+    acc: PlanAccum,
+) -> Result<PlanAccum, XsdValidationError> {
+    use crate::files::llm_output_extraction::xml_helpers::parse_skills_mcp;
+
+    match canonical_plan_tag(&tag) {
+        Some("ralph-summary") => {
+            let summary = parse_summary(reader, &tag)?;
+            parse_plan_events(reader, PlanAccum { summary: Some(summary), ..acc })
+        }
+        Some("skills-mcp") => {
+            let skills_mcp = parse_skills_mcp(reader);
+            parse_plan_events(reader, PlanAccum { skills_mcp: Some(skills_mcp), ..acc })
+        }
+        Some("ralph-implementation-steps") => {
+            let steps = parse_steps(reader, &tag)?;
+            parse_plan_events(reader, PlanAccum { steps: Some(steps), ..acc })
+        }
+        Some("ralph-critical-files") => {
+            let critical_files = parse_critical_files(reader, &tag)?;
+            parse_plan_events(reader, PlanAccum { critical_files: Some(critical_files), ..acc })
+        }
+        Some("ralph-risks-mitigations") => {
+            let risks_mitigations = parse_risks_mitigations(reader, &tag)?;
+            parse_plan_events(reader, PlanAccum { risks_mitigations: Some(risks_mitigations), ..acc })
+        }
+        Some("ralph-verification-strategy") => {
+            let verification_strategy = parse_verification_strategy(reader, &tag)?;
+            parse_plan_events(reader, PlanAccum { verification_strategy: Some(verification_strategy), ..acc })
+        }
+        _ => {
+            let _ = skip_to_end(reader, &tag);
+            parse_plan_events(reader, acc)
+        }
+    }
+}
+
 /// Validate plan XML content against the structured XSD schema.
-///
-/// This validates that the XML content conforms to the expected
-/// structured plan format with rich content elements.
 ///
 /// # Arguments
 ///
@@ -35,49 +157,14 @@ const KNOWN_PLAN_TAGS: &[&str] = &[
 ///
 /// Returns error if the operation fails.
 pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidationError> {
-    use crate::files::llm_output_extraction::xml_helpers::{
-        check_for_illegal_xml_characters, parse_skills_mcp,
-    };
+    use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
 
     let content = xml_content.trim();
-
-    // Check for illegal XML characters BEFORE parsing
     check_for_illegal_xml_characters(content)?;
 
-    let mut reader = Reader::from_str(content);
-    reader.config_mut().trim_text(true);
-
-    let mut buf = Vec::new();
-    let mut summary = None;
-    let mut steps = None;
-    let mut critical_files = None;
-    let mut risks_mitigations = None;
-    let mut verification_strategy = None;
-    let mut skills_mcp = None;
-
-    let root_found = loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-plan" => {
-                buf.clear();
-                break true;
-            }
-            Ok(Event::Eof) => break false,
-            Ok(Event::Text(_) | Event::Empty(_) | Event::End(_) | _) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-plan".to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    };
-
-    if !root_found {
+    // `let reader = &mut ...` is NOT `let mut reader = ...` — binding is immutable.
+    let reader = &mut Reader::from_str(content);
+    if !find_ralph_plan_root(reader)? {
         return Err(XsdValidationError {
             error_type: XsdErrorType::MissingRequiredElement,
             element_path: "ralph-plan".to_string(),
@@ -88,108 +175,9 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         });
     }
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"ralph-summary" => {
-                    summary = Some(parse_summary(&mut reader, b"ralph-summary")?);
-                }
-                b"skills-mcp" => {
-                    skills_mcp = Some(parse_skills_mcp(&mut reader));
-                }
-                b"ralph-implementation-steps" => {
-                    steps = Some(parse_steps(&mut reader, b"ralph-implementation-steps")?);
-                }
-                b"ralph-critical-files" => {
-                    critical_files =
-                        Some(parse_critical_files(&mut reader, b"ralph-critical-files")?);
-                }
-                b"ralph-risks-mitigations" => {
-                    risks_mitigations = Some(parse_risks_mitigations(
-                        &mut reader,
-                        b"ralph-risks-mitigations",
-                    )?);
-                }
-                b"ralph-verification-strategy" => {
-                    verification_strategy = Some(parse_verification_strategy(
-                        &mut reader,
-                        b"ralph-verification-strategy",
-                    )?);
-                }
-                _ => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known tag with minor typo, route to correct handler.
-                    let element_name = e.name();
-                    let tag_name = String::from_utf8_lossy(element_name.as_ref());
-                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_PLAN_TAGS) {
-                        // Re-parse with the canonical tag name
-                        match canonical {
-                            "ralph-summary" => {
-                                summary = Some(parse_summary(&mut reader, e.name().as_ref())?);
-                            }
-                            "skills-mcp" => {
-                                skills_mcp = Some(parse_skills_mcp(&mut reader));
-                            }
-                            "ralph-implementation-steps" => {
-                                steps = Some(parse_steps(&mut reader, e.name().as_ref())?);
-                            }
-                            "ralph-critical-files" => {
-                                critical_files =
-                                    Some(parse_critical_files(&mut reader, e.name().as_ref())?);
-                            }
-                            "ralph-risks-mitigations" => {
-                                risks_mitigations =
-                                    Some(parse_risks_mitigations(&mut reader, e.name().as_ref())?);
-                            }
-                            "ralph-verification-strategy" => {
-                                verification_strategy = Some(parse_verification_strategy(
-                                    &mut reader,
-                                    e.name().as_ref(),
-                                )?);
-                            }
-                            _ => {
-                                // Should not happen - canonical tags are from our known list
-                                let _ = skip_to_end(&mut reader, e.name().as_ref());
-                            }
-                        }
-                    } else {
-                        // Skip unknown elements
-                        let _ = skip_to_end(&mut reader, e.name().as_ref());
-                    }
-                }
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"skills-mcp" => {
-                    // Self-closing <skills-mcp/> - empty skills-mcp
-                    use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
-                    skills_mcp = Some(SkillsMcp {
-                        skills: Vec::new(),
-                        mcps: Vec::new(),
-                        raw_content: None,
-                    });
-                }
-                _ => {
-                    // Skip unknown empty elements
-                }
-            },
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-plan" => break,
-            Ok(Event::Eof) => break,
-            Ok(Event::Text(_) | _) => {} // Tolerant: skip stray text and other events
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-plan".to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
+    let acc = parse_plan_events(reader, PlanAccum::empty())?;
 
-    let summary = summary.ok_or_else(|| XsdValidationError {
+    let summary = acc.summary.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "ralph-summary".to_string(),
         expected: "<ralph-summary> element".to_string(),
@@ -200,7 +188,7 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         example: None,
     })?;
 
-    let steps = steps.ok_or_else(|| XsdValidationError {
+    let steps = acc.steps.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "ralph-implementation-steps".to_string(),
         expected: "<ralph-implementation-steps> element".to_string(),
@@ -210,7 +198,7 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         example: None,
     })?;
 
-    let critical_files = critical_files.ok_or_else(|| XsdValidationError {
+    let critical_files = acc.critical_files.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "ralph-critical-files".to_string(),
         expected: "<ralph-critical-files> element".to_string(),
@@ -221,7 +209,7 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         example: None,
     })?;
 
-    let risks_mitigations = risks_mitigations.ok_or_else(|| XsdValidationError {
+    let risks_mitigations = acc.risks_mitigations.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "ralph-risks-mitigations".to_string(),
         expected: "<ralph-risks-mitigations> element".to_string(),
@@ -232,7 +220,7 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         example: None,
     })?;
 
-    let verification_strategy = verification_strategy.ok_or_else(|| XsdValidationError {
+    let verification_strategy = acc.verification_strategy.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "ralph-verification-strategy".to_string(),
         expected: "<ralph-verification-strategy> element".to_string(),
@@ -247,6 +235,6 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         critical_files,
         risks_mitigations,
         verification_strategy,
-        skills_mcp,
+        skills_mcp: acc.skills_mcp,
     })
 }

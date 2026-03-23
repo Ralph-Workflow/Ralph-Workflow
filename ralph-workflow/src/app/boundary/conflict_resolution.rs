@@ -37,7 +37,6 @@ pub fn run_ai_conflict_resolution_with_runtime(
         reviewer_agent,
         registry,
     } = params;
-
     let mut timer = crate::app::runtime_factory::create_timer();
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*executor_arc;
     let mut runtime = crate::app::runtime_factory::create_pipeline_runtime(
@@ -52,15 +51,30 @@ pub fn run_ai_conflict_resolution_with_runtime(
             workspace_arc: Arc::clone(&workspace_arc),
         },
     );
-
     let log_dir = ".agent/logs/rebase_conflict_resolution";
     workspace.create_dir_all(Path::new(log_dir))?;
+    run_conflict_prompt_and_check(
+        resolution_prompt,
+        reviewer_agent,
+        log_dir,
+        registry,
+        workspace,
+        &mut runtime,
+    )
+}
 
+fn run_conflict_prompt_and_check(
+    resolution_prompt: &str,
+    reviewer_agent: &str,
+    log_dir: &str,
+    registry: &crate::agents::AgentRegistry,
+    workspace: &dyn Workspace,
+    runtime: &mut crate::pipeline::PipelineRuntime<'_>,
+) -> anyhow::Result<ConflictResolutionResult> {
     let agent_config = registry
         .resolve_config(reviewer_agent)
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {reviewer_agent}"))?;
     let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
-
     let log_prefix = format!("{log_dir}/conflict_resolution");
     let model_index = 0usize;
     let attempt = crate::pipeline::logfile::next_logfile_attempt_index(
@@ -75,7 +89,6 @@ pub fn run_ai_conflict_resolution_with_runtime(
         model_index,
         attempt,
     );
-
     let prompt_cmd = crate::pipeline::PromptCommand {
         label: reviewer_agent,
         display_name: reviewer_agent,
@@ -88,12 +101,14 @@ pub fn run_ai_conflict_resolution_with_runtime(
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
     };
+    let result = crate::pipeline::run_with_prompt(&prompt_cmd, runtime)?;
+    check_conflict_exit_and_remaining(result.exit_code)
+}
 
-    let result = crate::pipeline::run_with_prompt(&prompt_cmd, &mut runtime)?;
-    if result.exit_code != 0 {
+fn check_conflict_exit_and_remaining(exit_code: i32) -> anyhow::Result<ConflictResolutionResult> {
+    if exit_code != 0 {
         return Ok(ConflictResolutionResult::Failed);
     }
-
     let remaining_conflicts = crate::git_helpers::get_conflicted_files()?;
     if remaining_conflicts.is_empty() {
         Ok(ConflictResolutionResult::FileEditsOnly)

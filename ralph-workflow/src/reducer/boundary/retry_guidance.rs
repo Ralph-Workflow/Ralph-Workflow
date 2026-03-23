@@ -23,34 +23,7 @@ pub fn strip_existing_same_agent_retry_preamble(prompt: &str) -> &str {
 
 pub fn same_agent_retry_preamble(continuation: &ContinuationState) -> String {
     let attempt = continuation.same_agent_retry_count;
-    let reason = continuation.same_agent_retry_reason;
-
-    let reason_line = match reason {
-        Some(SameAgentRetryReason::Timeout) => "Previous attempt timed out.".to_string(),
-        Some(SameAgentRetryReason::TimeoutWithContext) => {
-            // If a context file was written (session-less agent), include the path
-            continuation.timeout_context_file_path.as_ref().map_or_else(
-                || {
-                    "Previous attempt timed out with partial progress. Your context has been preserved via session continuation.".to_string()
-                },
-                |context_path| {
-                    format!(
-                        "Previous attempt timed out with partial progress.\n\
-                         Your prior context has been preserved at: {context_path}\n\
-                         Read that file first to continue from where you left off."
-                    )
-                },
-            )
-        }
-        Some(SameAgentRetryReason::InternalError) => {
-            "Previous attempt failed with an internal/unknown error.".to_string()
-        }
-        Some(SameAgentRetryReason::Other) => {
-            "Previous attempt failed with a non-retriable error (non-auth, non-rate-limit)."
-                .to_string()
-        }
-        None => "Retrying after a transient invocation failure.".to_string(),
-    };
+    let reason_line = retry_reason_line(continuation);
 
     format!(
         "## Retry Note (attempt {attempt})\n\
@@ -63,6 +36,34 @@ Please retry with these constraints:\n\
 - If output is large, summarize and write artifacts to the required files.\n\
 - Always produce valid XML output that matches the schema.\n"
     )
+}
+
+fn retry_reason_line(continuation: &ContinuationState) -> String {
+    match continuation.same_agent_retry_reason {
+        Some(SameAgentRetryReason::Timeout) => "Previous attempt timed out.".to_string(),
+        Some(SameAgentRetryReason::TimeoutWithContext) => {
+            timeout_with_context_reason_line(continuation.timeout_context_file_path.as_deref())
+        }
+        Some(SameAgentRetryReason::InternalError) => {
+            "Previous attempt failed with an internal/unknown error.".to_string()
+        }
+        Some(SameAgentRetryReason::Other) => {
+            "Previous attempt failed with a non-retriable error (non-auth, non-rate-limit)."
+                .to_string()
+        }
+        None => "Retrying after a transient invocation failure.".to_string(),
+    }
+}
+
+fn timeout_with_context_reason_line(context_path: Option<&str>) -> String {
+    match context_path {
+        None => "Previous attempt timed out with partial progress. Your context has been preserved via session continuation.".to_string(),
+        Some(path) => format!(
+            "Previous attempt timed out with partial progress.\n\
+             Your prior context has been preserved at: {path}\n\
+             Read that file first to continue from where you left off."
+        ),
+    }
 }
 
 #[cfg(test)]

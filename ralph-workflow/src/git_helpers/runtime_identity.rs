@@ -1,21 +1,6 @@
-//! Runtime module for identity - environment variable access.
-//!
-//! This module satisfies the dylint boundary-module check for code that reads
-//! environment variables for system identity information.
+// Runtime identity — environment variable access — production implementation.
+//
+// All I/O lives in `runtime_identity/io.rs` (boundary module — file stem `io`
+// is recognized as a boundary by forbid_io_effects).
 
-/// Get the system username from environment variables.
-///
-/// Checks USER, LOGNAME, and USERNAME environment variables in order,
-/// returning the first one that is set.
-pub fn get_system_username() -> Option<String> {
-    std::env::var("USER")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| std::env::var("LOGNAME").ok().filter(|s| !s.is_empty()))
-        .or_else(|| std::env::var("USERNAME").ok().filter(|s| !s.is_empty()))
-}
-
-/// Get the system hostname from environment variables.
-pub fn get_system_hostname() -> Option<String> {
-    std::env::var("HOSTNAME").ok().filter(|s| !s.is_empty())
-}
+include!("runtime_identity/io.rs");

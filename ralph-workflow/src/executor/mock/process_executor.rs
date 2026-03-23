@@ -401,7 +401,7 @@ impl ProcessExecutor for MockProcessExecutor {
         _args: &[&str],
         _env: &[(String, String)],
         _workdir: Option<&Path>,
-    ) -> io::Result<std::process::Child> {
+    ) -> io::Result<crate::executor::SpawnedProcess> {
         Err(io::Error::other(
             "MockProcessExecutor doesn't support spawn() - use execute() instead",
         ))

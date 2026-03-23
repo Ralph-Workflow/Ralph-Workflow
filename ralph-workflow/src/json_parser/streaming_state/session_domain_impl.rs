@@ -3,25 +3,21 @@ impl StreamingSession {
         compute_content_hash_from_accumulated(&self.accumulated)
     }
 
+    fn classify_content_for_dedup(content: &str, has_text: bool) -> (bool, bool) {
+        let has_tool_use = content.contains("TOOL_USE:");
+        (has_tool_use, has_tool_use && has_text)
+    }
+
     #[must_use]
     pub fn is_duplicate_by_hash(
         &self,
         content: &str,
         tool_name_hints: Option<&std::collections::HashMap<usize, String>>,
     ) -> bool {
-        let has_tool_use = content.contains("TOOL_USE:");
-        let has_text = self
-            .accumulated
-            .iter()
-            .any(|((ct, _), v)| *ct == ContentType::Text && !v.is_empty());
-
-        if has_tool_use && has_text {
-            return self.is_duplicate_mixed_content(content, tool_name_hints);
-        }
-        if has_tool_use {
-            return self.is_duplicate_tool_use(content, tool_name_hints);
-        }
-
+        let has_text = self.accumulated.iter().any(|((ct, _), v)| *ct == ContentType::Text && !v.is_empty());
+        let (has_tool_use, is_mixed) = Self::classify_content_for_dedup(content, has_text);
+        if is_mixed { return self.is_duplicate_mixed_content(content, tool_name_hints); }
+        if has_tool_use { return self.is_duplicate_tool_use(content, tool_name_hints); }
         is_duplicate_text_content(&self.accumulated, content)
     }
 

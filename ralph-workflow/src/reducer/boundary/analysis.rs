@@ -33,123 +33,22 @@ impl MainEffectHandler {
         ctx: &mut PhaseContext<'_>,
         iteration: u32,
     ) -> Result<EffectResult> {
-        // Read PLAN.md (non-fatal if missing).
-        // Requirements: analysis should still run and report missing inputs.
-        let plan_path = Path::new(".agent/PLAN.md");
-        let plan_content = match ctx.workspace.read(plan_path) {
-            Ok(s) => s,
-            Err(err) => {
-                // Best-effort fallback: older checkpoints or interrupted runs may still have
-                // the XML plan available.
-                let xml_fallback = Path::new(".agent/tmp/plan.xml");
-                match ctx.workspace.read(xml_fallback) {
-                    Ok(xml) => format!(
-                        "[PLAN unavailable: failed to read .agent/PLAN.md ({err}); using fallback .agent/tmp/plan.xml]\n\n{xml}"
-                    ),
-                    Err(fallback_err) => format!(
-                        "[PLAN unavailable: failed to read .agent/PLAN.md ({err}); also failed to read .agent/tmp/plan.xml ({fallback_err})]"
-                    ),
-                }
-            }
-        };
-
-        // Generate git diff since HEAD (working-tree vs. last commit), non-fatal if it fails.
-        //
-        // Use the HEAD baseline (same as commit phase) so that already-committed changes from
-        // prior iterations are not included in the analysis context. The start_commit baseline
-        // is intentionally sticky and would accumulate all changes since pipeline start.
-        //
-        // For analysis, we must remain context-free: do NOT instruct git commands, and do NOT
-        // silently reuse a potentially stale `.agent/DIFF.backup`.
-        //
-        // Instead, if diff generation fails, emit an explicit placeholder and also refresh
-        // `.agent/DIFF.backup` with that placeholder as best-effort diagnostic state.
-        let diff_content = match crate::git_helpers::git_diff_in_repo(ctx.repo_root) {
-            Ok(diff) => {
-                // Best-effort: persist diff for prompt materialization fallbacks.
-                // Missing `.agent/DIFF.backup` must not be fatal.
-                let _ = write_diff_backup_with_workspace(ctx.workspace, &diff);
-                diff
-            }
-            Err(err) => {
-                let placeholder =
-                    format!("[DIFF unavailable: failed to generate git diff ({err})]");
-                let _ = write_diff_backup_with_workspace(ctx.workspace, &placeholder);
-                placeholder
-            }
-        };
-
-        // Generate analysis prompt
+        let plan_content = read_plan_content_with_fallback(ctx);
+        let diff_content = read_diff_content_with_backup(ctx);
         let prompt = crate::prompts::analysis::generate_analysis_prompt(
             &plan_content,
             &diff_content,
             self.state.continuation.is_continuation(),
             ctx.workspace,
         );
-
-        // XSD retry context: if the last analysis XML was invalid, instruct the agent to
-        // read the schema error and previous invalid output from workspace files.
-        let prompt = if self.state.continuation.xsd_retry_pending {
-            let xsd_error_path = ".agent/tmp/development_xsd_error.txt";
-            let last_output_path = ".agent/tmp/development_result.xml";
-            format!(
-                "## XSD Retry Note\n\n\
-Your previous XML output failed XSD validation.\n\
-- Read the validation error: {xsd_error_path}\n\
-- Read your previous invalid output: {last_output_path}\n\
-Then produce a corrected development_result.xml that conforms to the schema.\n\n\
-{prompt}"
-            )
-        } else {
-            prompt
-        };
-
-        // Same-agent retry context: include retry guidance for analysis retries too.
-        // This is especially critical for TimeoutWithContext retries without session support,
-        // where the preamble points the agent to the persisted timeout context file.
-        let prompt = if self.state.continuation.same_agent_retry_pending {
-            let retry_preamble =
-                super::retry_guidance::same_agent_retry_preamble(&self.state.continuation);
-            format!("{retry_preamble}\n{prompt}")
-        } else {
-            prompt
-        };
-
-        // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
-
-        // Get current agent from chain
-        let agent = self
-            .state
-            .agent_chain
-            .current_agent()
-            .cloned()
-            .unwrap_or_else(|| ctx.developer_agent.to_string());
-
-        // Invoke agent with analysis role
-        let result = self.invoke_agent(
-            ctx,
-            crate::agents::AgentDrain::Analysis,
-            AgentRole::Analysis,
-            &agent,
-            None,
+        let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
+        let prompt = apply_same_agent_retry_prefix(
             prompt,
-        )?;
-
-        // Emit AnalysisAgentInvoked event if agent invocation succeeded
-        let result = if result.additional_events.iter().any(|e| {
-            matches!(
-                e,
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-            )
-        }) {
-            result.with_additional_event(PipelineEvent::Development(
-                DevelopmentEvent::AnalysisAgentInvoked { iteration },
-            ))
-        } else {
-            result
-        };
-
+            self.state.continuation.same_agent_retry_pending,
+            &self.state.continuation,
+        );
+        let result = invoke_analysis_agent_with_prompt(self, ctx, prompt)?;
+        let result = maybe_add_analysis_invoked_event(result, iteration);
         Ok(result)
     }
 
@@ -173,41 +72,9 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
         ctx: &mut PhaseContext<'_>,
         pass: u32,
     ) -> Result<EffectResult> {
-        // Read ISSUES.md (review issues)
-        let issues_path = Path::new(".agent/ISSUES.md");
-        let issues_content = match ctx.workspace.read(issues_path) {
-            Ok(s) => s,
-            Err(err) => {
-                format!("[REVIEW ISSUES unavailable: failed to read .agent/ISSUES.md ({err})]")
-            }
-        };
-
-        // Generate git diff since HEAD
-        let diff_content = match crate::git_helpers::git_diff_in_repo(ctx.repo_root) {
-            Ok(diff) => {
-                let _ = write_diff_backup_with_workspace(ctx.workspace, &diff);
-                diff
-            }
-            Err(err) => {
-                let placeholder =
-                    format!("[DIFF unavailable: failed to generate git diff ({err})]");
-                let _ = write_diff_backup_with_workspace(ctx.workspace, &placeholder);
-                placeholder
-            }
-        };
-
-        // Read fix_result.xml (fix agent's self-assessment)
-        let fix_result_path = Path::new(".agent/tmp/fix_result.xml");
-        let fix_result_content = match ctx.workspace.read(fix_result_path) {
-            Ok(s) => s,
-            Err(err) => {
-                format!(
-                    "[FIX RESULT unavailable: failed to read .agent/tmp/fix_result.xml ({err})]"
-                )
-            }
-        };
-
-        // Generate fix analysis prompt
+        let issues_content = read_issues_content(ctx);
+        let diff_content = read_diff_content_with_backup(ctx);
+        let fix_result_content = read_fix_result_content(ctx);
         let prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
             &issues_content,
             &diff_content,
@@ -215,68 +82,148 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
             self.state.continuation.fix_continue_pending,
             ctx.workspace,
         );
+        let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
+        let prompt = apply_same_agent_retry_prefix(
+            prompt,
+            self.state.continuation.same_agent_retry_pending,
+            &self.state.continuation,
+        );
+        let result = invoke_analysis_agent_with_prompt(self, ctx, prompt)?;
+        let result = maybe_add_fix_analysis_invoked_event(result, pass);
+        Ok(result)
+    }
+}
 
-        // XSD retry context: if the last analysis XML was invalid, instruct the agent to
-        // read the schema error and previous invalid output from workspace files.
-        let prompt = if self.state.continuation.xsd_retry_pending {
-            let xsd_error_path = ".agent/tmp/development_xsd_error.txt";
-            let last_output_path = ".agent/tmp/development_result.xml";
-            format!(
-                "## XSD Retry Note\n\n\
-Your previous XML output failed XSD validation.\
+fn read_plan_content_with_fallback(ctx: &PhaseContext<'_>) -> String {
+    let plan_path = Path::new(".agent/PLAN.md");
+    match ctx.workspace.read(plan_path) {
+        Ok(s) => s,
+        Err(err) => {
+            let xml_fallback = Path::new(".agent/tmp/plan.xml");
+            match ctx.workspace.read(xml_fallback) {
+                Ok(xml) => format!(
+                    "[PLAN unavailable: failed to read .agent/PLAN.md ({err}); using fallback .agent/tmp/plan.xml]\n\n{xml}"
+                ),
+                Err(fallback_err) => format!(
+                    "[PLAN unavailable: failed to read .agent/PLAN.md ({err}); also failed to read .agent/tmp/plan.xml ({fallback_err})]"
+                ),
+            }
+        }
+    }
+}
+
+fn read_diff_content_with_backup(ctx: &PhaseContext<'_>) -> String {
+    match crate::git_helpers::git_diff_in_repo(ctx.repo_root) {
+        Ok(diff) => {
+            let _ = write_diff_backup_with_workspace(ctx.workspace, &diff);
+            diff
+        }
+        Err(err) => {
+            let placeholder = format!("[DIFF unavailable: failed to generate git diff ({err})]");
+            let _ = write_diff_backup_with_workspace(ctx.workspace, &placeholder);
+            placeholder
+        }
+    }
+}
+
+fn read_issues_content(ctx: &PhaseContext<'_>) -> String {
+    let issues_path = Path::new(".agent/ISSUES.md");
+    match ctx.workspace.read(issues_path) {
+        Ok(s) => s,
+        Err(err) => {
+            format!("[REVIEW ISSUES unavailable: failed to read .agent/ISSUES.md ({err})]")
+        }
+    }
+}
+
+fn read_fix_result_content(ctx: &PhaseContext<'_>) -> String {
+    let fix_result_path = Path::new(".agent/tmp/fix_result.xml");
+    match ctx.workspace.read(fix_result_path) {
+        Ok(s) => s,
+        Err(err) => {
+            format!("[FIX RESULT unavailable: failed to read .agent/tmp/fix_result.xml ({err})]")
+        }
+    }
+}
+
+fn apply_xsd_retry_note(prompt: String, xsd_retry_pending: bool) -> String {
+    if xsd_retry_pending {
+        let xsd_error_path = ".agent/tmp/development_xsd_error.txt";
+        let last_output_path = ".agent/tmp/development_result.xml";
+        format!(
+            "## XSD Retry Note\n\n\
+Your previous XML output failed XSD validation.\n\
 - Read the validation error: {xsd_error_path}\n\
 - Read your previous invalid output: {last_output_path}\n\
 Then produce a corrected development_result.xml that conforms to the schema.\n\n\
 {prompt}"
-            )
-        } else {
-            prompt
-        };
+        )
+    } else {
+        prompt
+    }
+}
 
-        // Same-agent retry context
-        let prompt = if self.state.continuation.same_agent_retry_pending {
-            let retry_preamble =
-                super::retry_guidance::same_agent_retry_preamble(&self.state.continuation);
-            format!("{retry_preamble}\n{prompt}")
-        } else {
-            prompt
-        };
+fn apply_same_agent_retry_prefix(
+    prompt: String,
+    same_agent_retry_pending: bool,
+    continuation: &crate::reducer::state::ContinuationState,
+) -> String {
+    if same_agent_retry_pending {
+        let retry_preamble = super::retry_guidance::same_agent_retry_preamble(continuation);
+        format!("{retry_preamble}\n{prompt}")
+    } else {
+        prompt
+    }
+}
 
-        // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
+fn invoke_analysis_agent_with_prompt(
+    handler: &mut MainEffectHandler,
+    ctx: &mut PhaseContext<'_>,
+    prompt: String,
+) -> Result<EffectResult> {
+    handler.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
+    let agent = handler
+        .state
+        .agent_chain
+        .current_agent()
+        .cloned()
+        .unwrap_or_else(|| ctx.developer_agent.to_string());
+    handler.invoke_agent(
+        ctx,
+        crate::agents::AgentDrain::Analysis,
+        AgentRole::Analysis,
+        &agent,
+        None,
+        prompt,
+    )
+}
 
-        // Get current agent from chain
-        let agent = self
-            .state
-            .agent_chain
-            .current_agent()
-            .cloned()
-            .unwrap_or_else(|| ctx.developer_agent.to_string());
+fn maybe_add_analysis_invoked_event(result: EffectResult, iteration: u32) -> EffectResult {
+    if result.additional_events.iter().any(|e| {
+        matches!(
+            e,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        )
+    }) {
+        result.with_additional_event(PipelineEvent::Development(
+            DevelopmentEvent::AnalysisAgentInvoked { iteration },
+        ))
+    } else {
+        result
+    }
+}
 
-        // Invoke agent with analysis role
-        let result = self.invoke_agent(
-            ctx,
-            crate::agents::AgentDrain::Analysis,
-            AgentRole::Analysis,
-            &agent,
-            None,
-            prompt,
-        )?;
-
-        // Emit FixAnalysisAgentInvoked event if agent invocation succeeded
-        let result = if result.additional_events.iter().any(|e| {
-            matches!(
-                e,
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-            )
-        }) {
-            result.with_additional_event(PipelineEvent::Review(
-                ReviewEvent::FixAnalysisAgentInvoked { pass },
-            ))
-        } else {
-            result
-        };
-
-        Ok(result)
+fn maybe_add_fix_analysis_invoked_event(result: EffectResult, pass: u32) -> EffectResult {
+    if result.additional_events.iter().any(|e| {
+        matches!(
+            e,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        )
+    }) {
+        result.with_additional_event(PipelineEvent::Review(
+            ReviewEvent::FixAnalysisAgentInvoked { pass },
+        ))
+    } else {
+        result
     }
 }

@@ -53,28 +53,45 @@ pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
     }
 
     impl Accumulator {
-        fn process_line(mut self, line: &str) -> Self {
+        fn process_line(self, line: &str) -> Self {
             if line.starts_with("diff --git ") {
-                if let Some(previous_file) = self.current_file.take() {
-                    if !previous_file.lines.is_empty() {
-                        self.files.push(previous_file);
-                    }
-                }
                 let priority = line
-                    .split(" b/")
-                    .nth(1)
-                    .map(prioritize_file_path)
+                    .split_once(" b/")
+                    .map(|(_, after)| prioritize_file_path(after))
                     .unwrap_or_default();
-                self.current_file = Some(DiffFile {
+                let new_file = DiffFile {
                     priority,
                     lines: vec![line.to_string()],
-                });
-                self
-            } else if let Some(current) = self.current_file.as_mut() {
-                current.lines.push(line.to_string());
-                self
+                };
+                // Finalize the previous file and start a new one.
+                let finalized_files: Vec<DiffFile> = self
+                    .files
+                    .into_iter()
+                    .chain(
+                        self.current_file
+                            .into_iter()
+                            .filter(|f| !f.lines.is_empty()),
+                    )
+                    .collect();
+                Self {
+                    files: finalized_files,
+                    current_file: Some(new_file),
+                }
             } else {
-                self
+                match self.current_file {
+                    Some(current) => Self {
+                        files: self.files,
+                        current_file: Some(DiffFile {
+                            priority: current.priority,
+                            lines: current
+                                .lines
+                                .into_iter()
+                                .chain(std::iter::once(line.to_string()))
+                                .collect(),
+                        }),
+                    },
+                    None => self,
+                }
             }
         }
     }
@@ -88,14 +105,9 @@ pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
             files,
             current_file,
         } = final_acc;
-        let mut all_files = files;
-        if let Some(current_file) = current_file {
-            if !current_file.lines.is_empty() {
-                all_files.push(current_file);
-            }
-        }
-        all_files
+        files
             .into_iter()
+            .chain(current_file.into_iter().filter(|f| !f.lines.is_empty()))
             .sorted_by_key(|f| -f.priority)
             .collect()
     };
@@ -257,29 +269,41 @@ pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
 
     let adjusted: Vec<String> = if current_size + suffix_len > max_size {
         let target_bytes = max_size.saturating_sub(suffix_len);
-        let mut kept: Vec<String> = Vec::new();
-        let mut accumulated = 0usize;
-        for line in result.iter().rev() {
-            let line_size = line.len() + 1;
-            if accumulated + line_size <= target_bytes {
-                accumulated += line_size;
-                kept.push(line.clone());
-                continue;
-            }
-
-            if accumulated == 0 {
-                let max_for_line = target_bytes.saturating_sub(1);
-                let new_line = truncate_to_utf8_boundary(line, max_for_line);
-                if !new_line.is_empty() {
-                    kept.push(new_line);
+        // Scan in reverse to collect lines that fit within target_bytes.
+        // The scan state is (accumulated_so_far, still_accepting).
+        // When a line doesn't fit and nothing has been accumulated yet,
+        // we truncate that line to the UTF-8 boundary and stop.
+        result
+            .iter()
+            .rev()
+            .scan((0usize, true), |(accumulated, accepting), line| {
+                if !*accepting {
+                    return None;
                 }
-            }
-
-            break;
-        }
-
-        kept.reverse();
-        kept
+                let line_size = line.len() + 1;
+                if *accumulated + line_size <= target_bytes {
+                    *accumulated += line_size;
+                    Some(Some(line.clone()))
+                } else if *accumulated == 0 {
+                    // First line already too big: truncate it.
+                    *accepting = false;
+                    let max_for_line = target_bytes.saturating_sub(1);
+                    let new_line = truncate_to_utf8_boundary(line, max_for_line);
+                    if new_line.is_empty() {
+                        Some(None)
+                    } else {
+                        Some(Some(new_line))
+                    }
+                } else {
+                    *accepting = false;
+                    None
+                }
+            })
+            .flatten()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
     } else {
         result
     };

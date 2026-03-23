@@ -2,7 +2,7 @@ use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::PhaseContext;
 use crate::phases::{effective_model_budget_bytes, truncate_diff_to_model_budget};
-use crate::prompts::content_reference::{DiffContentReference, MAX_INLINE_CONTENT_SIZE};
+use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
 use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode};
 use crate::reducer::domain::residual::{
     parse_residual_files_status, ResidualFilesStatusParseError,
@@ -12,9 +12,7 @@ use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::WorkspaceIoErrorKind;
 use crate::reducer::prompt_inputs::sha256_hex_str;
-use crate::reducer::state::{
-    MaterializedPromptInput, PromptInputKind, PromptInputRepresentation, PromptMode,
-};
+use crate::reducer::state::{MaterializedPromptInput, PromptInputKind, PromptMode};
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
@@ -36,35 +34,49 @@ impl crate::reducer::boundary::MainEffectHandler {
     // Agent invocation
     // =====================================================================
 
+    fn read_commit_prompt(ctx: &PhaseContext<'_>, attempt: u32) -> Result<String> {
+        match ctx
+            .workspace
+            .read(Path::new(".agent/tmp/commit_prompt.txt"))
+        {
+            Ok(s) => Ok(s),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Err(ErrorEvent::CommitPromptMissing { attempt }.into())
+            }
+            Err(err) => Err(ErrorEvent::WorkspaceReadFailed {
+                path: ".agent/tmp/commit_prompt.txt".to_string(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            }
+            .into()),
+        }
+    }
+
+    fn append_commit_agent_invoked(result: EffectResult, attempt: u32) -> EffectResult {
+        use crate::reducer::event::AgentEvent;
+        if result.additional_events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+            )
+        }) {
+            result
+                .clone()
+                .with_additional_event(PipelineEvent::commit_agent_invoked(attempt))
+        } else {
+            result
+        }
+    }
+
     /// Invoke the current commit agent with the prepared prompt.
     pub(in crate::reducer::boundary) fn invoke_commit_agent(
         &mut self,
         ctx: &mut PhaseContext<'_>,
     ) -> Result<EffectResult> {
         use crate::agents::AgentRole;
-        use crate::reducer::event::AgentEvent;
 
-        // Normalize agent chain state before invocation for determinism
         self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Commit);
-
         let attempt = current_commit_attempt(&self.state.commit);
-        let prompt = match ctx
-            .workspace
-            .read(Path::new(".agent/tmp/commit_prompt.txt"))
-        {
-            Ok(s) => s,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                return Err(ErrorEvent::CommitPromptMissing { attempt }.into());
-            }
-            Err(err) => {
-                return Err(ErrorEvent::WorkspaceReadFailed {
-                    path: ".agent/tmp/commit_prompt.txt".to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-                .into());
-            }
-        };
-
+        let prompt = Self::read_commit_prompt(ctx, attempt)?;
         let agent = self
             .state
             .agent_chain
@@ -80,21 +92,7 @@ impl crate::reducer::boundary::MainEffectHandler {
             None,
             prompt,
         )?;
-        let result = if result.additional_events.iter().any(|e| {
-            matches!(
-                e,
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-            )
-        }) {
-            {
-                result
-                    .clone()
-                    .with_additional_event(PipelineEvent::commit_agent_invoked(attempt))
-            }
-        } else {
-            result
-        };
-        Ok(result)
+        Ok(Self::append_commit_agent_invoked(result, attempt))
     }
 
     // =====================================================================
@@ -107,168 +105,38 @@ impl crate::reducer::boundary::MainEffectHandler {
         ctx: &PhaseContext<'_>,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
-        use crate::agents::AgentRole;
-        use std::io::Write;
-
-        // Precondition: orchestrator ensures prompt_mode is never Continuation.
-        // Commit is atomic (not incremental work), so Continuation is semantically invalid.
-        // See phase_effects/commit.rs where mode is derived from retry state.
-        debug_assert!(
-            !matches!(prompt_mode, PromptMode::Continuation),
-            "Orchestrator must filter Continuation mode before deriving PrepareCommitPrompt effect"
-        );
-
-        let attempt = current_commit_attempt(&self.state.commit);
-
-        if matches!(prompt_mode, PromptMode::XsdRetry) {
-            let xsd_error = self
-                .state
-                .continuation
-                .last_xsd_error
-                .clone()
-                .unwrap_or_else(|| {
-                    "XML output failed validation. Provide valid XML output.".to_string()
-                });
-
-            let consumer_sig = self.state.agent_chain.consumer_signature_sha256();
-            let diff_content_id = self
-                .state
-                .commit_diff_content_id_sha256
-                .clone()
-                .or_else(|| {
-                    // If the diff content-id is unexpectedly missing, derive a stable id from the
-                    // materialized model-safe diff content.
-                    let model_safe_path = Path::new(".agent/tmp/commit_diff.model_safe.txt");
-                    ctx.workspace
-                        .read(model_safe_path)
-                        .ok()
-                        .map(|diff| sha256_hex_str(&diff))
-                })
-                .unwrap_or_else(|| "missing_commit_diff_content_id".to_string());
-
-            // Content-id validation for replay determinism: the XSD-retry commit prompt depends
-            // on the diff inputs AND the specific validation error context.
-            let prompt_content_id = crate::phases::commit::commit_xsd_retry_prompt_content_id(
-                &diff_content_id,
-                xsd_error.as_str(),
-                &consumer_sig,
-            );
-
-            let scope_key = PromptScopeKey::for_commit(
-                self.state.iteration,
-                attempt,
-                RetryMode::Xsd {
-                    count: self.state.continuation.xsd_retry_count,
-                },
-                self.state.recovery_epoch,
-            );
-            let prompt_key = scope_key.to_string();
-            let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                &scope_key,
-                &self.state.prompt_history,
-                Some(&prompt_content_id),
-                || {
-                    // Generate with log-based validation
-                    let rendered = crate::prompts::prompt_commit_xsd_retry_with_log(
-                        ctx.template_context,
-                        &xsd_error,
-                        ctx.workspace,
-                        "commit_xsd_retry",
-                    );
-
-                    // Validate using substitution log
-                    if !rendered.log.is_complete() {
-                        // This shouldn't happen in practice since prompt generation handles defaults,
-                        // but if it does, we need to return something. The validation check below
-                        // will catch it and emit the appropriate event.
-                        let _ = writeln!(
-                            std::io::stderr(),
-                            "Warning: Template rendering produced incomplete substitution log: {:?}",
-                            rendered.log.unsubstituted
-                        );
-                    }
-
-                    rendered.content
-                },
-            );
-
-            // Re-validate if this is a freshly generated prompt (not replayed)
-            // For replayed prompts, we trust they were valid when originally generated
-            let rendered_log = if was_replayed {
-                None
-            } else {
-                // Generate again to get the log for validation
-                let rendered = crate::prompts::prompt_commit_xsd_retry_with_log(
-                    ctx.template_context,
-                    &xsd_error,
-                    ctx.workspace,
-                    "commit_xsd_retry",
-                );
-
-                if !rendered.log.is_complete() {
-                    let missing = rendered.log.unsubstituted.clone();
-                    let result = EffectResult::event(PipelineEvent::template_rendered(
-                        crate::reducer::event::PipelinePhase::CommitMessage,
-                        "commit_xsd_retry".to_string(),
-                        rendered.log,
-                    ))
-                    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                        AgentRole::Commit,
-                        "commit_xsd_retry".to_string(),
-                        missing,
-                        Vec::new(),
-                    ))
-                    .with_ui_event(UIEvent::PromptReplayHit {
-                        key: prompt_key,
-                        was_replayed,
-                    });
-                    return Ok(result);
-                }
-
-                Some(rendered.log)
-            };
-
-            let tmp_dir = Path::new(".agent/tmp");
-            if !ctx.workspace.exists(tmp_dir) {
-                ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
-                    ErrorEvent::WorkspaceCreateDirAllFailed {
-                        path: tmp_dir.display().to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    }
-                })?;
-            }
-
-            // Write prompt file (non-fatal: if write fails, log warning and continue)
-            // Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
-            // If the prompt file write fails, we continue with orchestration - loop recovery will
-            // handle convergence if needed.
-            if let Err(err) = ctx
-                .workspace
-                .write(Path::new(".agent/tmp/commit_prompt.txt"), &prompt)
-            {
-                ctx.logger.warn(&format!(
-                    "Failed to write commit prompt file: {err}. Pipeline will continue (loop recovery will handle convergence)."
-                ));
-            }
-
-            let prompt_captured_event = crate::phases::commit::prompt_captured_event(
-                &prompt_key,
-                &prompt,
-                &prompt_content_id,
-                was_replayed,
-            );
-            let result = crate::phases::commit::commit_prompt_prepared_result(
-                attempt,
-                self.state.phase,
-                prompt_key,
-                was_replayed,
-                prompt_captured_event,
-                rendered_log,
-                "commit_xsd_retry",
-            );
-            return Ok(result);
+        debug_assert_not_continuation(prompt_mode);
+        match prompt_mode {
+            PromptMode::XsdRetry => self.prepare_commit_xsd_retry_prompt(ctx),
+            mode => self.prepare_commit_prompt_from_inputs(ctx, mode),
         }
+    }
 
+    fn prepare_commit_xsd_retry_prompt(&self, ctx: &PhaseContext<'_>) -> Result<EffectResult> {
+        let attempt = current_commit_attempt(&self.state.commit);
+        let gen = match gen_xsd_retry_commit_prompt(self, ctx, attempt) {
+            Ok(g) => g,
+            Err(early) => return Ok(*early),
+        };
+        super::io_commit::ensure_commit_tmp_dir(ctx)?;
+        super::io_commit::write_commit_prompt_file(ctx, &gen.prompt);
+        Ok(assemble_commit_xsd_retry_result(
+            self,
+            attempt,
+            gen.prompt_key,
+            gen.prompt,
+            gen.prompt_content_id,
+            gen.was_replayed,
+            gen.rendered_log,
+        ))
+    }
+
+    fn prepare_commit_prompt_from_inputs(
+        &self,
+        ctx: &PhaseContext<'_>,
+        prompt_mode: PromptMode,
+    ) -> Result<EffectResult> {
+        let attempt = current_commit_attempt(&self.state.commit);
         let inputs = self
             .state
             .prompt_inputs
@@ -276,47 +144,13 @@ impl crate::reducer::boundary::MainEffectHandler {
             .as_ref()
             .filter(|c| c.attempt == attempt)
             .ok_or(ErrorEvent::CommitInputsNotMaterialized { attempt })?;
-
         let model_safe_path = Path::new(".agent/tmp/commit_diff.model_safe.txt");
-        let diff_for_prompt = match &inputs.diff.representation {
-            PromptInputRepresentation::Inline => match ctx.workspace.read(model_safe_path) {
-                Ok(diff) => diff,
-                Err(err) => {
-                    ctx.logger.warn(&format!(
-                        "Missing/unreadable materialized commit diff at {} ({err}); invalidating commit inputs to rematerialize",
-                        model_safe_path.display()
-                    ));
-                    // Recoverability: tmp artifacts may be cleaned between checkpoints.
-                    // Force rerunning CheckCommitDiff to recreate the diff and its materialization.
-                    return Ok(EffectResult::event(PipelineEvent::commit_diff_invalidated(
-                        "Missing/unreadable .agent/tmp/commit_diff.model_safe.txt".to_string(),
-                    )));
-                }
-            },
-            PromptInputRepresentation::FileReference { path } => {
-                if !ctx.workspace.exists(path) {
-                    ctx.logger.warn(&format!(
-                        "Missing materialized commit diff reference at {}; invalidating commit inputs to rematerialize",
-                        path.display()
-                    ));
-                    // Recoverability: tmp artifacts may be cleaned between checkpoints.
-                    // Force rerunning CheckCommitDiff to recreate the diff and its materialization.
-                    return Ok(EffectResult::event(PipelineEvent::commit_diff_invalidated(
-                        "Missing materialized commit diff reference".to_string(),
-                    )));
-                }
-                DiffContentReference::ReadFromFile {
-                    path: path.clone(),
-                    start_commit: String::new(),
-                    description: format!(
-                        "Diff is {} bytes (exceeds {} limit)",
-                        inputs.diff.final_bytes, MAX_INLINE_CONTENT_SIZE
-                    ),
-                }
-                .render_for_template()
+        match super::io_commit::load_commit_diff_for_prompt(ctx, inputs, model_safe_path) {
+            Ok(diff_for_prompt) => {
+                self.prepare_commit_prompt_with_diff_and_mode(ctx, &diff_for_prompt, prompt_mode)
             }
-        };
-        self.prepare_commit_prompt_with_diff_and_mode(ctx, &diff_for_prompt, prompt_mode)
+            Err(early) => Ok(*early),
+        }
     }
 
     /// Prepare prompt content for normal and same-agent retry modes.
@@ -326,198 +160,127 @@ impl crate::reducer::boundary::MainEffectHandler {
         diff_for_prompt: &str,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
-        use crate::agents::AgentRole;
-
         let attempt = current_commit_attempt(&self.state.commit);
-
-        let continuation_state = &self.state.continuation;
-        let diff_content_id = self
-            .state
-            .commit_diff_content_id_sha256
-            .clone()
-            .unwrap_or_else(|| sha256_hex_str(diff_for_prompt));
-        let consumer_sig = self.state.agent_chain.consumer_signature_sha256();
-        let prompt_content_id = crate::phases::commit::commit_prompt_content_id(
-            &diff_content_id,
-            &consumer_sig,
-            &self.state.commit_residual_files,
-        );
-
-        let (prompt_key, prompt, was_replayed, prompt_content_id, should_validate) =
-            match prompt_mode {
-                PromptMode::SameAgentRetry => {
-                    // Same-agent retry: prepend retry guidance to the last prepared prompt for this
-                    // phase (preserves XSD retry context if present).
-                    let retry_preamble =
-                        crate::reducer::boundary::retry_guidance::same_agent_retry_preamble(
-                            continuation_state,
-                        );
-                    let scope_key = PromptScopeKey::for_commit(
-                        self.state.iteration,
-                        attempt,
-                        RetryMode::SameAgent {
-                            count: continuation_state.same_agent_retry_count,
-                        },
-                        self.state.recovery_epoch,
-                    );
-                    let prompt_key = scope_key.to_string();
-                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                        &scope_key,
-                        &self.state.prompt_history,
-                        Some(&prompt_content_id),
-                        || {
-                            let previous_prompt = ctx
-                                .workspace
-                                .read(Path::new(".agent/tmp/commit_prompt.txt"))
-                                .ok();
-                            let generated_base_prompt =
-                                crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                                    ctx.template_context,
-                                    diff_for_prompt,
-                                    ctx.workspace,
-                                    "commit_message_xml",
-                                )
-                                .content;
-                            let (base_prompt, _local_should_validate) =
-                                crate::phases::commit::base_prompt_for_same_agent_retry(
-                                    previous_prompt.as_deref(),
-                                    &generated_base_prompt,
-                                );
-                            format!("{retry_preamble}\n{base_prompt}")
-                        },
-                    );
-                    let should_validate = !was_replayed;
-                    (
-                        prompt_key,
-                        prompt,
-                        was_replayed,
-                        prompt_content_id,
-                        should_validate,
-                    )
-                }
-                PromptMode::Normal => {
-                    let scope_key = PromptScopeKey::for_commit(
-                        self.state.iteration,
-                        attempt,
-                        RetryMode::Normal,
-                        self.state.recovery_epoch,
-                    );
-                    let prompt_key = scope_key.to_string();
-                    let residual_files = self.state.commit_residual_files.clone();
-                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                        &scope_key,
-                        &self.state.prompt_history,
-                        Some(&prompt_content_id),
-                        || {
-                            // Use log-based rendering
-                            let rendered =
-                                crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                                    ctx.template_context,
-                                    diff_for_prompt,
-                                    ctx.workspace,
-                                    "commit_message_xml",
-                                );
-                            // Prepend residual-files context when the AI left files uncommitted
-                            // in a previous pass and they are now queued for this commit.
-                            crate::phases::commit::prepend_residual_files_context(
-                                &rendered.content,
-                                &residual_files,
-                            )
-                        },
-                    );
-                    (prompt_key, prompt, was_replayed, prompt_content_id, true)
-                }
-                PromptMode::XsdRetry => {
-                    // XsdRetry is handled in prepare_commit_prompt() which returns early.
-                    // This branch is unreachable but required for exhaustiveness.
-                    unreachable!(
-                    "XsdRetry mode should be handled by prepare_commit_prompt() before calling this function"
-                )
-                }
-                PromptMode::Continuation => {
-                    // Precondition violation: orchestrator must never derive Continuation mode
-                    // for commit phase (validated by debug_assert above and orchestration tests).
-                    unreachable!(
-                        "Continuation mode is invalid for commit phase; \
-                         orchestrator should constrain to {{Normal, XsdRetry, SameAgentRetry}}"
-                    )
-                }
-            };
-
-        let rendered_log = if should_validate && !was_replayed {
-            // Generate again to get the log for validation
-            // Only validate freshly generated prompts, not replayed ones
-            let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                ctx.template_context,
-                diff_for_prompt,
-                ctx.workspace,
-                "commit_message_xml",
-            );
-
-            if !rendered.log.is_complete() {
-                let missing = rendered.log.unsubstituted.clone();
-                let result = EffectResult::event(PipelineEvent::template_rendered(
-                    crate::reducer::event::PipelinePhase::CommitMessage,
-                    "commit_message_xml".to_string(),
-                    rendered.log,
-                ))
-                .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                    AgentRole::Commit,
-                    "commit_message_xml".to_string(),
-                    missing,
-                    Vec::new(),
-                ))
-                .with_ui_event(UIEvent::PromptReplayHit {
-                    key: prompt_key,
-                    was_replayed,
-                });
-                return Ok(result);
-            }
-            Some(rendered.log)
-        } else {
-            None
-        };
-
-        let prompt_captured_event = crate::phases::commit::prompt_captured_event(
-            &prompt_key,
-            &prompt,
+        let prompt_content_id = compute_commit_prompt_content_id(self, diff_for_prompt);
+        let gen = self.gen_commit_prompt_for_mode(
+            ctx,
+            diff_for_prompt,
+            prompt_mode,
+            attempt,
             &prompt_content_id,
-            was_replayed,
         );
-
-        let tmp_dir = Path::new(".agent/tmp");
-        if !ctx.workspace.exists(tmp_dir) {
-            ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
-                ErrorEvent::WorkspaceCreateDirAllFailed {
-                    path: tmp_dir.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-            })?;
-        }
-
+        let rendered_log = match validate_commit_message_template(ctx, diff_for_prompt, &gen) {
+            Ok(log) => log,
+            Err(early) => return Ok(*early),
+        };
+        super::io_commit::ensure_commit_tmp_dir(ctx)?;
         // Write prompt file (non-fatal: if write fails, log warning and continue)
         // Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
-        // If the prompt file write fails, we continue with orchestration - loop recovery will
-        // handle convergence if needed.
-        if let Err(err) = ctx
-            .workspace
-            .write(Path::new(".agent/tmp/commit_prompt.txt"), &prompt)
-        {
-            ctx.logger.warn(&format!(
-                "Failed to write commit prompt file: {err}. Pipeline will continue (loop recovery will handle convergence)."
-            ));
-        }
-
-        let result = crate::phases::commit::commit_prompt_prepared_result(
+        super::io_commit::write_commit_prompt_file(ctx, &gen.prompt);
+        let prompt_captured_event = crate::phases::commit::prompt_captured_event(
+            &gen.prompt_key,
+            &gen.prompt,
+            &gen.prompt_content_id,
+            gen.was_replayed,
+        );
+        Ok(crate::phases::commit::commit_prompt_prepared_result(
             attempt,
             self.state.phase,
-            prompt_key,
-            was_replayed,
+            gen.prompt_key,
+            gen.was_replayed,
             prompt_captured_event,
             rendered_log,
             "commit_message_xml",
+        ))
+    }
+
+    fn gen_commit_prompt_for_mode(
+        &self,
+        ctx: &PhaseContext<'_>,
+        diff_for_prompt: &str,
+        prompt_mode: PromptMode,
+        attempt: u32,
+        prompt_content_id: &str,
+    ) -> CommitPromptGenerated {
+        match prompt_mode {
+            PromptMode::SameAgentRetry => {
+                self.gen_same_agent_retry_commit_prompt(ctx, diff_for_prompt, attempt, prompt_content_id)
+            }
+            PromptMode::Normal => {
+                self.gen_normal_commit_prompt(ctx, diff_for_prompt, attempt, prompt_content_id)
+            }
+            PromptMode::XsdRetry => unreachable!(
+                "XsdRetry mode should be handled by prepare_commit_prompt() before calling this function"
+            ),
+            PromptMode::Continuation => unreachable!(
+                "Continuation mode is invalid for commit phase; \
+                 orchestrator should constrain to {{Normal, XsdRetry, SameAgentRetry}}"
+            ),
+        }
+    }
+
+    fn gen_same_agent_retry_commit_prompt(
+        &self,
+        ctx: &PhaseContext<'_>,
+        diff_for_prompt: &str,
+        attempt: u32,
+        prompt_content_id: &str,
+    ) -> CommitPromptGenerated {
+        let continuation_state = &self.state.continuation;
+        let retry_preamble =
+            crate::reducer::boundary::retry_guidance::same_agent_retry_preamble(continuation_state);
+        let scope_key = PromptScopeKey::for_commit(
+            self.state.iteration,
+            attempt,
+            RetryMode::SameAgent {
+                count: continuation_state.same_agent_retry_count,
+            },
+            self.state.recovery_epoch,
         );
-        Ok(result)
+        let prompt_key = scope_key.to_string();
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            Some(prompt_content_id),
+            || gen_same_agent_retry_prompt_text(ctx, diff_for_prompt, &retry_preamble),
+        );
+        CommitPromptGenerated {
+            prompt_key,
+            prompt,
+            was_replayed,
+            prompt_content_id: prompt_content_id.to_string(),
+            should_validate: !was_replayed,
+        }
+    }
+
+    fn gen_normal_commit_prompt(
+        &self,
+        ctx: &PhaseContext<'_>,
+        diff_for_prompt: &str,
+        attempt: u32,
+        prompt_content_id: &str,
+    ) -> CommitPromptGenerated {
+        let scope_key = PromptScopeKey::for_commit(
+            self.state.iteration,
+            attempt,
+            RetryMode::Normal,
+            self.state.recovery_epoch,
+        );
+        let prompt_key = scope_key.to_string();
+        let residual_files = self.state.commit_residual_files.clone();
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            Some(prompt_content_id),
+            || gen_normal_commit_prompt_text(ctx, diff_for_prompt, &residual_files),
+        );
+        CommitPromptGenerated {
+            prompt_key,
+            prompt,
+            was_replayed,
+            prompt_content_id: prompt_content_id.to_string(),
+            should_validate: true,
+        }
     }
 
     // =====================================================================
@@ -548,15 +311,7 @@ impl crate::reducer::boundary::MainEffectHandler {
             truncate_diff_to_model_budget(&diff, model_budget_bytes);
         let final_bytes = model_safe_diff.len() as u64;
 
-        let tmp_dir = Path::new(".agent/tmp");
-        if !ctx.workspace.exists(tmp_dir) {
-            ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
-                ErrorEvent::WorkspaceCreateDirAllFailed {
-                    path: tmp_dir.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-            })?;
-        }
+        super::io_commit::ensure_commit_tmp_dir(ctx)?;
         let model_safe_path = Path::new(".agent/tmp/commit_diff.model_safe.txt");
         ctx.workspace
             .write_atomic(model_safe_path, &model_safe_diff)
@@ -573,22 +328,15 @@ impl crate::reducer::boundary::MainEffectHandler {
             model_safe_path,
         );
 
-        if truncated_for_model_budget {
-            ctx.logger.warn(&format!(
-                "Diff size ({} KB) exceeds model budget ({} KB). Truncated to {} KB at: {}",
-                original_bytes / 1024,
-                model_budget_bytes / 1024,
-                final_bytes / 1024,
-                model_safe_path.display()
-            ));
-        } else if final_bytes > inline_budget_bytes {
-            ctx.logger.warn(&format!(
-                "Diff size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
-                final_bytes / 1024,
-                inline_budget_bytes / 1024,
-                model_safe_path.display()
-            ));
-        }
+        log_diff_size_warnings(
+            ctx,
+            truncated_for_model_budget,
+            original_bytes,
+            model_budget_bytes,
+            final_bytes,
+            inline_budget_bytes,
+            model_safe_path,
+        );
 
         let input = MaterializedPromptInput {
             kind: PromptInputKind::Diff,
@@ -603,49 +351,20 @@ impl crate::reducer::boundary::MainEffectHandler {
         };
 
         let result = EffectResult::event(PipelineEvent::commit_inputs_materialized(attempt, input));
-        let result = if truncated_for_model_budget {
-            result
-                .with_ui_event(UIEvent::AgentActivity {
-                    agent: "pipeline".to_string(),
-                    message: format!(
-                        "Truncated DIFF for model budget: {} KB -> {} KB (budget {} KB)",
-                        original_bytes / 1024,
-                        final_bytes / 1024,
-                        model_budget_bytes / 1024
-                    ),
-                })
-                .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                    crate::reducer::event::PipelinePhase::CommitMessage,
-                    PromptInputKind::Diff,
-                    content_id_sha256.clone(),
-                    original_bytes,
-                    model_budget_bytes,
-                    "model-context".to_string(),
-                ))
-        } else {
-            result
-        };
-        let result = if final_bytes > inline_budget_bytes {
-            result
-                .with_ui_event(UIEvent::AgentActivity {
-                    agent: "pipeline".to_string(),
-                    message: format!(
-                        "Oversize DIFF: {} KB > {} KB; using file reference",
-                        final_bytes / 1024,
-                        inline_budget_bytes / 1024
-                    ),
-                })
-                .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                    crate::reducer::event::PipelinePhase::CommitMessage,
-                    PromptInputKind::Diff,
-                    content_id_sha256,
-                    final_bytes,
-                    inline_budget_bytes,
-                    "inline-embedding".to_string(),
-                ))
-        } else {
-            result
-        };
+        let result = attach_truncated_budget_events(
+            result,
+            truncated_for_model_budget,
+            &content_id_sha256,
+            original_bytes,
+            final_bytes,
+            model_budget_bytes,
+        );
+        let result = attach_oversize_inline_events(
+            result,
+            final_bytes,
+            inline_budget_bytes,
+            content_id_sha256,
+        );
         Ok(result)
     }
 
@@ -686,15 +405,7 @@ impl crate::reducer::boundary::MainEffectHandler {
         ctx: &PhaseContext<'_>,
         diff: &str,
     ) -> Result<EffectResult> {
-        let tmp_dir = Path::new(".agent/tmp");
-        if !ctx.workspace.exists(tmp_dir) {
-            ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
-                ErrorEvent::WorkspaceCreateDirAllFailed {
-                    path: tmp_dir.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-            })?;
-        }
+        super::io_commit::ensure_commit_tmp_dir(ctx)?;
         ctx.workspace
             .write(Path::new(".agent/tmp/commit_diff.txt"), diff)
             .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
@@ -825,6 +536,41 @@ impl crate::reducer::boundary::MainEffectHandler {
     // Git commit execution
     // =====================================================================
 
+    fn stage_commit_files(ctx: &PhaseContext<'_>, files: &[String]) -> Result<()> {
+        use crate::git_helpers::{git_add_all_in_repo, git_add_specific_in_repo};
+        if files.is_empty() {
+            git_add_all_in_repo(ctx.repo_root)
+                .map(|_| ())
+                .map_err(|err| ErrorEvent::GitAddAllFailed {
+                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                })
+                .map_err(anyhow::Error::from)
+        } else {
+            let file_refs: Vec<&str> = files.iter().map(String::as_str).collect();
+            git_add_specific_in_repo(ctx.repo_root, &file_refs)
+                .map(|_| ())
+                .map_err(|err: std::io::Error| ErrorEvent::GitAddSpecificFailed {
+                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                })
+                .map_err(anyhow::Error::from)
+        }
+    }
+
+    fn commit_result_event(
+        result: std::io::Result<Option<git2::Oid>>,
+        message: String,
+    ) -> EffectResult {
+        match result {
+            Ok(Some(hash)) => {
+                EffectResult::event(PipelineEvent::commit_created(hash.to_string(), message))
+            }
+            Ok(None) => EffectResult::event(PipelineEvent::commit_skipped(
+                "No changes to commit".to_string(),
+            )),
+            Err(e) => EffectResult::event(PipelineEvent::commit_generation_failed(e.to_string())),
+        }
+    }
+
     /// Create a git commit from the validated commit message.
     pub(in crate::reducer::boundary) fn create_commit(
         ctx: &PhaseContext<'_>,
@@ -832,41 +578,17 @@ impl crate::reducer::boundary::MainEffectHandler {
         files: &[String],
         _excluded_files: &[crate::reducer::state::pipeline::ExcludedFile],
     ) -> Result<EffectResult> {
-        use crate::git_helpers::{
-            git_add_all_in_repo, git_add_specific_in_repo, git_commit_in_repo,
-        };
-        if files.is_empty() {
-            git_add_all_in_repo(ctx.repo_root).map_err(|err| ErrorEvent::GitAddAllFailed {
-                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            })?;
-        } else {
-            let file_refs: Vec<&str> = files.iter().map(String::as_str).collect();
-            git_add_specific_in_repo(ctx.repo_root, &file_refs).map_err(
-                |err: std::io::Error| ErrorEvent::GitAddSpecificFailed {
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                },
-            )?;
-        }
-
-        match git_commit_in_repo(
+        use crate::git_helpers::git_commit_in_repo;
+        Self::stage_commit_files(ctx, files)?;
+        let commit_result = git_commit_in_repo(
             ctx.repo_root,
             &message,
             None,
             None,
             Some(ctx.executor),
             None,
-        ) {
-            Ok(Some(hash)) => Ok(EffectResult::event(PipelineEvent::commit_created(
-                hash.to_string(),
-                message,
-            ))),
-            Ok(None) => Ok(EffectResult::event(PipelineEvent::commit_skipped(
-                "No changes to commit".to_string(),
-            ))),
-            Err(e) => Ok(EffectResult::event(
-                PipelineEvent::commit_generation_failed(e.to_string()),
-            )),
-        }
+        );
+        Ok(Self::commit_result_event(commit_result, message))
     }
 
     /// Skip commit with a reason.
@@ -940,4 +662,331 @@ impl crate::reducer::boundary::MainEffectHandler {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Free helpers
+// ---------------------------------------------------------------------------
+
+fn log_truncated_for_model_budget(
+    ctx: &PhaseContext<'_>,
+    original_bytes: u64,
+    model_budget_bytes: u64,
+    final_bytes: u64,
+    model_safe_path: &Path,
+) {
+    ctx.logger.warn(&format!(
+        "Diff size ({} KB) exceeds model budget ({} KB). Truncated to {} KB at: {}",
+        original_bytes / 1024,
+        model_budget_bytes / 1024,
+        final_bytes / 1024,
+        model_safe_path.display()
+    ));
+}
+
+fn log_oversize_inline(
+    ctx: &PhaseContext<'_>,
+    final_bytes: u64,
+    inline_budget_bytes: u64,
+    model_safe_path: &Path,
+) {
+    ctx.logger.warn(&format!(
+        "Diff size ({} KB) exceeds inline limit ({} KB). Referencing: {}",
+        final_bytes / 1024,
+        inline_budget_bytes / 1024,
+        model_safe_path.display()
+    ));
+}
+
+/// Log warnings about diff size (truncation or oversize inline).
+fn log_diff_size_warnings(
+    ctx: &PhaseContext<'_>,
+    truncated_for_model_budget: bool,
+    original_bytes: u64,
+    model_budget_bytes: u64,
+    final_bytes: u64,
+    inline_budget_bytes: u64,
+    model_safe_path: &Path,
+) {
+    if truncated_for_model_budget {
+        log_truncated_for_model_budget(
+            ctx,
+            original_bytes,
+            model_budget_bytes,
+            final_bytes,
+            model_safe_path,
+        );
+    } else if final_bytes > inline_budget_bytes {
+        log_oversize_inline(ctx, final_bytes, inline_budget_bytes, model_safe_path);
+    }
+}
+
+/// Data produced by the xsd-retry prompt generation step.
+struct XsdRetryPromptData {
+    prompt_key: String,
+    prompt: String,
+    was_replayed: bool,
+    prompt_content_id: String,
+    rendered_log: Option<crate::prompts::SubstitutionLog>,
+}
+
+fn resolve_xsd_error_message(handler: &crate::reducer::boundary::MainEffectHandler) -> String {
+    handler
+        .state
+        .continuation
+        .last_xsd_error
+        .clone()
+        .unwrap_or_else(|| "XML output failed validation. Provide valid XML output.".to_string())
+}
+
+fn build_xsd_retry_prompt_data(
+    handler: &crate::reducer::boundary::MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    attempt: u32,
+    xsd_error: &str,
+) -> std::result::Result<XsdRetryPromptData, Box<EffectResult>> {
+    let (scope_key, prompt_content_id) =
+        super::io_commit::build_xsd_retry_scope_and_content_id(handler, ctx, xsd_error, attempt);
+    let prompt_key = scope_key.to_string();
+    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+        &scope_key,
+        &handler.state.prompt_history,
+        Some(&prompt_content_id),
+        || super::io_commit::gen_xsd_retry_prompt_content(ctx, xsd_error),
+    );
+    let rendered_log =
+        super::io_commit::validate_xsd_retry_log(ctx, xsd_error, &prompt_key, was_replayed)?;
+    Ok(XsdRetryPromptData {
+        prompt_key,
+        prompt,
+        was_replayed,
+        prompt_content_id,
+        rendered_log,
+    })
+}
+
+/// Generate and validate an xsd-retry commit prompt.
+fn gen_xsd_retry_commit_prompt(
+    handler: &crate::reducer::boundary::MainEffectHandler,
+    ctx: &PhaseContext<'_>,
+    attempt: u32,
+) -> std::result::Result<XsdRetryPromptData, Box<EffectResult>> {
+    let xsd_error = resolve_xsd_error_message(handler);
+    build_xsd_retry_prompt_data(handler, ctx, attempt, &xsd_error)
+}
+
+/// Data produced by the per-mode prompt generation step.
+struct CommitPromptGenerated {
+    prompt_key: String,
+    prompt: String,
+    was_replayed: bool,
+    prompt_content_id: String,
+    should_validate: bool,
+}
+
+/// Precondition check: commit prompt mode must never be Continuation.
+fn debug_assert_not_continuation(prompt_mode: PromptMode) {
+    debug_assert!(
+        !matches!(prompt_mode, PromptMode::Continuation),
+        "Orchestrator must filter Continuation mode before deriving PrepareCommitPrompt effect"
+    );
+}
+
+/// Compute the content-id string for the commit prompt.
+fn compute_commit_prompt_content_id(
+    handler: &crate::reducer::boundary::MainEffectHandler,
+    diff_for_prompt: &str,
+) -> String {
+    let diff_content_id = handler
+        .state
+        .commit_diff_content_id_sha256
+        .clone()
+        .unwrap_or_else(|| sha256_hex_str(diff_for_prompt));
+    let consumer_sig = handler.state.agent_chain.consumer_signature_sha256();
+    crate::phases::commit::commit_prompt_content_id(
+        &diff_content_id,
+        &consumer_sig,
+        &handler.state.commit_residual_files,
+    )
+}
+
+/// Validate the commit message template log; return early EffectResult if incomplete.
+fn validate_commit_message_template(
+    ctx: &PhaseContext<'_>,
+    diff_for_prompt: &str,
+    gen: &CommitPromptGenerated,
+) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
+    if !needs_commit_template_validation(gen) {
+        return Ok(None);
+    }
+    let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+        ctx.template_context,
+        diff_for_prompt,
+        ctx.workspace,
+        "commit_message_xml",
+    );
+    match rendered.log.is_complete() {
+        true => Ok(Some(rendered.log)),
+        false => Err(Box::new(build_commit_template_invalid_result(
+            rendered.log,
+            &gen.prompt_key,
+            gen.was_replayed,
+        ))),
+    }
+}
+
+fn needs_commit_template_validation(gen: &CommitPromptGenerated) -> bool {
+    gen.should_validate && !gen.was_replayed
+}
+
+fn build_commit_template_invalid_result(
+    log: crate::prompts::SubstitutionLog,
+    prompt_key: &str,
+    was_replayed: bool,
+) -> EffectResult {
+    use crate::agents::AgentRole;
+    use crate::reducer::event::PipelinePhase;
+    let missing = log.unsubstituted.clone();
+    EffectResult::event(PipelineEvent::template_rendered(
+        PipelinePhase::CommitMessage,
+        "commit_message_xml".to_string(),
+        log,
+    ))
+    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+        AgentRole::Commit,
+        "commit_message_xml".to_string(),
+        missing,
+        Vec::new(),
+    ))
+    .with_ui_event(UIEvent::PromptReplayHit {
+        key: prompt_key.to_string(),
+        was_replayed,
+    })
+}
+
+/// Assemble the final EffectResult for an xsd-retry commit prompt.
+fn assemble_commit_xsd_retry_result(
+    handler: &crate::reducer::boundary::MainEffectHandler,
+    attempt: u32,
+    prompt_key: String,
+    prompt: String,
+    prompt_content_id: String,
+    was_replayed: bool,
+    rendered_log: Option<crate::prompts::SubstitutionLog>,
+) -> EffectResult {
+    let prompt_captured_event = crate::phases::commit::prompt_captured_event(
+        &prompt_key,
+        &prompt,
+        &prompt_content_id,
+        was_replayed,
+    );
+    crate::phases::commit::commit_prompt_prepared_result(
+        attempt,
+        handler.state.phase,
+        prompt_key,
+        was_replayed,
+        prompt_captured_event,
+        rendered_log,
+        "commit_xsd_retry",
+    )
+}
+
+/// Generate the prompt text for a same-agent-retry commit prompt.
+fn gen_same_agent_retry_prompt_text(
+    ctx: &PhaseContext<'_>,
+    diff_for_prompt: &str,
+    retry_preamble: &str,
+) -> String {
+    let previous_prompt = ctx
+        .workspace
+        .read(Path::new(".agent/tmp/commit_prompt.txt"))
+        .ok();
+    let generated_base_prompt = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+        ctx.template_context,
+        diff_for_prompt,
+        ctx.workspace,
+        "commit_message_xml",
+    )
+    .content;
+    let (base_prompt, _) = crate::phases::commit::base_prompt_for_same_agent_retry(
+        previous_prompt.as_deref(),
+        &generated_base_prompt,
+    );
+    format!("{retry_preamble}\n{base_prompt}")
+}
+
+/// Generate the prompt text for a normal commit prompt.
+fn gen_normal_commit_prompt_text(
+    ctx: &PhaseContext<'_>,
+    diff_for_prompt: &str,
+    residual_files: &[String],
+) -> String {
+    let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+        ctx.template_context,
+        diff_for_prompt,
+        ctx.workspace,
+        "commit_message_xml",
+    );
+    crate::phases::commit::prepend_residual_files_context(&rendered.content, residual_files)
+}
+
+/// Attach model-budget-truncation events to a materialized result if truncated.
+fn attach_truncated_budget_events(
+    result: EffectResult,
+    truncated: bool,
+    content_id: &str,
+    original_bytes: u64,
+    final_bytes: u64,
+    model_budget_bytes: u64,
+) -> EffectResult {
+    if !truncated {
+        return result;
+    }
+    result
+        .with_ui_event(UIEvent::AgentActivity {
+            agent: "pipeline".to_string(),
+            message: format!(
+                "Truncated DIFF for model budget: {} KB -> {} KB (budget {} KB)",
+                original_bytes / 1024,
+                final_bytes / 1024,
+                model_budget_bytes / 1024
+            ),
+        })
+        .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+            crate::reducer::event::PipelinePhase::CommitMessage,
+            PromptInputKind::Diff,
+            content_id.to_string(),
+            original_bytes,
+            model_budget_bytes,
+            "model-context".to_string(),
+        ))
+}
+
+/// Attach oversize-inline events to a materialized result if over the inline budget.
+fn attach_oversize_inline_events(
+    result: EffectResult,
+    final_bytes: u64,
+    inline_budget_bytes: u64,
+    content_id: String,
+) -> EffectResult {
+    if final_bytes <= inline_budget_bytes {
+        return result;
+    }
+    result
+        .with_ui_event(UIEvent::AgentActivity {
+            agent: "pipeline".to_string(),
+            message: format!(
+                "Oversize DIFF: {} KB > {} KB; using file reference",
+                final_bytes / 1024,
+                inline_budget_bytes / 1024
+            ),
+        })
+        .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+            crate::reducer::event::PipelinePhase::CommitMessage,
+            PromptInputKind::Diff,
+            content_id,
+            final_bytes,
+            inline_budget_bytes,
+            "inline-embedding".to_string(),
+        ))
 }

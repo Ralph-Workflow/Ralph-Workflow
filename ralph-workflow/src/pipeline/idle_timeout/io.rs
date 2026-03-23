@@ -1,8 +1,13 @@
-//! Subprocess termination helpers for idle-timeout enforcement.
+// Subprocess termination helpers for idle-timeout enforcement.
 
-use crate::executor::{AgentChild, ProcessExecutor};
+use crate::executor::{AgentChild, ChildProcessInfo, ProcessExecutor};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// Shared agent child handle (Arc-wrapped Mutex over a boxed AgentChild).
+pub type SharedAgentChild = Arc<Mutex<Box<dyn AgentChild>>>;
+/// Shared child-activity observer (Arc-wrapped Mutex over an optional ChildProcessInfo snapshot).
+pub type SharedChildActivityObserver = Arc<Mutex<Option<ChildProcessInfo>>>;
 
 /// Result of attempting to kill a process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,6 +128,106 @@ pub(crate) fn force_kill_best_effort(pid: u32, executor: &dyn ProcessExecutor) -
         .unwrap_or(false)
 }
 
+/// Try-wait the locked child. Returns `true` if the process has exited.
+#[cfg(unix)]
+fn try_wait_child(child_arc: &Arc<Mutex<Box<dyn AgentChild>>>) -> bool {
+    let status = {
+        let mut locked = child_arc
+            .lock()
+            .expect("child process mutex poisoned - indicates panic in another thread");
+        locked.try_wait()
+    };
+    matches!(status, Ok(Some(_)))
+}
+
+/// Check if a child process has exited; sleep briefly if not. Returns `true` if exited.
+#[cfg(unix)]
+fn check_child_or_sleep(
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    poll_interval: Duration,
+) -> bool {
+    if try_wait_child(child_arc) {
+        return true;
+    }
+    std::thread::sleep(poll_interval);
+    false
+}
+
+/// Poll a child process until deadline. Returns `true` if the child exited before the deadline.
+#[cfg(unix)]
+fn poll_child_until_deadline(
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    deadline: std::time::Instant,
+    poll_interval: Duration,
+) -> bool {
+    let mut exited = false;
+    while !exited && std::time::Instant::now() < deadline {
+        exited = check_child_or_sleep(child_arc, poll_interval);
+    }
+    exited
+}
+
+/// Send SIGTERM to a process group and then the process itself. Returns true if either succeeded.
+#[cfg(unix)]
+fn send_sigterm(pid_str: &str, process_group_id: &str, executor: &dyn ProcessExecutor) -> bool {
+    executor
+        .execute("kill", &["-TERM", "--", process_group_id], &[], None)
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+        || executor
+            .execute("kill", &["-TERM", pid_str], &[], None)
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+}
+
+/// Send SIGKILL to a process group and then the process itself. Returns true if either succeeded.
+#[cfg(unix)]
+fn send_sigkill(pid_str: &str, process_group_id: &str, executor: &dyn ProcessExecutor) -> bool {
+    executor
+        .execute("kill", &["-KILL", "--", process_group_id], &[], None)
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+        || executor
+            .execute("kill", &["-KILL", pid_str], &[], None)
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+}
+
+/// Send SIGKILL and poll for exit confirmation. Returns the kill result after escalation.
+#[cfg(unix)]
+fn escalate_to_sigkill_and_confirm(
+    pid_str: &str,
+    process_group_id: &str,
+    executor: &dyn ProcessExecutor,
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    config: KillConfig,
+) -> KillResult {
+    if !send_sigkill(pid_str, process_group_id, executor) {
+        return KillResult::Failed;
+    }
+    let confirm_deadline = std::time::Instant::now() + config.sigkill_confirm_timeout;
+    if poll_child_until_deadline(child_arc, confirm_deadline, config.poll_interval) {
+        return KillResult::TerminatedByKill;
+    }
+    KillResult::SignalsSentAwaitingExit { escalated: true }
+}
+
+/// Escalate to SIGKILL after SIGTERM grace period expired.
+#[cfg(unix)]
+fn kill_process_with_child(
+    pid_str: &str,
+    process_group_id: &str,
+    executor: &dyn ProcessExecutor,
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    config: KillConfig,
+) -> KillResult {
+    let grace_deadline = std::time::Instant::now() + config.sigterm_grace;
+    if poll_child_until_deadline(child_arc, grace_deadline, config.poll_interval) {
+        return KillResult::TerminatedByTerm;
+    }
+    escalate_to_sigkill_and_confirm(pid_str, process_group_id, executor, child_arc, config)
+}
+
 /// Kill a process by PID using platform-specific commands via executor.
 ///
 /// First attempts SIGTERM, waits for a grace period while verifying liveness,
@@ -137,66 +242,83 @@ pub fn kill_process(
     let pid_str = pid.to_string();
     let process_group_id = format!("-{pid_str}");
 
-    let term_ok = executor
-        .execute("kill", &["-TERM", "--", &process_group_id], &[], None)
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-        || executor
-            .execute("kill", &["-TERM", &pid_str], &[], None)
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-
-    if !term_ok {
+    if !send_sigterm(&pid_str, &process_group_id, executor) {
         return KillResult::Failed;
     }
 
-    if let Some(child_arc) = child {
-        let grace_deadline = std::time::Instant::now() + config.sigterm_grace;
-        while std::time::Instant::now() < grace_deadline {
-            let status = {
-                let mut locked_child = child_arc
-                    .lock()
-                    .expect("child process mutex poisoned - indicates panic in another thread");
-                locked_child.try_wait()
-            };
-
-            match status {
-                Ok(Some(_)) => return KillResult::TerminatedByTerm,
-                Ok(None) | Err(_) => std::thread::sleep(config.poll_interval),
-            }
+    match child {
+        None => KillResult::TerminatedByTerm,
+        Some(child_arc) => {
+            kill_process_with_child(&pid_str, &process_group_id, executor, child_arc, config)
         }
-
-        let kill_ok = executor
-            .execute("kill", &["-KILL", "--", &process_group_id], &[], None)
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-            || executor
-                .execute("kill", &["-KILL", &pid_str], &[], None)
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-        if !kill_ok {
-            return KillResult::Failed;
-        }
-
-        let confirm_deadline = std::time::Instant::now() + config.sigkill_confirm_timeout;
-        while std::time::Instant::now() < confirm_deadline {
-            let status = {
-                let mut locked_child = child_arc
-                    .lock()
-                    .expect("child process mutex poisoned - indicates panic in another thread");
-                locked_child.try_wait()
-            };
-
-            match status {
-                Ok(Some(_)) => return KillResult::TerminatedByKill,
-                Ok(None) | Err(_) => std::thread::sleep(config.poll_interval),
-            }
-        }
-
-        return KillResult::SignalsSentAwaitingExit { escalated: true };
     }
+}
 
-    KillResult::TerminatedByTerm
+/// Try-wait the locked child (Windows). Returns `true` if the process has exited.
+#[cfg(windows)]
+fn try_wait_child(child_arc: &Arc<Mutex<Box<dyn AgentChild>>>) -> bool {
+    let status = {
+        let locked = child_arc
+            .lock()
+            .expect("child process mutex poisoned - indicates panic in another thread");
+        locked.try_wait()
+    };
+    matches!(status, Ok(Some(_)))
+}
+
+/// Single poll-or-sleep step (Windows). Returns `true` if the child has exited.
+#[cfg(windows)]
+fn check_child_or_sleep(
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    poll_interval: Duration,
+) -> bool {
+    if try_wait_child(child_arc) {
+        return true;
+    }
+    std::thread::sleep(poll_interval);
+    false
+}
+
+/// Poll a child process until deadline (Windows). Returns `true` if the child exited before the deadline.
+#[cfg(windows)]
+fn poll_child_until_deadline(
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    deadline: std::time::Instant,
+    poll_interval: Duration,
+) -> bool {
+    let mut exited = false;
+    while !exited && std::time::Instant::now() < deadline {
+        exited = check_child_or_sleep(child_arc, poll_interval);
+    }
+    exited
+}
+
+/// Run `taskkill /F /T /PID` and return whether it succeeded.
+#[cfg(windows)]
+fn run_taskkill(pid: u32, executor: &dyn ProcessExecutor) -> bool {
+    executor
+        .execute(
+            "taskkill",
+            &["/F", "/T", "/PID", &pid.to_string()],
+            &[],
+            None,
+        )
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Confirm process exit after taskkill within the confirm-timeout window.
+#[cfg(windows)]
+fn confirm_exit_after_taskkill(
+    child_arc: &Arc<Mutex<Box<dyn AgentChild>>>,
+    config: KillConfig,
+) -> KillResult {
+    let confirm_deadline = std::time::Instant::now() + config.sigkill_confirm_timeout;
+    if poll_child_until_deadline(child_arc, confirm_deadline, config.poll_interval) {
+        KillResult::TerminatedByKill
+    } else {
+        KillResult::SignalsSentAwaitingExit { escalated: true }
+    }
 }
 
 /// Windows kill implementation.
@@ -209,35 +331,12 @@ pub(crate) fn kill_process(
     child: Option<&Arc<Mutex<Box<dyn AgentChild>>>>,
     config: KillConfig,
 ) -> KillResult {
-    let result = executor.execute(
-        "taskkill",
-        &["/F", "/T", "/PID", &pid.to_string()],
-        &[],
-        None,
-    );
-    let kill_ok = result.map(|o| o.status.success()).unwrap_or(false);
-    if !kill_ok {
+    if !run_taskkill(pid, executor) {
         return KillResult::Failed;
     }
 
-    if let Some(child_arc) = child {
-        let confirm_deadline = std::time::Instant::now() + config.sigkill_confirm_timeout;
-        while std::time::Instant::now() < confirm_deadline {
-            let status = {
-                let locked_child = child_arc
-                    .lock()
-                    .expect("child process mutex poisoned - indicates panic in another thread");
-                locked_child.try_wait()
-            };
-
-            match status {
-                Ok(Some(_)) => return KillResult::TerminatedByKill,
-                Ok(None) | Err(_) => std::thread::sleep(config.poll_interval),
-            }
-        }
-
-        return KillResult::SignalsSentAwaitingExit { escalated: true };
+    match child {
+        None => KillResult::TerminatedByKill,
+        Some(child_arc) => confirm_exit_after_taskkill(child_arc, config),
     }
-
-    KillResult::TerminatedByKill
 }
