@@ -101,6 +101,21 @@ cargo fmt --all --check
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
 cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings
 
+# Dead code that is only used by tests.
+# Runs lib-only with DEFAULT features (no test-utils, no #[cfg(test)] blocks).
+# Catches two classes:
+#   1. Private items only referenced from #[cfg(test)] blocks → dead_code fires
+#   2. Items behind #[cfg(feature = "test-utils")] unused by production code → dead_code fires
+# Limitation: pub items in public modules are never flagged by dead_code (Rust compiler
+# assumes they're external API). These MUST be placed behind #[cfg(feature = "test-utils")].
+cargo clippy -p ralph-workflow --lib -- -D warnings
+
+# Native check (runs in Phase 1 via `cargo xtask verify`):
+# audit-test-utils-used-in-tests — ensures every pub item behind
+# #[cfg(feature = "test-utils")] in ralph-workflow/src/ is actually referenced
+# by tests/ or test-helpers/src/. Items with no test-side reference are dead code.
+# Implemented in xtask/src/boundary/test_utils_usage.rs.
+
 # Lint xtask runner (runs in parallel group with separate target dir)
 cargo clippy -p xtask --all-targets -- -D warnings
 

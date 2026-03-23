@@ -311,6 +311,10 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
         name: "tailwind4-removed-angular-classes",
         run: crate::boundary::compliance::check_tailwind4_removed_angular_classes,
     },
+    NativeCheck {
+        name: "audit-test-utils-used-in-tests",
+        run: crate::boundary::test_utils_usage::check_test_utils_items_used_in_tests,
+    },
 ];
 
 const FRONTEND_TEST_CHECK_NAME: &str = "ralph-gui-frontend-test";
@@ -1082,6 +1086,39 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
             "test-helpers",
             "--all-targets",
             "--all-features",
+            "--",
+            // Catch `pub` items inside non-public modules — the primary pattern
+            // for test-only helpers that accidentally escape into production modules.
+            // Items only used from tests should live in test-helpers/, an inline
+            // #[cfg(test)] block, or the tests/ directory instead.
+            "-W",
+            "unreachable_pub",
+            "-D",
+            "warnings",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    // Run lib-only with default features (no test-utils, no #[cfg(test)] blocks)
+    // so dead_code fires for any production item that is only referenced by tests.
+    //
+    // Two classes of test-only production code caught by this check:
+    // 1. Private items only referenced from #[cfg(test)] blocks → dead_code fires
+    //    (test blocks are excluded when compiling --lib without --tests).
+    // 2. Items behind #[cfg(feature = "test-utils")] that nothing in the
+    //    default-feature build uses → dead_code fires.
+    //
+    // Pub items in public modules used only by tests are NOT catchable by any
+    // standard Rust lint — they must be placed behind #[cfg(feature = "test-utils")]
+    // so this check excludes them from the production build entirely.
+    CommandSpec {
+        name: "clippy-core-lib-only",
+        program: "cargo",
+        args: &[
+            "clippy",
+            "-p",
+            "ralph-workflow",
+            "--lib",
             "--",
             "-D",
             "warnings",
@@ -2001,7 +2038,7 @@ mod tests {
         assert_eq!(report.exit, VerifyExitCode::Success);
         assert_eq!(
             runner.ran(),
-            vec!["clippy-core", "test-ralph-workflow-lib", "test-integration",]
+            vec!["clippy-core", "clippy-core-lib-only", "test-ralph-workflow-lib", "test-integration",]
         );
     }
 
