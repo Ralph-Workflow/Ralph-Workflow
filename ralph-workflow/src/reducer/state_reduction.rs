@@ -9,7 +9,6 @@
 //!
 //! | Category     | Handler                    | Responsibility                    |
 //! |--------------|----------------------------|-----------------------------------|
-//! | Lifecycle    | `reduce_lifecycle_event`     | Pipeline start/resume/complete    |
 //! | Planning     | `reduce_planning_event`      | Plan generation                   |
 //! | Development  | `reduce_development_event`   | Dev iterations, continuation      |
 //! | Review       | `reduce_review_event`        | Review passes, fix attempts       |
@@ -34,7 +33,6 @@ use super::state::PipelineState;
 ///
 /// | Category     | Handler                    | Responsibility                    |
 /// |--------------|----------------------------|-----------------------------------|
-/// | Lifecycle    | `reduce_lifecycle_event`     | Pipeline start/resume/complete    |
 /// | Planning     | `reduce_planning_event`      | Plan generation                   |
 /// | Development  | `reduce_development_event`   | Dev iterations, continuation      |
 /// | Review       | `reduce_review_event`        | Review passes, fix attempts       |
@@ -47,7 +45,6 @@ use super::state::PipelineState;
 pub fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
     match event {
         // Route to category-specific reducers
-        PipelineEvent::Lifecycle(ref e) => lifecycle::reduce_lifecycle_event(state, e),
         PipelineEvent::Planning(e) => planning::reduce_planning_event(state, e),
         PipelineEvent::Development(e) => development::reduce_development_event(state, e),
         PipelineEvent::Review(e) => review::reduce_review_event(state, e),
@@ -71,7 +68,7 @@ pub fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
                 ..state
             }
         }
-        PipelineEvent::FinalizingStarted => PipelineState {
+        PipelineEvent::FinalStateValidationCompleted => PipelineState {
             phase: super::event::PipelinePhase::Finalizing,
             ..state
         },
@@ -130,8 +127,6 @@ mod commit;
 mod development;
 #[path = "state_reduction/error.rs"]
 mod error;
-#[path = "state_reduction/lifecycle.rs"]
-mod lifecycle;
 #[path = "state_reduction/planning.rs"]
 mod planning;
 #[path = "state_reduction/prompt_input.rs"]

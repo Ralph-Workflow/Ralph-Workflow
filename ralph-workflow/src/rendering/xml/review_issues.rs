@@ -13,7 +13,7 @@ use regex::Regex;
 use std::collections::BTreeMap;
 
 /// Render review issues XML with semantic formatting.
-pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
+pub(super) fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
     let header = if let Some(ctx) = output_context {
         if let Some(pass) = ctx.pass {
             format!("\n╔═══ Review Pass {pass} ═══╗\n\n")

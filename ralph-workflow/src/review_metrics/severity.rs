@@ -4,7 +4,7 @@
 
 /// Issue severity levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IssueSeverity {
+pub(super) enum IssueSeverity {
     Critical,
     High,
     Medium,

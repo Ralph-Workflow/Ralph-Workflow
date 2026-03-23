@@ -15,15 +15,14 @@ The individual lint crates (file_too_long, forbid_mut_binding, forbid_imperative
 
 ## Lint Severity Levels
 
-The dylint lints are configured at varying severity levels in their definitions (e.g., `pub FORBID_MUT_BINDING, Warn, ...` or `pub FORBID_DOMAIN_BOUNDARY_DEPENDENCIES, Deny, ...`). Lint definitions use `Deny` for architectural rules that must never be bypassed, and `Warn` for rules where narrow heuristics approximate a property rather than fully proving it. The `--cap-lints=deny` flag in the build system ensures that all lints respect their configured severity:
+The dylint lints are configured at varying severity levels in their definitions (e.g., `pub FORBID_MUT_BINDING, Warn, ...` or `pub FORBID_DOMAIN_BOUNDARY_DEPENDENCIES, Deny, ...`). Lint definitions use `Deny` for architectural rules that must never be bypassed, and `Warn` for rules where narrow heuristics approximate a property rather than fully proving it.
 
-- **`--cap-lints=deny`**: Lints stay at their defined level (`Deny`, `Warn`, or `Allow`). If a lint is set to `Deny`, violations cause the build to fail.
-- **`--cap-lints=allow`**: Would cap ALL lints to `Allow`, effectively disabling them. This is never used in this repository.
+The build system passes `RUSTFLAGS="--cap-lints=deny -D warnings"` when running dylint:
 
-Using `--cap-lints=deny` is essential because:
-1. It preserves the intended severity of each lint
-2. It ensures violations are caught at compile time rather than silently ignored
-3. It makes the lint system effective as a quality gate
+- **`--cap-lints=deny`**: Caps `forbid`-level lints to `deny` so external crate lints don't cause unexpected build-system issues.
+- **`-D warnings`**: Promotes **all warnings to errors**, including `Warn`-level custom lints. Every dylint violation — whether `Warn` or `Deny` — is a build failure.
+
+This means there is no distinction between `Warn` and `Deny` severity in practice: both levels cause `cargo xtask verify` to fail. The severity labels in lint definitions document intent and expected frequency of violations, not whether the lint is enforced.
 
 ## Lint policy
 

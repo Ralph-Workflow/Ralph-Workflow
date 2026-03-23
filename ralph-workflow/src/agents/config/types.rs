@@ -22,8 +22,6 @@ fn is_stream_json_output(output_flag: &str) -> bool {
     output_flag.contains("stream_json")
 }
 
-/// Default agents.toml template embedded at compile time.
-pub const DEFAULT_AGENTS_TOML: &str = include_str!("../../../examples/agents.toml");
 
 /// Config source for tracking where config was loaded from.
 #[derive(Debug, Clone)]

@@ -43,7 +43,7 @@ pub struct FileConflict {
 /// Returns a formatted prompt string for the AI agent.
 #[cfg(test)]
 #[expect(clippy::print_stderr, reason = "test-only error logging")]
-pub fn build_conflict_resolution_prompt(
+pub(super) fn build_conflict_resolution_prompt(
     conflicts: &HashMap<String, FileConflict>,
     prompt_md_content: Option<&str>,
     plan_content: Option<&str>,

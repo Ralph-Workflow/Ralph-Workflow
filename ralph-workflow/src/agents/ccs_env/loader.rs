@@ -48,7 +48,7 @@ fn list_available_ccs_profiles_with_deps(
 ///
 /// Returns profile names from ~/.ccs that match the input case-insensitively,
 /// or contain the input as a substring.
-pub fn find_ccs_profile_suggestions(input: &str) -> Vec<String> {
+pub(super) fn find_ccs_profile_suggestions(input: &str) -> Vec<String> {
     find_ccs_profile_suggestions_with_deps(&RealCcsEnvironment, &RealCcsFilesystem, input)
 }
 
@@ -103,7 +103,7 @@ fn find_ccs_profile_suggestions_with_deps(
 /// //   "ANTHROPIC_MODEL": "glm-4.7",
 /// // }
 /// ```
-pub fn load_ccs_env_vars(
+pub(super) fn load_ccs_env_vars(
     profile: &str,
 ) -> Result<std::collections::HashMap<String, String>, CcsEnvVarsError> {
     load_ccs_env_vars_with_deps(&RealCcsEnvironment, &RealCcsFilesystem, profile)
@@ -112,7 +112,7 @@ pub fn load_ccs_env_vars(
 /// Testable variant of [`load_ccs_env_vars`] for dependency injection.
 ///
 /// This allows tests to mock both environment variables and filesystem access.
-pub fn load_ccs_env_vars_with_deps(
+pub(super) fn load_ccs_env_vars_with_deps(
     env: &dyn CcsEnvironment,
     fs: &dyn CcsFilesystem,
     profile: &str,
@@ -184,6 +184,6 @@ pub fn load_ccs_env_vars_with_deps(
 ///
 /// Returns the path to the claude command if found in PATH.
 /// Returns None if claude is not installed or not in PATH.
-pub fn find_claude_binary() -> Option<std::path::PathBuf> {
+pub(super) fn find_claude_binary() -> Option<std::path::PathBuf> {
     which::which("claude").ok()
 }

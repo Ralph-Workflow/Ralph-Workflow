@@ -36,7 +36,7 @@
 /// value that unambiguously maps to `canonical_value`.
 ///
 /// Canonical values: `"completed"`, `"partial"`, `"failed"`
-pub const DEVELOPMENT_STATUS_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const DEVELOPMENT_STATUS_SYNONYMS: &[(&str, &str)] = &[
     ("complete", "completed"),
     ("done", "completed"),
     ("success", "completed"),
@@ -56,7 +56,7 @@ pub const DEVELOPMENT_STATUS_SYNONYMS: &[(&str, &str)] = &[
 /// value that unambiguously maps to `canonical_value`.
 ///
 /// Canonical values: `"all_issues_addressed"`, `"issues_remain"`, `"no_issues_found"`
-pub const FIX_STATUS_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const FIX_STATUS_SYNONYMS: &[(&str, &str)] = &[
     ("fixed", "all_issues_addressed"),
     ("addressed", "all_issues_addressed"),
     ("all_fixed", "all_issues_addressed"),
@@ -72,7 +72,7 @@ pub const FIX_STATUS_SYNONYMS: &[(&str, &str)] = &[
 /// value that unambiguously maps to `canonical_value`.
 ///
 /// Canonical values: `"create"`, `"modify"`, `"delete"`
-pub const FILE_ACTION_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const FILE_ACTION_SYNONYMS: &[(&str, &str)] = &[
     ("add", "create"),
     ("new", "create"),
     ("edit", "modify"),
@@ -87,7 +87,7 @@ pub const FILE_ACTION_SYNONYMS: &[(&str, &str)] = &[
 /// value that unambiguously maps to `canonical_value`.
 ///
 /// Canonical values: `"file-change"`, `"action"`, `"research"`
-pub const STEP_TYPE_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const STEP_TYPE_SYNONYMS: &[(&str, &str)] = &[
     ("code", "file-change"),
     ("code-change", "file-change"),
     ("implementation", "file-change"),
@@ -104,7 +104,7 @@ pub const STEP_TYPE_SYNONYMS: &[(&str, &str)] = &[
 /// value that unambiguously maps to `canonical_value`.
 ///
 /// Canonical values: `"critical"`, `"high"`, `"medium"`, `"low"`
-pub const PRIORITY_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const PRIORITY_SYNONYMS: &[(&str, &str)] = &[
     ("p0", "critical"),
     ("urgent", "critical"),
     ("must", "critical"),
@@ -127,7 +127,7 @@ pub const PRIORITY_SYNONYMS: &[(&str, &str)] = &[
 ///
 /// Note: This uses the same values as `Priority` since the enum values overlap,
 /// but is a separate table for clarity and independent extensibility.
-pub const SEVERITY_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const SEVERITY_SYNONYMS: &[(&str, &str)] = &[
     ("p0", "critical"),
     ("urgent", "critical"),
     ("must", "critical"),
@@ -145,7 +145,7 @@ pub const SEVERITY_SYNONYMS: &[(&str, &str)] = &[
 /// value that unambiguously maps to `canonical_value`.
 ///
 /// Canonical values: `"ordered"`, `"unordered"`
-pub const LIST_TYPE_SYNONYMS: &[(&str, &str)] = &[
+pub(crate) const LIST_TYPE_SYNONYMS: &[(&str, &str)] = &[
     ("bulleted", "unordered"),
     ("bullet", "unordered"),
     ("ul", "unordered"),
@@ -205,7 +205,7 @@ pub const LIST_TYPE_SYNONYMS: &[(&str, &str)] = &[
 ///     None
 /// );
 /// ```
-pub fn normalize_enum_value(
+pub(crate) fn normalize_enum_value(
     value: &str,
     valid_values: &[&str],
     synonyms: &[(&str, &str)],
@@ -310,7 +310,7 @@ fn levenshtein_distance(s1: &str, s2: &str) -> usize {
 /// // Ambiguous input (equally close to multiple tags)
 /// assert_eq!(normalize_tag_name("ralph-status", known), None); // exact match is handled separately
 /// ```
-pub fn normalize_tag_name<'a>(tag: &str, known_tags: &'a [&str]) -> Option<&'a str> {
+pub(crate) fn normalize_tag_name<'a>(tag: &str, known_tags: &'a [&str]) -> Option<&'a str> {
     // Step 1: Trim whitespace
     let trimmed = tag.trim();
     if trimmed.is_empty() {

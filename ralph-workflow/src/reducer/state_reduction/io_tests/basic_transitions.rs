@@ -1,23 +1,9 @@
 // Basic pipeline transition tests.
 //
-// Tests for fundamental state transitions: pipeline started/completed,
-// development iteration completed, plan generation, phase transitions.
+// Tests for fundamental state transitions: development iteration completed,
+// plan generation, phase transitions.
 
 use super::*;
-
-#[test]
-fn test_reduce_pipeline_started() {
-    let state = create_test_state();
-    let new_state = reduce(state, PipelineEvent::pipeline_started());
-    assert_eq!(new_state.phase, PipelinePhase::Planning);
-}
-
-#[test]
-fn test_reduce_pipeline_completed() {
-    let state = create_test_state();
-    let new_state = reduce(state, PipelineEvent::pipeline_completed());
-    assert_eq!(new_state.phase, PipelinePhase::Complete);
-}
 
 #[test]
 fn test_reduce_development_iteration_completed() {

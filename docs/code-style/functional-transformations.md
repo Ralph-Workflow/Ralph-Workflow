@@ -511,7 +511,7 @@ PipelineEvent::ContextCleaned => PipelineState {
     context_cleaned: true,
     ..state
 },
-PipelineEvent::FinalizingStarted => PipelineState {
+PipelineEvent::FinalStateValidationCompleted => PipelineState {
     phase: PipelinePhase::Finalizing,
     ..state
 },

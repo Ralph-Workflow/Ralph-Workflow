@@ -5,10 +5,10 @@
 
 // Re-export common types for test modules
 use crate::agents::AgentRole;
-pub use crate::common::domain_types::AgentName;
-pub use crate::reducer::event::{PipelineEvent, PipelinePhase};
-pub use crate::reducer::state::{AgentChainState, CommitState, PipelineState, RebaseState};
-pub use crate::reducer::state_reduction::reduce;
+pub(super) use crate::common::domain_types::AgentName;
+pub(super) use crate::reducer::event::{PipelineEvent, PipelinePhase};
+pub(super) use crate::reducer::state::{AgentChainState, CommitState, PipelineState, RebaseState};
+pub(super) use crate::reducer::state_reduction::reduce;
 
 // Test modules organized by phase
 mod agent_chain;
@@ -16,7 +16,6 @@ mod commit_phase;
 mod continuation;
 mod development_phase;
 mod phase_transitions;
-mod pipeline_lifecycle;
 mod planning_phase;
 mod rebase;
 mod review_phase;
@@ -46,7 +45,7 @@ pub fn create_test_state() -> PipelineState {
 
 /// Creates a test state in a specific phase.
 #[must_use]
-pub fn create_state_in_phase(phase: PipelinePhase) -> PipelineState {
+pub(super) fn create_state_in_phase(phase: PipelinePhase) -> PipelineState {
     PipelineState {
         phase,
         ..create_test_state()

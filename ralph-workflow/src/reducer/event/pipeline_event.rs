@@ -6,8 +6,8 @@ use super::agent::AgentEvent;
 use super::development::DevelopmentEvent;
 use super::review::ReviewEvent;
 use super::types::{
-    AwaitingDevFixEvent, CheckpointTrigger, CommitEvent, LifecycleEvent, PlanningEvent,
-    PromptInputEvent, RebaseEvent,
+    AwaitingDevFixEvent, CheckpointTrigger, CommitEvent, PlanningEvent, PromptInputEvent,
+    RebaseEvent,
 };
 
 /// Pipeline events representing all state transitions.
@@ -17,7 +17,6 @@ use super::types::{
 ///
 /// # Event Categories
 ///
-/// - `Lifecycle` - Pipeline start/stop/resume
 /// - `Planning` - Plan generation events
 /// - `Development` - Development iteration and continuation events
 /// - `Review` - Review pass and fix attempt events
@@ -75,12 +74,8 @@ use super::types::{
 ///
 /// The freeze policy is enforced by the `pipeline_event_is_frozen` test in this module,
 /// which will fail to compile if new variants are added. This is intentional.
-///
-/// See `LifecycleEvent` documentation for additional context on the freeze policy rationale.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum PipelineEvent {
-    /// Pipeline lifecycle events (start, stop, resume).
-    Lifecycle(LifecycleEvent),
     /// Planning phase events.
     Planning(PlanningEvent),
     /// Development phase events.
@@ -109,7 +104,7 @@ pub enum PipelineEvent {
         trigger: CheckpointTrigger,
     },
     /// Finalization phase started.
-    FinalizingStarted,
+    FinalStateValidationCompleted,
     /// PROMPT.md permissions restored.
     PromptPermissionsRestored,
     /// Loop recovery triggered (tight loop detected and broken).
@@ -125,26 +120,6 @@ pub enum PipelineEvent {
 mod tests {
     use super::*;
 
-    /// This test enforces the FROZEN policy on `LifecycleEvent`.
-    ///
-    /// If you're here because this test failed to compile after adding
-    /// a variant, you are violating the freeze policy. See the FROZEN
-    /// comment on `LifecycleEvent` for alternatives.
-    #[test]
-    fn lifecycle_event_is_frozen() {
-        fn exhaustive_match(e: &LifecycleEvent) -> &'static str {
-            match e {
-                LifecycleEvent::Started => "started",
-                LifecycleEvent::Resumed { .. } => "resumed",
-                LifecycleEvent::Completed => "completed",
-                LifecycleEvent::GitignoreEntriesEnsured { .. } => "gitignore_ensured",
-                // DO NOT ADD _ WILDCARD - intentionally exhaustive
-            }
-        }
-        // Just needs to compile; actual call proves exhaustiveness
-        let _ = exhaustive_match(&LifecycleEvent::Started);
-    }
-
     /// This test enforces the FROZEN policy on `PipelineEvent`.
     ///
     /// If you're here because this test failed to compile after adding
@@ -154,7 +129,6 @@ mod tests {
     fn pipeline_event_is_frozen() {
         fn exhaustive_match(e: &PipelineEvent) -> &'static str {
             match e {
-                PipelineEvent::Lifecycle(_) => "lifecycle",
                 PipelineEvent::Planning(_) => "planning",
                 PipelineEvent::Development(_) => "development",
                 PipelineEvent::Review(_) => "review",
@@ -165,7 +139,7 @@ mod tests {
                 PipelineEvent::AwaitingDevFix(_) => "awaiting_dev_fix",
                 PipelineEvent::ContextCleaned => "context_cleaned",
                 PipelineEvent::CheckpointSaved { .. } => "checkpoint_saved",
-                PipelineEvent::FinalizingStarted => "finalizing_started",
+                PipelineEvent::FinalStateValidationCompleted => "final_state_validation_completed",
                 PipelineEvent::PromptPermissionsRestored => "prompt_permissions_restored",
                 PipelineEvent::LoopRecoveryTriggered { .. } => "loop_recovery_triggered",
                 // DO NOT ADD _ WILDCARD - intentionally exhaustive

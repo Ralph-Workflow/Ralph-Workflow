@@ -698,7 +698,7 @@ fn test_check_commit_diff_emitted_on_each_commit_phase_entry() {
                 state = reduce(state, PipelineEvent::pre_termination_safety_check_passed());
             }
             Effect::ValidateFinalState => {
-                state = reduce(state, PipelineEvent::finalizing_started());
+                state = reduce(state, PipelineEvent::final_state_validation_completed());
             }
             Effect::SaveCheckpoint { .. } => {
                 if state.phase == PipelinePhase::Complete {

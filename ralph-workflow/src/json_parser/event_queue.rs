@@ -72,7 +72,7 @@
 
 include!("event_queue/config.rs");
 
-pub mod boundary;
+pub(super) mod boundary;
 
 include!("event_queue/bounded_queue.rs");
 

@@ -106,7 +106,9 @@ impl EffectHandler<'_> for PhaseChangingHandler {
         _effect: Effect,
         _ctx: &mut ralph_workflow::phases::PhaseContext<'_>,
     ) -> Result<EffectResult> {
-        Ok(EffectResult::event(PipelineEvent::FinalizingStarted))
+        Ok(EffectResult::event(
+            PipelineEvent::FinalStateValidationCompleted,
+        ))
     }
 }
 
@@ -283,10 +285,10 @@ fn test_trace_entry_phase_reflects_state_after_event_applied() {
             .find(|l| !l.trim().is_empty())
             .expect("trace file should have at least one entry line");
 
-        assert!(first_line.contains("\"event\":\"FinalizingStarted\""));
+        assert!(first_line.contains("\"event\":\"FinalStateValidationCompleted\""));
         assert!(
             first_line.contains("\"phase\":\"Finalizing\""),
-            "expected trace phase to reflect state after applying FinalizingStarted"
+            "expected trace phase to reflect state after applying FinalStateValidationCompleted"
         );
     });
 }

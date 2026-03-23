@@ -3,12 +3,10 @@
 //! This module provides the trait for retry timers. Production code uses
 //! the `runtime` module for actual sleep implementation.
 
-// Re-export from boundary module for convenience
-pub use crate::agents::{production_timer, RetryTimerProvider, RetryTimerProviderDebug};
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::{RetryTimerProvider, RetryTimerProviderDebug};
     use std::time::Duration;
 
     /// Test retry timer that doesn't actually sleep (immediate return).

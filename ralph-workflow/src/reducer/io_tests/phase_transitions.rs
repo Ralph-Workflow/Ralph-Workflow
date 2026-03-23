@@ -38,8 +38,11 @@ fn test_complete_pipeline_phase_flow() {
     );
     assert_eq!(state.phase, PipelinePhase::FinalValidation);
 
-    // FinalValidation -> Complete
-    state = reduce(state, PipelineEvent::pipeline_completed());
+    // FinalValidation -> Finalizing -> Complete
+    state = reduce(state, PipelineEvent::final_state_validation_completed());
+    assert_eq!(state.phase, PipelinePhase::Finalizing);
+
+    state = reduce(state, PipelineEvent::prompt_permissions_restored());
     assert_eq!(state.phase, PipelinePhase::Complete);
 }
 

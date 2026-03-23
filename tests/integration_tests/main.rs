@@ -84,6 +84,7 @@ mod fix_xml_validation;
 mod gemini_parser_tests;
 mod git;
 mod gitignore_enforcement;
+mod lifecycle_event_removal_regression;
 mod logger;
 mod logging_per_run;
 mod loop_detection_after_additional_events;

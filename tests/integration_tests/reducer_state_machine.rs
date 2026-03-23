@@ -117,8 +117,14 @@ fn test_commit_message_to_final_validation_on_skip() {
 #[test]
 fn test_pipeline_complete_transition() {
     with_default_timeout(|| {
-        let state = create_initial_state();
-        let new_state = reduce(state, PipelineEvent::pipeline_completed());
+        // Pipeline must go through FinalValidation -> Finalizing -> Complete
+        let state = PipelineState {
+            phase: PipelinePhase::FinalValidation,
+            ..create_initial_state()
+        };
+        let state = reduce(state, PipelineEvent::final_state_validation_completed());
+        assert_eq!(state.phase, PipelinePhase::Finalizing);
+        let new_state = reduce(state, PipelineEvent::prompt_permissions_restored());
         assert_eq!(new_state.phase, PipelinePhase::Complete);
     });
 }
@@ -664,7 +670,9 @@ fn test_event_replay_reproduces_final_state() {
             PipelineEvent::development_iteration_started(2),
             PipelineEvent::development_iteration_completed(2, true),
             PipelineEvent::development_iteration_completed(3, true),
-            PipelineEvent::pipeline_completed(),
+            // Finalization path: FinalValidation -> Finalizing -> Complete
+            PipelineEvent::final_state_validation_completed(),
+            PipelineEvent::prompt_permissions_restored(),
         ];
 
         let final_state = events.into_iter().fold(initial_state, reduce);

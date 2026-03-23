@@ -326,7 +326,11 @@ pub fn execute_dylint(
         cmd.arg("--quiet");
     }
 
-    cmd.env("PATH", path_env)
+    // --cap-lints=deny: cap "forbid" to "deny" so external crates don't cause
+    // unexpected build-system issues; -D warnings: promote all Warn-level custom
+    // lints to errors so every warning is a build failure.
+    cmd.env("RUSTFLAGS", "--cap-lints=deny -D warnings")
+        .env("PATH", path_env)
         .env("CARGO_HOME", &dylint_env.cargo_home)
         .env("RUSTUP_HOME", &dylint_env.rustup_home)
         .env("DYLINT_DRIVER_PATH", &dylint_env.dylint_driver)

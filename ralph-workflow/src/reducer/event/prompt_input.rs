@@ -153,4 +153,23 @@ pub enum PromptInputEvent {
         /// stale-content replay after inputs change.
         content_id: Option<String>,
     },
+
+    /// Gitignore entries ensured in the repository.
+    ///
+    /// Emitted by the `EnsureGitignoreEntries` effect handler after successfully
+    /// ensuring that `.agent/` and `/PROMPT*` entries exist in `.gitignore`.
+    /// The reducer sets `gitignore_entries_ensured = true` to prevent re-running
+    /// the effect on subsequent iterations.
+    ///
+    /// Previously this was a `LifecycleEvent` variant but was moved here because
+    /// it represents a prompt-input-related side effect, not a pipeline lifecycle
+    /// control event.
+    GitignoreEntriesEnsured {
+        /// Entries that were added to .gitignore.
+        added: Vec<String>,
+        /// Entries that were already present.
+        existing: Vec<String>,
+        /// Whether .gitignore was created.
+        created: bool,
+    },
 }

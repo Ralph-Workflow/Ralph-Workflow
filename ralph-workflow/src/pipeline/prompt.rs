@@ -26,7 +26,7 @@ pub use types::{PipelineRuntime, PromptCommand};
 pub const SIGTERM_EXIT_CODE: i32 = 143;
 
 #[cfg(test)]
-pub use io_agent_spawn_test::run_with_agent_spawn_with_monitor_config;
+pub(crate) use io_agent_spawn_test::run_with_agent_spawn_with_monitor_config;
 
 #[cfg(test)]
 use io_agent_spawn::run_with_agent_spawn;

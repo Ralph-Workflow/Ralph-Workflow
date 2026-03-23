@@ -163,6 +163,13 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
                 ..state
             }
         }
+        PromptInputEvent::GitignoreEntriesEnsured { .. } => {
+            // Set flag to prevent re-running effect
+            PipelineState {
+                gitignore_entries_ensured: true,
+                ..state
+            }
+        }
     }
 }
 

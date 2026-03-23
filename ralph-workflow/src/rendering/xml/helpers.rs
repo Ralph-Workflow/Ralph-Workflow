@@ -3,7 +3,7 @@
 //! This module contains utilities used by multiple XML renderer modules.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChangeAction {
+pub(super) enum ChangeAction {
     Create,
     Modify,
     Delete,
@@ -11,7 +11,7 @@ pub enum ChangeAction {
 
 /// A section of a unified diff for a single file.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiffFileSection {
+pub(super) struct DiffFileSection {
     pub path: String,
     pub action: ChangeAction,
     pub diff: String,
@@ -20,7 +20,7 @@ pub struct DiffFileSection {
 /// Extract text content from an XML tag.
 ///
 /// Simple extraction for well-formed tags. Returns None if tag not found.
-pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
+pub(super) fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
     let start_tag = format!("<{tag_name}>");
     let end_tag = format!("</{tag_name}>");
 
@@ -32,7 +32,7 @@ pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
 }
 
 /// Parse unified diff format into per-file sections.
-pub fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
+pub(super) fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
     let lines: Vec<&str> = diff.lines().collect();
 
     let diff_starts: Vec<usize> = lines
@@ -102,7 +102,7 @@ fn parse_diff_section(lines: &[&str]) -> Option<DiffFileSection> {
 }
 
 /// Render diff sections with a title.
-pub fn render_diff_sections(title: &str, sections: &[DiffFileSection]) -> String {
+pub(super) fn render_diff_sections(title: &str, sections: &[DiffFileSection]) -> String {
     if sections.is_empty() {
         return String::new();
     }
@@ -142,7 +142,7 @@ pub fn render_diff_sections(title: &str, sections: &[DiffFileSection]) -> String
 }
 
 /// Parse a simple file list into file paths with actions.
-pub fn parse_files_changed_list(files: &str) -> Vec<(String, ChangeAction)> {
+pub(super) fn parse_files_changed_list(files: &str) -> Vec<(String, ChangeAction)> {
     files
         .lines()
         .map(str::trim)

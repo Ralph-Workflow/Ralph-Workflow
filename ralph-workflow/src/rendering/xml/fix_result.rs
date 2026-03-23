@@ -10,7 +10,7 @@ use crate::files::llm_output_extraction::validate_fix_result_xml;
 use crate::reducer::ui_event::XmlOutputContext;
 
 /// Render fix result XML with semantic formatting.
-pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
+pub(super) fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
     let header = output_context
         .and_then(|ctx| ctx.pass)
         .map(|pass| format!("\n╔═══ Fix Pass {pass} ═══╗\n"))

@@ -69,7 +69,7 @@ pub fn determine_next_effect_for_phase(state: &PipelineState) -> Effect {
         PipelinePhase::CommitMessage => commit::determine_commit_effect(state),
         PipelinePhase::FinalValidation => {
             // SAFETY CHECK: Ensure no uncommitted work before finalization
-            // This check happens before FinalizingStarted, ensuring all work is committed
+            // This check happens before FinalStateValidationCompleted, ensuring all work is committed
             // before the pipeline enters its terminal sequence (Finalizing -> Complete)
             if !state.pre_termination_commit_checked {
                 return Effect::CheckUncommittedChangesBeforeTermination;

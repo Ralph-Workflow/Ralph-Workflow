@@ -13,7 +13,6 @@
 //! # Event Categories
 //!
 //! Events are organized into logical categories for type-safe routing:
-//! - [`LifecycleEvent`] - Pipeline start/stop/resume (in `lifecycle.rs`)
 //! - [`PlanningEvent`] - Plan generation events (in `planning.rs`)
 //! - [`PromptInputEvent`] - Prompt input materialization (in `prompt_input.rs`)
 //! - [`RebaseEvent`] - Git rebase operations (in `rebase.rs`)
@@ -32,9 +31,6 @@
 pub use crate::reducer::state::{MaterializedPromptInput, PromptInputKind};
 
 // Re-export all event category modules
-mod lifecycle;
-pub use lifecycle::LifecycleEvent;
-
 mod planning;
 pub use planning::PlanningEvent;
 

@@ -37,12 +37,12 @@ pub(super) struct TestFixture {
 
 impl TestFixture {
     /// Creates a fixture with default test values and a blank `MemoryWorkspace`.
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::with_workspace(MemoryWorkspace::new_test())
     }
 
     /// Creates a fixture with the given workspace.
-    pub fn with_workspace(workspace: MemoryWorkspace) -> Self {
+    pub(super) fn with_workspace(workspace: MemoryWorkspace) -> Self {
         let workspace_arc = Arc::new(workspace.clone()) as Arc<dyn crate::workspace::Workspace>;
         let colors = Colors { enabled: false };
         let logger = Logger::new(colors);
@@ -67,7 +67,7 @@ impl TestFixture {
     /// Builds a `PhaseContext` whose `workspace` field points to a custom
     /// trait-object workspace (e.g. an error-injecting wrapper) instead of
     /// the fixture's owned `MemoryWorkspace`.
-    pub fn ctx_with_workspace<'a>(
+    pub(super) fn ctx_with_workspace<'a>(
         &'a mut self,
         workspace: &'a dyn crate::workspace::Workspace,
     ) -> crate::phases::PhaseContext<'a> {
@@ -96,7 +96,7 @@ impl TestFixture {
     }
 
     /// Builds a `PhaseContext` that borrows from this fixture.
-    pub fn ctx(&mut self) -> crate::phases::PhaseContext<'_> {
+    pub(super) fn ctx(&mut self) -> crate::phases::PhaseContext<'_> {
         crate::phases::PhaseContext {
             config: &self.config,
             registry: &self.registry,

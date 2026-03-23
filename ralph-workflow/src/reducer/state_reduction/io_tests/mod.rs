@@ -16,12 +16,12 @@ mod rebase_commit;
 mod review_phase;
 mod template_validation;
 
-pub use crate::agents::AgentRole;
-pub use crate::common::domain_types::AgentName;
-pub use crate::reducer::event::{PipelineEvent, PipelinePhase};
-pub use crate::reducer::io_tests::create_test_state;
-pub use crate::reducer::orchestration::determine_next_effect;
-pub use crate::reducer::state::{
+pub(super) use crate::agents::AgentRole;
+pub(super) use crate::common::domain_types::AgentName;
+pub(super) use crate::reducer::event::{PipelineEvent, PipelinePhase};
+pub(super) use crate::reducer::io_tests::create_test_state;
+pub(super) use crate::reducer::orchestration::determine_next_effect;
+pub(super) use crate::reducer::state::{
     AgentChainState, CommitState, ContinuationState, PipelineState, SameAgentRetryReason,
 };
-pub use crate::reducer::state_reduction::reduce;
+pub(super) use crate::reducer::state_reduction::reduce;

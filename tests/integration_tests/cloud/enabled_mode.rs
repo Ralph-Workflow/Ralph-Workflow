@@ -11,7 +11,7 @@
 use ralph_workflow::cloud::{CloudReporter, MockCloudReporter, ProgressEventType, ProgressUpdate};
 use ralph_workflow::config::{CloudConfig, GitRemoteConfig};
 use ralph_workflow::reducer::effect::{Effect, EffectHandler, EffectResult};
-use ralph_workflow::reducer::event::{LifecycleEvent, PipelineEvent, PipelinePhase};
+use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
 use ralph_workflow::reducer::state::PipelineState;
 use ralph_workflow::reducer::ui_event::UIEvent;
 
@@ -350,7 +350,7 @@ fn test_cloud_mode_enabled_reports_progress_updates_from_ui_events() {
                 _ctx: &mut ralph_workflow::phases::PhaseContext<'_>,
             ) -> anyhow::Result<EffectResult> {
                 Ok(
-                    EffectResult::event(PipelineEvent::Lifecycle(LifecycleEvent::Completed))
+                    EffectResult::event(PipelineEvent::PromptPermissionsRestored)
                         .with_ui_event(UIEvent::PhaseTransition {
                             from: None,
                             to: PipelinePhase::Planning,

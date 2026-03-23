@@ -84,7 +84,7 @@
 pub mod cache_environment;
 pub mod ccs;
 mod ccs_env;
-mod config;
+pub mod config;
 mod error;
 pub mod fallback;
 pub mod invoke;
@@ -95,6 +95,7 @@ mod providers;
 mod registry;
 mod retry_timer;
 pub mod runtime;
+pub mod session;
 pub mod validation;
 
 use std::sync::Arc;

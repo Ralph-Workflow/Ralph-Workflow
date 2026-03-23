@@ -103,7 +103,6 @@ Ralph uses a few structural patterns that are important when you add new behavio
 
 `PipelineEvent` wraps category-specific enums so the reducer can do type-safe routing:
 
-- `LifecycleEvent` (frozen)
 - `PlanningEvent`
 - `DevelopmentEvent`
 - `ReviewEvent`
@@ -242,11 +241,7 @@ The exact file layout can evolve, but conceptually Ralph keeps these concerns se
 
 ## Best Practices: Events vs Decisions
 
-### Never add decision-events to lifecycle
-
-`LifecycleEvent` is intentionally frozen so effect handlers cannot introduce new "control" events.
-
-If you need to represent a new observation or failure, add it to the appropriate phase/category event and let the reducer decide what to do.
+### Events must be descriptive facts
 
 ### Events must be descriptive facts
 

@@ -40,14 +40,14 @@ const MAX_TYPO_DISTANCE: usize = 3;
 /// Validates provider/model combinations against the `OpenCode` API catalog
 /// and generates `AgentConfig` instances with the appropriate command-line flags.
 #[derive(Debug)]
-pub struct OpenCodeResolver {
+pub(super) struct OpenCodeResolver {
     /// `OpenCode` API catalog with available providers and models.
     catalog: ApiCatalog,
 }
 
 impl OpenCodeResolver {
     /// Create a new `OpenCode` resolver with the given API catalog.
-    pub const fn new(catalog: ApiCatalog) -> Self {
+    pub(super) const fn new(catalog: ApiCatalog) -> Self {
         Self { catalog }
     }
 
@@ -59,7 +59,7 @@ impl OpenCodeResolver {
     ///
     /// Returns `None` if the name doesn't match the `OpenCode` pattern or if
     /// the provider/model combination is not found in the catalog.
-    pub fn try_resolve(&self, name: &str) -> Option<AgentConfig> {
+    pub(super) fn try_resolve(&self, name: &str) -> Option<AgentConfig> {
         // Handle plain "opencode" - use default (no model flag)
         if name == "opencode" {
             return Some(Self::build_default_config());
@@ -157,7 +157,7 @@ impl OpenCodeResolver {
     /// Validate a provider/model combination.
     ///
     /// Returns an error if the provider or model doesn't exist in the catalog.
-    pub fn validate(&self, provider: &str, model: &str) -> Result<(), ValidationError> {
+    pub(super) fn validate(&self, provider: &str, model: &str) -> Result<(), ValidationError> {
         if !self.catalog.has_provider(provider) {
             return Err(ValidationError::ProviderNotFound {
                 provider: provider.to_string(),
@@ -209,7 +209,7 @@ impl OpenCodeResolver {
     }
 
     /// Get a user-friendly error message for a validation error.
-    pub fn format_error(&self, error: &ValidationError, agent_name: &str) -> String {
+    pub(super) fn format_error(&self, error: &ValidationError, agent_name: &str) -> String {
         match error {
             ValidationError::ProviderNotFound {
                 provider,
@@ -253,7 +253,7 @@ impl OpenCodeResolver {
 
 /// Errors that can occur during `OpenCode` agent validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValidationError {
+pub(super) enum ValidationError {
     /// Provider not found in the API catalog.
     ProviderNotFound {
         provider: String,
