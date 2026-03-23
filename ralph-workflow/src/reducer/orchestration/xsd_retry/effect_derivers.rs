@@ -36,20 +36,34 @@ mod xsd_retry_fingerprint_tests {
     use super::compute_effect_fingerprint;
     use crate::agents::AgentRole;
     use crate::reducer::event::PipelinePhase;
-    use crate::reducer::state::PipelineState;
+    use crate::reducer::state::{AgentChainState, ContinuationState, PipelineState};
 
     #[test]
     fn test_effect_fingerprint_ignores_xsd_retry_count() {
-        let mut state = PipelineState::initial(1, 1);
-        state.phase = PipelinePhase::Development;
-        state.agent_chain.current_role = AgentRole::Developer;
-        state.iteration = 1;
-        state.reviewer_pass = 0;
-        state.continuation.xsd_retry_pending = true;
-
-        state.continuation.xsd_retry_count = 1;
+        let state = PipelineState::initial(1, 1);
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            agent_chain: AgentChainState {
+                current_role: AgentRole::Developer,
+                ..AgentChainState::default()
+            },
+            iteration: 1,
+            reviewer_pass: 0,
+            continuation: ContinuationState {
+                xsd_retry_pending: true,
+                xsd_retry_count: 1,
+                ..Default::default()
+            },
+            ..state
+        };
         let fp1 = compute_effect_fingerprint(&state);
-        state.continuation.xsd_retry_count = 2;
+        let state = PipelineState {
+            continuation: ContinuationState {
+                xsd_retry_count: 2,
+                ..state.continuation.clone()
+            },
+            ..state
+        };
         let fp2 = compute_effect_fingerprint(&state);
 
         assert_eq!(fp1, fp2);

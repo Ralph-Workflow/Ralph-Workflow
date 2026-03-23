@@ -1,8 +1,11 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint policy: `test-helpers` is a boundary crate for higher-level tests, not an
+// exemption from the style guide.
 //
-// Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
-// (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
-// issues outside our control and don't reflect code quality problems.
+// See `CODE_STYLE.md`, `docs/code-style/testing.md`,
+// `docs/code-style/boundaries.md`, and `test-helpers/clippy.toml`.
+//
+// `clippy::cargo` stays off because it reports dependency conflicts outside the
+// code-shape problems this crate can actually fix.
 #![deny(warnings)]
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
@@ -11,9 +14,9 @@
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
     // No implicit crashes / partial operations
-    // NOTE: expect_used/unwrap_used/panic are not denied because test-helpers wraps
-    // git2/libgit2 C API which cannot propagate Result without redesigning
-    // the entire test harness. This is documented in the lint policy exception table.
+    // This crate intentionally keeps a narrow libgit2/test-fixture exception for
+    // panic-oriented setup helpers. Ordinary helper code should still prefer explicit
+    // values and boundary-local effects.
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     // No casual side effects / debugging leftovers

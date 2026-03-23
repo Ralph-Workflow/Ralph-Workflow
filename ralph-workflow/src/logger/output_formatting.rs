@@ -17,62 +17,44 @@ use crate::config::Verbosity;
 #[must_use]
 pub fn argv_requests_json(argv: &[String]) -> bool {
     // Skip argv[0] (the executable); scan flags/args only.
-    let mut iter = argv.iter().skip(1).peekable();
-    while let Some(arg) = iter.next() {
-        if arg == "--json" || arg.starts_with("--json=") {
-            return true;
-        }
+    let args: Vec<&String> = argv.iter().skip(1).collect();
 
-        if arg == "--output-format" {
-            if let Some(next) = iter.peek() {
-                let next = next.as_str();
-                if next.contains("json") {
-                    return true;
-                }
-            }
-        }
-        if let Some((flag, value)) = arg.split_once('=') {
-            if flag == "--output-format" && value.contains("json") {
-                return true;
-            }
-            if flag == "--format" && value == "json" {
-                return true;
-            }
-        }
+    let dominated_by_output_format = args
+        .iter()
+        .position(|&arg| arg == "--output-format")
+        .is_some_and(|i| args.get(i + 1).is_some_and(|next| next.contains("json")));
 
-        if arg == "--format" {
-            if let Some(next) = iter.peek() {
-                if next.as_str() == "json" {
-                    return true;
-                }
-            }
-        }
-
-        // Some CLIs use short flags like -F json or -o stream-json
-        if arg == "-F" {
-            if let Some(next) = iter.peek() {
-                if next.as_str() == "json" {
-                    return true;
-                }
-            }
-        }
-        if arg.starts_with("-F") && arg != "-F" && arg.trim_start_matches("-F") == "json" {
-            return true;
-        }
-
-        if arg == "-o" {
-            if let Some(next) = iter.peek() {
-                let next = next.as_str();
-                if next.contains("json") {
-                    return true;
-                }
-            }
-        }
-        if arg.starts_with("-o") && arg != "-o" && arg.trim_start_matches("-o").contains("json") {
-            return true;
-        }
-    }
-    false
+    dominated_by_output_format
+        || args.iter().any(|&arg| {
+            arg == "--json"
+                || arg == "--format"
+                || arg == "-F"
+                || arg == "-o"
+                || arg == "--output-format"
+                || arg.starts_with("--json=")
+                || arg.starts_with("--output-format=")
+                || arg.starts_with("--format=")
+                || arg.starts_with("-F")
+                || arg.starts_with("-o")
+                || (arg == "--format"
+                    && args
+                        .iter()
+                        .position(|&a| a == arg)
+                        .and_then(|i| args.get(i + 1))
+                        .is_some_and(|next| *next == "json"))
+                || (arg == "-F"
+                    && args
+                        .iter()
+                        .position(|&a| a == arg)
+                        .and_then(|i| args.get(i + 1))
+                        .is_some_and(|next| *next == "json"))
+                || (arg == "-o"
+                    && args
+                        .iter()
+                        .position(|&a| a == arg)
+                        .and_then(|i| args.get(i + 1))
+                        .is_some_and(|next| next.contains("json")))
+        })
 }
 
 /// Format generic JSON output for display.

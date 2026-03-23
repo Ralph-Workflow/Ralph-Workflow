@@ -16,6 +16,7 @@ use ralph_workflow::prompts::template_context::TemplateContext;
 use ralph_workflow::reducer::effect::{Effect, EffectResult};
 use ralph_workflow::reducer::event::{ErrorEvent, PipelineEvent};
 use ralph_workflow::reducer::state::PipelineState;
+use ralph_workflow::runtime::environment::mock::MockGitEnvironment;
 use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,7 @@ pub struct Fixture {
     pub workspace: Arc<dyn Workspace>,
     pub run_log_context: ralph_workflow::logging::RunLogContext,
     pub cloud: ralph_workflow::config::CloudConfig,
+    pub git_env: MockGitEnvironment,
 }
 
 impl Fixture {
@@ -67,6 +69,7 @@ impl Fixture {
             workspace,
             run_log_context,
             cloud: ralph_workflow::config::CloudConfig::disabled(),
+            git_env: MockGitEnvironment::new(),
         }
     }
 
@@ -94,6 +97,7 @@ impl Fixture {
             run_log_context: &self.run_log_context,
             cloud_reporter: None,
             cloud: &self.cloud,
+            env: &self.git_env,
         }
     }
 }

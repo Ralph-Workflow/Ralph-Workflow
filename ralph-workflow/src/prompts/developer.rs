@@ -3,7 +3,6 @@
 //! Prompts for developer agent actions including iteration and planning.
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
 use std::path::Path;
 
 use super::partials::get_shared_partials;
@@ -17,6 +16,6 @@ include!("developer/system_prompt_iteration.rs");
 include!("developer/system_prompt_planning.rs");
 
 #[cfg(test)]
-mod tests {
-    include!("developer/tests.rs");
+mod io_tests {
+    include!("developer/io_tests.rs");
 }

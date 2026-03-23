@@ -27,9 +27,10 @@ fn test_codex_duplicate_item_completed_agent_message_prints_once_in_basic_mode()
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let stream = r#"
 {"type":"turn.started"}
@@ -73,9 +74,10 @@ fn test_codex_duplicate_item_completed_agent_message_prints_once_in_none_mode() 
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         let stream = r#"
 {"type":"turn.started"}
@@ -119,9 +121,10 @@ fn test_codex_agent_message_multiple_turns_prints_prefix_once_per_turn_in_none_m
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Two turns, each with an agent_message stream.
         // Append-only tracking must reset at `turn.started` so the first delta of the

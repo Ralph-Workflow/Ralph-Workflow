@@ -1,47 +1,35 @@
+use super::printer::{shared_stdout, Printable, SharedPrinter};
+use io::GeminiParserState;
+
 /// Gemini event parser
 pub struct GeminiParser {
     colors: Colors,
     verbosity: Verbosity,
-    /// Relative path to log file (if logging enabled)
     log_path: Option<std::path::PathBuf>,
     display_name: String,
-    /// Unified streaming session for state tracking
-    streaming_session: Rc<RefCell<StreamingSession>>,
-    /// Terminal mode for output formatting
-    terminal_mode: RefCell<TerminalMode>,
-    /// Track last rendered content for append-only streaming.
-    last_rendered_content: RefCell<std::collections::HashMap<String, String>>,
-    /// Whether to show streaming quality metrics
+    state: GeminiParserState,
     show_streaming_metrics: bool,
-    /// Output printer for capturing or displaying output
     printer: SharedPrinter,
 }
 
 impl GeminiParser {
     pub(crate) fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, super::printer::shared_stdout())
+        Self::with_printer(colors, verbosity, shared_stdout())
     }
 
-    /// Create a new `GeminiParser` with a custom printer.
     pub(crate) fn with_printer(
         colors: Colors,
         verbosity: Verbosity,
         printer: SharedPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
-
-        // Use the printer's is_terminal method to validate it's connected correctly
-        let _printer_is_terminal = printer.borrow().is_terminal();
 
         Self {
             colors,
             verbosity,
             log_path: None,
             display_name: "Gemini".to_string(),
-            streaming_session: Rc::new(RefCell::new(streaming_session)),
-            terminal_mode: RefCell::new(TerminalMode::detect()),
-            last_rendered_content: RefCell::new(std::collections::HashMap::new()),
+            state: GeminiParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
         }
@@ -64,31 +52,21 @@ impl GeminiParser {
 
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
-    pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
-        *self.terminal_mode.borrow_mut() = mode;
+    pub fn with_terminal_mode(self, mode: crate::json_parser::TerminalMode) -> Self {
+        *self.state.terminal_mode.borrow_mut() = mode;
         self
     }
 
-    /// Create a new parser with a test printer.
-    ///
-    /// This is the primary entry point for integration tests that need
-    /// to capture parser output for verification.
-    ///
-    /// Defaults to `TerminalMode::Full` for testing streaming behavior.
-    /// Integration tests that verify streaming output need Full mode to
-    /// see per-delta rendering (non-TTY modes suppress deltas and flush at completion).
     #[cfg(feature = "test-utils")]
     pub fn with_printer_for_test(
         colors: Colors,
         verbosity: Verbosity,
         printer: SharedPrinter,
     ) -> Self {
-        Self::with_printer(colors, verbosity, printer).with_terminal_mode(TerminalMode::Full)
+        Self::with_printer(colors, verbosity, printer)
+            .with_terminal_mode(crate::json_parser::TerminalMode::Full)
     }
 
-    /// Set the log file path for testing.
-    ///
-    /// This allows tests to verify log file content after parsing.
     #[cfg(feature = "test-utils")]
     #[must_use]
     pub fn with_log_file_for_test(mut self, path: &str) -> Self {
@@ -96,39 +74,29 @@ impl GeminiParser {
         self
     }
 
-    /// Parse a stream for testing purposes.
-    ///
-    /// This exposes the internal `parse_stream` method for integration tests.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if stream parsing or file operations fail.
     #[cfg(feature = "test-utils")]
     pub fn parse_stream_for_test<R: std::io::BufRead>(
-        &self,
+        &mut self,
         reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> std::io::Result<()> {
         self.parse_stream(reader, workspace)
     }
 
-    /// Get a shared reference to the printer.
-    ///
-    /// This allows tests, monitoring, and other code to access the printer after parsing
-    /// to verify output content, check for duplicates, or capture output for analysis.
-    /// Only available with the `test-utils` feature.
     #[cfg(feature = "test-utils")]
     pub fn printer(&self) -> SharedPrinter {
-        Rc::clone(&self.printer)
+        self.printer.clone()
     }
 
-    /// Get streaming quality metrics from the current session.
-    ///
-    /// This provides insight into the deduplication and streaming quality of the
-    /// parsing session. Only available with the `test-utils` feature.
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {
+        let mut printer_ref = self.printer.borrow_mut();
+        f(&mut *printer_ref)
+    }
+
     #[cfg(feature = "test-utils")]
-    pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
-        self.streaming_session
+    pub fn streaming_metrics(&self) -> crate::json_parser::health::StreamingQualityMetrics {
+        self.state
+            .streaming_session
             .borrow()
             .get_streaming_quality_metrics()
     }

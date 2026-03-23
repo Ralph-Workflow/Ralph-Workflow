@@ -2,6 +2,8 @@
 //
 // This file contains all unit tests for WorkspaceFs and MemoryWorkspace.
 
+use std::io;
+
 // =========================================================================
 // WorkspaceFs write_atomic interrupt-skipping tests
 // =========================================================================

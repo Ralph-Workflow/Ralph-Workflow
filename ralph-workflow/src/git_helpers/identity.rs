@@ -18,12 +18,37 @@
 
 #![deny(unsafe_code)]
 
-use std::env;
-
-use crate::executor::ProcessExecutor;
+use crate::git_helpers::runtime_identity::{get_system_hostname, get_system_username};
+use crate::ProcessExecutor;
 
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;
+
+/// Typed error for git identity validation.
+///
+/// Pure validation functions return `Result<(), IdentityValidationError>`.
+/// Callers that need a displayable message can use `.to_string()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentityValidationError {
+    /// Git user name is empty or whitespace-only.
+    EmptyName,
+    /// Git user email is empty or whitespace-only.
+    EmptyEmail,
+    /// Git user email does not match a valid format.
+    InvalidEmailFormat(String),
+}
+
+impl std::fmt::Display for IdentityValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyName => write!(f, "Git user name cannot be empty"),
+            Self::EmptyEmail => write!(f, "Git user email cannot be empty"),
+            Self::InvalidEmailFormat(email) => {
+                write!(f, "Invalid email format: '{email}'")
+            }
+        }
+    }
+}
 
 /// Git user identity information.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,33 +70,70 @@ impl GitIdentity {
     ///
     /// # Errors
     ///
-    /// Returns error if the operation fails.
-    pub fn validate(&self) -> Result<(), String> {
-        if self.name.trim().is_empty() {
-            return Err("Git user name cannot be empty".to_string());
-        }
-        if self.email.trim().is_empty() {
-            return Err("Git user email cannot be empty".to_string());
-        }
-        // Basic email validation - check for @ and at least one . after @
-        let email = self.email.trim();
-        if !email.contains('@') {
-            return Err(format!("Invalid email format: '{email}'"));
-        }
-        let parts: Vec<&str> = email.split('@').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid email format: '{email}'"));
-        }
-        if parts[0].trim().is_empty() {
-            return Err(format!(
-                "Invalid email format: '{email}' (missing local part)"
-            ));
-        }
-        if parts[1].trim().is_empty() || !parts[1].contains('.') {
-            return Err(format!("Invalid email format: '{email}' (invalid domain)"));
-        }
-        Ok(())
+    /// Returns [`IdentityValidationError`] if name or email is invalid.
+    pub fn validate(&self) -> Result<(), IdentityValidationError> {
+        validate_git_identity_fields(&self.name, &self.email)
     }
+}
+
+/// Pure policy: validate git identity name and email fields.
+///
+/// # Errors
+///
+/// Returns [`IdentityValidationError`] if name or email is invalid.
+pub fn validate_git_identity_fields(
+    name: &str,
+    email: &str,
+) -> Result<(), IdentityValidationError> {
+    if name.trim().is_empty() {
+        return Err(IdentityValidationError::EmptyName);
+    }
+    if email.trim().is_empty() {
+        return Err(IdentityValidationError::EmptyEmail);
+    }
+    let email = email.trim();
+    if !email.contains('@') {
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
+    }
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
+    }
+    if parts[0].trim().is_empty() {
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
+    }
+    if parts[1].trim().is_empty() || !parts[1].contains('.') {
+        return Err(IdentityValidationError::InvalidEmailFormat(
+            email.to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Pure policy: choose username from available sources.
+pub fn choose_username(env_username: Option<String>, whoami_output: Option<String>) -> String {
+    env_username
+        .filter(|u| !u.is_empty())
+        .or_else(|| whoami_output.map(|o| o.trim().to_string()))
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| "Unknown User".to_string())
+}
+
+/// Pure policy: choose hostname from available sources.
+pub fn choose_hostname(
+    env_hostname: Option<String>,
+    hostname_output: Option<String>,
+) -> Option<String> {
+    env_hostname
+        .filter(|h| !h.is_empty())
+        .or_else(|| hostname_output.map(|h| h.trim().to_string()))
+        .filter(|h| !h.is_empty())
 }
 
 /// Get the system username as a fallback.
@@ -81,77 +143,36 @@ impl GitIdentity {
 /// - On Windows: `%USERNAME%` env var
 #[must_use]
 pub fn fallback_username(executor: Option<&dyn ProcessExecutor>) -> String {
-    // Try environment variables first (fastest)
-    if cfg!(unix) {
-        if let Ok(user) = env::var("USER") {
-            if !user.trim().is_empty() {
-                return user.trim().to_string();
-            }
-        }
-        if let Ok(user) = env::var("LOGNAME") {
-            if !user.trim().is_empty() {
-                return user.trim().to_string();
-            }
-        }
-    } else if cfg!(windows) {
-        if let Ok(user) = env::var("USERNAME") {
-            if !user.trim().is_empty() {
-                return user.trim().to_string();
-            }
-        }
-    }
-
-    // As a last resort, try to run whoami (Unix only)
-    if cfg!(unix) {
-        if let Some(exec) = executor {
-            if let Ok(output) = exec.execute("whoami", &[], &[], None) {
-                let username = output.stdout.trim().to_string();
-                if !username.is_empty() {
-                    return username;
-                }
-            }
-        }
-    }
-
-    // Ultimate fallback
-    "Unknown User".to_string()
+    let env_username = get_system_username();
+    let whoami_output = if cfg!(unix) {
+        executor.and_then(|exec| {
+            exec.execute("whoami", &[], &[], None)
+                .ok()
+                .map(|o| o.stdout)
+        })
+    } else {
+        None
+    };
+    choose_username(env_username, whoami_output)
 }
 
 /// Get a fallback email based on the username.
-///
-/// Format: `{username}@{hostname}` or `{username}@localhost`
 #[must_use]
 pub fn fallback_email(username: &str, executor: Option<&dyn ProcessExecutor>) -> String {
-    // Try to get hostname
-    let hostname = match get_hostname(executor) {
-        Some(host) if !host.is_empty() => host,
-        _ => "localhost".to_string(),
-    };
-
-    format!("{username}@{hostname}")
+    let hostname = resolve_hostname_impl(executor);
+    let host = hostname.unwrap_or_else(|| "localhost".to_string());
+    format!("{username}@{host}")
 }
 
-/// Get the system hostname.
-fn get_hostname(executor: Option<&dyn ProcessExecutor>) -> Option<String> {
-    // Try HOSTNAME environment variable first (fastest)
-    if let Ok(hostname) = env::var("HOSTNAME") {
-        let hostname = hostname.trim();
-        if !hostname.is_empty() {
-            return Some(hostname.to_string());
-        }
-    }
-
-    // Try the `hostname` command
-    if let Some(exec) = executor {
-        if let Ok(output) = exec.execute("hostname", &[], &[], None) {
-            let hostname = output.stdout.trim().to_string();
-            if !hostname.is_empty() {
-                return Some(hostname);
-            }
-        }
-    }
-
-    None
+/// Internal hostname resolution.
+fn resolve_hostname_impl(executor: Option<&dyn ProcessExecutor>) -> Option<String> {
+    let env_hostname = get_system_hostname();
+    let hostname_output = executor.and_then(|exec| {
+        exec.execute("hostname", &[], &[], None)
+            .ok()
+            .map(|o| o.stdout.trim().to_string())
+    });
+    choose_hostname(env_hostname, hostname_output)
 }
 
 /// Get the default git identity (last resort).
@@ -169,10 +190,10 @@ trait ContainsErr {
 }
 
 #[cfg(test)]
-impl ContainsErr for Result<(), String> {
+impl ContainsErr for Result<(), IdentityValidationError> {
     fn contains_err(&self, needle: &str) -> bool {
         match self {
-            Err(e) => e.contains(needle),
+            Err(e) => e.to_string().contains(needle),
             _ => false,
         }
     }
@@ -251,5 +272,54 @@ mod tests {
         let identity = default_identity();
         assert_eq!(identity.name, "Ralph Workflow");
         assert_eq!(identity.email, "ralph@localhost");
+    }
+    // --- Typed error variant tests (TDD RED - will fail until IdentityValidationError is added) ---
+
+    #[test]
+    fn test_validate_empty_name_returns_empty_name_variant() {
+        let result = validate_git_identity_fields("", "test@example.com");
+        assert_eq!(result, Err(IdentityValidationError::EmptyName));
+    }
+
+    #[test]
+    fn test_validate_empty_email_returns_empty_email_variant() {
+        let result = validate_git_identity_fields("Test User", "");
+        assert_eq!(result, Err(IdentityValidationError::EmptyEmail));
+    }
+
+    #[test]
+    fn test_validate_email_no_at_returns_invalid_format_variant() {
+        let result = validate_git_identity_fields("Test User", "invalidemail");
+        assert!(
+            matches!(result, Err(IdentityValidationError::InvalidEmailFormat(_))),
+            "expected InvalidEmailFormat, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_email_no_domain_returns_invalid_format_variant() {
+        let result = validate_git_identity_fields("Test User", "user@");
+        assert!(
+            matches!(result, Err(IdentityValidationError::InvalidEmailFormat(_))),
+            "expected InvalidEmailFormat, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_identity_error_display_empty_name() {
+        let err = IdentityValidationError::EmptyName;
+        assert!(err.to_string().contains("name"));
+    }
+
+    #[test]
+    fn test_validate_identity_error_display_empty_email() {
+        let err = IdentityValidationError::EmptyEmail;
+        assert!(err.to_string().contains("email"));
+    }
+
+    #[test]
+    fn test_validate_identity_error_display_invalid_format() {
+        let err = IdentityValidationError::InvalidEmailFormat("bad@".to_string());
+        assert!(err.to_string().contains("bad@"));
     }
 }

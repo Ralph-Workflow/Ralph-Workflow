@@ -10,60 +10,54 @@ use super::types::OpenCodeProviderType;
 /// Returns a vector of warning messages (empty if no issues).
 #[must_use]
 pub fn validate_model_flag(model_flag: &str) -> Vec<String> {
-    let mut warnings = Vec::new();
-
     let model = strip_model_flag_prefix(model_flag);
     if model.is_empty() {
-        return warnings;
+        return Vec::new();
     }
 
     // Ensure model flag has provider prefix
     if !model.contains('/') {
-        warnings.push(format!(
+        return vec![format!(
             "Model '{model}' has no provider prefix. Expected format: 'provider/model' (e.g., 'opencode/glm-4.7-free')"
-        ));
-        return warnings;
+        )];
     }
 
     let provider_type = OpenCodeProviderType::from_model_flag(model);
 
-    // Warn about Z.AI vs Zen confusion
-    if provider_type == OpenCodeProviderType::OpenCodeZen && model.to_lowercase().contains("zai") {
-        warnings.push(
+    // Build warnings using iterator and filter
+    [
+        // Warn about Z.AI vs Zen confusion
+        (provider_type == OpenCodeProviderType::OpenCodeZen
+            && model.to_lowercase().contains("zai"))
+        .then_some(
             "Model flag uses 'opencode/' prefix but contains 'zai'. \
-             For Z.AI Direct access, use 'zai/' prefix instead."
+                 For Z.AI Direct access, use 'zai/' prefix instead."
                 .to_string(),
-        );
-    }
-
-    // Warn about providers requiring cloud configuration
-    if provider_type.requires_cloud() {
-        warnings.push(format!(
+        ),
+        // Warn about providers requiring cloud configuration
+        provider_type.requires_cloud().then_some(format!(
             "{} provider requires cloud configuration. {}",
             provider_type.name(),
             provider_type.auth_command()
-        ));
-    }
-
-    // Warn about custom/unknown providers
-    if provider_type == OpenCodeProviderType::Custom {
-        let prefix = model.split('/').next().unwrap_or("");
-        warnings.push(format!(
-            "Unknown provider prefix '{prefix}'. This may work if OpenCode supports it. \
-             Run 'ralph --list-providers' to see known providers."
-        ));
-    }
-
-    // Info about local providers
-    if provider_type.is_local() {
-        warnings.push(format!(
+        )),
+        // Warn about custom/unknown providers
+        (provider_type == OpenCodeProviderType::Custom).then_some({
+            let prefix = model.split('/').next().unwrap_or("");
+            format!(
+                "Unknown provider prefix '{prefix}'. This may work if OpenCode supports it. \
+                 Run 'ralph --list-providers' to see known providers."
+            )
+        }),
+        // Info about local providers
+        provider_type.is_local().then_some(format!(
             "{} is a local provider. {}",
             provider_type.name(),
             provider_type.auth_command()
-        ));
-    }
-
-    warnings
+        )),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// Get provider-specific authentication failure advice based on model flag.

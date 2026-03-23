@@ -13,7 +13,7 @@
 use ralph_workflow::config::{CloudConfig, CloudStateConfig, GitAuthMethod, GitRemoteConfig};
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::PipelinePhase;
-use ralph_workflow::reducer::event::{CommitEvent, PipelineEvent};
+use ralph_workflow::reducer::event::{CommitEvent, PipelineEvent, ProcessExecutionResult};
 use ralph_workflow::reducer::orchestration::determine_next_effect;
 use ralph_workflow::reducer::state::PipelineState;
 
@@ -247,10 +247,15 @@ fn test_push_completed_clears_pending_push() {
         state.pending_push_commit = Some("abc123".to_string());
         state.push_count = 0;
 
-        let event = PipelineEvent::Commit(CommitEvent::PushCompleted {
+        let event = PipelineEvent::Commit(CommitEvent::PushExecuted {
             remote: "origin".to_string(),
             branch: "main".to_string(),
             commit_sha: "abc123".to_string(),
+            result: ProcessExecutionResult {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
         });
         let new_state = ralph_workflow::reducer::reduce(state, event);
 

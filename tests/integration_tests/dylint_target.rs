@@ -1,8 +1,13 @@
 //! Integration test for the `make dylint` target.
 //!
-//! This validates that the Makefile's dylint targets delegate to cargo xtask dylint,
-//! rather than containing complex inline bash logic. This keeps the Makefile simple
-//! and maintains separation of concerns.
+//! This validates the Makefile's behavior in the mixed-install scenario where:
+//! - a stable `cargo` exists on PATH (e.g., Homebrew/apt)
+//! - `rustup` provides the nightly toolchain
+//!
+//! The regression we care about is that cargo-dylint may spawn a subprocess that
+//! unsets `RUSTUP_TOOLCHAIN` and then invokes plain `cargo`, which would resolve
+//! to the stable cargo on PATH unless the Makefile prepends the nightly toolchain
+//! bin directory (or otherwise forces resolution).
 //!
 //! Per integration test rules, we do not spawn external processes (no `make`,
 //! no `cargo`, no `rustup`). We assert the observable, deterministic behavior
@@ -15,110 +20,117 @@
 
 use crate::test_timeout::with_default_timeout;
 
-/// Extract a Makefile target body by finding the target and extracting until the next target (next line starting with word characters followed by colon)
-fn extract_makefile_target(makefile: &str, target_name: &str) -> String {
-    let pattern = format!("\n{target_name}:");
-    let start = match makefile.find(&pattern) {
-        Some(pos) => pos + 1, // skip the newline
-        None => return String::new(),
-    };
-
-    // Find the end: next line that's a target (word followed by colon) or double newline
-    let rest = &makefile[start..];
-    let mut end = rest.len();
-
-    // Look for next target pattern (lines that look like targets: "target:" or "target: ")
-    for (i, line) in rest.lines().enumerate() {
-        if i == 0 {
-            continue; // skip the target line itself
-        }
-        // A target line is one that contains a colon but not in a variable reference
-        // Simple heuristic: starts with optional whitespace, then word characters, then colon
-        let trimmed = line.trim();
-        if !trimmed.is_empty()
-            && trimmed.contains(':')
-            && !trimmed.contains("$$")
-            && !trimmed.starts_with('\t')
-            && !trimmed.starts_with(" if")
-            && !trimmed.starts_with(" else")
-            && !trimmed.starts_with(" fi")
-        {
-            // Check if this looks like a target (has colon at start or after word chars)
-            if trimmed.starts_with(char::is_alphabetic) || trimmed.starts_with('_') {
-                // This is likely a new target
-                end = start + rest[..i].rfind('\n').map(|p| p + 1).unwrap_or(0);
-                break;
-            }
-        }
-        // Also stop at double newline (paragraph break)
-        if line.is_empty() && rest.lines().nth(i + 1).is_some_and(|l| l.is_empty()) {
-            end = start + rest[..i].rfind('\n').map(|p| p + 1).unwrap_or(0);
-            break;
-        }
-    }
-
-    makefile[start..start + end].to_string()
-}
-
 #[test]
-fn make_dylint_target_delegates_to_xtask() {
+fn make_dylint_target_forces_nightly_cargo_resolution() {
     with_default_timeout(|| {
         let makefile = include_str!("../../Makefile");
 
-        // The dylint target should delegate to cargo xtask dylint
+        let dylint_body = {
+            let start = makefile
+                .find("\ndylint:")
+                .expect("Makefile should contain a dylint: target")
+                + 1;
+            let rest = &makefile[start..];
+            let end = rest.find("\ndylint-verbose:").unwrap_or(rest.len());
+            &rest[..end]
+        };
+
         assert!(
-            makefile.contains("dylint:\n\t$(CARGO) xtask dylint"),
-            "dylint target should delegate to 'cargo xtask dylint'"
+            dylint_body.contains("$(CARGO) xtask dylint"),
+            "dylint target should delegate to cargo xtask dylint"
+        );
+
+        let verbose_body = {
+            let start = makefile
+                .find("\ndylint-verbose:")
+                .expect("Makefile should contain a dylint-verbose target")
+                + 1;
+            let rest = &makefile[start..];
+            let end = rest.find("\n\n").unwrap_or(rest.len());
+            &rest[..end]
+        };
+
+        assert!(
+            verbose_body.contains("rustup which cargo --toolchain \"$$NIGHTLY_TOOLCHAIN\""),
+            "dylint-verbose should resolve nightly cargo via rustup"
+        );
+        assert!(
+            verbose_body.contains("export PATH=\"$$WRAPPER_DIR:$$NIGHTLY_BIN_DIR:$$PATH\""),
+            "dylint-verbose should prepend wrapper + nightly bin dir to PATH"
+        );
+        assert!(
+            verbose_body.contains("export RUSTUP_TOOLCHAIN=\"$$NIGHTLY_TOOLCHAIN\""),
+            "dylint-verbose should export RUSTUP_TOOLCHAIN"
+        );
+        assert!(
+            !verbose_body.contains(
+                "rustup component add rustc-dev llvm-tools-preview --toolchain \"$$NIGHTLY_TOOLCHAIN\" || true"
+            ),
+            "dylint-verbose must not suppress rustup component install failures"
+        );
+        assert!(
+            verbose_body.contains("if ! rustup toolchain list | grep -qE \"^nightly\"; then"),
+            "dylint-verbose should install nightly only when missing"
+        );
+        assert!(
+            verbose_body.contains("HOME_DIR=\"$${HOME:-}\""),
+            "dylint-verbose should guard access to HOME under bash -u"
         );
     });
 }
 
 #[test]
-fn make_dylint_verbose_target_delegates_to_xtask_verbose() {
+fn make_dylint_targets_check_cargo_home_before_registry_subdirs() {
     with_default_timeout(|| {
         let makefile = include_str!("../../Makefile");
 
-        // The dylint-verbose target should delegate to cargo xtask dylint --verbose
+        let target = "dylint-verbose";
+        let start = makefile
+            .find(&format!("\n{target}:"))
+            .expect("Makefile should contain dylint target")
+            + 1;
+        let rest = &makefile[start..];
+        let end = rest.find("\n\n").unwrap_or(rest.len());
+        let body = &rest[..end];
+
+        let cargo_home_check = body
+            .find("if ! mkdir -p \"$$CARGO_HOME\" 2>/dev/null; then")
+            .expect("target should check CARGO_HOME access");
+        let registry_mkdir = body
+            .find("mkdir -p \"$$CARGO_HOME/registry\" \"$$CARGO_HOME/registry/src\" \"$$CARGO_HOME/bin\";")
+            .expect("target should prepare cargo home subdirectories");
+
         assert!(
-            makefile.contains("dylint-verbose:\n\t$(CARGO) xtask dylint --verbose"),
-            "dylint-verbose target should delegate to 'cargo xtask dylint --verbose'"
+            cargo_home_check < registry_mkdir,
+            "{target} should validate CARGO_HOME before creating registry/bin subdirectories"
         );
     });
 }
 
 #[test]
-fn make_dylint_targets_do_not_contain_complex_inline_bash() {
+fn make_dylint_targets_do_not_force_offline_mode_from_partial_registry_cache() {
     with_default_timeout(|| {
         let makefile = include_str!("../../Makefile");
 
-        // The dylint targets should NOT contain the complex bash patterns that were
-        // previously inline in the Makefile. This ensures the Makefile is now
-        // a thin wrapper delegating to xtask.
+        let target = "dylint-verbose";
+        let start = makefile
+            .find(&format!("\n{target}:"))
+            .expect("Makefile should contain dylint target")
+            + 1;
+        let rest = &makefile[start..];
+        let end = rest.find("\n\n").unwrap_or(rest.len());
+        let body = &rest[..end];
 
-        // Extract dylint target body
-        let dylint_body = extract_makefile_target(makefile, "dylint");
-
-        // The target should be simple (just delegating to xtask)
-        // It should NOT contain complex bash patterns
         assert!(
-            !dylint_body.contains("rustup which cargo"),
-            "dylint target should NOT contain inline rustup logic (should delegate to xtask)"
+            !body.contains(
+                "if [ -z \"$${CARGO_NET_OFFLINE:-}\" ] && [ -e \"$$CARGO_HOME/registry/cache\" ] && [ -e \"$$CARGO_HOME/registry/index\" ]; then"
+            ),
+            "{target} should not force offline mode merely because registry cache/index directories exist"
         );
         assert!(
-            !dylint_body.contains("rustup toolchain install"),
-            "dylint target should NOT contain inline toolchain install (should delegate to xtask)"
-        );
-        assert!(
-            !dylint_body.contains("rustup component add"),
-            "dylint target should NOT contain inline component install (should delegate to xtask)"
-        );
-        assert!(
-            !dylint_body.contains("cargo install cargo-dylint"),
-            "dylint target should NOT contain inline cargo-dylint install (should delegate to xtask)"
-        );
-        assert!(
-            !dylint_body.contains("export PATH=\"$WRAPPER_DIR"),
-            "dylint target should NOT contain wrapper logic (should delegate to xtask)"
+            body.contains("if [ \"$${DYLINT_FORCE_OFFLINE:-0}\" = \"1\" ]; then")
+                && body.contains("export CARGO_NET_OFFLINE=true;"),
+            "{target} should keep offline mode opt-in via DYLINT_FORCE_OFFLINE"
         );
     });
 }

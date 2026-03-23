@@ -1,43 +1,20 @@
 use crate::common::truncate_text;
+use crate::common::utils::is_sensitive_key;
 use crate::json_parser::stream_classifier::{
     ClassificationResult, StreamEventClassifier, StreamEventType,
 };
-use regex::Regex;
-
-static SECRET_VALUE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    // Keep this intentionally conservative to reduce false positives in normal text.
-    // Primary goal: avoid leaking common API key formats to stdout/logs.
-    Regex::new(
-        r"(?xi)
-        \bsk-[a-z0-9]{16,}\b          # OpenAI-style keys
-        | \bghp_[a-z0-9]{20,}\b       # GitHub PATs
-        | \bxox[baprs]-[a-z0-9-]{10,}\b # Slack tokens
-        ",
-    )
-    .ok()
-});
-
-fn is_sensitive_key(key: &str) -> bool {
-    let normalized = key
-        .to_lowercase()
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .collect::<String>();
-
-    // Common sensitive key patterns. We intentionally use `contains` to catch variants like:
-    // access_token, apiKey, openai_api_key, githubToken, bearerToken, etc.
-    normalized.contains("token")
-        || normalized.contains("apikey")
-        || normalized.contains("secret")
-        || normalized.contains("password")
-        || normalized == "authorization"
-        || normalized.contains("bearer")
-}
-
 fn looks_like_secret_value(value: &str) -> bool {
-    SECRET_VALUE_RE
-        .as_ref()
-        .is_some_and(|re| re.is_match(value))
+    value.len() >= 14 && value.starts_with("sk-") && {
+        let after_prefix = &value[3..];
+        after_prefix.chars().all(|c| c.is_ascii_alphanumeric())
+    } || value.len() >= 24 && value.starts_with("ghp_") && {
+        let after_prefix = &value[4..];
+        after_prefix.chars().all(|c| c.is_ascii_alphanumeric())
+    } || value.starts_with("xoxb")
+        || value.starts_with("xoxa")
+        || value.starts_with("xoxp")
+        || value.starts_with("xoxr")
+        || value.starts_with("xoxs")
 }
 
 fn format_tool_value(key: Option<&str>, value: &serde_json::Value) -> String {
@@ -99,13 +76,13 @@ fn extract_nested_text(value: &serde_json::Value) -> Option<String> {
     // If it's an object, look for common text fields
     if let Some(obj) = value.as_object() {
         // Check common text field names
-        for field in ["text", "content", "message", "output", "result"] {
-            if let Some(val) = obj.get(field) {
-                if let Some(text) = val.as_str() {
-                    return Some(text.to_string());
-                }
-            }
-        }
+        return ["text", "content", "message", "output", "result"]
+            .iter()
+            .find_map(|field| {
+                obj.get(*field)
+                    .and_then(|val| val.as_str())
+                    .map(|s| s.to_string())
+            });
     }
 
     None
@@ -254,14 +231,11 @@ fn build_type_label(
                     })
                     .or_else(|| {
                         // Try common text fields at top level
-                        for field in ["text", "content", "message"] {
-                            if let Some(val) = obj.get(field) {
-                                if let Some(text) = val.as_str() {
-                                    return Some(text.to_string());
-                                }
-                            }
-                        }
-                        None
+                        ["text", "content", "message"].iter().find_map(|field| {
+                            obj.get(*field)
+                                .and_then(|val| val.as_str())
+                                .map(|s| s.to_string())
+                        })
                     });
 
                 if let Some(content) = full_content {
@@ -294,8 +268,7 @@ fn build_type_label(
 ///
 /// Returns formatted field strings for display.
 fn extract_common_fields(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
-    let mut fields = Vec::new();
-    for key in [
+    [
         "subtype",
         "session_id",
         "sessionID",
@@ -304,27 +277,26 @@ fn extract_common_fields(obj: &serde_json::Map<String, serde_json::Value>) -> Ve
         "index",
         "reason",
         "status",
-    ] {
-        if let Some(val) = obj.get(key) {
-            let val_str = match val {
-                serde_json::Value::String(s) => {
-                    // Truncate long strings for display
-                    if s.chars().count() > 20 {
-                        // Use character-based slicing to avoid UTF-8 boundary issues
-                        let truncated: String = s.chars().take(17).collect();
-                        format!("{truncated}...")
-                    } else {
-                        s.clone()
-                    }
+    ]
+    .iter()
+    .filter_map(|key| {
+        let val = obj.get(*key)?;
+        let val_str = match val {
+            serde_json::Value::String(s) => {
+                if s.chars().count() > 20 {
+                    let truncated: String = s.chars().take(17).collect();
+                    format!("{truncated}...")
+                } else {
+                    s.clone()
                 }
-                serde_json::Value::Number(n) => n.to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                _ => continue,
-            };
-            fields.push(format!("{key}={val_str}"));
-        }
-    }
-    fields
+            }
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            _ => return None,
+        };
+        Some(format!("{key}={val_str}"))
+    })
+    .collect()
 }
 
 /// Format an unknown JSON event for display in verbose/debug mode.
@@ -405,16 +377,18 @@ pub fn format_unknown_json_event(
     // Extract common fields for context
     let fields = extract_common_fields(obj);
 
-    let mut fields_str = if fields.is_empty() {
+    let fields_str = if fields.is_empty() {
         String::new()
     } else {
         format!(" ({})", fields.join(", "))
     };
 
     // Add content info if available
-    if let Some(content) = content_info {
-        fields_str.push_str(&content);
-    }
+    let fields_str = if let Some(content) = content_info {
+        format!("{fields_str}{content}")
+    } else {
+        fields_str
+    };
 
     format!(
         "{}[{}]{} {}{}{}{}\n",

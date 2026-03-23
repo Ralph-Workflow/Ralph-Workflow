@@ -3,10 +3,122 @@
 //! This module defines the cloud runtime configuration and git remote types
 //! used when Ralph is running in cloud-hosted mode.
 
+use crate::common::domain_types::{
+    HttpsUrl, NonEmptyString, PushBranch, PushBranchParseError, RemoteName,
+};
+
+#[must_use]
+pub fn load_cloud_config_from_env() -> CloudConfig {
+    super::boundary::load_cloud_config_from_env()
+}
+
+/// Typed error for cloud configuration validation.
+///
+/// `CloudConfig::validate()` returns `Result<(), CloudConfigValidationError>`.
+/// Boundary code can call `.to_string()` for human-readable messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudConfigValidationError {
+    /// `RALPH_CLOUD_API_URL` must be set when cloud mode is enabled.
+    ApiUrlMissing,
+    /// `RALPH_CLOUD_API_URL` must use `https://` when cloud mode is enabled.
+    ApiUrlNotHttps,
+    /// `RALPH_CLOUD_API_TOKEN` must be set when cloud mode is enabled.
+    ApiTokenMissing,
+    /// `RALPH_CLOUD_RUN_ID` must be set when cloud mode is enabled.
+    RunIdMissing,
+    /// Git remote configuration is invalid.
+    GitRemote(GitRemoteValidationError),
+}
+
+impl std::fmt::Display for CloudConfigValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ApiUrlMissing => {
+                write!(
+                    f,
+                    "RALPH_CLOUD_API_URL must be set when cloud mode is enabled"
+                )
+            }
+            Self::ApiUrlNotHttps => write!(
+                f,
+                "RALPH_CLOUD_API_URL must use https:// when cloud mode is enabled"
+            ),
+            Self::ApiTokenMissing => write!(
+                f,
+                "RALPH_CLOUD_API_TOKEN must be set when cloud mode is enabled"
+            ),
+            Self::RunIdMissing => {
+                write!(
+                    f,
+                    "RALPH_CLOUD_RUN_ID must be set when cloud mode is enabled"
+                )
+            }
+            Self::GitRemote(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl From<GitRemoteValidationError> for CloudConfigValidationError {
+    fn from(e: GitRemoteValidationError) -> Self {
+        Self::GitRemote(e)
+    }
+}
+
+/// Typed error for git remote configuration validation.
+///
+/// `GitRemoteConfig::validate()` returns `Result<(), GitRemoteValidationError>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitRemoteValidationError {
+    /// `RALPH_GIT_REMOTE` must not be empty.
+    EmptyRemoteName,
+    /// `RALPH_GIT_PUSH_BRANCH` must not be empty when set.
+    EmptyPushBranch,
+    /// `RALPH_GIT_PUSH_BRANCH` must be a branch name, not literal `HEAD`.
+    PushBranchIsHead,
+    /// `RALPH_GIT_SSH_KEY_PATH` must not be empty when set.
+    EmptySshKeyPath,
+    /// `RALPH_GIT_TOKEN` must be set when token auth is used.
+    EmptyToken,
+    /// `RALPH_GIT_TOKEN_USERNAME` must not be empty when token auth is used.
+    EmptyTokenUsername,
+    /// `RALPH_GIT_CREDENTIAL_HELPER` must be set when credential-helper auth is used.
+    EmptyCredentialHelper,
+}
+
+impl std::fmt::Display for GitRemoteValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyRemoteName => write!(f, "RALPH_GIT_REMOTE must not be empty"),
+            Self::EmptyPushBranch => {
+                write!(f, "RALPH_GIT_PUSH_BRANCH must not be empty when set")
+            }
+            Self::PushBranchIsHead => write!(
+                f,
+                "RALPH_GIT_PUSH_BRANCH must be a branch name (not literal 'HEAD')"
+            ),
+            Self::EmptySshKeyPath => {
+                write!(f, "RALPH_GIT_SSH_KEY_PATH must not be empty when set")
+            }
+            Self::EmptyToken => write!(
+                f,
+                "RALPH_GIT_TOKEN must be set when RALPH_GIT_AUTH_METHOD=token"
+            ),
+            Self::EmptyTokenUsername => write!(
+                f,
+                "RALPH_GIT_TOKEN_USERNAME must not be empty when RALPH_GIT_AUTH_METHOD=token"
+            ),
+            Self::EmptyCredentialHelper => write!(
+                f,
+                "RALPH_GIT_CREDENTIAL_HELPER must be set when RALPH_GIT_AUTH_METHOD=credential-helper"
+            ),
+        }
+    }
+}
+
 /// Cloud runtime configuration (internal).
 ///
 /// This struct is loaded from environment variables when cloud mode is enabled.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CloudConfig {
     /// Enable cloud reporting mode (internal env-config).
     pub enabled: bool,
@@ -27,7 +139,7 @@ pub struct CloudConfig {
 /// Git remote configuration (internal).
 ///
 /// Loaded from environment variables when cloud mode is enabled.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GitRemoteConfig {
     /// Authentication method for git operations
     pub auth_method: GitAuthMethod,
@@ -47,7 +159,7 @@ pub struct GitRemoteConfig {
     pub remote_name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GitAuthMethod {
     /// Use SSH key (default for containers with mounted keys)
     SshKey {
@@ -220,13 +332,6 @@ impl CloudConfig {
         }
     }
 
-    /// Load cloud config from environment variables ONLY.
-    /// Returns disabled config when cloud mode is not enabled.
-    #[must_use]
-    pub fn from_env() -> Self {
-        Self::from_env_fn(|k| std::env::var(k).ok())
-    }
-
     #[must_use]
     pub fn disabled() -> Self {
         Self {
@@ -245,34 +350,29 @@ impl CloudConfig {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn validate(&self) -> Result<(), String> {
+    /// # Errors
+    ///
+    /// Returns [`CloudConfigValidationError`] if required fields are missing or invalid.
+    pub fn validate(&self) -> Result<(), CloudConfigValidationError> {
         if !self.enabled {
             return Ok(());
         }
 
         let Some(api_url) = self.api_url.as_deref() else {
-            return Err("RALPH_CLOUD_API_URL must be set when cloud mode is enabled".to_string());
+            return Err(CloudConfigValidationError::ApiUrlMissing);
         };
-        if !api_url
-            .trim_start()
-            .to_ascii_lowercase()
-            .starts_with("https://")
-        {
-            return Err(
-                "RALPH_CLOUD_API_URL must use https:// when cloud mode is enabled".to_string(),
-            );
-        }
+        HttpsUrl::try_from_str(api_url).map_err(|_| CloudConfigValidationError::ApiUrlNotHttps)?;
 
-        if self.api_token.as_deref().unwrap_or_default().is_empty() {
-            return Err("RALPH_CLOUD_API_TOKEN must be set when cloud mode is enabled".to_string());
-        }
+        NonEmptyString::try_from_str(self.api_token.as_deref().unwrap_or_default())
+            .map_err(|_| CloudConfigValidationError::ApiTokenMissing)?;
 
-        if self.run_id.as_deref().unwrap_or_default().is_empty() {
-            return Err("RALPH_CLOUD_RUN_ID must be set when cloud mode is enabled".to_string());
-        }
+        NonEmptyString::try_from_str(self.run_id.as_deref().unwrap_or_default())
+            .map_err(|_| CloudConfigValidationError::RunIdMissing)?;
 
         // Validate git remote config when cloud mode is enabled.
-        self.git_remote.validate()?;
+        self.git_remote
+            .validate()
+            .map_err(CloudConfigValidationError::GitRemote)?;
 
         Ok(())
     }
@@ -285,51 +385,39 @@ impl GitRemoteConfig {
     /// - Remote name is empty
     /// - Push branch is invalid
     /// - Auth method configuration is invalid
-    pub fn validate(&self) -> Result<(), String> {
-        if self.remote_name.trim().is_empty() {
-            return Err("RALPH_GIT_REMOTE must not be empty".to_string());
-        }
+    /// # Errors
+    ///
+    /// Returns [`GitRemoteValidationError`] if:
+    /// - Remote name is empty
+    /// - Push branch is invalid
+    /// - Auth method configuration is invalid
+    pub fn validate(&self) -> Result<(), GitRemoteValidationError> {
+        RemoteName::try_from_str(&self.remote_name)
+            .map_err(|_| GitRemoteValidationError::EmptyRemoteName)?;
 
         if let Some(branch) = self.push_branch.as_deref() {
-            let trimmed = branch.trim();
-            if trimmed.is_empty() {
-                return Err("RALPH_GIT_PUSH_BRANCH must not be empty when set".to_string());
-            }
-            if trimmed == "HEAD" {
-                return Err(
-                    "RALPH_GIT_PUSH_BRANCH must be a branch name (not literal 'HEAD')".to_string(),
-                );
-            }
+            PushBranch::try_from_str(branch).map_err(|err| match err {
+                PushBranchParseError::Empty => GitRemoteValidationError::EmptyPushBranch,
+                PushBranchParseError::IsHead => GitRemoteValidationError::PushBranchIsHead,
+            })?;
         }
 
         match &self.auth_method {
             GitAuthMethod::SshKey { key_path } => {
                 if let Some(path) = key_path.as_deref() {
-                    if path.trim().is_empty() {
-                        return Err("RALPH_GIT_SSH_KEY_PATH must not be empty when set".to_string());
-                    }
+                    NonEmptyString::try_from_str(path)
+                        .map_err(|_| GitRemoteValidationError::EmptySshKeyPath)?;
                 }
             }
             GitAuthMethod::Token { token, username } => {
-                if token.trim().is_empty() {
-                    return Err(
-                        "RALPH_GIT_TOKEN must be set when RALPH_GIT_AUTH_METHOD=token".to_string(),
-                    );
-                }
-                if username.trim().is_empty() {
-                    return Err(
-                        "RALPH_GIT_TOKEN_USERNAME must not be empty when RALPH_GIT_AUTH_METHOD=token"
-                            .to_string(),
-                    );
-                }
+                NonEmptyString::try_from_str(token)
+                    .map_err(|_| GitRemoteValidationError::EmptyToken)?;
+                NonEmptyString::try_from_str(username)
+                    .map_err(|_| GitRemoteValidationError::EmptyTokenUsername)?;
             }
             GitAuthMethod::CredentialHelper { helper } => {
-                if helper.trim().is_empty() {
-                    return Err(
-                        "RALPH_GIT_CREDENTIAL_HELPER must be set when RALPH_GIT_AUTH_METHOD=credential-helper"
-                            .to_string(),
-                    );
-                }
+                NonEmptyString::try_from_str(helper)
+                    .map_err(|_| GitRemoteValidationError::EmptyCredentialHelper)?;
             }
         }
 
@@ -374,12 +462,6 @@ impl GitRemoteConfig {
                 .is_some_and(|v| v.eq_ignore_ascii_case("true") || v == "1"),
             remote_name: get("RALPH_GIT_REMOTE").unwrap_or_else(|| "origin".to_string()),
         }
-    }
-
-    /// Load git-remote configuration from the process environment.
-    #[must_use]
-    pub fn from_env() -> Self {
-        Self::from_env_fn(|k| std::env::var(k).ok())
     }
 }
 
@@ -491,6 +573,202 @@ mod cloud_tests {
         assert!(
             config.validate().is_err(),
             "Token auth requires a non-empty RALPH_GIT_TOKEN"
+        );
+    }
+    // --- Typed error RED tests for CloudConfigValidationError ---
+
+    #[test]
+    fn test_validate_missing_api_url_returns_api_url_missing_variant() {
+        let config = CloudConfig {
+            enabled: true,
+            api_url: None,
+            api_token: Some("token".to_string()),
+            run_id: Some("run".to_string()),
+            ..CloudConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(CloudConfigValidationError::ApiUrlMissing)
+        );
+    }
+
+    #[test]
+    fn test_validate_non_https_returns_api_url_not_https_variant() {
+        let config = CloudConfig {
+            enabled: true,
+            api_url: Some("http://api.example.com".to_string()),
+            api_token: Some("token".to_string()),
+            run_id: Some("run".to_string()),
+            ..CloudConfig::default()
+        };
+        assert!(
+            matches!(
+                config.validate(),
+                Err(CloudConfigValidationError::ApiUrlNotHttps)
+            ),
+            "expected ApiUrlNotHttps"
+        );
+    }
+
+    #[test]
+    fn test_validate_missing_token_returns_api_token_missing_variant() {
+        let config = CloudConfig {
+            enabled: true,
+            api_url: Some("https://api.example.com".to_string()),
+            api_token: None,
+            run_id: Some("run".to_string()),
+            ..CloudConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(CloudConfigValidationError::ApiTokenMissing)
+        );
+    }
+
+    #[test]
+    fn test_validate_missing_run_id_returns_run_id_missing_variant() {
+        let config = CloudConfig {
+            enabled: true,
+            api_url: Some("https://api.example.com".to_string()),
+            api_token: Some("token".to_string()),
+            run_id: None,
+            ..CloudConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(CloudConfigValidationError::RunIdMissing)
+        );
+    }
+
+    #[test]
+    fn test_cloud_config_validation_error_display_not_empty() {
+        for err in [
+            CloudConfigValidationError::ApiUrlMissing,
+            CloudConfigValidationError::ApiUrlNotHttps,
+            CloudConfigValidationError::ApiTokenMissing,
+            CloudConfigValidationError::RunIdMissing,
+        ] {
+            assert!(
+                !err.to_string().is_empty(),
+                "display must not be empty for {err:?}"
+            );
+        }
+    }
+
+    // --- Typed error RED tests for GitRemoteValidationError ---
+
+    #[test]
+    fn test_git_remote_validate_empty_remote_name_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            remote_name: String::new(),
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(GitRemoteValidationError::EmptyRemoteName)
+        );
+    }
+
+    #[test]
+    fn test_git_remote_validate_head_push_branch_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            push_branch: Some("HEAD".to_string()),
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(GitRemoteValidationError::PushBranchIsHead)
+        );
+    }
+
+    #[test]
+    fn test_git_remote_validate_empty_push_branch_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            push_branch: Some(String::new()),
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(GitRemoteValidationError::EmptyPushBranch)
+        );
+    }
+
+    #[test]
+    fn test_git_remote_validate_empty_ssh_key_path_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            auth_method: GitAuthMethod::SshKey {
+                key_path: Some(String::new()),
+            },
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(GitRemoteValidationError::EmptySshKeyPath)
+        );
+    }
+
+    #[test]
+    fn test_git_remote_validate_empty_token_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            auth_method: GitAuthMethod::Token {
+                token: String::new(),
+                username: "oauth2".to_string(),
+            },
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(config.validate(), Err(GitRemoteValidationError::EmptyToken));
+    }
+
+    #[test]
+    fn test_git_remote_validate_empty_token_username_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            auth_method: GitAuthMethod::Token {
+                token: "ghp_valid_token".to_string(),
+                username: String::new(),
+            },
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(GitRemoteValidationError::EmptyTokenUsername)
+        );
+    }
+
+    #[test]
+    fn test_git_remote_validate_empty_credential_helper_returns_typed_variant() {
+        let config = GitRemoteConfig {
+            auth_method: GitAuthMethod::CredentialHelper {
+                helper: String::new(),
+            },
+            ..GitRemoteConfig::default()
+        };
+        assert_eq!(
+            config.validate(),
+            Err(GitRemoteValidationError::EmptyCredentialHelper)
+        );
+    }
+
+    #[test]
+    fn test_cloud_config_validate_git_remote_error_returns_git_remote_variant() {
+        let config = CloudConfig {
+            enabled: true,
+            api_url: Some("https://api.example.com".to_string()),
+            api_token: Some("token".to_string()),
+            run_id: Some("run-id".to_string()),
+            git_remote: GitRemoteConfig {
+                remote_name: String::new(),
+                ..GitRemoteConfig::default()
+            },
+            ..CloudConfig::default()
+        };
+        assert!(
+            matches!(
+                config.validate(),
+                Err(CloudConfigValidationError::GitRemote(
+                    GitRemoteValidationError::EmptyRemoteName
+                ))
+            ),
+            "expected GitRemote(EmptyRemoteName) variant"
         );
     }
 }

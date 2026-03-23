@@ -7,7 +7,7 @@
 use ralph_workflow::git_helpers::rebase_checkpoint::{
     save_rebase_checkpoint, RebaseCheckpoint, RebasePhase,
 };
-use ralph_workflow::git_helpers::rebase_state_machine::{
+use ralph_workflow::git_helpers::{
     acquire_rebase_lock, release_rebase_lock, RebaseLock, RebaseStateMachine,
 };
 use serial_test::serial;
@@ -21,10 +21,9 @@ const REBASE_LOCK_PATH: &str = ".agent/rebase.lock";
 #[serial]
 fn test_state_machine_transition() {
     with_temp_cwd(|_dir| {
-        let mut machine = RebaseStateMachine::new("main".to_string());
-        machine
-            .transition_to(RebasePhase::RebaseInProgress)
-            .unwrap();
+        let machine = RebaseStateMachine::new("main".to_string());
+        let (machine, result) = machine.transition_to(RebasePhase::RebaseInProgress);
+        result.unwrap();
         assert_eq!(machine.phase(), &RebasePhase::RebaseInProgress);
     });
 }
@@ -33,10 +32,9 @@ fn test_state_machine_transition() {
 #[serial]
 fn test_state_machine_save_load() {
     with_temp_cwd(|_dir| {
-        let mut machine1 = RebaseStateMachine::new("feature-branch".to_string());
-        machine1
-            .transition_to(RebasePhase::ConflictDetected)
-            .unwrap();
+        let machine1 = RebaseStateMachine::new("feature-branch".to_string());
+        let (_machine1, result) = machine1.transition_to(RebasePhase::ConflictDetected);
+        result.unwrap();
 
         let checkpoint = RebaseCheckpoint::new("feature-branch".to_string())
             .with_phase(RebasePhase::ConflictDetected)
@@ -54,10 +52,9 @@ fn test_state_machine_save_load() {
 #[serial]
 fn test_state_machine_clear_checkpoint() {
     with_temp_cwd(|_dir| {
-        let mut machine = RebaseStateMachine::new("main".to_string());
-        machine
-            .transition_to(RebasePhase::RebaseInProgress)
-            .unwrap();
+        let machine = RebaseStateMachine::new("main".to_string());
+        let (machine, result) = machine.transition_to(RebasePhase::RebaseInProgress);
+        result.unwrap();
 
         machine.clear_checkpoint().unwrap();
         assert!(!Path::new(".agent/rebase_checkpoint.json").exists());
@@ -68,10 +65,9 @@ fn test_state_machine_clear_checkpoint() {
 #[serial]
 fn test_state_machine_abort() {
     with_temp_cwd(|_dir| {
-        let mut machine = RebaseStateMachine::new("main".to_string());
-        machine
-            .transition_to(RebasePhase::ConflictDetected)
-            .unwrap();
+        let machine = RebaseStateMachine::new("main".to_string());
+        let (machine, result) = machine.transition_to(RebasePhase::ConflictDetected);
+        result.unwrap();
         machine.abort().unwrap();
 
         let loaded = RebaseStateMachine::load_or_create("main".to_string()).unwrap();

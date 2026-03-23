@@ -1,3 +1,4 @@
+use super::super::io::{force_kill_best_effort, kill_process, KillResult};
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -138,8 +139,8 @@ fn kill_process_returns_failed_when_sigterm_command_exits_nonzero() {
     }
 
     let executor = NonZeroKillExecutor;
-    let result = super::super::kill::kill_process(12345, &executor, None, DEFAULT_KILL_CONFIG);
-    assert_eq!(result, super::super::kill::KillResult::Failed);
+    let result = kill_process(12345, &executor, None, DEFAULT_KILL_CONFIG);
+    assert_eq!(result, KillResult::Failed);
 }
 
 #[test]
@@ -147,7 +148,7 @@ fn kill_process_returns_failed_when_sigterm_command_exits_nonzero() {
 fn kill_command_uses_correct_syntax_for_negative_pgid() {
     let executor = crate::executor::MockProcessExecutor::new();
 
-    let _ = super::super::kill::kill_process(12345, &executor, None, DEFAULT_KILL_CONFIG);
+    let _ = kill_process(12345, &executor, None, DEFAULT_KILL_CONFIG);
 
     let calls = executor.execute_calls_for("kill");
     assert!(!calls.is_empty(), "expected at least one kill invocation");
@@ -159,7 +160,7 @@ fn kill_command_uses_correct_syntax_for_negative_pgid() {
 fn force_kill_best_effort_uses_correct_syntax_for_negative_pgid() {
     let executor = crate::executor::MockProcessExecutor::new();
 
-    let ok = super::super::kill::force_kill_best_effort(12345, &executor);
+    let ok = force_kill_best_effort(12345, &executor);
     assert!(ok);
 
     let calls = executor.execute_calls_for("kill");

@@ -174,5 +174,5 @@ EXAMPLES
 /// Displays comprehensive help including shell completion, all presets,
 /// troubleshooting information, and the difference between Work Guides and Agent Prompts.
 pub fn handle_extended_help() {
-    println!("{EXTENDED_HELP_TEXT}");
+    let _ = writeln!(std::io::stdout(), "{EXTENDED_HELP_TEXT}");
 }

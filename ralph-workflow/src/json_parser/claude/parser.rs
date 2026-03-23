@@ -2,137 +2,57 @@
 //
 // Contains the ClaudeParser struct and its core methods.
 
+use std::cell::RefCell;
+use std::io::BufRead;
+use std::rc::Rc;
+
+use crate::json_parser::claude::io::ParserState;
+#[cfg(any(test, feature = "test-utils"))]
+use crate::json_parser::health::StreamingQualityMetrics;
+use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
+use crate::json_parser::printer::Printable;
+use crate::json_parser::printer::StdoutPrinter;
+use crate::json_parser::types::{ContentBlock, ContentBlockDelta};
+
 /// Claude event parser
 ///
 /// Note: This parser is designed for single-threaded use only.
-/// The internal state uses `Rc<RefCell<>>` for convenience, not for thread safety.
 /// Do not share this parser across threads.
 pub struct ClaudeParser {
     colors: Colors,
     pub(crate) verbosity: Verbosity,
-    /// Relative path to log file (if logging enabled)
     log_path: Option<std::path::PathBuf>,
     display_name: String,
-    /// Unified streaming session tracker
-    /// Provides single source of truth for streaming state across all content types
-    streaming_session: Rc<RefCell<StreamingSession>>,
-    /// Terminal mode for output formatting
-    /// Detected at parse time and cached for performance
-    terminal_mode: RefCell<TerminalMode>,
-    /// Whether to show streaming quality metrics
+    state: ParserState,
     show_streaming_metrics: bool,
-    /// Output printer for capturing or displaying output
-    printer: SharedPrinter,
-
-    /// Tracks whether a thinking delta line is currently being streamed.
-    ///
-    /// - In `TerminalMode::Full`, thinking deltas use the append-only streaming pattern (no cursor
-    ///   movement during deltas) and must be finalized (emit the completion newline) before emitting
-    ///   other newline-based output.
-    /// - In `TerminalMode::Basic|None`, we suppress per-delta thinking output and flush accumulated
-    ///   thinking content once at the next output boundary (or at `message_stop`).
-    thinking_active_index: RefCell<Option<u64>>,
-
-    /// Tracks which thinking content block indices have streamed thinking content that is eligible
-    /// for non-TTY flushing.
-    ///
-    /// Some providers can emit multiple thinking blocks (multiple indices) within a single message.
-    /// In non-TTY modes we suppress per-delta output, so we must remember all indices that
-    /// accumulated thinking to flush them at `message_stop`.
-    thinking_non_tty_indices: RefCell<std::collections::BTreeSet<u64>>,
-
-    /// Once non-thinking output has started for the current message, suppress any
-    /// subsequent thinking deltas to avoid corrupting visible output.
-    ///
-    /// Claude/CCS can occasionally emit thinking deltas after text deltas. Because
-    /// both streams append on the current line in Full mode, allowing late thinking can
-    /// glue onto or visually corrupt previously-rendered text.
-    suppress_thinking_for_message: RefCell<bool>,
-
-    /// Tracks whether a text delta line is currently being streamed (Full mode).
-    ///
-    /// In the append-only streaming pattern, deltas do not move the cursor; they simply
-    /// append new suffixes on the current line. When true, any newline-based non-stream
-    /// output should ensure the streamed line is finalized (emit the completion newline)
-    /// before printing unrelated lines, to avoid "glued" output.
-    text_line_active: RefCell<bool>,
-
-    /// Defensive cursor state for legacy/inconsistent streams.
-    ///
-    /// The append-only streaming implementation should not emit cursor-up sequences,
-    /// but real-world logs can include raw passthrough output with escape codes.
-    /// When this flag is true, newline-based output should first emit a completion newline
-    /// to avoid overwriting/gluing onto visible content.
-    cursor_up_active: RefCell<bool>,
-
-    /// Tracks the last rendered content for append-only streaming in Full mode.
-    ///
-    /// In append-only mode, we emit the prefix once, then only emit new suffixes for subsequent deltas.
-    /// This map stores the last rendered content for each (`ContentType`, index) pair.
-    /// Key format: "{`content_type}:{index`}" (e.g., "text:0", "thinking:1")
-    last_rendered_content: RefCell<std::collections::HashMap<String, String>>,
+    printer: Rc<RefCell<dyn Printable>>,
 }
 
 impl ClaudeParser {
-    /// Create a new `ClaudeParser` with the given colors and verbosity.
-    ///
-    /// # Arguments
-    ///
-    /// * `colors` - Colors for terminal output
-    /// * `verbosity` - Verbosity level for output
-    ///
-    /// # Returns
-    ///
-    /// A new `ClaudeParser` instance
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use ralph_workflow::json_parser::ClaudeParser;
-    /// use ralph_workflow::logger::Colors;
-    /// use ralph_workflow::config::Verbosity;
-    ///
-    /// let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal);
-    /// ```
-    #[must_use] 
+    #[must_use]
     pub fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, super::printer::shared_stdout())
+        Self::with_printer(
+            colors,
+            verbosity,
+            Rc::new(RefCell::new(StdoutPrinter::new())),
+        )
     }
 
-    /// Create a new `ClaudeParser` with a custom printer.
-    ///
-    /// # Arguments
-    ///
-    /// * `colors` - Colors for terminal output
-    /// * `verbosity` - Verbosity level for output
-    /// * `printer` - Shared printer for output
-    ///
-    /// # Returns
-    ///
-    /// A new `ClaudeParser` instance
-    pub fn with_printer(colors: Colors, verbosity: Verbosity, printer: SharedPrinter) -> Self {
+    pub fn with_printer(
+        colors: Colors,
+        verbosity: Verbosity,
+        printer: Rc<RefCell<dyn Printable>>,
+    ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
-
-        // Use the printer's is_terminal method to validate it's connected correctly
-        // This is a sanity check that also satisfies the compiler that the method is used
-        let _printer_is_terminal = printer.borrow().is_terminal();
 
         Self {
             colors,
             verbosity,
             log_path: None,
             display_name: "Claude".to_string(),
-            streaming_session: Rc::new(RefCell::new(streaming_session)),
-            terminal_mode: RefCell::new(TerminalMode::detect()),
+            state: ParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
-            thinking_active_index: RefCell::new(None),
-            thinking_non_tty_indices: RefCell::new(std::collections::BTreeSet::new()),
-            suppress_thinking_for_message: RefCell::new(false),
-            text_line_active: RefCell::new(false),
-            cursor_up_active: RefCell::new(false),
-            last_rendered_content: RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -141,15 +61,6 @@ impl ClaudeParser {
         self
     }
 
-    /// Set the display name for this parser.
-    ///
-    /// # Arguments
-    ///
-    /// * `display_name` - The name to display in output
-    ///
-    /// # Returns
-    ///
-    /// Self for builder pattern chaining
     #[must_use]
     pub fn with_display_name(mut self, display_name: &str) -> Self {
         self.display_name = display_name.to_string();
@@ -173,7 +84,7 @@ impl ClaudeParser {
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
-        *self.terminal_mode.borrow_mut() = mode;
+        self.state.terminal_mode.replace(mode);
         self
     }
 
@@ -209,8 +120,13 @@ impl ClaudeParser {
     ///
     /// Note: downstream crates should avoid relying on this API in production builds.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn printer(&self) -> SharedPrinter {
-        Rc::clone(&self.printer)
+    pub fn printer(&self) -> Rc<RefCell<dyn Printable>> {
+        self.printer.clone()
+    }
+
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {
+        let mut printer_ref = self.printer.borrow_mut();
+        f(&mut *printer_ref)
     }
 
     /// Get streaming quality metrics from the current session.
@@ -246,9 +162,57 @@ impl ClaudeParser {
     /// ```
     #[cfg(any(test, feature = "test-utils"))]
     pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
-        self.streaming_session
+        self.state
+            .streaming_session
             .borrow()
             .get_streaming_quality_metrics()
+    }
+
+    /// Update cursor-up tracking state based on output content in Full terminal mode.
+    fn update_cursor_up_state(&self, output: &str) {
+        if *self.state.terminal_mode.borrow() == TerminalMode::Full {
+            self.state.with_cursor_up_active_mut(|cursor_up_active| {
+                if output.contains("\x1b[1B\n") {
+                    *cursor_up_active = false;
+                }
+                if output.contains("\x1b[1A") {
+                    *cursor_up_active = true;
+                }
+            });
+        }
+    }
+
+    /// Handle a non-JSON line during stream parsing (e.g. plain text output from agent).
+    fn handle_non_json_line(&self, trimmed: &str) -> Option<String> {
+        if trimmed.is_empty() || trimmed.starts_with('{') {
+            return None;
+        }
+        let finalize = self
+            .state
+            .with_session_mut(|session| self.finalize_in_place_full_mode(session));
+        let out = format!("{finalize}{trimmed}\n");
+        self.update_cursor_up_state(&out);
+        Some(out)
+    }
+
+    /// Dispatch a parsed ClaudeEvent to the appropriate formatter.
+    fn dispatch_event(&self, event: ClaudeEvent, line: &str) -> String {
+        match event {
+            ClaudeEvent::System { subtype, session_id, cwd } => {
+                self.format_system_event(subtype.as_ref(), session_id, cwd)
+            }
+            ClaudeEvent::Assistant { message } => self.format_assistant_event(message.as_ref()),
+            ClaudeEvent::User { message } => self.format_user_event(message),
+            ClaudeEvent::Result { subtype, duration_ms, total_cost_usd, num_turns, result, error } => {
+                self.format_result_event(subtype, duration_ms, total_cost_usd, num_turns, result, error)
+            }
+            ClaudeEvent::StreamEvent { event } => self.parse_stream_event(event),
+            ClaudeEvent::Unknown => self.format_unknown_event(line),
+        }
+    }
+
+    fn format_unknown_event(&self, line: &str) -> String {
+        format_unknown_json_event(line, &self.display_name, self.colors, self.verbosity.is_verbose())
     }
 
     /// Parse and display a single Claude JSON event
@@ -261,113 +225,54 @@ impl ClaudeParser {
         let event: ClaudeEvent = if let Ok(e) = serde_json::from_str(line) {
             e
         } else {
-            // Non-JSON line - could be raw text output from agent
-            // Pass through as-is if it looks like real output (not empty)
-            let trimmed = line.trim();
-            if !trimmed.is_empty() && !trimmed.starts_with('{') {
-                // In full TTY mode, thinking deltas keep the cursor on the thinking line for
-                // in-place updates. Any other output must first finalize that cursor state.
-                let session = self.streaming_session.borrow_mut();
-                let finalize = self.finalize_in_place_full_mode(&session);
-                let out = format!("{finalize}{trimmed}\n");
-                if *self.terminal_mode.borrow() == TerminalMode::Full {
-                    // Only mutate cursor state based on explicit cursor controls.
-                    // Normal output may include newlines, but does not reliably indicate whether
-                    // we are still in the in-place streaming cursor-up position.
-                    let mut cursor_up_active = self.cursor_up_active.borrow_mut();
-                    if out.contains("\x1b[1B\n") {
-                        *cursor_up_active = false;
-                    }
-                    if out.contains("\x1b[1A") {
-                        *cursor_up_active = true;
-                    }
-                }
-                return Some(out);
-            }
-            return None;
+            return self.handle_non_json_line(line.trim());
         };
+        let finalize = self.compute_finalize_for_event(&event);
+        let output = self.dispatch_event(event, line);
+        let combined = combine_finalize_and_output(finalize, output);
+        combined.inspect(|out| {
+            self.update_cursor_up_state(out);
+        })
+    }
 
-        // When a thinking/text line is being streamed in full TTY mode, the streaming
-        // implementation is append-only and keeps the cursor on the current line.
-        //
-        // Any non-stream event (system/user/assistant/result) must first finalize the
-        // active streaming line so the next output does not glue onto it.
-        let finalize = if matches!(&event, ClaudeEvent::StreamEvent { .. }) {
+    fn compute_finalize_for_event(&self, event: &ClaudeEvent) -> String {
+        if matches!(event, ClaudeEvent::StreamEvent { .. }) {
             String::new()
         } else {
-            let session = self.streaming_session.borrow_mut();
-            self.finalize_in_place_full_mode(&session)
-        };
-        let c = &self.colors;
-        let prefix = &self.display_name;
-
-        let output = match event {
-            ClaudeEvent::System {
-                subtype,
-                session_id,
-                cwd,
-            } => self.format_system_event(subtype.as_ref(), session_id, cwd),
-            ClaudeEvent::Assistant { message } => self.format_assistant_event(message.as_ref()),
-            ClaudeEvent::User { message } => self.format_user_event(message),
-            ClaudeEvent::Result {
-                subtype,
-                duration_ms,
-                total_cost_usd,
-                num_turns,
-                result,
-                error,
-            } => self.format_result_event(
-                subtype,
-                duration_ms,
-                total_cost_usd,
-                num_turns,
-                result,
-                error,
-            ),
-            ClaudeEvent::StreamEvent { event } => {
-                // Handle streaming events for delta/partial updates
-                self.parse_stream_event(event)
-            }
-            ClaudeEvent::Unknown => {
-                // Use the generic unknown event formatter for consistent handling
-                // In verbose mode, this will show the event type and key fields
-                // In normal mode, this returns empty string
-                format_unknown_json_event(line, prefix, *c, self.verbosity.is_verbose())
-            }
-        };
-
-        // IMPORTANT: We must preserve any completion output from `finalize_in_place_full_mode`
-        // even if the current event itself produces no visible output.
-        //
-        // Example: the final "assistant" event can be deduplicated (empty output) after
-        // streaming deltas have already been shown. If we drop `finalize` in that case,
-        // the streamed line never receives its completion newline and subsequent output
-        // (e.g., system `status`) can clear/overwrite it.
-        let output = if output.is_empty() {
-            finalize
-        } else {
-            format!("{finalize}{output}")
-        };
-
-        if output.is_empty() {
-            None
-        } else {
-            if *self.terminal_mode.borrow() == TerminalMode::Full {
-                // Keep a simple, output-driven model of cursor state.
-                //
-                // The streaming implementation is append-only and SHOULD NOT emit cursor-up
-                // sequences ("\x1b[1A") for deltas. We only treat explicit cursor completion
-                // sequences ("\x1b[1B\n") as authoritative for clearing the defensive flag.
-                //
-                // Note: raw passthrough output may include escape sequences; we avoid inferring
-                // "cursor is up" from output content to keep this logic robust.
-                let mut cursor_up_active = self.cursor_up_active.borrow_mut();
-                if output.contains("\x1b[1B\n") {
-                    *cursor_up_active = false;
-                }
-            }
-            Some(output)
+            self.state
+                .with_session_mut(|session| self.finalize_in_place_full_mode(session))
         }
+    }
+
+    /// Reset all per-message streaming state at message start.
+    fn reset_message_state(&self) {
+        self.state.with_thinking_active_index_mut(|idx| *idx = None);
+        self.state
+            .with_thinking_non_tty_indices_mut(|indices| indices.clear());
+        self.state
+            .with_suppress_thinking_for_message_mut(|v| *v = false);
+        self.state.with_text_line_active_mut(|v| *v = false);
+        self.state.with_cursor_up_active_mut(|v| *v = false);
+        self.state.with_last_rendered_content_mut(|v| v.clear());
+    }
+
+    /// Handle a MessageStart stream event.
+    fn handle_message_start(
+        &self,
+        message: Option<crate::json_parser::types::AssistantMessage>,
+        message_id: Option<String>,
+    ) -> String {
+        let in_place_finalize = self
+            .state
+            .with_session_mut(|session| self.finalize_in_place_full_mode(session));
+        self.reset_message_state();
+        let effective_message_id =
+            message_id.or_else(|| message.as_ref().and_then(|m| m.id.clone()));
+        self.state.with_session_mut(|session| {
+            session.set_current_message_id(effective_message_id);
+            session.on_message_start();
+        });
+        in_place_finalize
     }
 
     /// Parse a streaming event for delta/partial updates
@@ -381,112 +286,265 @@ impl ClaudeParser {
     /// - Error: Display appropriately
     ///
     /// Returns String for display content, empty String for control events.
+    fn handle_content_block_start_no_block(&self, index: u64) -> String {
+        self.state.with_session_mut(|session| { session.on_content_block_start(index); });
+        String::new()
+    }
+
     fn parse_stream_event(&self, event: StreamInnerEvent) -> String {
-        let mut session = self.streaming_session.borrow_mut();
-
         match event {
-            StreamInnerEvent::MessageStart {
-                message,
-                message_id,
-            } => {
-                // Protocol violations happen in real streams: a new MessageStart can arrive
-                // while a previous streamed line is still "active" (we haven't yet emitted the
-                // completion newline). Finalize any active streaming line before resetting state
-                // so subsequent output doesn't glue onto the in-progress line.
-                let in_place_finalize = self.finalize_in_place_full_mode(&session);
-
-                // Reset any pending thinking line from a previous message.
-                *self.thinking_active_index.borrow_mut() = None;
-                self.thinking_non_tty_indices.borrow_mut().clear();
-                *self.suppress_thinking_for_message.borrow_mut() = false;
-                *self.text_line_active.borrow_mut() = false;
-                *self.cursor_up_active.borrow_mut() = false;
-
-                // Extract message_id from either the top-level field or nested message.id
-                // The Claude API typically puts the ID in message.id, not at the top level
-                let effective_message_id =
-                    message_id.or_else(|| message.as_ref().and_then(|m| m.id.clone()));
-                // Set message ID for tracking and clear session state on new message
-                session.set_current_message_id(effective_message_id);
-                session.on_message_start();
-                // Clear last rendered content for append-only pattern on new message
-                self.last_rendered_content.borrow_mut().clear();
-                in_place_finalize
-            }
-            StreamInnerEvent::ContentBlockStart {
-                index: Some(index),
-                content_block: Some(block),
-            } => {
-                // Initialize a new content block at this index
-                session.on_content_block_start(index);
-                match &block {
-                    ContentBlock::Text { text: Some(t) } if !t.is_empty() => {
-                        // Initial text in ContentBlockStart - treat as first delta
-                        session.on_text_delta(index, t);
-                    }
-                    ContentBlock::ToolUse { name, input } => {
-                        // Track tool name for GLM/CCS deduplication.
-                        // IMPORTANT: Track the tool name when provided, even when input is None.
-                        // GLM may send ContentBlockStart with name but no input, then send input via delta.
-                        // We only store when we have a name to avoid overwriting a previous tool name with None.
-                        if let Some(n) = name {
-                            session.set_tool_name(index, Some(n.clone()));
-                        }
-
-                        // Initialize tool input accumulator only if input is present
-                        if let Some(i) = input {
-                            let input_str = if let serde_json::Value::String(s) = &i {
-                                s.clone()
-                            } else {
-                                format_tool_input(i)
-                            };
-                            session.on_tool_input_delta(index, &input_str);
-                        }
-                    }
-                    _ => {}
-                }
-                String::new()
-            }
-            StreamInnerEvent::ContentBlockStart {
-                index: Some(index),
-                content_block: None,
-            } => {
-                // Content block started but no initial content provided
-                session.on_content_block_start(index);
-                String::new()
-            }
-            StreamInnerEvent::ContentBlockStart { .. } => {
-                // Content block without index - ignore
-                String::new()
-            }
-            StreamInnerEvent::ContentBlockDelta {
-                index: Some(index),
-                delta: Some(delta),
-            } => self.handle_content_block_delta(&mut session, index, delta),
-            StreamInnerEvent::TextDelta { text: Some(text) } => {
-                self.handle_text_delta(&mut session, &text)
-            }
-            StreamInnerEvent::ContentBlockStop { .. } => {
-                // Content block completion event - no output needed
-                // This event marks the end of a content block but doesn't produce
-                // any displayable content. It's a control event for state management.
-                String::new()
-            }
-            StreamInnerEvent::MessageDelta { .. } => {
-                // Message delta event with usage/metadata - no output needed
-                // This event contains final message metadata (stop_reason, usage stats)
-                // but is used for tracking/monitoring purposes only, not display.
-                String::new()
-            }
-            StreamInnerEvent::ContentBlockDelta { .. }
-            | StreamInnerEvent::Ping
-            | StreamInnerEvent::TextDelta { text: None }
-            | StreamInnerEvent::Error { error: None } => String::new(),
-            StreamInnerEvent::MessageStop => self.handle_message_stop(&mut session),
-            StreamInnerEvent::Error {
-                error: Some(err), ..
-            } => self.handle_error_event(err),
+            StreamInnerEvent::MessageStart { message, message_id } => self.handle_message_start(message, message_id),
+            StreamInnerEvent::ContentBlockStart { index: Some(index), content_block: Some(block) } => self.handle_content_block_start_with_block(index, block),
+            StreamInnerEvent::ContentBlockStart { index: Some(index), content_block: None } => self.handle_content_block_start_no_block(index),
+            StreamInnerEvent::ContentBlockStart { .. } => String::new(),
+            StreamInnerEvent::ContentBlockDelta { index: Some(index), delta: Some(delta) } => self.handle_content_block_delta_inner(index, delta),
+            StreamInnerEvent::TextDelta { text: Some(text) } => self.handle_text_delta_inner(&text),
+            StreamInnerEvent::ContentBlockStop { .. } | StreamInnerEvent::MessageDelta { .. } | StreamInnerEvent::ContentBlockDelta { .. } | StreamInnerEvent::Ping | StreamInnerEvent::TextDelta { text: None } | StreamInnerEvent::Error { error: None } => String::new(),
+            StreamInnerEvent::MessageStop => self.handle_message_stop_inner(),
+            StreamInnerEvent::Error { error: Some(err), .. } => self.handle_error_event(err),
             StreamInnerEvent::Unknown => self.handle_unknown_event(),
         }
+    }
+
+    fn handle_content_block_start_with_block(&self, index: u64, block: ContentBlock) -> String {
+        self.state.with_session_mut(|session| {
+            session.on_content_block_start(index);
+            apply_content_block_start_to_session(session, index, &block);
+        });
+        String::new()
+    }
+
+    fn handle_content_block_delta_inner(&self, index: u64, delta: ContentBlockDelta) -> String {
+        self.state
+            .with_session_mut(|session| self.handle_content_block_delta(session, index, delta))
+    }
+
+    fn handle_text_delta_inner(&self, text: &str) -> String {
+        self.state
+            .with_session_mut(|session| self.handle_text_delta(session, text))
+    }
+
+    fn handle_message_stop_inner(&self) -> String {
+        self.state
+            .with_session_mut(|session| self.handle_message_stop(session))
+    }
+}
+
+struct StreamLoopState {
+    incremental_parser: IncrementalNdjsonParser,
+    log_buffer: Vec<u8>,
+    seen_success_result: std::cell::Cell<bool>,
+}
+
+impl StreamLoopState {
+    fn new() -> Self {
+        Self {
+            incremental_parser: IncrementalNdjsonParser::new(),
+            log_buffer: Vec::new(),
+            seen_success_result: std::cell::Cell::new(false),
+        }
+    }
+}
+
+impl ClaudeParser {
+    pub fn parse_stream<R: BufRead>(
+        &mut self,
+        mut reader: R,
+        workspace: &dyn crate::workspace::Workspace,
+    ) -> std::io::Result<()> {
+        let c = self.colors;
+        let monitor = HealthMonitor::new("Claude");
+        let mut state = StreamLoopState::new();
+        self.run_stream_loop(&mut reader, c, &monitor, &mut state)?;
+        self.finalize_parse_stream(workspace, &monitor, c, &state.log_buffer)
+    }
+
+    fn run_stream_loop<R: BufRead>(
+        &mut self, reader: &mut R, c: Colors,
+        monitor: &HealthMonitor, state: &mut StreamLoopState,
+    ) -> std::io::Result<()> {
+        let logging_enabled = self.log_path.is_some();
+        loop {
+            let chunk = reader.fill_buf()?;
+            if chunk.is_empty() { break; }
+            let data = chunk.to_vec(); reader.consume(data.len());
+            let (new_parser, events) = std::mem::take(&mut state.incremental_parser).feed_and_get_events(&data);
+            state.incremental_parser = new_parser;
+            events.into_iter().for_each(|line| { self.process_stream_line(&line, c, monitor, &mut state.log_buffer, logging_enabled, &state.seen_success_result); });
+        }
+        Ok(())
+    }
+
+    #[expect(
+        clippy::print_stderr,
+        reason = "debug-only output for verbose debugging"
+    )]
+    fn process_stream_line(
+        &mut self,
+        line: &str,
+        c: Colors,
+        monitor: &HealthMonitor,
+        log_buffer: &mut Vec<u8>,
+        logging_enabled: bool,
+        seen_success_result: &std::cell::Cell<bool>,
+    ) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { return; }
+        if self.verbosity.is_debug() {
+            eprintln!("{}[DEBUG]{} {}{}{}", c.dim(), c.reset(), c.dim(), line, c.reset());
+        }
+        self.process_parsed_line(trimmed, line, monitor, log_buffer, logging_enabled, seen_success_result);
+    }
+
+    fn process_parsed_line(
+        &mut self,
+        trimmed: &str,
+        line: &str,
+        monitor: &HealthMonitor,
+        log_buffer: &mut Vec<u8>,
+        logging_enabled: bool,
+        seen_success_result: &std::cell::Cell<bool>,
+    ) {
+        if should_skip_result_event(trimmed, seen_success_result) {
+            log_line_if_enabled(log_buffer, line, logging_enabled);
+            monitor.record_control_event();
+            return;
+        }
+        match self.parse_event(line) {
+            Some(output) => {
+                record_monitor_for_parsed_output(trimmed, line, monitor);
+                self.with_printer_mut(|printer| {
+                    if write!(printer, "{output}").is_ok() { printer.flush().ok(); }
+                });
+            }
+            None => record_monitor_for_no_output(trimmed, line, monitor),
+        }
+        log_line_if_enabled(log_buffer, line, logging_enabled);
+    }
+
+    fn finalize_parse_stream(
+        &mut self,
+        workspace: &dyn crate::workspace::Workspace,
+        monitor: &HealthMonitor,
+        c: Colors,
+        log_buffer: &[u8],
+    ) -> std::io::Result<()> {
+        if let Some(log_path) = &self.log_path {
+            workspace.append_bytes(log_path, log_buffer)?;
+        }
+        if let Some(warning) = monitor.check_and_warn(c) {
+            self.with_printer_mut(|printer| {
+                writeln!(printer, "{warning}").ok();
+                printer.flush().ok();
+            });
+        }
+        Ok(())
+    }
+}
+
+fn log_line_if_enabled(log_buffer: &mut Vec<u8>, line: &str, logging_enabled: bool) {
+    if logging_enabled { let _ = writeln!(log_buffer, "{line}"); }
+}
+
+fn combine_finalize_and_output(finalize: String, output: String) -> Option<String> {
+    let combined = if output.is_empty() {
+        finalize
+    } else {
+        format!("{finalize}{output}")
+    };
+    if combined.is_empty() { None } else { Some(combined) }
+}
+
+fn apply_content_block_start_to_session(
+    session: &mut crate::json_parser::streaming_state::StreamingSession,
+    index: u64,
+    block: &ContentBlock,
+) {
+    match block {
+        ContentBlock::Text { text: Some(t) } if !t.is_empty() => {
+            session.on_text_delta(index, t);
+        }
+        ContentBlock::ToolUse { name, input } => {
+            apply_tool_use_start_to_session(session, index, name.as_deref(), input.as_ref());
+        }
+        _ => {}
+    }
+}
+
+fn json_value_to_tool_input_str(v: &serde_json::Value) -> String {
+    if let serde_json::Value::String(s) = v { s.clone() } else { format_tool_input(v) }
+}
+
+fn apply_tool_use_start_to_session(
+    session: &mut crate::json_parser::streaming_state::StreamingSession,
+    index: u64,
+    name: Option<&str>,
+    input: Option<&serde_json::Value>,
+) {
+    if let Some(n) = name {
+        session.set_tool_name(index, Some(n.to_string()));
+    }
+    if let Some(i) = input {
+        session.on_tool_input_delta(index, &json_value_to_tool_input_str(i));
+    }
+}
+
+fn has_errors_array_with_content(trimmed: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(trimmed).is_ok_and(|json| {
+        json.get("errors")
+            .and_then(|v| v.as_array())
+            .is_some_and(|arr| {
+                arr.iter()
+                    .any(|e| e.as_str().is_some_and(|s| !s.trim().is_empty()))
+            })
+    })
+}
+
+fn is_spurious_glm_error(
+    subtype: &Option<String>,
+    duration_ms: Option<u64>,
+    error: &Option<String>,
+    has_errors: bool,
+) -> bool {
+    subtype.as_deref() != Some("success")
+        && duration_ms.unwrap_or(0) < 100
+        && (error.is_none() || error.as_ref().is_some_and(std::string::String::is_empty))
+        && !has_errors
+}
+
+fn should_skip_result_event(trimmed: &str, seen_success: &std::cell::Cell<bool>) -> bool {
+    if !trimmed.starts_with('{') { return false; }
+    let has_errors = has_errors_array_with_content(trimmed);
+    let Ok(ClaudeEvent::Result { subtype, duration_ms, error, .. }) =
+        serde_json::from_str::<ClaudeEvent>(trimmed)
+    else {
+        return false;
+    };
+    let spurious = is_spurious_glm_error(&subtype, duration_ms, &error, has_errors);
+    if subtype.as_deref() == Some("success") {
+        seen_success.set(true);
+        false
+    } else {
+        spurious
+    }
+}
+
+fn record_monitor_for_parsed_output(trimmed: &str, line: &str, monitor: &HealthMonitor) {
+    let is_partial = trimmed.starts_with('{')
+        && serde_json::from_str::<ClaudeEvent>(line)
+            .is_ok_and(|e| ClaudeParser::is_partial_event(&e));
+    if is_partial {
+        monitor.record_partial_event();
+    } else {
+        monitor.record_parsed();
+    }
+}
+
+fn record_monitor_for_no_output(trimmed: &str, line: &str, monitor: &HealthMonitor) {
+    if !trimmed.starts_with('{') { return monitor.record_ignored(); }
+    match serde_json::from_str::<ClaudeEvent>(line) {
+        Ok(event) if ClaudeParser::is_control_event(&event) => monitor.record_control_event(),
+        Ok(_) => monitor.record_unknown_event(),
+        Err(_) => monitor.record_parse_error(),
     }
 }

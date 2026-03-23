@@ -2,6 +2,8 @@
 //
 // Split into topic-specific test modules for maintainability.
 
+use crate::checkpoint::EnvironmentSnapshot;
+
 // =========================================================================
 // Environment snapshot tests
 // =========================================================================
@@ -32,3 +34,7 @@ mod workspace_tests;
 // Checkpoint construction and serialization tests
 #[path = "tests/checkpoint_construction.rs"]
 mod checkpoint_construction;
+
+// Checkpoint load error typed variant tests
+#[path = "tests/checkpoint_load_error.rs"]
+mod checkpoint_load_error;

@@ -27,6 +27,7 @@
 use crate::agents::config::AgentConfig;
 use crate::agents::opencode_api::ApiCatalog;
 use crate::agents::parser::JsonParserType;
+use itertools::Itertools;
 use strsim::levenshtein;
 
 /// Maximum Levenshtein distance for typo suggestions.
@@ -38,6 +39,7 @@ const MAX_TYPO_DISTANCE: usize = 3;
 ///
 /// Validates provider/model combinations against the `OpenCode` API catalog
 /// and generates `AgentConfig` instances with the appropriate command-line flags.
+#[derive(Debug)]
 pub struct OpenCodeResolver {
     /// `OpenCode` API catalog with available providers and models.
     catalog: ApiCatalog,
@@ -74,8 +76,8 @@ impl OpenCodeResolver {
             return None;
         }
 
-        let provider = parts[1];
-        let model = parts[2];
+        let provider = parts.get(1)?;
+        let model = parts.get(2)?;
 
         // Validate provider and model exist in catalog
         if !self.catalog.has_provider(provider) {
@@ -99,11 +101,10 @@ impl OpenCodeResolver {
         // This is required for non-interactive/headless execution
         // The value must be a JSON object where keys are permission types and values are actions
         // Using {"*": "allow"} grants all permissions for all patterns
-        let mut env_vars = std::collections::HashMap::new();
-        env_vars.insert(
+        let env_vars = std::collections::HashMap::from([(
             "OPENCODE_PERMISSION".to_string(),
             r#"{"*": "allow"}"#.to_string(),
-        );
+        )]);
 
         AgentConfig {
             cmd: "opencode run".to_string(),
@@ -128,11 +129,10 @@ impl OpenCodeResolver {
     /// Build an `AgentConfig` for plain "opencode" (no provider/model specified).
     /// `OpenCode` will use its default model configuration.
     fn build_default_config() -> AgentConfig {
-        let mut env_vars = std::collections::HashMap::new();
-        env_vars.insert(
+        let env_vars = std::collections::HashMap::from([(
             "OPENCODE_PERMISSION".to_string(),
             r#"{"*": "allow"}"#.to_string(),
-        );
+        )]);
 
         AgentConfig {
             cmd: "opencode run".to_string(),
@@ -178,8 +178,7 @@ impl OpenCodeResolver {
 
     /// Suggest similar provider names for a typo.
     fn suggest_providers(&self, provider: &str) -> Vec<String> {
-        let mut suggestions: Vec<_> = self
-            .catalog
+        self.catalog
             .provider_names()
             .into_iter()
             .map(|p| {
@@ -187,20 +186,15 @@ impl OpenCodeResolver {
                 (p, distance)
             })
             .filter(|(_, d)| *d <= MAX_TYPO_DISTANCE)
-            .collect();
-
-        suggestions.sort_by_key(|(_, d)| *d);
-        suggestions
-            .into_iter()
-            .map(|(p, _)| p)
+            .sorted_by_key(|(_, d)| *d)
             .take(MAX_TYPO_DISTANCE)
+            .map(|(p, _)| p)
             .collect()
     }
 
     /// Suggest similar model names for a typo.
     fn suggest_models(&self, provider: &str, model: &str) -> Vec<String> {
-        let mut suggestions: Vec<_> = self
-            .catalog
+        self.catalog
             .get_model_ids(provider)
             .into_iter()
             .map(|m| {
@@ -208,13 +202,9 @@ impl OpenCodeResolver {
                 (m, distance)
             })
             .filter(|(_, d)| *d <= MAX_TYPO_DISTANCE)
-            .collect();
-
-        suggestions.sort_by_key(|(_, d)| *d);
-        suggestions
-            .into_iter()
-            .map(|(m, _)| m)
+            .sorted_by_key(|(_, d)| *d)
             .take(MAX_TYPO_DISTANCE)
+            .map(|(m, _)| m)
             .collect()
     }
 
@@ -225,35 +215,37 @@ impl OpenCodeResolver {
                 provider,
                 suggestions,
             } => {
-                use std::fmt::Write;
-                let mut msg =
+                let msg =
                     format!("Error: OpenCode provider '{provider}' not found in API catalog.\n");
-                if let Some(closest) = suggestions.first() {
-                    writeln!(msg, "Did you mean: {closest}?").unwrap();
-                }
-                writeln!(msg, "Agent reference: {agent_name}").unwrap();
-                msg.push_str("Available providers: ");
-                msg.push_str(&self.catalog.provider_names().join(", "));
-                msg.push_str("\n\nPlease update your agent configuration.");
-                msg
+                let msg = if let Some(closest) = suggestions.first() {
+                    format!("{msg}Did you mean: {closest}?\n")
+                } else {
+                    msg
+                };
+                let msg = format!("{msg}Agent reference: {agent_name}");
+                let available = self.catalog.provider_names().join(", ");
+                format!(
+                    "{msg}\nAvailable providers: {available}\n\nPlease update your agent configuration."
+                )
             }
             ValidationError::ModelNotFound {
                 provider,
                 model,
                 suggestions,
             } => {
-                use std::fmt::Write;
-                let mut msg = format!(
+                let msg = format!(
                     "Error: OpenCode model '{provider}/{model}' not found in API catalog.\n"
                 );
-                if let Some(closest) = suggestions.first() {
-                    writeln!(msg, "Did you mean: {provider}/{closest}?").unwrap();
-                }
-                writeln!(msg, "Agent reference: {agent_name}").unwrap();
-                write!(msg, "Available models for '{provider}': ").unwrap();
-                msg.push_str(&self.catalog.get_model_ids(provider).join(", "));
-                msg.push_str("\n\nPlease update your agent configuration.");
-                msg
+                let msg = if let Some(closest) = suggestions.first() {
+                    format!("{msg}Did you mean: {provider}/{closest}?\n")
+                } else {
+                    msg
+                };
+                let msg = format!("{msg}Agent reference: {agent_name}\n");
+                let available = self.catalog.get_model_ids(provider).join(", ");
+                format!(
+                    "{msg}Available models for '{provider}': {available}\n\nPlease update your agent configuration."
+                )
             }
         }
     }
@@ -282,51 +274,53 @@ mod tests {
     use std::collections::HashMap;
 
     fn mock_api_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
-            "anthropic".to_string(),
-            Provider {
-                id: "anthropic".to_string(),
-                name: "Anthropic".to_string(),
-                description: "Anthropic Claude models".to_string(),
-            },
-        );
-        providers.insert(
-            "openai".to_string(),
-            Provider {
-                id: "openai".to_string(),
-                name: "OpenAI".to_string(),
-                description: "OpenAI GPT models".to_string(),
-            },
-        );
+        let providers = HashMap::from([
+            (
+                "anthropic".to_string(),
+                Provider {
+                    id: "anthropic".to_string(),
+                    name: "Anthropic".to_string(),
+                    description: "Anthropic Claude models".to_string(),
+                },
+            ),
+            (
+                "openai".to_string(),
+                Provider {
+                    id: "openai".to_string(),
+                    name: "OpenAI".to_string(),
+                    description: "OpenAI GPT models".to_string(),
+                },
+            ),
+        ]);
 
-        let mut models = HashMap::new();
-        models.insert(
-            "anthropic".to_string(),
-            vec![
-                Model {
-                    id: "claude-sonnet-4-5".to_string(),
-                    name: "Claude Sonnet 4.5".to_string(),
-                    description: "Latest Claude Sonnet".to_string(),
-                    context_length: Some(200_000),
-                },
-                Model {
-                    id: "claude-opus-4".to_string(),
-                    name: "Claude Opus 4".to_string(),
-                    description: "Most capable Claude".to_string(),
-                    context_length: Some(200_000),
-                },
-            ],
-        );
-        models.insert(
-            "openai".to_string(),
-            vec![Model {
-                id: "gpt-4".to_string(),
-                name: "GPT-4".to_string(),
-                description: "OpenAI's GPT-4".to_string(),
-                context_length: Some(8192),
-            }],
-        );
+        let models = HashMap::from([
+            (
+                "anthropic".to_string(),
+                vec![
+                    Model {
+                        id: "claude-sonnet-4-5".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
+                        description: "Latest Claude Sonnet".to_string(),
+                        context_length: Some(200_000),
+                    },
+                    Model {
+                        id: "claude-opus-4".to_string(),
+                        name: "Claude Opus 4".to_string(),
+                        description: "Most capable Claude".to_string(),
+                        context_length: Some(200_000),
+                    },
+                ],
+            ),
+            (
+                "openai".to_string(),
+                vec![Model {
+                    id: "gpt-4".to_string(),
+                    name: "GPT-4".to_string(),
+                    description: "OpenAI's GPT-4".to_string(),
+                    context_length: Some(8192),
+                }],
+            ),
+        ]);
 
         ApiCatalog {
             providers,

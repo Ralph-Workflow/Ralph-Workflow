@@ -560,8 +560,8 @@ fn test_bounded_growth_with_mixed_phase_operations() {
 #[test]
 fn test_execution_history_heap_size_within_baseline() {
     with_default_timeout(|| {
-        use ralph_workflow::benchmarks::baselines::estimate_execution_step_heap_bytes_core_fields;
-        use ralph_workflow::benchmarks::baselines::ExecutionHistoryBaseline;
+        use ralph_workflow::benchmarks::io_baselines::estimate_execution_step_heap_bytes_core_fields;
+        use ralph_workflow::benchmarks::io_baselines::ExecutionHistoryBaseline;
 
         let mut state = PipelineState::initial(1000, 5);
         let limit = 1000;
@@ -597,7 +597,7 @@ fn test_execution_history_heap_size_within_baseline() {
 #[test]
 fn test_checkpoint_serialized_size_within_baseline() {
     with_default_timeout(|| {
-        use ralph_workflow::benchmarks::baselines::ExecutionHistoryBaseline;
+        use ralph_workflow::benchmarks::io_baselines::ExecutionHistoryBaseline;
 
         let mut state = PipelineState::initial(1000, 5);
         let limit = 1000;

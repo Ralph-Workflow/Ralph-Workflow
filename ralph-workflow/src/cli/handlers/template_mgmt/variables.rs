@@ -8,43 +8,25 @@ pub fn handle_template_variables(name: &str, colors: Colors) -> anyhow::Result<(
 
     let variables = extract_variables(content);
 
-    println!(
-        "{}Variables in '{}':{}",
-        colors.bold(),
-        name,
-        colors.reset()
-    );
-    println!();
+    let _ = writeln!(std::io::stdout(), "{}Variables in '{}':{}", colors.bold(), name, colors.reset());
+    let _ = writeln!(std::io::stdout());
 
     if variables.is_empty() {
-        println!("  (no variables found)");
+        let _ = writeln!(std::io::stdout(), "  (no variables found)");
     } else {
-        for var in &variables {
+        // Print variables using iterator for_each
+        variables.iter().for_each(|var| {
             let default = if var.has_default {
-                format!(
-                    " = {}{}{}",
-                    colors.green(),
-                    var.default_value.as_deref().unwrap_or(""),
-                    colors.reset()
-                )
+                format!(" = {}{}{}", colors.green(), var.default_value.as_deref().unwrap_or(""), colors.reset())
             } else {
                 String::new()
             };
-            println!(
-                "  {}{}{}{}  {}line {}{}",
-                colors.cyan(),
-                var.name,
-                colors.reset(),
-                default,
-                colors.dim(),
-                var.line,
-                colors.reset()
-            );
-        }
+            let _ = writeln!(std::io::stdout(), "  {}{}{}{}  {}line {}{}", colors.cyan(), var.name, colors.reset(), default, colors.dim(), var.line, colors.reset());
+        });
     }
 
-    println!();
-    println!("Total: {} variable(s)", variables.len());
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Total: {} variable(s)", variables.len());
 
     Ok(())
 }

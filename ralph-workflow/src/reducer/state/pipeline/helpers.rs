@@ -271,7 +271,7 @@ impl PipelineState {
 mod helper_tests {
     use super::*;
     use crate::reducer::state::{
-        CommitState, MaterializedCommitInputs, MaterializedDevelopmentInputs,
+        CommitState, ContinuationState, MaterializedCommitInputs, MaterializedDevelopmentInputs,
         MaterializedPlanningInputs, MaterializedPromptInput, PromptInputKind,
         PromptInputRepresentation, PromptInputsState, PromptMaterializationReason,
     };
@@ -292,29 +292,34 @@ mod helper_tests {
 
     #[test]
     fn reset_iteration_resets_global_phase_start_prereqs() {
-        let mut state = PipelineState::initial(2, 0);
-        state.iteration = 1;
-        state.context_cleaned = true;
-        state.gitignore_entries_ensured = true;
-        state.continuation.same_agent_retry_pending = true;
-        state.continuation.same_agent_retry_count = 2;
-
-        state.prompt_inputs = PromptInputsState {
-            planning: Some(MaterializedPlanningInputs {
-                iteration: 1,
-                prompt: mp(PromptInputKind::Prompt),
-            }),
-            development: Some(MaterializedDevelopmentInputs {
-                iteration: 1,
-                prompt: mp(PromptInputKind::Prompt),
-                plan: mp(PromptInputKind::Plan),
-            }),
-            commit: Some(MaterializedCommitInputs {
-                attempt: 1,
-                diff: mp(PromptInputKind::Diff),
-            }),
-            review: None,
-            xsd_retry_last_output: None,
+        let state = PipelineState::initial(2, 0);
+        let state = PipelineState {
+            iteration: 1,
+            context_cleaned: true,
+            gitignore_entries_ensured: true,
+            continuation: ContinuationState {
+                same_agent_retry_pending: true,
+                same_agent_retry_count: 2,
+                ..Default::default()
+            },
+            prompt_inputs: PromptInputsState {
+                planning: Some(MaterializedPlanningInputs {
+                    iteration: 1,
+                    prompt: mp(PromptInputKind::Prompt),
+                }),
+                development: Some(MaterializedDevelopmentInputs {
+                    iteration: 1,
+                    prompt: mp(PromptInputKind::Prompt),
+                    plan: mp(PromptInputKind::Plan),
+                }),
+                commit: Some(MaterializedCommitInputs {
+                    attempt: 1,
+                    diff: mp(PromptInputKind::Diff),
+                }),
+                review: None,
+                xsd_retry_last_output: None,
+            },
+            ..state
         };
 
         let reset = state.reset_iteration();
@@ -330,14 +335,20 @@ mod helper_tests {
 
     #[test]
     fn reset_to_iteration_zero_resets_global_phase_start_prereqs() {
-        let mut state = PipelineState::initial(2, 0);
-        state.iteration = 2;
-        state.context_cleaned = true;
-        state.gitignore_entries_ensured = true;
-        state.prompt_inputs.planning = Some(MaterializedPlanningInputs {
+        let state = PipelineState::initial(2, 0);
+        let state = PipelineState {
             iteration: 2,
-            prompt: mp(PromptInputKind::Prompt),
-        });
+            context_cleaned: true,
+            gitignore_entries_ensured: true,
+            prompt_inputs: PromptInputsState {
+                planning: Some(MaterializedPlanningInputs {
+                    iteration: 2,
+                    prompt: mp(PromptInputKind::Prompt),
+                }),
+                ..Default::default()
+            },
+            ..state
+        };
 
         let reset = state.reset_to_iteration_zero();
 
@@ -349,12 +360,15 @@ mod helper_tests {
 
     #[test]
     fn clear_commit_flags_resets_commit_state_machine() {
-        let mut state = PipelineState::initial(1, 0);
-        state.commit = CommitState::Generated {
-            message: "stale".to_string(),
+        let state = PipelineState::initial(1, 0);
+        let state = PipelineState {
+            commit: CommitState::Generated {
+                message: "stale".to_string(),
+            },
+            commit_prompt_prepared: true,
+            commit_diff_prepared: true,
+            ..state
         };
-        state.commit_prompt_prepared = true;
-        state.commit_diff_prepared = true;
 
         let reset = state.clear_phase_flags(PipelinePhase::CommitMessage);
 
@@ -365,13 +379,15 @@ mod helper_tests {
 
     #[test]
     fn reset_iteration_clears_review_and_fix_flags() {
-        let mut state = PipelineState::initial(2, 0);
-        state.iteration = 1;
-
-        state.review_issues_found = true;
-        state.review_context_prepared_pass = Some(1);
-        state.fix_prompt_prepared_pass = Some(1);
-        state.fix_agent_invoked_pass = Some(1);
+        let state = PipelineState::initial(2, 0);
+        let state = PipelineState {
+            iteration: 1,
+            review_issues_found: true,
+            review_context_prepared_pass: Some(1),
+            fix_prompt_prepared_pass: Some(1),
+            fix_agent_invoked_pass: Some(1),
+            ..state
+        };
 
         let reset = state.reset_iteration();
 
@@ -383,12 +399,14 @@ mod helper_tests {
 
     #[test]
     fn reset_to_iteration_zero_clears_review_and_fix_flags() {
-        let mut state = PipelineState::initial(2, 0);
-        state.iteration = 2;
-
-        state.review_issues_found = true;
-        state.review_agent_invoked_pass = Some(2);
-        state.fix_result_xml_extracted_pass = Some(2);
+        let state = PipelineState::initial(2, 0);
+        let state = PipelineState {
+            iteration: 2,
+            review_issues_found: true,
+            review_agent_invoked_pass: Some(2),
+            fix_result_xml_extracted_pass: Some(2),
+            ..state
+        };
 
         let reset = state.reset_to_iteration_zero();
 

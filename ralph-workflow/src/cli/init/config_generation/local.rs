@@ -12,7 +12,16 @@ use crate::config::unified::UnifiedConfig;
 use crate::config::{ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
 use std::collections::BTreeMap;
-use std::fmt::Write;
+
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
 
 /// Generate a local config template populated with effective values.
 ///
@@ -53,73 +62,83 @@ where
         .collect::<Vec<_>>()
         .join("\n");
 
-    let mut template = String::new();
-    writeln!(
-        template,
-        "# Local Ralph configuration (.agent/ralph-workflow.toml)"
-    )?;
-    writeln!(
-        template,
-        "# Overrides ~/.config/ralph-workflow.toml for this project."
-    )?;
-    writeln!(template, "# Only uncomment settings you want to override.")?;
-    writeln!(
-        template,
-        "# Run `ralph --check-config` to validate and see effective settings."
-    )?;
-    writeln!(template)?;
-    writeln!(template, "[general]")?;
-    writeln!(template, "# Project-specific iteration limits")?;
-    writeln!(template, "# developer_iters = {}", general.developer_iters)?;
-    writeln!(
-        template,
-        "# reviewer_reviews = {}",
-        general.reviewer_reviews
-    )?;
-    writeln!(template)?;
-    writeln!(template, "# Project-specific context levels")?;
-    writeln!(
-        template,
-        "# developer_context = {}",
-        general.developer_context
-    )?;
-    writeln!(
-        template,
-        "# reviewer_context = {}",
-        general.reviewer_context
-    )?;
-    writeln!(template)?;
-    write!(template, "{}", render_retry_settings_comments(general))?;
-    write!(template, "{}", render_provider_fallback_comments(general))?;
-    writeln!(template)?;
-    writeln!(template, "# [agent_chains]")?;
-    writeln!(template, "# Reusable named chain definitions")?;
-    writeln!(template, "{rendered_chain_definitions}")?;
-    writeln!(template)?;
-    writeln!(template, "# [agent_drains]")?;
-    writeln!(template, "# Built-in drains attached to those chains")?;
-    writeln!(template, "{rendered_drain_bindings}")?;
+    let lines: Vec<String> = std::iter::empty()
+        .chain(std::iter::once(
+            "# Local Ralph configuration (.agent/ralph-workflow.toml)".to_string(),
+        ))
+        .chain(std::iter::once(
+            "# Overrides ~/.config/ralph-workflow.toml for this project.".to_string(),
+        ))
+        .chain(std::iter::once(
+            "# Only uncomment settings you want to override.".to_string(),
+        ))
+        .chain(std::iter::once(
+            "# Run `ralph --check-config` to validate and see effective settings.".to_string(),
+        ))
+        .chain(std::iter::once(String::new()))
+        .chain(std::iter::once("[general]".to_string()))
+        .chain(std::iter::once(
+            "# Project-specific iteration limits".to_string(),
+        ))
+        .chain(std::iter::once(format!(
+            "# developer_iters = {}",
+            general.developer_iters
+        )))
+        .chain(std::iter::once(format!(
+            "# reviewer_reviews = {}",
+            general.reviewer_reviews
+        )))
+        .chain(std::iter::once(String::new()))
+        .chain(std::iter::once(
+            "# Project-specific context levels".to_string(),
+        ))
+        .chain(std::iter::once(format!(
+            "# developer_context = {}",
+            general.developer_context
+        )))
+        .chain(std::iter::once(format!(
+            "# reviewer_context = {}",
+            general.reviewer_context
+        )))
+        .chain(std::iter::once(String::new()))
+        .chain(
+            render_retry_settings_comments(general)
+                .lines()
+                .map(String::from),
+        )
+        .chain(
+            render_provider_fallback_comments(general)
+                .lines()
+                .map(String::from),
+        )
+        .chain(std::iter::once(String::new()))
+        .chain(std::iter::once("# [agent_chains]".to_string()))
+        .chain(std::iter::once(
+            "# Reusable named chain definitions".to_string(),
+        ))
+        .chain(rendered_chain_definitions.lines().map(String::from))
+        .chain(std::iter::once(String::new()))
+        .chain(std::iter::once("# [agent_drains]".to_string()))
+        .chain(std::iter::once(
+            "# Built-in drains attached to those chains".to_string(),
+        ))
+        .chain(rendered_drain_bindings.lines().map(String::from))
+        .collect();
 
-    Ok(template)
+    Ok(lines.join("\n"))
 }
 
 fn render_retry_settings_comments(general: &crate::config::unified::GeneralConfig) -> String {
-    let mut rendered = String::new();
-    let _ = writeln!(
-        rendered,
-        "# Agent retry/backoff settings for all configured drains"
-    );
-    let _ = writeln!(rendered, "# max_retries = {}", general.max_retries);
-    let _ = writeln!(rendered, "# retry_delay_ms = {}", general.retry_delay_ms);
-    let _ = writeln!(
-        rendered,
-        "# backoff_multiplier = {}",
-        general.backoff_multiplier
-    );
-    let _ = writeln!(rendered, "# max_backoff_ms = {}", general.max_backoff_ms);
-    let _ = writeln!(rendered, "# max_cycles = {}", general.max_cycles);
+    let lines = [
+        "# Agent retry/backoff settings for all configured drains",
+        &format!("# max_retries = {}", general.max_retries),
+        &format!("# retry_delay_ms = {}", general.retry_delay_ms),
+        &format!("# backoff_multiplier = {}", general.backoff_multiplier),
+        &format!("# max_backoff_ms = {}", general.max_backoff_ms),
+        &format!("# max_cycles = {}", general.max_cycles),
+    ];
 
-    rendered
+    lines.join("\n")
 }
 
 fn render_provider_fallback_comments(general: &crate::config::unified::GeneralConfig) -> String {
@@ -127,22 +146,18 @@ fn render_provider_fallback_comments(general: &crate::config::unified::GeneralCo
         return String::new();
     }
 
-    let mut rendered = String::new();
-    let _ = writeln!(rendered);
-    let _ = writeln!(rendered, "# [general.provider_fallback]");
-    let _ = writeln!(rendered, "# Provider/model fallback settings by agent");
+    let lines: Vec<String> = std::iter::empty()
+        .chain(std::iter::once(String::new()))
+        .chain(std::iter::once("# [general.provider_fallback]".to_string()))
+        .chain(std::iter::once(
+            "# Provider/model fallback settings by agent".to_string(),
+        ))
+        .chain(general.provider_fallback.iter().map(|(provider, models)| {
+            format!("# {provider} = {}", format_toml_string_array(models))
+        }))
+        .collect();
 
-    let mut provider_entries = general.provider_fallback.iter().collect::<Vec<_>>();
-    provider_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-    for (provider, models) in provider_entries {
-        let _ = writeln!(
-            rendered,
-            "# {provider} = {}",
-            format_toml_string_array(models)
-        );
-    }
-
-    rendered
+    lines.join("\n")
 }
 
 fn resolve_template_drains(
@@ -152,12 +167,14 @@ fn resolve_template_drains(
     match effective.resolve_agent_drains_checked() {
         Ok(Some(resolved)) => Ok(resolved),
         Ok(None) => Ok(default_drains.clone()),
-        Err(message)
-            if named_chain_template_can_fall_back_to_defaults(effective, message.as_str()) =>
-        {
-            Ok(default_drains.clone())
+        Err(message) => {
+            let message_string = message.to_string();
+            if named_chain_template_can_fall_back_to_defaults(effective, &message_string) {
+                Ok(default_drains.clone())
+            } else {
+                Err(anyhow::Error::msg(message))
+            }
         }
-        Err(message) => Err(anyhow::Error::msg(message)),
     }
 }
 
@@ -218,19 +235,22 @@ fn collect_named_chain_definitions(
     effective: &UnifiedConfig,
     resolved: &crate::agents::fallback::ResolvedDrainConfig,
 ) -> BTreeMap<String, Vec<String>> {
-    let mut chain_definitions: BTreeMap<String, Vec<String>> =
-        effective.agent_chains.clone().into_iter().collect();
+    let drain_chains: BTreeMap<String, Vec<String>> = crate::agents::AgentDrain::all()
+        .into_iter()
+        .map(|drain| {
+            let binding = resolved
+                .binding(drain)
+                .expect("built-in drain bindings should be fully resolved");
+            (binding.chain_name.clone(), binding.agents.clone())
+        })
+        .collect();
 
-    for drain in crate::agents::AgentDrain::all() {
-        let binding = resolved
-            .binding(drain)
-            .expect("built-in drain bindings should be fully resolved");
-        chain_definitions
-            .entry(binding.chain_name.clone())
-            .or_insert_with(|| binding.agents.clone());
-    }
-
-    chain_definitions
+    effective
+        .agent_chains
+        .iter()
+        .chain(drain_chains.iter())
+        .map(|(name, agents)| (name.clone(), agents.clone()))
+        .collect()
 }
 
 /// Handle the `--init-local-config` flag with a custom path resolver.
@@ -264,15 +284,22 @@ pub fn handle_init_local_config_with<R: ConfigEnvironment>(
 
     // Check if config already exists
     if env.file_exists(&local_path) && !force {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}Local config already exists:{} {}",
             colors.yellow(),
             colors.reset(),
             local_path.display()
         );
-        println!("Use --force-overwrite to replace it, or edit the existing file.");
-        println!();
-        println!("Run `ralph --check-config` to see effective configuration.");
+        let _ = writeln!(
+            std::io::stdout(),
+            "Use --force-overwrite to replace it, or edit the existing file."
+        );
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(
+            std::io::stdout(),
+            "Run `ralph --check-config` to see effective configuration."
+        );
         return Ok(true);
     }
 
@@ -293,19 +320,27 @@ pub fn handle_init_local_config_with<R: ConfigEnvironment>(
         .canonicalize()
         .unwrap_or_else(|_| local_path.clone());
 
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Created{} {}",
         colors.green(),
         colors.reset(),
         display_path.display()
     );
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "This local config will override your global settings (~/.config/ralph-workflow.toml)."
     );
-    println!("Edit the file to customize Ralph for this project.");
-    println!();
-    println!("Tip: Run `ralph --check-config` to validate your configuration.");
+    let _ = writeln!(
+        std::io::stdout(),
+        "Edit the file to customize Ralph for this project."
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "Tip: Run `ralph --check-config` to validate your configuration."
+    );
 
     Ok(true)
 }

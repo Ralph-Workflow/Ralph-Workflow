@@ -136,6 +136,7 @@ fn attempt_recovery_uses_previous_phase_when_failed_phase_for_recovery_missing()
         let run_log_context = ralph_workflow::logging::RunLogContext::new(&workspace)
             .expect("Failed to create run log context");
         let cloud_config = CloudConfig::disabled();
+        let git_env = ralph_workflow::runtime::environment::mock::MockGitEnvironment::new();
 
         let mut ctx = ralph_workflow::phases::PhaseContext {
             config: &config,
@@ -159,6 +160,7 @@ fn attempt_recovery_uses_previous_phase_when_failed_phase_for_recovery_missing()
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &cloud_config,
+            env: &git_env,
         };
 
         let mut state = PipelineState::initial(1, 0);
@@ -218,6 +220,7 @@ fn attempt_recovery_never_targets_awaiting_dev_fix() {
         let run_log_context = ralph_workflow::logging::RunLogContext::new(&workspace)
             .expect("Failed to create run log context");
         let cloud_config = CloudConfig::disabled();
+        let git_env = ralph_workflow::runtime::environment::mock::MockGitEnvironment::new();
 
         let mut ctx = ralph_workflow::phases::PhaseContext {
             config: &config,
@@ -241,6 +244,7 @@ fn attempt_recovery_never_targets_awaiting_dev_fix() {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &cloud_config,
+            env: &git_env,
         };
 
         let mut state = PipelineState::initial(1, 0);

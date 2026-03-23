@@ -4,6 +4,30 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Serializable representation of a process execution result for checkpoint persistence.
+///
+/// This is a domain-shaped outcome carrying raw process results without policy interpretation.
+/// The exit code, stdout, and stderr are preserved for reducer/orchestrator policy decisions.
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct ProcessExecutionResult {
+    /// Process exit code (0 = success, non-zero = failure per convention).
+    pub exit_code: i32,
+    /// Standard output captured from the process.
+    pub stdout: String,
+    /// Standard error captured from the process.
+    pub stderr: String,
+}
+
+impl From<crate::executor::ProcessOutput> for ProcessExecutionResult {
+    fn from(output: crate::executor::ProcessOutput) -> Self {
+        Self {
+            exit_code: output.exit_code(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
+    }
+}
+
 /// Commit generation events.
 ///
 /// Events related to commit message generation, validation, and creation.
@@ -135,6 +159,20 @@ pub enum CommitEvent {
     // === Cloud mode git remote operations (emitted only when cloud mode is enabled) ===
     /// Git authentication configured successfully for remote operations.
     GitAuthConfigured,
+
+    /// Push to remote executed (boundary emits raw process output).
+    ///
+    /// Domain-shaped execution outcome carrying the raw git push result.
+    /// The reducer/orchestrator interprets this outcome and emits policy-level
+    /// success/failure events (PushCompleted/PushFailed).
+    PushExecuted {
+        remote: String,
+        branch: String,
+        commit_sha: String,
+        /// Raw process execution result from git push.
+        /// Contains exit code, stdout, and stderr for policy interpretation.
+        result: ProcessExecutionResult,
+    },
 
     /// Push to remote completed successfully.
     PushCompleted {

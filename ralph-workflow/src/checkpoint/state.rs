@@ -22,15 +22,21 @@
 //! If a checkpoint cannot be loaded and you need to start fresh, prefer backing it up first:
 //! `cp .agent/checkpoint.json .agent/checkpoint.backup.json && rm .agent/checkpoint.json`
 
-use chrono::Local;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::io;
 use std::path::Path;
 
 use crate::workspace::Workspace;
+use sha2::{Digest, Sha256};
+
+pub(crate) use chrono::Local;
+
+mod io {
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+    pub type Result<T> = std::result::Result<T, Error>;
+}
 
 include!("state/types/snapshots_and_phases.rs");
 include!("state/types/pipeline_phase.rs");
@@ -39,7 +45,5 @@ include!("state/serialization.rs");
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     include!("state/tests.rs");
 }

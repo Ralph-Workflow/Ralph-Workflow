@@ -24,35 +24,60 @@ use crate::reducer::ui_event::{XmlOutputContext, XmlOutputType};
 /// Render skills-mcp recommendations in markdown format.
 ///
 /// Renders structured skills and MCPs with optional reasons, or raw content if no structured data.
-pub fn render_skills_mcp_markdown(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
-    use std::fmt::Write as _;
+#[must_use]
+pub fn render_skills_mcp_markdown(skills_mcp: Option<&SkillsMcp>) -> String {
+    let Some(sm) = skills_mcp else {
+        return String::new();
+    };
 
-    if let Some(sm) = skills_mcp {
-        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
-        if has_structured || sm.raw_content.is_some() {
-            output.push_str("  - Skills & MCP:\n");
-            for skill in &sm.skills {
-                if let Some(ref reason) = skill.reason {
-                    writeln!(output, "    - skill: {} \u{2014} {}", skill.name, reason).unwrap();
-                } else {
-                    writeln!(output, "    - skill: {}", skill.name).unwrap();
-                }
-            }
-            for mcp in &sm.mcps {
-                if let Some(ref reason) = mcp.reason {
-                    writeln!(output, "    - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
-                } else {
-                    writeln!(output, "    - mcp: {}", mcp.name).unwrap();
-                }
-            }
-            if let Some(ref raw) = sm.raw_content {
-                let trimmed: &str = raw.trim();
-                if !trimmed.is_empty() && !has_structured {
-                    writeln!(output, "    - {trimmed}").unwrap();
-                }
-            }
-        }
+    let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+    if !(has_structured || sm.raw_content.is_some()) {
+        return String::new();
     }
+
+    // Build skills lines using iterator pipeline
+    let skills_lines: Vec<String> = sm
+        .skills
+        .iter()
+        .map(|skill| {
+            if let Some(ref reason) = skill.reason {
+                format!("    - skill: {} \u{2014} {}", skill.name, reason)
+            } else {
+                format!("    - skill: {}", skill.name)
+            }
+        })
+        .collect();
+
+    // Build MCP lines using iterator pipeline
+    let mcp_lines: Vec<String> = sm
+        .mcps
+        .iter()
+        .map(|mcp| {
+            if let Some(ref reason) = mcp.reason {
+                format!("    - mcp: {} \u{2014} {}", mcp.name, reason)
+            } else {
+                format!("    - mcp: {}", mcp.name)
+            }
+        })
+        .collect();
+
+    // Build raw content line if applicable
+    let raw_line: Option<String> = sm.raw_content.as_ref().and_then(|raw| {
+        let trimmed: &str = raw.trim();
+        if trimmed.is_empty() || has_structured {
+            None
+        } else {
+            Some(format!("    - {}", trimmed))
+        }
+    });
+
+    // Combine all parts using chain and collect
+    std::iter::once("  - Skills & MCP:".to_string())
+        .chain(skills_lines)
+        .chain(mcp_lines)
+        .chain(raw_line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Render XML content based on its type.

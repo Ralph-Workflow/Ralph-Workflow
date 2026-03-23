@@ -5,12 +5,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 mod archive_filename;
-mod spawn_idle_timeout;
-mod spawn_logfile;
-mod spawn_streaming_error;
-mod stderr_collector;
-mod stdout_cancel;
-mod streaming_line_reader;
+mod io_spawn_idle_timeout;
+mod io_spawn_logfile;
+mod io_spawn_streaming_error;
+mod io_stderr_collector;
+mod io_stdout_cancel;
+mod io_streaming_line_reader;
 mod truncate;
 
 fn test_logger() -> Logger {

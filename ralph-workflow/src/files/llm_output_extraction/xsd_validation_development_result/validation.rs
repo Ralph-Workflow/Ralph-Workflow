@@ -3,11 +3,14 @@
 use super::types::DevelopmentResultElements;
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    missing_required_error, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
+    missing_required_error, parse_skills_mcp, read_text_until_end, read_text_until_end_fuzzy,
+    skip_to_end,
     tolerant_parsing::{normalize_enum_value, normalize_tag_name, DEVELOPMENT_STATUS_SYNONYMS},
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
+use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
 use quick_xml::events::Event;
+use quick_xml::Reader;
 use std::borrow::Cow;
 
 /// Example of a valid development result XML for error messages.
@@ -66,271 +69,16 @@ pub fn validate_development_result_xml(
     // Check for illegal XML characters BEFORE parsing
     check_for_illegal_xml_characters(content.as_ref())?;
 
-    let mut reader = create_reader(content.as_ref());
-    let mut buf = Vec::new();
-
-    // Find the root element
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-development-result" => break,
-            Ok(Event::Start(e)) => {
-                let name_bytes = e.name();
-                let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-development-result".to_string(),
-                    expected: "<ralph-development-result> as root element".to_string(),
-                    found: format!("<{tag_name}> (wrong root element)"),
-                    suggestion: "Use <ralph-development-result> as the root element.".to_string(),
-                    example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
-                });
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-development-result".to_string(),
-                    expected: "<ralph-development-result> as root element".to_string(),
-                    found: format_content_preview(content.as_ref()),
-                    suggestion:
-                        "Wrap your result in <ralph-development-result>...</ralph-development-result> tags."
-                            .to_string(),
-                    example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
-                });
-            }
-            Ok(Event::Text(_) | _) => {
-                // Text before root element or other events - continue to find root or reach EOF
-                // EOF will give a more informative "missing root element" error
-            }
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-        buf.clear();
-    }
-
-    // Parse child elements
-    let mut status: Option<String> = None;
-    let mut summary: Option<String> = None;
-    let mut skills_mcp_value: Option<
-        crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp,
-    > = None;
-    let mut files_changed: Option<String> = None;
-    let mut files_changed_present = false;
-    let mut next_steps: Option<String> = None;
-    let mut next_steps_present = false;
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"ralph-status" => {
-                    if status.is_some() {
-                        return Err(duplicate_element_error(
-                            "ralph-status",
-                            "ralph-development-result",
-                        ));
-                    }
-                    status = Some(read_text_until_end(&mut reader, b"ralph-status")?);
-                }
-                b"ralph-summary" => {
-                    if summary.is_some() {
-                        return Err(duplicate_element_error(
-                            "ralph-summary",
-                            "ralph-development-result",
-                        ));
-                    }
-                    summary = Some(read_text_until_end(&mut reader, b"ralph-summary")?);
-                }
-                b"skills-mcp" => {
-                    use crate::files::llm_output_extraction::xml_helpers::parse_skills_mcp;
-                    skills_mcp_value = Some(parse_skills_mcp(&mut reader));
-                }
-                b"ralph-files-changed" => {
-                    if files_changed_present {
-                        return Err(duplicate_element_error(
-                            "ralph-files-changed",
-                            "ralph-development-result",
-                        ));
-                    }
-                    files_changed_present = true;
-                    files_changed = Some(read_text_until_end(&mut reader, b"ralph-files-changed")?);
-                }
-                b"ralph-next-steps" => {
-                    if next_steps_present {
-                        return Err(duplicate_element_error(
-                            "ralph-next-steps",
-                            "ralph-development-result",
-                        ));
-                    }
-                    next_steps_present = true;
-                    next_steps = Some(read_text_until_end(&mut reader, b"ralph-next-steps")?);
-                }
-                other => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known tag with minor typo, route to correct handler.
-                    let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_DEV_RESULT_TAGS) {
-                        // Re-parse with the canonical tag name
-                        match canonical {
-                            "ralph-status" => {
-                                if status.is_some() {
-                                    return Err(duplicate_element_error(
-                                        "ralph-status",
-                                        "ralph-development-result",
-                                    ));
-                                }
-                                status = Some(read_text_until_end_fuzzy(
-                                    &mut reader,
-                                    b"ralph-status",
-                                    other,
-                                )?);
-                            }
-                            "ralph-summary" => {
-                                if summary.is_some() {
-                                    return Err(duplicate_element_error(
-                                        "ralph-summary",
-                                        "ralph-development-result",
-                                    ));
-                                }
-                                summary = Some(read_text_until_end_fuzzy(
-                                    &mut reader,
-                                    b"ralph-summary",
-                                    other,
-                                )?);
-                            }
-                            "skills-mcp" => {
-                                use crate::files::llm_output_extraction::xml_helpers::parse_skills_mcp;
-                                skills_mcp_value = Some(parse_skills_mcp(&mut reader));
-                            }
-                            "ralph-files-changed" => {
-                                if files_changed_present {
-                                    return Err(duplicate_element_error(
-                                        "ralph-files-changed",
-                                        "ralph-development-result",
-                                    ));
-                                }
-                                files_changed_present = true;
-                                files_changed = Some(read_text_until_end_fuzzy(
-                                    &mut reader,
-                                    b"ralph-files-changed",
-                                    other,
-                                )?);
-                            }
-                            "ralph-next-steps" => {
-                                if next_steps_present {
-                                    return Err(duplicate_element_error(
-                                        "ralph-next-steps",
-                                        "ralph-development-result",
-                                    ));
-                                }
-                                next_steps_present = true;
-                                next_steps = Some(read_text_until_end_fuzzy(
-                                    &mut reader,
-                                    b"ralph-next-steps",
-                                    other,
-                                )?);
-                            }
-                            _ => {
-                                // Should not happen - canonical tags are from our known list
-                                let _ = skip_to_end(&mut reader, other);
-                            }
-                        }
-                    } else {
-                        // Tolerant: skip unknown elements instead of rejecting.
-                        // Required elements (status, summary) are still enforced after the loop.
-                        let _ = skip_to_end(&mut reader, other);
-                    }
-                    // Continue parsing — do not return an error for unknown elements.
-                }
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"ralph-status" => {
-                    if status.is_some() {
-                        return Err(duplicate_element_error(
-                            "ralph-status",
-                            "ralph-development-result",
-                        ));
-                    }
-                    status = Some(String::new());
-                }
-                b"ralph-summary" => {
-                    if summary.is_some() {
-                        return Err(duplicate_element_error(
-                            "ralph-summary",
-                            "ralph-development-result",
-                        ));
-                    }
-                    summary = Some(String::new());
-                }
-                b"skills-mcp" => {
-                    use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
-                    skills_mcp_value = Some(SkillsMcp {
-                        skills: Vec::new(),
-                        mcps: Vec::new(),
-                        raw_content: None,
-                    });
-                }
-                b"ralph-files-changed" => {
-                    if files_changed_present {
-                        return Err(duplicate_element_error(
-                            "ralph-files-changed",
-                            "ralph-development-result",
-                        ));
-                    }
-                    files_changed_present = true;
-                    files_changed = Some(String::new());
-                }
-                b"ralph-next-steps" => {
-                    if next_steps_present {
-                        return Err(duplicate_element_error(
-                            "ralph-next-steps",
-                            "ralph-development-result",
-                        ));
-                    }
-                    next_steps_present = true;
-                    next_steps = Some(String::new());
-                }
-                other => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known tag with minor typo, route to correct handler.
-                    // Handle canonical tag for self-closing element - skip it entirely
-                    // so the proper element can still be processed later.
-                    // Don't set any value - just ignore this misspelled self-closing tag.
-                    let tag_name = String::from_utf8_lossy(other);
-                    if let Some(
-                        "ralph-status"
-                        | "ralph-summary"
-                        | "skills-mcp"
-                        | "ralph-files-changed"
-                        | "ralph-next-steps",
-                    ) = normalize_tag_name(&tag_name, KNOWN_DEV_RESULT_TAGS)
-                    {
-                        // Skip - don't set any value so proper elements can be processed
-                    } else {
-                        // Skip unknown self-closing elements
-                    }
-                }
-            },
-            Ok(Event::Text(e)) => {
-                // Tolerant: ignore stray text between elements.
-                // By the time content reaches the validator it has been extracted with matching
-                // open/close tags. Stray text between child elements within a valid root is
-                // genuinely harmless — it does not change the meaning of the result.
-                let _ = e;
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-development-result" => break,
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-development-result".to_string(),
-                    expected: "closing </ralph-development-result> tag".to_string(),
-                    found: "end of content without closing tag".to_string(),
-                    suggestion: "Add </ralph-development-result> at the end.".to_string(),
-                    example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
-                });
-            }
-            Ok(_) => {} // Skip comments, etc.
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-    }
+    let DevelopmentResultParseState {
+        status,
+        summary,
+        skills_mcp_value,
+        files_changed,
+        next_steps,
+    } = parse_development_result_with_reader(
+        &mut create_reader(content.as_ref()),
+        content.as_ref(),
+    )?;
 
     // Validate required element: status
     let status = status.ok_or_else(|| {
@@ -392,15 +140,264 @@ pub fn validate_development_result_xml(
         summary
     };
 
+    let (files_changed, files_changed_present) =
+        normalize_optional_text_and_presence(files_changed);
+    let (next_steps, next_steps_present) = normalize_optional_text_and_presence(next_steps);
+
     Ok(DevelopmentResultElements {
         status,
         summary,
         skills_mcp: skills_mcp_value,
-        files_changed: files_changed.filter(|s| !s.is_empty()),
+        files_changed,
         files_changed_present,
-        next_steps: next_steps.filter(|s| !s.is_empty()),
+        next_steps,
         next_steps_present,
     })
+}
+
+#[derive(Default)]
+struct DevelopmentResultParseState {
+    status: Option<String>,
+    summary: Option<String>,
+    skills_mcp_value: Option<SkillsMcp>,
+    files_changed: Option<String>,
+    next_steps: Option<String>,
+}
+
+impl DevelopmentResultParseState {
+    fn with_status(self, status: String) -> Result<Self, XsdValidationError> {
+        if self.status.is_some() {
+            Err(duplicate_element_error(
+                "ralph-status",
+                "ralph-development-result",
+            ))
+        } else {
+            Ok(Self {
+                status: Some(status),
+                ..self
+            })
+        }
+    }
+
+    fn with_summary(self, summary: String) -> Result<Self, XsdValidationError> {
+        if self.summary.is_some() {
+            Err(duplicate_element_error(
+                "ralph-summary",
+                "ralph-development-result",
+            ))
+        } else {
+            Ok(Self {
+                summary: Some(summary),
+                ..self
+            })
+        }
+    }
+
+    fn with_files_changed(self, files_changed: String) -> Result<Self, XsdValidationError> {
+        if self.files_changed.is_some() {
+            Err(duplicate_element_error(
+                "ralph-files-changed",
+                "ralph-development-result",
+            ))
+        } else {
+            Ok(Self {
+                files_changed: Some(files_changed),
+                ..self
+            })
+        }
+    }
+
+    fn with_next_steps(self, next_steps: String) -> Result<Self, XsdValidationError> {
+        if self.next_steps.is_some() {
+            Err(duplicate_element_error(
+                "ralph-next-steps",
+                "ralph-development-result",
+            ))
+        } else {
+            Ok(Self {
+                next_steps: Some(next_steps),
+                ..self
+            })
+        }
+    }
+
+    fn with_skills_mcp(self, skills_mcp_value: SkillsMcp) -> Self {
+        Self {
+            skills_mcp_value: Some(skills_mcp_value),
+            ..self
+        }
+    }
+}
+
+fn parse_development_result_with_reader(
+    reader: &mut Reader<&[u8]>,
+    content: &str,
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    find_development_root(reader, content)?;
+    parse_development_result_children(reader, DevelopmentResultParseState::default())
+}
+
+fn find_development_root(
+    reader: &mut Reader<&[u8]>,
+    content: &str,
+) -> Result<(), XsdValidationError> {
+    find_development_root_next(reader, content, Vec::new())
+}
+
+fn find_development_root_next(
+    reader: &mut Reader<&[u8]>,
+    content: &str,
+    mut buf: Vec<u8>,
+) -> Result<(), XsdValidationError> {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-development-result" => Ok(()),
+        Ok(Event::Start(e)) => {
+            let name_bytes = e.name();
+            let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
+            Err(XsdValidationError {
+                error_type: XsdErrorType::MissingRequiredElement,
+                element_path: "ralph-development-result".to_string(),
+                expected: "<ralph-development-result> as root element".to_string(),
+                found: format!("<{tag_name}> (wrong root element)"),
+                suggestion: "Use <ralph-development-result> as the root element.".to_string(),
+                example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
+            })
+        }
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MissingRequiredElement,
+            element_path: "ralph-development-result".to_string(),
+            expected: "<ralph-development-result> as root element".to_string(),
+            found: format_content_preview(content),
+            suggestion:
+                "Wrap your result in <ralph-development-result>...</ralph-development-result> tags."
+                    .to_string(),
+            example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
+        }),
+        Ok(Event::Text(_) | _) => find_development_root(reader, content),
+        Err(e) => Err(malformed_xml_error(&e)),
+    }
+}
+
+fn parse_development_result_children(
+    reader: &mut Reader<&[u8]>,
+    state: DevelopmentResultParseState,
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    parse_development_result_children_next(reader, state, Vec::new())
+}
+
+fn parse_development_result_children_next(
+    reader: &mut Reader<&[u8]>,
+    state: DevelopmentResultParseState,
+    mut buf: Vec<u8>,
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Start(e)) => parse_development_result_start_tag(reader, state, e.name().as_ref())
+            .and_then(|next_state| parse_development_result_children(reader, next_state)),
+        Ok(Event::Empty(e)) => parse_development_result_empty_tag(state, e.name().as_ref())
+            .and_then(|next_state| parse_development_result_children(reader, next_state)),
+        Ok(Event::Text(_)) => parse_development_result_children(reader, state),
+        Ok(Event::End(e)) if e.name().as_ref() == b"ralph-development-result" => Ok(state),
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: "ralph-development-result".to_string(),
+            expected: "closing </ralph-development-result> tag".to_string(),
+            found: "end of content without closing tag".to_string(),
+            suggestion: "Add </ralph-development-result> at the end.".to_string(),
+            example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
+        }),
+        Ok(_) => parse_development_result_children(reader, state),
+        Err(e) => Err(malformed_xml_error(&e)),
+    }
+}
+
+fn parse_development_result_start_tag(
+    reader: &mut Reader<&[u8]>,
+    state: DevelopmentResultParseState,
+    tag: &[u8],
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    match tag {
+        b"ralph-status" => state.with_status(read_text_until_end(reader, b"ralph-status")?),
+        b"ralph-summary" => state.with_summary(read_text_until_end(reader, b"ralph-summary")?),
+        b"skills-mcp" => Ok(state.with_skills_mcp(parse_skills_mcp(reader))),
+        b"ralph-files-changed" => {
+            state.with_files_changed(read_text_until_end(reader, b"ralph-files-changed")?)
+        }
+        b"ralph-next-steps" => {
+            state.with_next_steps(read_text_until_end(reader, b"ralph-next-steps")?)
+        }
+        other => parse_development_result_fuzzy_start_tag(reader, state, other),
+    }
+}
+
+fn parse_development_result_fuzzy_start_tag(
+    reader: &mut Reader<&[u8]>,
+    state: DevelopmentResultParseState,
+    tag: &[u8],
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    let tag_name = String::from_utf8_lossy(tag);
+
+    match normalize_tag_name(&tag_name, KNOWN_DEV_RESULT_TAGS) {
+        Some("ralph-status") => {
+            state.with_status(read_text_until_end_fuzzy(reader, b"ralph-status", tag)?)
+        }
+        Some("ralph-summary") => {
+            state.with_summary(read_text_until_end_fuzzy(reader, b"ralph-summary", tag)?)
+        }
+        Some("skills-mcp") => Ok(state.with_skills_mcp(parse_skills_mcp(reader))),
+        Some("ralph-files-changed") => state.with_files_changed(read_text_until_end_fuzzy(
+            reader,
+            b"ralph-files-changed",
+            tag,
+        )?),
+        Some("ralph-next-steps") => {
+            state.with_next_steps(read_text_until_end_fuzzy(reader, b"ralph-next-steps", tag)?)
+        }
+        Some(_) | None => {
+            let _ = skip_to_end(reader, tag);
+            Ok(state)
+        }
+    }
+}
+
+fn parse_development_result_empty_tag(
+    state: DevelopmentResultParseState,
+    tag: &[u8],
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    match tag {
+        b"ralph-status" => state.with_status(String::new()),
+        b"ralph-summary" => state.with_summary(String::new()),
+        b"skills-mcp" => Ok(state.with_skills_mcp(SkillsMcp {
+            skills: Vec::new(),
+            mcps: Vec::new(),
+            raw_content: None,
+        })),
+        b"ralph-files-changed" => state.with_files_changed(String::new()),
+        b"ralph-next-steps" => state.with_next_steps(String::new()),
+        other => parse_development_result_fuzzy_empty_tag(state, other),
+    }
+}
+
+fn parse_development_result_fuzzy_empty_tag(
+    state: DevelopmentResultParseState,
+    tag: &[u8],
+) -> Result<DevelopmentResultParseState, XsdValidationError> {
+    let tag_name = String::from_utf8_lossy(tag);
+    let _ = normalize_tag_name(&tag_name, KNOWN_DEV_RESULT_TAGS);
+    Ok(state)
+}
+
+fn clear_files_changed(elements: DevelopmentResultElements) -> DevelopmentResultElements {
+    DevelopmentResultElements {
+        files_changed: None,
+        files_changed_present: false,
+        ..elements
+    }
+}
+
+fn normalize_optional_text_and_presence(value: Option<String>) -> (Option<String>, bool) {
+    let is_present = value.is_some();
+    let normalized = value.filter(|s| !s.is_empty());
+    (normalized, is_present)
 }
 
 /// Validate continuation-mode development result XML.
@@ -418,12 +415,8 @@ pub fn validate_development_result_xml(
 pub fn validate_continuation_development_result_xml(
     xml_content: &str,
 ) -> Result<DevelopmentResultElements, XsdValidationError> {
-    let elements = validate_development_result_xml(xml_content)?;
-
     // Tolerate ralph-files-changed if present — clear it so downstream ignores it.
-    let mut elements = elements;
-    elements.files_changed = None;
-    elements.files_changed_present = false;
+    let elements = clear_files_changed(validate_development_result_xml(xml_content)?);
 
     // When status is partial or failed, next_steps is required
     if (elements.status == "partial" || elements.status == "failed")
@@ -456,4 +449,51 @@ fn unwrap_cdata_wrapper(content: &str) -> Cow<'_, str> {
         return Cow::Borrowed(trimmed);
     };
     Cow::Borrowed(inner.trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_optional_text_and_presence_none() {
+        assert_eq!(normalize_optional_text_and_presence(None), (None, false));
+    }
+
+    #[test]
+    fn normalize_optional_text_and_presence_empty_string() {
+        assert_eq!(
+            normalize_optional_text_and_presence(Some(String::new())),
+            (None, true)
+        );
+    }
+
+    #[test]
+    fn normalize_optional_text_and_presence_non_empty_string() {
+        assert_eq!(
+            normalize_optional_text_and_presence(Some("src/lib.rs".to_string())),
+            (Some("src/lib.rs".to_string()), true)
+        );
+    }
+
+    #[test]
+    fn clear_files_changed_resets_files_changed_fields_only() {
+        let cleared = clear_files_changed(DevelopmentResultElements {
+            status: "partial".to_string(),
+            summary: "work in progress".to_string(),
+            skills_mcp: None,
+            files_changed: Some("src/lib.rs".to_string()),
+            files_changed_present: true,
+            next_steps: Some("finish tests".to_string()),
+            next_steps_present: true,
+        });
+
+        assert_eq!(cleared.status, "partial");
+        assert_eq!(cleared.summary, "work in progress");
+        assert_eq!(cleared.skills_mcp, None);
+        assert_eq!(cleared.files_changed, None);
+        assert!(!cleared.files_changed_present);
+        assert_eq!(cleared.next_steps, Some("finish tests".to_string()));
+        assert!(cleared.next_steps_present);
+    }
 }

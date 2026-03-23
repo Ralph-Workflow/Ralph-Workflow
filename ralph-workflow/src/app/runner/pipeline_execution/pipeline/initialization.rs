@@ -17,7 +17,7 @@
 /// Parameters for preparing the pipeline context.
 ///
 /// Groups related parameters to avoid too many function arguments.
-pub(super) struct PipelinePreparationParams<'a, H: effect::AppEffectHandler> {
+pub struct PipelinePreparationParams<'a, H: crate::app::effect::AppEffectHandler> {
     pub args: Args,
     pub config: crate::config::Config,
     pub registry: AgentRegistry,
@@ -118,14 +118,16 @@ fn create_resume_or_fresh_run_log_context(
 }
 
 fn configure_logger_for_run(
-    state: &mut PipelinePreparationState,
+    mut state: PipelinePreparationState,
     run_log_context: &crate::logging::RunLogContext,
-) {
+) -> PipelinePreparationState {
     let current_logger = std::mem::replace(&mut state.logger, Logger::new(state.colors));
     state.logger = current_logger.with_workspace_log(
         std::sync::Arc::clone(&state.workspace),
         &run_log_context.pipeline_log().to_string_lossy(),
     );
+
+    state
 }
 
 fn write_run_metadata_best_effort(
@@ -137,12 +139,12 @@ fn write_run_metadata_best_effort(
         started_at_utc: chrono::Utc::now().to_rfc3339(),
         command: format!(
             "ralph {}",
-            std::env::args().skip(1).collect::<Vec<_>>().join(" ")
+            crate::app::env_access::get_program_args().join(" ")
         ),
         resume: state.args.recovery.resume,
         repo_root: state.repo_root.display().to_string(),
         ralph_version: env!("CARGO_PKG_VERSION").to_string(),
-        pid: Some(std::process::id()),
+        pid: Some(crate::app::env_access::get_process_id()),
         config_summary: None,
     };
 
@@ -168,7 +170,7 @@ fn write_run_metadata_best_effort(
 /// - Required files/directories cannot be created
 /// - Run log context creation fails
 /// - Checkpoint save fails (when updating `log_run_id`)
-pub(super) fn prepare_pipeline_or_exit<H: effect::AppEffectHandler>(
+pub(crate) fn prepare_pipeline_or_exit<H: crate::app::effect::AppEffectHandler>(
     params: PipelinePreparationParams<'_, H>,
 ) -> anyhow::Result<Option<PipelineContext>> {
     let PipelinePreparationParams {
@@ -185,15 +187,15 @@ pub(super) fn prepare_pipeline_or_exit<H: effect::AppEffectHandler>(
         workspace,
     } = params;
 
-    effectful::ensure_files_effectful(handler, config.isolation_mode)
+    crate::app::effectful::ensure_files_effectful(handler, config.isolation_mode)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if config.isolation_mode {
-        effectful::reset_context_for_isolation_effectful(handler)
+        crate::app::effectful::reset_context_for_isolation_effectful(handler)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
     }
 
-    let mut state = PipelinePreparationState {
+    let state = PipelinePreparationState {
         args,
         config,
         registry,
@@ -207,7 +209,7 @@ pub(super) fn prepare_pipeline_or_exit<H: effect::AppEffectHandler>(
     };
 
     let run_log_context = create_resume_or_fresh_run_log_context(&state)?;
-    configure_logger_for_run(&mut state, &run_log_context);
+    let state = configure_logger_for_run(state, &run_log_context);
     write_run_metadata_best_effort(&state, &run_log_context);
 
     let template_context =

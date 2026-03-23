@@ -229,6 +229,29 @@ impl<'de> Deserialize<'de> for AgentChainState {
     }
 }
 
+impl Default for AgentChainState {
+    fn default() -> Self {
+        Self {
+            agents: Arc::from(vec![]),
+            current_agent_index: 0,
+            models_per_agent: Arc::from(vec![]),
+            current_model_index: 0,
+            retry_cycle: 0,
+            max_cycles: 3,
+            retry_delay_ms: default_retry_delay_ms(),
+            backoff_multiplier: default_backoff_multiplier(),
+            max_backoff_ms: default_max_backoff_ms(),
+            backoff_pending_ms: None,
+            current_role: AgentRole::Developer,
+            current_drain: default_current_drain(),
+            current_mode: DrainMode::Normal,
+            rate_limit_continuation_prompt: None,
+            last_session_id: None,
+            last_failure_reason: None,
+        }
+    }
+}
+
 const fn default_retry_delay_ms() -> u64 {
     1000
 }
@@ -286,35 +309,42 @@ impl AgentChainState {
 
     #[must_use]
     pub fn with_agents(
-        mut self,
+        self,
         agents: Vec<String>,
         models_per_agent: Vec<Vec<String>>,
         role: AgentRole,
     ) -> Self {
-        self.agents = Arc::from(agents);
-        self.models_per_agent = Arc::from(models_per_agent);
-        self.current_role = role;
-        self.current_drain = match role {
+        let current_drain = match role {
             AgentRole::Developer => AgentDrain::Development,
             AgentRole::Reviewer => AgentDrain::Review,
             AgentRole::Commit => AgentDrain::Commit,
             AgentRole::Analysis => AgentDrain::Analysis,
         };
-        self.current_mode = DrainMode::Normal;
-        self
+        Self {
+            agents: Arc::from(agents),
+            models_per_agent: Arc::from(models_per_agent),
+            current_role: role,
+            current_drain,
+            current_mode: DrainMode::Normal,
+            ..self
+        }
     }
 
     #[must_use]
-    pub const fn with_drain(mut self, drain: AgentDrain) -> Self {
-        self.current_drain = drain;
-        self.current_role = drain.role();
-        self
+    pub fn with_drain(self, drain: AgentDrain) -> Self {
+        Self {
+            current_drain: drain,
+            current_role: drain.role(),
+            ..self
+        }
     }
 
     #[must_use]
-    pub const fn with_mode(mut self, mode: DrainMode) -> Self {
-        self.current_mode = mode;
-        self
+    pub fn with_mode(self, mode: DrainMode) -> Self {
+        Self {
+            current_mode: mode,
+            ..self
+        }
     }
 
     #[must_use]
@@ -327,22 +357,39 @@ impl AgentChainState {
     /// A retry cycle is when all agents have been exhausted and we start
     /// over with exponential backoff.
     #[must_use]
-    pub const fn with_max_cycles(mut self, max_cycles: u32) -> Self {
-        self.max_cycles = max_cycles;
-        self
+    pub fn with_max_cycles(self, max_cycles: u32) -> Self {
+        Self { max_cycles, ..self }
     }
 
     #[must_use]
-    pub const fn with_backoff_policy(
-        mut self,
+    pub fn with_backoff_policy(
+        self,
         retry_delay_ms: u64,
         backoff_multiplier: f64,
         max_backoff_ms: u64,
     ) -> Self {
-        self.retry_delay_ms = retry_delay_ms;
-        self.backoff_multiplier = backoff_multiplier;
-        self.max_backoff_ms = max_backoff_ms;
-        self
+        Self {
+            retry_delay_ms,
+            backoff_multiplier,
+            max_backoff_ms,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_retry_cycle(self, retry_cycle: u32) -> Self {
+        Self {
+            retry_cycle,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_current_agent_index(self, current_agent_index: usize) -> Self {
+        Self {
+            current_agent_index,
+            ..self
+        }
     }
 
     #[must_use]
@@ -360,63 +407,56 @@ impl AgentChainState {
     /// It changes only when the configured consumer set changes.
     #[must_use]
     pub fn consumer_signature_sha256(&self) -> String {
-        let mut pairs: Vec<(&str, &[String])> = self
+        use itertools::Itertools;
+
+        let sorted_pairs: Vec<(String, Vec<String>)> = self
             .agents
             .iter()
             .enumerate()
             .map(|(idx, agent)| {
-                let models: &[String] = self
+                let models: Vec<String> = self
                     .models_per_agent
                     .get(idx)
-                    .map_or([].as_slice(), std::vec::Vec::as_slice);
-                (agent.as_str(), models)
+                    .map_or_else(Vec::new, |m| m.clone());
+                (agent.clone(), models)
+            })
+            .sorted_by_key(|(agent, models)| (agent.clone(), models.clone()))
+            .collect();
+
+        let update_chain: Vec<Vec<u8>> = sorted_pairs
+            .iter()
+            .map(|(agent, models)| {
+                let models_bytes: Vec<u8> = models
+                    .iter()
+                    .map(|m| m.as_bytes())
+                    .collect::<Vec<_>>()
+                    .join(&b',');
+                let line: Vec<u8> = std::iter::empty()
+                    .chain(agent.as_bytes().iter().copied())
+                    .chain([b'|'])
+                    .chain(models_bytes.iter().copied())
+                    .chain([b'\n'])
+                    .collect();
+                line
             })
             .collect();
 
-        // Sort so the signature is stable even if callers reorder the configured
-        // consumer set.
-        pairs.sort_by(|(agent_a, models_a), (agent_b, models_b)| {
-            use std::cmp::Ordering;
-
-            let agent_ord = agent_a.cmp(agent_b);
-            if agent_ord != Ordering::Equal {
-                return agent_ord;
-            }
-
-            for (a, b) in models_a.iter().zip(models_b.iter()) {
-                let ord = a.cmp(b);
-                if ord != Ordering::Equal {
-                    return ord;
-                }
-            }
-
-            models_a.len().cmp(&models_b.len())
-        });
-
-        let mut hasher = Sha256::new();
-        hasher.update(agent_drain_signature_tag(self.current_drain));
-        for (agent, models) in pairs {
-            hasher.update(agent.as_bytes());
-            hasher.update(b"|");
-            for (idx, model) in models.iter().enumerate() {
-                if idx > 0 {
-                    hasher.update(b",");
-                }
-                hasher.update(model.as_bytes());
-            }
-            hasher.update(b"\n");
-        }
+        let hasher = update_chain.iter().fold(
+            Digest::chain_update(Sha256::new(), agent_drain_signature_tag(self.current_drain)),
+            |h, chunk| Digest::chain_update(h, chunk.as_slice()),
+        );
         let digest = hasher.finalize();
-        digest.iter().fold(String::new(), |mut s, b| {
-            use std::fmt::Write;
-            write!(&mut s, "{b:02x}").unwrap();
-            s
-        })
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     }
 
     #[cfg(test)]
     fn legacy_consumer_signature_sha256_for_test(&self) -> String {
-        let mut rendered: Vec<String> = self
+        use itertools::Itertools;
+
+        let rendered: Vec<String> = self
             .agents
             .iter()
             .enumerate()
@@ -425,24 +465,33 @@ impl AgentChainState {
                     .models_per_agent
                     .get(idx)
                     .map_or([].as_slice(), std::vec::Vec::as_slice);
-                format!("{}|{}", agent, models.join(","))
+                format!(
+                    "{}|{}",
+                    agent,
+                    models
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
             })
+            .sorted()
             .collect();
 
-        rendered.sort();
+        let update_chain: Vec<&[u8]> = rendered
+            .iter()
+            .flat_map(|line| [line.as_bytes(), b"\n"])
+            .collect();
 
-        let mut hasher = Sha256::new();
-        hasher.update(agent_drain_signature_tag(self.current_drain));
-        for line in rendered {
-            hasher.update(line.as_bytes());
-            hasher.update(b"\n");
-        }
+        let hasher = update_chain.iter().fold(
+            Digest::chain_update(Sha256::new(), agent_drain_signature_tag(self.current_drain)),
+            |h, chunk| Digest::chain_update(h, *chunk),
+        );
         let digest = hasher.finalize();
-        digest.iter().fold(String::new(), |mut s, b| {
-            use std::fmt::Write;
-            write!(&mut s, "{b:02x}").unwrap();
-            s
-        })
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     }
 
     /// Get the currently selected model for the current agent.
@@ -495,9 +544,6 @@ mod consumer_signature_tests {
 
     #[test]
     fn test_consumer_signature_uses_stable_drain_encoding() {
-        // The consumer signature is persisted in reducer state and used for dedupe.
-        // It must not depend on Debug formatting (variant renames would change the hash).
-        // Instead, it should use a stable, explicit role tag.
         let state = AgentChainState::initial()
             .with_agents(
                 vec!["agent-a".to_string()],
@@ -506,19 +552,14 @@ mod consumer_signature_tests {
             )
             .with_drain(AgentDrain::Fix);
 
-        let mut hasher = Sha256::new();
-        hasher.update(b"fix\n");
-        hasher.update(b"agent-a");
-        hasher.update(b"|");
-        hasher.update(b"m1");
-        hasher.update(b",");
-        hasher.update(b"m2");
-        hasher.update(b"\n");
-        let expected = hasher.finalize().iter().fold(String::new(), |mut acc, b| {
-            use std::fmt::Write;
-            write!(acc, "{b:02x}").unwrap();
-            acc
-        });
+        let data = b"fix\nagent-a|m1,m2\n".to_vec();
+        let expected = Sha256::digest(&data)
+            .iter()
+            .fold(String::new(), |mut acc, b| {
+                use std::fmt::Write;
+                write!(acc, "{b:02x}").unwrap();
+                acc
+            });
 
         assert_eq!(
             state.consumer_signature_sha256(),

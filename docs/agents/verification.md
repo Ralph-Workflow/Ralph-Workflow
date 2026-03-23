@@ -1,24 +1,10 @@
 # Required Verification (before PR/completion)
 
-## Canonical commands
+## Canonical command
 
-### Default (CLI + library only — for backend/workflow work):
 ```bash
 cargo xtask verify
 ```
-
-### With GUI (full verification — for GUI/frontend work):
-```bash
-cargo xtask verify --gui
-```
-
-Use `--gui` when:
-- Working on `ralph-gui/` Rust code
-- Working on `ralph-gui/ui/` Angular frontend
-- Preparing a PR that touches GUI files
-- Running full CI locally (`make ci` or `make verify-gui`)
-
-Do NOT use `--gui` when only working on `ralph-workflow/`, `test-helpers/`, `tests/`, or `xtask/`.
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
 
@@ -48,25 +34,25 @@ The release lane is intentionally narrower than the full workspace: `release-bui
 
 ---
 
-## Recursion Protection for Tests That Spawn xtask
+## Optional Developer Tools
 
-The verify pipeline runs `test-xtask` which executes `cargo test -p xtask`. Tests in the xtask crate that spawn `cargo xtask` subprocesses could cause infinite recursion (verify runs test-xtask which runs tests which run verify again).
+### Coverage tooling
 
-### Defense-in-Depth Layers
+For local coverage analysis (diagnostic, not a CI gate):
 
-Three protection layers prevent this:
+```bash
+cargo install cargo-llvm-cov --locked
+```
 
-1. **Layer A (main.rs):** The `RALPH_XTASK_IN_VERIFY` environment variable guard in `xtask/src/main.rs`. When verify detects this variable is set, it exits early with success instead of re-running checks.
+This is an optional developer setup step for inspecting code coverage locally. It is **not required** for CI verification and is not a required dependency.
 
-2. **Layer B (verify.rs):** The `test-xtask` CommandSpec in `xtask/src/verify.rs` sets `RALPH_XTASK_IN_VERIFY=1` in `extra_env`. This ensures the guard is inherited by all subprocesses spawned during test-xtask execution.
+After touching any module refactored under the fp-style-compliance plan, run:
 
-3. **Layer C (separate binary):** Subprocess-spawning tests live in `xtask/tests/subprocess_invocation_tests.rs`, not in `xtask/src/main.rs`. This separate integration test binary is NOT included in `cargo test -p xtask` (the test-xtask check), so it cannot be triggered during verify.
+```bash
+cargo xtask coverage
+```
 
-### Rules for Contributors
-
-- **Any test that spawns `cargo xtask` or `cargo test` MUST live in `xtask/tests/`**, not in `xtask/src/`.
-- **Every subprocess test MUST check `RALPH_XTASK_IN_VERIFY`** at the top and skip (exit 0) if set.
-- To run subprocess tests explicitly: `cargo test -p xtask --test subprocess_invocation_tests`
+Low coverage on a module is a signal to ask *"do we understand the failure modes here?"* — it is a prompt for investigation, not a gate to block PRs.
 
 ---
 
@@ -171,8 +157,7 @@ cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
 # Release build
 cargo build --release
 
-# Custom lints (dylint) - check for files exceeding line limits
-# This runs the file_too_long lint from lints/file_too_long
+# Custom lints (dylint) - all lints consolidated in ralph_lints
 #
 # IMPORTANT:
 # - Running dylint against the `ralph` binary target can fail the build because the binary uses
@@ -184,7 +169,7 @@ cargo build --release
 # Recommended (library target only):
 make dylint
 # or:
-cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
 ```
 
 **If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.

@@ -86,4 +86,4 @@ pub use types::{
 // Clippy's `large_stack_frames` lint no longer trips on the generated lib-test harness.
 // The lint is no longer fired in current Rust versions, so no suppression is needed.
 #[cfg(test)]
-mod tests;
+mod io_tests;

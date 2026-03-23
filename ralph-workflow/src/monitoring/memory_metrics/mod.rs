@@ -10,6 +10,7 @@
 
 pub(super) mod backends;
 pub(super) mod collector;
+pub(super) mod io;
 pub(super) mod snapshot;
 
 pub use backends::{LoggingBackend, NoOpBackend, TelemetryBackend};

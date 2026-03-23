@@ -3,15 +3,15 @@
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Common context section with PROMPT and PLAN variables.                   #}
+{#   Common context section that surfaces the prompt and plan variables.       #}
 {#   Provides original user request and implementation plan context.           #}
 {#                                                                             #}
 {# USAGE:                                                                      #}
-{#   {{> shared/_context_section}}                                             #}
+{#   Include shared/_context_section to expose request and plan context blocks. #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   PROMPT   - Original user request from PROMPT.md (required)                #}
-{#   PLAN     - Implementation plan from PLAN.md (required)                    #}
+{#   PROMPT   - Original user request (required)                              #}
+{#   PLAN     - Implementation plan context (required)                        #}
 {#                                                                             #}
 {# NOTES:                                                                      #}
 {#   - This partial is self-contained and requires no other partials           #}

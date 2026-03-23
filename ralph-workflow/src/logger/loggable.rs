@@ -47,7 +47,7 @@ pub trait Loggable {
 
     /// Log an error message.
     ///
-    /// Default implementation formats the message with `[ERROR]` prefix
+    /// Default implementation formats the message with [ERROR] prefix
     /// and delegates to the `log` method.
     fn error(&self, msg: &str) {
         self.log(&format!("[ERROR] {msg}"));

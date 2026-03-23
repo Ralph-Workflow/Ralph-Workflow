@@ -455,6 +455,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("review_xml_validation.rs"),
     },
     SourceFile {
+        path: "rust_lsp_dylint.rs",
+        contents: include_str!("rust_lsp_dylint.rs"),
+    },
+    SourceFile {
         path: "test_count_guard.rs",
         contents: include_str!("test_count_guard.rs"),
     },

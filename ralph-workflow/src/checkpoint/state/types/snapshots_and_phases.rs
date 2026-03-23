@@ -33,9 +33,7 @@ fn checkpoint_path() -> String {
 /// This is the core checksum calculation used by both file-based and
 /// workspace-based checksum functions.
 pub(crate) fn calculate_checksum_from_bytes(content: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content);
-    format!("{:x}", hasher.finalize())
+    format!("{:x}", Sha256::digest(content))
 }
 
 /// Snapshot of CLI arguments for exact restoration.
@@ -93,7 +91,7 @@ pub struct CliArgsSnapshotBuilder {
 
 impl CliArgsSnapshotBuilder {
     /// Create a new builder with required fields.
-    #[must_use] 
+    #[must_use]
     pub const fn new(
         developer_iters: u32,
         reviewer_reviews: u32,
@@ -112,28 +110,31 @@ impl CliArgsSnapshotBuilder {
     }
 
     /// Set the verbosity level.
-    #[must_use] 
-    pub const fn verbosity(mut self, verbosity: u8) -> Self {
-        self.verbosity = verbosity;
-        self
+    #[must_use]
+    pub fn verbosity(self, verbosity: u8) -> Self {
+        Self { verbosity, ..self }
     }
 
     /// Set whether to show streaming metrics.
-    #[must_use] 
-    pub const fn show_streaming_metrics(mut self, show: bool) -> Self {
-        self.show_streaming_metrics = show;
-        self
+    #[must_use]
+    pub fn show_streaming_metrics(self, show: bool) -> Self {
+        Self {
+            show_streaming_metrics: show,
+            ..self
+        }
     }
 
     /// Set the reviewer JSON parser override.
-    #[must_use] 
-    pub fn reviewer_json_parser(mut self, parser: Option<String>) -> Self {
-        self.reviewer_json_parser = parser;
-        self
+    #[must_use]
+    pub fn reviewer_json_parser(self, parser: Option<String>) -> Self {
+        Self {
+            reviewer_json_parser: parser,
+            ..self
+        }
     }
 
     /// Build the snapshot.
-    #[must_use] 
+    #[must_use]
     pub fn build(self) -> CliArgsSnapshot {
         CliArgsSnapshot {
             developer_iters: self.developer_iters,
@@ -153,7 +154,7 @@ impl CliArgsSnapshot {
     /// This is a convenience method for test code.
     /// For production code, use [`CliArgsSnapshotBuilder`] for better readability.
     #[cfg(test)]
-    #[must_use] 
+    #[must_use]
     pub fn new(
         developer_iters: u32,
         reviewer_reviews: u32,
@@ -213,7 +214,7 @@ const fn default_context_level() -> u8 {
 
 impl AgentConfigSnapshot {
     /// Create a snapshot from agent configuration.
-    #[must_use] 
+    #[must_use]
     pub const fn new(
         name: String,
         cmd: String,
@@ -234,24 +235,30 @@ impl AgentConfigSnapshot {
     }
 
     /// Set model override.
-    #[must_use] 
-    pub fn with_model_override(mut self, model: Option<String>) -> Self {
-        self.model_override = model;
-        self
+    #[must_use]
+    pub fn with_model_override(self, model: Option<String>) -> Self {
+        Self {
+            model_override: model,
+            ..self
+        }
     }
 
     /// Set provider override.
-    #[must_use] 
-    pub fn with_provider_override(mut self, provider: Option<String>) -> Self {
-        self.provider_override = provider;
-        self
+    #[must_use]
+    pub fn with_provider_override(self, provider: Option<String>) -> Self {
+        Self {
+            provider_override: provider,
+            ..self
+        }
     }
 
     /// Set context level.
-    #[must_use] 
-    pub const fn with_context_level(mut self, level: u8) -> Self {
-        self.context_level = level;
-        self
+    #[must_use]
+    pub fn with_context_level(self, level: u8) -> Self {
+        Self {
+            context_level: level,
+            ..self
+        }
     }
 }
 
@@ -293,16 +300,15 @@ impl EnvironmentSnapshot {
     /// Use this in tests to build snapshots without touching the process environment.
     #[must_use]
     pub fn from_env_vars(vars: impl IntoIterator<Item = (String, String)>) -> Self {
-        let mut ralph_vars = HashMap::new();
-        let mut other_vars = HashMap::new();
+        let (ralph_vars, other_vars): (HashMap<_, _>, HashMap<_, _>) = vars
+            .into_iter()
+            .filter(|(key, _)| !is_sensitive_env_key(key))
+            .partition(|(key, _)| key.starts_with("RALPH_"));
 
-        for (key, value) in vars {
-            if key.starts_with("RALPH_") && !is_sensitive_env_key(&key) {
-                ralph_vars.insert(key, value);
-            } else if RELEVANT_OTHER_KEYS.contains(&key.as_str()) && !is_sensitive_env_key(&key) {
-                other_vars.insert(key, value);
-            }
-        }
+        let other_vars: HashMap<String, String> = other_vars
+            .into_iter()
+            .filter(|(key, _)| RELEVANT_OTHER_KEYS.contains(&key.as_str()))
+            .collect();
 
         Self {
             ralph_vars,
@@ -313,7 +319,7 @@ impl EnvironmentSnapshot {
     /// Capture the current environment variables relevant to Ralph.
     #[must_use]
     pub fn capture_current() -> Self {
-        Self::from_env_vars(std::env::vars())
+        crate::checkpoint::env_capture::capture_environment()
     }
 }
 
@@ -367,4 +373,3 @@ pub struct CheckpointParams<'a> {
     /// Config checksum stored with checkpoint (if any)
     pub config_checksum: Option<String>,
 }
-

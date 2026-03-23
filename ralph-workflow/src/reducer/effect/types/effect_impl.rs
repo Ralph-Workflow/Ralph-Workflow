@@ -41,7 +41,7 @@ mod tests {
     fn test_is_same_agent_retry_returns_true_for_same_agent_retry_variants() {
         let retry_mode = PromptMode::SameAgentRetry;
 
-        let effects = vec![
+        let effects = [
             Effect::PreparePlanningPrompt {
                 iteration: 0,
                 prompt_mode: retry_mode,
@@ -63,17 +63,17 @@ mod tests {
             },
         ];
 
-        for effect in &effects {
+        effects.iter().for_each(|effect| {
             assert!(
                 effect.is_same_agent_retry(),
                 "Expected is_same_agent_retry() == true for {effect:?}"
             );
-        }
+        });
     }
 
     #[test]
     fn test_is_same_agent_retry_returns_false_for_other_prompt_modes() {
-        let effects = vec![
+        let effects = [
             Effect::PreparePlanningPrompt {
                 iteration: 0,
                 prompt_mode: PromptMode::Normal,
@@ -95,12 +95,12 @@ mod tests {
             },
         ];
 
-        for effect in &effects {
+        effects.iter().for_each(|effect| {
             assert!(
                 !effect.is_same_agent_retry(),
                 "Expected is_same_agent_retry() == false for {effect:?}"
             );
-        }
+        });
     }
 
     #[test]
@@ -112,11 +112,11 @@ mod tests {
             Effect::EnsureGitignoreEntries,
         ];
 
-        for effect in &effects {
+        effects.iter().for_each(|effect| {
             assert!(
                 !effect.is_same_agent_retry(),
                 "Expected is_same_agent_retry() == false for {effect:?}"
             );
-        }
+        });
     }
 }

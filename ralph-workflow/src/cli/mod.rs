@@ -17,7 +17,8 @@
 
 mod args;
 mod completions;
-mod handlers;
+mod diagnostics_domain;
+pub mod handlers;
 mod init;
 pub mod presets;
 mod providers;
@@ -27,6 +28,7 @@ pub mod reducer;
 pub use args::Args;
 pub use args::PauseOnExitMode;
 pub use completions::handle_generate_completion;
+pub type ConfigInfo<'a> = handlers::boundary::ConfigInfo<'a>;
 pub use handlers::{
     create_prompt_from_template, handle_diagnose, handle_dry_run, handle_list_agents,
     handle_list_available_agents, handle_show_baseline, handle_template_commands,

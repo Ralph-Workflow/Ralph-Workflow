@@ -220,7 +220,29 @@ pub const ALL_TEMPLATES: [PromptTemplate; 20] = [
 /// * `None` - If no template matches the name
 #[must_use]
 pub fn get_template(name: &str) -> Option<PromptTemplate> {
-    ALL_TEMPLATES.iter().find(|t| t.name() == name).copied()
+    match name {
+        "feature-spec" => Some(PromptTemplate::FeatureSpec),
+        "bug-fix" => Some(PromptTemplate::BugFix),
+        "refactor" => Some(PromptTemplate::Refactor),
+        "test" => Some(PromptTemplate::Test),
+        "docs" => Some(PromptTemplate::Docs),
+        "quick" => Some(PromptTemplate::Quick),
+        "performance-optimization" => Some(PromptTemplate::PerformanceOptimization),
+        "security-audit" => Some(PromptTemplate::SecurityAudit),
+        "api-integration" => Some(PromptTemplate::ApiIntegration),
+        "database-migration" => Some(PromptTemplate::DatabaseMigration),
+        "dependency-update" => Some(PromptTemplate::DependencyUpdate),
+        "cli-tool" => Some(PromptTemplate::CliTool),
+        "web-api" => Some(PromptTemplate::WebApi),
+        "data-pipeline" => Some(PromptTemplate::DataPipeline),
+        "ui-component" => Some(PromptTemplate::UiComponent),
+        "code-review" => Some(PromptTemplate::CodeReview),
+        "debug-triage" => Some(PromptTemplate::DebugTriage),
+        "release" => Some(PromptTemplate::Release),
+        "tech-debt" => Some(PromptTemplate::TechDebt),
+        "onboarding" => Some(PromptTemplate::Onboarding),
+        _ => None,
+    }
 }
 
 /// List all available templates with their descriptions.
@@ -228,10 +250,88 @@ pub fn get_template(name: &str) -> Option<PromptTemplate> {
 /// Returns a vector of (name, description) tuples.
 #[must_use]
 pub fn list_templates() -> Vec<(&'static str, &'static str)> {
-    ALL_TEMPLATES
-        .iter()
-        .map(|t| (t.name(), t.description()))
-        .collect()
+    vec![
+        (
+            PromptTemplate::FeatureSpec.name(),
+            PromptTemplate::FeatureSpec.description(),
+        ),
+        (
+            PromptTemplate::BugFix.name(),
+            PromptTemplate::BugFix.description(),
+        ),
+        (
+            PromptTemplate::Refactor.name(),
+            PromptTemplate::Refactor.description(),
+        ),
+        (
+            PromptTemplate::Test.name(),
+            PromptTemplate::Test.description(),
+        ),
+        (
+            PromptTemplate::Docs.name(),
+            PromptTemplate::Docs.description(),
+        ),
+        (
+            PromptTemplate::Quick.name(),
+            PromptTemplate::Quick.description(),
+        ),
+        (
+            PromptTemplate::PerformanceOptimization.name(),
+            PromptTemplate::PerformanceOptimization.description(),
+        ),
+        (
+            PromptTemplate::SecurityAudit.name(),
+            PromptTemplate::SecurityAudit.description(),
+        ),
+        (
+            PromptTemplate::ApiIntegration.name(),
+            PromptTemplate::ApiIntegration.description(),
+        ),
+        (
+            PromptTemplate::DatabaseMigration.name(),
+            PromptTemplate::DatabaseMigration.description(),
+        ),
+        (
+            PromptTemplate::DependencyUpdate.name(),
+            PromptTemplate::DependencyUpdate.description(),
+        ),
+        (
+            PromptTemplate::CliTool.name(),
+            PromptTemplate::CliTool.description(),
+        ),
+        (
+            PromptTemplate::WebApi.name(),
+            PromptTemplate::WebApi.description(),
+        ),
+        (
+            PromptTemplate::DataPipeline.name(),
+            PromptTemplate::DataPipeline.description(),
+        ),
+        (
+            PromptTemplate::UiComponent.name(),
+            PromptTemplate::UiComponent.description(),
+        ),
+        (
+            PromptTemplate::CodeReview.name(),
+            PromptTemplate::CodeReview.description(),
+        ),
+        (
+            PromptTemplate::DebugTriage.name(),
+            PromptTemplate::DebugTriage.description(),
+        ),
+        (
+            PromptTemplate::Release.name(),
+            PromptTemplate::Release.description(),
+        ),
+        (
+            PromptTemplate::TechDebt.name(),
+            PromptTemplate::TechDebt.description(),
+        ),
+        (
+            PromptTemplate::Onboarding.name(),
+            PromptTemplate::Onboarding.description(),
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -375,25 +475,25 @@ mod tests {
 
     #[test]
     fn test_template_content_has_goal() {
-        for template in ALL_TEMPLATES {
+        ALL_TEMPLATES.iter().for_each(|template| {
             let content = template.content();
             assert!(
                 content.contains("## Goal"),
                 "Template {} missing Goal section",
                 template.name()
             );
-        }
+        });
     }
 
     #[test]
     fn test_template_content_has_acceptance() {
-        for template in ALL_TEMPLATES {
+        ALL_TEMPLATES.iter().for_each(|template| {
             let content = template.content();
             assert!(
                 content.contains("## Acceptance") || content.contains("## Acceptance Checks"),
                 "Template {} missing Acceptance section",
                 template.name()
             );
-        }
+        });
     }
 }

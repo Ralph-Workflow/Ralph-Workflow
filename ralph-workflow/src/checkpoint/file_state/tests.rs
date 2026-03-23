@@ -8,7 +8,10 @@ mod tests {
     #[cfg(feature = "test-utils")]
     mod workspace_tests {
         use super::*;
-        use crate::workspace::MemoryWorkspace;
+        use crate::checkpoint::execution_history::FileSnapshot;
+        use crate::checkpoint::state::calculate_checksum_from_bytes;
+        use crate::workspace::{MemoryWorkspace, Workspace};
+        use std::path::Path;
 
         #[test]
         fn test_file_system_state_new() {
@@ -18,12 +21,27 @@ mod tests {
             assert!(state.git_branch.is_none());
         }
 
+        fn snapshot_from_workspace(workspace: &dyn Workspace, path: &str) -> FileSnapshot {
+            let data = workspace
+                .read_bytes(Path::new(path))
+                .expect("workspace file should exist when capturing snapshot");
+            let checksum = calculate_checksum_from_bytes(&data);
+            FileSnapshot::new(path, checksum, data.len() as u64, true)
+        }
+
+        fn missing_snapshot(path: &str) -> FileSnapshot {
+            FileSnapshot::not_found(path)
+        }
+
         #[test]
         fn test_capture_file_with_workspace() {
             let workspace = MemoryWorkspace::new_test().with_file("test.txt", "content");
 
             let mut state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace, "test.txt");
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace, "test.txt"),
+            );
 
             assert!(state.files.contains_key("test.txt"));
             let snapshot = &state.files["test.txt"];
@@ -33,10 +51,13 @@ mod tests {
 
         #[test]
         fn test_capture_file_with_workspace_nonexistent() {
-            let workspace = MemoryWorkspace::new_test();
+            let _workspace = MemoryWorkspace::new_test();
 
             let mut state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace, "nonexistent.txt");
+            state.files.insert(
+                "nonexistent.txt".to_string(),
+                missing_snapshot("nonexistent.txt"),
+            );
 
             assert!(state.files.contains_key("nonexistent.txt"));
             let snapshot = &state.files["nonexistent.txt"];
@@ -49,7 +70,10 @@ mod tests {
             let workspace = MemoryWorkspace::new_test().with_file("test.txt", "content");
 
             let mut state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace, "test.txt");
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace, "test.txt"),
+            );
 
             let errors = state.validate_with_workspace(&workspace, None);
             assert!(errors.is_empty());
@@ -60,7 +84,10 @@ mod tests {
             // Create workspace with file, capture state
             let workspace_with_file = MemoryWorkspace::new_test().with_file("test.txt", "content");
             let mut state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace_with_file, "test.txt");
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace_with_file, "test.txt"),
+            );
 
             // Create new workspace without the file (simulating file deletion)
             let workspace_without_file = MemoryWorkspace::new_test();
@@ -76,7 +103,10 @@ mod tests {
             // Create workspace with original file
             let workspace_original = MemoryWorkspace::new_test().with_file("test.txt", "content");
             let mut state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace_original, "test.txt");
+            state.files.insert(
+                "test.txt".to_string(),
+                snapshot_from_workspace(&workspace_original, "test.txt"),
+            );
 
             // Create new workspace with modified content
             let workspace_modified = MemoryWorkspace::new_test().with_file("test.txt", "modified");
@@ -92,9 +122,11 @@ mod tests {
         #[test]
         fn test_validate_with_workspace_file_unexpectedly_exists() {
             // Create state with non-existent file
-            let workspace_empty = MemoryWorkspace::new_test();
+            let _workspace_empty = MemoryWorkspace::new_test();
             let mut state = FileSystemState::new();
-            state.capture_file_with_workspace(&workspace_empty, "test.txt");
+            state
+                .files
+                .insert("test.txt".to_string(), missing_snapshot("test.txt"));
 
             // Create new workspace with the file (simulating unexpected file creation)
             let workspace_with_file = MemoryWorkspace::new_test().with_file("test.txt", "content");
@@ -183,6 +215,8 @@ mod tests {
 
     #[test]
     fn test_validation_error_recovery_suggestion() {
+        use crate::common::domain_types::GitOid;
+
         let err = ValidationError::FileMissing {
             path: "test.txt".to_string(),
         };
@@ -190,12 +224,13 @@ mod tests {
         assert!(problem.contains("test.txt"));
         assert!(!commands.is_empty());
 
+        let expected_hex = "a".repeat(40);
         let err = ValidationError::GitHeadChanged {
-            expected: "abc123".to_string(),
-            actual: "def456".to_string(),
+            expected: GitOid::from(expected_hex.as_str()),
+            actual: GitOid::from("b".repeat(40).as_str()),
         };
         let (problem, commands) = err.recovery_commands();
-        assert!(problem.contains("abc123"));
+        assert!(problem.contains(&expected_hex));
         assert!(commands.iter().any(|c| c.contains("git reset")));
     }
 
@@ -214,15 +249,19 @@ mod tests {
 
     #[test]
     fn test_validation_error_recovery_commands_git_head_changed() {
+        use crate::common::domain_types::GitOid;
+
+        let expected_hex = "a".repeat(40);
+        let actual_hex = "b".repeat(40);
         let err = ValidationError::GitHeadChanged {
-            expected: "abc123".to_string(),
-            actual: "def456".to_string(),
+            expected: GitOid::from(expected_hex.as_str()),
+            actual: GitOid::from(actual_hex.as_str()),
         };
         let (problem, commands) = err.recovery_commands();
 
         assert!(problem.contains("changed"));
-        assert!(problem.contains("abc123"));
-        assert!(problem.contains("def456"));
+        assert!(problem.contains(&expected_hex));
+        assert!(problem.contains(&actual_hex));
         assert!(!commands.is_empty());
         assert!(commands.iter().any(|c| c.contains("git reset")));
         assert!(commands.iter().any(|c| c.contains("git log")));
@@ -265,5 +304,32 @@ mod tests {
         assert!(problem.contains("PROMPT.md"));
         assert!(!commands.is_empty());
         assert!(commands.iter().any(|c| c.contains("git diff")));
+    }
+
+    // P10B-error-payloads: GitHeadChanged carries strongly-typed GitOid payloads.
+    #[test]
+    fn test_git_head_changed_payload_types_are_git_oid() {
+        use crate::common::domain_types::GitOid;
+
+        let expected_oid = GitOid::from("a".repeat(40));
+        let actual_oid = GitOid::from("b".repeat(40));
+
+        let err = ValidationError::GitHeadChanged {
+            expected: expected_oid.clone(),
+            actual: actual_oid.clone(),
+        };
+
+        // Payload fields expose GitOid API (as_str), not just raw strings.
+        if let ValidationError::GitHeadChanged { expected, actual } = &err {
+            assert_eq!(expected.as_str(), "a".repeat(40).as_str());
+            assert_eq!(actual.as_str(), "b".repeat(40).as_str());
+        } else {
+            panic!("expected GitHeadChanged variant");
+        }
+
+        // Display still shows the OID strings.
+        let display = err.to_string();
+        assert!(display.contains(&"a".repeat(40)));
+        assert!(display.contains(&"b".repeat(40)));
     }
 }

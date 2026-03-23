@@ -151,7 +151,7 @@ impl Verbosity {
 /// Behavioral flags for Ralph configuration.
 ///
 /// Groups user interaction and validation-related boolean settings.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BehavioralFlags {
     /// Interactive mode (keep agent in foreground)
     pub(crate) interactive: bool,
@@ -164,7 +164,7 @@ pub struct BehavioralFlags {
 /// Feature flags for Ralph configuration.
 ///
 /// Groups optional feature toggle settings.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct FeatureFlags {
     /// Whether to enable checkpoint/resume functionality
     pub(crate) checkpoint_enabled: bool,
@@ -178,7 +178,7 @@ pub struct FeatureFlags {
 /// This struct holds all configuration options for Ralph, populated from
 /// environment variables and CLI arguments. Default values are applied
 /// via [`Default::default()`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 // Configuration options naturally use many boolean flags. These represent
 // independent feature toggles, not a state machine, so bools are appropriate.
 pub struct Config {
@@ -363,60 +363,76 @@ impl Config {
         }
     }
 
-    /// Set isolation mode and return self (builder pattern).
+    /// Set isolation mode and return new config (functional pattern).
     #[must_use]
-    pub const fn with_isolation_mode(mut self, isolation_mode: bool) -> Self {
-        self.isolation_mode = isolation_mode;
-        self
+    pub fn with_isolation_mode(self, isolation_mode: bool) -> Self {
+        Self {
+            isolation_mode,
+            ..self
+        }
     }
 
-    /// Set developer iterations and return self (builder pattern).
+    /// Set developer iterations and return new config (functional pattern).
     #[must_use]
-    pub const fn with_developer_iters(mut self, iters: u32) -> Self {
-        self.developer_iters = iters;
-        self
+    pub fn with_developer_iters(self, iters: u32) -> Self {
+        Self {
+            developer_iters: iters,
+            ..self
+        }
     }
 
-    /// Set reviewer reviews and return self (builder pattern).
+    /// Set reviewer reviews and return new config (functional pattern).
     #[must_use]
-    pub const fn with_reviewer_reviews(mut self, reviews: u32) -> Self {
-        self.reviewer_reviews = reviews;
-        self
+    pub fn with_reviewer_reviews(self, reviews: u32) -> Self {
+        Self {
+            reviewer_reviews: reviews,
+            ..self
+        }
     }
 
-    /// Set `auto_detect_stack` and return self (builder pattern).
+    /// Set `auto_detect_stack` and return new config (functional pattern).
     #[must_use]
-    pub const fn with_auto_detect_stack(mut self, auto_detect: bool) -> Self {
-        self.behavior.auto_detect_stack = auto_detect;
-        self
+    pub fn with_auto_detect_stack(self, auto_detect: bool) -> Self {
+        Self {
+            behavior: BehavioralFlags {
+                auto_detect_stack: auto_detect,
+                ..self.behavior
+            },
+            ..self
+        }
     }
 
-    /// Set verbosity and return self (builder pattern).
+    /// Set verbosity and return new config (functional pattern).
     #[must_use]
-    pub const fn with_verbosity(mut self, verbosity: Verbosity) -> Self {
-        self.verbosity = verbosity;
-        self
+    pub fn with_verbosity(self, verbosity: Verbosity) -> Self {
+        Self { verbosity, ..self }
     }
 
-    /// Set `review_depth` and return self (builder pattern).
+    /// Set `review_depth` and return new config (functional pattern).
     #[must_use]
-    pub const fn with_review_depth(mut self, review_depth: ReviewDepth) -> Self {
-        self.review_depth = review_depth;
-        self
+    pub fn with_review_depth(self, review_depth: ReviewDepth) -> Self {
+        Self {
+            review_depth,
+            ..self
+        }
     }
 
-    /// Set `developer_agent` and return self (builder pattern).
+    /// Set `developer_agent` and return new config (functional pattern).
     #[must_use]
-    pub fn with_developer_agent(mut self, agent: String) -> Self {
-        self.developer_agent = Some(agent);
-        self
+    pub fn with_developer_agent(self, agent: String) -> Self {
+        Self {
+            developer_agent: Some(agent),
+            ..self
+        }
     }
 
-    /// Set `reviewer_agent` and return self (builder pattern).
+    /// Set `reviewer_agent` and return new config (functional pattern).
     #[must_use]
-    pub fn with_reviewer_agent(mut self, agent: String) -> Self {
-        self.reviewer_agent = Some(agent);
-        self
+    pub fn with_reviewer_agent(self, agent: String) -> Self {
+        Self {
+            reviewer_agent: Some(agent),
+            ..self
+        }
     }
 }
 

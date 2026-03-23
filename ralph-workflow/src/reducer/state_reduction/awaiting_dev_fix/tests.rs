@@ -2,15 +2,18 @@ use super::*;
 use crate::agents::AgentRole;
 use crate::reducer::event::{AwaitingDevFixEvent, PipelineEvent, PipelinePhase};
 use crate::reducer::reduce;
-use crate::reducer::state::AgentChainState;
+use crate::reducer::state::{AgentChainState, ContinuationState};
 
 #[test]
 fn dev_fix_completed_does_not_directly_interrupt_when_attempts_exhausted() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.dev_fix_attempt_count = 12;
-    state.recovery_escalation_level = 4;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        dev_fix_attempt_count: 12,
+        recovery_escalation_level: 4,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -30,11 +33,14 @@ fn dev_fix_completed_does_not_directly_interrupt_when_attempts_exhausted() {
 
 #[test]
 fn recovery_attempted_uses_event_target_phase_not_state_snapshot() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
-    state.recovery_escalation_level = 2;
-    state.dev_fix_attempt_count = 4;
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        recovery_escalation_level: 2,
+        dev_fix_attempt_count: 4,
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -50,9 +56,7 @@ fn recovery_attempted_uses_event_target_phase_not_state_snapshot() {
 
 #[test]
 fn recovery_attempted_resets_agent_chain_when_exhausted() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-
+    let state = PipelineState::initial(1, 0);
     let mut chain = AgentChainState::initial()
         .with_agents(
             vec!["dev".to_string()],
@@ -64,7 +68,12 @@ fn recovery_attempted_resets_agent_chain_when_exhausted() {
     chain.current_agent_index = 0;
     chain.current_model_index = 0;
     assert!(chain.is_exhausted());
-    state.agent_chain = chain;
+
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        agent_chain: chain,
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -82,12 +91,15 @@ fn recovery_attempted_resets_agent_chain_when_exhausted() {
 
 #[test]
 fn dev_fix_skipped_advances_recovery_state_to_avoid_infinite_trigger_loop() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.dev_fix_triggered = false;
-    state.dev_fix_attempt_count = 0;
-    state.recovery_escalation_level = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::CommitMessage);
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        dev_fix_triggered: false,
+        dev_fix_attempt_count: 0,
+        recovery_escalation_level: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::CommitMessage),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -111,19 +123,22 @@ fn dev_fix_skipped_advances_recovery_state_to_avoid_infinite_trigger_loop() {
 
 #[test]
 fn level_2_phase_start_recovery_clears_retry_and_continuation_flags() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-
-    // Simulate being stuck in a retry/continuation path before recovery.
-    state.continuation.xsd_retry_pending = true;
-    state.continuation.xsd_retry_session_reuse_pending = true;
-    state.continuation.same_agent_retry_pending = true;
-    state.continuation.same_agent_retry_reason =
-        Some(crate::reducer::state::SameAgentRetryReason::Timeout);
-    state.continuation.continue_pending = true;
-    state.continuation.fix_continue_pending = true;
-    state.continuation.context_write_pending = true;
-    state.continuation.context_cleanup_pending = true;
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        continuation: ContinuationState {
+            xsd_retry_pending: true,
+            xsd_retry_session_reuse_pending: true,
+            same_agent_retry_pending: true,
+            same_agent_retry_reason: Some(crate::reducer::state::SameAgentRetryReason::Timeout),
+            continue_pending: true,
+            fix_continue_pending: true,
+            context_write_pending: true,
+            context_cleanup_pending: true,
+            ..Default::default()
+        },
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -147,9 +162,12 @@ fn level_2_phase_start_recovery_clears_retry_and_continuation_flags() {
 
 #[test]
 fn completion_marker_write_failed_sets_pending_flag_for_deterministic_retry() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.completion_marker_pending = false;
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        completion_marker_pending: false,
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -170,11 +188,14 @@ fn completion_marker_write_failed_sets_pending_flag_for_deterministic_retry() {
 
 #[test]
 fn completion_marker_emitted_records_is_failure_and_clears_pending_state() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.completion_marker_pending = true;
-    state.completion_marker_is_failure = true;
-    state.completion_marker_reason = Some("previous error".to_string());
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        completion_marker_pending: true,
+        completion_marker_is_failure: true,
+        completion_marker_reason: Some("previous error".to_string()),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -195,10 +216,13 @@ fn completion_marker_emitted_records_is_failure_and_clears_pending_state() {
 
 #[test]
 fn level_1_recovery_does_not_change_recovery_epoch() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -217,10 +241,13 @@ fn level_1_recovery_does_not_change_recovery_epoch() {
 
 #[test]
 fn level_2_recovery_does_not_change_recovery_epoch() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -239,10 +266,13 @@ fn level_2_recovery_does_not_change_recovery_epoch() {
 
 #[test]
 fn level_3_recovery_increments_recovery_epoch_by_1() {
-    let mut state = PipelineState::initial(2, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state = PipelineState::initial(2, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -261,10 +291,13 @@ fn level_3_recovery_increments_recovery_epoch_by_1() {
 
 #[test]
 fn level_4_recovery_increments_recovery_epoch_by_1() {
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state = PipelineState::initial(3, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
 
     let new_state = reduce(
         state,
@@ -283,28 +316,30 @@ fn level_4_recovery_increments_recovery_epoch_by_1() {
 
 #[test]
 fn sequential_level_3_recoveries_each_increment_epoch() {
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state = PipelineState::initial(3, 0);
+    let state1 = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
 
-    // First level-3 recovery: epoch 0 → 1
-    let state = reduce(
-        state,
+    let state1 = reduce(
+        state1,
         PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
             level: 3,
             attempt_count: 7,
             target_phase: PipelinePhase::Planning,
         }),
     );
-    assert_eq!(state.recovery_epoch, 1);
+    assert_eq!(state1.recovery_epoch, 1);
 
-    // Simulate returning to AwaitingDevFix for a second recovery
-    let mut state2 = state;
-    state2.phase = PipelinePhase::AwaitingDevFix;
-    state2.failed_phase_for_recovery = Some(PipelinePhase::Development);
+    let state2 = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state1
+    };
 
-    // Second level-3 recovery: epoch 1 → 2
     let state2 = reduce(
         state2,
         PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
@@ -319,23 +354,22 @@ fn sequential_level_3_recoveries_each_increment_epoch() {
     );
 }
 
-// =========================================================================
-// prompt_history clearing tests (RFC-007 corrective action #3)
-// =========================================================================
-
 #[test]
 fn level_3_recovery_clears_prompt_history() {
-    let mut state = PipelineState::initial(2, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
-    state.prompt_history.insert(
+    let state = PipelineState::initial(2, 0);
+    let mut s = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
+    s.prompt_history.insert(
         "planning_iter1_normal".to_string(),
         crate::prompts::PromptHistoryEntry::from_string("old prompt".to_string()),
     );
 
     let new_state = reduce(
-        state,
+        s,
         PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
             level: 3,
             attempt_count: 7,
@@ -352,21 +386,24 @@ fn level_3_recovery_clears_prompt_history() {
 
 #[test]
 fn level_4_recovery_clears_prompt_history() {
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.recovery_epoch = 0;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
-    state.prompt_history.insert(
+    let state = PipelineState::initial(3, 0);
+    let mut s = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        recovery_epoch: 0,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
+    s.prompt_history.insert(
         "planning_iter1_normal".to_string(),
         crate::prompts::PromptHistoryEntry::from_string("old prompt".to_string()),
     );
-    state.prompt_history.insert(
+    s.prompt_history.insert(
         "development_iter1_normal".to_string(),
         crate::prompts::PromptHistoryEntry::from_string("other old prompt".to_string()),
     );
 
     let new_state = reduce(
-        state,
+        s,
         PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
             level: 4,
             attempt_count: 10,
@@ -383,17 +420,19 @@ fn level_4_recovery_clears_prompt_history() {
 
 #[test]
 fn level_1_and_2_recovery_preserve_prompt_history() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Development);
-    state.prompt_history.insert(
+    let state = PipelineState::initial(1, 0);
+    let mut s = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
+    };
+    s.prompt_history.insert(
         "planning_iter1_normal".to_string(),
         crate::prompts::PromptHistoryEntry::from_string("valid prompt".to_string()),
     );
 
-    // Level 1: should preserve prompt_history
     let new_state = reduce(
-        state.clone(),
+        s.clone(),
         PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
             level: 1,
             attempt_count: 1,
@@ -405,9 +444,8 @@ fn level_1_and_2_recovery_preserve_prompt_history() {
         "Level 1 recovery must NOT clear prompt_history"
     );
 
-    // Level 2: should preserve prompt_history
     let new_state2 = reduce(
-        state,
+        s,
         PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
             level: 2,
             attempt_count: 4,
@@ -422,12 +460,13 @@ fn level_1_and_2_recovery_preserve_prompt_history() {
 
 #[test]
 fn level_2_planning_phase_start_recovery_resets_context_and_gitignore_prereqs() {
-    let mut state = PipelineState::initial(1, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-
-    // Simulate having already satisfied global Planning prerequisites.
-    state.context_cleaned = true;
-    state.gitignore_entries_ensured = true;
+    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        context_cleaned: true,
+        gitignore_entries_ensured: true,
+        ..state
+    };
 
     let new_state = reduce(
         state,

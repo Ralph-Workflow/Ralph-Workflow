@@ -15,10 +15,19 @@
 //! The starting commit file persists across pipeline runs unless explicitly
 //! reset by the user via the `--reset-start-commit` CLI command.
 
-use std::io;
 use std::path::Path;
 
+use crate::common::domain_types::GitOid;
 use crate::workspace::{Workspace, WorkspaceFs};
+
+mod iot {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
+
+// Boundary module for libgit2 revwalk operations.
+include!("start_commit/io.rs");
 
 /// Path to the starting commit file.
 ///
@@ -32,10 +41,10 @@ const START_COMMIT_FILE: &str = ".agent/start_commit";
 /// by treating the starting point as the empty tree.
 const EMPTY_REPO_SENTINEL: &str = "__EMPTY_REPO__";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StartPoint {
     /// A concrete commit OID to diff from.
-    Commit(git2::Oid),
+    Commit(GitOid),
     /// An empty repository baseline (diff from the empty tree).
     EmptyRepo,
 }
@@ -52,7 +61,7 @@ pub enum StartPoint {
 /// - HEAD is not a commit (e.g., symbolic ref to tag)
 ///
 /// **Note:** This function uses the current working directory to discover the repo.
-pub fn get_current_head_oid() -> io::Result<String> {
+pub fn get_current_head_oid() -> iot::Result<String> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     get_current_head_oid_impl(&repo)
 }
@@ -65,18 +74,18 @@ pub fn get_current_head_oid() -> io::Result<String> {
 /// # Errors
 ///
 /// Returns an error if the repository cannot be opened or HEAD cannot be resolved.
-pub fn get_current_head_oid_at(repo_root: &Path) -> io::Result<String> {
+pub fn get_current_head_oid_at(repo_root: &Path) -> iot::Result<String> {
     let repo = git2::Repository::open(repo_root).map_err(|e| to_io_error(&e))?;
     get_current_head_oid_impl(&repo)
 }
 
 /// Implementation of `get_current_head_oid`.
-fn get_current_head_oid_impl(repo: &git2::Repository) -> io::Result<String> {
+fn get_current_head_oid_impl(repo: &git2::Repository) -> iot::Result<String> {
     let head = repo.head().map_err(|e| {
         // Handle UnbornBranch error consistently with git_diff()
         // This provides a clearer error message for empty repositories
         if e.code() == git2::ErrorCode::UnbornBranch {
-            io::Error::new(io::ErrorKind::NotFound, "No commits yet (unborn branch)")
+            iot::Error::new(iot::ErrorKind::NotFound, "No commits yet (unborn branch)")
         } else {
             to_io_error(&e)
         }
@@ -88,12 +97,12 @@ fn get_current_head_oid_impl(repo: &git2::Repository) -> io::Result<String> {
     Ok(head_commit.id().to_string())
 }
 
-fn get_current_start_point(repo: &git2::Repository) -> io::Result<StartPoint> {
+fn get_current_start_point(repo: &git2::Repository) -> iot::Result<StartPoint> {
     let head = repo.head();
     let start_point = match head {
         Ok(head) => {
             let head_commit = head.peel_to_commit().map_err(|e| to_io_error(&e))?;
-            StartPoint::Commit(head_commit.id())
+            StartPoint::Commit(git2_oid_to_git_oid(head_commit.id())?)
         }
         Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => StartPoint::EmptyRepo,
         Err(e) => return Err(to_io_error(&e)),
@@ -114,16 +123,16 @@ fn get_current_start_point(repo: &git2::Repository) -> io::Result<StartPoint> {
 /// - The `.agent` directory cannot be created
 /// - The file cannot be written
 ///
-pub fn save_start_commit() -> io::Result<()> {
+pub fn save_start_commit() -> iot::Result<()> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
     save_start_commit_impl(&repo, repo_root)
 }
 
 /// Implementation of `save_start_commit`.
-fn save_start_commit_impl(repo: &git2::Repository, repo_root: &Path) -> io::Result<()> {
+fn save_start_commit_impl(repo: &git2::Repository, repo_root: &Path) -> iot::Result<()> {
     // If a start commit exists and is valid, preserve it across runs.
     // If it exists but is invalid/corrupt, automatically repair it.
     if load_start_point_impl(repo, repo_root).is_ok() {
@@ -133,12 +142,12 @@ fn save_start_commit_impl(repo: &git2::Repository, repo_root: &Path) -> io::Resu
     write_start_point(repo_root, get_current_start_point(repo)?)
 }
 
-fn write_start_commit_with_oid(repo_root: &Path, oid: &str) -> io::Result<()> {
+fn write_start_commit_with_oid(repo_root: &Path, oid: &str) -> iot::Result<()> {
     let workspace = WorkspaceFs::new(repo_root.to_path_buf());
     workspace.write(Path::new(START_COMMIT_FILE), oid)
 }
 
-fn write_start_point(repo_root: &Path, start_point: StartPoint) -> io::Result<()> {
+fn write_start_point(repo_root: &Path, start_point: StartPoint) -> iot::Result<()> {
     let content = match start_point {
         StartPoint::Commit(oid) => oid.to_string(),
         StartPoint::EmptyRepo => EMPTY_REPO_SENTINEL.to_string(),
@@ -154,7 +163,7 @@ fn write_start_point(repo_root: &Path, start_point: StartPoint) -> io::Result<()
 fn write_start_point_with_workspace(
     workspace: &dyn Workspace,
     start_point: StartPoint,
-) -> io::Result<()> {
+) -> iot::Result<()> {
     let path = Path::new(START_COMMIT_FILE);
     let content = match start_point {
         StartPoint::Commit(oid) => oid.to_string(),
@@ -177,14 +186,14 @@ fn write_start_point_with_workspace(
 pub fn load_start_point_with_workspace(
     workspace: &dyn Workspace,
     repo: &git2::Repository,
-) -> io::Result<StartPoint> {
+) -> iot::Result<StartPoint> {
     let path = Path::new(START_COMMIT_FILE);
     let content = workspace.read(path)?;
     let raw = content.trim();
 
     if raw.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
+        return Err(iot::Error::new(
+            iot::ErrorKind::InvalidData,
             "Starting commit file is empty. Run 'ralph --reset-start-commit' to fix.",
         ));
     }
@@ -193,22 +202,15 @@ pub fn load_start_point_with_workspace(
         return Ok(StartPoint::EmptyRepo);
     }
 
-    // Validate OID format using libgit2.
-    let oid = git2::Oid::from_str(raw).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "Invalid OID format in {START_COMMIT_FILE}: '{raw}'. Run 'ralph --reset-start-commit' to fix."
-            ),
-        )
-    })?;
+    let git_oid = parse_git_oid(raw)?;
+    let oid = git_oid_to_git2_oid(&git_oid)?;
 
     // Ensure the commit still exists in this repository.
     repo.find_commit(oid).map_err(|e| {
         let err_msg = e.message();
         if err_msg.contains("not found") || err_msg.contains("invalid") {
-            io::Error::new(
-                io::ErrorKind::NotFound,
+            iot::Error::new(
+                iot::ErrorKind::NotFound,
                 format!(
                     "Start commit '{raw}' no longer exists (history rewritten). \
                      Run 'ralph --reset-start-commit' to fix."
@@ -219,7 +221,7 @@ pub fn load_start_point_with_workspace(
         }
     })?;
 
-    Ok(StartPoint::Commit(oid))
+    Ok(StartPoint::Commit(git_oid))
 }
 
 /// Save start commit using workspace abstraction.
@@ -233,7 +235,7 @@ pub fn load_start_point_with_workspace(
 pub fn save_start_commit_with_workspace(
     workspace: &dyn Workspace,
     repo: &git2::Repository,
-) -> io::Result<()> {
+) -> iot::Result<()> {
     // If a start commit exists and is valid, preserve it across runs.
     if load_start_point_with_workspace(workspace, repo).is_ok() {
         return Ok(());
@@ -253,21 +255,21 @@ pub fn save_start_commit_with_workspace(
 /// - The file cannot be read
 /// - The file content is invalid
 ///
-pub fn load_start_point() -> io::Result<StartPoint> {
+pub fn load_start_point() -> iot::Result<StartPoint> {
     let repo = git2::Repository::discover(".").map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
+        iot::Error::new(
+            iot::ErrorKind::NotFound,
             format!("Git repository error: {e}. Run 'ralph --reset-start-commit' to fix."),
         )
     })?;
     let repo_root = repo
         .workdir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
     load_start_point_impl(&repo, repo_root)
 }
 
 /// Implementation of `load_start_point`.
-fn load_start_point_impl(repo: &git2::Repository, repo_root: &Path) -> io::Result<StartPoint> {
+fn load_start_point_impl(repo: &git2::Repository, repo_root: &Path) -> iot::Result<StartPoint> {
     let workspace = WorkspaceFs::new(repo_root.to_path_buf());
     load_start_point_with_workspace(&workspace, repo)
 }
@@ -299,11 +301,11 @@ pub struct ResetStartCommitResult {
 /// - No common ancestor exists between HEAD and the default branch
 /// - The file cannot be written
 ///
-pub fn reset_start_commit() -> io::Result<ResetStartCommitResult> {
+pub fn reset_start_commit() -> iot::Result<ResetStartCommitResult> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
     reset_start_commit_impl(&repo, repo_root)
 }
 
@@ -311,11 +313,11 @@ pub fn reset_start_commit() -> io::Result<ResetStartCommitResult> {
 fn reset_start_commit_impl(
     repo: &git2::Repository,
     repo_root: &Path,
-) -> io::Result<ResetStartCommitResult> {
+) -> iot::Result<ResetStartCommitResult> {
     // Get current HEAD
     let head = repo.head().map_err(|e| {
         if e.code() == git2::ErrorCode::UnbornBranch {
-            io::Error::new(io::ErrorKind::NotFound, "No commits yet (unborn branch)")
+            iot::Error::new(iot::ErrorKind::NotFound, "No commits yet (unborn branch)")
         } else {
             to_io_error(&e)
         }
@@ -347,8 +349,8 @@ fn reset_start_commit_impl(
         match repo.find_reference(&origin_ref) {
             Ok(reference) => reference.peel_to_commit().map_err(|e| to_io_error(&e))?,
             Err(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::NotFound,
+                return Err(iot::Error::new(
+                    iot::ErrorKind::NotFound,
                     format!(
                         "Default branch '{default_branch}' not found locally or in origin. \
                          Make sure the branch exists."
@@ -363,8 +365,8 @@ fn reset_start_commit_impl(
         .merge_base(head_commit.id(), default_commit.id())
         .map_err(|e| {
             if e.code() == git2::ErrorCode::NotFound {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
+                iot::Error::new(
+                    iot::ErrorKind::NotFound,
                     format!(
                         "No common ancestor between current branch and '{default_branch}' (unrelated branches)"
                     ),
@@ -390,7 +392,7 @@ fn reset_start_commit_impl(
 #[derive(Debug, Clone)]
 pub struct StartCommitSummary {
     /// The start commit OID (short form, or None if not set).
-    pub start_oid: Option<String>,
+    pub start_oid: Option<GitOid>,
     /// Number of commits since start commit.
     pub commits_since: usize,
     /// Whether the start commit is stale (>10 commits behind).
@@ -403,7 +405,8 @@ impl StartCommitSummary {
         self.start_oid.as_ref().map_or_else(
             || "Start: not set".to_string(),
             |oid| {
-                let short_oid = &oid[..8.min(oid.len())];
+                let oid_str = oid.as_str();
+                let short_oid = &oid_str[..8.min(oid_str.len())];
                 if self.is_stale {
                     format!(
                         "Start: {} (+{} commits, STALE)",
@@ -428,11 +431,11 @@ impl StartCommitSummary {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_start_commit_summary() -> io::Result<StartCommitSummary> {
+pub fn get_start_commit_summary() -> iot::Result<StartCommitSummary> {
     let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
     get_start_commit_summary_impl(&repo, repo_root)
 }
 
@@ -440,9 +443,10 @@ pub fn get_start_commit_summary() -> io::Result<StartCommitSummary> {
 fn get_start_commit_summary_impl(
     repo: &git2::Repository,
     repo_root: &Path,
-) -> io::Result<StartCommitSummary> {
-    let start_oid = match load_start_point_impl(repo, repo_root)? {
-        StartPoint::Commit(oid) => Some(oid.to_string()),
+) -> iot::Result<StartCommitSummary> {
+    let start_point = load_start_point_impl(repo, repo_root)?;
+    let start_oid = match start_point {
+        StartPoint::Commit(oid) => Some(oid),
         StartPoint::EmptyRepo => None,
     };
 
@@ -451,34 +455,18 @@ fn get_start_commit_summary_impl(
         let head_oid = get_current_head_oid_impl(repo)?;
         let head_commit = repo
             .find_commit(git2::Oid::from_str(&head_oid).map_err(|_| {
-                io::Error::new(io::ErrorKind::InvalidData, "Invalid HEAD OID format")
+                iot::Error::new(iot::ErrorKind::InvalidData, "Invalid HEAD OID format")
             })?)
             .map_err(|e| to_io_error(&e))?;
 
-        let start_commit_oid = git2::Oid::from_str(oid)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid start OID format"))?;
+        let start_commit_oid = git_oid_to_git2_oid(oid)?;
 
         let start_commit = repo
             .find_commit(start_commit_oid)
             .map_err(|e| to_io_error(&e))?;
 
         // Count commits between start and HEAD
-        let mut revwalk = repo.revwalk().map_err(|e| to_io_error(&e))?;
-        revwalk
-            .push(head_commit.id())
-            .map_err(|e| to_io_error(&e))?;
-
-        let mut count = 0;
-        for commit_id in revwalk {
-            let commit_id = commit_id.map_err(|e| to_io_error(&e))?;
-            if commit_id == start_commit.id() {
-                break;
-            }
-            count += 1;
-            if count > 1000 {
-                break;
-            }
-        }
+        let count = revwalk_count_commits_since(repo, head_commit.id(), start_commit.id(), 1000)?;
 
         let is_stale = count > 10;
         (count, is_stale)
@@ -493,15 +481,76 @@ fn get_start_commit_summary_impl(
     })
 }
 
-#[cfg(test)]
-fn has_start_commit() -> bool {
-    load_start_point().is_ok()
+pub(crate) fn git2_oid_to_git_oid(oid: git2::Oid) -> iot::Result<GitOid> {
+    let text = oid.to_string();
+    GitOid::try_from_str(&text).map_err(|err| {
+        iot::Error::new(
+            iot::ErrorKind::InvalidData,
+            format!("Invalid git2 OID from git: {text} ({err})"),
+        )
+    })
 }
 
-/// Convert git2 error to `io::Error`.
-fn to_io_error(err: &git2::Error) -> io::Error {
-    io::Error::other(err.to_string())
+pub fn git_oid_to_git2_oid(oid: &GitOid) -> iot::Result<git2::Oid> {
+    git2::Oid::from_str(oid.as_str()).map_err(|_| {
+        iot::Error::new(
+            iot::ErrorKind::InvalidData,
+            format!("Stored start commit '{oid}' is not valid for git2"),
+        )
+    })
+}
+
+pub(crate) fn parse_git_oid(raw: &str) -> iot::Result<GitOid> {
+    GitOid::try_from_str(raw).map_err(|_| {
+        iot::Error::new(
+            iot::ErrorKind::InvalidData,
+            format!(
+                "Invalid OID format in {START_COMMIT_FILE}: '{raw}'. Run 'ralph --reset-start-commit' to fix."
+            ),
+        )
+    })
+}
+
+/// Convert git2 error to `iot::Error`.
+fn to_io_error(err: &git2::Error) -> iot::Error {
+    iot::Error::other(err.to_string())
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+    use crate::common::domain_types::GitOid;
+
+    #[test]
+    fn test_start_commit_file_path_defined() {
+        assert_eq!(START_COMMIT_FILE, ".agent/start_commit");
+    }
+
+    #[test]
+    fn test_get_current_head_oid_returns_result() {
+        // We're in a git repo with commits, so HEAD OID should always resolve.
+        let result = get_current_head_oid();
+        assert!(
+            result.is_ok(),
+            "get_current_head_oid failed in a git repo: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn start_point_commit_holds_git_oid() {
+        let oid_text = "0123456789abcdef0123456789abcdef01234567";
+        let git_oid = match GitOid::try_from_str(oid_text) {
+            Ok(oid) => oid,
+            Err(err) => panic!("Failed to parse valid OID: {err}"),
+        };
+
+        let start_point = StartPoint::Commit(git_oid.clone());
+
+        if let StartPoint::Commit(stored) = start_point {
+            assert_eq!(stored, git_oid);
+        } else {
+            panic!("StartPoint::Commit did not store the GitOid variant");
+        }
+    }
+}

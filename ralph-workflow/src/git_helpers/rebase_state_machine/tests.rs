@@ -18,41 +18,41 @@ mod tests {
 
     #[test]
     fn test_state_machine_record_conflict() {
-        let mut machine = RebaseStateMachine::new("main".to_string());
-        machine.record_conflict("file1.rs".to_string());
-        machine.record_conflict("file2.rs".to_string());
+        let machine = RebaseStateMachine::new("main".to_string())
+            .record_conflict("file1.rs".to_string())
+            .record_conflict("file2.rs".to_string());
         assert_eq!(machine.unresolved_conflict_count(), 2);
     }
 
     #[test]
     fn test_state_machine_record_resolution() {
-        let mut machine = RebaseStateMachine::new("main".to_string());
-        machine.record_conflict("file1.rs".to_string());
-        machine.record_conflict("file2.rs".to_string());
+        let machine = RebaseStateMachine::new("main".to_string())
+            .record_conflict("file1.rs".to_string())
+            .record_conflict("file2.rs".to_string());
         assert_eq!(machine.unresolved_conflict_count(), 2);
 
-        machine.record_resolution("file1.rs".to_string());
+        let machine = machine.record_resolution("file1.rs".to_string());
         assert_eq!(machine.unresolved_conflict_count(), 1);
         assert!(!machine.all_conflicts_resolved());
 
-        machine.record_resolution("file2.rs".to_string());
+        let machine = machine.record_resolution("file2.rs".to_string());
         assert_eq!(machine.unresolved_conflict_count(), 0);
         assert!(machine.all_conflicts_resolved());
     }
 
     #[test]
     fn test_state_machine_record_error() {
-        let mut machine = RebaseStateMachine::new("main".to_string());
+        let machine = RebaseStateMachine::new("main".to_string());
         assert!(machine.can_recover());
         assert!(!machine.should_abort());
 
-        machine.record_error("First error".to_string());
+        let machine = machine.record_error("First error".to_string());
         assert!(machine.can_recover());
 
-        machine.record_error("Second error".to_string());
+        let machine = machine.record_error("Second error".to_string());
         assert!(machine.can_recover());
 
-        machine.record_error("Third error".to_string());
+        let machine = machine.record_error("Third error".to_string());
         assert!(!machine.can_recover());
         assert!(machine.should_abort());
     }

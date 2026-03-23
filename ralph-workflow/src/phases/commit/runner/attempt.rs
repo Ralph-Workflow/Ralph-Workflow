@@ -1,4 +1,6 @@
 // Legacy phase-based code - deprecated in favor of reducer/handler architecture
+use crate::phases::commit_logging::CommitAttemptLog;
+
 /// Outcome of commit message generation.
 ///
 /// This is intentionally an enum so callers must handle skip explicitly.
@@ -68,37 +70,23 @@ pub fn run_commit_attempt(
         ));
     }
 
-    let mut runtime = PipelineRuntime {
-        timer: ctx.timer,
-        logger: ctx.logger,
-        colors: ctx.colors,
-        config: ctx.config,
-        executor: ctx.executor,
-        executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-        workspace: ctx.workspace,
-        workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-    };
-
     let log_dir = ctx
         .run_log_context
         .run_dir()
         .join("debug")
         .join("commit_generation");
-    let mut session = CommitLogSession::new(
-        log_dir
-            .to_str()
-            .expect("Path contains invalid UTF-8 - all paths in this codebase should be UTF-8"),
-        ctx.workspace,
-    )
-    .unwrap_or_else(|_| CommitLogSession::noop());
-    let mut attempt_log = session.new_attempt(commit_agent, "single");
-    attempt_log.set_prompt_size(prompt.len());
-    // The diff passed here is already model-safe. However, for accurate debugging we still want
-    // to record whether truncation happened upstream. We infer truncation from the marker text
-    // emitted by `truncate_diff_to_model_budget`.
+    let (session, attempt_number) =
+        crate::phases::commit::create_session_and_get_attempt_number(&log_dir, ctx.workspace);
     let diff_was_truncated =
         model_safe_diff.contains("[Truncated:") || model_safe_diff.contains("[truncated...]");
-    attempt_log.set_diff_info(model_safe_diff.len(), diff_was_truncated);
+    let attempt_log = CommitAttemptLog::with_basics(
+        attempt_number,
+        commit_agent,
+        "single",
+        prompt.len(),
+        model_safe_diff.len(),
+        diff_was_truncated,
+    );
 
     let agent_config = ctx
         .registry
@@ -158,15 +146,24 @@ pub fn run_commit_attempt(
         env_vars: &agent_config.env_vars,
     };
 
-    let result = run_with_prompt(&prompt_cmd, &mut runtime)?;
+    let result = run_with_prompt(
+        &prompt_cmd,
+        &mut PipelineRuntime {
+            timer: ctx.timer,
+            logger: ctx.logger,
+            colors: ctx.colors,
+            config: ctx.config,
+            executor: ctx.executor,
+            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+            workspace: ctx.workspace,
+            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+        },
+    )?;
     let had_error = result.exit_code != 0;
     let auth_failure = had_error && stderr_contains_auth_error(&result.stderr);
-    attempt_log.set_raw_output(&result.stderr);
 
     if auth_failure {
-        attempt_log.set_outcome(AttemptOutcome::ExtractionFailed(
-            "Authentication error detected".to_string(),
-        ));
+        let attempt_log = attempt_log.with_raw_output(&result.stderr);
         if !session.is_noop() {
             let _ = attempt_log.write_to_workspace(session.run_dir(), ctx.workspace);
             let _ = session.write_summary(1, "AUTHENTICATION_FAILURE", ctx.workspace);
@@ -182,6 +179,8 @@ pub fn run_commit_attempt(
             auth_failure: true,
         });
     }
+
+    let attempt_log = attempt_log.with_raw_output(&result.stderr);
 
     let extraction = extract_commit_message_from_file_with_workspace(ctx.workspace);
     let (outcome, detail, extraction_result, extraction_succeeded, skip_reason, files, excluded) =
@@ -227,12 +226,14 @@ pub fn run_commit_attempt(
                 vec![],
             ),
         };
-    attempt_log.add_extraction_attempt(if extraction_succeeded {
-        ExtractionAttempt::success("XML", detail.clone())
-    } else {
-        ExtractionAttempt::failure("XML", detail.clone())
-    });
-    attempt_log.set_outcome(outcome.clone());
+
+    let attempt_log = attempt_log
+        .add_extraction_attempt(if extraction_succeeded {
+            ExtractionAttempt::success("XML", detail.clone())
+        } else {
+            ExtractionAttempt::failure("XML", detail.clone())
+        })
+        .with_outcome(outcome.clone());
 
     if !session.is_noop() {
         let _ = attempt_log.write_to_workspace(session.run_dir(), ctx.workspace);

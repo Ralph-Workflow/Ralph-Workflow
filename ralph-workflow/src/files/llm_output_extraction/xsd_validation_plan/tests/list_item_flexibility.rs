@@ -305,3 +305,19 @@ fn test_strip_block_elements_with_nested_list() {
     assert!(stripped.contains("Text before"), "Should preserve text");
     assert!(stripped.contains("text after"), "Should preserve text");
 }
+
+#[test]
+fn test_strip_block_elements_with_deeply_nested_list() {
+    let content = r#"Lead <list type="unordered"><item>outer <list type="ordered"><item>inner</item></list> tail</item></list> Trail"#;
+    let stripped = crate::files::llm_output_extraction::xsd_validation_plan::strip_block_elements_for_inline_parsing(content);
+    assert!(
+        !stripped.contains("<list"),
+        "Should remove nested opening list tags"
+    );
+    assert!(
+        !stripped.contains("</list>"),
+        "Should remove nested closing list tags"
+    );
+    assert!(stripped.contains("Lead"), "Should preserve prefix text");
+    assert!(stripped.contains("Trail"), "Should preserve suffix text");
+}

@@ -6,7 +6,7 @@ use super::snapshot::MemorySnapshot;
 const DEFAULT_MAX_SNAPSHOTS: usize = 1024;
 
 /// Memory metrics collector for pipeline execution.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryMetricsCollector {
     snapshots: Vec<MemorySnapshot>,
     snapshot_interval: u32,
@@ -26,29 +26,40 @@ impl MemoryMetricsCollector {
         }
     }
 
-    fn enforce_snapshot_limit(&mut self) {
-        if self.snapshots.len() > DEFAULT_MAX_SNAPSHOTS {
-            let excess = self.snapshots.len() - DEFAULT_MAX_SNAPSHOTS;
-            self.snapshots.drain(0..excess);
+    fn apply_snapshot_limit(snapshots: Vec<MemorySnapshot>) -> Vec<MemorySnapshot> {
+        if snapshots.len() > DEFAULT_MAX_SNAPSHOTS {
+            let skip_count = snapshots.len() - DEFAULT_MAX_SNAPSHOTS;
+            snapshots.into_iter().skip(skip_count).collect()
+        } else {
+            snapshots
         }
     }
 
     /// Record a snapshot if at snapshot interval.
-    pub fn maybe_record(&mut self, state: &crate::reducer::PipelineState) {
+    #[must_use]
+    pub fn maybe_record(&self, state: &crate::reducer::PipelineState) -> Self {
         if self.snapshot_interval == 0 {
-            return;
+            return self.clone();
         }
 
-        // Treat iteration 0 as "pre-run" (initial state). Recording here is surprising
-        // and skews exported metrics since 0 is a multiple of any non-zero interval.
         if state.iteration == 0 {
-            return;
+            return self.clone();
         }
 
         if state.iteration == 1 || state.iteration.is_multiple_of(self.snapshot_interval) {
-            self.snapshots
-                .push(MemorySnapshot::from_pipeline_state(state));
-            self.enforce_snapshot_limit();
+            let snapshots = self
+                .snapshots
+                .clone()
+                .into_iter()
+                .chain(std::iter::once(MemorySnapshot::from_pipeline_state(state)))
+                .collect();
+            let snapshots = Self::apply_snapshot_limit(snapshots);
+            Self {
+                snapshots,
+                snapshot_interval: self.snapshot_interval,
+            }
+        } else {
+            self.clone()
         }
     }
 
@@ -68,24 +79,36 @@ impl MemoryMetricsCollector {
     }
 
     /// Record a snapshot and send to telemetry backend.
+    #[must_use]
     pub fn record_and_emit(
-        &mut self,
+        &self,
         state: &crate::reducer::PipelineState,
-        backend: &mut dyn TelemetryBackend,
-    ) {
+        backend: &dyn TelemetryBackend,
+    ) -> Self {
         if self.snapshot_interval == 0 {
-            return;
+            return self.clone();
         }
 
         if state.iteration == 0 {
-            return;
+            return self.clone();
         }
 
         if state.iteration == 1 || state.iteration.is_multiple_of(self.snapshot_interval) {
             let snapshot = MemorySnapshot::from_pipeline_state(state);
             backend.emit_snapshot(&snapshot);
-            self.snapshots.push(snapshot);
-            self.enforce_snapshot_limit();
+            let snapshots = self
+                .snapshots
+                .clone()
+                .into_iter()
+                .chain(std::iter::once(snapshot))
+                .collect();
+            let snapshots = Self::apply_snapshot_limit(snapshots);
+            Self {
+                snapshots,
+                snapshot_interval: self.snapshot_interval,
+            }
+        } else {
+            self.clone()
         }
     }
 }

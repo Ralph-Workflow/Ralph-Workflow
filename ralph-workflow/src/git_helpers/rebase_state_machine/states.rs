@@ -53,6 +53,7 @@ impl RebaseStateMachine {
     /// # Errors
     ///
     /// Returns error if the operation fails.
+    #[expect(clippy::print_stderr, reason = "recovery warning messages")]
     pub fn load_or_create(upstream_branch: String) -> io::Result<Self> {
         if rebase_checkpoint_exists() {
             // Try to load the primary checkpoint
@@ -110,7 +111,10 @@ impl RebaseStateMachine {
     /// Returns `Ok(state_machine)` with either backup loaded or fresh state.
     fn try_load_backup_or_create(upstream_branch: String) -> io::Result<Self> {
         let workspace = WorkspaceFs::new(std::env::current_dir()?);
-        Ok(Self::try_load_backup_or_create_with_workspace(&workspace, upstream_branch))
+        Ok(Self::try_load_backup_or_create_with_workspace(
+            &workspace,
+            upstream_branch,
+        ))
     }
 
     /// Load backup checkpoint or create fresh state using workspace abstraction.
@@ -172,9 +176,16 @@ impl RebaseStateMachine {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn transition_to(&mut self, phase: RebasePhase) -> io::Result<()> {
-        self.checkpoint = self.checkpoint.clone().with_phase(phase);
-        save_rebase_checkpoint(&self.checkpoint)
+    pub fn transition_to(self, phase: RebasePhase) -> (Self, io::Result<()>) {
+        let checkpoint = self.checkpoint.clone().with_phase(phase);
+        let result = save_rebase_checkpoint(&checkpoint);
+        (
+            Self {
+                checkpoint,
+                max_recovery_attempts: self.max_recovery_attempts,
+            },
+            result,
+        )
     }
 
     /// Record a conflict in a file.
@@ -182,8 +193,9 @@ impl RebaseStateMachine {
     /// # Arguments
     ///
     /// * `file` - The file path that has conflicts
-    pub fn record_conflict(&mut self, file: String) {
+    pub fn record_conflict(mut self, file: String) -> Self {
         self.checkpoint = self.checkpoint.clone().with_conflicted_file(file);
+        self
     }
 
     /// Record that a conflict has been resolved.
@@ -191,8 +203,9 @@ impl RebaseStateMachine {
     /// # Arguments
     ///
     /// * `file` - The file path that was resolved
-    pub fn record_resolution(&mut self, file: String) {
+    pub fn record_resolution(mut self, file: String) -> Self {
         self.checkpoint = self.checkpoint.clone().with_resolved_file(file);
+        self
     }
 
     /// Record an error that occurred.
@@ -200,8 +213,9 @@ impl RebaseStateMachine {
     /// # Arguments
     ///
     /// * `error` - The error message to record
-    pub fn record_error(&mut self, error: String) {
+    pub fn record_error(mut self, error: String) -> Self {
         self.checkpoint = self.checkpoint.clone().with_error(error);
+        self
     }
 
     /// Check if recovery is possible.
@@ -277,12 +291,12 @@ impl RebaseStateMachine {
     ///
     /// Returns an error if saving the checkpoint fails.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn abort(mut self) -> io::Result<()> {
-        self.checkpoint = self
+    pub fn abort(self) -> io::Result<()> {
+        let checkpoint = self
             .checkpoint
             .clone()
             .with_phase(RebasePhase::RebaseAborted);
-        save_rebase_checkpoint(&self.checkpoint)
+        save_rebase_checkpoint(&checkpoint)
     }
 }
 
@@ -338,59 +352,35 @@ impl RecoveryAction {
 
         match error_kind {
             // Category 1: Rebase Cannot Start - Generally not recoverable
-            crate::git_helpers::rebase::RebaseErrorKind::InvalidRevision { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::InvalidRevision { .. } => Self::Abort,
             crate::git_helpers::rebase::RebaseErrorKind::DirtyWorkingTree => Self::Abort,
-            crate::git_helpers::rebase::RebaseErrorKind::ConcurrentOperation { .. } => {
-                Self::Retry
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::RepositoryCorrupt { .. } => {
-                Self::Abort
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::EnvironmentFailure { .. } => {
-                Self::Abort
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::HookRejection { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ConcurrentOperation { .. } => Self::Retry,
+            crate::git_helpers::rebase::RebaseErrorKind::RepositoryCorrupt { .. } => Self::Abort,
+            crate::git_helpers::rebase::RebaseErrorKind::EnvironmentFailure { .. } => Self::Abort,
+            crate::git_helpers::rebase::RebaseErrorKind::HookRejection { .. } => Self::Abort,
 
             // Category 2: Rebase Stops (Interrupted)
-            crate::git_helpers::rebase::RebaseErrorKind::ContentConflict { .. } => {
-                Self::Continue
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ContentConflict { .. } => Self::Continue,
             crate::git_helpers::rebase::RebaseErrorKind::PatchApplicationFailed { .. } => {
                 Self::Retry
             }
-            crate::git_helpers::rebase::RebaseErrorKind::InteractiveStop { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::InteractiveStop { .. } => Self::Abort,
             crate::git_helpers::rebase::RebaseErrorKind::EmptyCommit => Self::Skip,
-            crate::git_helpers::rebase::RebaseErrorKind::AutostashFailed { .. } => {
-                Self::Retry
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::CommitCreationFailed { .. } => {
-                Self::Retry
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::AutostashFailed { .. } => Self::Retry,
+            crate::git_helpers::rebase::RebaseErrorKind::CommitCreationFailed { .. } => Self::Retry,
             crate::git_helpers::rebase::RebaseErrorKind::ReferenceUpdateFailed { .. } => {
                 Self::Retry
             }
 
             // Category 3: Post-Rebase Failures
             #[cfg(any(test, feature = "test-utils"))]
-            crate::git_helpers::rebase::RebaseErrorKind::ValidationFailed { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ValidationFailed { .. } => Self::Abort,
 
             // Category 4: Interrupted/Corrupted State
             #[cfg(any(test, feature = "test-utils"))]
-            crate::git_helpers::rebase::RebaseErrorKind::ProcessTerminated { .. } => {
-                Self::Continue
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ProcessTerminated { .. } => Self::Continue,
             #[cfg(any(test, feature = "test-utils"))]
-            crate::git_helpers::rebase::RebaseErrorKind::InconsistentState { .. } => {
-                Self::Retry
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::InconsistentState { .. } => Self::Retry,
 
             // Category 5: Unknown
             crate::git_helpers::rebase::RebaseErrorKind::Unknown { .. } => Self::Abort,

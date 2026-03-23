@@ -2,7 +2,6 @@
 //!
 //! This module provides utility functions for working with the unified configuration.
 
-use std::env;
 use std::path::PathBuf;
 
 /// Default path for the unified configuration file.
@@ -30,8 +29,9 @@ pub const DEFAULT_UNIFIED_CONFIG_NAME: &str = "ralph-workflow.toml";
 /// ```
 #[must_use]
 pub fn unified_config_path() -> Option<PathBuf> {
-    if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
-        let xdg = xdg.trim();
+    if let Some(xdg) = crate::prompts::io::get_xdg_config_home() {
+        let xdg_str = xdg.to_string_lossy();
+        let xdg = xdg_str.trim();
         if !xdg.is_empty() {
             return Some(PathBuf::from(xdg).join(DEFAULT_UNIFIED_CONFIG_NAME));
         }

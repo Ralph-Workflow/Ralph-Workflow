@@ -5,7 +5,6 @@ use crate::agents::fallback::ResolvedDrainConfig;
 use crate::workspace::{Workspace, WorkspaceFs};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io;
 use std::path::{Path, PathBuf};
 
 // Note: Legacy global config directory functions (global_config_dir, global_agents_config_path)
@@ -34,7 +33,7 @@ pub struct AgentsConfigFile {
 #[derive(Debug, thiserror::Error)]
 pub enum AgentConfigError {
     #[error("Failed to read config file: {0}")]
-    Io(#[from] io::Error),
+    Io(#[from] std::io::Error),
     #[error("Failed to parse TOML: {0}")]
     Toml(#[from] toml::de::Error),
     #[error("Built-in agents.toml template is invalid TOML: {0}")]
@@ -69,7 +68,7 @@ impl AgentsConfigFile {
             return crate::config::UnifiedConfig::default()
                 .merge_with_content(raw_toml, &parsed)
                 .resolve_agent_drains_checked()
-                .map_err(AgentConfigError::InvalidDrainConfig);
+                .map_err(|err| AgentConfigError::InvalidDrainConfig(err.to_string()));
         }
 
         crate::config::UnifiedConfig {
@@ -79,7 +78,7 @@ impl AgentsConfigFile {
             ..crate::config::UnifiedConfig::default()
         }
         .resolve_agent_drains_checked()
-        .map_err(AgentConfigError::InvalidDrainConfig)
+        .map_err(|err| AgentConfigError::InvalidDrainConfig(err.to_string()))
     }
 
     /// Load agents config from a file, returning None if file doesn't exist.
@@ -98,9 +97,11 @@ impl AgentsConfigFile {
         }
 
         let contents = workspace.read(path)?;
-        let mut config: Self = toml::from_str(&contents)?;
-        config.raw_toml = Some(contents);
-        Ok(Some(config))
+        let config: Self = toml::from_str(&contents)?;
+        Ok(Some(Self {
+            raw_toml: Some(contents),
+            ..config
+        }))
     }
 
     /// Load agents config from a file using workspace abstraction.
@@ -124,10 +125,12 @@ impl AgentsConfigFile {
 
         let contents = workspace
             .read(path)
-            .map_err(|e| AgentConfigError::Io(io::Error::other(e)))?;
-        let mut config: Self = toml::from_str(&contents)?;
-        config.raw_toml = Some(contents);
-        Ok(Some(config))
+            .map_err(|e| AgentConfigError::Io(std::io::Error::other(e)))?;
+        let config: Self = toml::from_str(&contents)?;
+        Ok(Some(Self {
+            raw_toml: Some(contents),
+            ..config
+        }))
     }
 
     /// Ensure agents config file exists, creating it from template if needed.
@@ -137,7 +140,9 @@ impl AgentsConfigFile {
     /// Returns error if:
     /// - Parent directories cannot be created
     /// - Default template cannot be written to file
-    pub fn ensure_config_exists<P: AsRef<Path>>(path: P) -> io::Result<ConfigInitResult> {
+    pub fn ensure_config_exists<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<ConfigInitResult, std::io::Error> {
         let path = path.as_ref();
         let workspace = WorkspaceFs::new(PathBuf::from("."));
 
@@ -170,7 +175,7 @@ impl AgentsConfigFile {
     pub fn ensure_config_exists_with_workspace(
         path: &Path,
         workspace: &dyn Workspace,
-    ) -> io::Result<ConfigInitResult> {
+    ) -> Result<ConfigInitResult, std::io::Error> {
         if workspace.exists(path) {
             return Ok(ConfigInitResult::AlreadyExists);
         }
@@ -197,7 +202,9 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let path = Path::new(".agent/agents.toml");
 
-        let result = AgentsConfigFile::load_from_file_with_workspace(path, &workspace).unwrap();
+        let Ok(result) = AgentsConfigFile::load_from_file_with_workspace(path, &workspace) else {
+            panic!("load_from_file_with_workspace failed");
+        };
         assert!(result.is_none());
     }
 
@@ -207,9 +214,11 @@ mod tests {
             MemoryWorkspace::new_test().with_file(".agent/agents.toml", DEFAULT_AGENTS_TOML);
         let path = Path::new(".agent/agents.toml");
 
-        let result = AgentsConfigFile::load_from_file_with_workspace(path, &workspace).unwrap();
-        assert!(result.is_some());
-        assert!(result.unwrap().agents.contains_key("claude"));
+        let Ok(Some(config)) = AgentsConfigFile::load_from_file_with_workspace(path, &workspace)
+        else {
+            panic!("load_from_file_with_workspace failed or returned None");
+        };
+        assert!(config.agents.contains_key("claude"));
     }
 
     #[test]
@@ -217,11 +226,16 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let path = Path::new(".agent/agents.toml");
 
-        let result =
-            AgentsConfigFile::ensure_config_exists_with_workspace(path, &workspace).unwrap();
+        let Ok(result) = AgentsConfigFile::ensure_config_exists_with_workspace(path, &workspace)
+        else {
+            panic!("ensure_config_exists_with_workspace failed");
+        };
         assert!(matches!(result, ConfigInitResult::Created));
         assert!(workspace.exists(path));
-        assert_eq!(workspace.read(path).unwrap(), DEFAULT_AGENTS_TOML);
+        let Ok(contents) = workspace.read(path) else {
+            panic!("failed to read created file");
+        };
+        assert_eq!(contents, DEFAULT_AGENTS_TOML);
     }
 
     #[test]
@@ -230,10 +244,15 @@ mod tests {
             MemoryWorkspace::new_test().with_file(".agent/agents.toml", "# custom config");
         let path = Path::new(".agent/agents.toml");
 
-        let result =
-            AgentsConfigFile::ensure_config_exists_with_workspace(path, &workspace).unwrap();
+        let Ok(result) = AgentsConfigFile::ensure_config_exists_with_workspace(path, &workspace)
+        else {
+            panic!("ensure_config_exists_with_workspace failed");
+        };
         assert!(matches!(result, ConfigInitResult::AlreadyExists));
-        assert_eq!(workspace.read(path).unwrap(), "# custom config");
+        let Ok(contents) = workspace.read(path) else {
+            panic!("failed to read file");
+        };
+        assert_eq!(contents, "# custom config");
     }
 
     #[test]

@@ -55,9 +55,10 @@
 //!
 //! For detailed streaming contract documentation, see `README.md` in this directory.
 
+pub mod boundary;
 pub mod claude;
 #[cfg(test)]
-mod claude_tests;
+mod claude_io_tests;
 pub mod codex;
 #[cfg(test)]
 mod codex_tests;
@@ -68,21 +69,22 @@ pub mod gemini;
 #[cfg(test)]
 mod gemini_tests;
 pub mod health;
-mod incremental_parser;
+pub mod incremental_parser;
 pub mod opencode;
 #[cfg(test)]
 mod opencode_tests;
 pub mod printer;
-mod stream_classifier;
-pub mod streaming_state;
+pub mod stream_classifier;
+mod streaming_state;
 pub mod terminal;
 pub mod types;
 
-pub use claude::ClaudeParser;
-pub use codex::CodexParser;
-pub use gemini::GeminiParser;
-pub use opencode::OpenCodeParser;
 pub use terminal::TerminalMode;
+
+pub type ClaudeParser = claude::ClaudeParser;
+pub type CodexParser = codex::CodexParser;
+pub type GeminiParser = gemini::GeminiParser;
+pub type OpenCodeParser = opencode::OpenCodeParser;
 
 #[cfg(test)]
 mod tests;

@@ -7,6 +7,17 @@
 // - run_with_config_and_handlers: Test-only entry point with both handlers
 // - RunWithHandlersParams: Parameters for test entry points
 
+use crate::app::config_init::{self, initialize_config};
+use crate::app::runner::command_handlers::handle_listing_commands;
+use crate::app::validation::{resolve_required_agents, validate_agent_chains};
+use crate::cli::{handle_diagnose, Args};
+use crate::logger::{Colors, Logger};
+use crate::prompts::TemplateContext;
+use crate::ProcessExecutor;
+
+use crate::app::pipeline_setup::{PipelineAndRepoRoot, RunPipelineWithHandlerParams};
+// run_pipeline is in scope via include!
+
 /// Main application entry point.
 ///
 /// Orchestrates the entire Ralph pipeline:
@@ -37,7 +48,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     // Set working directory first if override is provided
     // This ensures all subsequent operations (including config init) use the correct directory
     if let Some(ref override_dir) = args.working_dir_override {
-        std::env::set_current_dir(override_dir)?;
+        crate::app::env_access::set_current_dir(override_dir)?;
     }
 
     // Initialize configuration and agent registry
@@ -65,15 +76,17 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
 
     // Handle --diagnose
     if args.recovery.diagnose {
-        let diagnose_workspace = crate::workspace::WorkspaceFs::new(
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-        );
+        let diagnose_workspace =
+            crate::workspace::WorkspaceFs::new(crate::app::env_access::get_current_dir());
         handle_diagnose(
+            &mut std::io::stdout(),
             colors,
             &config,
             &registry,
-            &config_path,
-            &config_sources,
+            crate::cli::ConfigInfo {
+                path: &config_path,
+                sources: &config_sources,
+            },
             &*executor,
             &diagnose_workspace,
         );
@@ -81,87 +94,39 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     }
 
     // Validate agent chains
-    validate_agent_chains(&registry, &agent_resolution_sources, colors);
+    validate_agent_chains(&registry, &agent_resolution_sources, &logger);
 
-    // Create effect handler for production operations
-    let mut handler = effect_handler::RealAppEffectHandler::new();
+    let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
+        config.user_templates_dir().cloned(),
+    );
 
-    // Get repo root early for workspace creation (needed by plumbing commands)
-    // This uses the same logic as setup_working_dir_via_handler but captures the repo_root.
-    let early_repo_root =
-        discover_repo_root_for_workspace(args.working_dir_override.as_deref(), &mut handler)?;
+    let developer_display = registry.display_name(&developer_agent);
+    let reviewer_display = registry.display_name(&reviewer_agent);
 
-    // Create workspace for plumbing commands (and later for the full pipeline)
-    let workspace: std::sync::Arc<dyn crate::workspace::Workspace> =
-        std::sync::Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root));
-
-    // Handle plumbing commands with workspace support
-    if handle_plumbing_commands(
-        &args,
-        &logger,
-        colors,
-        &mut handler,
-        Some(workspace.as_ref()),
-    )? {
-        return Ok(());
-    }
-
-    if !command_requires_prompt_setup(&args)
-        && handle_repo_commands_without_prompt_setup(RepoCommandParams {
-            args: &args,
-            config: &config,
-            registry: &registry,
-            developer_agent: &developer_agent,
-            reviewer_agent: &reviewer_agent,
-            logger: &logger,
-            colors,
-            executor: &executor,
-            repo_root: workspace.root(),
-            workspace: &workspace,
-        })?
-    {
-        return Ok(());
-    }
-
-    if args.recovery.inspect_checkpoint {
-        crate::app::resume::inspect_checkpoint(workspace.as_ref(), &logger)?;
-        return Ok(());
-    }
-
-    // Validate agents and set up git repo and PROMPT.md
-    // Note: repo_root is discovered again here (same as early_repo_root) but also
-    // does additional setup like PROMPT.md creation that plumbing commands don't need
-    let Some(repo_root) = validate_and_setup_agents(
-        &AgentSetupParams {
-            config: &config,
-            registry: &registry,
-            developer_agent: &developer_agent,
-            reviewer_agent: &reviewer_agent,
-            config_path: &config_path,
-            colors,
-            logger: &logger,
-            working_dir_override: args.working_dir_override.as_deref(),
-        },
-        &mut handler,
-    )?
-    else {
-        return Ok(());
-    };
-
-    // Prepare pipeline context or exit early
-    // Note: Reuse workspace created earlier (same repo root)
-    (prepare_pipeline_or_exit(PipelinePreparationParams {
+    // Run the full pipeline with handler creation inside the boundary
+    let params = RunPipelineWithHandlerParams {
         args,
         config,
         registry,
         developer_agent,
         reviewer_agent,
-        repo_root,
-        logger,
+        developer_display,
+        reviewer_display,
+        config_path,
         colors,
+        logger,
         executor,
-        handler: &mut handler,
-        workspace,
-    })?)
-    .map_or_else(|| Ok(()), |ctx| run_pipeline(&ctx))
+        template_context,
+    };
+
+    let PipelineAndRepoRoot { ctx, repo_root: _ } =
+        crate::app::pipeline_setup::run_pipeline_with_handler_boundary(params)?;
+
+    if ctx.args.recovery.inspect_checkpoint {
+        crate::app::resume::inspect_checkpoint(ctx.workspace.as_ref(), &ctx.logger)?;
+        return Ok(());
+    }
+
+    // Run the pipeline
+    run_pipeline(&ctx)
 }

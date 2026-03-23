@@ -1,7 +1,13 @@
-use std::io;
+// Git diff operations.
+//
+// Thin I/O primitives live in `diff/io.rs` (boundary module).
+// This module contains orchestration logic that calls those primitives.
+
+mod io;
+
 use std::path::Path;
 
-use crate::git_helpers::git2_to_io_error;
+use crate::git_helpers::git_oid_to_git2_oid;
 use crate::workspace::Workspace;
 
 /// Get the diff of all changes (unstaged and staged).
@@ -15,9 +21,9 @@ use crate::workspace::Workspace;
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_diff() -> io::Result<String> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    git_diff_impl(&repo)
+pub fn git_diff() -> std::io::Result<String> {
+    let repo = io::discover_repo(Path::new("."))?;
+    diff_against_head(&repo)
 }
 
 /// Get the diff of all changes (unstaged and staged) by discovering from an explicit path.
@@ -27,9 +33,17 @@ pub fn git_diff() -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_diff_in_repo(repo_root: &Path) -> io::Result<String> {
-    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
-    git_diff_impl(&repo)
+pub fn git_diff_in_repo(repo_root: &Path) -> std::io::Result<String> {
+    let repo = io::discover_repo(repo_root)?;
+    diff_against_head(&repo)
+}
+
+/// Diff the current working directory against HEAD, handling the unborn-branch case.
+fn diff_against_head(repo: &git2::Repository) -> std::io::Result<String> {
+    match io::resolve_head_tree_oid(repo)? {
+        io::HeadTreeOid::Tree(tree_oid) => io::diff_from_tree_oid_impl(repo, tree_oid),
+        io::HeadTreeOid::UnbornBranch => io::diff_from_empty_tree_impl(repo),
+    }
 }
 
 /// Generate a diff from a specific starting commit.
@@ -41,18 +55,15 @@ pub fn git_diff_in_repo(repo_root: &Path) -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_diff_from(start_oid: &str) -> io::Result<String> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-
-    // Parse the starting OID.
+pub fn git_diff_from(start_oid: &str) -> std::io::Result<String> {
+    let repo = io::discover_repo(Path::new("."))?;
     let oid = git2::Oid::from_str(start_oid).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             format!("Invalid commit OID: {start_oid}"),
         )
     })?;
-
-    git_diff_from_oid(&repo, oid)
+    io::diff_from_oid_impl(&repo, oid)
 }
 
 /// Get the git diff from the starting commit.
@@ -64,18 +75,21 @@ pub fn git_diff_from(start_oid: &str) -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_git_diff_from_start() -> io::Result<String> {
+pub fn get_git_diff_from_start() -> std::io::Result<String> {
     use crate::git_helpers::start_commit::{load_start_point, save_start_commit, StartPoint};
 
     // Ensure a valid starting point exists. This is expected to persist across runs,
     // but we also repair missing/corrupt files opportunistically for robustness.
     save_start_commit()?;
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo = io::discover_repo(Path::new("."))?;
 
     match load_start_point()? {
-        StartPoint::Commit(oid) => git_diff_from(&oid.to_string()),
-        StartPoint::EmptyRepo => git_diff_from_empty_tree(&repo),
+        StartPoint::Commit(oid) => {
+            let git2_oid = git_oid_to_git2_oid(&oid)?;
+            io::diff_from_oid_impl(&repo, git2_oid)
+        }
+        StartPoint::EmptyRepo => io::diff_from_empty_tree_impl(&repo),
     }
 }
 
@@ -89,7 +103,9 @@ pub fn get_git_diff_from_start() -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_git_diff_from_start_with_workspace(workspace: &dyn Workspace) -> io::Result<String> {
+pub fn get_git_diff_from_start_with_workspace(
+    workspace: &dyn Workspace,
+) -> std::io::Result<String> {
     use crate::git_helpers::start_commit::{
         load_start_point_with_workspace, save_start_commit_with_workspace, StartPoint,
     };
@@ -98,21 +114,26 @@ pub fn get_git_diff_from_start_with_workspace(workspace: &dyn Workspace) -> io::
     // This ensures MemoryWorkspace and other in-memory workspaces never accidentally
     // leak into the process CWD's git repository.
     if !workspace.exists(std::path::Path::new(".git")) {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
             "Workspace has no on-disk git repository",
         ));
     }
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo = io::discover_repo(Path::new("."))?;
 
     // Ensure a valid start point exists. This is expected to persist across runs, but we also
     // repair missing/corrupt files opportunistically for robustness.
     save_start_commit_with_workspace(workspace, &repo)?;
 
     match load_start_point_with_workspace(workspace, &repo)? {
-        StartPoint::Commit(oid) => git_diff_from_oid(&repo, oid),
-        StartPoint::EmptyRepo => git_diff_from_empty_tree(&repo),
+        StartPoint::Commit(oid) => {
+            let git2_oid = git_oid_to_git2_oid(&oid).map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string())
+            })?;
+            io::diff_from_oid_impl(&repo, git2_oid)
+        }
+        StartPoint::EmptyRepo => io::diff_from_empty_tree_impl(&repo),
     }
 }
 
@@ -132,7 +153,7 @@ pub fn get_git_diff_from_start_with_workspace(workspace: &dyn Workspace) -> io::
 /// Returns error if the operation fails.
 pub fn get_git_diff_for_review_with_workspace(
     workspace: &dyn Workspace,
-) -> io::Result<(String, String)> {
+) -> std::io::Result<(String, String)> {
     use crate::git_helpers::review_baseline::{
         load_review_baseline_with_workspace, ReviewBaseline,
     };
@@ -143,12 +164,12 @@ pub fn get_git_diff_for_review_with_workspace(
     // NOTE: We discover the repo from CWD here because the `ReviewBaseline` and `start_commit`
     // files live in the injected Workspace, but the diff itself must be generated from the real
     // on-disk git repository.
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo = io::discover_repo(Path::new("."))?;
 
     let baseline = load_review_baseline_with_workspace(workspace).unwrap_or(ReviewBaseline::NotSet);
     match baseline {
         ReviewBaseline::Commit(oid) => {
-            let diff = git_diff_from_oid(&repo, oid)?;
+            let diff = io::diff_from_oid_impl(&repo, oid)?;
             Ok((diff, oid.to_string()))
         }
         ReviewBaseline::NotSet => {
@@ -157,99 +178,12 @@ pub fn get_git_diff_for_review_with_workspace(
 
             match load_start_point_with_workspace(workspace, &repo)? {
                 StartPoint::Commit(oid) => {
-                    let diff = git_diff_from_oid(&repo, oid)?;
+                    let git2_oid = git_oid_to_git2_oid(&oid)?;
+                    let diff = io::diff_from_oid_impl(&repo, git2_oid)?;
                     Ok((diff, oid.to_string()))
                 }
-                StartPoint::EmptyRepo => Ok((git_diff_from_empty_tree(&repo)?, String::new())),
+                StartPoint::EmptyRepo => Ok((io::diff_from_empty_tree_impl(&repo)?, String::new())),
             }
         }
     }
-}
-
-/// Implementation of git diff.
-fn git_diff_impl(repo: &git2::Repository) -> io::Result<String> {
-    // Try to get HEAD tree.
-    let head_tree = match repo.head() {
-        Ok(head) => Some(head.peel_to_tree().map_err(|e| git2_to_io_error(&e))?),
-        Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => {
-            // No commits yet: diff an empty tree against the workdir.
-            let mut diff_opts = git2::DiffOptions::new();
-            diff_opts.include_untracked(true);
-            diff_opts.recurse_untracked_dirs(true);
-
-            let diff = repo
-                .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
-                .map_err(|e| git2_to_io_error(&e))?;
-
-            let mut result = Vec::new();
-            diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-                result.extend_from_slice(line.content());
-                true
-            })
-            .map_err(|e| git2_to_io_error(&e))?;
-
-            return Ok(String::from_utf8_lossy(&result).to_string());
-        }
-        Err(e) => return Err(git2_to_io_error(&e)),
-    };
-
-    // For repos with commits, diff HEAD against working tree (staged + unstaged + untracked).
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
-
-    let diff = repo
-        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))
-        .map_err(|e| git2_to_io_error(&e))?;
-
-    let mut result = Vec::new();
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        result.extend_from_slice(line.content());
-        true
-    })
-    .map_err(|e| git2_to_io_error(&e))?;
-
-    Ok(String::from_utf8_lossy(&result).to_string())
-}
-
-fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> io::Result<String> {
-    let start_commit = repo.find_commit(oid).map_err(|e| git2_to_io_error(&e))?;
-    let start_tree = start_commit.tree().map_err(|e| git2_to_io_error(&e))?;
-
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
-
-    let diff = repo
-        .diff_tree_to_workdir_with_index(Some(&start_tree), Some(&mut diff_opts))
-        .map_err(|e| git2_to_io_error(&e))?;
-
-    let mut result = Vec::new();
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        result.extend_from_slice(line.content());
-        true
-    })
-    .map_err(|e| git2_to_io_error(&e))?;
-
-    Ok(String::from_utf8_lossy(&result).to_string())
-}
-
-/// Generate a diff from the empty tree (initial commit).
-fn git_diff_from_empty_tree(repo: &git2::Repository) -> io::Result<String> {
-    let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.include_untracked(true);
-    diff_opts.recurse_untracked_dirs(true);
-
-    let diff = repo
-        .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
-        .map_err(|e| git2_to_io_error(&e))?;
-
-    let mut result = Vec::new();
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        result.extend_from_slice(line.content());
-        true
-    })
-    .map_err(|e| git2_to_io_error(&e))?;
-
-    Ok(String::from_utf8_lossy(&result).to_string())
 }

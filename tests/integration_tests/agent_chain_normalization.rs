@@ -262,7 +262,7 @@ fn test_apply_unified_config_metadata_only_legacy_agent_chain_preserves_existing
         )
         .expect("config should parse");
 
-        registry.apply_unified_config(&unified).unwrap();
+        registry = registry.apply_unified_config(&unified).unwrap();
 
         assert_eq!(
             registry.available_fallbacks_for_drain(AgentDrain::Development),
@@ -1863,7 +1863,7 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
             ]),
             ..Default::default()
         };
-        registry.apply_unified_config(&unified).unwrap();
+        registry = registry.apply_unified_config(&unified).unwrap();
 
         let app_config = Config::test_default();
         let workspace = Arc::new(MemoryWorkspace::new_test());

@@ -9,38 +9,8 @@ fn parse_risks_mitigations(
     original_tag: &[u8],
 ) -> Result<Vec<RiskPair>, XsdValidationError> {
     let canonical_tag = b"ralph-risks-mitigations";
-    let mut risk_pairs = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"risk-pair" => {
-                let attrs = get_attributes(&e);
-                let severity = attrs.get("severity").and_then(|s| Severity::from_str(s));
-                let pair = parse_risk_pair(reader, severity)?;
-                risk_pairs.push(pair);
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag OR original (misspelled) tag
-                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-risks-mitigations".to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
+    let risk_pairs =
+        parse_risk_pairs_events(reader, original_tag, canonical_tag, Vec::new())?;
 
     if risk_pairs.is_empty() {
         return Err(XsdValidationError {
@@ -58,35 +28,77 @@ fn parse_risks_mitigations(
     Ok(risk_pairs)
 }
 
-/// Parse a single risk-pair
-fn parse_risk_pair(
+fn parse_risk_pairs_events(
+    reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
+    canonical_tag: &[u8],
+    acc: Vec<RiskPair>,
+) -> Result<Vec<RiskPair>, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"risk-pair" => {
+            let attrs = get_attributes(&e);
+            let severity = attrs.get("severity").and_then(|s| Severity::from_str(s));
+            let pair = parse_risk_pair_events(reader, severity, None, None)?;
+            parse_risk_pairs_events(
+                reader,
+                original_tag,
+                canonical_tag,
+                acc.into_iter().chain(std::iter::once(pair)).collect(),
+            )
+        }
+        Ok(Event::End(e))
+            if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag =>
+        {
+            Ok(acc)
+        }
+        Ok(Event::Eof) => Ok(acc),
+        Ok(_) => parse_risk_pairs_events(reader, original_tag, canonical_tag, acc),
+        Err(e) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: "ralph-risks-mitigations".to_string(),
+            expected: "valid XML".to_string(),
+            found: format!("parse error: {e}"),
+            suggestion: "Check XML syntax".to_string(),
+            example: None,
+        }),
+    }
+}
+
+/// Parse a single risk-pair using recursive accumulation.
+fn parse_risk_pair_events(
     reader: &mut Reader<&[u8]>,
     severity: Option<Severity>,
+    risk: Option<String>,
+    mitigation: Option<String>,
 ) -> Result<RiskPair, XsdValidationError> {
-    let mut risk = None;
-    let mut mitigation = None;
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"risk" => {
-                    risk = Some(read_text_until_end(reader, b"risk")?);
-                }
-                b"mitigation" => {
-                    mitigation = Some(read_text_until_end(reader, b"mitigation")?);
-                }
-                _ => {
-                    let _ = skip_to_end(reader, e.name().as_ref());
-                }
-            },
-            Ok(Event::End(e)) if e.name().as_ref() == b"risk-pair" => break,
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) => match e.name().as_ref() {
+            b"risk" => {
+                let text = read_text_until_end(reader, b"risk")?;
+                parse_risk_pair_events(reader, severity, Some(text), mitigation)
+            }
+            b"mitigation" => {
+                let text = read_text_until_end(reader, b"mitigation")?;
+                parse_risk_pair_events(reader, severity, risk, Some(text))
+            }
+            _ => {
+                let _ = skip_to_end(reader, e.name().as_ref());
+                parse_risk_pair_events(reader, severity, risk, mitigation)
+            }
+        },
+        Ok(Event::End(e)) if e.name().as_ref() == b"risk-pair" => {
+            finish_risk_pair(severity, risk, mitigation)
         }
-        buf.clear();
+        Ok(Event::Eof) | Err(_) => finish_risk_pair(severity, risk, mitigation),
+        Ok(_) => parse_risk_pair_events(reader, severity, risk, mitigation),
     }
+}
 
+fn finish_risk_pair(
+    severity: Option<Severity>,
+    risk: Option<String>,
+    mitigation: Option<String>,
+) -> Result<RiskPair, XsdValidationError> {
     let risk = risk.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "risk-pair/risk".to_string(),
@@ -121,35 +133,8 @@ fn parse_verification_strategy(
     original_tag: &[u8],
 ) -> Result<Vec<Verification>, XsdValidationError> {
     let canonical_tag = b"ralph-verification-strategy";
-    let mut verifications = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"verification" => {
-                verifications.push(parse_single_verification(reader)?);
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag OR original (misspelled) tag
-                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-verification-strategy".to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
+    let verifications =
+        parse_verifications_events(reader, original_tag, canonical_tag, Vec::new())?;
 
     if verifications.is_empty() {
         return Err(XsdValidationError {
@@ -167,34 +152,73 @@ fn parse_verification_strategy(
     Ok(verifications)
 }
 
-/// Parse a single verification element
-fn parse_single_verification(
+fn parse_verifications_events(
     reader: &mut Reader<&[u8]>,
-) -> Result<Verification, XsdValidationError> {
-    let mut method = None;
-    let mut expected_outcome = None;
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"method" => {
-                    method = Some(read_text_until_end(reader, b"method")?);
-                }
-                b"expected-outcome" => {
-                    expected_outcome = Some(read_text_until_end(reader, b"expected-outcome")?);
-                }
-                _ => {
-                    let _ = skip_to_end(reader, e.name().as_ref());
-                }
-            },
-            Ok(Event::End(e)) if e.name().as_ref() == b"verification" => break,
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
+    original_tag: &[u8],
+    canonical_tag: &[u8],
+    acc: Vec<Verification>,
+) -> Result<Vec<Verification>, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"verification" => {
+            let v = parse_single_verification_events(reader, None, None)?;
+            parse_verifications_events(
+                reader,
+                original_tag,
+                canonical_tag,
+                acc.into_iter().chain(std::iter::once(v)).collect(),
+            )
         }
-        buf.clear();
+        Ok(Event::End(e))
+            if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag =>
+        {
+            Ok(acc)
+        }
+        Ok(Event::Eof) => Ok(acc),
+        Ok(_) => parse_verifications_events(reader, original_tag, canonical_tag, acc),
+        Err(e) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: "ralph-verification-strategy".to_string(),
+            expected: "valid XML".to_string(),
+            found: format!("parse error: {e}"),
+            suggestion: "Check XML syntax".to_string(),
+            example: None,
+        }),
     }
+}
 
+/// Parse a single verification element using recursive accumulation.
+fn parse_single_verification_events(
+    reader: &mut Reader<&[u8]>,
+    method: Option<String>,
+    expected_outcome: Option<String>,
+) -> Result<Verification, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) => match e.name().as_ref() {
+            b"method" => {
+                let text = read_text_until_end(reader, b"method")?;
+                parse_single_verification_events(reader, Some(text), expected_outcome)
+            }
+            b"expected-outcome" => {
+                let text = read_text_until_end(reader, b"expected-outcome")?;
+                parse_single_verification_events(reader, method, Some(text))
+            }
+            _ => {
+                let _ = skip_to_end(reader, e.name().as_ref());
+                parse_single_verification_events(reader, method, expected_outcome)
+            }
+        },
+        Ok(Event::End(e)) if e.name().as_ref() == b"verification" => {
+            finish_verification(method, expected_outcome)
+        }
+        Ok(Event::Eof) | Err(_) => finish_verification(method, expected_outcome),
+        Ok(_) => parse_single_verification_events(reader, method, expected_outcome),
+    }
+}
+
+fn finish_verification(
+    method: Option<String>,
+    expected_outcome: Option<String>,
+) -> Result<Verification, XsdValidationError> {
     let method = method.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
         element_path: "verification/method".to_string(),

@@ -55,10 +55,10 @@ IMPORTANT: This file is for CONTEXT ONLY to understand what was requested.
 - Use this file only to understand what the developer was trying to accomplish
 
 IMPLEMENTATION PLAN:
-{{PLAN|default="(no plan available)"}}
+{{PLAN}}
 
 CHANGES MADE (diff):
-{{CHANGES|default="(no diff available)"}}
+{{CHANGES}}
 
 ═══════════════════════════════════════════════════════════════════════════════
 REVIEW TASK

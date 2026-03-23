@@ -8,13 +8,13 @@ use crate::agents::{AgentDrain, AgentRegistry};
 use crate::checkpoint::execution_history::ExecutionHistory;
 use crate::checkpoint::RunContext;
 use crate::config::Config;
-use crate::executor::ProcessExecutor;
 use crate::guidelines::ReviewGuidelines;
 use crate::logger::{Colors, Logger};
 use crate::logging::RunLogContext;
 use crate::pipeline::Timer;
 use crate::prompts::template_context::TemplateContext;
 use crate::workspace::Workspace;
+use crate::ProcessExecutor;
 // MemoryWorkspace is used in test fixtures for proper DI
 #[cfg(test)]
 use crate::workspace::MemoryWorkspace;
@@ -105,17 +105,22 @@ pub struct PhaseContext<'a> {
     /// When cloud mode is disabled (enabled=false), all cloud-specific
     /// logic is skipped throughout the pipeline.
     pub cloud: &'a crate::config::types::CloudConfig,
+    /// Git environment for configuring authentication variables.
+    ///
+    /// Used by cloud handlers to configure GIT_SSH_COMMAND and GIT_TERMINAL_PROMPT
+    /// without calling `std::env::set_var` directly.
+    pub env: &'a dyn crate::runtime::environment::GitEnvironment,
 }
 
 impl PhaseContext<'_> {
     /// Record a completed developer iteration.
-    pub const fn record_developer_iteration(&mut self) {
-        self.run_context.record_developer_iteration();
+    pub fn record_developer_iteration(&mut self) {
+        self.run_context = self.run_context.clone().record_developer_iteration();
     }
 
     /// Record a completed reviewer pass.
-    pub const fn record_reviewer_pass(&mut self) {
-        self.run_context.record_reviewer_pass();
+    pub fn record_reviewer_pass(&mut self) {
+        self.run_context = self.run_context.clone().record_reviewer_pass();
     }
 }
 
@@ -198,9 +203,6 @@ mod tests {
 
     #[test]
     fn test_get_primary_commit_agent_uses_commit_chain_first() {
-        let mut registry = AgentRegistry::new().unwrap();
-
-        // Configure a commit chain
         let toml_str = r#"
             [agent_chain]
             commit = ["commit-agent-1", "commit-agent-2"]
@@ -208,9 +210,13 @@ mod tests {
             developer = ["developer-agent"]
         "#;
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-        registry.apply_unified_config(&unified).unwrap();
+        let registry = AgentRegistry::new()
+            .unwrap()
+            .apply_unified_config(&unified)
+            .unwrap();
 
         let mut fixture = TestFixture::new();
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
             registry: &registry,
@@ -231,6 +237,7 @@ mod tests {
             run_log_context: &fixture.run_log_context,
             cloud_reporter: None,
             cloud: &crate::config::types::CloudConfig::disabled(),
+            env: &git_env,
         };
 
         let result = get_primary_commit_agent(&ctx);
@@ -243,18 +250,19 @@ mod tests {
 
     #[test]
     fn test_get_primary_commit_agent_falls_back_to_reviewer_chain() {
-        let mut registry = AgentRegistry::new().unwrap();
-
-        // Configure reviewer chain but NO commit chain
         let toml_str = r#"
             [agent_chain]
             reviewer = ["reviewer-agent-1", "reviewer-agent-2"]
             developer = ["developer-agent"]
         "#;
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-        registry.apply_unified_config(&unified).unwrap();
+        let registry = AgentRegistry::new()
+            .unwrap()
+            .apply_unified_config(&unified)
+            .unwrap();
 
         let mut fixture = TestFixture::new();
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
             registry: &registry,
@@ -275,6 +283,7 @@ mod tests {
             run_log_context: &fixture.run_log_context,
             cloud_reporter: None,
             cloud: &crate::config::types::CloudConfig::disabled(),
+            env: &git_env,
         };
 
         let result = get_primary_commit_agent(&ctx);
@@ -291,6 +300,7 @@ mod tests {
         // Default registry with no custom chains configured
 
         let mut fixture = TestFixture::new();
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
             registry: &registry,
@@ -311,6 +321,7 @@ mod tests {
             run_log_context: &fixture.run_log_context,
             cloud_reporter: None,
             cloud: &crate::config::types::CloudConfig::disabled(),
+            env: &git_env,
         };
 
         let result = get_primary_commit_agent(&ctx);

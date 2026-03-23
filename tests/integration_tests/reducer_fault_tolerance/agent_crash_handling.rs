@@ -37,7 +37,7 @@ fn test_agent_sigsegv_caught_by_fault_tolerant_executor() {
 
         let event = PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            "agent1".into(),
             139,
             AgentErrorKind::InternalError,
             false,
@@ -69,7 +69,7 @@ fn test_agent_sigsegv_caught_by_fault_tolerant_executor() {
             new_state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 139,
                 AgentErrorKind::InternalError,
                 false,
@@ -93,7 +93,7 @@ fn test_agent_panic_caught_by_fault_tolerant_executor() {
 
         let event = PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            "agent1".into(),
             1,
             AgentErrorKind::InternalError,
             false,
@@ -124,7 +124,7 @@ fn test_agent_panic_caught_by_fault_tolerant_executor() {
             new_state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::InternalError,
                 false,
@@ -146,19 +146,19 @@ fn test_pipeline_state_machine_recovers_from_multiple_failures() {
         let events = vec![
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
             ),
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Authentication,
                 false,
             ),
-            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".to_string()),
+            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".into()),
         ];
 
         for event in events {
@@ -304,7 +304,7 @@ fn test_pipeline_continues_after_agent_sigsegv() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 139,
                 AgentErrorKind::InternalError,
                 false,
@@ -321,7 +321,7 @@ fn test_pipeline_continues_after_agent_sigsegv() {
             after_first,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 139,
                 AgentErrorKind::InternalError,
                 false,
@@ -341,21 +341,21 @@ fn test_pipeline_continues_after_multiple_agent_failures() {
         let events = vec![
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Authentication,
                 false,
             ),
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent2".to_string(),
+                "agent2".into(),
                 139,
                 AgentErrorKind::InternalError,
                 false,
             ),
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent3".to_string(),
+                "agent3".into(),
                 1,
                 AgentErrorKind::FileSystem,
                 false,
@@ -552,7 +552,7 @@ fn test_xsd_retry_state_independent_of_invocation_failures() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent-1".to_string(),
+                "agent-1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,

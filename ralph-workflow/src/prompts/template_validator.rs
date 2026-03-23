@@ -26,7 +26,8 @@ pub use syntax_validation::validate_syntax;
 pub use template_extraction::{extract_metadata, extract_partials, extract_variables};
 pub use template_types::{
     RenderedPromptError, RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
-    TemplateVariablesInvalidError, ValidationError, ValidationResult, ValidationWarning,
+    TemplateMetadata, TemplateVariablesInvalidError, ValidationError, ValidationResult,
+    ValidationWarning, VariableInfo,
 };
 
 /// Validate a complete template.
@@ -38,47 +39,45 @@ pub fn validate_template<S: std::hash::BuildHasher>(
     content: &str,
     available_partials: &HashSet<String, S>,
 ) -> ValidationResult {
-    let mut is_valid = true;
-    let mut errors = Vec::new();
-    let mut warnings = Vec::new();
-
     // Validate syntax
     let syntax_errors = validate_syntax(content);
-    if !syntax_errors.is_empty() {
-        is_valid = false;
-        errors.extend(syntax_errors);
-    }
+    let has_syntax_errors = !syntax_errors.is_empty();
 
-    // Extract variables
+    // Extract variables and partials
     let variables = extract_variables(content);
-
-    // Extract partials
     let partials = extract_partials(content);
 
-    // Check for missing partials
-    for partial in &partials {
-        if !available_partials.contains(partial) {
-            is_valid = false;
-            errors.push(ValidationError::PartialNotFound {
-                name: partial.clone(),
-            });
-        }
-    }
+    // Check for missing partials - functional style with partition
+    let (missing_partials, valid_partials): (Vec<_>, Vec<_>) = partials
+        .iter()
+        .partition(|partial| !available_partials.contains(*partial));
 
-    // Check for variables without defaults that might error
-    for var in &variables {
-        if !var.has_default {
-            warnings.push(ValidationWarning::VariableMayError {
-                name: var.name.clone(),
-            });
-        }
-    }
+    let partial_errors: Vec<ValidationError> = missing_partials
+        .into_iter()
+        .map(|partial| ValidationError::PartialNotFound {
+            name: (*partial).clone(),
+        })
+        .collect();
+
+    // Convert valid partials to owned strings
+    let valid_partials: Vec<String> = valid_partials.into_iter().map(|s| (*s).clone()).collect();
+
+    // Check for variables without defaults - functional style
+    let warnings: Vec<ValidationWarning> = variables
+        .iter()
+        .filter(|var| !var.has_default)
+        .map(|var| ValidationWarning::VariableMayError {
+            name: var.name.clone(),
+        })
+        .collect();
+
+    let is_valid = !has_syntax_errors && partial_errors.is_empty();
 
     ValidationResult {
         is_valid,
         variables,
-        partials,
-        errors,
+        partials: valid_partials,
+        errors: syntax_errors.into_iter().chain(partial_errors).collect(),
         warnings,
     }
 }

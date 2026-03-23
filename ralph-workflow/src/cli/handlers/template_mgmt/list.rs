@@ -32,14 +32,17 @@ fn handle_template_list_impl(colors: Colors, include_deprecated: bool) {
         "Active Templates:"
     };
 
-    println!("{}{}{}", colors.bold(), header, colors.reset());
-    println!();
+    let _ = writeln!(std::io::stdout(), "{}{}{}", colors.bold(), header, colors.reset());
+    let _ = writeln!(std::io::stdout());
 
-    for (name, _, description) in {
-        let mut items: Vec<_> = filtered_templates.clone();
-        items.sort_by(|a, b| a.0.cmp(b.0));
-        items
-    } {
+    // Sort templates by name using itertools
+    let sorted_templates: Vec<_> = filtered_templates
+        .iter()
+        .sorted_by(|a, b| a.0.cmp(b.0))
+        .collect();
+
+    // Print templates using iterator for_each
+    sorted_templates.iter().for_each(|(name, _, description)| {
         // Show deprecated marker in the list
         let is_deprecated = template_catalog::get_template_metadata(name).is_some_and(|meta| meta.deprecated);
 
@@ -49,19 +52,10 @@ fn handle_template_list_impl(colors: Colors, include_deprecated: bool) {
             String::new()
         };
 
-        println!(
-            "  {}{}{}{}  {}{}{}",
-            colors.cyan(),
-            name,
-            colors.reset(),
-            deprecated_marker,
-            colors.dim(),
-            description,
-            colors.reset()
-        );
-    }
+        let _ = writeln!(std::io::stdout(), "  {}{}{}{}  {}{}{}", colors.cyan(), name, colors.reset(), deprecated_marker, colors.dim(), description, colors.reset());
+    });
 
-    println!();
+    let _ = writeln!(std::io::stdout());
     if include_deprecated {
         let deprecated_count = filtered_templates
             .iter()
@@ -70,30 +64,17 @@ fn handle_template_list_impl(colors: Colors, include_deprecated: bool) {
             })
             .count();
 
-        println!(
-            "Total: {} templates ({} active, {} deprecated)",
-            filtered_templates.len(),
-            filtered_templates.len() - deprecated_count,
-            deprecated_count
-        );
-        println!();
-        println!("{}Tip:{}", colors.yellow(), colors.reset());
-        println!("  Edit templates in ~/.config/ralph/templates/");
-        println!("  Deprecated templates are kept for backward compatibility.");
-        println!(
-            "  Use {}--list{} to show only active templates.",
-            colors.bold(),
-            colors.reset()
-        );
+        let _ = writeln!(std::io::stdout(), "Total: {} templates ({} active, {} deprecated)", filtered_templates.len(), filtered_templates.len() - deprecated_count, deprecated_count);
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(std::io::stdout(), "{}Tip:{}", colors.yellow(), colors.reset());
+        let _ = writeln!(std::io::stdout(), "  Edit templates in ~/.config/ralph/templates/");
+        let _ = writeln!(std::io::stdout(), "  Deprecated templates are kept for backward compatibility.");
+        let _ = writeln!(std::io::stdout(), "  Use {}--list{} to show only active templates.", colors.bold(), colors.reset());
     } else {
-        println!("Total: {} active templates", filtered_templates.len());
-        println!();
-        println!("{}Tip:{}", colors.yellow(), colors.reset());
-        println!("  Edit templates in ~/.config/ralph/templates/");
-        println!(
-            "  Use {}--list-all{} to include deprecated templates",
-            colors.bold(),
-            colors.reset()
-        );
+        let _ = writeln!(std::io::stdout(), "Total: {} active templates", filtered_templates.len());
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(std::io::stdout(), "{}Tip:{}", colors.yellow(), colors.reset());
+        let _ = writeln!(std::io::stdout(), "  Edit templates in ~/.config/ralph/templates/");
+        let _ = writeln!(std::io::stdout(), "  Use {}--list-all{} to include deprecated templates", colors.bold(), colors.reset());
     }
 }

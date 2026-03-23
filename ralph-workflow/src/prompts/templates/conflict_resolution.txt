@@ -4,14 +4,14 @@
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Prompt for resolving merge conflicts during rebase operations.             #}
+{#   Prompt for resolving merge conflicts during an automated git workflow.     #}
 {#   Agent receives conflicted files and must resolve them by editing files.     #}
 {#                                                                             #}
 {# WHEN USED:                                                                  #}
-{#   During rebase operations when merge conflicts occur.                       #}
+{#   When merge conflicts are detected during an automated pipeline phase.      #}
 {#                                                                             #}
 {# TRIGGER:                                                                    #}
-{#   Git operation: rebase encounters conflicts.                                #}
+{#   Git operation: merge conflict detection while applying edits.             #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   CONTEXT   - Formatted section with PROMPT.md and PLAN.md content           #}
@@ -22,8 +22,9 @@
 {#   Optional: JSON object with "resolved_files" mapping paths to content       #}
 {#                                                                             #}
 {# NOTES:                                                                      #}
-{#   - Agent MUST NOT know we're in a rebase (security requirement)             #}
-{#   - Prompt frames conflicts as "merge conflicts" not rebase conflicts         #}
+{#   - Agent MUST NOT know the precise git operation that triggered the conflict #}
+{#   - Prompt frames conflicts as "merge conflicts" without tying them to a      #}
+{#     specific operation                                                      #}
 {#   - File edits are validated for conflict marker removal                     #}
 {#   - Resolution is verified with syntax checks and git state                  #}
 {# ============================================================================ #}

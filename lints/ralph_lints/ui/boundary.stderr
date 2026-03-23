@@ -1,0 +1,18 @@
+warning: boundary function `run_everything` appears to mix wiring with policy
+  --> $DIR/boundary.rs:1:1
+   |
+LL | / fn run_everything(flag: bool, retry: bool) -> Result<(), std::io::Error> {
+LL | |     let path = if flag { "a.txt" } else { "b.txt" };
+LL | |
+LL | |     if retry {
+...  |
+LL | |     Ok(())
+LL | | }
+   | |_^
+   |
+   = help: split this boundary into thin wiring plus pure policy helpers: keep the boundary to gathering inputs, calling pure functions, executing effects, translating the result, and returning. See `docs/code-style/boundaries.md`.
+   = note: this function spans 21 lines, has 6 top-level statements, 3 decision points, 0 boolean guard operators, 3 match arms, max nesting depth 1, and complexity score 7; move branching policy into pure domain helpers. Style g$DIRde: `docs/code-style/boundaries.md` and `docs/code-style/architecture.md`.
+   = note: `#[warn(boundary_function_too_complex)]` on by default
+
+warning: 1 warning emitted
+

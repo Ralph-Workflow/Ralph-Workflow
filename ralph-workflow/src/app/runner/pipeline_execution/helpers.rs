@@ -13,7 +13,20 @@
 // - check_prompt_restoration: Check for PROMPT.md restoration after a phase
 // - handle_rebase_only: Handle --rebase-only flag
 
-const fn command_requires_prompt_setup(args: &Args) -> bool {
+use crate::app::context::PipelineContext;
+use crate::app::pipeline_setup::RepoCommandBoundaryParams;
+use crate::app::rebase::conflicts::try_resolve_conflicts_without_phase_ctx;
+use crate::app::rebase::orchestration::run_rebase_to_default;
+use crate::checkpoint::PipelineCheckpoint;
+use crate::files::protection::monitoring::PromptMonitor;
+use crate::files::{create_prompt_backup_with_workspace, validate_prompt_md_with_workspace};
+use crate::git_helpers::{
+    abort_rebase, continue_rebase, get_conflicted_files, is_main_or_master_branch, RebaseResult,
+};
+use crate::phases::PhaseContext;
+use crate::pipeline::Timer;
+
+pub(crate) const fn command_requires_prompt_setup(args: &Args) -> bool {
     !args.recovery.dry_run
         && !args.recovery.inspect_checkpoint
         && !args.rebase_flags.rebase_only
@@ -24,7 +37,7 @@ const fn command_requires_prompt_setup(args: &Args) -> bool {
         && !args.commit_display.show_baseline
 }
 
-struct CommandExitCleanupGuard<'a> {
+pub struct CommandExitCleanupGuard<'a> {
     logger: &'a Logger,
     workspace: &'a dyn crate::workspace::Workspace,
     owns_cleanup: bool,
@@ -32,7 +45,7 @@ struct CommandExitCleanupGuard<'a> {
 }
 
 impl<'a> CommandExitCleanupGuard<'a> {
-    const fn new(
+    pub const fn new(
         logger: &'a Logger,
         workspace: &'a dyn crate::workspace::Workspace,
         restore_prompt_permissions: bool,
@@ -45,7 +58,7 @@ impl<'a> CommandExitCleanupGuard<'a> {
         }
     }
 
-    const fn mark_owned(&mut self) {
+    pub(crate) const fn mark_owned(&mut self) {
         self.owns_cleanup = true;
     }
 }
@@ -67,7 +80,7 @@ impl Drop for CommandExitCleanupGuard<'_> {
     }
 }
 
-fn prepare_agent_phase_for_workspace(
+pub(crate) fn prepare_agent_phase_for_workspace(
     repo_root: &std::path::Path,
     workspace: &dyn crate::workspace::Workspace,
     logger: &Logger,
@@ -121,20 +134,20 @@ fn prepare_agent_phase_for_workspace(
 }
 
 #[derive(Copy, Clone)]
-struct RepoCommandParams<'a> {
-    args: &'a Args,
-    config: &'a crate::config::Config,
-    registry: &'a AgentRegistry,
-    developer_agent: &'a str,
-    reviewer_agent: &'a str,
-    logger: &'a Logger,
-    colors: Colors,
-    executor: &'a std::sync::Arc<dyn ProcessExecutor>,
-    repo_root: &'a std::path::Path,
-    workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
+pub(crate) struct RepoCommandParams<'a> {
+    pub(crate) args: &'a Args,
+    pub(crate) config: &'a crate::config::Config,
+    pub(crate) registry: &'a AgentRegistry,
+    pub(crate) developer_agent: &'a str,
+    pub(crate) reviewer_agent: &'a str,
+    pub(crate) logger: &'a Logger,
+    pub(crate) colors: Colors,
+    pub(crate) executor: &'a std::sync::Arc<dyn ProcessExecutor>,
+    pub(crate) repo_root: &'a std::path::Path,
+    pub(crate) workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
 }
 
-fn handle_repo_commands_without_prompt_setup(
+pub(crate) fn handle_repo_commands_without_prompt_setup(
     params: RepoCommandParams<'_>,
 ) -> anyhow::Result<bool> {
     let RepoCommandParams {
@@ -149,88 +162,36 @@ fn handle_repo_commands_without_prompt_setup(
         repo_root,
         workspace,
     } = params;
-    let mut cleanup_guard = CommandExitCleanupGuard::new(logger, workspace.as_ref(), false);
 
-    if args.recovery.dry_run {
-        handle_dry_run(
-            logger,
-            colors,
-            config,
-            &registry.display_name(developer_agent),
-            &registry.display_name(reviewer_agent),
-            repo_root,
-            workspace.as_ref(),
-        )?;
-        return Ok(true);
-    }
-
-    if args.rebase_flags.rebase_only {
-        let mut git_helpers = crate::git_helpers::GitHelpers::new();
-        prepare_agent_phase_for_workspace(
-            repo_root,
-            workspace.as_ref(),
-            logger,
-            &mut git_helpers,
-            false,
-        );
-        cleanup_guard.mark_owned();
-        let template_context =
-            TemplateContext::from_user_templates_dir(config.user_templates_dir().cloned());
-        handle_rebase_only(
-            args,
-            config,
-            &template_context,
-            logger,
-            colors,
-            executor,
-            repo_root,
-        )?;
-        return Ok(true);
-    }
-
-    if args.commit_plumbing.generate_commit_msg {
-        let mut git_helpers = crate::git_helpers::GitHelpers::new();
-        prepare_agent_phase_for_workspace(
-            repo_root,
-            workspace.as_ref(),
-            logger,
-            &mut git_helpers,
-            false,
-        );
-        cleanup_guard.mark_owned();
-        let template_context =
-            TemplateContext::from_user_templates_dir(config.user_templates_dir().cloned());
-        plumbing::handle_generate_commit_msg(&plumbing::CommitGenerationConfig {
-            config,
-            template_context: &template_context,
-            workspace: workspace.as_ref(),
-            workspace_arc: std::sync::Arc::clone(workspace),
-            registry,
-            logger,
-            colors,
-            developer_agent,
-            reviewer_agent,
-            executor: std::sync::Arc::clone(executor),
-        })?;
-        return Ok(true);
-    }
-
-    Ok(false)
+    crate::app::pipeline_setup::handle_repo_commands_boundary(RepoCommandBoundaryParams {
+        args,
+        config,
+        registry,
+        developer_agent,
+        reviewer_agent,
+        logger,
+        colors,
+        executor,
+        repo_root,
+        workspace,
+    })
 }
 
 /// Validate PROMPT.md and set up backup/protection.
-fn validate_prompt_and_setup_backup(ctx: &PipelineContext) -> anyhow::Result<()> {
+pub(crate) fn validate_prompt_and_setup_backup(ctx: &PipelineContext) -> anyhow::Result<()> {
     let prompt_validation = validate_prompt_md_with_workspace(
         &*ctx.workspace,
         ctx.config.behavior.strict_validation,
         ctx.args.interactive,
     );
-    for err in &prompt_validation.errors {
-        ctx.logger.error(err);
-    }
-    for warn in &prompt_validation.warnings {
-        ctx.logger.warn(warn);
-    }
+    prompt_validation
+        .errors
+        .iter()
+        .for_each(|err| ctx.logger.error(err));
+    prompt_validation
+        .warnings
+        .iter()
+        .for_each(|warn| ctx.logger.warn(warn));
     if !prompt_validation.is_valid() {
         anyhow::bail!("PROMPT.md validation errors");
     }
@@ -257,7 +218,7 @@ fn validate_prompt_and_setup_backup(ctx: &PipelineContext) -> anyhow::Result<()>
 }
 
 /// Set up PROMPT.md monitoring for deletion detection.
-fn setup_prompt_monitor(ctx: &PipelineContext) -> Option<PromptMonitor> {
+pub(crate) fn setup_prompt_monitor(ctx: &PipelineContext) -> Option<PromptMonitor> {
     match PromptMonitor::new() {
         Ok(mut monitor) => {
             if let Err(e) = monitor.start() {
@@ -282,7 +243,7 @@ fn setup_prompt_monitor(ctx: &PipelineContext) -> Option<PromptMonitor> {
 }
 
 /// Print review guidelines if detected.
-fn print_review_guidelines(
+pub(crate) fn print_review_guidelines(
     ctx: &PipelineContext,
     review_guidelines: Option<&crate::guidelines::ReviewGuidelines>,
 ) {
@@ -302,7 +263,7 @@ fn print_review_guidelines(
 /// `execution_history_limit` by using `clone_bounded()` to drop oldest entries
 /// beyond the limit. This prevents legacy checkpoints with oversized history
 /// from reintroducing unbounded memory growth.
-fn create_phase_context_with_config<'ctx>(
+pub(crate) fn create_phase_context_with_config<'ctx>(
     ctx: &'ctx PipelineContext,
     config: &'ctx crate::config::Config,
     timer: &'ctx mut Timer,
@@ -349,11 +310,15 @@ fn create_phase_context_with_config<'ctx>(
             None
         },
         cloud: &config.cloud,
+        env: &crate::runtime::environment::RealGitEnvironment,
     }
 }
 
 /// Print pipeline info with a specific config.
-fn print_pipeline_info_with_config(ctx: &PipelineContext, _config: &crate::config::Config) {
+pub(crate) fn print_pipeline_info_with_config(
+    ctx: &PipelineContext,
+    _config: &crate::config::Config,
+) {
     ctx.logger.info(&format!(
         "Working directory: {}{}{}",
         ctx.colors.cyan(),
@@ -365,7 +330,7 @@ fn print_pipeline_info_with_config(ctx: &PipelineContext, _config: &crate::confi
 /// Save starting commit or warn if it fails.
 ///
 /// This is best-effort: failures here must not terminate the pipeline.
-fn save_start_commit_or_warn(ctx: &PipelineContext) {
+pub(crate) fn save_start_commit_or_warn(ctx: &PipelineContext) {
     match crate::git_helpers::save_start_commit() {
         Ok(()) => {
             if ctx.config.verbosity.is_debug() {
@@ -410,16 +375,16 @@ fn save_start_commit_or_warn(ctx: &PipelineContext) {
 }
 
 /// Check for PROMPT.md restoration after a phase.
-fn check_prompt_restoration(
+pub(crate) fn check_prompt_restoration(
     ctx: &PipelineContext,
     prompt_monitor: &mut Option<PromptMonitor>,
     phase: &str,
 ) {
     if let Some(ref mut monitor) = prompt_monitor {
-        for warning in monitor.drain_warnings() {
+        monitor.drain_warnings().iter().for_each(|warning| {
             ctx.logger
                 .warn(&format!("PROMPT.md monitor warning: {warning}"));
-        }
+        });
         if monitor.check_and_restore() {
             ctx.logger.warn(&format!(
                 "PROMPT.md was deleted and restored during {phase} phase"

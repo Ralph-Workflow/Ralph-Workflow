@@ -61,19 +61,19 @@ impl AgentResolutionSources {
     /// Render a user-facing source list for diagnostics.
     #[must_use]
     pub fn describe_searched_sources(&self) -> String {
-        let mut sources = Vec::new();
-
-        if let Some(path) = self.local_config_path.as_ref() {
-            sources.push(format!("local config ({})", path.display()));
-        }
-
-        if let Some(path) = self.global_config_path.as_ref() {
-            sources.push(format!("global config ({})", path.display()));
-        }
-
-        if self.built_in_defaults {
-            sources.push("built-in defaults".to_string());
-        }
+        let sources: Vec<String> = [
+            self.local_config_path
+                .as_ref()
+                .map(|path| format!("local config ({})", path.display())),
+            self.global_config_path
+                .as_ref()
+                .map(|path| format!("global config ({})", path.display())),
+            self.built_in_defaults
+                .then(|| "built-in defaults".to_string()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         if sources.is_empty() {
             "none".to_string()
@@ -116,7 +116,7 @@ pub fn initialize_config(
         args,
         colors,
         logger,
-        &RealCatalogLoader,
+        &RealCatalogLoader::default(),
         &RealConfigEnvironment,
     )
 }
@@ -132,6 +132,8 @@ pub fn initialize_config(
 /// * `args` - The parsed CLI arguments
 /// * `colors` - Color configuration for output
 /// * `logger` - Logger for info/warning messages
+#[expect(clippy::print_stderr, reason = "CLI error output to user")]
+#[expect(clippy::print_stdout, reason = "CLI help output to user")]
 /// * `catalog_loader` - Loader for the `OpenCode` API catalog
 /// * `path_resolver` - Resolver for configuration file paths
 ///
@@ -152,7 +154,7 @@ pub fn initialize_config_with<L: CatalogLoader, P: ConfigEnvironment>(
 ) -> anyhow::Result<Option<ConfigInitResult>> {
     // Load configuration from unified config file (with env overrides)
     // Uses the provided path_resolver for filesystem operations instead of std::fs directly
-    let (mut config, unified, warnings) =
+    let (config, unified, warnings) =
         match loader::load_config_from_path_with_env(args.config.as_deref(), path_resolver) {
             Ok(result) => result,
             Err(e) => {
@@ -164,9 +166,7 @@ pub fn initialize_config_with<L: CatalogLoader, P: ConfigEnvironment>(
         };
 
     // Display any deprecation warnings from config loading
-    for warning in warnings {
-        logger.warn(&warning);
-    }
+    warnings.iter().for_each(|warning| logger.warn(warning));
 
     let config_path = args
         .config
@@ -175,7 +175,7 @@ pub fn initialize_config_with<L: CatalogLoader, P: ConfigEnvironment>(
         .unwrap_or_else(|| PathBuf::from("~/.config/ralph-workflow.toml"));
 
     // Apply CLI arguments to config
-    apply_args_to_config(args, &mut config, colors);
+    let config = apply_args_to_config(args, config, colors);
 
     // Handle --generate-completion flag: generate shell completion script and exit
     if let Some(shell) = args.completion.generate_completion {
@@ -266,7 +266,7 @@ pub fn initialize_config_with<L: CatalogLoader, P: ConfigEnvironment>(
     )?;
 
     // Apply default agents from fallback chains
-    apply_default_agents(&mut config, &registry);
+    let config = apply_default_agents(&config, &registry);
 
     Ok(Some(ConfigInitResult {
         config,

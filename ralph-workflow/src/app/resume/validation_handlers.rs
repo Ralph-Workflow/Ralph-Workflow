@@ -54,10 +54,10 @@ pub fn handle_resume_with_validation(
     // Handle --inspect-checkpoint flag
     if args.recovery.inspect_checkpoint {
         match inspect_checkpoint(workspace, logger) {
-            Ok(()) => std::process::exit(0),
+            Ok(()) => crate::app::env_access::exit_with_code(0),
             Err(err) => {
                 logger.error(&err.to_string());
-                std::process::exit(1);
+                crate::app::env_access::exit_with_code(1);
             }
         }
     }
@@ -75,12 +75,12 @@ pub fn handle_resume_with_validation(
             let validation = validate_checkpoint(&checkpoint, config, registry, workspace);
 
             // Display validation results
-            for warning in &validation.warnings {
+            validation.warnings.iter().for_each(|warning| {
                 logger.warn(warning);
-            }
-            for error in &validation.errors {
+            });
+            validation.errors.iter().for_each(|error| {
                 logger.error(error);
-            }
+            });
 
             if !validation.is_valid {
                 // When --resume is explicitly specified and validation fails, return an error.

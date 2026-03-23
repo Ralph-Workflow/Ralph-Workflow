@@ -2,7 +2,7 @@
 //
 // Enforces a bounded ring-buffer API over a VecDeque of ExecutionStep.
 // Direct mutation of the inner deque is prevented; callers must use the
-// bounded API (`push_bounded`, `replace_bounded`).
+// functional API (`with_step`, `with_replaced`).
 
 /// Execution step history with bounded insertion.
 ///
@@ -38,22 +38,30 @@ impl BoundedExecutionHistory {
         &self.0
     }
 
-    pub(crate) fn push_bounded(&mut self, step: ExecutionStep, limit: usize) {
-        self.0.push_back(step);
-        while self.0.len() > limit {
-            self.0.pop_front();
-        }
+    /// Add a step to history with automatic bounding, returning a new instance.
+    ///
+    /// This method implements a ring buffer strategy: when the history exceeds
+    /// the configured limit, the oldest entries are dropped to maintain a bounded
+    /// memory footprint.
+    #[must_use]
+    pub fn with_step(self, step: ExecutionStep, limit: usize) -> Self {
+        // Chain existing steps with new step, then skip excess from front to maintain limit
+        let current_len = self.0.len();
+        let excess = current_len.saturating_add(1).saturating_sub(limit);
+        let new_deque: std::collections::VecDeque<_> = self
+            .0
+            .into_iter()
+            .chain(std::iter::once(step))
+            .skip(excess)
+            .collect();
+        Self(new_deque)
     }
 
-    pub(crate) fn replace_bounded(
-        &mut self,
-        history: std::collections::VecDeque<ExecutionStep>,
-        limit: usize,
-    ) {
-        self.0 = history;
-        while self.0.len() > limit {
-            self.0.pop_front();
-        }
+    /// Replace the entire history with bounding, returning a new instance.
+    #[must_use]
+    pub fn with_replaced(self, history: std::collections::VecDeque<ExecutionStep>, limit: usize) -> Self {
+        let excess = history.len().saturating_sub(limit);
+        Self(history.into_iter().skip(excess).collect())
     }
 }
 

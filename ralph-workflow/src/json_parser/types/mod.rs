@@ -11,10 +11,21 @@ mod formatting;
 mod gemini;
 
 pub use accumulator::{ContentType, DeltaAccumulator};
-pub use claude::{
-    AssistantMessage, ClaudeEvent, ContentBlock, ContentBlockDelta, MessageDeltaData, MessageUsage,
-    StreamError, StreamInnerEvent, UserMessage,
-};
-pub use codex::{CodexEvent, CodexItem, CodexUsage};
 pub use formatting::{format_tool_input, format_unknown_json_event};
-pub use gemini::{GeminiEvent, GeminiStats};
+
+pub type AssistantMessage = claude::AssistantMessage;
+pub type ClaudeEvent = claude::ClaudeEvent;
+pub type ContentBlock = claude::ContentBlock;
+pub type ContentBlockDelta = claude::ContentBlockDelta;
+pub type MessageDeltaData = claude::MessageDeltaData;
+pub type MessageUsage = claude::MessageUsage;
+pub type StreamError = claude::StreamError;
+pub type StreamInnerEvent = claude::StreamInnerEvent;
+pub type UserMessage = claude::UserMessage;
+
+pub type CodexEvent = codex::CodexEvent;
+pub type CodexItem = codex::CodexItem;
+pub type CodexUsage = codex::CodexUsage;
+
+pub type GeminiEvent = gemini::GeminiEvent;
+pub type GeminiStats = gemini::GeminiStats;

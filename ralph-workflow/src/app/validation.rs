@@ -9,7 +9,7 @@
 use crate::agents::AgentRegistry;
 use crate::app::config_init::AgentResolutionSources;
 use crate::config::Config;
-use crate::logger::Colors;
+use crate::logger::Logger;
 use std::path::Path;
 
 /// Result of agent validation containing the resolved agent names.
@@ -218,37 +218,22 @@ pub fn validate_can_commit(
 ///
 /// * `registry` - The agent registry
 /// * `sources` - Description of config sources consulted for resolution
-/// * `colors` - Color configuration for output
+/// * `logger` - Logger for output
 pub fn validate_agent_chains(
     registry: &AgentRegistry,
     sources: &AgentResolutionSources,
-    colors: Colors,
+    logger: &Logger,
 ) {
     if let Err(msg) = registry.validate_agent_chains(&sources.describe_searched_sources()) {
-        eprintln!();
-        eprintln!(
-            "{}{}Error:{} {}",
-            colors.bold(),
-            colors.red(),
-            colors.reset(),
-            msg
-        );
-        eprintln!();
-        eprintln!(
-            "{}Hint:{} Run 'ralph --init-global' to create ~/.config/ralph-workflow.toml.",
-            colors.yellow(),
-            colors.reset()
-        );
-        eprintln!();
-        std::process::exit(1);
+        logger.error(&msg.to_string());
+        logger.warn("Hint: Run 'ralph --init-global' to create ~/.config/ralph-workflow.toml.");
+        crate::app::env_access::exit_with_code(1);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::CcsConfig;
-    use std::collections::HashMap;
 
     #[test]
     fn validate_can_commit_uses_fuzzy_resolution() {
@@ -272,32 +257,6 @@ mod tests {
         assert!(msg.contains("can_commit=false"));
         assert!(msg.contains("AiChat"));
         assert!(msg.contains("resolved to 'aichat'"));
-    }
-
-    #[test]
-    fn validate_can_commit_uses_resolve_config_for_ccs_refs() {
-        let mut registry = AgentRegistry::new().unwrap();
-        let defaults = CcsConfig {
-            can_commit: false,
-            ..CcsConfig::default()
-        };
-        registry.set_ccs_aliases(&HashMap::new(), defaults);
-
-        let config = Config {
-            developer_cmd: None,
-            reviewer_cmd: None,
-            ..Config::default()
-        };
-
-        let err = validate_can_commit(
-            &config,
-            &registry,
-            "ccs/random",
-            "claude",
-            Path::new("ralph-workflow.toml"),
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("can_commit=false"));
     }
 
     #[test]

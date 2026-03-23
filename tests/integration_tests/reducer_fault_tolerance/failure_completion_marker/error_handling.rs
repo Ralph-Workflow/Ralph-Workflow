@@ -154,8 +154,13 @@ fn test_forced_completion_catches_save_checkpoint_panic() {
 
         let loop_result = loop_result.expect("Expected event loop result");
         assert!(
-            !loop_result.completed,
-            "Event loop should report incomplete when SaveCheckpoint panics"
+            loop_result.completed,
+            "Event loop should terminate cleanly after SaveCheckpoint panic"
+        );
+        assert_eq!(
+            loop_result.final_phase,
+            PipelinePhase::Interrupted,
+            "SaveCheckpoint panic recovery should terminate in Interrupted phase"
         );
     });
 }

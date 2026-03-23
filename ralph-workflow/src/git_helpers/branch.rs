@@ -10,7 +10,6 @@
 
 #![deny(unsafe_code)]
 
-use std::io;
 use std::path::Path;
 
 use super::git2_to_io_error;
@@ -28,20 +27,20 @@ use super::git2_to_io_error;
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn is_main_or_master_branch() -> io::Result<bool> {
+pub fn is_main_or_master_branch() -> std::io::Result<bool> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     is_main_or_master_branch_impl(&repo)
 }
 
 /// Implementation of `is_main_or_master_branch`.
-fn is_main_or_master_branch_impl(repo: &git2::Repository) -> io::Result<bool> {
+fn is_main_or_master_branch_impl(repo: &git2::Repository) -> std::io::Result<bool> {
     let head = repo.head().map_err(|e| git2_to_io_error(&e))?;
 
     // Get the branch name from the reference name
     // HEAD is usually a symbolic reference like "refs/heads/main"
     let reference_name = head.shorthand().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
             "Could not determine branch name from HEAD",
         )
     })?;
@@ -67,7 +66,7 @@ fn is_main_or_master_branch_impl(repo: &git2::Repository) -> io::Result<bool> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_default_branch() -> io::Result<String> {
+pub fn get_default_branch() -> std::io::Result<String> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     Ok(get_default_branch_impl(&repo))
 }
@@ -86,35 +85,39 @@ pub fn get_default_branch() -> io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_default_branch_at(repo_root: &Path) -> io::Result<String> {
+pub fn get_default_branch_at(repo_root: &Path) -> std::io::Result<String> {
     let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     Ok(get_default_branch_impl(&repo))
 }
 
+/// Pure policy: determine the default branch name from git repository state.
+fn determine_default_branch(repo: &git2::Repository) -> String {
+    resolve_default_branch_from_origin(repo)
+        .or_else(|| resolve_default_branch_from_local(repo))
+        .unwrap_or_else(|| "main".to_string())
+}
+
+fn resolve_default_branch_from_origin(repo: &git2::Repository) -> Option<String> {
+    let origin_head = repo.find_reference("refs/remotes/origin/HEAD").ok()?;
+    let target = origin_head.symbolic_target()?;
+    target
+        .strip_prefix("refs/remotes/origin/")
+        .map(String::from)
+}
+
+fn resolve_default_branch_from_local(repo: &git2::Repository) -> Option<String> {
+    if repo.find_branch("main", git2::BranchType::Local).is_ok() {
+        return Some("main".to_string());
+    }
+    if repo.find_branch("master", git2::BranchType::Local).is_ok() {
+        return Some("master".to_string());
+    }
+    None
+}
+
 /// Implementation of `get_default_branch`.
 fn get_default_branch_impl(repo: &git2::Repository) -> String {
-    // Try to get the default branch from origin/HEAD
-    // This is set when you clone and represents the default branch
-    if let Ok(origin_head) = repo.find_reference("refs/remotes/origin/HEAD") {
-        if let Some(target) = origin_head.symbolic_target() {
-            // target is usually like "refs/remotes/origin/main"
-            if let Some(branch_name) = target.strip_prefix("refs/remotes/origin/") {
-                return branch_name.to_string();
-            }
-        }
-    }
-
-    // Fallback: check if "main" or "master" exists as a local branch
-    if repo.find_branch("main", git2::BranchType::Local).is_ok() {
-        return "main".to_string();
-    }
-
-    if repo.find_branch("master", git2::BranchType::Local).is_ok() {
-        return "master".to_string();
-    }
-
-    // Ultimate fallback: assume "main"
-    "main".to_string()
+    determine_default_branch(repo)
 }
 
 #[cfg(test)]

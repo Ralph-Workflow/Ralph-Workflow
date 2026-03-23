@@ -1,4 +1,4 @@
-use ralph_workflow::config::unified::UnifiedConfig;
+use ralph_workflow::config::{unified::UnifiedConfig, RealConfigEnvironment};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -169,7 +169,7 @@ pub fn get_project_config(repo_path: String) -> Result<Option<ConfigView>, Strin
         return Ok(None);
     }
 
-    let config = UnifiedConfig::load_from_path(&config_path)
+    let config = UnifiedConfig::load_from_path_with_env(&config_path, &RealConfigEnvironment)
         .map_err(|e| format!("Failed to load project config: {e}"))?;
 
     Ok(Some(ConfigView::from(&config)))

@@ -37,11 +37,8 @@
 #[derive(Debug)]
 #[cfg(test)]
 pub struct BoundedEventQueue<T> {
-    // Sender for the bounded channel
     sender: mpsc::SyncSender<T>,
-    // Receiver for the bounded channel
     receiver: mpsc::Receiver<T>,
-    // Queue metrics
     metrics: QueueMetrics,
 }
 
@@ -58,7 +55,7 @@ pub struct QueueMetrics {
 }
 
 #[cfg(test)]
-impl<T> BoundedEventQueue<T> {
+impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // Create a new bounded event queue with default configuration.
     //
     // Example:
@@ -107,91 +104,63 @@ impl<T> BoundedEventQueue<T> {
     // ```ignore
     // queue.send(event)?;
     // ```
-    pub fn send(&mut self, event: T) -> Result<(), mpsc::SendError<T>> {
-        // Try to send without blocking first
+    pub fn send(self, event: T) -> Self {
+        match self.sender.send(event) {
+            Ok(()) => {
+                let new_depth = self.metrics.depth.saturating_add(1);
+                Self {
+                    sender: self.sender,
+                    receiver: self.receiver,
+                    metrics: QueueMetrics {
+                        depth: new_depth,
+                        backpressure_count: self.metrics.backpressure_count,
+                        max_depth: self.metrics.max_depth.max(new_depth),
+                    },
+                }
+            }
+            Err(mpsc::SendError(event)) => {
+                panic!("Receiver dropped unexpectedly: {:?}", event);
+            }
+        }
+    }
+
+    pub fn try_send(mut self, event: T) -> Self {
         match self.sender.try_send(event) {
             Ok(()) => {
-                // Update depth estimate
                 self.metrics.depth = self.metrics.depth.saturating_add(1);
                 self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
-                Ok(())
+                self
             }
-            Err(mpsc::TrySendError::Full(event)) => {
-                // Queue is full - this is backpressure
+            Err(mpsc::TrySendError::Full(_)) => {
                 self.metrics.backpressure_count = self.metrics.backpressure_count.saturating_add(1);
-
-                // Block until space is available
-                self.sender.send(event)?;
-                self.metrics.depth = self.metrics.depth.saturating_add(1);
-                self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
-                Ok(())
+                self
             }
-            Err(mpsc::TrySendError::Disconnected(event)) => Err(mpsc::SendError(event)),
-        }
-    }
-
-    // Try to send an event to the queue without blocking.
-    //
-    // Returns:
-    // * `Ok(())` - Event was sent successfully
-    // * `Err(mpsc::TrySendError::Full(_))` - Queue is full
-    // * `Err(mpsc::TrySendError::Disconnected(_))` - Receiver was dropped
-    //
-    // Example:
-    // ```ignore
-    // match queue.try_send(event) {
-    //     Ok(_) => println!("Sent"),
-    //     Err(mpsc::TrySendError::Full(_)) => println!("Queue full"),
-    //     Err(_) => println!("Receiver disconnected"),
-    // }
-    // ```
-    pub fn try_send(&mut self, event: T) -> Result<(), mpsc::TrySendError<T>> {
-        match self.sender.try_send(event) {
-            Ok(()) => {
-                self.metrics.depth = self.metrics.depth.saturating_add(1);
-                self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
-                Ok(())
+            Err(mpsc::TrySendError::Disconnected(event)) => {
+                panic!("Try send failed: {:?}", event);
             }
-            Err(e) => Err(e),
-        }
-    }
-
-    // Try to receive an event without blocking.
-    //
-    // Returns:
-    // * `Some(event)` - An event was available
-    // * `None` - Queue is empty
-    //
-    // Example:
-    // ```ignore
-    // while let Some(event) = queue.try_recv() {
-    //     process_event(event);
-    // }
-    // ```
-    pub fn try_recv(&mut self) -> Option<T> {
-        match self.receiver.try_recv() {
-            Ok(event) => {
-                self.metrics.depth = self.metrics.depth.saturating_sub(1);
-                Some(event)
-            }
-            Err(_) => None,
         }
     }
 
     // Receive an event, blocking until one is available.
     //
     // Returns:
-    // * `Ok(event)` - An event was received
-    // * `Err(mpsc::RecvError)` - Sender was dropped
+    // * `(Self, Ok(event))` - An event was received, along with the updated queue
+    // * `(Self, Err(mpsc::RecvError))` - Sender was dropped
     //
     // Example:
     // ```ignore
-    // let event = queue.recv()?;
+    // let (queue, result) = queue.recv();
+    // let event = result?;
     // ```
-    pub fn recv(&mut self) -> Result<T, mpsc::RecvError> {
-        let event = self.receiver.recv()?;
-        self.metrics.depth = self.metrics.depth.saturating_sub(1);
-        Ok(event)
+    pub fn recv(self) -> (Self, Result<T, mpsc::RecvError>) {
+        match self.receiver.recv() {
+            Ok(event) => {
+                let mut new_self = self;
+                new_self.metrics.depth = new_self.metrics.depth.saturating_sub(1);
+                (new_self, Ok(event))
+            }
+            Err(e) => (self, Err(e)),
+        }
     }
 
     // Get the current queue metrics.
@@ -224,24 +193,33 @@ impl<T> BoundedEventQueue<T> {
     // Clear all events from the queue.
     //
     // This is useful for error recovery when invalid data is encountered.
-    pub fn clear(&mut self) {
-        while self.try_recv().is_some() {
-            // Drain all events
+    pub fn clear(self) -> Self {
+        while self.receiver.try_recv().is_ok() {}
+        Self {
+            sender: self.sender,
+            receiver: self.receiver,
+            metrics: QueueMetrics {
+                depth: 0,
+                backpressure_count: self.metrics.backpressure_count,
+                max_depth: self.metrics.max_depth,
+            },
         }
-        self.metrics.depth = 0;
     }
 
     // Reset metrics while preserving queue contents.
-    pub fn reset_metrics(&mut self) {
-        self.metrics = QueueMetrics {
-            depth: self.metrics.depth,
-            ..Default::default()
-        };
+    pub fn reset_metrics(self) -> Self {
+        Self {
+            metrics: QueueMetrics {
+                depth: self.metrics.depth,
+                ..Default::default()
+            },
+            ..self
+        }
     }
 }
 
 #[cfg(test)]
-impl<T> Default for BoundedEventQueue<T> {
+impl<T: std::fmt::Debug> Default for BoundedEventQueue<T> {
     fn default() -> Self {
         Self::new()
     }

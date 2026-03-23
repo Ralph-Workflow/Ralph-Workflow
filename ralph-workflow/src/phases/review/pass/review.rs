@@ -6,12 +6,12 @@ use super::helpers::{handle_postflight_validation, stderr_contains_auth_error};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::files::delete_issues_file_for_isolation_with_workspace;
 use crate::phases::context::PhaseContext;
+use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::{prompt_review_xml_with_references_and_log, PromptContentBuilder};
 use anyhow::Context as _;
 
 use std::path::Path;
-use std::time::Instant;
 
 /// Run the review pass for a single cycle.
 ///
@@ -144,17 +144,6 @@ pub fn run_review_pass(
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {active_agent}"))?;
     let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
-    let mut runtime = PipelineRuntime {
-        timer: ctx.timer,
-        logger: ctx.logger,
-        colors: ctx.colors,
-        config: ctx.config,
-        executor: ctx.executor,
-        executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-        workspace: ctx.workspace,
-        workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-    };
-
     let prompt_cmd = PromptCommand {
         label: review_label,
         display_name: active_agent,
@@ -168,8 +157,20 @@ pub fn run_review_pass(
         env_vars: &agent_config.env_vars,
     };
 
-    let attempt_start = Instant::now();
-    let result = run_with_prompt(&prompt_cmd, &mut runtime)?;
+    let attempt_start = capture_time();
+    let result = run_with_prompt(
+        &prompt_cmd,
+        &mut PipelineRuntime {
+            timer: ctx.timer,
+            logger: ctx.logger,
+            colors: ctx.colors,
+            config: ctx.config,
+            executor: ctx.executor,
+            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+            workspace: ctx.workspace,
+            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+        },
+    )?;
     if result.exit_code != 0 {
         let auth_failure = stderr_contains_auth_error(&result.stderr);
         return Ok(ReviewPassResult::agent_failed(auth_failure));
@@ -197,8 +198,9 @@ pub fn run_review_pass(
                 ),
             )
             .with_agent(active_agent)
-            .with_duration(attempt_start.elapsed().as_secs());
-            ctx.execution_history
+            .with_duration(elapsed_seconds(attempt_start));
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 
             Ok(ReviewPassResult::issues_found(xml_content))
@@ -218,8 +220,9 @@ pub fn run_review_pass(
                 StepOutcome::success(Some("No issues found".to_string()), vec![]),
             )
             .with_agent(active_agent)
-            .with_duration(attempt_start.elapsed().as_secs());
-            ctx.execution_history
+            .with_duration(elapsed_seconds(attempt_start));
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 
             Ok(ReviewPassResult::no_issues(xml_content))

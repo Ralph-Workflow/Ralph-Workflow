@@ -173,8 +173,8 @@ fn test_development_iteration_started_resets_agent_chain() {
             state,
             PipelineEvent::agent_fallback_triggered(
                 AgentRole::Developer,
-                "agent1".to_string(),
-                "agent2".to_string(),
+                "agent1".into(),
+                "agent2".into(),
             ),
         );
         assert_eq!(state.agent_chain.current_agent().unwrap(), "agent2");
@@ -228,7 +228,7 @@ fn test_agent_chain_resets_on_new_iteration() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
@@ -257,7 +257,7 @@ fn test_agent_chain_advances_on_model_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
@@ -282,7 +282,7 @@ fn test_agent_fallback_on_auth_error() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Authentication,
                 false,
@@ -363,7 +363,7 @@ fn test_sigsegv_causes_agent_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 139,
                 AgentErrorKind::InternalError,
                 false,
@@ -386,7 +386,7 @@ fn test_sigsegv_causes_agent_fallback() {
             after_first,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 139,
                 AgentErrorKind::InternalError,
                 false,
@@ -423,7 +423,7 @@ fn test_pipeline_continues_after_agent_failure() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
@@ -449,7 +449,7 @@ fn test_network_error_triggers_model_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
@@ -481,7 +481,7 @@ fn test_filesystem_error_triggers_agent_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::FileSystem,
                 false,
@@ -505,7 +505,7 @@ fn test_filesystem_error_triggers_agent_fallback() {
             after_first_failure,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::FileSystem,
                 false,
@@ -536,7 +536,7 @@ fn test_rate_limit_error_triggers_agent_fallback() {
             state,
             PipelineEvent::agent_rate_limited(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 Some("continue work".to_string()),
             ),
         );
@@ -575,7 +575,7 @@ fn test_authentication_error_triggers_agent_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Authentication,
                 false,
@@ -612,7 +612,7 @@ fn test_agent_fallback_after_internal_error_retry_exhaustion() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::InternalError,
                 false,
@@ -636,7 +636,7 @@ fn test_agent_fallback_after_internal_error_retry_exhaustion() {
             after_first,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::InternalError,
                 false,

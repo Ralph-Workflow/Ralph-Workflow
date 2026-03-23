@@ -49,7 +49,7 @@ mod tests {
         let output = parser.parse_event(json);
         assert!(output.is_some());
 
-        let session = parser.streaming_session.borrow();
+        let session = parser.state.streaming_session.borrow();
         let current = session.get_current_message_id();
         assert!(
             current.is_some(),
@@ -287,7 +287,8 @@ mod tests {
     #[test]
     fn test_classify_successful_parse_detects_partial_event() {
         let line = r#"{"type":"text","timestamp":2,"sessionID":"ses_test","part":{"type":"text","text":"hello"}}"#;
-        let classification = OpenCodeParser::classify_successful_parse_for_monitor(line, line.trim());
+        let classification =
+            OpenCodeParser::classify_successful_parse_for_monitor(line, line.trim());
 
         assert_eq!(classification, MonitorEventClassification::Partial);
     }
@@ -295,7 +296,8 @@ mod tests {
     #[test]
     fn test_classify_successful_parse_non_json_is_parsed() {
         let line = "plain output";
-        let classification = OpenCodeParser::classify_successful_parse_for_monitor(line, line.trim());
+        let classification =
+            OpenCodeParser::classify_successful_parse_for_monitor(line, line.trim());
 
         assert_eq!(classification, MonitorEventClassification::Parsed);
     }

@@ -19,7 +19,7 @@ fn bound_execution_history_steps(
 
     // Keep only the most recent `limit` entries while dropping the oversized
     // allocation from legacy checkpoints.
-    let keep_from = len - limit;
+    let keep_from = len.saturating_sub(limit);
     steps.into_iter().skip(keep_from).collect()
 }
 
@@ -102,7 +102,19 @@ impl PipelineState {
             },
         );
 
-        let mut state = Self {
+        // Calculate bounded execution history before building state
+        let bounded_steps =
+            bound_execution_history_steps(execution_history_steps, execution_history_limit);
+        let execution_history = if bounded_steps.is_empty() {
+            BoundedExecutionHistory::new()
+        } else {
+            BoundedExecutionHistory::new().with_replaced(
+                bounded_steps,
+                execution_history_limit,
+            )
+        };
+
+        Self {
             phase: map_checkpoint_phase(checkpoint.phase),
             previous_phase: None,
             // Restore iteration/pass counters from checkpoint.
@@ -174,7 +186,7 @@ impl PipelineState {
             agent_chain,
             rebase: rebase_state,
             commit: CommitState::NotStarted,
-            execution_history: BoundedExecutionHistory::new(),
+            execution_history,
             checkpoint_saved_count: 0,
             continuation: ContinuationState::new(),
             dev_fix_triggered: false,
@@ -230,17 +242,7 @@ impl PipelineState {
                 // checkpoint.prompt_history is already typed as HashMap<String, PromptHistoryEntry>
                 // (via the updated PipelineCheckpoint type), so no conversion needed.
                 .collect(),
-        };
-
-        let bounded_steps =
-            bound_execution_history_steps(execution_history_steps, execution_history_limit);
-        if !bounded_steps.is_empty() {
-            state
-                .execution_history
-                .replace_bounded(bounded_steps, execution_history_limit);
         }
-
-        state
     }
 }
 

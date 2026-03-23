@@ -3,16 +3,6 @@
 // This module handles agent phase preparation, cloud runtime creation,
 // initial state computation, and event loop invocation.
 
-fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpers::GitHelpers) {
-    prepare_agent_phase_for_workspace(
-        &ctx.repo_root,
-        &*ctx.workspace,
-        &ctx.logger,
-        git_helpers,
-        true,
-    );
-}
-
 fn create_cloud_runtime(
     config: &crate::config::Config,
 ) -> (
@@ -42,67 +32,60 @@ fn create_cloud_runtime(
 }
 
 fn compute_initial_state(
-    phase_ctx: &PhaseContext<'_>,
+    phase_ctx: &crate::phases::PhaseContext<'_>,
     resume_checkpoint: Option<&crate::checkpoint::PipelineCheckpoint>,
     should_run_rebase: bool,
 ) -> crate::reducer::PipelineState {
-    let mut initial_state = resume_checkpoint.map_or_else(
-        || crate::app::event_loop::create_initial_state_with_config(phase_ctx),
+    let base_state = resume_checkpoint.map_or_else(
+        || crate::app::config::create_initial_state_with_config(phase_ctx),
         |checkpoint| {
-            let mut base_state =
-                crate::app::event_loop::create_initial_state_with_config(phase_ctx);
+            let base_state = crate::app::config::create_initial_state_with_config(phase_ctx);
             let migrated =
                 crate::reducer::PipelineState::from_checkpoint_with_execution_history_limit(
                     checkpoint.clone(),
                     phase_ctx.config.execution_history_limit,
                 );
-            crate::app::event_loop::overlay_checkpoint_progress_onto_base_state(
-                &mut base_state,
+            crate::app::config::overlay_checkpoint_progress_onto_base_state(
+                base_state,
                 migrated,
                 phase_ctx.config.execution_history_limit,
-            );
-            base_state
+            )
         },
     );
 
     if should_run_rebase {
         if matches!(
-            initial_state.rebase,
+            base_state.rebase,
             crate::reducer::state::RebaseState::NotStarted
         ) {
             let default_branch =
                 crate::git_helpers::get_default_branch().unwrap_or_else(|_| "main".to_string());
-            initial_state.rebase = crate::reducer::state::RebaseState::InProgress {
-                original_head: "HEAD".to_string(),
-                target_branch: default_branch,
-            };
+            crate::reducer::PipelineState {
+                rebase: crate::reducer::state::RebaseState::InProgress {
+                    original_head: "HEAD".to_string(),
+                    target_branch: default_branch,
+                },
+                ..base_state
+            }
+        } else {
+            base_state
         }
     } else if matches!(
-        initial_state.rebase,
+        base_state.rebase,
         crate::reducer::state::RebaseState::NotStarted
     ) {
-        initial_state.rebase = crate::reducer::state::RebaseState::Skipped;
+        crate::reducer::PipelineState {
+            rebase: crate::reducer::state::RebaseState::Skipped,
+            ..base_state
+        }
+    } else {
+        base_state
     }
-
-    initial_state
 }
 
-fn run_event_loop_with_default_handler(
-    phase_ctx: &mut PhaseContext<'_>,
+fn run_event_loop_with_default_handler<'r, 'ctx>(
+    phase_ctx: &'r mut crate::phases::PhaseContext<'ctx>,
     initial_state: crate::reducer::PipelineState,
-) -> anyhow::Result<crate::app::event_loop::EventLoopResult> {
-    use crate::app::event_loop::{run_event_loop_with_handler, EventLoopConfig};
-    use crate::reducer::MainEffectHandler;
-
-    let event_loop_config = EventLoopConfig {
-        max_iterations: event_loop::MAX_EVENT_LOOP_ITERATIONS,
-    };
-
-    let mut handler = MainEffectHandler::new(initial_state.clone());
-    run_event_loop_with_handler(
-        phase_ctx,
-        Some(initial_state),
-        event_loop_config,
-        &mut handler,
-    )
+) -> anyhow::Result<crate::app::config::EventLoopResult> {
+    crate::app::pipeline_setup::run_event_loop_with_handler_boundary(phase_ctx, initial_state)
 }

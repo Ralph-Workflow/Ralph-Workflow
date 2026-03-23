@@ -5,7 +5,7 @@
 //! This module provides a single source of truth for all embedded templates,
 //! consolidating scattered `include_str!` calls across the codebase.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Metadata about an embedded template.
 #[derive(Debug, Clone)]
@@ -28,7 +28,8 @@ pub struct EmbeddedTemplate {
 /// * `None` - Template not found
 #[must_use]
 pub fn get_embedded_template(name: &str) -> Option<String> {
-    EMBEDDED_TEMPLATES.get(name).map(|t| t.content.to_string())
+    let templates = embedded_templates();
+    templates.get(name).map(|t| t.content.to_string())
 }
 
 /// Get metadata about an embedded template.
@@ -38,8 +39,9 @@ pub fn get_embedded_template(name: &str) -> Option<String> {
 /// * `Some(&EmbeddedTemplate)` - Template metadata if found
 /// * `None` - Template not found
 #[must_use]
-pub fn get_template_metadata(name: &str) -> Option<&'static EmbeddedTemplate> {
-    EMBEDDED_TEMPLATES.get(name)
+pub fn get_template_metadata(name: &str) -> Option<EmbeddedTemplate> {
+    let templates = embedded_templates();
+    templates.get(name).cloned()
 }
 
 /// List all available embedded templates.
@@ -48,47 +50,39 @@ pub fn get_template_metadata(name: &str) -> Option<&'static EmbeddedTemplate> {
 ///
 /// A vector of all embedded templates with metadata, sorted by name.
 #[must_use]
-pub fn list_all_templates() -> Vec<&'static EmbeddedTemplate> {
-    let mut templates: Vec<&EmbeddedTemplate> = EMBEDDED_TEMPLATES.values().collect();
-    templates.sort_by_key(|t| t.name);
-    templates
+pub fn list_all_templates() -> Vec<EmbeddedTemplate> {
+    // BTreeMap iterates values in key-sorted order
+    let templates = embedded_templates();
+    templates.values().cloned().collect()
 }
 
 /// Get all templates as a map.
 ///
 /// Returns templates in the format used by CLI template management code.
 #[must_use]
-pub fn get_templates_map() -> HashMap<String, (String, String)> {
-    let mut map = HashMap::new();
-    for template in list_all_templates() {
-        map.insert(
-            template.name.to_string(),
+pub fn get_templates_map() -> BTreeMap<String, (String, String)> {
+    let templates = list_all_templates();
+    templates
+        .into_iter()
+        .map(|template| {
             (
-                template.content.to_string(),
-                template.description.to_string(),
-            ),
-        );
-    }
-    map
+                template.name.to_string(),
+                (
+                    template.content.to_string(),
+                    template.description.to_string(),
+                ),
+            )
+        })
+        .collect()
 }
 
-// ============================================================================
-// Embedded Template Definitions
-// ============================================================================
-
-/// Central registry of all embedded templates.
+/// Build the embedded templates map.
 ///
-/// All templates are embedded at compile time using `include_str!`.
-/// User templates in `~/.config/ralph/templates/*.txt` override these.
-static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> =
-    std::sync::LazyLock::new(|| {
-        let mut m = HashMap::new();
-
-        // ============================================================================
+/// This function creates the map of all embedded templates using functional construction.
+fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
+    [
         // Commit Templates
-        // ============================================================================
-
-        m.insert(
+        (
             "commit_message_xml",
             EmbeddedTemplate {
                 name: "commit_message_xml",
@@ -96,9 +90,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Generate Conventional Commits messages from git diffs (XML format)",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "commit_xsd_retry",
             EmbeddedTemplate {
                 name: "commit_xsd_retry",
@@ -106,9 +99,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "XSD validation retry prompt for commit messages",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "commit_simplified",
             EmbeddedTemplate {
                 name: "commit_simplified",
@@ -116,13 +108,9 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Simplified commit prompt with direct instructions",
                 deprecated: false,
             },
-        );
-
-        // ============================================================================
+        ),
         // Analysis Templates
-        // ============================================================================
-
-        m.insert(
+        (
             "analysis_system_prompt",
             EmbeddedTemplate {
                 name: "analysis_system_prompt",
@@ -130,13 +118,9 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Independent analysis agent system prompt (verifies PLAN vs DIFF and writes development_result.xml)",
                 deprecated: false,
             },
-        );
-
-        // ============================================================================
+        ),
         // Developer Templates
-        // ============================================================================
-
-        m.insert(
+        (
             "developer_iteration_xml",
             EmbeddedTemplate {
                 name: "developer_iteration_xml",
@@ -144,9 +128,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Developer agent implementation mode prompt (no structured output; analysis verifies progress)",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "developer_iteration_xsd_retry",
             EmbeddedTemplate {
                 name: "developer_iteration_xsd_retry",
@@ -154,9 +137,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "XSD validation retry prompt for developer iteration",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "planning_xml",
             EmbeddedTemplate {
                 name: "planning_xml",
@@ -164,9 +146,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Planning phase prompt with XML output format and XSD validation",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "planning_xsd_retry",
             EmbeddedTemplate {
                 name: "planning_xsd_retry",
@@ -174,9 +155,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "XSD validation retry prompt for planning phase",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "developer_iteration_continuation_xml",
             EmbeddedTemplate {
                 name: "developer_iteration_continuation_xml",
@@ -184,13 +164,9 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Continuation prompt when previous attempt returned partial/failed",
                 deprecated: false,
             },
-        );
-
-        // ============================================================================
+        ),
         // Review XML Templates
-        // ============================================================================
-
-        m.insert(
+        (
             "review_xml",
             EmbeddedTemplate {
                 name: "review_xml",
@@ -198,9 +174,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Review mode prompt with XML output format and XSD validation",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "review_xsd_retry",
             EmbeddedTemplate {
                 name: "review_xsd_retry",
@@ -208,13 +183,9 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "XSD validation retry prompt for review mode",
                 deprecated: false,
             },
-        );
-
-        // ============================================================================
+        ),
         // Fix Mode Templates
-        // ============================================================================
-
-        m.insert(
+        (
             "fix_mode_xml",
             EmbeddedTemplate {
                 name: "fix_mode_xml",
@@ -222,9 +193,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Fix mode prompt with XML output format and XSD validation",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "fix_mode_xsd_retry",
             EmbeddedTemplate {
                 name: "fix_mode_xsd_retry",
@@ -232,13 +202,9 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "XSD validation retry prompt for fix mode",
                 deprecated: false,
             },
-        );
-
-        // ============================================================================
+        ),
         // Rebase Templates
-        // ============================================================================
-
-        m.insert(
+        (
             "conflict_resolution",
             EmbeddedTemplate {
                 name: "conflict_resolution",
@@ -246,9 +212,8 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Merge conflict resolution prompt",
                 deprecated: false,
             },
-        );
-
-        m.insert(
+        ),
+        (
             "conflict_resolution_fallback",
             EmbeddedTemplate {
                 name: "conflict_resolution_fallback",
@@ -256,22 +221,18 @@ static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> 
                 description: "Fallback conflict resolution prompt",
                 deprecated: false,
             },
-        );
+        ),
+    ]
+    .into_iter()
+    .collect()
+}
 
-        // ============================================================================
-        // NOTE: Reviewer Templates Removed
-        // ============================================================================
-        //
-        // The following templates have been REMOVED as they were never used in production:
-        // - standard_review, comprehensive_review, security_review, universal_review
-        // - All *_minimal and *_normal variants
-        //
-        // The review phase uses `review_xml.txt` template via `prompt_review_xml_with_context()`
-        // in `src/prompts/review.rs`. The removed templates were registered here but never
-        // actually requested by any production code path.
-
-        m
-    });
+/// Get the embedded templates map.
+///
+/// Builds templates each call to avoid interior mutability.
+fn embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
+    build_embedded_templates()
+}
 
 #[cfg(test)]
 mod tests {
@@ -307,10 +268,9 @@ mod tests {
         assert!(!templates.is_empty());
         assert!(templates.len() >= 10); // At least 10 templates (reduced after removing unused reviewer templates)
 
-        // Verify sorted by name
-        for window in templates.windows(2) {
-            assert!(window[0].name <= window[1].name);
-        }
+        assert!(templates
+            .windows(2)
+            .all(|window| window[0].name <= window[1].name));
     }
 
     #[test]
@@ -328,25 +288,17 @@ mod tests {
     #[test]
     fn test_all_templates_have_content() {
         let templates = list_all_templates();
-        for template in templates {
-            assert!(
-                !template.content.is_empty(),
-                "Template '{}' has empty content",
-                template.name
-            );
-        }
+        assert!(templates
+            .iter()
+            .all(|template| !template.content.is_empty()));
     }
 
     #[test]
     fn test_all_templates_have_descriptions() {
         let templates = list_all_templates();
-        for template in templates {
-            assert!(
-                !template.description.is_empty(),
-                "Template '{}' has empty description",
-                template.name
-            );
-        }
+        assert!(templates
+            .iter()
+            .all(|template| !template.description.is_empty()));
     }
 
     #[test]
@@ -421,12 +373,8 @@ mod tests {
     #[test]
     fn test_all_templates_include_no_git_commit_partial() {
         let templates = list_all_templates();
-        for template in templates {
-            assert!(
-                template.content.contains("{{> shared/_no_git_commit}}"),
-                "Template '{}' must include shared/_no_git_commit partial",
-                template.name
-            );
-        }
+        assert!(templates
+            .iter()
+            .all(|template| template.content.contains("{{> shared/_no_git_commit}}")));
     }
 }

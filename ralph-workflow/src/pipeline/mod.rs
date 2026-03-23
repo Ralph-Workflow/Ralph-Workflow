@@ -27,84 +27,22 @@ mod clipboard;
 pub mod idle_timeout;
 pub mod logfile;
 mod prompt;
+pub mod timer;
 mod types;
 
 pub use prompt::{
     extract_error_identifier_from_logfile, extract_error_message_from_logfile, run_with_prompt,
     PipelineRuntime, PromptCommand,
 };
+pub use timer::Timer;
 pub use types::AgentPhaseGuard;
 
-// ===== Timer Utilities =====
-
-use std::time::{Duration, Instant};
-
-/// Timer for tracking execution duration
-#[derive(Clone)]
-pub struct Timer {
-    start_time: Instant,
-    phase_start: Instant,
-}
-
-impl Timer {
-    /// Create a new timer, starting now
-    #[must_use]
-    pub fn new() -> Self {
-        let now = Instant::now();
-        Self {
-            start_time: now,
-            phase_start: now,
-        }
-    }
-
-    /// Start a new phase timer
-    pub fn start_phase(&mut self) {
-        self.phase_start = Instant::now();
-    }
-
-    /// Get elapsed time since timer start
-    #[must_use]
-    pub fn elapsed(&self) -> Duration {
-        self.start_time.elapsed()
-    }
-
-    /// Get elapsed time since phase start
-    #[must_use]
-    pub fn phase_elapsed(&self) -> Duration {
-        self.phase_start.elapsed()
-    }
-
-    /// Format a duration as "Xm YYs"
-    #[must_use]
-    pub fn format_duration(duration: Duration) -> String {
-        let total_secs = duration.as_secs();
-        let mins = total_secs / 60;
-        let secs = total_secs % 60;
-        format!("{mins}m {secs:02}s")
-    }
-
-    /// Get formatted elapsed time since start
-    #[must_use]
-    pub fn elapsed_formatted(&self) -> String {
-        Self::format_duration(self.elapsed())
-    }
-
-    /// Get formatted elapsed time since phase start
-    #[must_use]
-    pub fn phase_elapsed_formatted(&self) -> String {
-        Self::format_duration(self.phase_elapsed())
-    }
-}
-
-impl Default for Timer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// ===== Tests use the boundary Timer =====
 
 #[cfg(test)]
 mod timer_tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_format_duration_zero() {

@@ -4,40 +4,14 @@
 //! It provides concrete implementations for all [`AppEffect`] variants
 //! by delegating to the appropriate system calls or internal modules.
 
-use super::effect::{AppEffect, AppEffectHandler, AppEffectResult, CommitResult};
+use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult, CommitResult};
 use std::path::{Path, PathBuf};
 
-/// Real effect handler that executes actual side effects.
-///
-/// This implementation performs real I/O operations including:
-/// - Filesystem operations via `std::fs`
-/// - Git operations via `crate::git_helpers`
-/// - Environment variable access via `std::env`
-/// - Working directory changes via `std::env::set_current_dir`
-///
-/// # Example
-///
-/// ```ignore
-/// use ralph_workflow::app::effect_handler::RealAppEffectHandler;
-/// use ralph_workflow::app::effect::{AppEffect, AppEffectHandler};
-///
-/// let mut handler = RealAppEffectHandler::new();
-/// let result = handler.execute(AppEffect::PathExists {
-///     path: PathBuf::from("Cargo.toml"),
-/// });
-/// ```
 pub struct RealAppEffectHandler {
-    /// Optional workspace root for relative path resolution.
-    ///
-    /// When set, relative paths in effects are resolved against this root.
-    /// When `None`, paths are used as-is (relative to current working directory).
     workspace_root: Option<PathBuf>,
 }
 
 impl RealAppEffectHandler {
-    /// Create a new handler without a workspace root.
-    ///
-    /// Paths will be used as-is, relative to the current working directory.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -45,13 +19,6 @@ impl RealAppEffectHandler {
         }
     }
 
-    /// Create a new handler with a specific workspace root.
-    ///
-    /// All relative paths in effects will be resolved against this root.
-    ///
-    /// # Arguments
-    ///
-    /// * `root` - The workspace root directory for path resolution.
     #[must_use]
     pub const fn with_workspace_root(root: PathBuf) -> Self {
         Self {
@@ -59,26 +26,13 @@ impl RealAppEffectHandler {
         }
     }
 
-    /// Resolve a path against the workspace root if set.
-    ///
-    /// If the path is absolute, it is returned as-is.
-    /// If the path is relative and a workspace root is set, the path is
-    /// joined to the workspace root.
-    /// If the path is relative and no workspace root is set, the path is
-    /// returned as-is.
     fn resolve_path(&self, path: &Path) -> PathBuf {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else if let Some(ref root) = self.workspace_root {
-            root.join(path)
-        } else {
-            path.to_path_buf()
-        }
+        crate::app::io::effect_io::resolve_path(&self.workspace_root, path)
     }
 
     fn execute_set_current_dir(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::env::set_current_dir(&resolved) {
+        match crate::app::io::effect_io::set_current_dir(&resolved) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to set current directory to '{}': {}",
@@ -90,17 +44,7 @@ impl RealAppEffectHandler {
 
     fn execute_write_file(&self, path: &Path, content: String) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        if let Some(parent) = resolved.parent() {
-            if let Err(error) = std::fs::create_dir_all(parent) {
-                return AppEffectResult::Error(format!(
-                    "Failed to create parent directories for '{}': {}",
-                    resolved.display(),
-                    error
-                ));
-            }
-        }
-
-        match std::fs::write(&resolved, content) {
+        match crate::app::io::effect_io::write_file(&resolved, content) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to write file '{}': {}",
@@ -112,7 +56,7 @@ impl RealAppEffectHandler {
 
     fn execute_read_file(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::read_to_string(&resolved) {
+        match crate::app::io::effect_io::read_file(&resolved) {
             Ok(content) => AppEffectResult::String(content),
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to read file '{}': {}",
@@ -124,7 +68,7 @@ impl RealAppEffectHandler {
 
     fn execute_delete_file(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::remove_file(&resolved) {
+        match crate::app::io::effect_io::delete_file(&resolved) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to delete file '{}': {}",
@@ -136,7 +80,7 @@ impl RealAppEffectHandler {
 
     fn execute_create_dir(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::create_dir_all(&resolved) {
+        match crate::app::io::effect_io::create_dir(&resolved) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to create directory '{}': {}",
@@ -148,26 +92,15 @@ impl RealAppEffectHandler {
 
     fn execute_path_exists(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        AppEffectResult::Bool(resolved.exists())
+        AppEffectResult::Bool(crate::app::io::effect_io::path_exists(&resolved))
     }
 
     fn execute_set_read_only(&self, path: &Path, readonly: bool) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::metadata(&resolved) {
-            Ok(metadata) => {
-                let mut permissions = metadata.permissions();
-                permissions.set_readonly(readonly);
-                match std::fs::set_permissions(&resolved, permissions) {
-                    Ok(()) => AppEffectResult::Ok,
-                    Err(error) => AppEffectResult::Error(format!(
-                        "Failed to set permissions on '{}': {}",
-                        resolved.display(),
-                        error
-                    )),
-                }
-            }
+        match crate::app::io::effect_io::set_read_only(&resolved, readonly) {
+            Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
-                "Failed to get metadata for '{}': {}",
+                "Failed to set permissions on '{}': {}",
                 resolved.display(),
                 error
             )),
@@ -205,9 +138,9 @@ impl RealAppEffectHandler {
     fn execute_git_diff_from(start_oid: &str) -> AppEffectResult {
         match crate::git_helpers::git_diff_from(start_oid) {
             Ok(diff) => AppEffectResult::String(diff),
-            Err(error) => AppEffectResult::Error(format!(
-                "Failed to get git diff from '{start_oid}': {error}"
-            )),
+            Err(error) => {
+                AppEffectResult::Error(format!("Failed to get diff from '{start_oid}': {error}"))
+            }
         }
     }
 
@@ -239,7 +172,7 @@ impl RealAppEffectHandler {
         user_name: Option<&str>,
         user_email: Option<&str>,
     ) -> AppEffectResult {
-        match crate::git_helpers::git_commit(message, user_name, user_email, None) {
+        match crate::git_helpers::git_commit(message, user_name, user_email, None, None) {
             Ok(Some(oid)) => AppEffectResult::Commit(CommitResult::Success(oid.to_string())),
             Ok(None) => AppEffectResult::Commit(CommitResult::NoChanges),
             Err(error) => AppEffectResult::Error(format!("Failed to create commit: {error}")),
@@ -302,7 +235,7 @@ impl RealAppEffectHandler {
     }
 
     fn execute_get_env_var(name: &str) -> AppEffectResult {
-        match std::env::var(name) {
+        match crate::app::io::effect_io::get_env_var(name) {
             Ok(value) => AppEffectResult::String(value),
             Err(std::env::VarError::NotPresent) => {
                 AppEffectResult::Error(format!("Environment variable '{name}' not set"))
@@ -314,7 +247,7 @@ impl RealAppEffectHandler {
     }
 
     fn execute_set_env_var(name: &str, value: &str) -> AppEffectResult {
-        std::env::set_var(name, value);
+        crate::app::io::effect_io::set_env_var(name, value);
         AppEffectResult::Ok
     }
 }
@@ -369,6 +302,3 @@ impl AppEffectHandler for RealAppEffectHandler {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

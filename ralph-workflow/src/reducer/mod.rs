@@ -137,30 +137,40 @@
 //! cargo test -p ralph-workflow --lib --all-features -- --nocapture
 //! ```
 
+pub mod boundary;
+pub mod domain;
 pub mod effect;
 pub mod event;
 pub mod fault_tolerant_executor;
-pub mod handler;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mock_effect_handler;
 pub mod orchestration;
 #[cfg(test)]
-mod orchestration_tests;
+mod orchestration_io_tests;
 pub mod prompt_inputs;
 pub mod state;
 pub mod state_reduction;
 pub mod ui_event;
 
 #[cfg(test)]
-mod tests;
+mod io_tests;
 
+pub use crate::agents::AgentRole;
+pub type MainEffectHandler = self::boundary::MainEffectHandler;
 pub use effect::{EffectHandler, EffectResult};
 pub use event::PipelineEvent;
-pub use handler::MainEffectHandler;
+pub use event::PipelinePhase;
 pub use orchestration::{compute_effect_fingerprint, determine_next_effect};
+pub use state::AgentChainState;
+pub use state::CommitState;
 pub use state::PipelineState;
+pub use state::PromptMode;
 pub use state_reduction::reduce;
 pub use ui_event::UIEvent;
+
+pub mod handler {
+    pub use super::MainEffectHandler;
+}
 
 // Re-export CheckpointTrigger for external use
 pub use event::CheckpointTrigger;
@@ -170,3 +180,6 @@ pub use event::{
     AgentEvent, CommitEvent, DevelopmentEvent, LifecycleEvent, PlanningEvent, RebaseEvent,
     ReviewEvent, TimeoutOutputKind,
 };
+
+#[cfg(test)]
+pub use io_tests::create_test_state;

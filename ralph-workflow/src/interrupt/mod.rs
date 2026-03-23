@@ -20,19 +20,16 @@
 //! ensuring all other termination paths commit uncommitted work before exiting.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(test)]
 use std::sync::Mutex;
 
 use std::path::Path;
 
 pub(crate) mod checkpoint;
-
+#[path = "runtime.rs"]
+mod handling;
 pub use checkpoint::InterruptContext;
-
-/// Global interrupt context for checkpoint saving on interrupt.
-///
-/// This is set during pipeline initialization and used by the interrupt
-/// handler to save a checkpoint when the user presses Ctrl+C.
-pub(crate) static INTERRUPT_CONTEXT: Mutex<Option<InterruptContext>> = Mutex::new(None);
+pub use handling::{clear_interrupt_context, get_interrupt_context, set_interrupt_context};
 
 /// True when a user interrupt (SIGINT / Ctrl+C) has been requested.
 ///
@@ -85,21 +82,8 @@ pub fn take_exit_130_after_run() -> bool {
 
 #[cfg(unix)]
 fn restore_prompt_md_writable_via_std_fs() {
-    use std::os::unix::fs::PermissionsExt;
-
-    fn make_writable(path: &std::path::Path) -> bool {
-        let Ok(metadata) = std::fs::metadata(path) else {
-            return false;
-        };
-
-        let mut perms = metadata.permissions();
-        // Preserve existing mode bits but ensure owner write is enabled.
-        perms.set_mode(perms.mode() | 0o200);
-        std::fs::set_permissions(path, perms).is_ok()
-    }
-
     // Fast path: current working directory is already the repo root in normal runs.
-    if make_writable(std::path::Path::new("PROMPT.md")) {
+    if handling::restore_prompt_md_writable(std::path::Path::new("PROMPT.md")) {
         return;
     }
 
@@ -108,20 +92,16 @@ fn restore_prompt_md_writable_via_std_fs() {
         return;
     };
 
-    let prompt_path = repo_root.join("PROMPT.md");
-    let _ = make_writable(&prompt_path);
+    let _ = handling::restore_prompt_md_writable_in_repo(&repo_root);
 }
 
 fn remove_repo_root_ralph_dir_via_std_fs() {
-    let repo_root = INTERRUPT_CONTEXT
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
-        .map(|context| context.workspace.root().to_path_buf())
+    let repo_root = handling::get_interrupt_context()
+        .map(|ctx| ctx.workspace.root().to_path_buf())
         .or_else(|| crate::git_helpers::get_repo_root().ok());
 
     if let Some(repo_root) = repo_root {
-        let _ = std::fs::remove_dir_all(repo_root.join(".git/ralph"));
+        handling::remove_ralph_dir(&repo_root);
     }
 }
 
@@ -233,40 +213,6 @@ pub(crate) fn interrupt_test_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Set the global interrupt context.
-///
-/// This function should be called during pipeline initialization to
-/// provide the interrupt handler with the context needed to save
-/// a checkpoint when interrupted.
-///
-/// # Arguments
-///
-/// * `context` - The interrupt context to store
-///
-/// # Note
-///
-/// This function is typically called at the start of `run_pipeline()`
-/// to ensure the interrupt handler has the most up-to-date context.
-pub fn set_interrupt_context(context: InterruptContext) {
-    let mut ctx = INTERRUPT_CONTEXT.lock().unwrap_or_else(|poison| {
-        // If mutex is poisoned, recover the guard and clear the state
-        poison.into_inner()
-    });
-    *ctx = Some(context);
-}
-
-/// Clear the global interrupt context.
-///
-/// This should be called when the pipeline completes successfully
-/// to prevent saving an interrupt checkpoint after normal completion.
-pub fn clear_interrupt_context() {
-    let mut ctx = INTERRUPT_CONTEXT.lock().unwrap_or_else(|poison| {
-        // If mutex is poisoned, recover the guard and clear the state
-        poison.into_inner()
-    });
-    *ctx = None;
-}
-
 /// Set up the interrupt handler for graceful shutdown with checkpoint saving.
 ///
 /// This function registers a SIGINT handler that will:
@@ -275,6 +221,7 @@ pub fn clear_interrupt_context() {
 /// 3. Exit gracefully
 ///
 /// Call this early in `main()` after initializing the pipeline context.
+#[expect(clippy::print_stderr, reason = "critical interrupt handling messages")]
 pub fn setup_interrupt_handler() {
     let install = ctrlc::set_handler(|| {
         request_user_interrupt();
@@ -288,7 +235,7 @@ pub fn setup_interrupt_handler() {
                 eprintln!("Cleaning up...");
                 crate::git_helpers::cleanup_agent_phase_silent();
                 remove_repo_root_ralph_dir_via_std_fs();
-                std::process::exit(130);
+                handling::exit_sigint();
             }
 
             eprintln!(
@@ -301,12 +248,7 @@ pub fn setup_interrupt_handler() {
 
         // Clone the entire context (small, Arc-backed) and then perform I/O without
         // holding the mutex.
-        let context = {
-            let ctx = INTERRUPT_CONTEXT
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            ctx.clone()
-        };
+        let context = handling::get_interrupt_context();
 
         if let Some(ref context) = context {
             if let Err(e) = checkpoint::save_interrupt_checkpoint(context) {
@@ -332,7 +274,7 @@ pub fn setup_interrupt_handler() {
         eprintln!("Cleaning up...");
         crate::git_helpers::cleanup_agent_phase_silent();
         remove_repo_root_ralph_dir_via_std_fs();
-        std::process::exit(130); // Standard exit code for SIGINT
+        handling::exit_sigint();
     });
 
     if let Err(e) = install {
@@ -343,6 +285,6 @@ pub fn setup_interrupt_handler() {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("tests.rs");
+mod io_tests {
+    include!("io_tests.rs");
 }

@@ -3,6 +3,41 @@
 // This file contains workspace-based checkpoint functions for loading,
 // saving, and validating checkpoints.
 
+/// Typed error for checkpoint loading failures.
+///
+/// Private to this module; callers convert to `io::Error` at the boundary.
+#[derive(Debug, PartialEq)]
+pub(super) enum CheckpointLoadError {
+    /// The JSON content could not be parsed.
+    InvalidJson(String),
+    /// The checkpoint JSON has no `version` field or it is not a number.
+    MissingVersion,
+    /// The checkpoint version is newer than this binary supports.
+    UnsupportedVersionTooNew(u32),
+    /// The checkpoint version is legacy (v1 or earlier) and is no longer supported.
+    LegacyVersion(u32),
+}
+
+impl std::fmt::Display for CheckpointLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidJson(msg) => write!(f, "checkpoint JSON parse error: {msg}"),
+            Self::MissingVersion => write!(
+                f,
+                "Invalid checkpoint format: missing or invalid version field.                  Supported versions: 2 (migrated) and 3 (current)."
+            ),
+            Self::UnsupportedVersionTooNew(v) => write!(
+                f,
+                "Invalid checkpoint format: version {v} is newer than this binary supports.                  Supported versions: 2 (migrated) and 3 (current).                  Please upgrade Ralph Workflow to resume this checkpoint."
+            ),
+            Self::LegacyVersion(v) => write!(
+                f,
+                "Invalid checkpoint format: version {v} is no longer supported (v1 and earlier).                  Supported versions: 2 (best-effort migration) and 3 (current).                  Legacy checkpoint formats are no longer supported.                  To start fresh without data loss:                  cp .agent/checkpoint.json .agent/checkpoint.backup.json && rm .agent/checkpoint.json"
+            ),
+        }
+    }
+}
+
 /// Load a checkpoint from a string.
 ///
 /// Load a checkpoint from a string, with minimal compatibility handling.
@@ -14,51 +49,27 @@
 /// Legacy formats (v1, pre-v1) and legacy phases (Fix, `ReviewAgain`) are not supported.
 fn load_checkpoint_with_fallback(
     content: &str,
-) -> Result<PipelineCheckpoint, Box<dyn std::error::Error>> {
-    // Parse using the current struct shape; serde will default missing Option fields.
-    match serde_json::from_str::<PipelineCheckpoint>(content) {
-        Ok(mut checkpoint) => {
-            // v2 -> v3 migration (in-memory)
-            if checkpoint.version == 2 {
-                checkpoint.version = 3;
-                return Ok(checkpoint);
-            }
+) -> Result<PipelineCheckpoint, CheckpointLoadError> {
+    let parsed_value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| CheckpointLoadError::InvalidJson(e.to_string()))?;
+    let version = parsed_value
+        .get("version")
+        .and_then(|v| v.as_u64())
+        .ok_or(CheckpointLoadError::MissingVersion)? as u32;
 
-            // Accept only the current version.
-            if checkpoint.version == 3 {
-                return Ok(checkpoint);
-            }
-
-            // Fail closed on newer versions; future formats may be incompatible.
-            if checkpoint.version > 3 {
-                return Err(format!(
-                    "Invalid checkpoint format: version {} is newer than this binary supports. \
-                     Supported versions: 2 (migrated) and 3 (current). \
-                     Please upgrade Ralph Workflow to resume this checkpoint.",
-                    checkpoint.version
-                )
-                .into());
-            }
-
-            Err(format!(
-                "Invalid checkpoint format: version {} is no longer supported (v1 and earlier). \
-                 Supported versions: 2 (best-effort migration) and 3 (current). \
-                 Legacy checkpoint formats are no longer supported. \
-                 To start fresh without data loss: cp .agent/checkpoint.json .agent/checkpoint.backup.json && rm .agent/checkpoint.json",
-                checkpoint.version
-            )
-            .into())
-        }
-        Err(e) => {
-            // Parsing failed - likely legacy format or legacy phase
-            Err(format!(
-                "Invalid checkpoint format: {e}. \
-                 Legacy checkpoint formats (v1 and earlier) are no longer supported. \
-                 To start fresh without data loss: cp .agent/checkpoint.json .agent/checkpoint.backup.json && rm .agent/checkpoint.json"
-            )
-            .into())
-        }
+    if version == 2 {
+        let checkpoint: PipelineCheckpoint = serde_json::from_str(content)
+            .map_err(|e| CheckpointLoadError::InvalidJson(e.to_string()))?;
+        return Ok(PipelineCheckpoint { version: 3, ..checkpoint });
+    } else if version == 3 {
+        let checkpoint: PipelineCheckpoint = serde_json::from_str(content)
+            .map_err(|e| CheckpointLoadError::InvalidJson(e.to_string()))?;
+        return Ok(checkpoint);
+    } else if version > 3 {
+        return Err(CheckpointLoadError::UnsupportedVersionTooNew(version));
     }
+
+    Err(CheckpointLoadError::LegacyVersion(version))
 }
 
 // ============================================================================
@@ -100,22 +111,10 @@ pub fn save_checkpoint_with_workspace(
     workspace: &dyn Workspace,
     checkpoint: &PipelineCheckpoint,
 ) -> io::Result<()> {
-    // Estimate serialized size to pre-allocate buffer and avoid reallocation
-    let estimated_size = estimate_checkpoint_size(checkpoint);
-    let mut buf = Vec::with_capacity(estimated_size);
-
-    // Use compact serialization (no pretty printing) with pre-sized buffer
-    serde_json::to_writer(&mut buf, checkpoint).map_err(|e| {
+    let json = serde_json::to_string(checkpoint).map_err(|e| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize checkpoint: {e}"),
-        )
-    })?;
-
-    let json = String::from_utf8(buf).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("Checkpoint JSON was not valid UTF-8: {e}"),
         )
     })?;
 
@@ -124,36 +123,6 @@ pub fn save_checkpoint_with_workspace(
 
     // Write checkpoint file atomically
     workspace.write_atomic(Path::new(&checkpoint_path()), &json)
-}
-
-/// Estimate the serialized JSON size of a checkpoint for buffer pre-allocation.
-///
-/// This heuristic is based on observed checkpoint sizes:
-/// - Base overhead: ~10KB for metadata, config snapshots, and structure
-/// - Per-entry cost: ~400 bytes for execution history entries
-///
-/// The estimate is conservative (slightly over) to avoid reallocation while
-/// not wasting excessive memory.
-fn estimate_checkpoint_size(checkpoint: &PipelineCheckpoint) -> usize {
-    let history_len = checkpoint
-        .execution_history
-        .as_ref()
-        .map_or(0, |h| h.steps.len());
-
-    estimate_checkpoint_size_from_history_len(history_len)
-}
-
-const MAX_CHECKPOINT_ESTIMATE_BYTES: usize = 50 * 1024 * 1024;
-
-fn estimate_checkpoint_size_from_history_len(history_len: usize) -> usize {
-    // Base size: metadata + config + snapshots
-    const BASE_SIZE: usize = 10_000;
-    // Average bytes per execution history entry (includes JSON overhead)
-    const BYTES_PER_ENTRY: usize = 400;
-
-    BASE_SIZE
-        .saturating_add(history_len.saturating_mul(BYTES_PER_ENTRY))
-        .min(MAX_CHECKPOINT_ESTIMATE_BYTES)
 }
 
 /// Load an existing checkpoint using the workspace.

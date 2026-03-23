@@ -128,7 +128,7 @@ fn test_ccs_glm_extreme_text_deltas_500_chunks_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -166,7 +166,7 @@ fn test_ccs_glm_extreme_text_deltas_500_chunks_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -195,7 +195,7 @@ fn test_ccs_glm_extreme_thinking_deltas_500_chunks_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -231,7 +231,7 @@ fn test_ccs_glm_extreme_thinking_deltas_500_chunks_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -260,9 +260,10 @@ fn test_ccs_codex_extreme_reasoning_deltas_500_chunks_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         let stream = generate_codex_reasoning_stream(500);
         let reader = BufReader::new(stream.as_bytes());
@@ -296,9 +297,10 @@ fn test_ccs_codex_extreme_reasoning_deltas_500_chunks_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let stream = generate_codex_reasoning_stream(500);
         let reader = BufReader::new(stream.as_bytes());
@@ -325,7 +327,7 @@ fn test_ccs_glm_multi_turn_extreme_streaming() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -389,9 +391,10 @@ fn test_ccs_codex_multi_item_extreme_streaming() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Simulate 3 reasoning items, each with 200 deltas
         let mut stream = String::new();

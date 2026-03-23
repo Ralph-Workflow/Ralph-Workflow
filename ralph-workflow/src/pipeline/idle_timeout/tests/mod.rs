@@ -1,9 +1,9 @@
 mod clock;
 mod file_activity;
+mod io_monitor_child_processes;
+mod io_monitor_file_activity;
+mod io_monitor_idle_confirmations;
+mod io_monitor_regressions;
+mod io_readers;
 mod monitor_basic;
-mod monitor_child_processes;
-mod monitor_file_activity;
-mod monitor_idle_confirmations;
-mod monitor_regressions;
 mod monitor_try_wait_error;
-mod readers;

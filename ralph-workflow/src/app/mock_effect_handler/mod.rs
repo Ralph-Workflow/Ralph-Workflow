@@ -54,6 +54,6 @@ mod core;
 mod file_state;
 
 #[cfg(test)]
-mod tests;
+mod io_tests;
 
 pub use core::MockAppEffectHandler;

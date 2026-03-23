@@ -1,6 +1,8 @@
 // Checkpoint validation logic for resume functionality.
 // This module handles verifying checkpoint integrity and file system state validation.
 
+use thiserror::Error;
+
 /// Result of file system validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationOutcome {
@@ -33,15 +35,15 @@ pub(crate) fn validate_file_system_state(
 
     logger.warn("File system state validation detected changes:");
 
-    for error in &errors {
+    errors.iter().for_each(|error| {
         let (problem, commands) = error.recovery_commands();
         logger.warn(&format!("  - {error}"));
         logger.info(&format!("    What's wrong: {problem}"));
         logger.info("    How to fix:");
-        for cmd in commands {
+        commands.iter().for_each(|cmd| {
             logger.info(&format!("      {cmd}"));
-        }
-    }
+        });
+    });
 
     // Handle based on the recovery strategy
     match strategy {
@@ -67,15 +69,37 @@ pub(crate) fn validate_file_system_state(
                 logger.success("Automatic recovery completed successfully.");
             } else {
                 logger.warn("Some issues could not be automatically recovered:");
-                for error in &remaining {
+                remaining.iter().for_each(|error| {
                     logger.warn(&format!("  - {error}"));
-                }
+                });
                 logger.warn("Proceeding with resume despite unrecovered issues (strategy: auto).");
                 logger.info("Note: Pipeline behavior may be unpredictable.");
             }
             ValidationOutcome::Passed
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum AutoRecoveryError {
+    #[error("No content available in snapshot")]
+    SnapshotContentUnavailable,
+    #[error("Git HEAD changes require manual intervention")]
+    GitHeadChanged,
+    #[error("Git state validation requires manual intervention")]
+    GitStateInvalid,
+    #[error("Git working tree changes require manual intervention")]
+    GitWorkingTreeChanged,
+    #[error("Cannot recover missing file {0}")]
+    MissingFile(String),
+    #[error("File {0} should not exist - requires manual removal")]
+    UnexpectedFileExists(String),
+    #[error("Failed to write file {path}: {source}")]
+    WriteFailed {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Attempt automatic recovery from file system state changes.
@@ -99,21 +123,25 @@ fn attempt_auto_recovery(
     logger: &Logger,
     workspace: &dyn Workspace,
 ) -> (usize, Vec<ValidationError>) {
-    let mut recovered = 0;
-    let mut remaining = Vec::new();
+    let results: Vec<Result<(), AutoRecoveryError>> = errors
+        .iter()
+        .map(|error| attempt_recovery_for_error(file_system_state, error, logger, workspace))
+        .collect();
 
-    for error in errors {
-        match attempt_recovery_for_error(file_system_state, error, logger, workspace) {
-            Ok(()) => {
-                recovered += 1;
-                logger.success(&format!("Recovered: {error}"));
-            }
-            Err(e) => {
-                remaining.push(error.clone());
-                logger.warn(&format!("Could not recover: {error} - {e}"));
-            }
-        }
-    }
+    let recovered = results.iter().filter(|r| r.is_ok()).count();
+    let remaining: Vec<ValidationError> = results
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| r.as_ref().err().map(|_| errors[i].clone()))
+        .collect();
+
+    errors
+        .iter()
+        .zip(results.iter())
+        .for_each(|(error, result)| match result {
+            Ok(()) => logger.success(&format!("Recovered: {error}")),
+            Err(e) => logger.warn(&format!("Could not recover: {error} - {e}")),
+        });
 
     (recovered, remaining)
 }
@@ -128,7 +156,7 @@ fn attempt_recovery_for_error(
     error: &ValidationError,
     logger: &Logger,
     workspace: &dyn Workspace,
-) -> Result<(), String> {
+) -> Result<(), AutoRecoveryError> {
     match error {
         ValidationError::FileContentChanged { path } => {
             // Try to restore from snapshot if content is available
@@ -136,24 +164,25 @@ fn attempt_recovery_for_error(
                 if let Some(content) = snapshot.get_content() {
                     workspace
                         .write(Path::new(path), &content)
-                        .map_err(|e| format!("Failed to write file: {e}"))?;
+                        .map_err(|source| AutoRecoveryError::WriteFailed {
+                            path: path.clone(),
+                            source,
+                        })?;
                     logger.info(&format!("Restored {path} from checkpoint content."));
                     return Ok(());
                 }
             }
-            Err("No content available in snapshot".to_string())
+            Err(AutoRecoveryError::SnapshotContentUnavailable)
         }
         ValidationError::GitHeadChanged { .. } => {
             // Git state changes are not automatically recoverable
             // They require user intervention to reset or accept the new state
-            Err("Git HEAD changes require manual intervention".to_string())
+            Err(AutoRecoveryError::GitHeadChanged)
         }
-        ValidationError::GitStateInvalid { .. } => {
-            Err("Git state validation requires manual intervention".to_string())
-        }
+        ValidationError::GitStateInvalid { .. } => Err(AutoRecoveryError::GitStateInvalid),
         ValidationError::GitWorkingTreeChanged { .. } => {
             // Working tree changes are not automatically recoverable
-            Err("Git working tree changes require manual intervention".to_string())
+            Err(AutoRecoveryError::GitWorkingTreeChanged)
         }
         ValidationError::FileMissing { path } => {
             // Can't recover a missing file unless we have content
@@ -161,19 +190,85 @@ fn attempt_recovery_for_error(
                 if let Some(content) = snapshot.get_content() {
                     workspace
                         .write(Path::new(path), &content)
-                        .map_err(|e| format!("Failed to write file: {e}"))?;
+                        .map_err(|source| AutoRecoveryError::WriteFailed {
+                            path: path.clone(),
+                            source,
+                        })?;
                     logger.info(&format!("Restored missing {path} from checkpoint."));
                     return Ok(());
                 }
             }
-            Err(format!("Cannot recover missing file {path}"))
+            Err(AutoRecoveryError::MissingFile(path.clone()))
         }
         ValidationError::FileUnexpectedlyExists { path } => {
             // Unexpected files should be removed by user
-            Err(format!(
-                "File {path} should not exist - requires manual removal"
-            ))
+            Err(AutoRecoveryError::UnexpectedFileExists(path.clone()))
         }
+    }
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+    use crate::checkpoint::execution_history::FileSnapshot;
+    use crate::logger::{Colors, Logger};
+    use crate::workspace::MemoryWorkspace;
+    use std::collections::HashMap;
+
+    #[test]
+    fn attempt_recovery_missing_file_reports_missing_file_error() {
+        let path = "missing.txt".to_string();
+        let mut files = HashMap::new();
+        files.insert(
+            path.clone(),
+            FileSnapshot {
+                path: path.clone(),
+                checksum: String::new(),
+                size: 0,
+                content: None,
+                compressed_content: None,
+                exists: false,
+            },
+        );
+
+        let file_system_state = FileSystemState {
+            files,
+            ..Default::default()
+        };
+        let workspace = MemoryWorkspace::new_test();
+        let logger = Logger::new(Colors::with_enabled(false));
+
+        let result = attempt_recovery_for_error(
+            &file_system_state,
+            &ValidationError::FileMissing { path: path.clone() },
+            &logger,
+            &workspace,
+        );
+
+        assert!(matches!(
+            result,
+            Err(AutoRecoveryError::MissingFile(recovered)) if recovered == path
+        ));
+    }
+
+    #[test]
+    fn attempt_recovery_git_head_reports_manual_intervention_error() {
+        use crate::common::domain_types::GitOid;
+
+        let workspace = MemoryWorkspace::new_test();
+        let logger = Logger::new(Colors::with_enabled(false));
+
+        let result = attempt_recovery_for_error(
+            &FileSystemState::default(),
+            &ValidationError::GitHeadChanged {
+                expected: GitOid::from("a".repeat(40).as_str()),
+                actual: GitOid::from("b".repeat(40).as_str()),
+            },
+            &logger,
+            &workspace,
+        );
+
+        assert!(matches!(result, Err(AutoRecoveryError::GitHeadChanged)));
     }
 }
 

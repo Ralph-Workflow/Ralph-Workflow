@@ -33,16 +33,19 @@ mod commit;
 pub mod content_builder;
 pub mod content_reference;
 mod developer;
+pub mod io;
 pub mod partials;
 pub mod prompt_history_entry;
 pub mod prompt_scope_key;
 mod rebase;
 pub mod review;
 pub mod reviewer;
+pub mod runtime;
 pub mod template_catalog;
 pub mod template_context;
 pub(crate) mod template_engine;
 mod template_macros;
+pub mod template_parsing;
 pub mod template_registry;
 mod template_validator;
 mod types;
@@ -51,11 +54,15 @@ mod types;
 mod prompt_config;
 #[path = "prompt_dispatch.rs"]
 mod prompt_dispatch;
-#[path = "resume_note.rs"]
-mod resume_note;
 
 // Re-export ResumeContext for use in prompts
 pub use crate::checkpoint::restore::ResumeContext;
+
+// Backwards compatibility alias: registry used to be in prompts, now in agents
+pub mod registry {
+    pub use crate::agents::AgentRegistry;
+}
+pub use registry::AgentRegistry;
 
 // Re-export items from split modules
 pub use prompt_config::PromptConfig;
@@ -63,7 +70,11 @@ pub use prompt_dispatch::get_stored_or_generate_prompt;
 pub use prompt_dispatch::prompt_for_agent;
 pub use prompt_history_entry::PromptHistoryEntry;
 pub use prompt_scope_key::{PromptPhase, PromptScopeKey, RetryMode};
-pub use resume_note::{generate_resume_note, BriefDescription};
+
+#[must_use]
+pub fn generate_resume_note(context: &ResumeContext) -> String {
+    runtime::generate_resume_note(context)
+}
 
 // Re-export public items for API convenience
 pub use commit::prompt_commit_xsd_retry_with_context;
@@ -125,4 +136,4 @@ pub use content_reference::{
 };
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

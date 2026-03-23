@@ -6,6 +6,16 @@
 use crate::cli::args::Shell;
 use clap::CommandFactory;
 
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
+
 /// Handle the `--generate-completion` flag.
 ///
 /// Generates a shell completion script for the specified shell and writes it to stdout.
@@ -19,13 +29,9 @@ use clap::CommandFactory;
 /// Returns `true` if the flag was handled (program should exit after).
 #[must_use]
 pub fn handle_generate_completion(shell: Shell) -> bool {
-    let mut stdout = std::io::stdout();
     let shell_name = shell.name();
 
-    // Get the command from Args
-    let mut command = crate::cli::Args::command();
-
-    // Generate the completion script using clap_complete
+    // Generate completion to stdout using a scope for the mutable references
     let shell_type = match shell {
         Shell::Bash => clap_complete::Shell::Bash,
         Shell::Zsh => clap_complete::Shell::Zsh,
@@ -34,53 +40,97 @@ pub fn handle_generate_completion(shell: Shell) -> bool {
         Shell::Pwsh => clap_complete::Shell::PowerShell,
     };
 
-    clap_complete::generate(shell_type, &mut command, "ralph", &mut stdout);
+    clap_complete::generate(
+        shell_type,
+        &mut crate::cli::Args::command(),
+        "ralph",
+        &mut std::io::stdout(),
+    );
 
     // Print installation instructions
-    eprintln!();
-    eprintln!("=== Shell completion installation for {shell_name} ===");
-    eprintln!();
-    eprintln!("To enable completions, add the following to your shell config:");
-    eprintln!();
+    let _ = writeln!(std::io::stderr());
+    let _ = writeln!(
+        std::io::stderr(),
+        "=== Shell completion installation for {shell_name} ==="
+    );
+    let _ = writeln!(std::io::stderr());
+    let _ = writeln!(
+        std::io::stderr(),
+        "To enable completions, add the following to your shell config:"
+    );
+    let _ = writeln!(std::io::stderr());
 
     match shell {
         Shell::Bash => {
-            eprintln!("  # Add to ~/.bashrc or ~/.bash_profile:");
-            eprintln!("  source <(ralph --generate-completion=bash)");
-            eprintln!();
-            eprintln!("  # Or save to a file:");
-            eprintln!("  ralph --generate-completion=bash > ~/.local/share/bash-completion/completions/ralph");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  # Add to ~/.bashrc or ~/.bash_profile:"
+            );
+            let _ = writeln!(
+                std::io::stderr(),
+                "  source <(ralph --generate-completion=bash)"
+            );
+            let _ = writeln!(std::io::stderr());
+            let _ = writeln!(std::io::stderr(), "  # Or save to a file:");
+            let _ = writeln!(std::io::stderr(), "  ralph --generate-completion=bash > ~/.local/share/bash-completion/completions/ralph");
         }
         Shell::Zsh => {
-            eprintln!("  # Add to ~/.zshrc:");
-            eprintln!("  source <(ralph --generate-completion=zsh)");
-            eprintln!();
-            eprintln!("  # Or save to a file:");
-            eprintln!("  ralph --generate-completion=zsh > ~/.zsh/completion/_ralph");
-            eprintln!("  # Then add to ~/.zshrc:");
-            eprintln!("  fpath=(~/.zsh/completion $fpath)");
-            eprintln!("  autoload -U compinit && compinit");
+            let _ = writeln!(std::io::stderr(), "  # Add to ~/.zshrc:");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  source <(ralph --generate-completion=zsh)"
+            );
+            let _ = writeln!(std::io::stderr());
+            let _ = writeln!(std::io::stderr(), "  # Or save to a file:");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  ralph --generate-completion=zsh > ~/.zsh/completion/_ralph"
+            );
+            let _ = writeln!(std::io::stderr(), "  # Then add to ~/.zshrc:");
+            let _ = writeln!(std::io::stderr(), "  fpath=(~/.zsh/completion $fpath)");
+            let _ = writeln!(std::io::stderr(), "  autoload -U compinit && compinit");
         }
         Shell::Fish => {
-            eprintln!("  # Add to ~/.config/fish/completions/ralph.fish:");
-            eprintln!("  ralph --generate-completion=fish > ~/.config/fish/completions/ralph.fish");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  # Add to ~/.config/fish/completions/ralph.fish:"
+            );
+            let _ = writeln!(
+                std::io::stderr(),
+                "  ralph --generate-completion=fish > ~/.config/fish/completions/ralph.fish"
+            );
         }
         Shell::Elvish => {
-            eprintln!("  # Add to ~/.elvish/rc.elv:");
-            eprintln!("  ralph --generate-completion=elvish > ~/.config/elvish/lib/ralph.elv");
-            eprintln!("  # Then add to ~/.elvish/rc.elv:");
-            eprintln!("  put ~/.config/elvish/lib/ralph.elv | slurp");
+            let _ = writeln!(std::io::stderr(), "  # Add to ~/.elvish/rc.elv:");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  ralph --generate-completion=elvish > ~/.config/elvish/lib/ralph.elv"
+            );
+            let _ = writeln!(std::io::stderr(), "  # Then add to ~/.elvish/rc.elv:");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  put ~/.config/elvish/lib/ralph.elv | slurp"
+            );
         }
         Shell::Pwsh => {
-            eprintln!("  # Add to your PowerShell profile ($PROFILE):");
-            eprintln!("  ralph --generate-completion=pwsh > ralph-completion.ps1");
-            eprintln!("  # Then add to $PROFILE:");
-            eprintln!("  . ralph-completion.ps1");
+            let _ = writeln!(
+                std::io::stderr(),
+                "  # Add to your PowerShell profile ($PROFILE):"
+            );
+            let _ = writeln!(
+                std::io::stderr(),
+                "  ralph --generate-completion=pwsh > ralph-completion.ps1"
+            );
+            let _ = writeln!(std::io::stderr(), "  # Then add to $PROFILE:");
+            let _ = writeln!(std::io::stderr(), "  . ralph-completion.ps1");
         }
     }
 
-    eprintln!();
-    eprintln!("Restart your shell or source your config file to apply changes.");
+    let _ = writeln!(std::io::stderr());
+    let _ = writeln!(
+        std::io::stderr(),
+        "Restart your shell or source your config file to apply changes."
+    );
 
     true
 }

@@ -33,11 +33,11 @@
 /// let mut parser = IncrementalNdjsonParser::new();
 ///
 /// // Feed first half of JSON
-/// let events1 = parser.feed(b"{\"type\": \"de");
+/// let (parser, events1) = parser.feed_and_get_events(b"{\"type\": \"de");
 /// assert_eq!(events1.len(), 0);  // Not complete yet
 ///
 /// // Feed second half
-/// let events2 = parser.feed(b"lta\"}\n");
+/// let (_, events2) = parser.feed_and_get_events(b"lta\"}\n");
 /// assert_eq!(events2.len(), 1);  // Complete!
 /// assert_eq!(events2[0], "{\"type\": \"delta\"}");
 /// ```
@@ -52,6 +52,8 @@ pub struct IncrementalNdjsonParser {
     escape_next: bool,
     /// Whether we've seen at least one opening brace (started parsing JSON)
     started: bool,
+    /// Complete JSON objects extracted so far
+    results: Vec<String>,
 }
 
 /// Maximum allowed nesting depth for JSON objects.
@@ -68,6 +70,7 @@ impl IncrementalNdjsonParser {
             in_string: false,
             escape_next: false,
             started: false,
+            results: Vec::new(),
         }
     }
 
@@ -82,109 +85,25 @@ impl IncrementalNdjsonParser {
     ///
     /// # Returns
     ///
-    /// A vector of complete JSON strings, in the order they were completed.
-    pub fn feed(&mut self, data: &[u8]) -> Vec<String> {
-        let mut complete_jsons = Vec::new();
-
-        for &byte in data {
-            self.process_byte(byte, &mut complete_jsons);
-        }
-
-        complete_jsons
+    /// A tuple of (updated parser, vector of complete JSON strings), in the order they were completed.
+    pub fn feed(self, byte: u8) -> Self {
+        self.process_byte(byte)
     }
 
-    /// Process a single byte, tracking state and extracting complete JSONs.
-    ///
-    /// If the depth exceeds `MAX_JSON_DEPTH`, the parser will reset to a safe
-    /// state and skip the current JSON to prevent integer overflow from malicious input.
-    fn process_byte(&mut self, byte: u8, complete_jsons: &mut Vec<String>) {
-        // Ignore any non-JSON preamble before the first opening brace.
-        //
-        // Some real-world streams start with log lines or other text before the first JSON
-        // object. We only start buffering once we see the first `{`.
-        if !self.started && byte != b'{' {
-            return;
-        }
-
-        // Handle escape sequences
-        if self.escape_next {
-            self.buffer.push(byte);
-            self.escape_next = false;
-            return;
-        }
-
-        match byte {
-            b'\\' if self.in_string => {
-                self.buffer.push(byte);
-                self.escape_next = true;
-            }
-            b'"' => {
-                self.buffer.push(byte);
-                if self.started {
-                    self.in_string = !self.in_string;
-                }
-            }
-            b'{' if !self.in_string => {
-                // Check for depth limit to prevent overflow BEFORE pushing
-                if self.depth + 1 > MAX_JSON_DEPTH {
-                    // Depth exceeded - reset parser state to skip this malformed JSON
-                    self.buffer.clear();
-                    self.depth = 0;
-                    self.started = false;
-                    self.in_string = false;
-                    self.escape_next = false;
-                } else {
-                    self.buffer.push(byte);
-                    self.depth += 1;
-                    self.started = true;
-                }
-            }
-            b'}' if !self.in_string && self.started => {
-                self.buffer.push(byte);
-                self.depth -= 1;
-
-                // When depth returns to 0, we have a complete JSON object
-                if self.depth == 0 {
-                    self.extract_complete_json(complete_jsons);
-                }
-            }
-            _ => {
-                self.buffer.push(byte);
-            }
-        }
+    pub fn feed_and_get_events(self, data: &[u8]) -> (Self, Vec<String>) {
+        let parser = data.iter().fold(self, |acc, &byte| acc.process_byte(byte));
+        let (results, empty_parser) = extract_results(parser);
+        (empty_parser, results)
     }
 
-    /// Extract a complete JSON object from the buffer.
-    fn extract_complete_json(&mut self, complete_jsons: &mut Vec<String>) {
-        // Find the end of the JSON (we know it's complete at this point)
-        // Look for the closing brace that brought us to depth 0
-        let json_end = self.buffer.len();
-
-        // Convert to UTF-8 (should be valid JSON)
-        let Ok(json_str) = String::from_utf8(self.buffer.drain(..json_end).collect()) else {
-            // Invalid UTF-8 - skip this JSON silently
-            self.started = false;
-            return;
-        };
-
-        // Trim whitespace and check if it's non-empty
-        let trimmed = json_str.trim();
-        if !trimmed.is_empty() {
-            complete_jsons.push(trimmed.to_string());
-        }
-
-        // Reset state for next JSON
-        self.started = false;
+    pub fn drain_results(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.results)
     }
 
-    /// Get any incomplete JSON currently in the buffer.
-    ///
-    /// This method is available in test builds for debugging purposes.
-    /// It allows inspection of partial JSON data during parser development.
+    /// Get any complete JSON objects extracted so far.
     #[must_use]
-    #[cfg(test)]
-    pub fn partial(&self) -> &[u8] {
-        &self.buffer
+    pub fn get_results(&self) -> Vec<String> {
+        self.results.clone()
     }
 
     /// Clear the internal buffer.
@@ -192,7 +111,7 @@ impl IncrementalNdjsonParser {
     /// This can be useful for error recovery when invalid data is encountered.
     #[cfg(test)]
     pub fn clear(&mut self) {
-        self.buffer.clear();
+        self.buffer = Vec::new();
         self.depth = 0;
         self.in_string = false;
         self.escape_next = false;
@@ -201,7 +120,6 @@ impl IncrementalNdjsonParser {
 
     /// Check if the parser is currently inside a JSON object.
     #[must_use]
-    #[cfg(test)]
     pub const fn is_parsing(&self) -> bool {
         self.started
     }
@@ -221,28 +139,42 @@ impl IncrementalNdjsonParser {
     ///
     /// ```ignore
     /// let mut parser = IncrementalNdjsonParser::new();
-    /// parser.feed(b"{\"type\": \"delta\"}\n{\"type\": \"incomplete\"");
+    /// let (_, _) = parser.feed_and_get_events(b"{\"type\": \"delta\"}\n{\"type\": \"incomplete\"");
     /// // When stream ends, get any remaining buffered data
     /// if let Some(remaining) = parser.finish() {
     ///     println!("Remaining: {}", remaining);
     /// }
     /// ```
     #[must_use]
-    pub fn finish(mut self) -> Option<String> {
-        let trimmed = String::from_utf8(self.buffer.drain(..).collect())
+    pub fn finish(self) -> Option<String> {
+        String::from_utf8(self.buffer)
             .ok()
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-
-        // Reset state to clean state
-        self.buffer.clear();
-        self.depth = 0;
-        self.in_string = false;
-        self.escape_next = false;
-        self.started = false;
-
-        trimmed
+            .filter(|s| !s.is_empty())
     }
+}
+
+// Include boundary module for mutable byte processing.
+include!("incremental_parser/io.rs");
+
+fn extract_results(parser: IncrementalNdjsonParser) -> (Vec<String>, IncrementalNdjsonParser) {
+    let IncrementalNdjsonParser {
+        buffer,
+        depth,
+        in_string,
+        escape_next,
+        started,
+        results,
+    } = parser;
+    let empty = IncrementalNdjsonParser {
+        buffer,
+        depth,
+        in_string,
+        escape_next,
+        started,
+        results: Vec::new(),
+    };
+    (results, empty)
 }
 
 impl Default for IncrementalNdjsonParser {
@@ -257,31 +189,29 @@ mod tests {
 
     #[test]
     fn test_incremental_parser_single_json() {
-        let mut parser = IncrementalNdjsonParser::new();
-        let events = parser.feed(b"{\"type\": \"delta\"}\n");
+        let parser = IncrementalNdjsonParser::new();
+        let (_, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"}\n");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], "{\"type\": \"delta\"}");
     }
 
     #[test]
     fn test_incremental_parser_split_json() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
 
-        // Feed first half
-        let events1 = parser.feed(b"{\"type\": \"de");
+        let (parser, events1) = parser.feed_and_get_events(b"{\"type\": \"de");
         assert_eq!(events1.len(), 0);
 
-        // Feed second half
-        let events2 = parser.feed(b"lta\"}\n");
+        let (_, events2) = parser.feed_and_get_events(b"lta\"}\n");
         assert_eq!(events2.len(), 1);
         assert_eq!(events2[0], "{\"type\": \"delta\"}");
     }
 
     #[test]
     fn test_incremental_parser_multiple_jsons() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
         let input = b"{\"type\": \"delta\"}\n{\"type\": \"done\"}\n";
-        let events = parser.feed(input);
+        let (_, events) = parser.feed_and_get_events(input);
         assert_eq!(events.len(), 2);
         assert_eq!(events[0], "{\"type\": \"delta\"}");
         assert_eq!(events[1], "{\"type\": \"done\"}");
@@ -289,90 +219,87 @@ mod tests {
 
     #[test]
     fn test_incremental_parser_nested_json() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
         let input = b"{\"type\": \"delta\", \"data\": {\"nested\": true}}\n";
-        let events = parser.feed(input);
+        let (_, events) = parser.feed_and_get_events(input);
         assert_eq!(events.len(), 1);
         assert!(events[0].contains("\"nested\": true"));
     }
 
     #[test]
     fn test_incremental_parser_json_with_strings_containing_braces() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
         let input = b"{\"text\": \"hello {world}\"}\n";
-        let events = parser.feed(input);
+        let (_, events) = parser.feed_and_get_events(input);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], "{\"text\": \"hello {world}\"}");
     }
 
     #[test]
     fn test_incremental_parser_json_with_escaped_quotes() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
         let input = b"{\"text\": \"hello \\\"world\\\"\"}\n";
-        let events = parser.feed(input);
+        let (_, events) = parser.feed_and_get_events(input);
         assert_eq!(events.len(), 1);
         assert!(events[0].contains("\\\""));
     }
 
     #[test]
     fn test_incremental_parser_empty_input() {
-        let mut parser = IncrementalNdjsonParser::new();
-        let events = parser.feed(b"");
+        let parser = IncrementalNdjsonParser::new();
+        let (_, events) = parser.feed_and_get_events(b"");
         assert_eq!(events.len(), 0);
     }
 
     #[test]
     fn test_incremental_parser_whitespace_only() {
-        let mut parser = IncrementalNdjsonParser::new();
-        let events = parser.feed(b"   \n  \n");
+        let parser = IncrementalNdjsonParser::new();
+        let (_, events) = parser.feed_and_get_events(b"   \n  \n");
         assert_eq!(events.len(), 0);
     }
 
     #[test]
     fn test_incremental_parser_ignores_preamble_before_json() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
         let input = b"[i] Joined existing CLIProxy\n{\"type\":\"delta\"}\n";
-        let events = parser.feed(input);
+        let (_, events) = parser.feed_and_get_events(input);
         assert_eq!(events, vec!["{\"type\":\"delta\"}".to_string()]);
     }
 
     #[test]
     fn test_incremental_parser_clear() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
 
-        // Feed incomplete JSON
-        parser.feed(b"{\"type\":");
+        let (mut parser, _) = parser.feed_and_get_events(b"{\"type\":");
         assert!(parser.is_parsing());
 
-        // Clear
         parser.clear();
         assert!(!parser.is_parsing());
-        assert_eq!(parser.partial().len(), 0);
 
-        // Should be able to parse new JSON
-        let events = parser.feed(b"{\"type\": \"delta\"}\n");
+        let (_, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"}\n");
         assert_eq!(events.len(), 1);
     }
 
     #[test]
     fn test_incremental_parser_byte_by_byte() {
-        let mut parser = IncrementalNdjsonParser::new();
         let input = b"{\"type\": \"delta\"}\n";
+        let mut parser = IncrementalNdjsonParser::new();
+        let mut all_events = Vec::new();
 
-        let mut events = Vec::new();
-        for byte in input {
-            events.extend(parser.feed(&[*byte]));
+        for &byte in input {
+            parser = parser.feed(byte);
+            all_events.extend(parser.drain_results());
         }
 
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0], "{\"type\": \"delta\"}");
+        assert_eq!(all_events.len(), 1);
+        assert_eq!(all_events[0], "{\"type\": \"delta\"}");
     }
 
     #[test]
     fn test_incremental_parser_multiline_json() {
-        let mut parser = IncrementalNdjsonParser::new();
+        let parser = IncrementalNdjsonParser::new();
         let input = b"{\n  \"type\": \"delta\",\n  \"value\": 123\n}\n";
-        let events = parser.feed(input);
+        let (_, events) = parser.feed_and_get_events(input);
         assert_eq!(events.len(), 1);
         assert!(events[0].contains("\"type\": \"delta\""));
         assert!(events[0].contains("\"value\": 123"));
@@ -380,76 +307,53 @@ mod tests {
 
     #[test]
     fn test_incremental_parser_depth_limit() {
-        let mut parser = IncrementalNdjsonParser::new();
-        // Create JSON with depth exceeding MAX_JSON_DEPTH.
-        // We need exactly MAX_JSON_DEPTH + 1 opening braces to exceed the limit.
-        let mut input = String::new();
-        for _ in 0..=MAX_JSON_DEPTH {
-            input.push('{');
-        }
-        // Feed the deeply nested input - should handle gracefully without panicking
-        let events = parser.feed(input.as_bytes());
-        // Parser should reset and return no events (skipped malformed JSON)
+        let input = "{".repeat(MAX_JSON_DEPTH + 1);
+        let (parser, events) = IncrementalNdjsonParser::new().feed_and_get_events(input.as_bytes());
         assert_eq!(events.len(), 0);
-        // Parser should be in a clean state after handling the error
         assert!(!parser.is_parsing());
-        assert_eq!(parser.partial().len(), 0);
     }
 
     #[test]
     fn test_incremental_parser_finish_returns_buffered_data() {
-        let mut parser = IncrementalNdjsonParser::new();
-        // Feed incomplete JSON (missing closing brace)
-        // Note: `b"{\"type\": \"incomplete\""` is the byte string for `{"type": "incomplete"` (no closing brace)
-        let events = parser.feed(b"{\"type\": \"incomplete\"");
-        // No events should be returned yet (missing closing brace)
+        let parser = IncrementalNdjsonParser::new();
+        let (parser, events) = parser.feed_and_get_events(b"{\"type\": \"incomplete\"");
         assert_eq!(events, vec![] as Vec<String>);
 
-        // finish() should return the buffered data
         let remaining = parser.finish();
-        // Note: The buffered data is the incomplete JSON string we fed
         assert_eq!(remaining, Some("{\"type\": \"incomplete\"".to_string()));
     }
 
     #[test]
     fn test_incremental_parser_finish_returns_none_for_empty_buffer() {
         let parser = IncrementalNdjsonParser::new();
-        // No data fed, finish should return None
         assert_eq!(parser.finish(), None);
     }
 
     #[test]
     fn test_incremental_parser_finish_returns_none_for_complete_json() {
-        let mut parser = IncrementalNdjsonParser::new();
-        // Feed complete JSON
-        let events = parser.feed(b"{\"type\": \"delta\"}\n");
+        let parser = IncrementalNdjsonParser::new();
+        let (parser, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"}\n");
         assert_eq!(events.len(), 1);
 
-        // Buffer should be empty, so finish() should return None
         assert_eq!(parser.finish(), None);
     }
 
     #[test]
     fn test_incremental_parser_finish_with_complete_json_no_newline() {
-        let mut parser = IncrementalNdjsonParser::new();
-        // Feed complete JSON but without trailing newline
-        // The parser DOES extract it when closing brace is encountered (depth 0)
-        let events = parser.feed(b"{\"type\": \"delta\"}");
+        let parser = IncrementalNdjsonParser::new();
+        let (parser, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"}");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], "{\"type\": \"delta\"}");
 
-        // Buffer should be empty after extraction, so finish() should return None
         assert_eq!(parser.finish(), None);
     }
 
     #[test]
     fn test_incremental_parser_finish_with_incomplete_json_missing_brace() {
-        let mut parser = IncrementalNdjsonParser::new();
-        // Feed complete JSON but missing the closing brace
-        let events = parser.feed(b"{\"type\": \"delta\"");
-        assert_eq!(events.len(), 0); // Not complete yet
+        let parser = IncrementalNdjsonParser::new();
+        let (parser, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"");
+        assert_eq!(events.len(), 0);
 
-        // finish() should return the buffered incomplete JSON
         let remaining = parser.finish();
         assert_eq!(remaining, Some("{\"type\": \"delta\"".to_string()));
     }

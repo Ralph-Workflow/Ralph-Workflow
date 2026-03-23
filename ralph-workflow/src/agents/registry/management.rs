@@ -1,6 +1,62 @@
 // Registry management and lookup operations.
 // Includes the AgentRegistry struct definition and core lookup/management methods.
 
+/// Typed error for agent chain validation failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentChainValidationError {
+    /// No agent chain configured at all (no drain has any binding with agents).
+    NoChainConfigured { searched_sources: String },
+    /// A specific drain has no binding.
+    NoDrainBinding {
+        drain: String,
+        searched_sources: String,
+    },
+    /// A specific drain's bound chain is empty.
+    EmptyDrainChain {
+        drain: String,
+        searched_sources: String,
+    },
+    /// All agents in a drain have `can_commit=false`.
+    NoWorkflowCapableAgents { drain: String },
+}
+
+impl std::fmt::Display for AgentChainValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoChainConfigured { searched_sources } => write!(
+                f,
+                "No agent chain configured. \
+                Searched: {searched_sources}.\n\
+                Please add [agent_chains] and [agent_drains] sections to your config.\n\
+                Legacy [agent_chain] input is deprecated but still accepted with default drain bindings.\n\
+                Run 'ralph --init-global' to create a default configuration."
+            ),
+            Self::NoDrainBinding { drain, searched_sources } => write!(
+                f,
+                "No {drain} agent chain configured. \
+                Searched: {searched_sources}.\n\
+                Bind the {drain} drain in [agent_drains] to a chain from [agent_chains].\n\
+                Use --list-agents to see available agents."
+            ),
+            Self::EmptyDrainChain { drain, searched_sources } => write!(
+                f,
+                "No {drain} agent chain configured. \
+                Searched: {searched_sources}.\n\
+                Bind the {drain} drain in [agent_drains] to a non-empty chain from [agent_chains].\n\
+                Use --list-agents to see available agents."
+            ),
+            Self::NoWorkflowCapableAgents { drain } => write!(
+                f,
+                "No workflow-capable agents found for {drain}.\n\
+                All agents in the {drain} drain binding have can_commit=false.\n\
+                Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AgentChainValidationError {}
+
 /// Agent registry with CCS alias and `OpenCode` dynamic provider/model support.
 ///
 /// CCS aliases are eagerly resolved and registered as regular agents
@@ -9,6 +65,7 @@
 ///
 /// `OpenCode` provider/model combinations are resolved on-the-fly using
 /// the `opencode/` prefix.
+#[derive(Debug)]
 pub struct AgentRegistry {
     agents: HashMap<String, AgentConfig>,
     resolved_drains: crate::agents::fallback::ResolvedDrainConfig,
@@ -17,7 +74,7 @@ pub struct AgentRegistry {
     /// `OpenCode` resolver for `opencode/provider/model` syntax.
     opencode_resolver: Option<OpenCodeResolver>,
     /// Retry timer provider for controlling sleep behavior in retry logic.
-    retry_timer: Arc<dyn RetryTimerProvider>,
+    retry_timer: Arc<dyn RetryTimerProviderDebug>,
 }
 
 impl AgentRegistry {
@@ -34,19 +91,19 @@ impl AgentRegistry {
         });
         let agents = config.agents;
 
-        let mut registry = Self {
-            agents: HashMap::new(),
+        // Create agents map functionally
+        let agents: HashMap<_, _> = agents
+            .into_iter()
+            .map(|(name, agent_toml)| (name, AgentConfig::from(agent_toml)))
+            .collect();
+
+        Ok(Self {
+            agents,
             resolved_drains,
             ccs_resolver: CcsAliasResolver::empty(),
             opencode_resolver: None,
             retry_timer: production_timer(),
-        };
-
-        for (name, agent_toml) in agents {
-            registry.register(&name, AgentConfig::from(agent_toml));
-        }
-
-        Ok(registry)
+        })
     }
 
     /// Set the `OpenCode` API catalog for dynamic provider/model resolution.
@@ -56,28 +113,59 @@ impl AgentRegistry {
         self.opencode_resolver = Some(OpenCodeResolver::new(catalog));
     }
 
+    /// Returns a new registry with the `OpenCode` catalog set while keeping the original immutably.
+    #[must_use]
+    pub fn with_opencode_catalog(mut self, catalog: ApiCatalog) -> Self {
+        self.set_opencode_catalog(catalog);
+        self
+    }
+
     /// Set CCS aliases for the registry.
     ///
     /// This eagerly registers CCS aliases as agents so they can be
     /// resolved with `resolve_config()`.
     pub fn set_ccs_aliases(
-        &mut self,
+        self,
         aliases: &HashMap<String, CcsAliasConfig>,
         defaults: CcsConfig,
-    ) {
-        self.ccs_resolver = CcsAliasResolver::new(aliases.clone(), defaults);
-        // Eagerly register CCS aliases as agents
-        for alias_name in aliases.keys() {
-            let agent_name = format!("ccs/{alias_name}");
-            if let Some(config) = self.ccs_resolver.try_resolve(&agent_name) {
-                self.agents.insert(agent_name, config);
-            }
+    ) -> Self {
+        let ccs_resolver = CcsAliasResolver::new(aliases.clone(), defaults);
+        // Compute all agents to insert - functional style with chain
+        let new_agents: HashMap<_, _> = aliases
+            .keys()
+            .filter_map(|alias_name| {
+                let agent_name = format!("ccs/{alias_name}");
+                ccs_resolver
+                    .try_resolve(&agent_name)
+                    .map(|config| (agent_name, config))
+            })
+            .collect();
+        // Rebuild with chain - functional style
+        let agents = self.agents.into_iter().chain(new_agents).collect();
+        Self {
+            agents,
+            resolved_drains: self.resolved_drains,
+            ccs_resolver,
+            opencode_resolver: self.opencode_resolver,
+            retry_timer: self.retry_timer,
         }
     }
 
     /// Register a new agent.
-    pub fn register(&mut self, name: &str, config: AgentConfig) {
-        self.agents.insert(name.to_string(), config);
+    pub fn register(self, name: &str, config: AgentConfig) -> Self {
+        // Rebuild with chain - functional style instead of mutating insert
+        let agents = self
+            .agents
+            .into_iter()
+            .chain(std::iter::once((name.to_string(), config)))
+            .collect();
+        Self {
+            agents,
+            resolved_drains: self.resolved_drains,
+            ccs_resolver: self.ccs_resolver,
+            opencode_resolver: self.opencode_resolver,
+            retry_timer: self.retry_timer,
+        }
     }
 
     /// Create a registry with only built-in agents (no config file loading).
@@ -94,6 +182,10 @@ impl AgentRegistry {
     /// This function is only available when the `test-utils` feature is enabled.
     #[cfg(feature = "test-utils")]
     #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "built-in agents are hardcoded and always valid"
+    )]
     pub fn with_builtins_only() -> Self {
         Self::new().expect("Built-in agents should always be valid")
     }
@@ -174,18 +266,23 @@ impl AgentRegistry {
     ///            Some("opencode/anthropic/claude-sonnet-4".to_string()));
     /// ```
     #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "bounds-checked index arithmetic"
+    )]
     pub fn resolve_from_logfile_name(&self, logfile_name: &str) -> Option<String> {
         // First check if the name is exactly a registry name (no sanitization was needed)
         if self.agents.contains_key(logfile_name) {
             return Some(logfile_name.to_string());
         }
 
-        // Search registered agents for one whose sanitized name matches
-        for name in self.agents.keys() {
-            let sanitized = name.replace('/', "-");
-            if sanitized == logfile_name {
-                return Some(name.clone());
-            }
+        // Search registered agents for one whose sanitized name matches - use iterator
+        let match_result = self
+            .agents
+            .keys()
+            .find(|name| name.replace('/', "-") == logfile_name);
+        if let Some(name) = match_result {
+            return Some(name.clone());
         }
 
         // Try to resolve dynamically for unregistered agents
@@ -240,7 +337,7 @@ impl AgentRegistry {
         if name.starts_with("opencode/") {
             // Validate that it has the right format (opencode/provider/model)
             let parts: Vec<&str> = name.split('/').collect();
-            if parts.len() == 3 && parts[0] == "opencode" {
+            if parts.len() == 3 && parts.first().is_some_and(|p| *p == "opencode") {
                 return Some(name.to_string());
             }
         }
@@ -249,7 +346,8 @@ impl AgentRegistry {
         let normalized = name.to_lowercase();
         let alternatives = Self::get_fuzzy_alternatives(&normalized);
 
-        for alt in alternatives {
+        // Find first matching alternative
+        alternatives.into_iter().find_map(|alt| {
             // If it's a ccs/ pattern, return it for direct CCS execution
             if alt.starts_with("ccs/") {
                 return Some(alt);
@@ -257,7 +355,7 @@ impl AgentRegistry {
             // If it's an opencode/ pattern, validate the format
             if alt.starts_with("opencode/") {
                 let parts: Vec<&str> = alt.split('/').collect();
-                if parts.len() == 3 && parts[0] == "opencode" {
+                if parts.len() == 3 && parts.first().is_some_and(|p| *p == "opencode") {
                     return Some(alt);
                 }
             }
@@ -265,62 +363,54 @@ impl AgentRegistry {
             if self.agents.contains_key(&alt) {
                 return Some(alt);
             }
-        }
-
-        None
+            None
+        })
     }
 
     /// Get fuzzy alternatives for a given agent name.
     ///
     /// Returns a list of potential canonical names to try, in order of preference.
     pub(crate) fn get_fuzzy_alternatives(name: &str) -> Vec<String> {
-        let mut alternatives = Vec::new();
-
-        // Add exact match first
-        alternatives.push(name.to_string());
+        // Start with exact match first
+        let alternatives = std::iter::once(name.to_string());
 
         // Handle common typos and variations
-        match name {
+        let variations: Vec<String> = match name {
             // ccs variations
-            n if n.starts_with("ccs-") => {
-                alternatives.push(name.replace("ccs-", "ccs/"));
-            }
-            n if n.contains('_') => {
-                alternatives.push(name.replace('_', "-"));
-                alternatives.push(name.replace('_', "/"));
-            }
+            n if n.starts_with("ccs-") => vec![name.replace("ccs-", "ccs/")],
+            n if n.contains('_') => vec![name.replace('_', "-"), name.replace('_', "/")],
 
             // claude variations
-            "claud" | "cloud" => alternatives.push("claude".to_string()),
+            "claud" | "cloud" => vec!["claude".to_string()],
 
             // codex variations
-            "codeex" | "code-x" => alternatives.push("codex".to_string()),
+            "codeex" | "code-x" => vec!["codex".to_string()],
 
             // cursor variations
-            "crusor" => alternatives.push("cursor".to_string()),
+            "crusor" => vec!["cursor".to_string()],
 
             // opencode variations
-            "opencode" | "open-code" => alternatives.push("opencode".to_string()),
+            "opencode" | "open-code" => vec!["opencode".to_string()],
 
             // gemini variations
-            "gemeni" | "gemni" => alternatives.push("gemini".to_string()),
+            "gemeni" | "gemni" => vec!["gemini".to_string()],
 
             // qwen variations
-            "quen" | "quwen" => alternatives.push("qwen".to_string()),
+            "quen" | "quwen" => vec!["qwen".to_string()],
 
             // aider variations
-            "ader" => alternatives.push("aider".to_string()),
+            "ader" => vec!["aider".to_string()],
 
             // vibe variations
-            "vib" => alternatives.push("vibe".to_string()),
+            "vib" => vec!["vibe".to_string()],
 
             // cline variations
-            "kline" => alternatives.push("cline".to_string()),
+            "kline" => vec!["cline".to_string()],
 
-            _ => {}
-        }
+            _ => vec![],
+        };
 
-        alternatives
+        alternatives.chain(variations).collect()
     }
 
     /// List all registered agents.
@@ -367,7 +457,7 @@ impl AgentRegistry {
     /// Get the retry timer provider.
     #[must_use]
     pub fn retry_timer(&self) -> Arc<dyn RetryTimerProvider> {
-        Arc::clone(&self.retry_timer)
+        Arc::clone(&self.retry_timer) as Arc<dyn RetryTimerProvider>
     }
 
     /// Set the retry timer provider (for testing purposes).
@@ -375,7 +465,7 @@ impl AgentRegistry {
     /// This is used to inject a test timer that doesn't actually sleep,
     /// enabling fast test execution without waiting for retry delays.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn set_retry_timer(&mut self, timer: Arc<dyn RetryTimerProvider>) {
+    pub fn set_retry_timer(&mut self, timer: Arc<dyn RetryTimerProviderDebug>) {
         self.retry_timer = timer;
     }
 
@@ -406,42 +496,37 @@ impl AgentRegistry {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), String> {
-        let drain_bindings = crate::agents::AgentDrain::all()
+    pub fn validate_agent_chains(
+        &self,
+        searched_sources: &str,
+    ) -> Result<(), AgentChainValidationError> {
+        let drain_bindings: Vec<_> = crate::agents::AgentDrain::all()
             .into_iter()
             .map(|drain| (drain, self.resolved_drain(drain)))
-            .collect::<Vec<_>>();
+            .collect();
+
         let has_any_binding = drain_bindings
             .iter()
             .any(|(_, binding)| binding.is_some_and(|binding| !binding.agents.is_empty()));
 
         if !has_any_binding {
-            return Err(format!(
-                "No agent chain configured. \
-                Searched: {searched_sources}.\n\
-                Please add [agent_chains] and [agent_drains] sections to your config.\n\
-                Legacy [agent_chain] input is deprecated but still accepted with default drain bindings.\n\
-                Run 'ralph --init-global' to create a default configuration."
-            ));
+            return Err(AgentChainValidationError::NoChainConfigured {
+                searched_sources: searched_sources.to_string(),
+            });
         }
 
-        for (drain, binding) in drain_bindings {
-            let binding = binding.ok_or_else(|| {
-                format!(
-                    "No {drain} agent chain configured. \
-                    Searched: {searched_sources}.\n\
-                    Bind the {drain} drain in [agent_drains] to a chain from [agent_chains].\n\
-                    Use --list-agents to see available agents."
-                )
+        // Validate each drain - fail on first error
+        drain_bindings.iter().try_fold((), |(), (drain, binding)| {
+            let binding = binding.ok_or_else(|| AgentChainValidationError::NoDrainBinding {
+                drain: drain.to_string(),
+                searched_sources: searched_sources.to_string(),
             })?;
 
             if binding.agents.is_empty() {
-                return Err(format!(
-                    "No {drain} agent chain configured. \
-                    Searched: {searched_sources}.\n\
-                    Bind the {drain} drain in [agent_drains] to a non-empty chain from [agent_chains].\n\
-                    Use --list-agents to see available agents."
-                ));
+                return Err(AgentChainValidationError::EmptyDrainChain {
+                    drain: drain.to_string(),
+                    searched_sources: searched_sources.to_string(),
+                });
             }
 
             let has_capable = binding
@@ -449,15 +534,13 @@ impl AgentRegistry {
                 .iter()
                 .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
             if !has_capable {
-                return Err(format!(
-                    "No workflow-capable agents found for {drain}.\n\
-                    All agents in the {drain} drain binding have can_commit=false.\n\
-                    Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
-                ));
+                return Err(AgentChainValidationError::NoWorkflowCapableAgents {
+                    drain: drain.to_string(),
+                });
             }
-        }
 
-        Ok(())
+            Ok(())
+        })
     }
 
     /// Check if an agent is available (command exists and is executable).

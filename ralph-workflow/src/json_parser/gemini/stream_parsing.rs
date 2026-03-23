@@ -1,118 +1,105 @@
+fn is_gemini_control_event(event: &GeminiEvent) -> bool {
+    matches!(event, GeminiEvent::Init { .. } | GeminiEvent::Result { .. })
+}
+
+fn record_unparsed_event(trimmed: &str, line: &str, monitor: &HealthMonitor) {
+    if !trimmed.starts_with('{') { monitor.record_ignored(); return; }
+    match serde_json::from_str::<GeminiEvent>(line) {
+        Ok(event) if is_gemini_control_event(&event) => monitor.record_control_event(),
+        Ok(_) => monitor.record_unknown_event(),
+        Err(_) => monitor.record_parse_error(),
+    }
+}
+
 impl GeminiParser {
-    /// Check if a Gemini event is a control event (state management with no user output)
-    ///
-    /// Control events are valid JSON that represent state transitions rather than
-    /// user-facing content. They should be tracked separately from "ignored" events
-    /// to avoid false health warnings.
-    const fn is_control_event(event: &GeminiEvent) -> bool {
-        match event {
-            // Init and Result events are control events
-            GeminiEvent::Init { .. } | GeminiEvent::Result { .. } => true,
-            _ => false,
+    fn debug_print_line(&mut self, line: &str, c: Colors) {
+        self.with_printer_mut(|printer| {
+            if writeln!(printer, "{}[DEBUG]{} {}{}{}", c.dim(), c.reset(), c.dim(), line, c.reset()).is_ok() {
+                printer.flush().ok();
+            }
+        });
+    }
+
+    fn dispatch_parsed_or_unparsed(&mut self, line: &str, trimmed: &str, monitor: &HealthMonitor) {
+        match self.parse_event(line) {
+            Some(output) => {
+                monitor.record_parsed();
+                self.with_printer_mut(|printer| {
+                    if write!(printer, "{output}").is_ok() { printer.flush().ok(); }
+                });
+            }
+            None => record_unparsed_event(trimmed, line, monitor),
         }
+    }
+
+    fn process_batch_line(
+        &mut self,
+        line: &str,
+        c: Colors,
+        monitor: &HealthMonitor,
+        log_buffer: &mut Vec<u8>,
+        logging_enabled: bool,
+    ) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { return; }
+        if self.verbosity.is_debug() { self.debug_print_line(line, c); }
+        self.dispatch_parsed_or_unparsed(line, trimmed, monitor);
+        if logging_enabled { writeln!(log_buffer, "{line}").ok(); }
+    }
+
+    fn run_stream_loop<R: BufRead>(
+        &mut self,
+        reader: &mut R,
+        incremental_parser: &mut crate::json_parser::incremental_parser::IncrementalNdjsonParser,
+        c: Colors,
+        monitor: &HealthMonitor,
+        log_buffer: &mut Vec<u8>,
+        logging_enabled: bool,
+    ) -> std::io::Result<()> {
+        loop {
+            let chunk = reader.fill_buf()?;
+            if chunk.is_empty() { break; }
+            let consumed = chunk.len();
+            let taken = std::mem::take(incremental_parser);
+            let (new_parser, batch) = taken.feed_and_get_events(chunk);
+            *incremental_parser = new_parser;
+            reader.consume(consumed);
+            batch.into_iter().for_each(|line| {
+                self.process_batch_line(&line, c, monitor, log_buffer, logging_enabled);
+            });
+        }
+        Ok(())
+    }
+
+    fn finalize_stream(
+        &mut self,
+        workspace: &dyn crate::workspace::Workspace,
+        monitor: &HealthMonitor,
+        c: Colors,
+        log_buffer: &[u8],
+    ) -> std::io::Result<()> {
+        if let Some(log_path) = &self.log_path {
+            workspace.append_bytes(log_path, log_buffer)?;
+        }
+        if let Some(warning) = monitor.check_and_warn(c) {
+            self.with_printer_mut(|printer| { writeln!(printer, "{warning}\n").ok(); });
+        }
+        Ok(())
     }
 
     /// Parse a stream of Gemini NDJSON events
     pub(crate) fn parse_stream<R: BufRead>(
-        &self,
+        &mut self,
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
-    ) -> io::Result<()> {
-        use super::incremental_parser::IncrementalNdjsonParser;
-
-        let c = &self.colors;
+    ) -> std::io::Result<()> {
+        use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
+        let c = self.colors;
         let monitor = HealthMonitor::new("Gemini");
-        // Accumulate log content in memory, write to workspace at the end
         let logging_enabled = self.log_path.is_some();
         let mut log_buffer: Vec<u8> = Vec::new();
-
-        // Use incremental parser for true real-time streaming
-        // This processes JSON as soon as it's complete, not waiting for newlines
         let mut incremental_parser = IncrementalNdjsonParser::new();
-        let mut byte_buffer = Vec::new();
-
-        loop {
-            // Read available bytes
-            byte_buffer.clear();
-            let chunk = reader.fill_buf()?;
-            if chunk.is_empty() {
-                break;
-            }
-
-            // Process all bytes immediately
-            byte_buffer.extend_from_slice(chunk);
-            let consumed = chunk.len();
-            reader.consume(consumed);
-
-            // Feed bytes to incremental parser
-            let json_events = incremental_parser.feed(&byte_buffer);
-
-            // Process each complete JSON event immediately
-            for line in json_events {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-
-                // In debug mode, also show the raw JSON
-                if self.verbosity.is_debug() {
-                    let mut printer = self.printer.borrow_mut();
-                    writeln!(
-                        printer,
-                        "{}[DEBUG]{} {}{}{}",
-                        c.dim(),
-                        c.reset(),
-                        c.dim(),
-                        &line,
-                        c.reset()
-                    )?;
-                    printer.flush()?;
-                }
-
-                // Parse the event once - parse_event handles malformed JSON by returning None
-                match self.parse_event(&line) {
-                    Some(output) => {
-                        monitor.record_parsed();
-                        // Write output to printer
-                        let mut printer = self.printer.borrow_mut();
-                        write!(printer, "{output}")?;
-                        printer.flush()?;
-                    }
-                    None => {
-                        // Check if this was a control event (state management with no user output)
-                        if trimmed.starts_with('{') {
-                            if let Ok(event) = serde_json::from_str::<GeminiEvent>(&line) {
-                                if Self::is_control_event(&event) {
-                                    monitor.record_control_event();
-                                } else {
-                                    // Valid JSON but not a control event - track as unknown
-                                    monitor.record_unknown_event();
-                                }
-                            } else {
-                                // Failed to deserialize - track as parse error
-                                monitor.record_parse_error();
-                            }
-                        } else {
-                            monitor.record_ignored();
-                        }
-                    }
-                }
-
-                // Log raw JSON to buffer if configured
-                if logging_enabled {
-                    writeln!(log_buffer, "{line}")?;
-                }
-            }
-        }
-
-        // Write accumulated log content to workspace
-        if let Some(log_path) = &self.log_path {
-            workspace.append_bytes(log_path, &log_buffer)?;
-        }
-        if let Some(warning) = monitor.check_and_warn(*c) {
-            let mut printer = self.printer.borrow_mut();
-            writeln!(printer, "{warning}\n")?;
-        }
-        Ok(())
+        self.run_stream_loop(&mut reader, &mut incremental_parser, c, &monitor, &mut log_buffer, logging_enabled)?;
+        self.finalize_stream(workspace, &monitor, c, &log_buffer)
     }
 }

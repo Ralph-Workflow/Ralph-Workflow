@@ -35,14 +35,14 @@ pub struct CodeBlock {
 
 /// Table cell with inline content
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cell {
+pub struct TableCell {
     pub content: Vec<InlineElement>,
 }
 
 /// Table row containing cells
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
-    pub cells: Vec<Cell>,
+    pub cells: Vec<TableCell>,
 }
 
 /// Table with optional caption and column headers

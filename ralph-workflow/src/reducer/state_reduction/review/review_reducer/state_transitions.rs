@@ -60,18 +60,20 @@ pub(in crate::reducer::state_reduction::review) fn reduce_pass_started(
     let is_first_pass = state.metrics.review_passes_started == 0;
     let is_new_pass = state.reviewer_pass != pass;
 
-    let mut metrics = state.metrics;
-    if is_first_pass || is_new_pass {
-        metrics = metrics.increment_review_passes_started();
-    }
-    // Update current pass tracker
-    metrics = metrics.set_current_review_pass(pass);
-    // Reset per-pass fix continuation attempt counter when starting a new pass.
-    // If orchestration re-emits PassStarted for the same pass (retry), preserve the
-    // current per-pass attempt counter so retries don't erase history.
-    if is_new_pass {
-        metrics = metrics.reset_fix_continuation_attempt();
-    }
+    // Build metrics: start with state.metrics, apply conditional then unconditional updates
+    let metrics = {
+        let m = if is_first_pass || is_new_pass {
+            state.metrics.increment_review_passes_started()
+        } else {
+            state.metrics
+        };
+        let m = m.set_current_review_pass(pass);
+        if is_new_pass {
+            m.reset_fix_continuation_attempt()
+        } else {
+            m
+        }
+    };
 
     PipelineState {
         reviewer_pass: pass,

@@ -7,103 +7,152 @@
 //! 3. Deletes PLAN.md
 //! 4. Optionally runs fast checks
 
-use std::fmt::Write;
-
 use crate::files::llm_output_extraction::PlanElements;
+
+pub(crate) mod boundary_domain;
+pub(crate) mod prompt_mode_strategy;
 
 /// Format plan elements as markdown for PLAN.md.
 pub(crate) fn format_plan_as_markdown(elements: &PlanElements) -> String {
-    let mut result = String::new();
+    let summary = format_summary_section(elements);
+    let skills = format_skills_section(elements);
+    let steps = format_steps_section(elements);
+    let critical = format_critical_files_section(elements);
+    let risks = format_risks_section(elements);
+    let verification = format_verification_section(elements);
 
-    // Summary section
-    result.push_str("## Summary\n\n");
-    result.push_str(&elements.summary.context);
-    result.push_str("\n\n");
+    [summary, skills, steps, critical, risks, verification]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
-    // Scope items
-    result.push_str("### Scope\n\n");
-    for item in &elements.summary.scope_items {
-        if let Some(ref count) = item.count {
-            writeln!(result, "- **{}** {}", count, item.description).unwrap();
-        } else {
-            write!(result, "- {}", item.description).unwrap();
-        }
-        if let Some(ref category) = item.category {
-            write!(result, " ({category})").unwrap();
-        }
-        result.push('\n');
+fn format_summary_section(elements: &PlanElements) -> String {
+    let scope_items: String = elements
+        .summary
+        .scope_items
+        .iter()
+        .map(|item| {
+            let count_suffix = item
+                .count
+                .as_ref()
+                .map(|c| format!(" **{c}** "))
+                .unwrap_or_default();
+            let category_suffix = item
+                .category
+                .as_ref()
+                .map(|c| format!(" ({c})"))
+                .unwrap_or_default();
+            format!("- {count_suffix}{}{category_suffix}", item.description)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        "## Summary\n\n{}\n\n### Scope\n\n{}\n",
+        elements.summary.context, scope_items
+    )
+}
+
+fn format_skills_section(elements: &PlanElements) -> String {
+    let sm = match elements.skills_mcp.as_ref() {
+        Some(sm) => sm,
+        None => return String::new(),
+    };
+    let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+    if !has_structured && sm.raw_content.is_none() {
+        return String::new();
     }
-    result.push('\n');
 
-    // Skills & MCP recommendations (if present)
-    if let Some(ref sm) = elements.skills_mcp {
-        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
-        if has_structured || sm.raw_content.is_some() {
-            result.push_str("### Skills & MCP Recommendations\n\n");
-            for skill in &sm.skills {
-                if let Some(ref reason) = skill.reason {
-                    writeln!(result, "- **Skill:** {} \u{2014} {}", skill.name, reason).unwrap();
-                } else {
-                    writeln!(result, "- **Skill:** {}", skill.name).unwrap();
-                }
+    let raw_content = sm
+        .raw_content
+        .as_ref()
+        .and_then(|raw| {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
             }
-            for mcp in &sm.mcps {
-                if let Some(ref reason) = mcp.reason {
-                    writeln!(result, "- **MCP:** {} \u{2014} {}", mcp.name, reason).unwrap();
-                } else {
-                    writeln!(result, "- **MCP:** {}", mcp.name).unwrap();
-                }
-            }
-            if let Some(ref raw) = sm.raw_content {
-                let trimmed = raw.trim();
-                if !trimmed.is_empty() {
-                    writeln!(result, "\n{trimmed}").unwrap();
-                }
-            }
-            result.push('\n');
-        }
+        })
+        .map(|c| format!("\n{c}"))
+        .unwrap_or_default();
+
+    let parts: Vec<String> = sm
+        .skills
+        .iter()
+        .map(|skill| {
+            skill
+                .reason
+                .as_ref()
+                .map(|r| format!("- **Skill:** {} \u{2014} {}", skill.name, r))
+                .unwrap_or_else(|| format!("- **Skill:** {}", skill.name))
+        })
+        .chain(sm.mcps.iter().map(|mcp| {
+            mcp.reason
+                .as_ref()
+                .map(|r| format!("- **MCP:** {} \u{2014} {}", mcp.name, r))
+                .unwrap_or_else(|| format!("- **MCP:** {}", mcp.name))
+        }))
+        .chain(std::iter::once(raw_content))
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if parts.is_empty() {
+        return String::new();
     }
 
-    // Implementation steps
-    result.push_str("## Implementation Steps\n\n");
-    for step in &elements.steps {
-        // Step header
-        let step_type_str = match step.kind {
-            crate::files::llm_output_extraction::xsd_validation_plan::StepType::FileChange => {
-                "file-change"
-            }
-            crate::files::llm_output_extraction::xsd_validation_plan::StepType::Action => "action",
-            crate::files::llm_output_extraction::xsd_validation_plan::StepType::Research => {
-                "research"
-            }
-        };
-        let priority_str = step.priority.map_or(String::new(), |p| {
-            format!(
-                " [{}]",
-                match p {
-                    crate::files::llm_output_extraction::xsd_validation_plan::Priority::Critical =>
-                        "critical",
-                    crate::files::llm_output_extraction::xsd_validation_plan::Priority::High =>
-                        "high",
-                    crate::files::llm_output_extraction::xsd_validation_plan::Priority::Medium =>
-                        "medium",
-                    crate::files::llm_output_extraction::xsd_validation_plan::Priority::Low =>
-                        "low",
+    format!("### Skills & MCP Recommendations\n\n{}\n", parts.join("\n"))
+}
+
+fn format_steps_section(elements: &PlanElements) -> String {
+    let steps: Vec<String> = elements.steps.iter().map(format_step_item).collect();
+
+    format!("## Implementation Steps\n\n{}", steps.join("\n"))
+}
+
+fn format_step_item(
+    step: &crate::files::llm_output_extraction::xsd_validation_plan::Step,
+) -> String {
+    let step_type_str = match step.kind {
+        crate::files::llm_output_extraction::xsd_validation_plan::StepType::FileChange => {
+            "file-change"
+        }
+        crate::files::llm_output_extraction::xsd_validation_plan::StepType::Action => "action",
+        crate::files::llm_output_extraction::xsd_validation_plan::StepType::Research => "research",
+    };
+
+    let priority_str = step
+        .priority
+        .as_ref()
+        .map(|p| {
+            let s = match p {
+                crate::files::llm_output_extraction::xsd_validation_plan::Priority::Critical => {
+                    "critical"
                 }
-            )
-        });
+                crate::files::llm_output_extraction::xsd_validation_plan::Priority::High => "high",
+                crate::files::llm_output_extraction::xsd_validation_plan::Priority::Medium => {
+                    "medium"
+                }
+                crate::files::llm_output_extraction::xsd_validation_plan::Priority::Low => "low",
+            };
+            format!(" [{s}]")
+        })
+        .unwrap_or_default();
 
-        write!(
-            result,
-            "### Step {} ({}){}:  {}\n\n",
-            step.number, step_type_str, priority_str, step.title
-        )
-        .unwrap();
+    let header = format!(
+        "### Step {} ({}){}:  {}\n",
+        step.number, step_type_str, priority_str, step.title
+    );
 
-        // Target files
-        if !step.target_files.is_empty() {
-            result.push_str("**Target Files:**\n");
-            for tf in &step.target_files {
+    let target_files = if step.target_files.is_empty() {
+        String::new()
+    } else {
+        let files: Vec<String> = step
+            .target_files
+            .iter()
+            .map(|tf| {
                 let action_str = match tf.action {
                     crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Create => {
                         "create"
@@ -115,99 +164,164 @@ pub(crate) fn format_plan_as_markdown(elements: &PlanElements) -> String {
                         "delete"
                     }
                 };
-                writeln!(result, "- `{}` ({})", tf.path, action_str).unwrap();
-            }
-            result.push('\n');
-        }
+                format!("- `{}` ({})", tf.path, action_str)
+            })
+            .collect();
+        format!("**Target Files:**\n{}\n", files.join("\n"))
+    };
 
-        // Location
-        if let Some(ref location) = step.location {
-            writeln!(result, "**Location:** {location}").unwrap();
-        }
+    let location = step
+        .location
+        .as_ref()
+        .map(|l| format!("**Location:** {l}\n"))
+        .unwrap_or_default();
 
-        // Rationale
-        if let Some(ref rationale) = step.rationale {
-            writeln!(result, "**Rationale:** {rationale}\n").unwrap();
-        }
+    let rationale = step
+        .rationale
+        .as_ref()
+        .map(|r| format!("**Rationale:** {r}\n"))
+        .unwrap_or_default();
 
-        // Content
-        result.push_str(&format_rich_content(&step.content));
-        result.push('\n');
+    let content = format_rich_content(&step.content);
 
-        // Dependencies
-        if !step.depends_on.is_empty() {
-            result.push_str("**Depends on:** ");
-            let deps: Vec<String> = step
-                .depends_on
-                .iter()
-                .map(|d| format!("Step {d}"))
-                .collect();
-            result.push_str(&deps.join(", "));
-            result.push_str("\n\n");
-        }
-    }
+    let dependencies = if step.depends_on.is_empty() {
+        String::new()
+    } else {
+        let deps: Vec<String> = step
+            .depends_on
+            .iter()
+            .map(|d| format!("Step {d}"))
+            .collect();
+        format!("**Depends on:** {}\n\n", deps.join(", "))
+    };
 
-    // Critical files
-    result.push_str("## Critical Files\n\n");
-    result.push_str("### Primary Files\n\n");
-    for pf in &elements.critical_files.primary_files {
-        let action_str = match pf.action {
-            crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Create => {
-                "create"
-            }
-            crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Modify => {
-                "modify"
-            }
-            crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Delete => {
-                "delete"
-            }
-        };
-        if let Some(ref est) = pf.estimated_changes {
-            writeln!(result, "- `{}` ({}) - {}", pf.path, action_str, est).unwrap();
-        } else {
-            writeln!(result, "- `{}` ({})", pf.path, action_str).unwrap();
-        }
-    }
-    result.push('\n');
+    [
+        header,
+        target_files,
+        location,
+        rationale,
+        content,
+        dependencies,
+    ]
+    .into_iter()
+    .filter(|s| !s.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n")
+}
 
-    if !elements.critical_files.reference_files.is_empty() {
-        result.push_str("### Reference Files\n\n");
-        for rf in &elements.critical_files.reference_files {
-            writeln!(result, "- `{}` - {}", rf.path, rf.purpose).unwrap();
-        }
-        result.push('\n');
-    }
-
-    // Risks and mitigations
-    result.push_str("## Risks & Mitigations\n\n");
-    for rp in &elements.risks_mitigations {
-        let severity_str = rp.severity.map_or(String::new(), |s| {
-            format!(
-                " [{}]",
-                match s {
-                    crate::files::llm_output_extraction::xsd_validation_plan::Severity::Low =>
-                        "low",
-                    crate::files::llm_output_extraction::xsd_validation_plan::Severity::Medium =>
-                        "medium",
-                    crate::files::llm_output_extraction::xsd_validation_plan::Severity::High =>
-                        "high",
-                    crate::files::llm_output_extraction::xsd_validation_plan::Severity::Critical =>
-                        "critical",
+fn format_critical_files_section(elements: &PlanElements) -> String {
+    let primary: Vec<String> = elements
+        .critical_files
+        .primary_files
+        .iter()
+        .map(|pf| {
+            let action_str = match pf.action {
+                crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Create => {
+                    "create"
                 }
+                crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Modify => {
+                    "modify"
+                }
+                crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Delete => {
+                    "delete"
+                }
+            };
+            pf.estimated_changes
+                .as_ref()
+                .map(|est| format!("- `{}` ({}) - {}", pf.path, action_str, est))
+                .unwrap_or_else(|| format!("- `{}` ({})", pf.path, action_str))
+        })
+        .collect();
+
+    let reference: Vec<String> = elements
+        .critical_files
+        .reference_files
+        .iter()
+        .map(|rf| format!("- `{}` - {}", rf.path, rf.purpose))
+        .collect();
+
+    if primary.is_empty() && reference.is_empty() {
+        return String::new();
+    }
+
+    let primary_section = if primary.is_empty() {
+        String::new()
+    } else {
+        format!("### Primary Files\n\n{}\n", primary.join("\n"))
+    };
+
+    let reference_section = if reference.is_empty() {
+        String::new()
+    } else {
+        format!("### Reference Files\n\n{}\n", reference.join("\n"))
+    };
+
+    format!(
+        "## Critical Files\n\n{}{}",
+        primary_section, reference_section
+    )
+}
+
+fn format_risks_section(elements: &PlanElements) -> String {
+    if elements.risks_mitigations.is_empty() {
+        return String::new();
+    }
+
+    let risks: Vec<String> = elements
+        .risks_mitigations
+        .iter()
+        .map(|rp| {
+            let severity_str = rp
+                .severity
+                .as_ref()
+                .map(|s| {
+                    let sev_str = match s {
+                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::Low => {
+                            "low"
+                        }
+                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::Medium => {
+                            "medium"
+                        }
+                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::High => {
+                            "high"
+                        }
+                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::Critical => {
+                            "critical"
+                        }
+                    };
+                    format!(" [{sev_str}]")
+                })
+                .unwrap_or_default();
+            format!(
+                "**Risk{}:** {}\n**Mitigation:** {}\n",
+                severity_str, rp.risk, rp.mitigation
             )
-        });
-        writeln!(result, "**Risk{}:** {}", severity_str, rp.risk).unwrap();
-        writeln!(result, "**Mitigation:** {}\n\n", rp.mitigation).unwrap();
+        })
+        .collect();
+
+    format!("## Risks & Mitigations\n\n{}", risks.join("\n"))
+}
+
+fn format_verification_section(elements: &PlanElements) -> String {
+    if elements.verification_strategy.is_empty() {
+        return String::new();
     }
 
-    // Verification strategy
-    result.push_str("## Verification Strategy\n\n");
-    for (i, v) in elements.verification_strategy.iter().enumerate() {
-        writeln!(result, "{}. **{}**", i + 1, v.method).unwrap();
-        write!(result, "   Expected: {}\n\n", v.expected_outcome).unwrap();
-    }
+    let items: Vec<String> = elements
+        .verification_strategy
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            format!(
+                "{}. **{}**\n   Expected: {}",
+                i + 1,
+                v.method,
+                v.expected_outcome
+            )
+        })
+        .collect();
 
-    result
+    format!("## Verification Strategy\n\n{}", items.join("\n\n"))
 }
 
 /// Format rich content elements to markdown.
@@ -216,70 +330,79 @@ fn format_rich_content(
 ) -> String {
     use crate::files::llm_output_extraction::xsd_validation_plan::ContentElement;
 
-    let mut result = String::new();
-
-    for element in &content.elements {
-        match element {
+    let elements: Vec<String> = content
+        .elements
+        .iter()
+        .map(|element| match element {
             ContentElement::Paragraph(p) => {
-                result.push_str(&format_inline_content(&p.content));
-                result.push_str("\n\n");
+                format!("{}\n\n", format_inline_content(&p.content))
             }
             ContentElement::CodeBlock(cb) => {
                 let lang = cb.language.as_deref().unwrap_or("");
-                writeln!(result, "```{lang}").unwrap();
-                result.push_str(&cb.content);
-                if !cb.content.ends_with('\n') {
-                    result.push('\n');
-                }
-                result.push_str("```\n\n");
+                let end_newline = if cb.content.ends_with('\n') {
+                    String::new()
+                } else {
+                    "\n".to_string()
+                };
+                format!("```{lang}\n{}{}```\n\n", cb.content, end_newline)
             }
-            ContentElement::Table(t) => {
-                if let Some(ref caption) = t.caption {
-                    writeln!(result, "**{caption}**").unwrap();
-                }
-                // Header row
-                if !t.columns.is_empty() {
-                    result.push_str("| ");
-                    result.push_str(&t.columns.join(" | "));
-                    result.push_str(" |\n");
-                    result.push('|');
-                    for _ in &t.columns {
-                        result.push_str(" --- |");
-                    }
-                    result.push('\n');
-                } else if let Some(first_row) = t.rows.first() {
-                    // Infer column count from first row
-                    result.push('|');
-                    for _ in &first_row.cells {
-                        result.push_str(" --- |");
-                    }
-                    result.push('\n');
-                }
-                // Data rows
-                for row in &t.rows {
-                    result.push_str("| ");
-                    let cells: Vec<String> = row
-                        .cells
-                        .iter()
-                        .map(|c| format_inline_content(&c.content))
-                        .collect();
-                    result.push_str(&cells.join(" | "));
-                    result.push_str(" |\n");
-                }
-                result.push('\n');
-            }
-            ContentElement::List(l) => {
-                result.push_str(&format_list(l, 0));
-                result.push('\n');
-            }
+            ContentElement::Table(t) => format_table(t),
+            ContentElement::List(l) => format_list(l, 0),
             ContentElement::Heading(h) => {
                 let prefix = "#".repeat(h.level as usize);
-                write!(result, "{} {}\n\n", prefix, h.text).unwrap();
+                format!("{} {}\n\n", prefix, h.text)
             }
-        }
+        })
+        .collect();
+
+    elements.join("")
+}
+
+fn format_table(t: &crate::files::llm_output_extraction::xsd_validation_plan::Table) -> String {
+    let caption = t
+        .caption
+        .as_ref()
+        .map(|c| format!("**{c}**\n"))
+        .unwrap_or_default();
+
+    let column_count = if !t.columns.is_empty() {
+        t.columns.len()
+    } else {
+        t.rows.first().map(|r| r.cells.len()).unwrap_or(0)
+    };
+
+    if column_count == 0 {
+        return caption;
     }
 
-    result
+    let header = if !t.columns.is_empty() {
+        format!("| {} |\n", t.columns.join(" | "))
+    } else {
+        String::new()
+    };
+
+    let separator = format!(
+        "| {} |\n",
+        (0..column_count)
+            .map(|_| "---")
+            .collect::<Vec<_>>()
+            .join(" | ")
+    );
+
+    let rows: Vec<String> = t
+        .rows
+        .iter()
+        .map(|row| {
+            let cells: Vec<String> = row
+                .cells
+                .iter()
+                .map(|c| format_inline_content(&c.content))
+                .collect();
+            format!("| {} |", cells.join(" | "))
+        })
+        .collect();
+
+    format!("{}{}{}{}", caption, header, separator, rows.join("\n"))
 }
 
 /// Format inline content elements.
@@ -306,24 +429,34 @@ fn format_list(
 ) -> String {
     use crate::files::llm_output_extraction::xsd_validation_plan::ListType;
 
-    let mut result = String::new();
     let indent_str = "  ".repeat(indent);
 
-    for (i, item) in list.items.iter().enumerate() {
-        let marker = match list.list_type {
-            ListType::Ordered => format!("{}. ", i + 1),
-            ListType::Unordered => "- ".to_string(),
-        };
+    let items: Vec<String> = list
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let marker = match list.list_type {
+                ListType::Ordered => format!("{}. ", i + 1),
+                ListType::Unordered => "- ".to_string(),
+            };
 
-        result.push_str(&indent_str);
-        result.push_str(&marker);
-        result.push_str(&format_inline_content(&item.content));
-        result.push('\n');
+            let content = format_inline_content(&item.content);
+            let nested = item
+                .nested_list
+                .as_ref()
+                .map(|n| format_list(n, indent + 1))
+                .unwrap_or_default();
 
-        if let Some(ref nested) = item.nested_list {
-            result.push_str(&format_list(nested, indent + 1));
-        }
-    }
+            let nested_with_newline = if nested.is_empty() {
+                String::new()
+            } else {
+                format!("\n{nested}")
+            };
 
-    result
+            format!("{}{}{}{}", indent_str, marker, content, nested_with_newline)
+        })
+        .collect();
+
+    format!("{}\n", items.join("\n"))
 }

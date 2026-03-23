@@ -229,7 +229,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             PipelineState {
                 agent_chain: state
                     .agent_chain
-                    .switch_to_agent_named(&to_agent)
+                    .switch_to_agent_named(to_agent.as_str())
                     .clear_session_id()
                     .clear_continuation_prompt()
                     .with_mode(DrainMode::Normal),
@@ -268,11 +268,13 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             backoff_multiplier,
             max_backoff_ms,
         } => {
-            let models_per_agent = agents.iter().map(|_| vec![]).collect();
+            let agents_strings: Vec<String> = agents.iter().map(|a| a.to_string()).collect();
+            let models_per_agent: Vec<Vec<String>> =
+                agents_strings.iter().map(|_| vec![]).collect();
             PipelineState {
                 agent_chain: state
                     .agent_chain
-                    .with_agents(agents, models_per_agent, drain.role())
+                    .with_agents(agents_strings, models_per_agent, drain.role())
                     .with_drain(drain)
                     .with_max_cycles(max_cycles)
                     .with_backoff_policy(retry_delay_ms, backoff_multiplier, max_backoff_ms)

@@ -1,0 +1,13 @@
+error[FORBID_BOUNDARY_POLICY_CALLS]: call to policy helper `reducer::determine_next_effect` is forbidden in boundary modules
+  --> $DIR/boundary_policy_calls.rs:5:5
+   |
+LL |     let eff = determine_next_effect(state);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: boundary modules must not call reducer/orchestrator policy helpers directly. Policy decisions belong in domain code, not at the boundary.
+
+error[FORBID_BOUNDARY_POLICY_CALLS]: call to policy helper `orchestrator::reduce_review` is forbidden in boundary modules
+  --> $DIR/boundary_policy_calls.rs:6:5
+   |
+LL |     let _ = reduce_review(state, ReviewEvent::IssueRecorded);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: boundary modules must not call reducer/orchestrator policy helpers directly. Policy decisions belong in domain code, not at the boundary.
+
+error: 2 errors emitted

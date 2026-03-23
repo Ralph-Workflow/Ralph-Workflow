@@ -1,8 +1,7 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint policy: process system tests are still style-guide-governed boundary tests.
 //
-// Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
-// (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
-// issues outside our control and don't reflect code quality problems.
+// See `CODE_STYLE.md`, `docs/code-style/testing.md`, `docs/code-style/boundaries.md`,
+// and `tests/clippy.toml`.
 #![deny(warnings)]
 #![deny(clippy::all)]
 // Note: unsafe_code is allowed because process system tests need to set process groups
@@ -10,9 +9,8 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // NOTE: Many lints are not denied because this is test code.
-    // This is documented in the lint policy exception table.
-    // clippy::print_stderr - allowed for test output
+    // This binary needs real process/system interaction, but it should still avoid
+    // accidental debug leftovers and imperative-style anti-patterns where possible.
     clippy::dbg_macro,
     // Push toward combinators instead of hand-written control flow
     clippy::manual_map,

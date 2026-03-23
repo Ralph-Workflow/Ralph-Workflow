@@ -44,7 +44,10 @@ use std::borrow::Cow;
 ///
 /// See the unit tests in this module for working examples.
 pub fn create_reader(content: &str) -> Reader<&[u8]> {
-    let mut reader = Reader::from_str(content);
+    configure_trimmed_reader(Reader::from_str(content))
+}
+
+fn configure_trimmed_reader(mut reader: Reader<&[u8]>) -> Reader<&[u8]> {
     reader.config_mut().trim_text(true);
     reader
 }
@@ -72,43 +75,47 @@ pub fn read_text_until_end(
     reader: &mut Reader<&[u8]>,
     end_tag: &[u8],
 ) -> Result<String, XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut text = String::new();
+    read_text_until_end_with_acc(reader, end_tag, String::new())
+}
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Text(e)) => {
-                text.push_str(&e.unescape().unwrap_or_default());
-            }
-            Ok(Event::CData(e)) => {
-                // CDATA content is preserved exactly as-is
-                text.push_str(&String::from_utf8_lossy(&e));
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == end_tag => {
-                break;
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
-                    found: "unexpected end of file".to_string(),
-                    suggestion: format!(
-                        "Ensure the <{}> element has a matching closing tag.",
-                        String::from_utf8_lossy(end_tag)
-                    ),
-                    example: None,
-                });
-            }
-            Ok(_) => {} // Skip comments, processing instructions, nested elements
-            Err(e) => {
-                return Err(make_parse_error(end_tag, &e));
-            }
+fn read_text_until_end_with_acc(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+    text: String,
+) -> Result<String, XsdValidationError> {
+    read_text_until_end_next(reader, end_tag, text, Vec::new())
+}
+
+fn read_text_until_end_next(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+    text: String,
+    mut buf: Vec<u8>,
+) -> Result<String, XsdValidationError> {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Text(e)) => {
+            let next_text = format!("{text}{}", e.unescape().unwrap_or_default());
+            read_text_until_end_with_acc(reader, end_tag, next_text)
         }
-        buf.clear();
+        Ok(Event::CData(e)) => {
+            let next_text = format!("{text}{}", String::from_utf8_lossy(&e));
+            read_text_until_end_with_acc(reader, end_tag, next_text)
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == end_tag => Ok(text.trim().to_string()),
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: String::from_utf8_lossy(end_tag).to_string(),
+            expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
+            found: "unexpected end of file".to_string(),
+            suggestion: format!(
+                "Ensure the <{}> element has a matching closing tag.",
+                String::from_utf8_lossy(end_tag)
+            ),
+            example: None,
+        }),
+        Ok(_) => read_text_until_end_with_acc(reader, end_tag, text),
+        Err(e) => Err(make_parse_error(end_tag, &e)),
     }
-
-    Ok(text.trim().to_string())
 }
 
 /// Read text content until the closing tag, accepting either canonical OR original tag name.
@@ -127,54 +134,80 @@ pub fn read_text_until_end_fuzzy(
     canonical_end_tag: &[u8],
     original_start_tag: &[u8],
 ) -> Result<String, XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut text = String::new();
+    read_text_until_end_fuzzy_with_acc(reader, canonical_end_tag, original_start_tag, String::new())
+}
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Text(e)) => {
-                text.push_str(&e.unescape().unwrap_or_default());
-            }
-            Ok(Event::CData(e)) => {
-                // CDATA content is preserved exactly as-is
-                text.push_str(&String::from_utf8_lossy(&e));
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag name OR original (misspelled) tag name
-                if e.name().as_ref() == canonical_end_tag || e.name().as_ref() == original_start_tag
-                {
-                    break;
-                }
-                // For nested elements with same name, track depth
-                // (not needed for simple flat structures, but kept for correctness)
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(canonical_end_tag).to_string(),
-                    expected: format!(
-                        "closing </{}> or </{}>",
-                        String::from_utf8_lossy(canonical_end_tag),
-                        String::from_utf8_lossy(original_start_tag)
-                    ),
-                    found: "unexpected end of file".to_string(),
-                    suggestion: format!(
-                        "Ensure the element has a matching closing tag (</{}> or </{}>).",
-                        String::from_utf8_lossy(canonical_end_tag),
-                        String::from_utf8_lossy(original_start_tag)
-                    ),
-                    example: None,
-                });
-            }
-            Ok(_) => {} // Skip comments, processing instructions, nested elements
-            Err(e) => {
-                return Err(make_parse_error(canonical_end_tag, &e));
-            }
+fn read_text_until_end_fuzzy_with_acc(
+    reader: &mut Reader<&[u8]>,
+    canonical_end_tag: &[u8],
+    original_start_tag: &[u8],
+    text: String,
+) -> Result<String, XsdValidationError> {
+    read_text_until_end_fuzzy_next(
+        reader,
+        canonical_end_tag,
+        original_start_tag,
+        text,
+        Vec::new(),
+    )
+}
+
+fn read_text_until_end_fuzzy_next(
+    reader: &mut Reader<&[u8]>,
+    canonical_end_tag: &[u8],
+    original_start_tag: &[u8],
+    text: String,
+    mut buf: Vec<u8>,
+) -> Result<String, XsdValidationError> {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Text(e)) => {
+            let next_text = format!("{text}{}", e.unescape().unwrap_or_default());
+            read_text_until_end_fuzzy_with_acc(
+                reader,
+                canonical_end_tag,
+                original_start_tag,
+                next_text,
+            )
         }
-        buf.clear();
+        Ok(Event::CData(e)) => {
+            let next_text = format!("{text}{}", String::from_utf8_lossy(&e));
+            read_text_until_end_fuzzy_with_acc(
+                reader,
+                canonical_end_tag,
+                original_start_tag,
+                next_text,
+            )
+        }
+        Ok(Event::End(e))
+            if e.name().as_ref() == canonical_end_tag
+                || e.name().as_ref() == original_start_tag =>
+        {
+            Ok(text.trim().to_string())
+        }
+        Ok(Event::End(_)) => {
+            read_text_until_end_fuzzy_with_acc(reader, canonical_end_tag, original_start_tag, text)
+        }
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: String::from_utf8_lossy(canonical_end_tag).to_string(),
+            expected: format!(
+                "closing </{}> or </{}>",
+                String::from_utf8_lossy(canonical_end_tag),
+                String::from_utf8_lossy(original_start_tag)
+            ),
+            found: "unexpected end of file".to_string(),
+            suggestion: format!(
+                "Ensure the element has a matching closing tag (</{}> or </{}>).",
+                String::from_utf8_lossy(canonical_end_tag),
+                String::from_utf8_lossy(original_start_tag)
+            ),
+            example: None,
+        }),
+        Ok(_) => {
+            read_text_until_end_fuzzy_with_acc(reader, canonical_end_tag, original_start_tag, text)
+        }
+        Err(e) => Err(make_parse_error(canonical_end_tag, &e)),
     }
-
-    Ok(text.trim().to_string())
 }
 
 /// Skip all content until the closing tag of the current element.
@@ -194,39 +227,56 @@ pub fn read_text_until_end_fuzzy(
 ///
 /// See the unit tests in this module for working examples.
 pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut depth = 1;
+    skip_to_end_with_depth(reader, end_tag, 1)
+}
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == end_tag => {
-                depth += 1;
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == end_tag => {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
-                    found: "unexpected end of file".to_string(),
-                    suggestion: "Check that all XML elements are properly closed.".to_string(),
-                    example: None,
-                });
-            }
-            Ok(_) => {}
-            Err(e) => {
-                return Err(make_parse_error(end_tag, &e));
+fn skip_to_end_with_depth(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+    depth: usize,
+) -> Result<(), XsdValidationError> {
+    skip_to_end_next(reader, end_tag, depth, Vec::new())
+}
+
+fn skip_to_end_next(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+    depth: usize,
+    mut buf: Vec<u8>,
+) -> Result<(), XsdValidationError> {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Start(e)) if e.name().as_ref() == end_tag => {
+            skip_to_end_with_depth(reader, end_tag, depth.saturating_add(1))
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == end_tag => {
+            if depth.saturating_sub(1) == 0 {
+                Ok(())
+            } else {
+                skip_to_end_with_depth(reader, end_tag, depth.saturating_sub(1))
             }
         }
-        buf.clear();
+        Ok(Event::Eof) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: String::from_utf8_lossy(end_tag).to_string(),
+            expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
+            found: "unexpected end of file".to_string(),
+            suggestion: "Check that all XML elements are properly closed.".to_string(),
+            example: None,
+        }),
+        Ok(_) => skip_to_end_with_depth(reader, end_tag, depth),
+        Err(e) => Err(make_parse_error(end_tag, &e)),
+    }
+}
+
+fn merge_raw_content(raw_content: Option<String>, fragment: &str) -> Option<String> {
+    let trimmed_fragment = fragment.trim();
+    if trimmed_fragment.is_empty() {
+        return raw_content;
     }
 
-    Ok(())
+    raw_content
+        .map(|existing| format!("{existing} {trimmed_fragment}"))
+        .or_else(|| Some(trimmed_fragment.to_string()))
 }
 
 /// Parse a `<skills-mcp>` element's content into a `SkillsMcp` struct.
@@ -248,94 +298,157 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), Xsd
 ///
 /// A `SkillsMcp` struct with parsed entries.
 pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
-    let mut buf = Vec::new();
-    let mut skills: Vec<SkillEntry> = Vec::new();
-    let mut mcps: Vec<McpEntry> = Vec::new();
-    let mut raw_text_parts: Vec<String> = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                let tag = e.name();
-                let tag_bytes = tag.as_ref();
-
-                // Extract optional reason attribute
-                let reason = e
-                    .attributes()
-                    .filter_map(std::result::Result::ok)
-                    .find(|a| a.key.as_ref() == b"reason")
-                    .and_then(|a| a.unescape_value().ok())
-                    .map(Cow::into_owned)
-                    .filter(|s| !s.is_empty());
-
-                match tag_bytes {
-                    b"skill" => {
-                        let name = read_text_until_end(reader, b"skill")
-                            .unwrap_or_default()
-                            .trim()
-                            .to_string();
-                        if !name.is_empty() {
-                            skills.push(SkillEntry { name, reason });
-                        }
-                    }
-                    b"mcp" => {
-                        let name = read_text_until_end(reader, b"mcp")
-                            .unwrap_or_default()
-                            .trim()
-                            .to_string();
-                        if !name.is_empty() {
-                            mcps.push(McpEntry { name, reason });
-                        }
-                    }
-                    other => {
-                        // Skip unknown elements tolerantly
-                        let _ = skip_to_end(reader, other);
-                    }
-                }
-            }
-            Ok(Event::Empty(e)) => {
-                // Self-closing elements like <skill/> or <mcp/> have no name text - skip
-                let _tag_bytes = e.name().as_ref();
-                // No content → nothing to record
-            }
-            Ok(Event::Text(e)) => {
-                // Capture any stray text as raw content
-                let text = e.unescape().unwrap_or_default().to_string();
-                let trimmed = text.trim().to_string();
-                if !trimmed.is_empty() {
-                    raw_text_parts.push(trimmed);
-                }
-            }
-            Ok(Event::CData(e)) => {
-                let text = String::from_utf8_lossy(&e).trim().to_string();
-                if !text.is_empty() {
-                    raw_text_parts.push(text);
-                }
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"skills-mcp" => break,
-            Ok(Event::Eof) => {
-                // Unexpected EOF - return what we have
-                break;
-            }
-            Ok(_) => {} // Skip comments, PI, etc.
-            Err(_) => {
-                // Parse error inside skills-mcp - return what we have so far
-                break;
-            }
-        }
-    }
-
-    let raw_content = if raw_text_parts.is_empty() {
-        None
-    } else {
-        Some(raw_text_parts.join(" "))
-    };
+    let parsed_state = parse_skills_mcp_state(
+        reader,
+        SkillsMcpState {
+            skills: Vec::new(),
+            mcps: Vec::new(),
+            raw_content: None,
+        },
+    );
 
     SkillsMcp {
+        skills: parsed_state.skills,
+        mcps: parsed_state.mcps,
+        raw_content: parsed_state.raw_content,
+    }
+}
+
+struct SkillsMcpState {
+    skills: Vec<SkillEntry>,
+    mcps: Vec<McpEntry>,
+    raw_content: Option<String>,
+}
+
+fn parse_skills_mcp_state(reader: &mut Reader<&[u8]>, state: SkillsMcpState) -> SkillsMcpState {
+    parse_skills_mcp_next(reader, state, Vec::new())
+}
+
+fn parse_skills_mcp_next(
+    reader: &mut Reader<&[u8]>,
+    state: SkillsMcpState,
+    mut buf: Vec<u8>,
+) -> SkillsMcpState {
+    match reader.read_event_into(&mut buf) {
+        Ok(Event::Start(e)) => {
+            let tag = e.name();
+            let tag_bytes = tag.as_ref();
+            let reason = e
+                .attributes()
+                .filter_map(std::result::Result::ok)
+                .find(|a| a.key.as_ref() == b"reason")
+                .and_then(|a| a.unescape_value().ok())
+                .map(Cow::into_owned)
+                .filter(|s| !s.is_empty());
+
+            let next_state = match tag_bytes {
+                b"skill" => merge_skill(state, read_text_until_end(reader, b"skill"), reason),
+                b"mcp" => merge_mcp(state, read_text_until_end(reader, b"mcp"), reason),
+                other => {
+                    let _ = skip_to_end(reader, other);
+                    state
+                }
+            };
+
+            parse_skills_mcp_state(reader, next_state)
+        }
+        Ok(Event::Empty(_)) => parse_skills_mcp_state(reader, state),
+        Ok(Event::Text(e)) => {
+            let text = e.unescape().unwrap_or_default().to_string();
+            let SkillsMcpState {
+                skills,
+                mcps,
+                raw_content,
+            } = state;
+            parse_skills_mcp_state(
+                reader,
+                SkillsMcpState {
+                    skills,
+                    mcps,
+                    raw_content: merge_raw_content(raw_content, &text),
+                },
+            )
+        }
+        Ok(Event::CData(e)) => {
+            let text = String::from_utf8_lossy(&e).to_string();
+            let SkillsMcpState {
+                skills,
+                mcps,
+                raw_content,
+            } = state;
+            parse_skills_mcp_state(
+                reader,
+                SkillsMcpState {
+                    skills,
+                    mcps,
+                    raw_content: merge_raw_content(raw_content, &text),
+                },
+            )
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == b"skills-mcp" => state,
+        Ok(Event::Eof) => state,
+        Ok(_) => parse_skills_mcp_state(reader, state),
+        Err(_) => state,
+    }
+}
+
+fn merge_skill(
+    state: SkillsMcpState,
+    parsed_name: Result<String, XsdValidationError>,
+    reason: Option<String>,
+) -> SkillsMcpState {
+    let SkillsMcpState {
         skills,
         mcps,
         raw_content,
+    } = state;
+    let name = parsed_name.unwrap_or_default().trim().to_string();
+
+    if name.is_empty() {
+        SkillsMcpState {
+            skills,
+            mcps,
+            raw_content,
+        }
+    } else {
+        SkillsMcpState {
+            skills: skills
+                .into_iter()
+                .chain(std::iter::once(SkillEntry { name, reason }))
+                .collect(),
+            mcps,
+            raw_content,
+        }
+    }
+}
+
+fn merge_mcp(
+    state: SkillsMcpState,
+    parsed_name: Result<String, XsdValidationError>,
+    reason: Option<String>,
+) -> SkillsMcpState {
+    let SkillsMcpState {
+        skills,
+        mcps,
+        raw_content,
+    } = state;
+    let name = parsed_name.unwrap_or_default().trim().to_string();
+
+    if name.is_empty() {
+        SkillsMcpState {
+            skills,
+            mcps,
+            raw_content,
+        }
+    } else {
+        SkillsMcpState {
+            skills,
+            mcps: mcps
+                .into_iter()
+                .chain(std::iter::once(McpEntry { name, reason }))
+                .collect(),
+            raw_content,
+        }
     }
 }
 
@@ -449,5 +562,20 @@ mod tests {
         // Should suggest CDATA for code-block element
         assert!(result.suggestion.contains("CDATA"));
         assert!(result.suggestion.contains("code-block"));
+    }
+
+    #[test]
+    fn test_merge_raw_content_skips_blank_fragments() {
+        let merged = merge_raw_content(None, "  ");
+        assert_eq!(merged, None);
+    }
+
+    #[test]
+    fn test_merge_raw_content_joins_fragments_with_spaces() {
+        let merged = merge_raw_content(None, "  first  ");
+        let merged = merge_raw_content(merged, "second");
+        let merged = merge_raw_content(merged, "  third  ");
+
+        assert_eq!(merged, Some("first second third".to_string()));
     }
 }

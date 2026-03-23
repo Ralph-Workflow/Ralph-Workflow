@@ -22,29 +22,48 @@ pub type KeyLocationList = Vec<(String, String)>;
 pub fn detect_unknown_and_deprecated_keys(
     value: &toml::Value,
 ) -> (KeyLocationList, KeyLocationList) {
-    let mut unknown = Vec::new();
-    let mut deprecated = Vec::new();
-
     // Get the top-level table
-    if let Some(table) = value.as_table() {
-        for (key, value) in table {
-            match key.as_str() {
-                // Valid top-level sections
-                "general" | "ccs" | "agents" | "ccs_aliases" | "agent_chain" | "agent_chains"
-                | "agent_drains" => {
-                    // Recursively check subsections
-                    let (section_unknown, section_deprecated) =
-                        check_section(key.as_str(), value, &format!("{key}."));
-                    unknown.extend(section_unknown);
-                    deprecated.extend(section_deprecated);
-                }
-                // Unknown top-level section
-                _ => {
-                    unknown.push((key.clone(), String::new()));
-                }
-            }
-        }
-    }
+    let table = match value.as_table() {
+        Some(t) => t,
+        None => return (KeyLocationList::new(), KeyLocationList::new()),
+    };
+
+    // Separate valid sections from unknown ones - build unknown and deprecated separately
+    let base_unknown = table
+        .iter()
+        .filter(|(key, _value)| {
+            !matches!(
+                key.as_str(),
+                "general"
+                    | "ccs"
+                    | "agents"
+                    | "ccs_aliases"
+                    | "agent_chain"
+                    | "agent_chains"
+                    | "agent_drains"
+            )
+        })
+        .map(|(key, _)| (key.clone(), String::new()));
+
+    let (section_unknown, section_deprecated): (KeyLocationList, KeyLocationList) = table
+        .iter()
+        .filter(|(key, _)| matches!(key.as_str(), "general"))
+        .map(|(key, value)| {
+            let prefix = format!("{key}.");
+            check_section(key.as_str(), value, &prefix)
+        })
+        .fold(
+            (KeyLocationList::new(), KeyLocationList::new()),
+            |(unks, deps), (unk, dep)| {
+                (
+                    unks.into_iter().chain(unk).collect(),
+                    deps.into_iter().chain(dep).collect(),
+                )
+            },
+        );
+
+    let unknown = base_unknown.chain(section_unknown).collect();
+    let deprecated = section_deprecated;
 
     (unknown, deprecated)
 }
@@ -61,85 +80,93 @@ fn check_section(
     value: &toml::Value,
     prefix: &str,
 ) -> (KeyLocationList, KeyLocationList) {
-    let mut unknown = Vec::new();
-    let mut deprecated = Vec::new();
+    let table = match value.as_table() {
+        Some(t) => t,
+        None => return (KeyLocationList::new(), KeyLocationList::new()),
+    };
 
     match section {
         "general" => {
-            if let Some(table) = value.as_table() {
-                for key in table.keys() {
-                    let key_str = key.as_str();
-                    if DEPRECATED_GENERAL_KEYS.contains(&key_str) {
-                        deprecated.push((key.clone(), prefix.to_string()));
-                    } else if !VALID_GENERAL_KEYS.contains(&key_str) {
-                        unknown.push((key.clone(), prefix.to_string()));
-                    }
-                }
-            }
+            let (deprecated_keys, unknown_keys): (Vec<String>, Vec<String>) = table
+                .keys()
+                .cloned()
+                .partition(|key| DEPRECATED_GENERAL_KEYS.contains(&key.as_str()));
+
+            let deprecated: KeyLocationList = deprecated_keys
+                .into_iter()
+                .map(|key| (key, prefix.to_string()))
+                .collect();
+
+            let unknown: KeyLocationList = unknown_keys
+                .into_iter()
+                .filter(|key| !VALID_GENERAL_KEYS.contains(&key.as_str()))
+                .map(|key| (key, prefix.to_string()))
+                .collect();
+
+            (unknown, deprecated)
         }
         "ccs" => {
-            if let Some(table) = value.as_table() {
-                for key in table.keys() {
-                    if !VALID_CCS_KEYS.contains(&key.as_str()) {
-                        unknown.push((key.clone(), prefix.to_string()));
-                    }
-                }
-            }
+            let unknown: KeyLocationList = table
+                .keys()
+                .filter(|key| !VALID_CCS_KEYS.contains(&key.as_str()))
+                .map(|key| (key.clone(), prefix.to_string()))
+                .collect();
+            (unknown, KeyLocationList::new())
         }
         "agents" => {
             // agents is a map of agent names to configs
             // We don't validate agent names (they're user-defined)
             // But we can validate the keys within each agent config
-            if let Some(table) = value.as_table() {
-                for (agent_name, agent_value) in table {
-                    if let Some(agent_table) = agent_value.as_table() {
-                        for key in agent_table.keys() {
-                            if !VALID_AGENT_CONFIG_KEYS.contains(&key.as_str()) {
-                                unknown.push((key.clone(), format!("{prefix}{agent_name}.")));
-                            }
-                        }
-                    }
-                }
-            }
+            let unknown: KeyLocationList = table
+                .iter()
+                .filter_map(|(agent_name, agent_value)| {
+                    agent_value.as_table().map(|agent_table| {
+                        agent_table
+                            .keys()
+                            .filter(|key| !VALID_AGENT_CONFIG_KEYS.contains(&key.as_str()))
+                            .map(|key| (key.clone(), format!("{prefix}{agent_name}.")))
+                            .collect::<KeyLocationList>()
+                    })
+                })
+                .flatten()
+                .collect();
+            (unknown, KeyLocationList::new())
         }
         "ccs_aliases" => {
             // ccs_aliases is a map of alias names to configs
             // We don't validate alias names (they're user-defined)
-            if let Some(table) = value.as_table() {
-                for (alias_name, alias_value) in table {
-                    if let Some(alias_table) = alias_value.as_table() {
-                        for key in alias_table.keys() {
-                            if !VALID_CCS_ALIAS_CONFIG_KEYS.contains(&key.as_str()) {
-                                unknown.push((key.clone(), format!("{prefix}{alias_name}.")));
-                            }
-                        }
-                    }
-                }
-            }
+            let unknown: KeyLocationList = table
+                .iter()
+                .filter_map(|(alias_name, alias_value)| {
+                    alias_value.as_table().map(|alias_table| {
+                        alias_table
+                            .keys()
+                            .filter(|key| !VALID_CCS_ALIAS_CONFIG_KEYS.contains(&key.as_str()))
+                            .map(|key| (key.clone(), format!("{prefix}{alias_name}.")))
+                            .collect::<KeyLocationList>()
+                    })
+                })
+                .flatten()
+                .collect();
+            (unknown, KeyLocationList::new())
         }
         "agent_chain" => {
             // agent_chain has developer and reviewer keys
-            if let Some(table) = value.as_table() {
-                for key in table.keys() {
-                    if !VALID_AGENT_CHAIN_KEYS.contains(&key.as_str()) {
-                        unknown.push((key.clone(), prefix.to_string()));
-                    }
-                }
-            }
+            let unknown: KeyLocationList = table
+                .keys()
+                .filter(|key| !VALID_AGENT_CHAIN_KEYS.contains(&key.as_str()))
+                .map(|key| (key.clone(), prefix.to_string()))
+                .collect();
+            (unknown, KeyLocationList::new())
         }
         "agent_drains" => {
-            if let Some(table) = value.as_table() {
-                for key in table.keys() {
-                    if !VALID_AGENT_DRAIN_KEYS.contains(&key.as_str()) {
-                        unknown.push((key.clone(), prefix.to_string()));
-                    }
-                }
-            }
+            let unknown: KeyLocationList = table
+                .keys()
+                .filter(|key| !VALID_AGENT_DRAIN_KEYS.contains(&key.as_str()))
+                .map(|key| (key.clone(), prefix.to_string()))
+                .collect();
+            (unknown, KeyLocationList::new())
         }
-        _ => {
-            // Unknown section - should have been caught at top level
-        }
+        _ => (KeyLocationList::new(), KeyLocationList::new()),
     }
-
-    (unknown, deprecated)
 }

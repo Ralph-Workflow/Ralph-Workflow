@@ -3,8 +3,7 @@
 //! Analyzes configuration files like Cargo.toml, package.json, etc.
 //! to detect frameworks, test frameworks, and package managers.
 
-use super::scanner::{should_skip_dir_name, MAX_SIGNATURE_SEARCH_DEPTH};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::workspace::Workspace;
@@ -12,103 +11,18 @@ use crate::workspace::Workspace;
 #[path = "signatures/detectors.rs"]
 mod detectors;
 
-/// Maximum number of files to scan
-const MAX_FILES_TO_SCAN: usize = 2000;
-
-/// Maximum number of signature files to collect (across all types).
-const MAX_SIGNATURE_FILES: usize = 50;
-
 /// Container for signature files found during scanning.
 #[derive(Default)]
-struct SignatureFiles {
-    by_name_lower: HashMap<String, Vec<PathBuf>>,
+pub(super) struct SignatureFiles {
+    pub(super) by_name_lower: HashMap<String, Vec<PathBuf>>,
 }
 
 /// Collect signature files using workspace.
-fn collect_signature_files_with_workspace(
+pub(super) fn collect_signature_files_with_workspace(
     workspace: &dyn Workspace,
     root: &Path,
 ) -> SignatureFiles {
-    let targets: HashSet<&str> = [
-        "cargo.toml",
-        "pyproject.toml",
-        "requirements.txt",
-        "setup.py",
-        "pipfile",
-        "package.json",
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lockb",
-        "bun.lock",
-        "gemfile",
-        "go.mod",
-        "pom.xml",
-        "build.gradle",
-        "build.gradle.kts",
-        "composer.json",
-        "mix.exs",
-        "pubspec.yaml",
-    ]
-    .into_iter()
-    .collect();
-
-    let mut result = SignatureFiles::default();
-    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
-    queue.push_back((root.to_path_buf(), 0));
-
-    let mut scanned_entries: usize = 0;
-    let mut collected: usize = 0;
-
-    while let Some((dir, depth)) = queue.pop_front() {
-        if scanned_entries >= MAX_FILES_TO_SCAN || collected >= MAX_SIGNATURE_FILES {
-            break;
-        }
-
-        let Ok(entries) = workspace.read_dir(&dir) else {
-            continue;
-        };
-
-        for entry in entries {
-            if scanned_entries >= MAX_FILES_TO_SCAN || collected >= MAX_SIGNATURE_FILES {
-                break;
-            }
-            scanned_entries += 1;
-
-            let path = entry.path().to_path_buf();
-            let Some(name_os) = entry.file_name() else {
-                continue;
-            };
-            let name = name_os.to_string_lossy().to_string();
-            let name_lower = name.to_lowercase();
-
-            if entry.is_dir() {
-                if should_skip_dir_name(&name_lower) {
-                    continue;
-                }
-                if depth < MAX_SIGNATURE_SEARCH_DEPTH {
-                    queue.push_back((path, depth + 1));
-                }
-                continue;
-            }
-
-            if !entry.is_file() {
-                continue;
-            }
-
-            // Check if this is a target signature file
-            if targets.contains(name_lower.as_str()) {
-                result
-                    .by_name_lower
-                    .entry(name_lower)
-                    .or_default()
-                    .push(path);
-                collected += 1;
-            }
-        }
-    }
-
-    result
+    super::collect_signature_files_with_workspace(workspace, root)
 }
 
 /// Detect signature files and return frameworks, test framework, package manager.
@@ -117,18 +31,31 @@ pub(super) fn detect_signature_files_with_workspace(
     root: &Path,
 ) -> (Vec<String>, Option<String>, Option<String>) {
     let signatures = collect_signature_files_with_workspace(workspace, root);
-    let mut results = detectors::DetectionResults::new();
 
-    detectors::detect_rust(workspace, &signatures, &mut results);
-    detectors::detect_python(workspace, &signatures, &mut results);
-    detectors::detect_javascript(workspace, &signatures, &mut results);
-    detectors::detect_go(workspace, &signatures, &mut results);
-    detectors::detect_ruby(workspace, &signatures, &mut results);
-    detectors::detect_java(workspace, &signatures, &mut results);
-    detectors::detect_php(workspace, &signatures, &mut results);
-    detectors::detect_dotnet(&signatures, &mut results);
-    detectors::detect_elixir(workspace, &signatures, &mut results);
-    detectors::detect_dart(workspace, &signatures, &mut results);
+    let file_contents: std::collections::HashMap<PathBuf, String> = signatures
+        .by_name_lower
+        .values()
+        .flatten()
+        .filter_map(|path| {
+            workspace
+                .read(path)
+                .ok()
+                .map(|content| (path.clone(), content))
+        })
+        .collect();
+
+    let results = detectors::DetectionResults::new();
+
+    let results = detectors::detect_rust(&file_contents, &signatures, results);
+    let results = detectors::detect_python(&file_contents, &signatures, results);
+    let results = detectors::detect_javascript(&file_contents, &signatures, results);
+    let results = detectors::detect_go(&file_contents, &signatures, results);
+    let results = detectors::detect_ruby(&file_contents, &signatures, results);
+    let results = detectors::detect_java(&file_contents, &signatures, results);
+    let results = detectors::detect_php(&file_contents, &signatures, results);
+    let results = detectors::detect_dotnet(&signatures, results);
+    let results = detectors::detect_elixir(&file_contents, &signatures, results);
+    let results = detectors::detect_dart(&file_contents, &signatures, results);
 
     results.finish()
 }

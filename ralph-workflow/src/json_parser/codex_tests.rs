@@ -275,9 +275,10 @@ fn test_codex_reasoning_no_spam_regression() {
     let workspace = MemoryWorkspace::new_test();
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
-    let parser = CodexParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::None) // Non-TTY mode (logs)
-        .with_display_name("ccs/codex");
+    let mut parser =
+        CodexParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::None) // Non-TTY mode (logs)
+            .with_display_name("ccs/codex");
 
     // Simulated JSON events from the log showing repeated reasoning deltas
     // (extracted pattern from the real log)
@@ -333,9 +334,10 @@ fn test_codex_reasoning_full_mode_in_place_updates() {
     let workspace = MemoryWorkspace::new_test();
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
-    let parser = CodexParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full) // TTY with full capability
-        .with_display_name("ccs/codex");
+    let mut parser =
+        CodexParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full) // TTY with full capability
+            .with_display_name("ccs/codex");
 
     let input = r#"{"type":"item.started","item":{"type":"reasoning","text":"First chunk"}}
 {"type":"item.started","item":{"type":"reasoning","text":" second chunk"}}

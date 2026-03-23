@@ -81,21 +81,48 @@
 //! json_parser = "claude"  # Use Claude's JSON parser
 //! ```
 
-#[cfg(any(test, feature = "test-utils"))]
+pub mod cache_environment;
 pub mod ccs;
-#[cfg(not(any(test, feature = "test-utils")))]
-mod ccs;
 mod ccs_env;
 mod config;
 mod error;
 pub mod fallback;
+pub mod invoke;
 pub mod opencode_api;
 mod opencode_resolver;
-mod parser;
+pub mod parser;
 mod providers;
 mod registry;
 mod retry_timer;
+pub mod runtime;
 pub mod validation;
+
+use std::sync::Arc;
+use std::time::Duration;
+
+// Re-export I/O implementations for backwards compatibility
+pub use cache_environment::{CacheEnvironment, RealCacheEnvironment};
+pub use ccs_env::{CcsEnvironment, CcsFilesystem};
+pub use ccs_env::{RealCcsEnvironment, RealCcsFilesystem};
+pub fn production_timer() -> Arc<dyn RetryTimerProviderDebug> {
+    Arc::new(ProductionRetryTimer)
+}
+
+pub trait RetryTimerProvider: Send + Sync {
+    fn sleep(&self, duration: Duration);
+}
+
+pub trait RetryTimerProviderDebug: RetryTimerProvider + std::fmt::Debug {}
+impl<T: RetryTimerProvider + std::fmt::Debug> RetryTimerProviderDebug for T {}
+
+#[derive(Debug, Clone)]
+pub struct ProductionRetryTimer;
+
+impl RetryTimerProvider for ProductionRetryTimer {
+    fn sleep(&self, duration: Duration) {
+        runtime::do_sleep(duration);
+    }
+}
 
 // Re-export public types for crate-level access
 pub use ccs::is_ccs_ref;
@@ -104,12 +131,12 @@ pub use config::{
 };
 pub use error::{contains_glm_model, is_glm_like_agent, AgentErrorKind};
 pub use fallback::{AgentDrain, AgentRole, DrainMode};
+pub use invoke::{AgentInput, AgentInvokeError, AgentInvoker, AgentOutput};
 pub use parser::JsonParserType;
 pub use providers::{
     auth_failure_advice, strip_model_flag_prefix, validate_model_flag, OpenCodeProviderType,
 };
 pub use registry::AgentRegistry;
-pub use retry_timer::RetryTimerProvider;
 
 #[cfg(test)]
 mod tests {

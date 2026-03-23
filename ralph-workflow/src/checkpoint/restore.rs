@@ -145,40 +145,12 @@ pub fn apply_checkpoint_to_config(config: &mut Config, checkpoint: &PipelineChec
 
 /// Restore environment variables from a checkpoint.
 ///
-/// Restore safe environment variables from the checkpoint snapshot.
-#[must_use]
-pub fn restore_environment_from_checkpoint(checkpoint: &PipelineCheckpoint) -> usize {
-    restore_environment_impl(checkpoint, |key, value| {
-        std::env::set_var(key, value);
-    })
-}
+/// This function is delegated to the runtime boundary module.
+pub use crate::checkpoint::environment::restore_environment_from_checkpoint;
 
-/// Inner implementation for restoring environment variables from a checkpoint.
-///
-/// Accepts an injectable `set_var` callback so tests can verify which variables
-/// would be set without mutating the real process environment (eliminating the
-/// need for `#[serial]`).
-pub(crate) fn restore_environment_impl(
-    checkpoint: &PipelineCheckpoint,
-    mut set_var: impl FnMut(&str, &str),
-) -> usize {
-    let Some(ref env_snap) = checkpoint.env_snapshot else {
-        return 0;
-    };
-
-    let mut restored = 0;
-
-    // Restore RALPH_* variables (safe only)
-    for (key, value) in &env_snap.ralph_vars {
-        if crate::checkpoint::state::is_sensitive_env_key(key) {
-            continue;
-        }
-        set_var(key, value);
-        restored += 1;
-    }
-
-    restored
-}
+/// Inner implementation for restoring environment variables.
+/// This function is delegated to the runtime boundary module.
+pub use crate::checkpoint::environment::restore_environment_impl;
 
 /// Calculate the starting iteration for development phase resume.
 #[must_use]

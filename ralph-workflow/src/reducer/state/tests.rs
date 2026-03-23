@@ -5,9 +5,9 @@ mod tests {
     use super::*;
     use crate::checkpoint::state::{AgentConfigSnapshot, CheckpointParams, CliArgsSnapshot};
 
-    include!("tests/core_state.rs");
-    include!("tests/continuation_state.rs");
-    include!("tests/xsd_retry_and_session.rs");
-    include!("tests/fix_status.rs");
-    include!("tests/consumer_signature.rs");
+    include!("io_tests/core_state.rs");
+    include!("io_tests/continuation_state.rs");
+    include!("io_tests/xsd_retry_and_session.rs");
+    include!("io_tests/fix_status.rs");
+    include!("io_tests/consumer_signature.rs");
 }

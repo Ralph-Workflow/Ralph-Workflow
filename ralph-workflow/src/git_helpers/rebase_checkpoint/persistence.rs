@@ -80,16 +80,34 @@ pub fn load_rebase_checkpoint() -> io::Result<Option<RebaseCheckpoint>> {
     let loaded_checkpoint: RebaseCheckpoint = match serde_json::from_str(&content) {
         Ok(cp) => cp,
         Err(e) => {
-            // Checkpoint is corrupted - try to restore from backup
-            eprintln!("Checkpoint corrupted, attempting restore from backup: {e}");
-            return restore_from_backup();
+            let backup_result = restore_from_backup();
+            return if backup_result.is_err() {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Checkpoint corrupted: {e}; backup restore failed: {}",
+                        backup_result.unwrap_err()
+                    ),
+                ))
+            } else {
+                backup_result
+            };
         }
     };
 
-    // Validate the loaded checkpoint
     if let Err(e) = validate_checkpoint(&loaded_checkpoint) {
-        eprintln!("Checkpoint validation failed, attempting restore from backup: {e}");
-        return restore_from_backup();
+        let backup_result = restore_from_backup();
+        return if backup_result.is_err() {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Checkpoint validation failed: {e}; backup restore failed: {}",
+                    backup_result.unwrap_err()
+                ),
+            ))
+        } else {
+            backup_result
+        };
     }
 
     Ok(Some(loaded_checkpoint))
@@ -160,17 +178,15 @@ fn validate_checkpoint_impl(checkpoint: &RebaseCheckpoint) -> io::Result<()> {
         ));
     }
 
-    // Validate resolved files are a subset of conflicted files
-    for resolved in &checkpoint.resolved_files {
-        if !checkpoint.conflicted_files.contains(resolved) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "Resolved file '{resolved}' not found in conflicted files list"
-                ),
-            ));
+    checkpoint.resolved_files.iter().try_for_each(|resolved| {
+        if checkpoint.conflicted_files.contains(resolved) {
+            return Ok(());
         }
-    }
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Resolved file '{resolved}' not found in conflicted files list"),
+        ))
+    })?;
 
     Ok(())
 }
@@ -333,16 +349,34 @@ pub fn load_rebase_checkpoint_with_workspace(
     let loaded_checkpoint: RebaseCheckpoint = match serde_json::from_str(&content) {
         Ok(cp) => cp,
         Err(e) => {
-            // Checkpoint is corrupted - try to restore from backup
-            eprintln!("Checkpoint corrupted, attempting restore from backup: {e}");
-            return restore_from_backup_with_workspace(workspace);
+            let backup_result = restore_from_backup_with_workspace(workspace);
+            return if backup_result.is_err() {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Checkpoint corrupted: {e}; backup restore failed: {}",
+                        backup_result.unwrap_err()
+                    ),
+                ))
+            } else {
+                backup_result
+            };
         }
     };
 
-    // Validate the loaded checkpoint
     if let Err(e) = validate_checkpoint_impl(&loaded_checkpoint) {
-        eprintln!("Checkpoint validation failed, attempting restore from backup: {e}");
-        return restore_from_backup_with_workspace(workspace);
+        let backup_result = restore_from_backup_with_workspace(workspace);
+        return if backup_result.is_err() {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Checkpoint validation failed: {e}; backup restore failed: {}",
+                    backup_result.unwrap_err()
+                ),
+            ))
+        } else {
+            backup_result
+        };
     }
 
     Ok(Some(loaded_checkpoint))

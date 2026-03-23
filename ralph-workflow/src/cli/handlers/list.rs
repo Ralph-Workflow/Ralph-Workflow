@@ -3,6 +3,17 @@
 //! This module provides handlers for listing agents and their configurations.
 
 use crate::agents::{is_ccs_ref, AgentRegistry};
+use itertools::Itertools;
+
+trait StdIoWriteCompat {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T: std::io::Write> StdIoWriteCompat for T {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
 
 /// Handle --list-agents command.
 ///
@@ -15,32 +26,40 @@ use crate::agents::{is_ccs_ref, AgentRegistry};
 /// CCS aliases (ccs/...) are displayed separately for clarity.
 /// Output is sorted alphabetically by agent name within each section.
 pub fn handle_list_agents(registry: &AgentRegistry) {
-    let mut items = registry.list();
-    items.sort_by(|(a, _), (b, _)| a.cmp(b));
-
-    // Separate regular agents from CCS aliases
+    let agents: Vec<(&str, _)> = registry.list();
     let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
-        items.into_iter().partition(|(name, _)| is_ccs_ref(name));
+        agents.into_iter().partition(|(name, _)| is_ccs_ref(name));
 
-    // Print regular agents
+    let ccs_aliases = ccs_aliases
+        .into_iter()
+        .sorted_by(|(a, _): &(&str, _), (b, _): &(&str, _)| a.cmp(b))
+        .collect::<Vec<_>>();
+    let regular_agents = regular_agents
+        .into_iter()
+        .sorted_by(|(a, _): &(&str, _), (b, _): &(&str, _)| a.cmp(b))
+        .collect::<Vec<_>>();
+
     if !regular_agents.is_empty() {
-        println!("Agents:");
-        for (name, cfg) in regular_agents {
+        let _ = writeln!(std::io::stdout(), "Agents:");
+        regular_agents.iter().for_each(|(name, cfg)| {
             let display_name = registry.display_name(name);
-            println!(
+            let _ = writeln!(
+                std::io::stdout(),
                 "  {}\tcmd={}\tparser={}\tcan_commit={}",
-                display_name, cfg.cmd, cfg.json_parser, cfg.can_commit
+                display_name,
+                cfg.cmd,
+                cfg.json_parser,
+                cfg.can_commit
             );
-        }
+        });
     }
 
-    // Print CCS aliases
     if !ccs_aliases.is_empty() {
-        println!("\nCCS Aliases:");
-        for (name, cfg) in ccs_aliases {
+        let _ = writeln!(std::io::stdout(), "\nCCS Aliases:");
+        ccs_aliases.iter().for_each(|(name, cfg)| {
             let display_name = registry.display_name(name);
-            println!("  {}\t→ \"{}\"", display_name, cfg.cmd);
-        }
+            let _ = writeln!(std::io::stdout(), "  {}\t→ \"{}\"", display_name, cfg.cmd);
+        });
     }
 }
 
@@ -53,28 +72,32 @@ pub fn handle_list_agents(registry: &AgentRegistry) {
 /// CCS aliases are shown separately to distinguish them from regular agents.
 /// Output is sorted alphabetically by agent name within each section.
 pub fn handle_list_available_agents(registry: &AgentRegistry) {
-    let mut items = registry.list_available();
-    items.sort_unstable();
-
-    // Separate regular agents from CCS aliases
+    let available: Vec<&str> = registry.list_available();
     let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
-        items.into_iter().partition(|name| is_ccs_ref(name));
+        available.into_iter().partition(|name| is_ccs_ref(name));
 
-    // Print regular agents
+    let ccs_aliases = ccs_aliases
+        .into_iter()
+        .sorted_unstable()
+        .collect::<Vec<_>>();
+    let regular_agents = regular_agents
+        .into_iter()
+        .sorted_unstable()
+        .collect::<Vec<_>>();
+
     if !regular_agents.is_empty() {
-        println!("Available agents:");
-        for name in regular_agents {
+        let _ = writeln!(std::io::stdout(), "Available agents:");
+        regular_agents.iter().for_each(|name| {
             let display_name = registry.display_name(name);
-            println!("  {display_name}");
-        }
+            let _ = writeln!(std::io::stdout(), "  {display_name}");
+        });
     }
 
-    // Print CCS aliases
     if !ccs_aliases.is_empty() {
-        println!("\nAvailable CCS aliases:");
-        for name in ccs_aliases {
+        let _ = writeln!(std::io::stdout(), "\nAvailable CCS aliases:");
+        ccs_aliases.iter().for_each(|name| {
             let display_name = registry.display_name(name);
-            println!("  {display_name}");
-        }
+            let _ = writeln!(std::io::stdout(), "  {display_name}");
+        });
     }
 }

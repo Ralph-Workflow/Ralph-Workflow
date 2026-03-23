@@ -88,35 +88,35 @@ pub(super) fn validate_and_process_issues_xml(
 }
 
 fn render_issues_markdown(elements: &IssuesElements) -> String {
-    let mut output = String::from("# Issues\n\n");
-
+    // Handle no_issues_found case first
     if let Some(message) = &elements.no_issues_found {
         let trimmed = message.trim();
-        if trimmed.is_empty() {
-            output.push_str("No issues found.\n");
+        return if trimmed.is_empty() {
+            "# Issues\n\nNo issues found.\n".to_string()
         } else {
-            output.push_str(trimmed);
-            output.push('\n');
-        }
-        return output;
+            format!("# Issues\n\n{}\n", trimmed)
+        };
     }
 
     if elements.issues.is_empty() {
-        output.push_str("No issues found.\n");
-        return output;
+        return "# Issues\n\nNo issues found.\n".to_string();
     }
 
-    for issue in &elements.issues {
-        let trimmed = issue.text.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        output.push_str("- [ ] ");
-        output.push_str(trimmed);
-        output.push('\n');
-        // Render skills-mcp recommendations if present
-        render_skills_mcp_markdown(&mut output, issue.skills_mcp.as_ref());
-    }
+    // Use iterator pipeline to build the markdown
+    let issues_markdown: String = elements
+        .issues
+        .iter()
+        .filter_map(|issue| {
+            let trimmed = issue.text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                let skills_markdown = render_skills_mcp_markdown(issue.skills_mcp.as_ref());
+                Some(format!("- [ ] {}\n{}", trimmed, skills_markdown))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("");
 
-    output
+    format!("# Issues\n\n{}", issues_markdown)
 }

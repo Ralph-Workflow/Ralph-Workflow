@@ -127,12 +127,12 @@ fn test_collision_handling() {
         .expect("Failed to create base directory for collision test");
 
     // Also create collision variants 1-5 with agents subdirectory
-    for i in 1..=5 {
+    (1..=5).for_each(|i| {
         let collision_dir = PathBuf::from(format!(".agent/logs-{fixed_id}-{i:02}"));
         workspace
             .create_dir_all(&collision_dir.join("agents"))
             .expect("Failed to create collision directory");
-    }
+    });
 
     // Now create a RunLogContext with the fixed base run_id
     // It should skip base and collisions 1-5 and create collision variant 06
@@ -169,11 +169,11 @@ fn test_collision_exhaustion() {
     workspace
         .create_dir_all(&PathBuf::from(format!(".agent/logs-{fixed_id}")).join("agents"))
         .unwrap();
-    for i in 1..=99 {
+    (1..=99).for_each(|i| {
         workspace
             .create_dir_all(&PathBuf::from(format!(".agent/logs-{fixed_id}-{i:02}")).join("agents"))
             .unwrap();
-    }
+    });
 
     // Now try to create a RunLogContext with the fixed base run_id - it should fail
     let result = RunLogContext::for_testing(&fixed_id, &workspace);

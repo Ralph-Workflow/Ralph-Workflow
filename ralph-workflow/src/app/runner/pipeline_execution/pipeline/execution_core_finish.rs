@@ -5,8 +5,8 @@
 // and finalizing the pipeline state.
 
 fn log_event_loop_outcome(
-    ctx: &PipelineContext,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    ctx: &crate::app::context::PipelineContext,
+    loop_result: &crate::app::config::EventLoopResult,
 ) {
     if loop_result.completed {
         match loop_result.final_phase {
@@ -55,19 +55,23 @@ fn log_event_loop_outcome(
         );
     }
 
-    write_defensive_completion_marker(&*ctx.workspace, &ctx.logger, loop_result.final_phase);
+    crate::app::runner::pipeline_execution::write_defensive_completion_marker(
+        &*ctx.workspace,
+        &ctx.logger,
+        loop_result.final_phase,
+    );
 }
 
-fn should_exit_due_to_sigint(loop_result: &crate::app::event_loop::EventLoopResult) -> bool {
+fn should_exit_due_to_sigint(loop_result: &crate::app::config::EventLoopResult) -> bool {
     loop_result.final_state.interrupted_by_user || crate::interrupt::user_interrupted_occurred()
 }
 
 fn save_complete_checkpoint_if_needed(
-    ctx: &PipelineContext,
+    ctx: &crate::app::context::PipelineContext,
     config: &crate::config::Config,
     run_context: &crate::checkpoint::RunContext,
-    phase_ctx: &PhaseContext<'_>,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    phase_ctx: &crate::phases::PhaseContext<'_>,
+    loop_result: &crate::app::config::EventLoopResult,
 ) {
     if !config.features.checkpoint_enabled
         || !should_write_complete_checkpoint(loop_result.final_phase)
@@ -75,9 +79,9 @@ fn save_complete_checkpoint_if_needed(
         return;
     }
 
-    let builder = CheckpointBuilder::new()
+    let builder = crate::checkpoint::CheckpointBuilder::new()
         .phase(
-            PipelinePhase::Complete,
+            crate::checkpoint::PipelinePhase::Complete,
             config.developer_iters,
             config.developer_iters,
         )
@@ -98,29 +102,17 @@ fn save_complete_checkpoint_if_needed(
         .with_log_run_id(ctx.run_log_context.run_id().to_string());
 
     if let Some(checkpoint) = builder.build_with_workspace(&*ctx.workspace) {
-        let mut checkpoint = checkpoint;
-        checkpoint.dev_fix_attempt_count = loop_result.final_state.dev_fix_attempt_count;
-        checkpoint.recovery_epoch = loop_result.final_state.recovery_epoch;
-        checkpoint.recovery_escalation_level = loop_result.final_state.recovery_escalation_level;
-        checkpoint.failed_phase_for_recovery = loop_result.final_state.failed_phase_for_recovery;
-        checkpoint.interrupted_by_user = loop_result.final_state.interrupted_by_user;
-        if loop_result.final_state.cloud.enabled {
-            checkpoint.cloud_state = Some(
-                crate::checkpoint::state::CloudCheckpointState::from_pipeline_state(
-                    &loop_result.final_state,
-                ),
-            );
-        }
-        let _ = save_checkpoint_with_workspace(&*ctx.workspace, &checkpoint);
+        let checkpoint = checkpoint.with_recovery_state(&loop_result.final_state);
+        let _ = crate::checkpoint::save_checkpoint_with_workspace(&*ctx.workspace, &checkpoint);
     }
 }
 
 fn report_cloud_completion(
-    ctx: &PipelineContext,
+    ctx: &crate::app::context::PipelineContext,
     config: &crate::config::Config,
     cloud_reporter: &dyn crate::cloud::CloudReporter,
-    loop_result: &crate::app::event_loop::EventLoopResult,
-    timer: &Timer,
+    loop_result: &crate::app::config::EventLoopResult,
+    timer: &crate::pipeline::Timer,
 ) -> anyhow::Result<()> {
     if !config.cloud.enabled {
         return Ok(());
@@ -140,19 +132,27 @@ fn report_cloud_completion(
 }
 
 fn finish_pipeline(
-    ctx: &PipelineContext,
+    ctx: &crate::app::context::PipelineContext,
     config: &crate::config::Config,
-    timer: &Timer,
-    agent_phase_guard: &mut AgentPhaseGuard<'_>,
-    prompt_monitor: &mut Option<PromptMonitor>,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    timer: &crate::pipeline::Timer,
+    agent_phase_guard: &mut crate::pipeline::AgentPhaseGuard<'_>,
+    prompt_monitor: &mut Option<crate::files::protection::monitoring::PromptMonitor>,
+    loop_result: &crate::app::config::EventLoopResult,
     exit_after_cleanup_due_to_sigint: bool,
 ) -> anyhow::Result<()> {
-    check_prompt_restoration(ctx, prompt_monitor, "event loop");
-    update_status_with_workspace(&*ctx.workspace, "In progress.", config.isolation_mode)?;
+    crate::app::runner::pipeline_execution::check_prompt_restoration(
+        ctx,
+        prompt_monitor,
+        "event loop",
+    );
+    crate::files::update_status_with_workspace(
+        &*ctx.workspace,
+        "In progress.",
+        config.isolation_mode,
+    )?;
 
     if !exit_after_cleanup_due_to_sigint {
-        finalize_pipeline(
+        crate::app::finalization::finalize_pipeline(
             agent_phase_guard,
             crate::app::finalization::FinalizeContext {
                 logger: &ctx.logger,
@@ -167,44 +167,48 @@ fn finish_pipeline(
     }
 
     if exit_after_cleanup_due_to_sigint {
-        // Perform explicit cleanup even on interrupt path.
-        // The guard's Drop is a fallback, but we want deterministic cleanup with
-        // all artifact types removed. All operations are idempotent so double-cleanup
-        // from the guard's Drop (if it fires) is harmless.
         let repo_root = ctx.workspace.root();
-        let mut cleanup_ok = true;
         crate::git_helpers::end_agent_phase_in_repo(repo_root);
         crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger) {
-            if err.kind() == std::io::ErrorKind::NotFound {
+
+        let hook_uninstall_ok = match crate::git_helpers::uninstall_hooks_in_repo(
+            repo_root,
+            &ctx.logger,
+        ) {
+            Ok(()) => true,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                 ctx.logger.warn(&format!(
                     "Skipping hook uninstall during SIGINT cleanup (repo not present on filesystem): {err}"
                 ));
-            } else {
-                cleanup_ok = false;
+                true
+            }
+            Err(err) => {
                 ctx.logger.warn(&format!(
                     "Failed to uninstall Ralph hooks during SIGINT cleanup: {err}"
                 ));
+                false
             }
-        }
+        };
 
         let wrapper_remaining = crate::git_helpers::verify_wrapper_cleaned(repo_root);
-        if !wrapper_remaining.is_empty() {
-            cleanup_ok = false;
+        let wrapper_ok = wrapper_remaining.is_empty();
+        if !wrapper_ok {
             ctx.logger.warn(&format!(
                 "Wrapper artifacts still present after SIGINT cleanup: {}",
                 wrapper_remaining.join(", ")
             ));
         }
 
-        match crate::git_helpers::verify_hooks_removed(repo_root) {
+        let hooks_ok = match crate::git_helpers::verify_hooks_removed(repo_root) {
             Ok(remaining) => {
                 if !remaining.is_empty() {
-                    cleanup_ok = false;
                     ctx.logger.warn(&format!(
                         "Ralph hooks still present after SIGINT cleanup: {}",
                         remaining.join(", ")
                     ));
+                    false
+                } else {
+                    true
                 }
             }
             Err(err) => {
@@ -212,28 +216,31 @@ fn finish_pipeline(
                     ctx.logger.warn(&format!(
                         "Skipping hook cleanup verification during SIGINT cleanup (repo not present on filesystem): {err}"
                     ));
+                    true
                 } else {
-                    cleanup_ok = false;
                     ctx.logger.warn(&format!(
                         "Failed to verify hook cleanup during SIGINT cleanup: {err}"
                     ));
+                    false
                 }
             }
-        }
+        };
 
         crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
-        if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
-            cleanup_ok = false;
+        let ralph_dir_ok = if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
             let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
             ctx.logger.warn(&format!(
                 "Ralph git dir still present after SIGINT cleanup: {}",
                 remaining.join(", ")
             ));
-        }
+            false
+        } else {
+            true
+        };
+
+        let cleanup_ok = hook_uninstall_ok && wrapper_ok && hooks_ok && ralph_dir_ok;
+
         if cleanup_ok {
-            // Only clear global fallback paths when explicit cleanup fully
-            // succeeded and the guard is being disarmed. If cleanup failed,
-            // keep them for AgentPhaseGuard::drop() and signal-handler retries.
             crate::git_helpers::clear_agent_phase_global_state();
             agent_phase_guard.disarm();
         } else {
@@ -248,8 +255,8 @@ fn finish_pipeline(
 }
 
 fn build_cloud_completion_payload(
-    loop_result: &crate::app::event_loop::EventLoopResult,
-    timer: &Timer,
+    loop_result: &crate::app::config::EventLoopResult,
+    timer: &crate::pipeline::Timer,
 ) -> crate::cloud::types::PipelineResult {
     let success = loop_result.completed
         && matches!(
@@ -282,290 +289,5 @@ fn build_cloud_completion_payload(
         } else {
             None
         },
-    }
-}
-
-#[cfg(test)]
-mod cloud_completion_payload_tests {
-    use super::{build_cloud_completion_payload, should_exit_due_to_sigint};
-
-    #[test]
-    fn completion_payload_reports_completed_iteration_and_review_counts_from_metrics() {
-        let mut state = crate::reducer::PipelineState::initial(10, 5);
-        state.metrics.dev_iterations_completed = 3;
-        state.metrics.review_passes_completed = 2;
-        state.iteration = 4;
-        state.reviewer_pass = 3;
-
-        let loop_result = crate::app::event_loop::EventLoopResult {
-            completed: true,
-            events_processed: 0,
-            final_phase: crate::reducer::event::PipelinePhase::Complete,
-            final_state: state,
-        };
-
-        let timer = crate::pipeline::Timer::new();
-        let payload = build_cloud_completion_payload(&loop_result, &timer);
-
-        assert_eq!(
-            payload.iterations_used, 3,
-            "iterations_used should report completed dev iterations (metrics)"
-        );
-        assert_eq!(
-            payload.review_passes_used, 2,
-            "review_passes_used should report completed review passes (metrics)"
-        );
-    }
-
-    #[test]
-    fn should_exit_due_to_sigint_uses_persistent_interrupt_flag_after_request_is_consumed() {
-        use crate::interrupt::{
-            request_user_interrupt, reset_user_interrupted_occurred, take_user_interrupt_request,
-        };
-
-        // The interrupt flags are process-global; coordinate all test access so
-        // parallel tests can't steal each other's pending interrupt requests.
-        let _lock = crate::interrupt::interrupt_test_lock();
-
-        let _ = take_user_interrupt_request();
-        reset_user_interrupted_occurred();
-
-        request_user_interrupt();
-        assert!(
-            take_user_interrupt_request(),
-            "test precondition: interrupt request should be pending before explicit consume"
-        );
-
-        let loop_result = crate::app::event_loop::EventLoopResult {
-            completed: true,
-            events_processed: 0,
-            final_phase: crate::reducer::event::PipelinePhase::Complete,
-            final_state: crate::reducer::PipelineState::initial(1, 0),
-        };
-
-        assert!(
-            should_exit_due_to_sigint(&loop_result),
-            "shutdown path should still detect Ctrl+C after event loop consumed pending request"
-        );
-
-        let _ = take_user_interrupt_request();
-        reset_user_interrupted_occurred();
-    }
-}
-
-#[cfg(test)]
-mod completion_checkpoint_tests {
-    use super::save_complete_checkpoint_if_needed;
-    use crate::agents::AgentRegistry;
-    use crate::app::context::PipelineContext;
-    use crate::checkpoint::execution_history::ExecutionHistory;
-    use crate::checkpoint::{load_checkpoint_with_workspace, RunContext};
-    use crate::cli::Args;
-    use crate::config::Config;
-    use crate::executor::MockProcessExecutor;
-    use crate::logger::{Colors, Logger};
-    use crate::logging::RunLogContext;
-    use crate::phases::PhaseContext;
-    use crate::prompts::template_context::TemplateContext;
-    use crate::reducer::event::PipelinePhase;
-    use crate::reducer::PipelineState;
-    use crate::workspace::MemoryWorkspace;
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
-    #[test]
-    fn completion_checkpoint_preserves_recovery_epoch_for_idempotent_resume() {
-        // Arrange
-        let workspace = Arc::new(MemoryWorkspace::new_test().with_dir(".agent/tmp"));
-        let run_log_context = RunLogContext::new(&*workspace).expect("run log context");
-
-        let colors = Colors { enabled: false };
-        let logger = Logger::new(colors);
-
-        let registry = AgentRegistry::new().expect("registry");
-        let executor =
-            Arc::new(MockProcessExecutor::new()) as Arc<dyn crate::executor::ProcessExecutor>;
-
-        let config = Config::default();
-        // `CheckpointBuilder::capture_from_context` requires agent configs to exist in the
-        // registry; use a known built-in agent key.
-        let developer_agent = "codex".to_string();
-        let reviewer_agent = "codex".to_string();
-
-        let ctx = PipelineContext {
-            args: Args::default(),
-            config,
-            registry,
-            developer_agent,
-            reviewer_agent,
-            developer_display: "codex".to_string(),
-            reviewer_display: "codex".to_string(),
-            repo_root: PathBuf::from("/test/repo"),
-            workspace: Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>,
-            logger,
-            colors,
-            template_context: TemplateContext::default(),
-            executor: Arc::clone(&executor),
-            run_log_context,
-        };
-
-        let run_context = RunContext::new();
-
-        let mut timer = crate::pipeline::Timer::new();
-        let phase_ctx = PhaseContext {
-            config: &ctx.config,
-            registry: &ctx.registry,
-            logger: &ctx.logger,
-            colors: &ctx.colors,
-            timer: &mut timer,
-            developer_agent: &ctx.developer_agent,
-            reviewer_agent: &ctx.reviewer_agent,
-            review_guidelines: None,
-            template_context: &ctx.template_context,
-            run_context: RunContext::new(),
-            execution_history: ExecutionHistory::new(),
-            executor: executor.as_ref(),
-            executor_arc: Arc::clone(&executor),
-            repo_root: std::path::Path::new("/test/repo"),
-            workspace: &*workspace,
-            workspace_arc: Arc::clone(&ctx.workspace),
-            run_log_context: &ctx.run_log_context,
-            cloud_reporter: None,
-            cloud: &ctx.config.cloud,
-        };
-
-        let mut final_state = PipelineState::initial(1, 0);
-        final_state.recovery_epoch = 5;
-
-        let loop_result = crate::app::event_loop::EventLoopResult {
-            completed: true,
-            events_processed: 0,
-            final_phase: PipelinePhase::Complete,
-            final_state,
-        };
-
-        // Act
-        save_complete_checkpoint_if_needed(
-            &ctx,
-            &ctx.config,
-            &run_context,
-            &phase_ctx,
-            &loop_result,
-        );
-
-        // Assert
-        let checkpoint = load_checkpoint_with_workspace(&*workspace)
-            .expect("checkpoint load")
-            .expect("checkpoint exists");
-
-        assert_eq!(
-            checkpoint.recovery_epoch, 5,
-            "completion checkpoint must preserve reducer recovery_epoch"
-        );
-    }
-}
-
-#[cfg(test)]
-mod cleanup_state_tests {
-    use super::finish_pipeline;
-    use crate::agents::AgentRegistry;
-    use crate::app::context::PipelineContext;
-    use crate::config::Config;
-    use crate::executor::MockProcessExecutor;
-    use crate::git_helpers::{
-        agent_phase_test_lock, clear_agent_phase_global_state, get_agent_phase_paths_for_test,
-        set_agent_phase_paths_for_test, GitHelpers,
-    };
-    use crate::logger::{Colors, Logger};
-    use crate::logging::RunLogContext;
-    use crate::pipeline::{AgentPhaseGuard, Timer};
-    use crate::prompts::template_context::TemplateContext;
-    use crate::reducer::PipelineState;
-    use crate::workspace::{Workspace, WorkspaceFs};
-    use crate::{app::event_loop::EventLoopResult, cli::Args};
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
-    #[test]
-    fn finish_pipeline_keeps_global_cleanup_state_when_sigint_cleanup_fails() {
-        let _lock = agent_phase_test_lock().lock().unwrap();
-        let tempdir = tempfile::tempdir().unwrap();
-        let repo_root = tempdir.path();
-        let _repo = git2::Repository::init(repo_root).unwrap();
-
-        let ralph_dir = repo_root.join(".git/ralph");
-        std::fs::create_dir_all(&ralph_dir).unwrap();
-        std::fs::write(ralph_dir.join("quarantine.bin"), "keep").unwrap();
-        let hooks_dir = repo_root.join(".git/hooks");
-        std::fs::create_dir_all(&hooks_dir).unwrap();
-
-        set_agent_phase_paths_for_test(
-            Some(repo_root.to_path_buf()),
-            Some(ralph_dir.clone()),
-            Some(hooks_dir.clone()),
-        );
-
-        let workspace = Arc::new(WorkspaceFs::new(repo_root.to_path_buf())) as Arc<dyn Workspace>;
-        let colors = Colors::with_enabled(false);
-        let logger = Logger::new(colors);
-        let registry = AgentRegistry::new().unwrap();
-        let executor =
-            Arc::new(MockProcessExecutor::new()) as Arc<dyn crate::executor::ProcessExecutor>;
-        let run_log_context = RunLogContext::new(&*workspace).unwrap();
-        let config = Config::test_default();
-
-        let ctx = PipelineContext {
-            args: Args::default(),
-            config: config.clone(),
-            registry,
-            developer_agent: "codex".to_string(),
-            reviewer_agent: "codex".to_string(),
-            developer_display: "codex".to_string(),
-            reviewer_display: "codex".to_string(),
-            repo_root: PathBuf::from(repo_root),
-            workspace: Arc::clone(&workspace),
-            logger,
-            colors,
-            template_context: TemplateContext::default(),
-            executor,
-            run_log_context,
-        };
-
-        let loop_result = EventLoopResult {
-            completed: true,
-            events_processed: 0,
-            final_phase: crate::reducer::event::PipelinePhase::Interrupted,
-            final_state: PipelineState::initial(1, 1),
-        };
-
-        let mut helpers = GitHelpers::default();
-        let mut guard = AgentPhaseGuard::new(&mut helpers, &ctx.logger, &*workspace);
-        let mut prompt_monitor = None;
-        let timer = Timer::new();
-
-        finish_pipeline(
-            &ctx,
-            &config,
-            &timer,
-            &mut guard,
-            &mut prompt_monitor,
-            &loop_result,
-            true,
-        )
-        .unwrap();
-
-        let actual = get_agent_phase_paths_for_test();
-        assert_eq!(
-            actual,
-            (
-                Some(repo_root.to_path_buf()),
-                Some(ralph_dir),
-                Some(hooks_dir),
-            ),
-            "SIGINT cleanup must leave fallback cleanup paths intact when cleanup fails and the guard remains armed"
-        );
-
-        drop(guard);
-        clear_agent_phase_global_state();
     }
 }

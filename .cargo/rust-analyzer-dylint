@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+
+import os
+import subprocess
+import sys
+
+
+def run_check(command: list[str], env: dict[str, str]) -> int:
+    process = subprocess.Popen(
+        command,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    assert process.stdout is not None
+    for line in process.stdout:
+        if line.startswith('{'):
+            sys.stdout.write(line)
+        else:
+            sys.stderr.write(line)
+
+    return process.wait()
+
+
+def main() -> int:
+    env = dict(os.environ)
+    env.setdefault("CARGO_TERM_QUIET", "true")
+    env.setdefault("CARGO_TERM_PROGRESS_WHEN", "never")
+
+    clippy_command = [
+        "cargo",
+        "clippy",
+        "-q",
+        "--workspace",
+        "--message-format=json",
+        "--all-targets",
+        "--keep-going",
+    ]
+    dylint_command = [
+        "cargo",
+        "dylint",
+        "-q",
+        "--all",
+        "--workspace",
+        "--keep-going",
+        "--",
+        "--message-format=json",
+        "--all-targets",
+    ]
+    xtask_command = [
+        "cargo",
+        "xtask",
+        "lsp-forbidden-allow-expect",
+    ]
+
+    clippy_exit_code = run_check(clippy_command, env)
+    dylint_exit_code = run_check(dylint_command, env)
+    xtask_exit_code = run_check(xtask_command, env)
+    return clippy_exit_code or dylint_exit_code or xtask_exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

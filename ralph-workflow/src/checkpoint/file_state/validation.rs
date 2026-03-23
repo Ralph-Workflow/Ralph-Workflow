@@ -7,21 +7,14 @@ impl FileSystemState {
         workspace: &dyn Workspace,
         executor: Option<&dyn ProcessExecutor>,
     ) -> Vec<ValidationError> {
-        let mut errors = Vec::new();
-
-        // Validate each tracked file
-        for (path, snapshot) in &self.files {
-            if let Err(e) = Self::validate_file_with_workspace(workspace, path, snapshot) {
-                errors.push(e);
-            }
-        }
-
-        // Validate git state if we captured it and executor was provided
-        if let Some(exec) = executor {
-            if let Err(e) = self.validate_git_state_with_executor(exec) {
-                errors.push(e);
-            }
-        }
+        let errors: Vec<ValidationError> = self
+            .files
+            .iter()
+            .filter_map(|(path, snapshot)| {
+                Self::validate_file_with_workspace(workspace, path, snapshot).err()
+            })
+            .chain(executor.and_then(|exec| self.validate_git_state_with_executor(exec).err()))
+            .collect();
 
         errors
     }
@@ -62,17 +55,13 @@ impl FileSystemState {
         &self,
         executor: &dyn ProcessExecutor,
     ) -> Result<(), ValidationError> {
-        // Validate HEAD OID if we captured it
         if let Some(expected_oid) = &self.git_head_oid {
-            if let Ok(output) = executor.execute("git", &["rev-parse", "HEAD"], &[], None) {
-                if output.status.success() {
-                    let current_oid = output.stdout.trim().to_string();
-                    if current_oid != *expected_oid {
-                        return Err(ValidationError::GitHeadChanged {
-                            expected: expected_oid.clone(),
-                            actual: current_oid,
-                        });
-                    }
+            if let Some(current_oid) = crate::checkpoint::git_capture::git_head_oid(executor) {
+                if current_oid != *expected_oid {
+                    return Err(ValidationError::GitHeadChanged {
+                        expected: crate::common::domain_types::GitOid::from(expected_oid.as_str()),
+                        actual: crate::common::domain_types::GitOid::from(current_oid.as_str()),
+                    });
                 }
             }
         }

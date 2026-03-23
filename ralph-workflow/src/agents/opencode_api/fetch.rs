@@ -3,122 +3,182 @@
 //! This module handles HTTP requests to fetch the `OpenCode` model catalog
 //! from <https://models.dev/api.json>.
 
-use crate::agents::opencode_api::cache::{save_catalog, CacheError};
+use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
-use crate::agents::opencode_api::{API_URL, DEFAULT_CACHE_TTL_SECONDS};
-use std::time::Duration;
+use crate::agents::opencode_api::API_URL;
+use std::fmt;
+use std::sync::Arc;
 
-/// Fetch the `OpenCode` API catalog from the remote endpoint.
+/// HTTP capability abstraction for catalog fetching.
 ///
-/// This function makes an HTTP GET request to the `OpenCode` API endpoint
-/// and parses the JSON response into an `ApiCatalog`.
+/// Allows domain code to request HTTP bodies without importing the boundary module.
+pub trait HttpFetcher: Send + Sync {
+    /// Fetch the body of the given URL.
+    fn fetch(&self, url: &str) -> Result<String, HttpFetchError>;
+}
+
+/// Errors produced while fetching HTTP resources.
+#[derive(Debug)]
+pub enum HttpFetchError {
+    /// Underlying HTTP capability failure described by the provider.
+    RequestFailed(String),
+}
+
+impl fmt::Display for HttpFetchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HttpFetchError::RequestFailed(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for HttpFetchError {}
+
+/// Trait for fetching the `OpenCode` API catalog.
 ///
-/// The fetched catalog is automatically cached to disk for future use.
-pub fn fetch_api_catalog() -> Result<ApiCatalog, CacheError> {
-    // Build HTTP agent with timeout
-    let agent = ureq::Agent::new_with_config(
-        ureq::config::Config::builder()
-            .timeout_global(Some(Duration::from_secs(10)))
-            .build(),
-    );
+/// This trait enables dependency injection for catalog fetching,
+/// allowing tests to provide mock implementations that don't make network calls.
+pub trait CatalogHttpClient: Send + Sync {
+    /// Fetch the API catalog JSON and parse it.
+    fn fetch_api_catalog(
+        &self,
+        ttl_seconds: u64,
+    ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError>;
+}
 
-    // Fetch the API catalog
-    let mut response = agent
-        .get(API_URL)
-        .call()
-        .map_err(|e: ureq::Error| CacheError::FetchError(e.to_string()))?;
+/// Production implementation of [`CatalogHttpClient`] that fetches from the network.
+#[derive(Clone)]
+pub struct RealCatalogFetcher {
+    fetcher: Arc<dyn HttpFetcher>,
+}
 
-    // Parse the JSON directly from response body
-    let mut catalog: ApiCatalog = response
-        .body_mut()
-        .read_json()
-        .map_err(|e| CacheError::FetchError(e.to_string()))?;
+impl std::fmt::Debug for RealCatalogFetcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RealCatalogFetcher").finish()
+    }
+}
 
-    // Set metadata
-    catalog.cached_at = Some(chrono::Utc::now());
-    catalog.ttl_seconds = std::env::var("RALPH_OPENCODE_CACHE_TTL_SECONDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_CACHE_TTL_SECONDS);
-
-    // Save to cache
-    if let Err(e) = save_catalog(&catalog) {
-        eprintln!("Warning: Failed to cache OpenCode API catalog: {e}");
+impl RealCatalogFetcher {
+    /// Build a catalog fetcher backed by the given HTTP capability.
+    #[must_use]
+    pub fn with_fetcher(fetcher: Arc<dyn HttpFetcher>) -> Self {
+        Self { fetcher }
     }
 
-    Ok(catalog)
+    /// Build a catalog fetcher from any type that implements [`HttpFetcher`].
+    #[must_use]
+    pub fn with_http_fetcher<F>(fetcher: F) -> Self
+    where
+        F: HttpFetcher + 'static,
+    {
+        Self::with_fetcher(Arc::new(fetcher))
+    }
+}
+
+impl CatalogHttpClient for RealCatalogFetcher {
+    fn fetch_api_catalog(
+        &self,
+        ttl_seconds: u64,
+    ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
+        let json = self
+            .fetcher
+            .fetch(API_URL)
+            .map_err(|err| CacheError::FetchError(err.to_string()))?;
+
+        let catalog: ApiCatalog = serde_json::from_str(&json).map_err(CacheError::ParseError)?;
+
+        let catalog = ApiCatalog {
+            ttl_seconds,
+            cached_at: Some(chrono::Utc::now()),
+            ..catalog
+        };
+
+        let warnings: Vec<CacheWarning> = save_catalog(&catalog)
+            .err()
+            .map(|e| CacheWarning::CacheSaveFailed {
+                error: e.to_string(),
+            })
+            .into_iter()
+            .collect();
+
+        Ok((catalog, warnings))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::agents::opencode_api::types::{Model, Provider};
+    use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
     use std::collections::HashMap;
+    use std::fs;
 
     /// Create a mock API catalog for testing.
     pub fn mock_api_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
-            "opencode".to_string(),
-            Provider {
-                id: "opencode".to_string(),
-                name: "OpenCode".to_string(),
-                description: "Open source AI coding tool".to_string(),
-            },
-        );
-        providers.insert(
-            "anthropic".to_string(),
-            Provider {
-                id: "anthropic".to_string(),
-                name: "Anthropic".to_string(),
-                description: "Anthropic Claude models".to_string(),
-            },
-        );
-        providers.insert(
-            "openai".to_string(),
-            Provider {
-                id: "openai".to_string(),
-                name: "OpenAI".to_string(),
-                description: "OpenAI GPT models".to_string(),
-            },
-        );
+        let providers = HashMap::from([
+            (
+                "opencode".to_string(),
+                Provider {
+                    id: "opencode".to_string(),
+                    name: "OpenCode".to_string(),
+                    description: "Open source AI coding tool".to_string(),
+                },
+            ),
+            (
+                "anthropic".to_string(),
+                Provider {
+                    id: "anthropic".to_string(),
+                    name: "Anthropic".to_string(),
+                    description: "Anthropic Claude models".to_string(),
+                },
+            ),
+            (
+                "openai".to_string(),
+                Provider {
+                    id: "openai".to_string(),
+                    name: "OpenAI".to_string(),
+                    description: "OpenAI GPT models".to_string(),
+                },
+            ),
+        ]);
 
-        let mut models = HashMap::new();
-        models.insert(
-            "opencode".to_string(),
-            vec![Model {
-                id: "glm-4.7-free".to_string(),
-                name: "GLM-4.7 Free".to_string(),
-                description: "Open source GLM model".to_string(),
-                context_length: Some(128_000),
-            }],
-        );
-        models.insert(
-            "anthropic".to_string(),
-            vec![
-                Model {
-                    id: "claude-sonnet-4-5".to_string(),
-                    name: "Claude Sonnet 4.5".to_string(),
-                    description: "Latest Claude Sonnet".to_string(),
-                    context_length: Some(200_000),
-                },
-                Model {
-                    id: "claude-opus-4".to_string(),
-                    name: "Claude Opus 4".to_string(),
-                    description: "Most capable Claude".to_string(),
-                    context_length: Some(200_000),
-                },
-            ],
-        );
-        models.insert(
-            "openai".to_string(),
-            vec![Model {
-                id: "gpt-4".to_string(),
-                name: "GPT-4".to_string(),
-                description: "OpenAI's GPT-4".to_string(),
-                context_length: Some(8192),
-            }],
-        );
+        let models = HashMap::from([
+            (
+                "opencode".to_string(),
+                vec![Model {
+                    id: "glm-4.7-free".to_string(),
+                    name: "GLM-4.7 Free".to_string(),
+                    description: "Open source GLM model".to_string(),
+                    context_length: Some(128_000),
+                }],
+            ),
+            (
+                "anthropic".to_string(),
+                vec![
+                    Model {
+                        id: "claude-sonnet-4-5".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
+                        description: "Latest Claude Sonnet".to_string(),
+                        context_length: Some(200_000),
+                    },
+                    Model {
+                        id: "claude-opus-4".to_string(),
+                        name: "Claude Opus 4".to_string(),
+                        description: "Most capable Claude".to_string(),
+                        context_length: Some(200_000),
+                    },
+                ],
+            ),
+            (
+                "openai".to_string(),
+                vec![Model {
+                    id: "gpt-4".to_string(),
+                    name: "GPT-4".to_string(),
+                    description: "OpenAI's GPT-4".to_string(),
+                    context_length: Some(8192),
+                }],
+            ),
+        ]);
 
         ApiCatalog {
             providers,
@@ -132,19 +192,16 @@ mod tests {
     fn test_mock_api_catalog_structure() {
         let catalog = mock_api_catalog();
 
-        // Verify providers
         assert_eq!(catalog.providers.len(), 3);
         assert!(catalog.has_provider("opencode"));
         assert!(catalog.has_provider("anthropic"));
         assert!(catalog.has_provider("openai"));
 
-        // Verify models
         assert!(catalog.has_model("opencode", "glm-4.7-free"));
         assert!(catalog.has_model("anthropic", "claude-sonnet-4-5"));
         assert!(catalog.has_model("anthropic", "claude-opus-4"));
         assert!(catalog.has_model("openai", "gpt-4"));
 
-        // Verify model retrieval
         let model = catalog.get_model("anthropic", "claude-sonnet-4-5").unwrap();
         assert_eq!(model.id, "claude-sonnet-4-5");
         assert_eq!(model.context_length, Some(200_000));
@@ -159,5 +216,53 @@ mod tests {
     #[test]
     fn test_api_url_constant() {
         assert_eq!(API_URL, "https://models.dev/api.json");
+    }
+
+    #[test]
+    fn test_real_catalog_fetcher_uses_injected_http_fetcher() {
+        struct StubFetcher {
+            payload: &'static str,
+        }
+
+        impl HttpFetcher for StubFetcher {
+            fn fetch(&self, _url: &str) -> Result<String, HttpFetchError> {
+                Ok(self.payload.to_string())
+            }
+        }
+
+        let stub_catalog = r#"{
+            "test-provider": {
+                "id": "test-provider",
+                "name": "Test Provider",
+                "doc": "used for fixture",
+                "models": {
+                    "test-model": {
+                        "id": "test-model",
+                        "name": "Test Model",
+                        "family": "Lorem",
+                        "limit": { "context": 4096 }
+                    }
+                }
+            }
+        }"#;
+
+        let fetcher = RealCatalogFetcher::with_http_fetcher(StubFetcher {
+            payload: stub_catalog,
+        });
+
+        let (catalog, warnings) = fetcher.fetch_api_catalog(1234).unwrap();
+        assert!(warnings.is_empty());
+        assert_eq!(catalog.ttl_seconds, 1234);
+        assert!(catalog.has_provider("test-provider"));
+        assert!(catalog.has_model("test-provider", "test-model"));
+
+        cleanup_opencode_cache_file();
+    }
+
+    fn cleanup_opencode_cache_file() {
+        if let Some(cache_dir) = dirs::cache_dir() {
+            let cache_path = cache_dir.join("ralph-workflow/opencode-api-cache.json");
+            let _ = fs::remove_file(cache_path);
+        }
     }
 }

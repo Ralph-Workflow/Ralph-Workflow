@@ -55,7 +55,7 @@ fn test_codex_reasoning_no_spam_in_non_tty_basic_mode() {
             let colors = Colors::new();
             let verbosity = Verbosity::Normal;
 
-            let parser =
+            let mut parser =
                 CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
                     .with_display_name_for_test("ccs/codex")
                     .with_terminal_mode(TerminalMode::Basic);
@@ -93,7 +93,7 @@ fn test_codex_reasoning_no_spam_in_non_tty_none_mode() {
             let colors = Colors::new();
             let verbosity = Verbosity::Normal;
 
-            let parser =
+            let mut parser =
                 CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
                     .with_display_name_for_test("ccs/codex")
                     .with_terminal_mode(TerminalMode::None);
@@ -126,9 +126,10 @@ fn test_codex_reasoning_in_place_updates_in_full_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Full);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Full);
 
         let stream = r#"
 {"type":"item.started","item":{"type":"reasoning","text":"First chunk"}}
@@ -188,9 +189,10 @@ fn test_codex_reasoning_multiple_turns_no_cross_contamination() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         let stream = r#"
 {"type":"turn.started"}

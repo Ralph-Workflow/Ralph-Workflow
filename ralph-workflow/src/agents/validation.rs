@@ -12,6 +12,21 @@ use crate::agents::opencode_api::ApiCatalog;
 use crate::agents::opencode_resolver::OpenCodeResolver;
 use std::collections::BTreeSet;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenCodeValidationError {
+    InvalidReferences { messages: Vec<String> },
+}
+
+impl std::fmt::Display for OpenCodeValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidReferences { messages } => write!(f, "{}", messages.join("\n\n")),
+        }
+    }
+}
+
+impl std::error::Error for OpenCodeValidationError {}
+
 /// Validate all `OpenCode` agent references in resolved drain bindings.
 ///
 /// This function checks that all `opencode/provider/model` references in the
@@ -26,7 +41,7 @@ use std::collections::BTreeSet;
 pub fn validate_opencode_agents(
     resolved: &ResolvedDrainConfig,
     catalog: &ApiCatalog,
-) -> Result<(), String> {
+) -> Result<(), OpenCodeValidationError> {
     validate_opencode_agents_in_resolved_drains(resolved, catalog)
 }
 
@@ -40,7 +55,7 @@ pub fn validate_opencode_agents(
 pub fn validate_opencode_agents_legacy(
     fallback: &FallbackConfig,
     catalog: &ApiCatalog,
-) -> Result<(), String> {
+) -> Result<(), OpenCodeValidationError> {
     validate_opencode_agents_in_resolved_drains(&fallback.resolve_drains(), catalog)
 }
 
@@ -52,26 +67,28 @@ pub fn validate_opencode_agents_legacy(
 pub fn validate_opencode_agents_in_resolved_drains(
     resolved: &ResolvedDrainConfig,
     catalog: &ApiCatalog,
-) -> Result<(), String> {
+) -> Result<(), OpenCodeValidationError> {
     let opencode_resolver = OpenCodeResolver::new(catalog.clone());
-    let mut errors = Vec::new();
 
     let all_agents = get_opencode_refs_in_resolved_drains(resolved);
 
-    // Validate each opencode/* agent
-    for agent_name in all_agents {
-        if let Some((provider, model)) = parse_opencode_ref(&agent_name) {
-            if let Err(e) = opencode_resolver.validate(&provider, &model) {
-                let msg = opencode_resolver.format_error(&e, &agent_name);
-                errors.push(msg);
-            }
-        }
-    }
+    // Validate each opencode/* agent - collect errors using iterator
+    let errors: Vec<_> = all_agents
+        .iter()
+        .filter_map(|agent_name| {
+            parse_opencode_ref(agent_name).and_then(|(provider, model)| {
+                opencode_resolver
+                    .validate(&provider, &model)
+                    .err()
+                    .map(|e| opencode_resolver.format_error(&e, agent_name))
+            })
+        })
+        .collect();
 
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(errors.join("\n\n"))
+        Err(OpenCodeValidationError::InvalidReferences { messages: errors })
     }
 }
 
@@ -88,8 +105,8 @@ fn parse_opencode_ref(agent_name: &str) -> Option<(String, String)> {
         return None;
     }
 
-    let provider = parts[1].to_string();
-    let model = parts[2].to_string();
+    let provider = parts.get(1)?.to_string();
+    let model = parts.get(2)?.to_string();
 
     Some((provider, model))
 }
@@ -139,18 +156,16 @@ mod tests {
     use std::collections::HashMap;
 
     fn mock_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
+        let providers = HashMap::from([(
             "anthropic".to_string(),
             Provider {
                 id: "anthropic".to_string(),
                 name: "Anthropic".to_string(),
                 description: "Anthropic Claude models".to_string(),
             },
-        );
+        )]);
 
-        let mut models = HashMap::new();
-        models.insert(
+        let models = HashMap::from([(
             "anthropic".to_string(),
             vec![Model {
                 id: "claude-sonnet-4-5".to_string(),
@@ -158,7 +173,7 @@ mod tests {
                 description: "Latest Claude Sonnet".to_string(),
                 context_length: Some(200_000),
             }],
-        );
+        )]);
 
         ApiCatalog {
             providers,
@@ -210,7 +225,25 @@ mod tests {
 
         let result = validate_opencode_agents(&resolved, &catalog);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("unknown"));
+        assert!(result
+            .expect_err("expected invalid provider error")
+            .to_string()
+            .contains("unknown"));
+    }
+
+    #[test]
+    fn test_validate_opencode_agents_returns_typed_error() {
+        let catalog = mock_catalog();
+        let fallback = create_fallback_with_refs(&["opencode/unknown/claude-sonnet-4-5"]);
+        let resolved = fallback.resolve_drains();
+
+        let error = validate_opencode_agents(&resolved, &catalog)
+            .expect_err("invalid provider should return a typed validation error");
+
+        assert!(matches!(
+            error,
+            OpenCodeValidationError::InvalidReferences { .. }
+        ));
     }
 
     #[test]
@@ -221,7 +254,10 @@ mod tests {
 
         let result = validate_opencode_agents(&resolved, &catalog);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("unknown-model"));
+        assert!(result
+            .expect_err("expected invalid model error")
+            .to_string()
+            .contains("unknown-model"));
     }
 
     #[test]

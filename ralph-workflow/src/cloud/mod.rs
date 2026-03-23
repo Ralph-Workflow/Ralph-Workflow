@@ -13,17 +13,46 @@
 //! Cloud support is trait-based for testability:
 //! - `CloudReporter` - Abstract interface for progress reporting
 //! - `NoopCloudReporter` - Default (does nothing)
-//! - `HttpCloudReporter` - Production HTTP API client
+//! - `HttpCloudReporter` - Production HTTP API client (in io boundary)
 //! - `MockCloudReporter` - Testing (captures calls)
+//!
+//! ## Boundary Modules
+//!
+//! - `io/` - HTTP client for cloud API communication
+//! - `runtime/` - Thread spawning for heartbeat background task
 
-pub mod heartbeat;
+pub mod io;
+pub mod io_redaction;
 pub mod redaction;
-pub mod reporter;
+pub mod runtime;
 pub mod types;
 
-pub use heartbeat::HeartbeatGuard;
-pub use reporter::{CloudReporter, HttpCloudReporter, NoopCloudReporter};
 pub use types::{CloudError, PipelineResult, ProgressEventType, ProgressUpdate};
+
+pub type HttpCloudReporter = crate::cloud::io::HttpCloudReporter;
+pub type HeartbeatGuard = crate::cloud::runtime::HeartbeatGuard;
+
+pub trait CloudReporter: Send + Sync {
+    fn report_progress(&self, update: &ProgressUpdate) -> Result<(), CloudError>;
+    fn heartbeat(&self) -> Result<(), CloudError>;
+    fn report_completion(&self, result: &PipelineResult) -> Result<(), CloudError>;
+}
+
+pub struct NoopCloudReporter;
+
+impl CloudReporter for NoopCloudReporter {
+    fn report_progress(&self, _update: &ProgressUpdate) -> Result<(), CloudError> {
+        Ok(())
+    }
+
+    fn heartbeat(&self) -> Result<(), CloudError> {
+        Ok(())
+    }
+
+    fn report_completion(&self, _result: &PipelineResult) -> Result<(), CloudError> {
+        Ok(())
+    }
+}
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mock;

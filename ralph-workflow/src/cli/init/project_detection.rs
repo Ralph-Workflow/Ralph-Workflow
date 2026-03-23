@@ -3,37 +3,43 @@
 // This file is included via include!() macro from the parent init.rs module.
 // Contains Levenshtein distance calculation and template name fuzzy matching.
 
-/// Calculate Levenshtein distance between two strings.
-///
-/// Returns the minimum number of single-character edits (insertions, deletions,
-/// or substitutions) required to change one string into the other.
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
     let b_len = b_chars.len();
 
-    // Use two rows to save memory
-    let mut prev_row: Vec<usize> = (0..=b_len).collect();
-    let mut curr_row = vec![0; b_len + 1];
-
-    for (i, a_char) in a_chars.iter().enumerate() {
-        curr_row[0] = i + 1;
-
-        for (j, b_char) in b_chars.iter().enumerate() {
-            let cost = usize::from(a_char != b_char);
-            curr_row[j + 1] = std::cmp::min(
-                std::cmp::min(
-                    curr_row[j] + 1,     // deletion
-                    prev_row[j + 1] + 1, // insertion
-                ),
-                prev_row[j] + cost, // substitution
-            );
-        }
-
-        std::mem::swap(&mut prev_row, &mut curr_row);
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
     }
 
-    prev_row[b_len]
+    let final_row = b_chars.iter().enumerate().fold(
+        (0..=a_len).collect::<Vec<usize>>(),
+        |prev_row, (j, b_char)| {
+            let first_val = j;
+            let curr_row: Vec<usize> = (0..=a_len)
+                .scan(first_val, |prev_val, i| {
+                    if i == 0 {
+                        Some(first_val)
+                    } else {
+                        let cost = usize::from(*b_char != a_chars[i - 1]);
+                        let curr = (*prev_val)
+                            .saturating_add(1)
+                            .min(prev_row[i].saturating_add(1))
+                            .min(prev_row[i - 1].saturating_add(cost));
+                        *prev_val = curr;
+                        Some(curr)
+                    }
+                })
+                .collect();
+            curr_row
+        },
+    );
+
+    *final_row.get(a_len).unwrap_or(&a_len)
 }
 
 /// Calculate similarity score as a percentage (0-100).
@@ -64,9 +70,9 @@ fn similarity_percentage(a: &str, b: &str) -> u32 {
 /// Find the best matching template names using fuzzy matching.
 ///
 /// Returns templates that are similar to the input within the threshold.
-fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
+pub fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
     let input_lower = input.to_lowercase();
-    let mut matches: Vec<(&'static str, u32)> = ALL_TEMPLATES
+    ALL_TEMPLATES
         .iter()
         .map(|t| {
             let name = t.name();
@@ -74,12 +80,7 @@ fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
             (name, sim)
         })
         .filter(|(_, sim)| *sim >= MIN_SIMILARITY_PERCENT)
-        .collect();
-
-    // Sort by similarity (highest first)
-    matches.sort_by(|a, b| b.1.cmp(&a.1));
-
-    // Return top 3 matches
-    matches.truncate(3);
-    matches
+        .sorted_by(|a, b| b.1.cmp(&a.1))
+        .take(3)
+        .collect()
 }

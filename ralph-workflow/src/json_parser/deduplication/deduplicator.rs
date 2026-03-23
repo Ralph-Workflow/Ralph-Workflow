@@ -2,6 +2,34 @@
 //
 // Orchestrates rolling hash and KMP for two-phase deduplication.
 
+#[cfg(test)]
+use crate::json_parser::deduplication::kmp_matcher::KMPMatcher;
+use crate::json_parser::deduplication::rolling_hash::RollingHashWindow;
+
+
+enum OverlapPrecondition {
+    /// Delta is exact match with accumulated — treat as duplicate with no new content.
+    ExactMatch,
+    /// Delta is long enough, not identical, and longer than accumulated — proceed to scoring.
+    NotShortNotIdentical,
+    /// Delta fails basic preconditions — not a snapshot.
+    Reject,
+}
+
+fn check_overlap_preconditions(delta: &str, accumulated: &str, thresholds: &OverlapThresholds) -> OverlapPrecondition {
+    if delta == accumulated { return OverlapPrecondition::ExactMatch; }
+    if delta.len() < thresholds.short_chunk_threshold || delta.len() <= accumulated.len() { return OverlapPrecondition::Reject; }
+    OverlapPrecondition::NotShortNotIdentical
+}
+
+fn extract_suffix_by_overlap(delta: &str, char_count: usize) -> Option<&str> {
+    if char_count > 0 && delta.len() > char_count {
+        Some(&delta[char_count..])
+    } else {
+        None
+    }
+}
+
 /// Delta deduplicator using rolling hash and KMP.
 ///
 /// Orchestrates the two-phase deduplication approach:
@@ -31,7 +59,7 @@ pub struct DeltaDeduplicator {
 impl DeltaDeduplicator {
     /// Create a new delta deduplicator.
     #[cfg(test)]
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -85,7 +113,7 @@ impl DeltaDeduplicator {
     /// );
     /// ```
     #[cfg(test)]
-    #[must_use] 
+    #[must_use]
     pub fn extract_new_content<'a>(delta: &'a str, accumulated: &str) -> Option<&'a str> {
         // Handle identical content (delta == accumulated) - return empty string
         if delta == accumulated {
@@ -131,7 +159,7 @@ impl DeltaDeduplicator {
     /// # Returns
     /// * `true` - Delta may be a snapshot (hash matches)
     /// * `false` - Delta is definitely not a snapshot (hash doesn't match)
-    #[must_use] 
+    #[must_use]
     pub fn is_likely_snapshot(delta: &str, accumulated: &str) -> bool {
         // Handle identical content (duplicate delta)
         if delta == accumulated {
@@ -170,36 +198,17 @@ impl DeltaDeduplicator {
     /// # Returns
     /// * `true` - Delta is a snapshot meeting strong overlap criteria
     /// * `false` - Delta is either genuine or overlap is too weak
-    #[must_use] 
+    #[must_use]
     pub fn is_likely_snapshot_with_thresholds(delta: &str, accumulated: &str) -> bool {
         let thresholds = get_overlap_thresholds();
-
-        // Handle short chunks: only dedupe if exact match
-        if delta.len() < thresholds.short_chunk_threshold {
-            return delta == accumulated;
+        match check_overlap_preconditions(delta, accumulated, &thresholds) {
+            OverlapPrecondition::ExactMatch => true,
+            OverlapPrecondition::NotShortNotIdentical => {
+                Self::is_likely_snapshot(delta, accumulated)
+                    && score_overlap(delta, accumulated).meets_thresholds(&thresholds)
+            }
+            OverlapPrecondition::Reject => false,
         }
-
-        // Handle identical content (delta == accumulated)
-        // This is a snapshot where no new content is added
-        if delta == accumulated {
-            return true;
-        }
-
-        // Fast rejection: delta must be longer than accumulated
-        if delta.len() <= accumulated.len() {
-            return false;
-        }
-
-        // First check with basic rolling hash for quick rejection
-        if !Self::is_likely_snapshot(delta, accumulated) {
-            return false;
-        }
-
-        // Score the overlap to check if it meets strong overlap criteria
-        let score = score_overlap(delta, accumulated);
-
-        // Apply threshold checks
-        score.meets_thresholds(&thresholds)
     }
 
     /// Extract new content from a snapshot with strong overlap detection.
@@ -214,44 +223,22 @@ impl DeltaDeduplicator {
     /// # Returns
     /// * `Some(new_portion)` - The overlap meets thresholds, returns new portion
     /// * `None` - The overlap is too weak or not a snapshot
-    #[must_use] 
+    #[must_use]
     pub fn extract_new_content_with_thresholds<'a>(
         delta: &'a str,
         accumulated: &str,
     ) -> Option<&'a str> {
         let thresholds = get_overlap_thresholds();
-
-        // Handle short chunks: only dedupe if exact match
-        if delta.len() < thresholds.short_chunk_threshold {
-            if delta == accumulated {
-                return Some("");
+        match check_overlap_preconditions(delta, accumulated, &thresholds) {
+            OverlapPrecondition::ExactMatch => Some(""),
+            OverlapPrecondition::NotShortNotIdentical => {
+                let score = score_overlap(delta, accumulated);
+                score
+                    .meets_thresholds(&thresholds)
+                    .then(|| extract_suffix_by_overlap(delta, score.char_count))
+                    .flatten()
             }
-            return None;
-        }
-
-        // Handle identical content
-        if delta == accumulated {
-            return Some("");
-        }
-
-        // Fast rejection: delta must be longer than accumulated
-        if delta.len() <= accumulated.len() {
-            return None;
-        }
-
-        // Score the overlap
-        let score = score_overlap(delta, accumulated);
-
-        // Check if overlap meets thresholds
-        if !score.meets_thresholds(&thresholds) {
-            return None;
-        }
-
-        // Extract new content using the overlap length from the score
-        if score.char_count > 0 && delta.len() > score.char_count {
-            Some(&delta[score.char_count..])
-        } else {
-            None
+            OverlapPrecondition::Reject => None,
         }
     }
 

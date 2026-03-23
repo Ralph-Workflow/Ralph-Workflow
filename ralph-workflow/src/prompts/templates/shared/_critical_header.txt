@@ -7,7 +7,7 @@
 {#   Allows reviewers to read files in the diff for context only.              #}
 {#                                                                             #}
 {# USAGE:                                                                      #}
-{#   {{> shared/_critical_header}}                                             #}
+{#   Include shared/_critical_header to present the limited exploration header. #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   MODE     - Review mode name (e.g., "DETAILED REVIEW MODE")                #}

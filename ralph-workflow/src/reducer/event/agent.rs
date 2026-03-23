@@ -1,7 +1,8 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
 use crate::agents::{AgentDrain, AgentRole};
-use crate::executor::ChildProcessInfo;
+use crate::common::domain_types::{AgentName, ModelName};
+use crate::ChildProcessInfo;
 use serde::{Deserialize, Serialize};
 
 /// Agent invocation and chain management events.
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// - `RateLimited`: Typically immediate agent switch with prompt preservation
 /// - `ChainExhausted`: Starts new retry cycle
 /// - `InvocationSucceeded`: Clears continuation prompt
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum AgentEvent {
     /// Agent invocation started.
     InvocationStarted {
@@ -31,23 +32,23 @@ pub enum AgentEvent {
         /// authoritative consumer identity.
         role: AgentRole,
         /// The agent being invoked.
-        agent: String,
+        agent: AgentName,
         /// The model being used, if specified.
-        model: Option<String>,
+        model: Option<ModelName>,
     },
     /// Agent invocation succeeded.
     InvocationSucceeded {
         /// Compatibility role metadata for the active drain.
         role: AgentRole,
         /// The agent that succeeded.
-        agent: String,
+        agent: AgentName,
     },
     /// Agent invocation failed.
     InvocationFailed {
         /// Compatibility role metadata for the active drain.
         role: AgentRole,
         /// The agent that failed.
-        agent: String,
+        agent: AgentName,
         /// The exit code from the agent process.
         exit_code: i32,
         /// The kind of error that occurred.
@@ -60,20 +61,20 @@ pub enum AgentEvent {
         /// The role being fulfilled.
         role: AgentRole,
         /// The agent being switched from.
-        from_agent: String,
+        from_agent: AgentName,
         /// The agent being switched to.
-        to_agent: String,
+        to_agent: AgentName,
     },
     /// Model fallback triggered within the same agent.
     ModelFallbackTriggered {
         /// The role being fulfilled.
         role: AgentRole,
         /// The agent whose model is changing.
-        agent: String,
+        agent: AgentName,
         /// The model being switched from.
-        from_model: String,
+        from_model: ModelName,
         /// The model being switched to.
-        to_model: String,
+        to_model: ModelName,
     },
     /// Retry cycle started (all agents exhausted, starting over).
     RetryCycleStarted {
@@ -92,7 +93,7 @@ pub enum AgentEvent {
         /// The explicit runtime drain this chain is for.
         drain: AgentDrain,
         /// The agents available in this chain.
-        agents: Vec<String>,
+        agents: Vec<AgentName>,
         /// Maximum number of retry cycles allowed for this chain.
         max_cycles: u32,
         /// Base retry-cycle delay in milliseconds.
@@ -110,7 +111,7 @@ pub enum AgentEvent {
         /// The role being fulfilled.
         role: AgentRole,
         /// The agent that hit the rate limit.
-        agent: String,
+        agent: AgentName,
         /// The prompt that was being executed when rate limit was hit.
         /// This allows the next agent to continue the same work.
         prompt_context: Option<String>,
@@ -124,7 +125,7 @@ pub enum AgentEvent {
         /// The role being fulfilled.
         role: AgentRole,
         /// The agent that failed authentication.
-        agent: String,
+        agent: AgentName,
     },
 
     /// Agent hit an idle timeout.
@@ -136,7 +137,7 @@ pub enum AgentEvent {
         /// The role being fulfilled.
         role: AgentRole,
         /// The agent that timed out.
-        agent: String,
+        agent: AgentName,
         /// Whether the agent produced any output before timing out.
         #[serde(default = "default_timeout_output_kind")]
         output_kind: TimeoutOutputKind,
@@ -163,7 +164,7 @@ pub enum AgentEvent {
         /// The role this agent is fulfilling.
         role: AgentRole,
         /// The agent name.
-        agent: String,
+        agent: AgentName,
         /// The session ID returned by the agent.
         session_id: String,
     },

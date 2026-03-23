@@ -82,7 +82,9 @@ pub fn build_ccs_agent_config(
     display_name: String,
     alias_name: &str,
 ) -> AgentConfig {
-    build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name)
+    build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name, |key| {
+        crate::agents::runtime::get_env_var(key)
+    })
 }
 
 #[cfg(not(any(test, feature = "test-utils")))]
@@ -92,27 +94,33 @@ pub fn build_ccs_agent_config(
     display_name: String,
     alias_name: &str,
 ) -> AgentConfig {
-    build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name)
+    build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name, |key| {
+        crate::agents::runtime::get_env_var(key)
+    })
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "user-facing informative messages for CCS configuration"
+)]
 fn build_ccs_agent_config_impl(
     alias_config: &CcsAliasConfig,
     defaults: &CcsConfig,
     display_name: String,
     alias_name: &str,
+    get_env_var: impl Fn(&str) -> Option<String>,
 ) -> AgentConfig {
-    // Check for CCS_DEBUG env var to enable detailed logging
-    let debug_mode = std::env::var("RALPH_CCS_DEBUG").is_ok();
+    // Check for CCS_DEBUG env var to enable detailed logging (boundary call)
+    let debug_mode = get_env_var("RALPH_CCS_DEBUG").is_some();
 
-    let mut profile_used_for_env: Option<String> = None;
-    let (env_vars, env_vars_loaded) = if alias_name.is_empty() {
-        (HashMap::new(), false)
+    // Compute env vars and track profile used - functional style
+    let ((env_vars, env_vars_loaded), profile_used_for_env) = if alias_name.is_empty() {
+        ((HashMap::new(), false), None)
     } else if is_glm_alias(alias_name) {
         let original_cmd = alias_config.cmd.as_str();
         let profile =
             ccs_profile_from_command(original_cmd).unwrap_or_else(|| alias_name.to_string());
-        profile_used_for_env = Some(profile.clone());
-        match load_ccs_env_vars_with_guess(&profile) {
+        let result = match load_ccs_env_vars_with_guess(&profile) {
             Ok((vars, guessed)) => {
                 if let Some(guessed) = guessed {
                     eprintln!("Info: CCS profile '{profile}' not found; using '{guessed}'");
@@ -125,27 +133,19 @@ fn build_ccs_agent_config_impl(
                 eprintln!("Warning: failed to load CCS env vars for profile '{profile}': {err}");
                 if !suggestions.is_empty() {
                     eprintln!("Tip: available/nearby CCS profiles:");
-                    for s in suggestions {
+                    suggestions.iter().for_each(|s| {
                         eprintln!("  - {s}");
-                    }
+                    });
                 }
                 (HashMap::new(), false)
             }
-        }
+        };
+        (result, Some(profile))
     } else {
         // Non-GLM CCS aliases must execute `ccs ...` directly.
         // Do not inject GLM/Anthropic-style env vars for other providers.
-        (HashMap::new(), false)
+        ((HashMap::new(), false), None)
     };
-
-    // Debug logging: Show env vars loaded
-    log_ccs_env_vars_loaded(
-        debug_mode,
-        alias_name,
-        profile_used_for_env.as_ref(),
-        env_vars_loaded,
-        &env_vars,
-    );
 
     // Determine the command to use
     let cmd = resolve_ccs_command(
@@ -157,7 +157,7 @@ fn build_ccs_agent_config_impl(
     );
 
     // Build the final AgentConfig
-    build_ccs_config_from_flags(alias_config, defaults, cmd, env_vars, display_name)
+    build_ccs_config_from_flags(alias_config, defaults, cmd.command, env_vars, display_name)
 }
 
 /// CCS alias resolver that can be used by the agent registry.

@@ -6,16 +6,22 @@
 #[cfg(test)]
 mod tests {
     use super::{
-        snapshot_threshold, snapshot_threshold_from_env_fn, ContentType, StreamingSession,
-        DEFAULT_SNAPSHOT_THRESHOLD,
+        build_mixed_content_reconstruction, build_tool_use_reconstruction,
+        compute_content_hash_from_accumulated, compute_hash, extract_delta_from_snapshot,
+        is_duplicate_text_content, is_likely_snapshot, merge_delta, snapshot_threshold,
+        snapshot_threshold_from_env_fn, sorted_content_keys, ContentType, SnapshotDeltaError,
+        StreamingSession, DEFAULT_SNAPSHOT_THRESHOLD,
     };
 
     // Tests for StreamingSession lifecycle and content tracking
-    include!("tests/session_tests.rs");
+    include!("io_tests/session_tests.rs");
 
     // Tests for snapshot-as-delta detection methods
-    include!("tests/state_tests.rs");
+    include!("io_tests/state_tests.rs");
 
     // Tests for delta contract validation
-    include!("tests/contract_tests.rs");
+    include!("io_tests/contract_tests.rs");
+
+    // Tests for pure domain helpers extracted from session.rs
+    include!("io_tests/domain_tests.rs");
 }

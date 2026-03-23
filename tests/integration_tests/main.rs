@@ -1,8 +1,11 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint policy: integration tests still follow the repository style guide.
 //
-// Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
-// (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
-// issues outside our control and don't reflect code quality problems.
+// See `CODE_STYLE.md`, `docs/code-style/testing.md`,
+// `docs/code-style/boundaries.md`, and `tests/clippy.toml`.
+//
+// Keep test-only exceptions narrow: test code may differ from production code, but
+// it should still assert behavior, avoid debug leftovers, and preserve explicit
+// architectural boundaries.
 #![deny(warnings)]
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
@@ -10,9 +13,8 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // NOTE: Many lints are not denied because this is test code.
-    // This is documented in the lint policy exception table.
-    // clippy::print_stderr - allowed for test output
+    // Test binaries keep the shared baseline and allow only the output patterns that
+    // are intrinsic to test diagnostics.
     clippy::dbg_macro,
     // Push toward combinators instead of hand-written control flow
     clippy::manual_map,
@@ -106,6 +108,7 @@ mod reducer_state_machine;
 mod required_files_cleanup;
 mod review_output_validation;
 mod review_xml_validation;
+mod rust_lsp_dylint;
 mod template_rendering_errors;
 mod template_validation_jsx;
 mod test_count_guard;

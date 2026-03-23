@@ -28,7 +28,7 @@ use std::rc::Rc;
 fn test_empty_and_whitespace_deltas_no_spam() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser =
+        let mut parser =
             ClaudeParser::with_printer(Colors::new(), Verbosity::Normal, test_printer.clone())
                 .with_display_name("ccs/glm")
                 .with_terminal_mode(TerminalMode::None);
@@ -67,7 +67,7 @@ fn test_empty_and_whitespace_deltas_no_spam() {
 fn test_rapid_block_transitions_no_cross_contamination() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser =
+        let mut parser =
             ClaudeParser::with_printer(Colors::new(), Verbosity::Normal, test_printer.clone())
                 .with_display_name("ccs/glm")
                 .with_terminal_mode(TerminalMode::None);
@@ -115,7 +115,7 @@ fn test_rapid_block_transitions_no_cross_contamination() {
 fn test_single_character_deltas_no_spam() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser =
+        let mut parser =
             ClaudeParser::with_printer(Colors::new(), Verbosity::Normal, test_printer.clone())
                 .with_display_name("ccs/glm")
                 .with_terminal_mode(TerminalMode::None);
@@ -160,7 +160,7 @@ fn test_single_character_deltas_no_spam() {
 fn test_tool_input_chunked_deltas_no_spam() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser =
+        let mut parser =
             ClaudeParser::with_printer(Colors::new(), Verbosity::Normal, test_printer.clone())
                 .with_display_name("ccs/glm")
                 .with_terminal_mode(TerminalMode::None);
@@ -208,7 +208,7 @@ fn test_tool_input_chunked_deltas_no_spam() {
 fn test_codex_empty_reasoning_items_no_spam() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser = CodexParser::with_printer_for_test(
+        let mut parser = CodexParser::with_printer_for_test(
             Colors::new(),
             Verbosity::Normal,
             test_printer.clone(),
@@ -243,7 +243,7 @@ fn test_codex_empty_reasoning_items_no_spam() {
 fn test_codex_rapid_agent_message_transitions_no_spam() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser = CodexParser::with_printer_for_test(
+        let mut parser = CodexParser::with_printer_for_test(
             Colors::new(),
             Verbosity::Normal,
             test_printer.clone(),
@@ -288,7 +288,7 @@ fn test_codex_rapid_agent_message_transitions_no_spam() {
 fn test_multi_turn_session_boundary_isolation() {
     with_default_timeout(|| {
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-        let parser =
+        let mut parser =
             ClaudeParser::with_printer(Colors::new(), Verbosity::Normal, test_printer.clone())
                 .with_display_name("ccs/glm")
                 .with_terminal_mode(TerminalMode::None);

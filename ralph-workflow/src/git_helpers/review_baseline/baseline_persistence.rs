@@ -57,9 +57,7 @@ pub fn load_review_baseline_with_workspace(
     let oid = git2::Oid::from_str(raw).map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "Invalid baseline OID in {REVIEW_BASELINE_FILE}: '{raw}'"
-            ),
+            format!("Invalid baseline OID in {REVIEW_BASELINE_FILE}: '{raw}'"),
         )
     })?;
 
@@ -137,7 +135,8 @@ fn count_commits_since(repo: &git2::Repository, baseline_oid: &str) -> io::Resul
     let mut walk = repo.revwalk().map_err(|e| to_io_error(&e))?;
     walk.push(head_oid).map_err(|e| to_io_error(&e))?;
     walk.hide(baseline).map_err(|e| to_io_error(&e))?;
-    Ok(walk.count())
+    let commits: Vec<_> = walk.collect();
+    Ok(commits.len())
 }
 
 fn to_io_error(err: &git2::Error) -> io::Error {

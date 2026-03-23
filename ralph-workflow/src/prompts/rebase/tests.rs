@@ -16,8 +16,7 @@ fn test_build_conflict_resolution_prompt_no_mentions_rebase() {
 
 #[test]
 fn test_build_conflict_resolution_prompt_with_context() {
-    let mut conflicts = HashMap::new();
-    conflicts.insert(
+    let conflicts = [(
         "test.rs".to_string(),
         FileConflict {
             conflict_content: "<<<<<<< ours\nfn foo() {}\n=======\nfn bar() {}\n>>>>>>> theirs"
@@ -25,7 +24,9 @@ fn test_build_conflict_resolution_prompt_with_context() {
             current_content: "<<<<<<< ours\nfn foo() {}\n=======\nfn bar() {}\n>>>>>>> theirs"
                 .to_string(),
         },
-    );
+    )]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
 
     let prompt_md = "Add a new feature";
     let plan = "1. Create foo function\n2. Create bar function";
@@ -115,14 +116,15 @@ fn test_format_context_section_empty() {
 
 #[test]
 fn test_format_conflicts_section() {
-    let mut conflicts = HashMap::new();
-    conflicts.insert(
+    let conflicts = [(
         "src/test.rs".to_string(),
         FileConflict {
             conflict_content: "<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs".to_string(),
             current_content: "<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs".to_string(),
         },
-    );
+    )]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
 
     let section = format_conflicts_section(&conflicts);
 
@@ -163,8 +165,7 @@ fn test_build_conflict_resolution_prompt_with_registry_context() {
 #[test]
 fn test_build_conflict_resolution_prompt_with_registry_context_and_content() {
     let context = TemplateContext::default();
-    let mut conflicts = HashMap::new();
-    conflicts.insert(
+    let conflicts = [(
         "test.rs".to_string(),
         FileConflict {
             conflict_content: "<<<<<<< ours\nfn foo() {}\n=======\nfn bar() {}\n>>>>>>> theirs"
@@ -172,7 +173,9 @@ fn test_build_conflict_resolution_prompt_with_registry_context_and_content() {
             current_content: "<<<<<<< ours\nfn foo() {}\n=======\nfn bar() {}\n>>>>>>> theirs"
                 .to_string(),
         },
-    );
+    )]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
 
     let prompt_md = "Add a new feature";
     let plan = "1. Create foo function\n2. Create bar function";
@@ -201,14 +204,15 @@ fn test_build_conflict_resolution_prompt_with_registry_context_and_content() {
 #[test]
 fn test_registry_context_based_matches_regular() {
     let context = TemplateContext::default();
-    let mut conflicts = HashMap::new();
-    conflicts.insert(
+    let conflicts = [(
         "test.rs".to_string(),
         FileConflict {
             conflict_content: "conflict".to_string(),
             current_content: "current".to_string(),
         },
-    );
+    )]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
 
     let regular = build_conflict_resolution_prompt(&conflicts, Some("prompt"), Some("plan"));
     let with_context = build_conflict_resolution_prompt_with_context(
@@ -257,14 +261,15 @@ fn test_format_branch_info_section() {
 #[test]
 fn test_enhanced_prompt_with_branch_info() {
     let context = TemplateContext::default();
-    let mut conflicts = HashMap::new();
-    conflicts.insert(
+    let conflicts = [(
         "test.rs".to_string(),
         FileConflict {
             conflict_content: "conflict".to_string(),
             current_content: "current".to_string(),
         },
-    );
+    )]
+    .into_iter()
+    .collect::<HashMap<_, _>>();
 
     let branch_info = BranchInfo {
         current_branch: "feature".to_string(),

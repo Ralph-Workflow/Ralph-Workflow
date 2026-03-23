@@ -1,6 +1,9 @@
+use crate::checkpoint::file_capture;
+use crate::checkpoint::git_capture;
+
 impl FileSystemState {
     /// Create a new file system state.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -28,45 +31,26 @@ impl FileSystemState {
     /// CLI-layer code that operates before a workspace is available. New pipeline code
     /// should use `capture_with_workspace` instead.
     fn capture_current_with_executor_impl(executor: &dyn ProcessExecutor) -> Self {
-        let mut state = Self::new();
+        let files_to_capture = [
+            "PROMPT.md",
+            ".agent/PLAN.md",
+            ".agent/ISSUES.md",
+            ".agent/config.toml",
+            ".agent/start_commit",
+            ".agent/NOTES.md",
+            ".agent/status",
+        ];
 
-        // Always capture PROMPT.md
-        state.capture_file_impl("PROMPT.md");
-
-        // Capture .agent/PLAN.md if it exists (moved to .agent directory)
-        if Path::new(".agent/PLAN.md").exists() {
-            state.capture_file_impl(".agent/PLAN.md");
+        Self {
+            files: files_to_capture
+                .iter()
+                .map(|path| {
+                    let snapshot = snapshot_for_path(path);
+                    (path.to_string(), snapshot)
+                })
+                .collect(),
+            ..Self::with_git_state(executor)
         }
-
-        // Capture .agent/ISSUES.md if it exists (moved to .agent directory)
-        if Path::new(".agent/ISSUES.md").exists() {
-            state.capture_file_impl(".agent/ISSUES.md");
-        }
-
-        // Capture .agent/config.toml if it exists
-        if Path::new(".agent/config.toml").exists() {
-            state.capture_file_impl(".agent/config.toml");
-        }
-
-        // Capture .agent/start_commit if it exists
-        if Path::new(".agent/start_commit").exists() {
-            state.capture_file_impl(".agent/start_commit");
-        }
-
-        // Capture .agent/NOTES.md if it exists
-        if Path::new(".agent/NOTES.md").exists() {
-            state.capture_file_impl(".agent/NOTES.md");
-        }
-
-        // Capture .agent/status if it exists
-        if Path::new(".agent/status").exists() {
-            state.capture_file_impl(".agent/status");
-        }
-
-        // Try to capture git state
-        state.capture_git_state(executor);
-
-        state
     }
 
     /// Capture the current state of key files using a workspace.
@@ -83,142 +67,74 @@ impl FileSystemState {
         workspace: &dyn Workspace,
         executor: &dyn ProcessExecutor,
     ) -> Self {
-        let mut state = Self::new();
+        let files_to_capture = [
+            "PROMPT.md",
+            ".agent/PLAN.md",
+            ".agent/ISSUES.md",
+            ".agent/config.toml",
+            ".agent/start_commit",
+            ".agent/NOTES.md",
+            ".agent/status",
+        ];
 
-        // Always capture PROMPT.md
-        state.capture_file_with_workspace(workspace, "PROMPT.md");
-
-        // Capture .agent/PLAN.md if it exists
-        if workspace.exists(Path::new(".agent/PLAN.md")) {
-            state.capture_file_with_workspace(workspace, ".agent/PLAN.md");
+        Self {
+            files: files_to_capture
+                .iter()
+                .map(|path| {
+                    let snapshot = snapshot_for_path_workspace(workspace, path);
+                    (path.to_string(), snapshot)
+                })
+                .collect(),
+            ..Self::with_git_state(executor)
         }
-
-        // Capture .agent/ISSUES.md if it exists
-        if workspace.exists(Path::new(".agent/ISSUES.md")) {
-            state.capture_file_with_workspace(workspace, ".agent/ISSUES.md");
-        }
-
-        // Capture .agent/config.toml if it exists
-        if workspace.exists(Path::new(".agent/config.toml")) {
-            state.capture_file_with_workspace(workspace, ".agent/config.toml");
-        }
-
-        // Capture .agent/start_commit if it exists
-        if workspace.exists(Path::new(".agent/start_commit")) {
-            state.capture_file_with_workspace(workspace, ".agent/start_commit");
-        }
-
-        // Capture .agent/NOTES.md if it exists
-        if workspace.exists(Path::new(".agent/NOTES.md")) {
-            state.capture_file_with_workspace(workspace, ".agent/NOTES.md");
-        }
-
-        // Capture .agent/status if it exists
-        if workspace.exists(Path::new(".agent/status")) {
-            state.capture_file_with_workspace(workspace, ".agent/status");
-        }
-
-        // Try to capture git state
-        state.capture_git_state(executor);
-
-        state
     }
+}
 
-    /// Capture a single file's state using a workspace.
-    pub fn capture_file_with_workspace(&mut self, workspace: &dyn Workspace, path: &str) {
-        let path_ref = Path::new(path);
-        let snapshot = if workspace.exists(path_ref) {
-            workspace.read_bytes(path_ref).map_or_else(
-                |_| FileSnapshot::not_found(path),
-                |content| {
-                    let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
-                    let size = content.len() as u64;
-                    FileSnapshot::new(path, checksum, size, true)
-                },
-            )
-        } else {
-            FileSnapshot::not_found(path)
-        };
-
-        self.files.insert(path.to_string(), snapshot);
+fn snapshot_for_path(path: &str) -> FileSnapshot {
+    let path_obj = Path::new(path);
+    if path_obj.exists() {
+        file_capture::read_file_bytes(path_obj).map_or_else(
+            || FileSnapshot::not_found(path),
+            |content| {
+                let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
+                let size = content.len() as u64;
+                FileSnapshot::new(path, checksum, size, true)
+            },
+        )
+    } else {
+        FileSnapshot::not_found(path)
     }
+}
 
-    /// Internal implementation of file capture using CWD-relative paths.
-    ///
-    /// This is the core logic used by `capture_current_with_executor_impl`.
-    fn capture_file_impl(&mut self, path: &str) {
-        let path_obj = Path::new(path);
-        let snapshot = if path_obj.exists() {
-            std::fs::read(path_obj).map_or_else(
-                |_| FileSnapshot::not_found(path),
-                |content| {
-                    let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
-                    let size = content.len() as u64;
-                    FileSnapshot::new(path, checksum, size, true)
-                },
-            )
-        } else {
-            FileSnapshot::not_found(path)
-        };
-
-        self.files.insert(path.to_string(), snapshot);
+fn snapshot_for_path_workspace(workspace: &dyn Workspace, path: &str) -> FileSnapshot {
+    let path_ref = Path::new(path);
+    if workspace.exists(path_ref) {
+        workspace.read_bytes(path_ref).map_or_else(
+            |_| FileSnapshot::not_found(path),
+            |content| {
+                let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
+                let size = content.len() as u64;
+                FileSnapshot::new(path, checksum, size, true)
+            },
+        )
+    } else {
+        FileSnapshot::not_found(path)
     }
+}
 
-    /// Capture git HEAD state and working tree status.
-    ///
-    /// Skips all git commands when a user interrupt is pending. Blocking on
-    /// `executor.execute("git", ...)` after an interrupt-triggered agent kill can hang
-    /// indefinitely because orphaned processes may hold pipe write ends open, or because
-    /// git cannot acquire lock files left by the killed agent. Skipping is safe: the
-    /// checkpoint will simply have no git state, which is acceptable on interrupt.
-    fn capture_git_state(&mut self, executor: &dyn ProcessExecutor) {
+impl FileSystemState {
+    /// Build git state fields using an executor, returning a partial struct for struct-update.
+    fn with_git_state(executor: &dyn ProcessExecutor) -> Self {
         if crate::interrupt::user_interrupted_occurred() {
-            return;
+            return Self::default();
         }
 
-        // Try to get HEAD OID
-        if let Ok(output) = executor.execute("git", &["rev-parse", "HEAD"], &[], None) {
-            if output.status.success() {
-                let oid = output.stdout.trim().to_string();
-                self.git_head_oid = Some(oid);
-            }
-        }
-
-        // Try to get branch name
-        if let Ok(output) =
-            executor.execute("git", &["rev-parse", "--abbrev-ref", "HEAD"], &[], None)
-        {
-            if output.status.success() {
-                let branch = output.stdout.trim().to_string();
-                if !branch.is_empty() && branch != "HEAD" {
-                    self.git_branch = Some(branch);
-                }
-            }
-        }
-
-        // Capture git status --porcelain for tracking staged/unstaged changes
-        if let Ok(output) = executor.execute("git", &["status", "--porcelain"], &[], None) {
-            if output.status.success() {
-                let status = output.stdout.trim().to_string();
-                if !status.is_empty() {
-                    self.git_status = Some(status);
-                }
-            }
-        }
-
-        // Capture list of modified files from git diff
-        if let Ok(output) = executor.execute("git", &["diff", "--name-only"], &[], None) {
-            if output.status.success() {
-                let diff_output = &output.stdout;
-                let modified_files: Vec<String> = diff_output
-                    .lines()
-                    .map(|line| line.trim().to_string())
-                    .filter(|line| !line.is_empty())
-                    .collect();
-                if !modified_files.is_empty() {
-                    self.git_modified_files = Some(modified_files);
-                }
-            }
+        Self {
+            files: HashMap::new(),
+            git_head_oid: git_capture::git_head_oid(executor),
+            git_branch: git_capture::git_branch_name(executor),
+            git_status: git_capture::git_status(executor),
+            git_modified_files: git_capture::git_modified_files(executor),
         }
     }
 }

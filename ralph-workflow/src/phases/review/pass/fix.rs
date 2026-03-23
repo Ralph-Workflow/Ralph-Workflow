@@ -11,11 +11,11 @@ use crate::files::llm_output_extraction::{
 use crate::files::result_extraction::extract_file_paths_from_issues;
 use crate::files::update_status_with_workspace;
 use crate::phases::context::PhaseContext;
+use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::{prompt_fix_xml_with_log, ContextLevel};
 
 use std::path::Path;
-use std::time::Instant;
 
 /// Run the fix pass for a single cycle.
 ///
@@ -57,7 +57,7 @@ pub fn run_fix_pass(
     agent: Option<&str>,
 ) -> anyhow::Result<FixPassResult> {
     let active_agent = agent.unwrap_or(ctx.reviewer_agent);
-    let fix_start_time = Instant::now();
+    let fix_start_time = capture_time();
 
     update_status_with_workspace(ctx.workspace, "Applying fixes", ctx.config.isolation_mode)?;
 
@@ -153,17 +153,6 @@ pub fn run_fix_pass(
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {active_agent}"))?;
     let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
-    let mut runtime = PipelineRuntime {
-        timer: ctx.timer,
-        logger: ctx.logger,
-        colors: ctx.colors,
-        config: ctx.config,
-        executor: ctx.executor,
-        executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-        workspace: ctx.workspace,
-        workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-    };
-
     let prompt_cmd = PromptCommand {
         label: "fix",
         display_name: active_agent,
@@ -177,7 +166,19 @@ pub fn run_fix_pass(
         env_vars: &agent_config.env_vars,
     };
 
-    let result = run_with_prompt(&prompt_cmd, &mut runtime)?;
+    let result = run_with_prompt(
+        &prompt_cmd,
+        &mut PipelineRuntime {
+            timer: ctx.timer,
+            logger: ctx.logger,
+            colors: ctx.colors,
+            config: ctx.config,
+            executor: ctx.executor,
+            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+            workspace: ctx.workspace,
+            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+        },
+    )?;
     if result.exit_code != 0 {
         let auth_failure = stderr_contains_auth_error(&result.stderr);
         return Ok(FixPassResult::agent_failed(auth_failure));
@@ -203,8 +204,9 @@ pub fn run_fix_pass(
                 StepOutcome::success(result_elements.summary.clone(), vec![]),
             )
             .with_agent(active_agent)
-            .with_duration(fix_start_time.elapsed().as_secs());
-            ctx.execution_history
+            .with_duration(elapsed_seconds(fix_start_time));
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 
             Ok(FixPassResult::validated(

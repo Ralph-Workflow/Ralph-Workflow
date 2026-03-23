@@ -51,7 +51,7 @@
 
 use std::path::{Path, PathBuf};
 
-mod core;
+mod io;
 mod test_helpers;
 
 /// In-memory file entry with content and metadata.
@@ -115,13 +115,16 @@ impl MemoryWorkspace {
             if parent.as_os_str().is_empty() {
                 return;
             }
-            let mut dirs = self.directories.write()
-                .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-            let mut current = PathBuf::new();
-            for component in parent.components() {
-                current.push(component);
-                dirs.insert(current.clone());
-            }
+            let dirs_to_create: Vec<PathBuf> = parent
+                .components()
+                .scan(PathBuf::new(), |state, component| {
+                    state.push(component);
+                    Some(state.clone())
+                })
+                .collect();
+            self.directories.write()
+                .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+                .extend(dirs_to_create);
         }
     }
 
@@ -129,13 +132,16 @@ impl MemoryWorkspace {
     ///
     /// Used for creating directories themselves (not just parents).
     fn ensure_dir_path(&self, path: &Path) {
-        let mut dirs = self.directories.write()
-            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-        let mut current = PathBuf::new();
-        for component in path.components() {
-            current.push(component);
-            dirs.insert(current.clone());
-        }
+        let dirs_to_create: Vec<PathBuf> = path
+            .components()
+            .scan(PathBuf::new(), |state, component| {
+                state.push(component);
+                Some(state.clone())
+            })
+            .collect();
+        self.directories.write()
+            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+            .extend(dirs_to_create);
     }
 }
 

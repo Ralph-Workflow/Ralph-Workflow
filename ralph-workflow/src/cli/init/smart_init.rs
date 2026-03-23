@@ -58,14 +58,14 @@ pub fn handle_smart_init(
 
 fn handle_smart_init_at_paths_with_env<R: ConfigEnvironment>(
     template_arg: Option<&str>,
-    force: bool,
+    _force: bool,
     colors: Colors,
     config_path: &std::path::Path,
     prompt_path: &Path,
     env: &R,
 ) -> anyhow::Result<bool> {
-    let config_exists = env.file_exists(config_path);
-    let prompt_exists = env.file_exists(prompt_path);
+    let _config_exists = env.file_exists(config_path);
+    let _prompt_exists = env.file_exists(prompt_path);
 
     // If a template name is provided (non-empty), treat it as --init <template>
     if let Some(template_name) = template_arg {
@@ -73,7 +73,6 @@ fn handle_smart_init_at_paths_with_env<R: ConfigEnvironment>(
             return handle_init_template_arg_at_path_with_env(
                 template_name,
                 prompt_path,
-                force,
                 colors,
                 env,
             );
@@ -85,9 +84,7 @@ fn handle_smart_init_at_paths_with_env<R: ConfigEnvironment>(
     handle_init_state_inference_with_env(
         config_path,
         prompt_path,
-        config_exists,
-        prompt_exists,
-        force,
+        template_arg,
         colors,
         env,
     )

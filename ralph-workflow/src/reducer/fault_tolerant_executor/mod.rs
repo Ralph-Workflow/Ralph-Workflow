@@ -15,6 +15,7 @@ mod error_classification;
 mod tests;
 
 use crate::agents::{AgentRole, JsonParserType};
+use crate::common::domain_types::AgentName;
 use crate::logger::Loggable;
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::reducer::event::{AgentErrorKind, PipelineEvent, TimeoutOutputKind};
@@ -118,6 +119,7 @@ pub fn execute_agent_fault_tolerantly(
     runtime: &mut PipelineRuntime<'_>,
 ) -> Result<AgentExecutionResult> {
     let role = config.role;
+    let agent_name = AgentName::from(config.agent_name.to_string());
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         try_agent_execution(config, runtime)
@@ -130,7 +132,7 @@ pub fn execute_agent_fault_tolerantly(
         AgentExecutionResult {
             event: PipelineEvent::agent_invocation_failed(
                 role,
-                config.agent_name.to_string(),
+                agent_name.clone(),
                 1,
                 error_kind,
                 retriable,
@@ -149,6 +151,7 @@ fn try_agent_execution(
     config: AgentExecutionConfig<'_>,
     runtime: &mut PipelineRuntime<'_>,
 ) -> AgentExecutionResult {
+    let agent_name = AgentName::from(config.agent_name.to_string());
     let prompt_cmd = PromptCommand {
         label: config.agent_name,
         display_name: config.display_name,
@@ -164,10 +167,7 @@ fn try_agent_execution(
 
     match run_with_prompt(&prompt_cmd, runtime) {
         Ok(result) if result.exit_code == 0 => AgentExecutionResult {
-            event: PipelineEvent::agent_invocation_succeeded(
-                config.role,
-                config.agent_name.to_string(),
-            ),
+            event: PipelineEvent::agent_invocation_succeeded(config.role, agent_name.clone()),
             session_id: result.session_id,
         },
         Ok(result) => {
@@ -231,7 +231,7 @@ fn try_agent_execution(
                 return AgentExecutionResult {
                     event: PipelineEvent::agent_rate_limited(
                         config.role,
-                        config.agent_name.to_string(),
+                        agent_name.clone(),
                         Some(config.prompt.to_string()),
                     ),
                     session_id: None,
@@ -241,10 +241,7 @@ fn try_agent_execution(
             // Special handling for auth failure: emit fact event without prompt context
             if is_auth_error(&error_kind) {
                 return AgentExecutionResult {
-                    event: PipelineEvent::agent_auth_failed(
-                        config.role,
-                        config.agent_name.to_string(),
-                    ),
+                    event: PipelineEvent::agent_auth_failed(config.role, agent_name.clone()),
                     session_id: None,
                 };
             }
@@ -257,7 +254,7 @@ fn try_agent_execution(
                 return AgentExecutionResult {
                     event: PipelineEvent::agent_timed_out(
                         config.role,
-                        config.agent_name.to_string(),
+                        agent_name.clone(),
                         output_kind,
                         Some(config.logfile.to_string()),
                         result.child_status_at_timeout,
@@ -271,7 +268,7 @@ fn try_agent_execution(
             AgentExecutionResult {
                 event: PipelineEvent::agent_invocation_failed(
                     config.role,
-                    config.agent_name.to_string(),
+                    agent_name.clone(),
                     exit_code,
                     error_kind,
                     retriable,
@@ -294,7 +291,7 @@ fn try_agent_execution(
                 return AgentExecutionResult {
                     event: PipelineEvent::agent_timed_out(
                         config.role,
-                        config.agent_name.to_string(),
+                        agent_name.clone(),
                         TimeoutOutputKind::NoOutput,
                         Some(config.logfile.to_string()),
                         None, // No CommandResult available in error path
@@ -307,7 +304,7 @@ fn try_agent_execution(
             AgentExecutionResult {
                 event: PipelineEvent::agent_invocation_failed(
                     config.role,
-                    config.agent_name.to_string(),
+                    agent_name.clone(),
                     1,
                     error_kind,
                     retriable,

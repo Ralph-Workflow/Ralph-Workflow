@@ -130,51 +130,42 @@ pub fn prompt_fix_with_context(
 fn format_files_section(files: &[String]) -> String {
     if files.is_empty() {
         "================================================================================
-FILES YOU MAY MODIFY
-================================================================================
+ FILES YOU MAY MODIFY
+ ================================================================================
 
-(No specific files were extracted from ISSUES content)
+ (No specific files were extracted from ISSUES content)
 
-PERMISSIONS: FAIL CLOSED (NO FILE LIST PROVIDED)
+ PERMISSIONS: FAIL CLOSED (NO FILE LIST PROVIDED)
 
-IMPORTANT: In fix mode, you MUST ONLY work on files mentioned in the ISSUES content.
+ IMPORTANT: In fix mode, you MUST ONLY work on files mentioned in the ISSUES content.
 
-If no file paths were extracted, do NOT modify any files. Report `issues_remain`
-and include that the orchestrator must provide an explicit file list (or update
-the issue format to include file paths) to proceed safely.
+ If no file paths were extracted, do NOT modify any files. Report `issues_remain`
+ and include that the orchestrator must provide an explicit file list (or update
+ the issue format to include file paths) to proceed safely.
 
-The ISSUES content is already embedded in this prompt - review it carefully.
+ The ISSUES content is already embedded in this prompt - review it carefully.
 
-================================================================================
-END OF FILES SECTION
-================================================================================
-"
+ ================================================================================
+ END OF FILES SECTION
+ ================================================================================
+ "
         .to_string()
     } else {
-        let mut result = String::from(
+        let files_list: String = files.iter().map(|file| format!("- {file}\n")).collect();
+        format!(
             "================================================================================
-FILES YOU MAY MODIFY
-================================================================================
+ FILES YOU MAY MODIFY
+ ================================================================================
 
-",
-        );
-        for file in files {
-            result.push_str("- ");
-            result.push_str(file);
-            result.push('\n');
-        }
-        // Add explicit clarification that agent doesn't need to read any ISSUES file
-        result.push_str(
-            "
-IMPORTANT: Work ONLY with the files listed above. The issues
-content is already embedded in this prompt - you do NOT need to
-read or discover any files to know what to fix.
+ {files_list}
+ IMPORTANT: Work ONLY with the files listed above. The issues
+ content is already embedded in this prompt - you do NOT need to
+ read or discover any files to know what to fix.
 
-================================================================================
-END OF FILES SECTION
-================================================================================
-",
-        );
-        result
+ ================================================================================
+ END OF FILES SECTION
+ ================================================================================
+ "
+        )
     }
 }

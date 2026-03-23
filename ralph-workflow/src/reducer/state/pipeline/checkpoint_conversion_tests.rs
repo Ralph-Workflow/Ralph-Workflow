@@ -6,15 +6,18 @@ mod tests {
 
     #[test]
     fn test_clear_planning_flags() {
-        let mut state = PipelineState::initial(1, 0);
-        state.planning_prompt_prepared_iteration = Some(1);
-        state.planning_agent_invoked_iteration = Some(1);
-        state.planning_xml_extracted_iteration = Some(1);
-        state.planning_validated_outcome = Some(crate::reducer::state::PlanningValidatedOutcome {
-            iteration: 1,
-            valid: true,
-            markdown: None,
-        });
+        let state = PipelineState::initial(1, 0);
+        let state = PipelineState {
+            planning_prompt_prepared_iteration: Some(1),
+            planning_agent_invoked_iteration: Some(1),
+            planning_xml_extracted_iteration: Some(1),
+            planning_validated_outcome: Some(crate::reducer::state::PlanningValidatedOutcome {
+                iteration: 1,
+                valid: true,
+                markdown: None,
+            }),
+            ..state
+        };
 
         let cleared = state.clear_phase_flags(PipelinePhase::Planning);
 
@@ -26,18 +29,22 @@ mod tests {
 
     #[test]
     fn test_clear_development_flags() {
-        let mut state = PipelineState::initial(1, 0);
-        state.development_context_prepared_iteration = Some(2);
-        state.development_agent_invoked_iteration = Some(2);
-        state.analysis_agent_invoked_iteration = Some(2);
-        state.development_validated_outcome =
-            Some(crate::reducer::state::DevelopmentValidatedOutcome {
-                iteration: 2,
-                status: crate::reducer::state::DevelopmentStatus::Completed,
-                summary: "test".to_string(),
-                files_changed: None,
-                next_steps: None,
-            });
+        let state = PipelineState::initial(1, 0);
+        let state = PipelineState {
+            development_context_prepared_iteration: Some(2),
+            development_agent_invoked_iteration: Some(2),
+            analysis_agent_invoked_iteration: Some(2),
+            development_validated_outcome: Some(
+                crate::reducer::state::DevelopmentValidatedOutcome {
+                    iteration: 2,
+                    status: crate::reducer::state::DevelopmentStatus::Completed,
+                    summary: "test".to_string(),
+                    files_changed: None,
+                    next_steps: None,
+                },
+            ),
+            ..state
+        };
 
         let cleared = state.clear_phase_flags(PipelinePhase::Development);
 
@@ -49,16 +56,17 @@ mod tests {
 
     #[test]
     fn test_clear_phase_flags_routes_to_correct_helper() {
-        let mut state = PipelineState::initial(1, 0);
-        state.planning_agent_invoked_iteration = Some(1);
-        state.development_agent_invoked_iteration = Some(1);
+        let state = PipelineState::initial(1, 0);
+        let state = PipelineState {
+            planning_agent_invoked_iteration: Some(1),
+            development_agent_invoked_iteration: Some(1),
+            ..state
+        };
 
-        // Clear Planning should only affect Planning flags
         let cleared = state.clear_phase_flags(PipelinePhase::Planning);
         assert_eq!(cleared.planning_agent_invoked_iteration, None);
         assert_eq!(cleared.development_agent_invoked_iteration, Some(1));
 
-        // Clear Development should only affect Development flags
         let cleared = state.clear_phase_flags(PipelinePhase::Development);
         assert_eq!(cleared.planning_agent_invoked_iteration, Some(1));
         assert_eq!(cleared.development_agent_invoked_iteration, None);
@@ -66,10 +74,13 @@ mod tests {
 
     #[test]
     fn test_reset_iteration_decrements_counter() {
-        let mut state = PipelineState::initial(5, 0);
-        state.iteration = 3;
-        state.planning_agent_invoked_iteration = Some(3);
-        state.development_agent_invoked_iteration = Some(3);
+        let state = PipelineState::initial(5, 0);
+        let state = PipelineState {
+            iteration: 3,
+            planning_agent_invoked_iteration: Some(3),
+            development_agent_invoked_iteration: Some(3),
+            ..state
+        };
 
         let reset = state.reset_iteration();
 
@@ -81,8 +92,11 @@ mod tests {
 
     #[test]
     fn test_reset_iteration_floor_at_zero() {
-        let mut state = PipelineState::initial(1, 0);
-        state.iteration = 0;
+        let state = PipelineState::initial(1, 0);
+        let state = PipelineState {
+            iteration: 0,
+            ..state
+        };
 
         let reset = state.reset_iteration();
 
@@ -91,10 +105,13 @@ mod tests {
 
     #[test]
     fn test_reset_to_iteration_zero() {
-        let mut state = PipelineState::initial(10, 0);
-        state.iteration = 5;
-        state.planning_agent_invoked_iteration = Some(5);
-        state.development_agent_invoked_iteration = Some(5);
+        let state = PipelineState::initial(10, 0);
+        let state = PipelineState {
+            iteration: 5,
+            planning_agent_invoked_iteration: Some(5),
+            development_agent_invoked_iteration: Some(5),
+            ..state
+        };
 
         let reset = state.reset_to_iteration_zero();
 
@@ -106,18 +123,18 @@ mod tests {
 
     #[test]
     fn test_phase_reset_preserves_unrelated_state() {
-        let mut state = PipelineState::initial(10, 3);
-        state.iteration = 2;
-        state.reviewer_pass = 1;
-        state.total_iterations = 10;
-        state.planning_agent_invoked_iteration = Some(2);
+        let state = PipelineState::initial(10, 3);
+        let state = PipelineState {
+            iteration: 2,
+            reviewer_pass: 1,
+            total_iterations: 10,
+            planning_agent_invoked_iteration: Some(2),
+            ..state
+        };
 
         let cleared = state.clear_phase_flags(PipelinePhase::Planning);
 
-        // Phase flags cleared
         assert_eq!(cleared.planning_agent_invoked_iteration, None);
-
-        // Global counters preserved
         assert_eq!(cleared.iteration, 2);
         assert_eq!(cleared.reviewer_pass, 1);
         assert_eq!(cleared.total_iterations, 10);
@@ -166,14 +183,14 @@ mod tests {
             .build()
             .expect("checkpoint should build");
 
-        let mut json: Value = serde_json::to_value(&checkpoint).expect("checkpoint to json");
-        let obj = json.as_object_mut().expect("checkpoint json object");
-        obj.insert("dev_fix_attempt_count".to_string(), Value::from(7));
-        obj.insert("recovery_escalation_level".to_string(), Value::from(3));
-        obj.insert(
-            "failed_phase_for_recovery".to_string(),
-            Value::String("CommitMessage".to_string()),
-        );
+        let checkpoint = PipelineCheckpoint {
+            dev_fix_attempt_count: 7,
+            recovery_escalation_level: 3,
+            failed_phase_for_recovery: Some(PipelinePhase::CommitMessage),
+            ..checkpoint
+        };
+
+        let json: Value = serde_json::to_value(&checkpoint).expect("checkpoint to json");
 
         let checkpoint: PipelineCheckpoint =
             serde_json::from_value(json).expect("checkpoint json should deserialize");

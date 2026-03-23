@@ -89,7 +89,7 @@ fn test_usage_limit_triggers_rate_limited_event_not_timeout() {
     match result.event {
         PipelineEvent::Agent(AgentEvent::RateLimited { role, agent, .. }) => {
             assert_eq!(role, AgentRole::Developer);
-            assert_eq!(agent, "opencode");
+            assert_eq!(agent, AgentName::from("opencode"));
         }
         other => panic!(
             "Expected AgentEvent::RateLimited, got {other:?}. \

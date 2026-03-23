@@ -28,7 +28,7 @@ pub fn parse_ccs_ref(agent_name: &str) -> Option<&str> {
 }
 
 /// Check if an agent name is a CCS reference.
-#[must_use] 
+#[must_use]
 pub fn is_ccs_ref(agent_name: &str) -> bool {
     parse_ccs_ref(agent_name).is_some()
 }
@@ -78,7 +78,7 @@ fn choose_best_profile_guess<'a>(input: &str, suggestions: &'a [String]) -> Opti
         return Some(exact);
     }
     if suggestions.len() == 1 {
-        return Some(suggestions[0].as_str());
+        return Some(suggestions.first()?.as_str());
     }
     if let Some(starts) = suggestions
         .iter()
@@ -87,7 +87,7 @@ fn choose_best_profile_guess<'a>(input: &str, suggestions: &'a [String]) -> Opti
     {
         return Some(starts);
     }
-    Some(suggestions[0].as_str())
+    Some(suggestions.first()?.as_str())
 }
 
 pub(super) fn load_ccs_env_vars_with_guess(
@@ -104,5 +104,39 @@ pub(super) fn load_ccs_env_vars_with_guess(
             Ok((vars, Some(best.to_string())))
         }
         Err(err) => Err(err),
+    }
+}
+
+#[cfg(test)]
+mod proptest_parsers {
+    use super::{parse_ccs_ref, CCS_PREFIX};
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `parse_ccs_ref` must never panic on any string input.
+        #[test]
+        fn parse_ccs_ref_never_panics(s in ".*") {
+            let _ = parse_ccs_ref(&s);
+        }
+
+        /// Exact `"ccs"` always returns `Some("")`.
+        #[test]
+        fn parse_ccs_ref_exact_ccs_returns_empty(s in Just("ccs".to_string())) {
+            prop_assert_eq!(parse_ccs_ref(&s), Some(""));
+        }
+
+        /// A name starting with `"ccs/"` followed by a non-empty alias returns `Some(alias)`.
+        #[test]
+        fn parse_ccs_ref_ccs_slash_alias_returns_alias(alias in "[a-zA-Z][a-zA-Z0-9_-]{0,20}") {
+            let name = format!("{CCS_PREFIX}{alias}");
+            let result = parse_ccs_ref(&name);
+            prop_assert_eq!(result, Some(alias.as_str()));
+        }
+
+        /// A name not starting with `"ccs"` always returns `None`.
+        #[test]
+        fn parse_ccs_ref_non_ccs_returns_none(s in "[^c].*|c[^c].*|cc[^s].*") {
+            prop_assert_eq!(parse_ccs_ref(&s), None);
+        }
     }
 }

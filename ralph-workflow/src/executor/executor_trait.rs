@@ -3,277 +3,23 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
-use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
+use super::{
+    AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild,
+    SpawnedProcess,
+};
+#[cfg(target_os = "macos")]
+use crate::executor::macos::child_info_from_libproc;
+use crate::executor::ps::parse_ps_output;
+use crate::executor::{
+    bfs::collect_descendants,
+    command::{build_agent_command_internal, build_command},
+    ps::{
+        child_info_from_descendant_pids, warn_child_process_detection_conservative,
+        warn_child_process_detection_degraded,
+    },
+};
 use std::io;
 use std::path::Path;
-
-#[cfg(target_os = "macos")]
-fn child_pid_entry_count(bytes_written: i32) -> Option<usize> {
-    let bytes = usize::try_from(bytes_written).ok()?;
-    let pid_width = std::mem::size_of::<libc::pid_t>();
-    Some(bytes / pid_width)
-}
-
-#[cfg(target_os = "macos")]
-fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
-    use std::collections::{HashSet, VecDeque};
-    use std::ffi::c_void;
-
-    const PROC_PIDT_SHORTBSDINFO: libc::c_int = 13;
-    const PROC_PIDTASKINFO: libc::c_int = 4;
-    const MAXCOMLEN: usize = 16;
-    const SIDL: u32 = 1;
-    const SRUN: u32 = 2;
-    const SSTOP: u32 = 4;
-    const SZOMB: u32 = 5;
-    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-    #[repr(C)]
-    struct ProcBsdShortInfo {
-        pid: u32,
-        parent_pid: u32,
-        process_group_id: u32,
-        status: u32,
-        command: [libc::c_char; MAXCOMLEN],
-        flags: u32,
-        uid: libc::uid_t,
-        gid: libc::gid_t,
-        real_uid: libc::uid_t,
-        real_gid: libc::gid_t,
-        saved_uid: libc::uid_t,
-        saved_gid: libc::gid_t,
-        reserved: u32,
-    }
-
-    #[repr(C)]
-    struct ProcTaskInfo {
-        virtual_size: u64,
-        resident_size: u64,
-        total_user_time: u64,
-        total_system_time: u64,
-        threads_user_time: u64,
-        threads_system_time: u64,
-        policy: i32,
-        faults: i32,
-        pageins: i32,
-        cow_faults: i32,
-        messages_sent: i32,
-        messages_received: i32,
-        mach_syscalls: i32,
-        unix_syscalls: i32,
-        context_switches: i32,
-        thread_count: i32,
-        running_thread_count: i32,
-        priority: i32,
-    }
-
-    #[link(name = "proc")]
-    unsafe extern "C" {
-        fn proc_listchildpids(pid: libc::pid_t, buffer: *mut c_void, buffersize: i32) -> i32;
-        fn proc_pidinfo(
-            pid: libc::pid_t,
-            flavor: libc::c_int,
-            arg: u64,
-            buffer: *mut c_void,
-            buffersize: libc::c_int,
-        ) -> libc::c_int;
-    }
-
-    fn descendant_pid_signature(descendants: &[u32]) -> u64 {
-        let mut signature = FNV_OFFSET;
-        for pid in descendants {
-            for byte in pid.to_le_bytes() {
-                signature ^= u64::from(byte);
-                signature = signature.wrapping_mul(FNV_PRIME);
-            }
-        }
-        signature
-    }
-
-    const fn qualifies_libproc_status(status: u32) -> bool {
-        !matches!(status, SIDL | SSTOP | SZOMB)
-    }
-
-    const fn libproc_state_indicates_current_activity(
-        status: u32,
-        cpu_time_ms: u64,
-        num_running_threads: i32,
-    ) -> bool {
-        status == SRUN && cpu_time_ms > 0 && num_running_threads > 0
-    }
-
-    fn list_child_pids(parent_pid: u32) -> Option<Vec<u32>> {
-        let pid = libc::pid_t::try_from(parent_pid).ok()?;
-        let mut capacity: usize = 32;
-
-        loop {
-            let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
-            let buffer_size = i32::try_from(byte_len).ok()?;
-            let mut buffer = vec![libc::pid_t::default(); capacity];
-
-            // Safety: `buffer` is valid for `buffer_size` bytes, and the kernel
-            // writes at most that many bytes of child pid entries.
-            let bytes_written = unsafe {
-                proc_listchildpids(pid, buffer.as_mut_ptr().cast::<c_void>(), buffer_size)
-            };
-            if bytes_written < 0 {
-                return None;
-            }
-            if bytes_written == 0 {
-                return Some(Vec::new());
-            }
-
-            let count = child_pid_entry_count(bytes_written)?;
-            if count < capacity {
-                buffer.truncate(count);
-                let child_pids = buffer
-                    .into_iter()
-                    .filter_map(|child_pid| u32::try_from(child_pid).ok())
-                    .collect();
-                return Some(child_pids);
-            }
-
-            capacity = capacity.checked_mul(2)?;
-        }
-    }
-
-    fn fetch_bsd_short_info(pid: u32) -> Option<ProcBsdShortInfo> {
-        let mut info = ProcBsdShortInfo {
-            pid: 0,
-            parent_pid: 0,
-            process_group_id: 0,
-            status: 0,
-            command: [0; MAXCOMLEN],
-            flags: 0,
-            uid: 0,
-            gid: 0,
-            real_uid: 0,
-            real_gid: 0,
-            saved_uid: 0,
-            saved_gid: 0,
-            reserved: 0,
-        };
-        let pid = libc::pid_t::try_from(pid).ok()?;
-        let expected = i32::try_from(std::mem::size_of::<ProcBsdShortInfo>()).ok()?;
-        // Safety: `info` points to writable memory sized exactly for
-        // `ProcBsdShortInfo`, which matches the C ABI layout.
-        let bytes = unsafe {
-            proc_pidinfo(
-                pid,
-                PROC_PIDT_SHORTBSDINFO,
-                0,
-                (&raw mut info).cast::<c_void>(),
-                expected,
-            )
-        };
-        (bytes == expected).then_some(info)
-    }
-
-    fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
-        let mut info = ProcTaskInfo {
-            virtual_size: 0,
-            resident_size: 0,
-            total_user_time: 0,
-            total_system_time: 0,
-            threads_user_time: 0,
-            threads_system_time: 0,
-            policy: 0,
-            faults: 0,
-            pageins: 0,
-            cow_faults: 0,
-            messages_sent: 0,
-            messages_received: 0,
-            mach_syscalls: 0,
-            unix_syscalls: 0,
-            context_switches: 0,
-            thread_count: 0,
-            running_thread_count: 0,
-            priority: 0,
-        };
-        let pid = libc::pid_t::try_from(pid).ok()?;
-        let expected = i32::try_from(std::mem::size_of::<ProcTaskInfo>()).ok()?;
-        // Safety: `info` points to writable memory sized exactly for
-        // `ProcTaskInfo`, which matches the C ABI layout.
-        let bytes = unsafe {
-            proc_pidinfo(
-                pid,
-                PROC_PIDTASKINFO,
-                0,
-                (&raw mut info).cast::<c_void>(),
-                expected,
-            )
-        };
-        (bytes == expected).then_some(info)
-    }
-
-    let mut descendants = Vec::new();
-    let mut visited = HashSet::new();
-    let mut queue = VecDeque::new();
-    queue.push_back(parent_pid);
-
-    while let Some(current_pid) = queue.pop_front() {
-        let child_pids = list_child_pids(current_pid)?;
-        for child_pid in child_pids {
-            if visited.insert(child_pid) {
-                descendants.push(child_pid);
-                queue.push_back(child_pid);
-            }
-        }
-    }
-
-    if descendants.is_empty() {
-        return None;
-    }
-
-    descendants.sort_unstable();
-
-    let mut child_count: u32 = 0;
-    let mut active_child_count: u32 = 0;
-    let mut total_cpu_ms: u64 = 0;
-    let mut qualifying_descendants = Vec::new();
-
-    for descendant_pid in descendants {
-        let Some(bsd_info) = fetch_bsd_short_info(descendant_pid) else {
-            continue;
-        };
-        if bsd_info.process_group_id != parent_pid || !qualifies_libproc_status(bsd_info.status) {
-            continue;
-        }
-
-        let task_info = fetch_task_info(descendant_pid);
-        let cpu_time_ms = task_info.as_ref().map_or(0, |info| {
-            (info.total_user_time + info.total_system_time) / 1_000_000
-        });
-        let num_running_threads = task_info
-            .as_ref()
-            .map_or(0, |info| info.running_thread_count);
-
-        child_count += 1;
-        total_cpu_ms += cpu_time_ms;
-        let counts_as_current_activity = libproc_state_indicates_current_activity(
-            bsd_info.status,
-            cpu_time_ms,
-            num_running_threads,
-        );
-
-        if counts_as_current_activity {
-            active_child_count += 1;
-        }
-        qualifying_descendants.push(descendant_pid);
-    }
-
-    if child_count == 0 {
-        return Some(ChildProcessInfo::NONE);
-    }
-
-    Some(ChildProcessInfo {
-        child_count,
-        active_child_count,
-        cpu_time_ms: total_cpu_ms,
-        descendant_pid_signature: descendant_pid_signature(&qualifying_descendants),
-    })
-}
 
 /// Trait for executing external processes.
 ///
@@ -307,11 +53,11 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         workdir: Option<&Path>,
     ) -> io::Result<ProcessOutput>;
 
-    /// Spawn a process with stdin input and return the child handle.
+    /// Spawn a process with stdin input and return a handle for interaction.
     ///
-    /// This method is used when you need to write to the process's stdin
-    /// or stream its output in real-time. Unlike `execute()`, this returns
-    /// a `Child` handle for direct interaction.
+    /// This method is used when you need to write to the process's stdin.
+    /// Unlike `execute()`, this returns a `SpawnedProcess` handle that exposes
+    /// only the domain-relevant surface (stdin writing and process completion).
     ///
     /// # Arguments
     ///
@@ -322,7 +68,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     ///
     /// # Returns
     ///
-    /// Returns a `Child` handle that can be used to interact with the process.
+    /// Returns a `SpawnedProcess` handle for writing stdin and waiting.
     ///
     /// # Errors
     ///
@@ -333,22 +79,17 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         args: &[&str],
         env: &[(String, String)],
         workdir: Option<&Path>,
-    ) -> io::Result<std::process::Child> {
-        let mut cmd = std::process::Command::new(command);
-        cmd.args(args);
-
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-
-        if let Some(dir) = workdir {
-            cmd.current_dir(dir);
-        }
-
-        cmd.stdin(std::process::Stdio::piped())
+    ) -> io::Result<SpawnedProcess> {
+        let mut child = build_command(command, args, env, workdir)
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .spawn()
+            .spawn()?;
+        let stdin = child.stdin.take();
+        Ok(SpawnedProcess {
+            stdin,
+            inner: child,
+        })
     }
 
     /// Spawn an agent process with streaming output support.
@@ -371,46 +112,21 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     ///
     /// # Default Implementation
     ///
-    /// The default implementation uses the `spawn()` method with additional
-    /// configuration for agent-specific needs. Mock implementations should
-    /// override this to return mock results without spawning real processes.
+    /// The default implementation spawns the agent command directly.
+    /// Mock implementations should override this to return mock results
+    /// without spawning real processes.
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
-        let mut cmd = std::process::Command::new(&config.command);
-        cmd.args(&config.args);
-
-        // Set environment variables
-        for (key, value) in &config.env {
-            cmd.env(key, value);
-        }
-
-        // Add the prompt as the final argument
-        cmd.arg(&config.prompt);
-
-        // Set buffering variables for real-time streaming
-        cmd.env("PYTHONUNBUFFERED", "1");
-        cmd.env("NODE_ENV", "production");
-
-        // Spawn the process with piped stdout/stderr
-        let mut child = cmd
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| io::Error::other("Failed to capture stdout"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
-
-        Ok(AgentChildHandle {
-            stdout: Box::new(stdout),
-            stderr: Box::new(stderr),
-            inner: Box::new(RealAgentChild(child)),
-        })
+        let child = build_agent_command_internal(
+            &config.command,
+            &config.args,
+            &config.env,
+            &config.prompt,
+        )
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+        wrap_agent_child(child)
     }
 
     /// Check if a command exists and can be executed.
@@ -432,7 +148,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         }
     }
 
-    /// Returns information about child processes of the given parent, including
     /// their cumulative CPU time.
     ///
     /// Used by the idle-timeout monitor to determine whether child processes
@@ -448,321 +163,136 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     /// against false-positive idle kills.
     fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
         #[cfg(unix)]
-        {
-            use std::sync::OnceLock;
-
-            #[derive(Clone, Copy)]
-            struct ProcessSnapshotEntry {
-                pid: u32,
-                parent_pid: u32,
-                cpu_time_ms: u64,
-                in_scope: bool,
-                currently_active: bool,
-            }
-
-            /// Parse "DD-HH:MM:SS", "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
-            fn parse_cputime_ms(s: &str) -> Option<u64> {
-                let parts: Vec<&str> = s.split(':').collect();
-                match parts.len() {
-                    3 => {
-                        // DD-HH:MM:SS or HH:MM:SS (or HH:MM:SS.ss)
-                        let hours = if let Some((days, hours)) = parts[0].split_once('-') {
-                            let days: u64 = days.parse().ok()?;
-                            let hours: u64 = hours.parse().ok()?;
-                            days.checked_mul(24)?.checked_add(hours)?
-                        } else {
-                            parts[0].parse().ok()?
-                        };
-                        let minutes: u64 = parts[1].parse().ok()?;
-                        let seconds_str = parts[2];
-                        let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
-                            let secs: u64 = s.parse().ok()?;
-                            let frac: u64 = f.get(..2).unwrap_or(f).parse().ok()?;
-                            (secs, frac * 10)
-                        } else {
-                            (seconds_str.parse().ok()?, 0)
-                        };
-                        Some((hours * 3600 + minutes * 60 + secs) * 1000 + frac_ms)
-                    }
-                    2 => {
-                        // MM:SS or M:SS (or MM:SS.ss)
-                        let minutes: u64 = parts[0].parse().ok()?;
-                        let seconds_str = parts[1];
-                        let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
-                            let secs: u64 = s.parse().ok()?;
-                            let frac: u64 = f.get(..2).unwrap_or(f).parse().ok()?;
-                            (secs, frac * 10)
-                        } else {
-                            (seconds_str.parse().ok()?, 0)
-                        };
-                        Some((minutes * 60 + secs) * 1000 + frac_ms)
-                    }
-                    _ => None,
-                }
-            }
-
-            fn qualifies_process_state(state: &str) -> bool {
-                match state.chars().next() {
-                    Some('Z' | 'X' | 'T' | 'I') | None => false,
-                    Some(_) => true,
-                }
-            }
-
-            fn state_indicates_current_activity(state: &str, cpu_time_ms: u64) -> bool {
-                match state.chars().next() {
-                    Some('D' | 'U') => true,
-                    Some('R') => cpu_time_ms > 0,
-                    _ => false,
-                }
-            }
-
-            fn descendant_pid_signature(descendants: &[u32]) -> u64 {
-                const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-                const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-                let mut signature = FNV_OFFSET;
-                for pid in descendants {
-                    for byte in pid.to_le_bytes() {
-                        signature ^= u64::from(byte);
-                        signature = signature.wrapping_mul(FNV_PRIME);
-                    }
-                }
-                signature
-            }
-
-            fn child_info_from_descendant_pids(descendants: &[u32]) -> ChildProcessInfo {
-                if descendants.is_empty() {
-                    return ChildProcessInfo::NONE;
-                }
-
-                let child_count = u32::try_from(descendants.len()).unwrap_or(u32::MAX);
-                ChildProcessInfo {
-                    child_count,
-                    active_child_count: 0,
-                    cpu_time_ms: 0,
-                    descendant_pid_signature: descendant_pid_signature(descendants),
-                }
-            }
-
-            fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
-                use std::collections::{HashMap, HashSet, VecDeque};
-
-                // First pass: parse all descendant snapshot entries. Prefer richer
-                // 5-column output (pid ppid pgid stat cputime) when available and
-                // fall back to the legacy 3-column format (pid ppid cputime).
-                let mut children_of: HashMap<u32, Vec<ProcessSnapshotEntry>> = HashMap::new();
-                let mut saw_parseable = false;
-
-                for line in stdout.lines() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() < 3 {
-                        continue;
-                    }
-
-                    let Ok(entry_pid) = parts[0].parse::<u32>() else {
-                        continue;
-                    };
-                    let Ok(parent_of_entry) = parts[1].parse::<u32>() else {
-                        continue;
-                    };
-                    saw_parseable = true;
-
-                    let (in_scope, currently_active, cputime_text) = if parts.len() >= 5 {
-                        let pgid_matches_parent = parts[2]
-                            .parse::<u32>()
-                            .ok()
-                            .is_some_and(|pgid| pgid == parent_pid);
-                        let state_qualifies = qualifies_process_state(parts[3]);
-                        let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
-                        (
-                            pgid_matches_parent && state_qualifies,
-                            state_indicates_current_activity(parts[3], cpu_ms),
-                            parts[4],
-                        )
-                    } else {
-                        (true, false, parts[2])
-                    };
-
-                    let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
-                    children_of
-                        .entry(parent_of_entry)
-                        .or_default()
-                        .push(ProcessSnapshotEntry {
-                            pid: entry_pid,
-                            parent_pid: parent_of_entry,
-                            cpu_time_ms: cpu_ms,
-                            in_scope,
-                            currently_active,
-                        });
-                }
-
-                if !saw_parseable {
-                    return None;
-                }
-
-                // BFS from parent_pid to find all descendants.
-                let mut child_count: u32 = 0;
-                let mut active_child_count: u32 = 0;
-                let mut total_cpu_ms: u64 = 0;
-                let mut descendant_pids = Vec::new();
-                let mut visited = HashSet::new();
-                let mut queue = VecDeque::new();
-                queue.push_back(parent_pid);
-
-                while let Some(current) = queue.pop_front() {
-                    if let Some(kids) = children_of.get(&current) {
-                        for child in kids {
-                            if !child.in_scope || !visited.insert(child.pid) {
-                                continue;
-                            }
-
-                            debug_assert_eq!(child.parent_pid, current);
-                            child_count += 1;
-                            if child.currently_active {
-                                active_child_count += 1;
-                            }
-                            total_cpu_ms += child.cpu_time_ms;
-                            descendant_pids.push(child.pid);
-                            queue.push_back(child.pid);
-                        }
-                    }
-                }
-
-                descendant_pids.sort_unstable();
-
-                if child_count == 0 {
-                    return Some(ChildProcessInfo::NONE);
-                }
-
-                Some(ChildProcessInfo {
-                    child_count,
-                    active_child_count,
-                    cpu_time_ms: total_cpu_ms,
-                    descendant_pid_signature: descendant_pid_signature(&descendant_pids),
-                })
-            }
-
-            fn parse_pgrep_output(stdout: &str) -> Option<Vec<u32>> {
-                let mut child_pids = Vec::new();
-                for line in stdout.lines() {
-                    let pid = line.trim();
-                    if pid.is_empty() {
-                        continue;
-                    }
-                    child_pids.push(pid.parse::<u32>().ok()?);
-                }
-                Some(child_pids)
-            }
-
-            fn warn_child_process_detection_degraded() {
-                static WARNED: OnceLock<()> = OnceLock::new();
-                if WARNED.set(()).is_ok() {
-                    eprintln!(
-                        "Warning: child-process detection degraded (ps unavailable or failing); \
-                         idle-timeout false-positive prevention may be reduced"
-                    );
-                }
-            }
-
-            fn warn_child_process_detection_conservative() {
-                static WARNED: OnceLock<()> = OnceLock::new();
-                if WARNED.set(()).is_ok() {
-                    eprintln!(
-                        "Warning: child-process detection is running in conservative fallback mode \
-                         (descendant PIDs found without state/CPU evidence); idle timeout will not \
-                         be suppressed by those descendants"
-                    );
-                }
-            }
-
-            let discover_descendants_with_pgrep = |parent_pid: u32| -> Option<Vec<u32>> {
-                use std::collections::{HashSet, VecDeque};
-
-                let mut descendants = Vec::new();
-                let mut visited = HashSet::new();
-                let mut queue = VecDeque::new();
-                queue.push_back(parent_pid);
-
-                while let Some(current_pid) = queue.pop_front() {
-                    let output = self
-                        .execute("pgrep", &["-P", &current_pid.to_string()], &[], None)
-                        .ok()?;
-
-                    let child_pids = if output.status.success() {
-                        parse_pgrep_output(&output.stdout)?
-                    } else if output.status.code() == Some(1) {
-                        Vec::new()
-                    } else {
-                        return None;
-                    };
-
-                    for child_pid in child_pids {
-                        if visited.insert(child_pid) {
-                            descendants.push(child_pid);
-                            queue.push_back(child_pid);
-                        }
-                    }
-                }
-
-                descendants.sort_unstable();
-                Some(descendants)
-            };
-
-            // Try richer ps invocations first so detached/stopped descendants can
-            // be filtered out, then fall back to the legacy shape for compatibility.
-            let ps_attempts: [&[&str]; 6] = [
-                &[
-                    "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=", "-o", "comm=",
-                ],
-                &[
-                    "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=", "-o", "comm=",
-                ],
-                &[
-                    "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=",
-                ],
-                &[
-                    "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=",
-                ],
-                &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
-                &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
-            ];
-
-            for args in ps_attempts {
-                if let Ok(out) = self.execute("ps", args, &[], None) {
-                    if out.status.success() {
-                        if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
-                            return info;
-                        }
-                    }
-                }
-            }
-
-            #[cfg(target_os = "macos")]
-            if let Some(info) = child_info_from_libproc(parent_pid) {
-                return info;
-            }
-
-            if let Some(descendants) = discover_descendants_with_pgrep(parent_pid) {
-                if !descendants.is_empty() {
-                    warn_child_process_detection_conservative();
-                }
-                return child_info_from_descendant_pids(&descendants);
-            }
-
-            // Degraded: emit one-time warning, return no-children (conservative).
-            warn_child_process_detection_degraded();
-            ChildProcessInfo::NONE
-        }
+        return get_child_process_info_unix(self, parent_pid);
         #[cfg(not(unix))]
         {
             let _ = parent_pid;
             ChildProcessInfo::NONE
         }
     }
+}
+
+const PS_ATTEMPTS: [&[&str]; 6] = [
+    &[
+        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=", "-o",
+        "comm=",
+    ],
+    &[
+        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=", "-o",
+        "comm=",
+    ],
+    &[
+        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=",
+    ],
+    &[
+        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=",
+    ],
+    &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+    &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+];
+
+fn try_ps_args<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    args: &[&str],
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    let out = executor.execute("ps", args, &[], None).ok()?;
+    out.status
+        .success()
+        .then(|| parse_ps_output(&out.stdout, parent_pid))
+        .flatten()
+}
+
+fn try_ps_output_chain<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    PS_ATTEMPTS
+        .iter()
+        .find_map(|&args| try_ps_args(executor, args, parent_pid))
+}
+
+#[cfg(unix)]
+fn try_libproc_fallback(parent_pid: u32) -> Option<ChildProcessInfo> {
+    #[cfg(target_os = "macos")]
+    return child_info_from_libproc(parent_pid);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = parent_pid;
+        None
+    }
+}
+
+#[cfg(unix)]
+fn get_child_process_info_unix<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    parent_pid: u32,
+) -> ChildProcessInfo {
+    try_ps_output_chain(executor, parent_pid)
+        .or_else(|| try_libproc_fallback(parent_pid))
+        .or_else(|| try_pgrep_fallback(executor, parent_pid))
+        .unwrap_or_else(|| {
+            warn_child_process_detection_degraded();
+            ChildProcessInfo::NONE
+        })
+}
+
+fn try_pgrep_fallback<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    let descendants = collect_descendants(executor, parent_pid);
+    if !descendants.is_empty() {
+        warn_child_process_detection_conservative();
+        return Some(child_info_from_descendant_pids(&descendants));
+    }
+    None
+}
+
+impl SpawnedProcess {
+    /// Wait for the process to finish, discarding the exit status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the wait operation fails.
+    pub fn wait(&mut self) -> io::Result<()> {
+        self.inner.wait()?;
+        Ok(())
+    }
+
+    /// Check whether the process has exited without blocking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the operation fails.
+    pub fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+        self.inner.try_wait()
+    }
+
+    /// Kill the process.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the kill operation fails.
+    pub fn kill(&mut self) -> io::Result<()> {
+        self.inner.kill()
+    }
+}
+
+fn wrap_agent_child(mut child: std::process::Child) -> io::Result<AgentChildHandle> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("Failed to capture stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
+    Ok(AgentChildHandle {
+        stdout: Box::new(stdout),
+        stderr: Box::new(stderr),
+        inner: Box::new(RealAgentChild(child)),
+    })
 }
 
 #[cfg(test)]
@@ -962,7 +492,6 @@ mod tests {
     #[cfg(unix)]
     fn get_child_process_info_includes_grandchildren() {
         let parent = 100;
-        // PID 200 is child of 100, PID 300 is child of 200 (grandchild of 100).
         let ps_output = "200 100 0:01.00\n300 200 0:02.00\n999 1 0:05.00\n";
 
         let mut results: ResultMap = HashMap::new();
@@ -985,7 +514,6 @@ mod tests {
     #[cfg(unix)]
     fn get_child_process_info_excludes_unrelated_processes() {
         let parent = 100;
-        // PID 200 is child of 100. PID 300's ppid chain goes to 1, NOT to 100.
         let ps_output = "200 100 0:01.00\n300 400 0:02.00\n400 1 0:03.00\n";
 
         let mut results: ResultMap = HashMap::new();
@@ -1005,7 +533,6 @@ mod tests {
     #[cfg(unix)]
     fn get_child_process_info_deep_tree() {
         let parent = 100;
-        // 3+ levels of nesting: 100 → 200 → 300 → 400
         let ps_output = "200 100 0:01.00\n300 200 0:02.00\n400 300 0:03.00\n";
 
         let mut results: ResultMap = HashMap::new();
@@ -1249,6 +776,8 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn child_pid_entry_count_converts_libproc_bytes_to_pid_count() {
+        use super::super::macos::child_pid_entry_count;
+
         let pid_width = i32::try_from(std::mem::size_of::<libc::pid_t>())
             .expect("pid_t size should fit in i32");
 

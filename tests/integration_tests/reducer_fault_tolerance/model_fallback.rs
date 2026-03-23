@@ -33,7 +33,7 @@ fn test_network_error_triggers_model_fallback() {
 
         let event = PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            "agent1".into(),
             1,
             AgentErrorKind::Network,
             true,
@@ -54,7 +54,7 @@ fn test_auth_error_triggers_agent_fallback() {
 
         let event = PipelineEvent::agent_invocation_failed(
             AgentRole::Developer,
-            "agent1".to_string(),
+            "agent1".into(),
             1,
             AgentErrorKind::Authentication,
             false,
@@ -77,7 +77,7 @@ fn test_agent_fails_after_10_retries_fallback_to_next_agent() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
@@ -107,7 +107,7 @@ fn test_rate_limit_429_triggers_agent_fallback_not_model_fallback() {
             state,
             PipelineEvent::agent_rate_limited(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 Some("continue this work".to_string()),
             ),
         );
@@ -152,7 +152,7 @@ fn test_auth_failure_triggers_agent_fallback_not_model_fallback() {
         // Simulate auth failure - should switch to next AGENT, not model
         let new_state = ralph_workflow::reducer::state_reduction::reduce(
             state,
-            PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".to_string()),
+            PipelineEvent::agent_auth_failed(AgentRole::Developer, "agent1".into()),
         );
 
         // Should switch to next agent
@@ -195,7 +195,7 @@ fn test_network_error_still_triggers_model_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 true,
@@ -260,7 +260,7 @@ fn test_rate_limit_continuation_prompt_cleared_on_success() {
         // Agent succeeds
         let new_state = ralph_workflow::reducer::state_reduction::reduce(
             state,
-            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".to_string()),
+            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".into()),
         );
 
         // Continuation prompt should be cleared
@@ -303,7 +303,7 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -334,7 +334,7 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
             after_first_timeout,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -392,7 +392,7 @@ fn test_timeout_no_output_clears_session_id() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::NoOutput,
                 None,
                 None,
@@ -431,7 +431,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -449,7 +449,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -465,7 +465,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
         // Second agent succeeds
         state = ralph_workflow::reducer::state_reduction::reduce(
             state,
-            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".to_string()),
+            PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "agent2".into()),
         );
 
         // Should still be on second agent after success
@@ -501,7 +501,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -511,7 +511,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -527,7 +527,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent2".to_string(),
+                "agent2".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -537,7 +537,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent2".to_string(),
+                "agent2".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -553,7 +553,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent3".to_string(),
+                "agent3".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -563,7 +563,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
-                "agent3".to_string(),
+                "agent3".into(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
@@ -593,7 +593,7 @@ fn test_network_error_non_retryable_triggers_agent_fallback() {
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 false,
@@ -612,7 +612,7 @@ fn test_network_error_non_retryable_triggers_agent_fallback() {
             after_first_failure,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
-                "agent1".to_string(),
+                "agent1".into(),
                 1,
                 AgentErrorKind::Network,
                 false,

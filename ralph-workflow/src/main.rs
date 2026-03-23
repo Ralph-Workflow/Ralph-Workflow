@@ -1,8 +1,14 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint policy: fix code to match the style guide rather than weakening the lint.
 //
-// Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
-// (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
-// issues outside our control and don't reflect code quality problems.
+// See `CODE_STYLE.md`, `docs/code-style/boundaries.md`,
+// `docs/code-style/coding-patterns.md`, and `docs/code-style/testing.md`.
+//
+// This binary is a CLI boundary, so the crate root keeps only the rules that are
+// universally correct for entrypoint code. Boundary-sensitive rules stay documented
+// in the library and in dylint.
+//
+// `clippy::cargo` stays off because it reports dependency graph conflicts that are
+// not actionable style-guide violations.
 #![deny(warnings)]
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
@@ -10,8 +16,8 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // NOTE: Many lints are not denied because this is a CLI binary with test code.
-    // This is documented in the lint policy exception table.
+    // Keep entrypoint code free of accidental stdout logging and debug leftovers,
+    // but do not over-apply domain-only restrictions to the CLI boundary.
     clippy::print_stdout,
     clippy::dbg_macro,
     // Push toward combinators instead of hand-written control flow
@@ -56,14 +62,17 @@ fn main() -> anyhow::Result<()> {
         exit_pause::ExitOutcome::Success
     };
 
-    let launch_context = exit_pause::detect_launch_context();
+    let launch_context = exit_pause::detect_launch_context_with(
+        exit_pause::StdEnvironment,
+        exit_pause::StdProcessSpawner,
+    );
     if exit_pause::should_pause_before_exit(pause_mode, outcome, &launch_context) {
         let _ = exit_pause::pause_for_enter();
     }
 
     // If the pipeline requested a SIGINT exit code, exit after cleanup has completed.
     if interrupted {
-        std::process::exit(130);
+        exit_pause::exit_with_sigint_code();
     }
 
     result
@@ -77,15 +86,17 @@ mod tests {
     use ralph_workflow::agents::{AgentDrain, AgentRegistry};
     use ralph_workflow::checkpoint::execution_history::ExecutionHistory;
     use ralph_workflow::checkpoint::RunContext;
+    use ralph_workflow::common::domain_types::AgentName;
     use ralph_workflow::config::Config;
     use ralph_workflow::logger::{Colors, Logger};
     use ralph_workflow::logging::RunLogContext;
     use ralph_workflow::phases::PhaseContext;
     use ralph_workflow::pipeline::Timer;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::reducer::boundary::MainEffectHandler;
     use ralph_workflow::reducer::effect::{Effect, EffectHandler};
     use ralph_workflow::reducer::event::{AgentEvent, PipelineEvent};
-    use ralph_workflow::reducer::handler::MainEffectHandler;
+    use ralph_workflow::runtime::environment::RealGitEnvironment;
     use ralph_workflow::workspace::{Workspace, WorkspaceFs};
     use ralph_workflow::RealProcessExecutor;
     use tempfile::TempDir;
@@ -104,6 +115,7 @@ mod tests {
         repo_root: PathBuf,
         run_log_context: RunLogContext,
         cloud: ralph_workflow::config::types::CloudConfig,
+        mock_env: RealGitEnvironment,
     }
 
     impl TestFixture {
@@ -114,10 +126,12 @@ mod tests {
             let colors = Colors::new();
             let logger = Logger::new(colors);
             let run_log_context = RunLogContext::new(&workspace).unwrap();
-            let mut registry = AgentRegistry::new().unwrap();
             let unified: ralph_workflow::config::UnifiedConfig =
                 toml::from_str(config_toml).unwrap();
-            registry.apply_unified_config(&unified).unwrap();
+            let registry = AgentRegistry::new()
+                .unwrap()
+                .apply_unified_config(&unified)
+                .unwrap();
 
             Self {
                 config: Config::default(),
@@ -133,9 +147,11 @@ mod tests {
                 repo_root: PathBuf::from("/mock/repo"),
                 run_log_context,
                 cloud: ralph_workflow::config::types::CloudConfig::disabled(),
+                mock_env: RealGitEnvironment,
             }
         }
 
+        #[cfg(any(test, feature = "test-utils"))]
         fn ctx(&mut self) -> PhaseContext<'_> {
             PhaseContext {
                 config: &self.config,
@@ -158,16 +174,16 @@ mod tests {
                 run_log_context: &self.run_log_context,
                 cloud_reporter: None,
                 cloud: &self.cloud,
+                env: &self.mock_env,
             }
         }
     }
 
-    fn initialized_agents_for_drain(fixture: &mut TestFixture, drain: AgentDrain) -> Vec<String> {
-        let mut handler =
-            MainEffectHandler::new(ralph_workflow::reducer::state::PipelineState::initial(1, 1));
-        let result = handler
-            .execute(Effect::InitializeAgentChain { drain }, &mut fixture.ctx())
-            .unwrap();
+    fn initialized_agents_for_drain(mut fixture: TestFixture, drain: AgentDrain) -> Vec<AgentName> {
+        let result =
+            MainEffectHandler::new(ralph_workflow::reducer::state::PipelineState::initial(1, 1))
+                .execute(Effect::InitializeAgentChain { drain }, &mut fixture.ctx())
+                .unwrap();
 
         match result.event {
             PipelineEvent::Agent(AgentEvent::ChainInitialized { agents, .. }) => agents,
@@ -202,12 +218,12 @@ mod tests {
             commit = "commit_chain"
         "#;
 
-        let mut review_fixture = TestFixture::new(review_config);
-        let review_agents = initialized_agents_for_drain(&mut review_fixture, AgentDrain::Review);
-        assert_eq!(review_agents, vec!["claude".to_string()]);
+        let review_fixture = TestFixture::new(review_config);
+        let review_agents = initialized_agents_for_drain(review_fixture, AgentDrain::Review);
+        assert_eq!(review_agents, vec![AgentName::from("claude")]);
 
-        let mut commit_fixture = TestFixture::new(commit_config);
-        let commit_agents = initialized_agents_for_drain(&mut commit_fixture, AgentDrain::Commit);
-        assert_eq!(commit_agents, vec!["opencode".to_string()]);
+        let commit_fixture = TestFixture::new(commit_config);
+        let commit_agents = initialized_agents_for_drain(commit_fixture, AgentDrain::Commit);
+        assert_eq!(commit_agents, vec![AgentName::from("opencode")]);
     }
 }

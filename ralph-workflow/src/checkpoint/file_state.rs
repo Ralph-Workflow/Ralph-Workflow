@@ -4,8 +4,8 @@
 //! of key files in repository to enable idempotent recovery.
 
 use crate::checkpoint::execution_history::FileSnapshot;
-use crate::executor::{ProcessExecutor, RealProcessExecutor};
 use crate::workspace::Workspace;
+use crate::{ProcessExecutor, RealProcessExecutor};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;

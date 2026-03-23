@@ -1,8 +1,0 @@
-warning: file has 1001 lines (>= 1000) - MUST refactor
-   |
-   = help: this file is too large and MUST be split into smaller modules
-   = note: see CODE_STYLE.md for design principles on module organization
-   = note: `#[warn(file_too_long)]` on by default
-
-warning: 1 warning emitted
-

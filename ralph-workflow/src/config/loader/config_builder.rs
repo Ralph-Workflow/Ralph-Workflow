@@ -2,39 +2,51 @@ use crate::config::types::{Config, ReviewDepth, Verbosity};
 use crate::config::unified::UnifiedConfig;
 use std::path::PathBuf;
 
+use crate::config::cloud::load_cloud_config_from_env;
+
+/// Result of converting UnifiedConfig to Config, including any warnings.
+pub struct ConfigConversionResult {
+    pub config: Config,
+    pub warnings: Vec<String>,
+}
+
+impl ConfigConversionResult {
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            warnings: Vec::new(),
+        }
+    }
+
+    pub fn with_warnings(config: Config, warnings: Vec<String>) -> Self {
+        Self { config, warnings }
+    }
+}
+
 /// Create a Config from `UnifiedConfig`.
-pub(super) fn config_from_unified(unified: &UnifiedConfig, warnings: &mut Vec<String>) -> Config {
+pub(super) fn config_from_unified(unified: &UnifiedConfig) -> ConfigConversionResult {
     use crate::config::types::{BehavioralFlags, FeatureFlags};
 
     let general = &unified.general;
-    // max_dev_continuations of 0 is valid and means "no continuations" (total attempts = 1).
-    // Any non-negative value is accepted; max_dev_continuations comes from a u32 so can't be negative.
-    // When omitted from config file, serde applies default_max_dev_continuations() -> 2.
     let max_dev_continuations = general.max_dev_continuations;
-    // max_xsd_retries of 0 is valid and means "disable XSD retries" (immediate agent fallback).
-    // Any non-negative value is accepted; max_xsd_retries comes from a u32 so can't be negative.
-    // When omitted from config file, serde applies default_max_xsd_retries() -> 10.
     let max_xsd_retries = general.max_xsd_retries;
-    // max_same_agent_retries of 0 is valid and means "disable same-agent retries"
-    // (immediate fallback to next agent on timeout/internal error).
-    // When omitted from config file, serde applies default_max_same_agent_retries() -> 2.
     let max_same_agent_retries = general.max_same_agent_retries;
-    // max_commit_residual_retries of 0 is valid and means "carry forward immediately after
-    // the initial residual check".
-    // When omitted from config file, serde applies default_max_commit_residual_retries() -> 10.
     let max_commit_residual_retries = general.max_commit_residual_retries;
 
-    let review_depth = ReviewDepth::from_str(&general.review_depth).unwrap_or_else(|| {
-        warnings.push(format!(
+    let review_depth = ReviewDepth::from_str(&general.review_depth).unwrap_or_default();
+
+    let warnings = if ReviewDepth::from_str(&general.review_depth).is_none() {
+        vec![format!(
             "Invalid review_depth '{}' in config; falling back to 'standard'.",
             general.review_depth
-        ));
-        ReviewDepth::default()
-    });
+        )]
+    } else {
+        Vec::new()
+    };
 
-    Config {
-        developer_agent: None, // Set from agent_chain or CLI
-        reviewer_agent: None,  // Set from agent_chain or CLI
+    let config = Config {
+        developer_agent: None,
+        reviewer_agent: None,
         developer_cmd: None,
         reviewer_cmd: None,
         commit_cmd: None,
@@ -42,7 +54,7 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig, warnings: &mut Vec<St
         reviewer_model: None,
         developer_provider: None,
         reviewer_provider: None,
-        reviewer_json_parser: None, // Set from env var or CLI
+        reviewer_json_parser: None,
         features: FeatureFlags {
             checkpoint_enabled: general.workflow.checkpoint_enabled,
             force_universal_prompt: general.execution.force_universal_prompt,
@@ -68,18 +80,17 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig, warnings: &mut Vec<St
         isolation_mode: general.execution.isolation_mode,
         git_user_name: general.git_user_name.clone(),
         git_user_email: general.git_user_email.clone(),
-        show_streaming_metrics: false, // Default to false; can be enabled via CLI flag or config file
-        review_format_retries: 5,      // Default to 5 retries for format correction
-        // CRITICAL: Always wrap in Some(). The serde default ensures these fields are never
-        // missing from UnifiedConfig, so Config always has a value. The Option<u32> type in
-        // Config is for backward compatibility with direct Config construction (e.g., tests).
+        show_streaming_metrics: false,
+        review_format_retries: 5,
         max_dev_continuations: Some(max_dev_continuations),
         max_xsd_retries: Some(max_xsd_retries),
         max_same_agent_retries: Some(max_same_agent_retries),
         max_commit_residual_retries: Some(max_commit_residual_retries),
         execution_history_limit: general.execution_history_limit,
-        cloud: crate::config::types::CloudConfig::from_env(),
-    }
+        cloud: load_cloud_config_from_env(),
+    };
+
+    ConfigConversionResult::with_warnings(config, warnings)
 }
 
 /// Default configuration when no config file is found.
@@ -121,13 +132,11 @@ pub fn default_config() -> Config {
         git_user_email: None,
         show_streaming_metrics: false,
         review_format_retries: 5,
-        // Semantics: max_dev_continuations counts continuations beyond the initial attempt.
-        // Default to 2 continuations (3 total attempts).
         max_dev_continuations: Some(2),
-        max_xsd_retries: Some(10), // Default to 10 retries before agent fallback
-        max_same_agent_retries: Some(2), // Default to 2 failures (initial + 1 retry) before agent fallback
-        max_commit_residual_retries: Some(10), // Default to 10 additional residual commit retries
-        execution_history_limit: 1000,   // Default to 1000 entries (ring buffer)
-        cloud: crate::config::types::CloudConfig::from_env(),
+        max_xsd_retries: Some(10),
+        max_same_agent_retries: Some(2),
+        max_commit_residual_retries: Some(10),
+        execution_history_limit: 1000,
+        cloud: load_cloud_config_from_env(),
     }
 }

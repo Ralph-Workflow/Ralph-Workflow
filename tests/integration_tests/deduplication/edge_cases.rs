@@ -89,7 +89,7 @@ fn test_example_log_renders_without_thinking_corruption() {
     with_default_timeout(|| {
         let log = include_str!("../artifacts/example_log.log");
 
-        let (parser, vterm) = create_parser_with_vterm();
+        let (mut parser, vterm) = create_parser_with_vterm();
         let workspace = MemoryWorkspace::new_test();
 
         let cursor = Cursor::new(log);

@@ -5,23 +5,20 @@
 //! changing their core logic.
 
 use std::cell::RefCell;
-use std::io::{self, IsTerminal, Stdout};
+use std::io::{self, IsTerminal};
 use std::rc::Rc;
-
-#[cfg(any(test, feature = "test-utils"))]
-use std::io::Stderr;
 
 // Trait and standard printers
 include!("printer/traits.rs");
 
 // Test printer (test-utils only)
-include!("printer/test_printer.rs");
+include!("printer/io_test_printer.rs");
 
 // Streaming test printer (test-utils only)
 include!("printer/streaming_printer.rs");
 
 // Virtual terminal (test-utils only)
-include!("printer/virtual_terminal/mod.rs");
+include!("printer/virtual_terminal.rs");
 
 // Tests
-include!("printer/tests.rs");
+include!("printer/io_tests.rs");

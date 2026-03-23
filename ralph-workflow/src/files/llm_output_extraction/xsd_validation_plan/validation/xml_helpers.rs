@@ -2,16 +2,94 @@
 
 /// Extract attributes from a quick-xml `BytesStart`
 fn get_attributes(e: &quick_xml::events::BytesStart<'_>) -> HashMap<String, String> {
-    let mut attrs = HashMap::new();
-    for attr in e.attributes().flatten() {
-        if let (Ok(key), Ok(value)) = (
-            std::str::from_utf8(attr.key.as_ref()),
-            std::str::from_utf8(&attr.value),
-        ) {
-            attrs.insert(key.to_string(), value.to_string());
-        }
+    e.attributes()
+        .flatten()
+        .filter_map(|attr| {
+            std::str::from_utf8(attr.key.as_ref())
+                .ok()
+                .zip(std::str::from_utf8(&attr.value).ok())
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+fn malformed_xml_eof_error(
+    element_path: String,
+    expected: String,
+    suggestion: String,
+) -> XsdValidationError {
+    XsdValidationError {
+        error_type: XsdErrorType::MalformedXml,
+        element_path,
+        expected,
+        found: "end of file".to_string(),
+        suggestion,
+        example: None,
     }
-    attrs
+}
+
+fn malformed_xml_parse_error(
+    element_path: String,
+    parse_error: quick_xml::Error,
+) -> XsdValidationError {
+    XsdValidationError {
+        error_type: XsdErrorType::MalformedXml,
+        element_path,
+        expected: "valid XML".to_string(),
+        found: format!("parse error: {parse_error}"),
+        suggestion: "Check XML syntax".to_string(),
+        example: None,
+    }
+}
+
+fn read_owned_event(
+    reader: &mut Reader<&[u8]>,
+) -> Result<quick_xml::events::Event<'static>, quick_xml::Error> {
+    reader
+        .read_event_into(&mut Vec::new())
+        .map(quick_xml::events::Event::into_owned)
+}
+
+fn read_text_until_end_matching<F>(
+    reader: &mut Reader<&[u8]>,
+    is_end_tag: F,
+    element_path: String,
+    expected: String,
+    suggestion: String,
+    text: String,
+) -> Result<String, XsdValidationError>
+where
+    F: Fn(&[u8]) -> bool + Copy,
+{
+    match read_owned_event(reader) {
+        Ok(Event::Text(event)) => read_text_until_end_matching(
+            reader,
+            is_end_tag,
+            element_path,
+            expected,
+            suggestion,
+            format!("{text}{}", event.unescape().unwrap_or_default()),
+        ),
+        Ok(Event::CData(event)) => read_text_until_end_matching(
+            reader,
+            is_end_tag,
+            element_path,
+            expected,
+            suggestion,
+            format!("{text}{}", String::from_utf8_lossy(&event)),
+        ),
+        Ok(Event::End(event)) if is_end_tag(event.name().as_ref()) => Ok(text),
+        Ok(Event::Eof) => Err(malformed_xml_eof_error(element_path, expected, suggestion)),
+        Ok(_) => read_text_until_end_matching(
+            reader,
+            is_end_tag,
+            element_path,
+            expected,
+            suggestion,
+            text,
+        ),
+        Err(parse_error) => Err(malformed_xml_parse_error(element_path, parse_error)),
+    }
 }
 
 /// Read text content until the end tag
@@ -19,47 +97,15 @@ fn read_text_until_end(
     reader: &mut Reader<&[u8]>,
     end_tag: &[u8],
 ) -> Result<String, XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut text = String::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Text(e)) => {
-                text.push_str(&e.unescape().unwrap_or_default());
-            }
-            Ok(Event::CData(e)) => {
-                // CDATA content is preserved exactly as-is
-                text.push_str(&String::from_utf8_lossy(&e));
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == end_tag => {
-                break;
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
-                    found: "end of file".to_string(),
-                    suggestion: "Check XML is well-formed".to_string(),
-                    example: None,
-                });
-            }
-            Ok(_) => {} // Skip other events
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
-
-    Ok(text.trim().to_string())
+    read_text_until_end_matching(
+        reader,
+        |tag_name| tag_name == end_tag,
+        String::from_utf8_lossy(end_tag).to_string(),
+        format!("closing </{}>", String::from_utf8_lossy(end_tag)),
+        "Check XML is well-formed".to_string(),
+        String::new(),
+    )
+    .map(|text| text.trim().to_string())
 }
 
 /// Read text content until the closing tag, accepting either canonical OR original tag name.
@@ -72,102 +118,155 @@ fn read_text_until_end_fuzzy(
     canonical_end_tag: &[u8],
     original_start_tag: &[u8],
 ) -> Result<String, XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut text = String::new();
+    read_text_until_end_matching(
+        reader,
+        |tag_name| tag_name == canonical_end_tag || tag_name == original_start_tag,
+        String::from_utf8_lossy(canonical_end_tag).to_string(),
+        format!(
+            "closing </{}> or </{}>",
+            String::from_utf8_lossy(canonical_end_tag),
+            String::from_utf8_lossy(original_start_tag)
+        ),
+        format!(
+            "Ensure the element has a matching closing tag (</{}> or </{}>).",
+            String::from_utf8_lossy(canonical_end_tag),
+            String::from_utf8_lossy(original_start_tag)
+        ),
+        String::new(),
+    )
+    .map(|text| text.trim().to_string())
+}
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Text(e)) => {
-                text.push_str(&e.unescape().unwrap_or_default());
-            }
-            Ok(Event::CData(e)) => {
-                // CDATA content is preserved exactly as-is
-                text.push_str(&String::from_utf8_lossy(&e));
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag name OR original (misspelled) tag name
-                if e.name().as_ref() == canonical_end_tag || e.name().as_ref() == original_start_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(canonical_end_tag).to_string(),
-                    expected: format!(
-                        "closing </{}> or </{}>",
-                        String::from_utf8_lossy(canonical_end_tag),
-                        String::from_utf8_lossy(original_start_tag)
-                    ),
-                    found: "unexpected end of file".to_string(),
-                    suggestion: format!(
-                        "Ensure the element has a matching closing tag (</{}> or </{}>).",
-                        String::from_utf8_lossy(canonical_end_tag),
-                        String::from_utf8_lossy(original_start_tag)
-                    ),
-                    example: None,
-                });
-            }
-            Ok(_) => {} // Skip other events
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(canonical_end_tag).to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
+fn skip_to_end_with_depth(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+    depth: usize,
+) -> Result<(), XsdValidationError> {
+    match read_owned_event(reader) {
+        Ok(Event::Start(event)) if event.name().as_ref() == end_tag => {
+            skip_to_end_with_depth(reader, end_tag, depth.saturating_add(1))
+        }
+        Ok(Event::End(event)) if event.name().as_ref() == end_tag => {
+            if depth == 1 {
+                Ok(())
+            } else {
+                skip_to_end_with_depth(reader, end_tag, depth.saturating_sub(1))
             }
         }
-        buf.clear();
+        Ok(Event::Eof) => Err(malformed_xml_eof_error(
+            String::from_utf8_lossy(end_tag).to_string(),
+            format!("closing </{}>", String::from_utf8_lossy(end_tag)),
+            "Check XML is well-formed".to_string(),
+        )),
+        Ok(_) => skip_to_end_with_depth(reader, end_tag, depth),
+        Err(parse_error) => Err(malformed_xml_parse_error(
+            String::from_utf8_lossy(end_tag).to_string(),
+            parse_error,
+        )),
     }
-
-    Ok(text.trim().to_string())
 }
 
 /// Skip until the end of the current element (handles nested elements)
 fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut depth = 1;
+    skip_to_end_with_depth(reader, end_tag, 1)
+}
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == end_tag => {
-                depth += 1;
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == end_tag => {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
-                    found: "end of file".to_string(),
-                    suggestion: "Check XML is well-formed".to_string(),
-                    example: None,
-                });
-            }
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
+fn attributes_fragment(attributes: quick_xml::events::attributes::Attributes<'_>) -> String {
+    attributes
+        .flatten()
+        .map(|attr| {
+            format!(
+                " {}=\"{}\"",
+                String::from_utf8_lossy(attr.key.as_ref()),
+                String::from_utf8_lossy(&attr.value)
+            )
+        })
+        .collect()
+}
+
+fn start_tag_fragment(event: &quick_xml::events::BytesStart<'_>) -> String {
+    format!(
+        "<{}{}>",
+        String::from_utf8_lossy(event.name().as_ref()),
+        attributes_fragment(event.attributes())
+    )
+}
+
+fn empty_tag_fragment(event: &quick_xml::events::BytesStart<'_>) -> String {
+    format!(
+        "<{}{}/>",
+        String::from_utf8_lossy(event.name().as_ref()),
+        attributes_fragment(event.attributes())
+    )
+}
+
+fn end_tag_fragment(event: &quick_xml::events::BytesEnd<'_>) -> String {
+    format!("</{}>", String::from_utf8_lossy(event.name().as_ref()))
+}
+
+fn cdata_fragment(event: &quick_xml::events::BytesCData<'_>) -> String {
+    format!("<![CDATA[{}]]>", String::from_utf8_lossy(event.as_ref()))
+}
+
+fn read_inner_xml_with_state(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+    depth: usize,
+    content: String,
+) -> Result<String, XsdValidationError> {
+    match read_owned_event(reader) {
+        Ok(Event::Start(event)) => read_inner_xml_with_state(
+            reader,
+            end_tag,
+            if event.name().as_ref() == end_tag {
+                depth.saturating_add(1)
+            } else {
+                depth
+            },
+            format!("{content}{}", start_tag_fragment(&event)),
+        ),
+        Ok(Event::End(event)) if event.name().as_ref() == end_tag && depth == 1 => Ok(content),
+        Ok(Event::End(event)) if event.name().as_ref() == end_tag => read_inner_xml_with_state(
+            reader,
+            end_tag,
+            depth.saturating_sub(1),
+            format!("{content}{}", end_tag_fragment(&event)),
+        ),
+        Ok(Event::End(event)) => read_inner_xml_with_state(
+            reader,
+            end_tag,
+            depth,
+            format!("{content}{}", end_tag_fragment(&event)),
+        ),
+        Ok(Event::Empty(event)) => read_inner_xml_with_state(
+            reader,
+            end_tag,
+            depth,
+            format!("{content}{}", empty_tag_fragment(&event)),
+        ),
+        Ok(Event::Text(event)) => read_inner_xml_with_state(
+            reader,
+            end_tag,
+            depth,
+            format!("{content}{}", String::from_utf8_lossy(event.as_ref())),
+        ),
+        Ok(Event::CData(event)) => read_inner_xml_with_state(
+            reader,
+            end_tag,
+            depth,
+            format!("{content}{}", cdata_fragment(&event)),
+        ),
+        Ok(Event::Eof) => Err(malformed_xml_eof_error(
+            String::from_utf8_lossy(end_tag).to_string(),
+            format!("closing </{}>", String::from_utf8_lossy(end_tag)),
+            "Check XML is well-formed".to_string(),
+        )),
+        Ok(_) => read_inner_xml_with_state(reader, end_tag, depth, content),
+        Err(parse_error) => Err(malformed_xml_parse_error(
+            String::from_utf8_lossy(end_tag).to_string(),
+            parse_error,
+        )),
     }
-
-    Ok(())
 }
 
 /// Read all content (including nested XML) as a string until end tag
@@ -175,86 +274,62 @@ fn read_inner_xml(
     reader: &mut Reader<&[u8]>,
     end_tag: &[u8],
 ) -> Result<String, XsdValidationError> {
-    let mut buf = Vec::new();
-    let mut content = String::new();
-    let mut depth = 1;
+    read_inner_xml_with_state(reader, end_tag, 1, String::new())
+}
 
-    loop {
-        let event = reader.read_event_into(&mut buf);
-        match &event {
-            Ok(Event::Start(e)) => {
-                if e.name().as_ref() == end_tag {
-                    depth += 1;
-                }
-                // Reconstruct the tag
-                content.push('<');
-                content.push_str(&String::from_utf8_lossy(e.name().as_ref()));
-                for attr in e.attributes().flatten() {
-                    content.push(' ');
-                    content.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-                    content.push_str("=\"");
-                    content.push_str(&String::from_utf8_lossy(&attr.value));
-                    content.push('"');
-                }
-                content.push('>');
-            }
-            Ok(Event::End(e)) => {
-                if e.name().as_ref() == end_tag {
-                    depth -= 1;
-                    if depth == 0 {
-                        break;
-                    }
-                }
-                content.push_str("</");
-                content.push_str(&String::from_utf8_lossy(e.name().as_ref()));
-                content.push('>');
-            }
-            Ok(Event::Empty(e)) => {
-                content.push('<');
-                content.push_str(&String::from_utf8_lossy(e.name().as_ref()));
-                for attr in e.attributes().flatten() {
-                    content.push(' ');
-                    content.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-                    content.push_str("=\"");
-                    content.push_str(&String::from_utf8_lossy(&attr.value));
-                    content.push('"');
-                }
-                content.push_str("/>");
-            }
-            Ok(Event::Text(e)) => {
-                // Keep escaped entities as-is for re-parsing (don't unescape)
-                content.push_str(&String::from_utf8_lossy(e.as_ref()));
-            }
-            Ok(Event::CData(e)) => {
-                // Preserve CDATA sections so they can be re-parsed correctly
-                content.push_str("<![CDATA[");
-                content.push_str(&String::from_utf8_lossy(e.as_ref()));
-                content.push_str("]]>");
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: format!("closing </{}>", String::from_utf8_lossy(end_tag)),
-                    found: "end of file".to_string(),
-                    suggestion: "Check XML is well-formed".to_string(),
-                    example: None,
-                });
-            }
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: String::from_utf8_lossy(end_tag).to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
+#[cfg(test)]
+mod xml_helpers_tests {
+    use super::*;
+
+    fn next_start(reader: &mut Reader<&[u8]>) {
+        match reader.read_event() {
+            Ok(Event::Start(_)) => {}
+            Ok(other) => panic!("expected start event, got {other:?}"),
+            Err(error) => panic!("expected start event, got error: {error}"),
         }
-        buf.clear();
     }
 
-    Ok(content)
+    fn result_or_panic<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("unexpected error: {error}"),
+        }
+    }
+
+    #[test]
+    fn read_text_until_end_unescapes_text_and_keeps_cdata() {
+        let mut reader = Reader::from_str("<root>  one &amp; two <![CDATA[<raw>]]> </root>");
+        next_start(&mut reader);
+
+        let text = result_or_panic(read_text_until_end(&mut reader, b"root"));
+
+        assert_eq!(text, "one & two <raw>");
+    }
+
+    #[test]
+    fn read_inner_xml_preserves_escaped_entities_and_cdata() {
+        let mut reader = Reader::from_str(
+            "<outer><inner a=\"1\">x &amp; y<![CDATA[z<w>]]></inner><empty b=\"2\"/></outer>",
+        );
+        next_start(&mut reader);
+
+        let inner = result_or_panic(read_inner_xml(&mut reader, b"outer"));
+
+        assert_eq!(
+            inner,
+            "<inner a=\"1\">x &amp; y<![CDATA[z<w>]]></inner><empty b=\"2\"/>"
+        );
+    }
+
+    #[test]
+    fn get_attributes_collects_all_attributes() {
+        let mut event = quick_xml::events::BytesStart::new("item");
+        event.push_attribute(("priority", "high"));
+        event.push_attribute(("status", "open"));
+
+        let attrs = get_attributes(&event);
+
+        assert_eq!(attrs.get("priority").map(String::as_str), Some("high"));
+        assert_eq!(attrs.get("status").map(String::as_str), Some("open"));
+    }
 }

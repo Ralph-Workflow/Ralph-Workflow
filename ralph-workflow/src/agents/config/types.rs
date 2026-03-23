@@ -85,6 +85,13 @@ impl Default for AgentConfig {
     }
 }
 
+/// Warning that can occur during CCS environment variable loading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CcsEnvWarning {
+    /// Failed to load environment variables for the specified CCS profile.
+    LoadFailed { profile: String, error: String },
+}
+
 impl AgentConfig {
     /// Create a new `AgentConfig` builder.
     #[must_use]
@@ -107,46 +114,27 @@ impl AgentConfig {
         verbose: bool,
         model_override: Option<&str>,
     ) -> String {
-        let mut parts = vec![self.cmd.clone()];
-
-        // Add print flag early (for wrappers like `ccs <profile>` where the print flag must
-        // come after the profile argument)
-        if !self.print_flag.is_empty() {
-            parts.push(self.print_flag.clone());
-        }
-
-        if output && !self.output_flag.is_empty() {
-            parts.push(self.output_flag.clone());
-        }
-
-        // Add streaming flag when using stream-json output with print mode.
-        // Claude requires --include-partial-messages to stream JSON in print mode.
-        if output
-            && !self.output_flag.is_empty()
-            && is_stream_json_output(&self.output_flag)
-            && !self.print_flag.is_empty()
-            && !self.streaming_flag.is_empty()
-        {
-            parts.push(self.streaming_flag.clone());
-        }
-        if yolo && !self.yolo_flag.is_empty() {
-            parts.push(self.yolo_flag.clone());
-        }
-
-        // Claude CLI requires --verbose when using --output-format=stream-json
-        let needs_verbose = verbose || self.requires_verbose_for_json(output);
-
-        if needs_verbose && !self.verbose_flag.is_empty() {
-            parts.push(self.verbose_flag.clone());
-        }
-
-        // Add model flag: runtime override takes precedence over config
-        let effective_model = model_override.or(self.model_flag.as_deref());
-        if let Some(model) = effective_model {
-            if !model.is_empty() {
-                parts.push(model.to_string());
-            }
-        }
+        // Build parts using functional style - filter_map for conditional inclusion
+        let parts: Vec<String> = [
+            Some(self.cmd.clone()),
+            (!self.print_flag.is_empty()).then_some(self.print_flag.clone()),
+            (output && !self.output_flag.is_empty()).then_some(self.output_flag.clone()),
+            (output
+                && is_stream_json_output(&self.output_flag)
+                && !self.print_flag.is_empty()
+                && !self.streaming_flag.is_empty())
+            .then_some(self.streaming_flag.clone()),
+            (yolo && !self.yolo_flag.is_empty()).then_some(self.yolo_flag.clone()),
+            (verbose || self.requires_verbose_for_json(output) && !self.verbose_flag.is_empty())
+                .then_some(self.verbose_flag.clone()),
+            model_override
+                .or(self.model_flag.as_deref())
+                .filter(|m| !m.is_empty())
+                .map(|m| m.to_string()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         parts.join(" ")
     }
@@ -164,18 +152,16 @@ impl AgentConfig {
         model_override: Option<&str>,
         session_id: Option<&str>,
     ) -> String {
-        let mut cmd = self.build_cmd_with_model(output, yolo, verbose, model_override);
+        let base_cmd = self.build_cmd_with_model(output, yolo, verbose, model_override);
 
         // Add session continuation flag if we have a session ID and the agent supports it
-        if let Some(sid) = session_id {
-            if !self.session_flag.is_empty() {
+        session_id
+            .filter(|_| !self.session_flag.is_empty())
+            .map(|sid| {
                 let session_arg = self.session_flag.replace("{}", sid);
-                cmd.push(' ');
-                cmd.push_str(&session_arg);
-            }
-        }
-
-        cmd
+                format!("{base_cmd} {session_arg}")
+            })
+            .unwrap_or(base_cmd)
     }
 
     /// Check if this agent supports session continuation.
@@ -198,6 +184,66 @@ impl AgentConfig {
             .and_then(|n| n.to_str())
             .unwrap_or(base);
         matches!(exe_name, "claude" | "ccs")
+    }
+
+    /// Convert from `AgentConfigToml` with CCS environment variable loading.
+    ///
+    /// Returns the constructed config along with any warnings encountered
+    /// during CCS env var loading. The caller should emit warnings at the I/O boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if CCS env var loading fails.
+    pub fn try_from_ccs(toml: AgentConfigToml) -> (Self, Vec<CcsEnvWarning>) {
+        let (ccs_env_vars, ccs_warnings) = match toml.ccs_profile.as_deref() {
+            Some(profile) => match load_ccs_env_vars(profile) {
+                Ok(vars) => (vars, Vec::new()),
+                Err(err) => (
+                    HashMap::new(),
+                    vec![CcsEnvWarning::LoadFailed {
+                        profile: profile.to_string(),
+                        error: err.to_string(),
+                    }],
+                ),
+            },
+            None => (HashMap::new(), Vec::new()),
+        };
+
+        let warnings = if ccs_env_vars.is_empty() {
+            if let Some(ref profile) = toml.ccs_profile {
+                vec![CcsEnvWarning::LoadFailed {
+                    profile: profile.clone(),
+                    error: "no environment variables loaded".to_string(),
+                }]
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        let merged_env_vars: HashMap<_, _> =
+            toml.env_vars.into_iter().chain(ccs_env_vars).collect();
+
+        let all_warnings: Vec<_> = ccs_warnings.into_iter().chain(warnings).collect();
+
+        (
+            Self {
+                cmd: toml.cmd,
+                output_flag: toml.output_flag,
+                yolo_flag: toml.yolo_flag,
+                verbose_flag: toml.verbose_flag,
+                can_commit: toml.can_commit,
+                json_parser: JsonParserType::parse(&toml.json_parser),
+                model_flag: toml.model_flag,
+                print_flag: toml.print_flag,
+                streaming_flag: toml.streaming_flag,
+                session_flag: toml.session_flag,
+                env_vars: merged_env_vars,
+                display_name: toml.display_name,
+            },
+            all_warnings,
+        )
     }
 }
 
@@ -224,86 +270,130 @@ pub struct AgentConfigBuilder {
 impl AgentConfigBuilder {
     /// Set the base command to run the agent.
     #[must_use]
-    pub fn cmd(mut self, cmd: impl Into<String>) -> Self {
-        self.cmd = Some(cmd.into());
-        self
+    pub fn cmd(self, cmd: impl Into<String>) -> Self {
+        Self {
+            cmd: Some(cmd.into()),
+            ..self
+        }
     }
 
     /// Set the output-format flag.
     #[must_use]
-    pub fn output_flag(mut self, flag: impl Into<String>) -> Self {
-        self.output_flag = Some(flag.into());
-        self
+    pub fn output_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            output_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the autonomous mode flag.
     #[must_use]
-    pub fn yolo_flag(mut self, flag: impl Into<String>) -> Self {
-        self.yolo_flag = Some(flag.into());
-        self
+    pub fn yolo_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            yolo_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the verbose output flag.
     #[must_use]
-    pub fn verbose_flag(mut self, flag: impl Into<String>) -> Self {
-        self.verbose_flag = Some(flag.into());
-        self
+    pub fn verbose_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            verbose_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set whether the agent can run git commit.
     #[must_use]
-    pub const fn can_commit(mut self, can_commit: bool) -> Self {
-        self.can_commit = Some(can_commit);
-        self
+    pub fn can_commit(self, can_commit: bool) -> Self {
+        Self {
+            can_commit: Some(can_commit),
+            cmd: self.cmd,
+            output_flag: self.output_flag,
+            yolo_flag: self.yolo_flag,
+            verbose_flag: self.verbose_flag,
+            json_parser: self.json_parser,
+            model_flag: self.model_flag,
+            print_flag: self.print_flag,
+            streaming_flag: self.streaming_flag,
+            session_flag: self.session_flag,
+            env_vars: self.env_vars,
+            display_name: self.display_name,
+        }
     }
 
     /// Set the JSON parser type.
     #[must_use]
-    pub const fn json_parser(mut self, parser: JsonParserType) -> Self {
-        self.json_parser = Some(parser);
-        self
+    pub fn json_parser(self, parser: JsonParserType) -> Self {
+        Self {
+            json_parser: Some(parser),
+            cmd: self.cmd,
+            output_flag: self.output_flag,
+            yolo_flag: self.yolo_flag,
+            verbose_flag: self.verbose_flag,
+            can_commit: self.can_commit,
+            model_flag: self.model_flag,
+            print_flag: self.print_flag,
+            streaming_flag: self.streaming_flag,
+            session_flag: self.session_flag,
+            env_vars: self.env_vars,
+            display_name: self.display_name,
+        }
     }
 
     /// Set the model/provider flag.
     #[must_use]
-    pub fn model_flag(mut self, flag: impl Into<String>) -> Self {
-        self.model_flag = Some(flag.into());
-        self
+    pub fn model_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            model_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the print/non-interactive mode flag.
     #[must_use]
-    pub fn print_flag(mut self, flag: impl Into<String>) -> Self {
-        self.print_flag = Some(flag.into());
-        self
+    pub fn print_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            print_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the streaming flag.
     #[must_use]
-    pub fn streaming_flag(mut self, flag: impl Into<String>) -> Self {
-        self.streaming_flag = Some(flag.into());
-        self
+    pub fn streaming_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            streaming_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the session continuation flag template.
     #[must_use]
-    pub fn session_flag(mut self, flag: impl Into<String>) -> Self {
-        self.session_flag = Some(flag.into());
-        self
+    pub fn session_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            session_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set environment variables.
     #[must_use]
-    pub fn env_vars(mut self, env_vars: HashMap<String, String>) -> Self {
-        self.env_vars = Some(env_vars);
-        self
+    pub fn env_vars(self, env_vars: HashMap<String, String>) -> Self {
+        Self {
+            env_vars: Some(env_vars),
+            ..self
+        }
     }
 
     /// Set the display name.
     #[must_use]
-    pub fn display_name(mut self, name: impl Into<String>) -> Self {
-        self.display_name = Some(name.into());
-        self
+    pub fn display_name(self, name: impl Into<String>) -> Self {
+        Self {
+            display_name: Some(name.into()),
+            ..self
+        }
     }
 
     /// Build the `AgentConfig`.
@@ -381,42 +471,8 @@ fn default_streaming_flag() -> String {
 
 impl From<AgentConfigToml> for AgentConfig {
     fn from(toml: AgentConfigToml) -> Self {
-        // Loading CCS env vars is best-effort: registry initialization should not fail
-        // just because a CCS profile is missing or misconfigured.
-        let ccs_env_vars = toml
-            .ccs_profile
-            .as_deref()
-            .map_or_else(HashMap::new, |profile| match load_ccs_env_vars(profile) {
-                Ok(vars) => vars,
-                Err(err) => {
-                    eprintln!(
-                        "Warning: failed to load CCS env vars for profile '{profile}': {err}"
-                    );
-                    HashMap::new()
-                }
-            });
-
-        // Merge manually specified env vars with CCS env vars
-        // CCS env vars take precedence (as documented in ccs_profile field)
-        let mut merged_env_vars = toml.env_vars;
-        for (key, value) in ccs_env_vars {
-            merged_env_vars.insert(key, value);
-        }
-
-        Self {
-            cmd: toml.cmd,
-            output_flag: toml.output_flag,
-            yolo_flag: toml.yolo_flag,
-            verbose_flag: toml.verbose_flag,
-            can_commit: toml.can_commit,
-            json_parser: JsonParserType::parse(&toml.json_parser),
-            model_flag: toml.model_flag,
-            print_flag: toml.print_flag,
-            streaming_flag: toml.streaming_flag,
-            session_flag: toml.session_flag,
-            env_vars: merged_env_vars,
-            display_name: toml.display_name,
-        }
+        let (config, _) = AgentConfig::try_from_ccs(toml);
+        config
     }
 }
 

@@ -37,17 +37,22 @@ const REBASE_APPLY_DIR: &str = "rebase-apply";
 #[cfg(any(test, feature = "test-utils"))]
 const REBASE_MERGE_DIR: &str = "rebase-merge";
 
-use std::io;
 use std::path::Path;
 
-use super::git2_to_io_error;
+use crate::git_helpers::git2_to_io_error;
 
-include!("rebase/error_types/kinds.rs");
-include!("rebase/error_types/classification.rs");
-include!("rebase/conflict_detection.rs");
-include!("rebase/operations/preconditions.rs");
-include!("rebase/operations/run.rs");
-include!("rebase/operations/abort.rs");
-include!("rebase/operations/conflicts.rs");
-include!("rebase/operations/continuation.rs");
-include!("rebase/tests.rs");
+mod io {
+    pub type Result<T> = std::io::Result<T>;
+    pub type Error = std::io::Error;
+    pub type ErrorKind = std::io::ErrorKind;
+}
+
+include!("rebase_kinds.rs");
+include!("rebase_classification.rs");
+include!("conflict_detection.rs");
+include!("rebase_preconditions.rs");
+include!("rebase_run.rs");
+include!("rebase_abort.rs");
+include!("rebase_conflicts.rs");
+include!("rebase_continuation.rs");
+include!("rebase_tests.rs");

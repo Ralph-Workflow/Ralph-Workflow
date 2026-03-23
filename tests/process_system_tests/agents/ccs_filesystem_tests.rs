@@ -103,7 +103,7 @@ fn test_non_glm_never_bypasses_ccs_wrapper_even_if_env_vars_loaded() {
     // Simulate: env vars were loaded, and claude exists on PATH.
     // Desired behavior: only GLM is allowed to bypass; everything else must run `ccs ...`.
     let resolved = resolve_ccs_command(&alias_config, "gemini", true, None, false);
-    assert_eq!(resolved, "ccs gemini");
+    assert_eq!(resolved.command, "ccs gemini");
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn test_glm_can_bypass_ccs_wrapper_when_env_vars_loaded() {
     };
 
     let resolved = resolve_ccs_command(&alias_config, "glm", true, None, false);
-    assert_eq!(resolved, claude_path.to_string_lossy().to_string());
+    assert_eq!(resolved.command, claude_path.to_string_lossy().to_string());
 }
 
 #[test]

@@ -1,10 +1,9 @@
-/// Prompt the user to confirm overwriting an existing PROMPT.md.
 ///
 /// Returns `true` if the user confirms, `false` otherwise.
 ///
 /// Requires stdin to be a terminal and at least one output stream (stdout/stderr)
 /// to be a terminal so prompts are visible.
-fn can_prompt_user() -> bool {
+pub fn can_prompt_user() -> bool {
     prompt_output_target().is_some()
 }
 
@@ -15,14 +14,14 @@ enum PromptOutputTarget {
 }
 
 fn prompt_output_target() -> Option<PromptOutputTarget> {
-    if !std::io::stdin().is_terminal() {
+    if !crate::cli::handlers::boundary::is_terminal() {
         return None;
     }
 
-    if std::io::stdout().is_terminal() {
+    if crate::cli::handlers::boundary::stdout_is_terminal() {
         return Some(PromptOutputTarget::Stdout);
     }
-    if std::io::stderr().is_terminal() {
+    if crate::cli::handlers::boundary::stderr_is_terminal() {
         return Some(PromptOutputTarget::Stderr);
     }
 
@@ -33,23 +32,13 @@ fn with_prompt_writer<T>(
     target: PromptOutputTarget,
     f: impl FnOnce(&mut dyn std::io::Write) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    use std::io;
-
     match target {
-        PromptOutputTarget::Stdout => {
-            let mut out = io::stdout().lock();
-            f(&mut out)
-        }
-        PromptOutputTarget::Stderr => {
-            let mut err = io::stderr().lock();
-            f(&mut err)
-        }
+        PromptOutputTarget::Stdout => f(&mut crate::cli::handlers::boundary::stdout()),
+        PromptOutputTarget::Stderr => f(&mut crate::cli::handlers::boundary::stderr()),
     }
 }
 
-fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::Result<bool> {
-    use std::io;
-
+pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::Result<bool> {
     let Some(target) = prompt_output_target() else {
         return Ok(false);
     };
@@ -67,13 +56,9 @@ fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::
         Ok(())
     })?;
 
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(0) | Err(_) => return Ok(false),
-        Ok(_) => {}
-    }
+    let input = crate::cli::handlers::boundary::read_line();
+    let response = input.unwrap_or_default().trim().to_lowercase();
 
-    let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
 }
 
@@ -81,9 +66,7 @@ fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::
 ///
 /// Returns `Some(template_name)` if the user selected a template,
 /// or `None` if the user declined or entered invalid input.
-fn prompt_for_template(colors: Colors) -> Option<String> {
-    use std::io;
-
+pub fn prompt_for_template(colors: Colors) -> Option<String> {
     let target = prompt_output_target()?;
     if with_prompt_writer(target, |w| {
         let _ = writeln!(
@@ -99,13 +82,9 @@ fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(0) | Err(_) => return None,
-        Ok(_) => {}
-    }
+    let input = crate::cli::handlers::boundary::read_line();
+    let response = input.unwrap_or_default().trim().to_lowercase();
 
-    let response = input.trim().to_lowercase();
     if response == "n" || response == "no" || response == "skip" {
         return None;
     }
@@ -116,21 +95,24 @@ fn prompt_for_template(colors: Colors) -> Option<String> {
         let _ = writeln!(w);
         let _ = writeln!(w, "Available Work Guides:");
 
-        for (i, (name, description)) in templates.iter().enumerate() {
-            let _ = writeln!(
-                w,
-                "  {}{}{}  {}{}{}",
-                colors.cyan(),
-                name,
-                colors.reset(),
-                colors.dim(),
-                description,
-                colors.reset()
-            );
-            if (i + 1) % 5 == 0 {
-                let _ = writeln!(w); // Group templates in sets of 5 for readability
-            }
-        }
+        templates
+            .iter()
+            .enumerate()
+            .for_each(|(i, (name, description))| {
+                let _ = writeln!(
+                    w,
+                    "  {}{}{}  {}{}{}",
+                    colors.cyan(),
+                    name,
+                    colors.reset(),
+                    colors.dim(),
+                    description,
+                    colors.reset()
+                );
+                if (i + 1) % 5 == 0 {
+                    let _ = writeln!(w);
+                }
+            });
 
         let _ = writeln!(w);
         let _ = writeln!(w, "Common choices:");
@@ -162,15 +144,12 @@ fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let mut template_input = String::new();
-    match io::stdin().read_line(&mut template_input) {
-        Ok(0) | Err(_) => return None,
-        Ok(_) => {}
-    }
+    let template_input = crate::cli::handlers::boundary::read_line();
+    let binding = template_input.unwrap_or_default();
+    let template_name = binding.trim();
 
-    let template_name = template_input.trim();
+    // Empty input defaults to 'quick' template
     if template_name.is_empty() {
-        // Default to 'quick' template
         return Some("quick".to_string());
     }
 

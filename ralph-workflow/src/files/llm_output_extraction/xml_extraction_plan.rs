@@ -78,28 +78,19 @@ struct OpenCodeStrategy;
 
 impl OpenCodeStrategy {
     fn accumulate_text(content: &str) -> String {
-        let mut accumulated = String::new();
-
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if !trimmed.starts_with('{') {
-                continue;
-            }
-
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                if json.get("type").and_then(|v| v.as_str()) == Some("text") {
-                    if let Some(text) = json
-                        .get("part")
-                        .and_then(|p| p.get("text"))
-                        .and_then(|v| v.as_str())
-                    {
-                        accumulated.push_str(text);
-                    }
-                }
-            }
-        }
-
-        accumulated
+        content
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with('{'))
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .filter(|json| json.get("type").and_then(|v| v.as_str()) == Some("text"))
+            .filter_map(|json| {
+                json.get("part")
+                    .and_then(|p| p.get("text"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .collect()
     }
 }
 
@@ -127,26 +118,20 @@ impl JsonResultStrategy {
 
 impl XmlExtractionStrategy for JsonResultStrategy {
     fn extract(&self, content: &str) -> Option<String> {
-        // Check each NDJSON line
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if !trimmed.starts_with('{') {
-                continue;
-            }
-
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                // Check common result fields
-                for field in ["result", "content", "message", "output", "text"] {
-                    if let Some(value) = json.get(field).and_then(|v| v.as_str()) {
-                        if let Some(xml) = Self::try_extract_from_value(value) {
-                            return Some(xml);
-                        }
-                    }
-                }
-            }
-        }
-
-        None
+        content
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with('{'))
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find_map(|json| {
+                ["result", "content", "message", "output", "text"]
+                    .iter()
+                    .find_map(|field| {
+                        json.get(field)
+                            .and_then(|v| v.as_str())
+                            .and_then(Self::try_extract_from_value)
+                    })
+            })
     }
 }
 
@@ -189,13 +174,10 @@ pub fn extract_plan_xml(content: &str) -> Option<String> {
         &EmbeddedXmlStrategy,
     ];
 
-    for strategy in strategies {
-        if let Some(xml) = strategy.extract(content) {
-            return Some(xml);
-        }
-    }
-
-    None
+    strategies
+        .iter()
+        .filter_map(|strategy| (*strategy).extract(content))
+        .next()
 }
 
 #[cfg(test)]
@@ -286,5 +268,29 @@ That's the plan!";
         let content = "This is just plain text without any XML tags.";
         let result = extract_plan_xml(content);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_opencode_accumulate_ignores_non_json_and_non_text_events() {
+        // This test validates that accumulate_text uses functional iteration
+        // and correctly filters only text events while ignoring malformed JSON
+        let content = r#"not json at all
+{"type":"step_start","part":{}}
+{"type":"text","part":{"text":"<ralph-plan>"}}
+random garbage line
+{"type":"text","part":{"text":"</ralph-plan>"}}"#;
+
+        let accumulated = OpenCodeStrategy::accumulate_text(content);
+        assert_eq!(accumulated, "<ralph-plan></ralph-plan>");
+    }
+
+    #[test]
+    fn test_json_result_strategy_searches_multiple_fields() {
+        // Test that JsonResultStrategy scans multiple field names and returns first match
+        let content = r#"{"type":"metadata","content":"not xml"}
+{"type":"result","result":"<ralph-plan><ralph-summary>Found in result</ralph-summary></ralph-plan>"}"#;
+        let result = extract_plan_xml(content);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("Found in result"));
     }
 }

@@ -28,7 +28,11 @@
 //! - [`loader`] - Unified configuration loader with env overrides
 //! - [`path_resolver`] - Configuration path resolution with dependency injection
 
-pub mod cloud;
+// pub mod cloud; // Disabled due to module conflict - cloud.rs is used directly
+#[path = "boundary.rs"]
+mod boundary;
+#[path = "cloud.rs"]
+mod cloud;
 pub mod loader;
 pub mod parser;
 pub mod path_resolver;
@@ -37,7 +41,7 @@ pub mod types;
 pub mod unified;
 pub mod validation;
 
-// Re-export main types at module level for convenience
+// Re-export cloud types from the private module
 pub use cloud::{
     CloudConfig, CloudStateConfig, GitAuthMethod, GitAuthStateMethod, GitRemoteConfig,
     GitRemoteStateConfig,

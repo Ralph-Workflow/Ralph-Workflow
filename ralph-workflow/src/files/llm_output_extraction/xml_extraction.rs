@@ -92,46 +92,67 @@ fn try_extract_from_markdown_fence(content: &str) -> Option<String> {
 /// Strategy 3: Extract XML from JSON strings (escaped).
 ///
 /// Handles:
-/// - NDJSON with result field containing escaped XML
+/// - NDJSON stream with result field containing escaped XML
 /// - Direct JSON with escaped XML in string values
 fn try_extract_from_json_string(content: &str) -> Option<String> {
     // Pattern 1: NDJSON stream with result field
     // {"type":"result","result":"<ralph-commit>...<\/ralph-commit>"}
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with('{') {
-            continue;
-        }
-
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            // Look for result field
-            if let Some(result) = json.get("result").and_then(|v| v.as_str()) {
-                // The result might have escaped XML, try to unescape and extract
-                if let Some(xml) = extract_ralph_commit_from_content(result) {
-                    return Some(xml);
-                }
-
-                // Try aggressive unescaping for double-escaped content
-                let unescaped = unescape_json_strings_aggressive(result);
-                if let Some(xml) = extract_ralph_commit_from_content(&unescaped) {
-                    return Some(xml);
-                }
+    let ndjson_result = content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if !trimmed.starts_with('{') {
+                return None;
             }
 
-            // Look for content/message fields as well (different agents use different names)
-            for field_name in ["content", "message", "output", "text"] {
-                if let Some(field_value) = json.get(field_name).and_then(|v| v.as_str()) {
-                    if let Some(xml) = extract_ralph_commit_from_content(field_value) {
-                        return Some(xml);
-                    }
+            let json = serde_json::from_str::<serde_json::Value>(trimmed).ok()?;
+            json.get("result")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
+        .find_map(|result| {
+            extract_ralph_commit_from_content(&result).or_else(|| {
+                let unescaped = unescape_json_strings_aggressive(&result);
+                extract_ralph_commit_from_content(&unescaped)
+            })
+        });
 
-                    let unescaped = unescape_json_strings_aggressive(field_value);
-                    if let Some(xml) = extract_ralph_commit_from_content(&unescaped) {
-                        return Some(xml);
-                    }
-                }
+    if ndjson_result.is_some() {
+        return ndjson_result;
+    }
+
+    // Also try content/message fields for NDJSON
+    let ndjson_fields_result = content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if !trimmed.starts_with('{') {
+                return None;
             }
-        }
+
+            serde_json::from_str::<serde_json::Value>(trimmed).ok()
+        })
+        .flat_map(|json| {
+            ["content", "message", "output", "text"]
+                .into_iter()
+                .filter_map(move |field_name| {
+                    json.get(field_name)
+                        .and_then(|v| v.as_str())
+                        .map(|field_value| {
+                            (
+                                String::from(field_value),
+                                unescape_json_strings_aggressive(field_value),
+                            )
+                        })
+                })
+        })
+        .find_map(|(field_value, unescaped)| {
+            extract_ralph_commit_from_content(&field_value)
+                .or_else(|| extract_ralph_commit_from_content(&unescaped))
+        });
+
+    if ndjson_fields_result.is_some() {
+        return ndjson_fields_result;
     }
 
     // Pattern 2: Direct JSON object (not NDJSON)
@@ -139,14 +160,10 @@ fn try_extract_from_json_string(content: &str) -> Option<String> {
     if trimmed.starts_with('{') && trimmed.contains(r#""result""#) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
             if let Some(result) = json.get("result").and_then(|v| v.as_str()) {
-                if let Some(xml) = extract_ralph_commit_from_content(result) {
-                    return Some(xml);
-                }
-
-                let unescaped = unescape_json_strings_aggressive(result);
-                if let Some(xml) = extract_ralph_commit_from_content(&unescaped) {
-                    return Some(xml);
-                }
+                return extract_ralph_commit_from_content(result).or_else(|| {
+                    let unescaped = unescape_json_strings_aggressive(result);
+                    extract_ralph_commit_from_content(&unescaped)
+                });
             }
         }
     }

@@ -213,9 +213,10 @@ fn review_prompt_construction_includes_all_required_components() {
 fn review_prompt_allows_empty_plan_and_changes() {
     use ralph_workflow::prompts::prompt_review_xml_with_context;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::prompts::template_registry::TemplateRegistry;
 
     with_default_timeout(|| {
-        let template_context = TemplateContext::default();
+        let template_context = TemplateContext::new(TemplateRegistry::new(None));
         let workspace = ralph_workflow::workspace::MemoryWorkspace::new_test();
         let review_prompt =
             prompt_review_xml_with_context(&template_context, "prompt", "", "", &workspace);

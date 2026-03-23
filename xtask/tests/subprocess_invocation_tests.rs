@@ -74,18 +74,34 @@ fn test_verify_help_flag_exits_successfully() {
 #[test]
 fn test_verify_gui_flag_is_accepted() {
     skip_if_in_verify();
-    // When run with --gui, should not fail on argument parsing
     let result = std::process::Command::new("cargo")
-        .args(["xtask", "verify", "--gui"])
+        .args(["xtask", "verify", "--gui", "--help"])
         .output()
-        .expect("cargo xtask verify --gui should execute");
+        .expect("cargo xtask verify --gui --help should execute");
 
-    // Should not fail on argument parsing - actual execution depends on environment
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    // Should see the check count for GUI mode
     assert!(
-        stderr.contains("clippy-ralph-gui") || result.status.success(),
-        "verify --gui should either run GUI checks or succeed, got: {}",
+        result.status.success(),
+        "verify --gui --help should exit successfully"
+    );
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("--gui"),
+        "verify help should include --gui option, got: {}",
         stderr
+    );
+}
+
+#[test]
+fn test_lsp_forbidden_allow_expect_help_flag_exits_successfully() {
+    skip_if_in_verify();
+    let result = std::process::Command::new("cargo")
+        .args(["xtask", "lsp-forbidden-allow-expect", "--help"])
+        .output()
+        .expect("cargo xtask lsp-forbidden-allow-expect --help should execute");
+
+    assert!(
+        result.status.success(),
+        "lsp-forbidden-allow-expect --help should exit successfully"
     );
 }

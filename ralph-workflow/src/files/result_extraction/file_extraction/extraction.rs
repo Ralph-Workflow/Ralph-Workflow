@@ -3,38 +3,34 @@
 
 use regex::Regex;
 use std::collections::BTreeSet;
-use std::sync::LazyLock;
-
-// Static regex patterns for file path extraction.
-// These are compiled once at first use and reused for all subsequent calls.
 
 /// Pattern 1: Bracketed format with optional line numbers.
 /// Matches: [src/main.rs:42], [src/lib.rs], [path/to/file.rs:100]
-static BRACKET_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn bracket_pattern() -> Regex {
     Regex::new(r"\[([^\]]+?\.[a-z]+(?::\d+)?)\]")
         .expect("BRACKET_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Pattern 2: Parenthesized format.
 /// Matches: (src/main.rs), (path/to/file.rs)
-static PAREN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn paren_pattern() -> Regex {
     Regex::new(r"\(([^\)]+?\.[a-z]+)\)")
         .expect("PAREN_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Pattern 3: Backtick format (used by some agents like Codex).
 /// Matches: `src/main.rs:42`, `path/to/file.rs`
-static BACKTICK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn backtick_pattern() -> Regex {
     Regex::new(r"`([^`]+?\.[a-z]+(?::\d+)?)`")
         .expect("BACKTICK_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Pattern 4: Bare colon format (file.rs:line).
 /// Matches: src/main.rs:42, lib.rs:123 (but not URLs or similar)
-static BARE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+fn bare_pattern() -> Regex {
     Regex::new(r"\b([\w/-]+?\.[a-z]+:\d+)\b")
         .expect("BARE_PATTERN: invalid regex - this is a developer error")
-});
+}
 
 /// Extract file paths from ISSUES markdown content.
 ///
@@ -75,54 +71,44 @@ static BARE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 /// assert_eq!(files, vec!["src/lib.rs", "src/main.rs", "src/utils.rs"]);
 /// ```
 pub fn extract_file_paths_from_issues(content: &str) -> Vec<String> {
-    let mut files = BTreeSet::new();
+    let bracket_pattern = bracket_pattern();
+    let paren_pattern = paren_pattern();
+    let backtick_pattern = backtick_pattern();
+    let bare_pattern = bare_pattern();
 
-    // Extract from bracketed format
-    for caps in BRACKET_PATTERN.captures_iter(content) {
-        if let Some(file_ref) = caps.get(1) {
-            let path = file_ref.as_str().trim();
-            // Remove line number if present
-            let file_path = path.split(':').next().unwrap_or(path);
-            if looks_like_file_path(file_path) {
-                files.insert(file_path.to_string());
-            }
-        }
-    }
+    // Extract from bracketed format (with optional line numbers stripped)
+    let bracket_files = bracket_pattern.captures_iter(content).filter_map(|caps| {
+        let path = caps.get(1)?.as_str().trim();
+        let file_path = path.split(':').next().unwrap_or(path);
+        looks_like_file_path(file_path).then(|| file_path.to_string())
+    });
 
     // Extract from parenthesized format
-    for caps in PAREN_PATTERN.captures_iter(content) {
-        if let Some(file_ref) = caps.get(1) {
-            let path = file_ref.as_str().trim();
-            if looks_like_file_path(path) {
-                files.insert(path.to_string());
-            }
-        }
-    }
+    let paren_files = paren_pattern.captures_iter(content).filter_map(|caps| {
+        let path = caps.get(1)?.as_str().trim();
+        looks_like_file_path(path).then(|| path.to_string())
+    });
 
-    // Extract from backtick format
-    for caps in BACKTICK_PATTERN.captures_iter(content) {
-        if let Some(file_ref) = caps.get(1) {
-            let path = file_ref.as_str().trim();
-            // Remove line number if present
-            let file_path = path.split(':').next().unwrap_or(path);
-            if looks_like_file_path(file_path) {
-                files.insert(file_path.to_string());
-            }
-        }
-    }
+    // Extract from backtick format (with optional line numbers stripped)
+    let backtick_files = backtick_pattern.captures_iter(content).filter_map(|caps| {
+        let path = caps.get(1)?.as_str().trim();
+        let file_path = path.split(':').next().unwrap_or(path);
+        looks_like_file_path(file_path).then(|| file_path.to_string())
+    });
 
-    // Extract from bare colon format
-    for caps in BARE_PATTERN.captures_iter(content) {
-        if let Some(file_ref) = caps.get(1) {
-            let path = file_ref.as_str().trim();
-            // Remove line number
-            let file_path = path.split(':').next().unwrap_or(path);
-            // Avoid duplicates of already-found bracketed/parenthesized files
-            if looks_like_file_path(file_path) && !files.contains(file_path) {
-                files.insert(file_path.to_string());
-            }
-        }
-    }
+    // Extract from bare colon format (line number always present in pattern)
+    let bare_files = bare_pattern.captures_iter(content).filter_map(|caps| {
+        let path = caps.get(1)?.as_str().trim();
+        let file_path = path.split(':').next().unwrap_or(path);
+        looks_like_file_path(file_path).then(|| file_path.to_string())
+    });
+
+    // BTreeSet deduplicates and sorts; collect all patterns together
+    let files: BTreeSet<String> = bracket_files
+        .chain(paren_files)
+        .chain(backtick_files)
+        .chain(bare_files)
+        .collect();
 
     files.into_iter().collect()
 }

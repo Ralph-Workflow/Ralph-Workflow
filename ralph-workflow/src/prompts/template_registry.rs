@@ -11,10 +11,9 @@
 //! 2. Embedded template: Compiled-in fallback
 //! 3. Error: Template not found
 
-use std::fs;
 use std::path::PathBuf;
 
-/// Error type for template loading operations.
+/// Error type for template loading and rendering operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum TemplateError {
     /// Template not found in user directory or embedded catalog
@@ -24,6 +23,18 @@ pub enum TemplateError {
     /// Error reading user template file
     #[error("Failed to read template '{name}': {reason}")]
     ReadError { name: String, reason: String },
+
+    /// Missing required variable in template
+    #[error("Missing required variable: {0}")]
+    MissingVariable(String),
+
+    /// Circular reference in partial templates
+    #[error("Circular reference in templates: {0}")]
+    CircularReference(String),
+
+    /// Partial template not found
+    #[error("Partial template not found: {0}")]
+    PartialNotFound(String),
 }
 
 /// Template registry for loading templates from multiple sources.
@@ -58,10 +69,10 @@ impl TemplateRegistry {
     /// `None` if home directory cannot be determined.
     #[must_use]
     pub fn default_user_templates_dir() -> Option<PathBuf> {
-        if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-            let xdg = xdg.trim();
-            if !xdg.is_empty() {
-                return Some(PathBuf::from(xdg).join("ralph").join("templates"));
+        if let Some(xdg) = get_xdg_config_home() {
+            let xdg_str = xdg.to_string_lossy().trim().to_string();
+            if !xdg_str.is_empty() {
+                return Some(PathBuf::from(xdg_str).join("ralph").join("templates"));
             }
         }
 
@@ -77,7 +88,7 @@ impl TemplateRegistry {
     pub fn has_user_template(&self, name: &str) -> bool {
         self.user_templates_dir
             .as_ref()
-            .is_some_and(|user_dir| user_dir.join(format!("{name}.txt")).exists())
+            .is_some_and(|user_dir| template_exists(&user_dir.join(format!("{name}.txt"))))
     }
 
     /// Get the source of a template (user or embedded).
@@ -120,8 +131,8 @@ impl TemplateRegistry {
         // Try user template first
         if let Some(user_dir) = &self.user_templates_dir {
             let user_path = user_dir.join(format!("{name}.txt"));
-            if user_path.exists() {
-                return fs::read_to_string(&user_path).map_err(|e| TemplateError::ReadError {
+            if template_exists(&user_path) {
+                return load_template(&user_path).map_err(|e| TemplateError::ReadError {
                     name: name.to_string(),
                     reason: e.to_string(),
                 });
@@ -166,6 +177,9 @@ impl TemplateRegistry {
     }
 }
 
+// I/O helpers (env vars, filesystem) live in the boundary submodule.
+include!("template_registry/io.rs");
+
 impl Default for TemplateRegistry {
     fn default() -> Self {
         Self::new(Self::default_user_templates_dir())
@@ -175,6 +189,7 @@ impl Default for TemplateRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_registry_creation() {
@@ -298,11 +313,23 @@ mod tests {
     #[test]
     fn test_all_templates_have_content() {
         let registry = TemplateRegistry::new(None);
-        for name in TemplateRegistry::all_template_names() {
-            let result = registry.get_template(&name);
-            assert!(result.is_ok(), "Template '{name}' should load successfully");
-            let content = result.unwrap();
-            assert!(!content.is_empty(), "Template '{name}' should not be empty");
-        }
+        TemplateRegistry::all_template_names()
+            .into_iter()
+            .for_each(|name| {
+                let result = registry.get_template(&name);
+                assert!(result.is_ok(), "Template '{name}' should load successfully");
+                let content = result.unwrap();
+                assert!(!content.is_empty(), "Template '{name}' should not be empty");
+            });
+    }
+
+    #[test]
+    fn load_template_failure_yields_typed_error() {
+        let path = Path::new("/nonexistent-template-file");
+        let result = load_template(path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, LoadTemplateError::Io { .. }));
+        assert!(err.to_string().contains("No such file"));
     }
 }

@@ -12,81 +12,100 @@ use super::helpers::{
 };
 use crate::files::llm_output_extraction::validate_development_result_xml;
 use crate::reducer::ui_event::XmlOutputContext;
-use std::fmt::Write;
+use crate::rendering::xml::SkillsMcp;
 
 /// Render development result XML with semantic formatting.
 pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
-    let mut output = String::new();
-
-    // Header with optional iteration context
-    if let Some(ctx) = output_context {
-        if let Some(iter) = ctx.iteration {
-            writeln!(output, "\n╔═══ Development Iteration {iter} ═══╗\n").unwrap();
-        }
-    }
+    let header = output_context
+        .and_then(|ctx| ctx.iteration)
+        .map(|iter| format!("\n╔═══ Development Iteration {iter} ═══╗\n"))
+        .unwrap_or_default();
 
     if let Ok(elements) = validate_development_result_xml(content) {
-        // Status with emoji and label
         let (status_emoji, status_label) = match elements.status.as_str() {
             "completed" => ("✅", "Completed"),
             "partial" => ("🔄", "In Progress"),
             "failed" => ("❌", "Failed"),
             _ => ("❓", "Unknown"),
         };
-        writeln!(output, "{status_emoji} Status: {status_label}\n").unwrap();
 
-        // Summary with proper formatting for multiline
-        output.push_str("📋 Summary:\n");
-        for line in elements.summary.lines() {
-            writeln!(output, "   {line}").unwrap();
-        }
+        let summary_part = {
+            let summary_lines: String = elements
+                .summary
+                .lines()
+                .map(|line| format!("   {line}\n"))
+                .collect();
+            format!("📋 Summary:\n{}", summary_lines)
+        };
 
-        // Skills & MCP recommendations (if present)
-        if let Some(ref sm) = elements.skills_mcp {
-            let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
-            if has_structured || sm.raw_content.is_some() {
-                output.push_str("\n🛠️  Skills & MCP Recommendations:\n");
-                for skill in &sm.skills {
-                    if let Some(ref reason) = skill.reason {
-                        writeln!(output, "   - skill: {} \u{2014} {}", skill.name, reason).unwrap();
-                    } else {
-                        writeln!(output, "   - skill: {}", skill.name).unwrap();
-                    }
-                }
-                for mcp in &sm.mcps {
-                    if let Some(ref reason) = mcp.reason {
-                        writeln!(output, "   - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
-                    } else {
-                        writeln!(output, "   - mcp: {}", mcp.name).unwrap();
-                    }
-                }
-                if let Some(ref raw) = sm.raw_content {
-                    let trimmed: &str = raw.trim();
-                    if !trimmed.is_empty() && !has_structured {
-                        writeln!(output, "   {trimmed}").unwrap();
-                    }
-                }
+        let skills_mcp_part = elements.skills_mcp.as_ref().map_or(String::new(), |sm| {
+            let output = render_skills_mcp_to_string(sm);
+            if output.is_empty() {
+                String::new()
+            } else {
+                format!("\n🛠️  Skills & MCP Recommendations:\n{output}")
             }
-        }
+        });
 
-        // Files changed: prefer diff-like rendering when unified diff is present.
-        if let Some(ref files) = elements.files_changed {
-            output.push_str(&render_files_changed_as_diff_like_view(files));
-        }
+        let files_part = elements
+            .files_changed
+            .as_ref()
+            .map(|files| render_files_changed_as_diff_like_view(files))
+            .unwrap_or_default();
 
-        // Next steps with proper formatting
-        if let Some(ref next) = elements.next_steps {
-            output.push_str("\n➡️  Next Steps:\n");
-            for line in next.lines() {
-                writeln!(output, "   {line}").unwrap();
-            }
-        }
+        let next_steps_part = elements.next_steps.as_ref().map_or(String::new(), |next| {
+            let next_lines: String = next.lines().map(|line| format!("   {line}\n")).collect();
+            format!("\n➡️  Next Steps:\n{next_lines}")
+        });
+
+        format!(
+            "{header}{status_emoji} Status: {status_label}\n\n{summary_part}{skills_mcp_part}{files_part}{next_steps_part}"
+        )
     } else {
-        output.push_str("⚠️  Unable to parse development result XML\n\n");
-        output.push_str(content);
+        format!("{header}⚠️  Unable to parse development result XML\n\n{content}")
     }
+}
 
-    output
+fn render_skills_mcp_to_string(sm: &SkillsMcp) -> String {
+    let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+    if has_structured || sm.raw_content.is_some() {
+        let skill_lines: String = sm
+            .skills
+            .iter()
+            .map(|skill| {
+                skill
+                    .reason
+                    .as_ref()
+                    .map(|r| format!("   - skill: {} \u{2014} {}\n", skill.name, r))
+                    .unwrap_or_else(|| format!("   - skill: {}\n", skill.name))
+            })
+            .collect();
+
+        let mcp_lines: String = sm
+            .mcps
+            .iter()
+            .map(|mcp| {
+                mcp.reason
+                    .as_ref()
+                    .map(|r| format!("   - mcp: {} \u{2014} {}\n", mcp.name, r))
+                    .unwrap_or_else(|| format!("   - mcp: {}\n", mcp.name))
+            })
+            .collect();
+
+        let raw_part = sm
+            .raw_content
+            .as_ref()
+            .filter(|raw: &&String| {
+                let trimmed: &str = raw.trim();
+                !trimmed.is_empty() && !has_structured
+            })
+            .map(|raw: &String| format!("   {}\n", raw.trim()))
+            .unwrap_or_default();
+
+        format!("{}{}{}", skill_lines, mcp_lines, raw_part)
+    } else {
+        String::new()
+    }
 }
 
 fn render_files_changed_as_diff_like_view(files_changed: &str) -> String {
@@ -106,32 +125,28 @@ fn render_files_changed_as_diff_like_view(files_changed: &str) -> String {
     }
 
     let file_list: Vec<&str> = items.iter().map(|(p, _)| p.as_str()).collect();
-    let mut output = String::new();
-    output.push_str("\n📁 Files Changed:\n");
-    writeln!(
-        output,
-        "   Modified {} file(s): {}",
-        file_list.len(),
-        file_list.join(", ")
-    )
-    .unwrap();
 
-    for (path, action) in items {
-        writeln!(output, "\n   📄 {path}").unwrap();
-        writeln!(
-            output,
-            "      Action: {}",
-            match action {
+    let files_output: String = items
+        .iter()
+        .map(|(path, action)| {
+            let action_str = match action {
                 ChangeAction::Create => "created",
                 ChangeAction::Modify => "modified",
                 ChangeAction::Delete => "deleted",
-            }
-        )
-        .unwrap();
-        output.push_str("      (no diff provided)\n");
-    }
+            };
+            format!(
+                "\n   📄 {}\n      Action: {}\n      (no diff provided)\n",
+                path, action_str
+            )
+        })
+        .collect();
 
-    output
+    format!(
+        "\n📁 Files Changed:\n   Modified {} file(s): {}{}",
+        file_list.len(),
+        file_list.join(", "),
+        files_output
+    )
 }
 
 #[cfg(test)]

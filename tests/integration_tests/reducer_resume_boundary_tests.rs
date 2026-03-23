@@ -215,7 +215,7 @@ fn test_resume_at_boundary_continues_through_remaining_phases() {
             state,
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
-                vec!["claude".to_string()],
+                vec!["claude".into()],
                 3,
                 1000,
                 2.0,

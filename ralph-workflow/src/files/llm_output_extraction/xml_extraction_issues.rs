@@ -93,58 +93,44 @@ fn try_extract_from_markdown_fence(content: &str) -> Option<String> {
 
 /// Strategy 3: Extract XML from JSON strings (escaped).
 fn try_extract_from_json_string(content: &str) -> Option<String> {
-    // Pattern 1: NDJSON stream with result field
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with('{') {
-            continue;
-        }
+    // Helper: try raw extraction, then unescape and retry
+    let try_extract_field = |value: &str| {
+        extract_ralph_issues_from_content(value).or_else(|| {
+            let unescaped = unescape_json_strings_aggressive(value);
+            extract_ralph_issues_from_content(&unescaped)
+        })
+    };
 
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            if let Some(result) = json.get("result").and_then(|v| v.as_str()) {
-                if let Some(xml) = extract_ralph_issues_from_content(result) {
-                    return Some(xml);
-                }
-
-                let unescaped = unescape_json_strings_aggressive(result);
-                if let Some(xml) = extract_ralph_issues_from_content(&unescaped) {
-                    return Some(xml);
-                }
+    // Pattern 1: NDJSON stream - scan lines for JSON with multi-field search
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with('{'))
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find_map(|json| {
+            ["result", "content", "message", "output", "text"]
+                .iter()
+                .find_map(|field_name| {
+                    json.get(field_name)
+                        .and_then(|v| v.as_str())
+                        .and_then(try_extract_field)
+                })
+        })
+        .or_else(|| {
+            // Pattern 2: Direct JSON object (not NDJSON)
+            let trimmed = content.trim();
+            if trimmed.starts_with('{') && trimmed.contains(r#""result""#) {
+                serde_json::from_str::<serde_json::Value>(trimmed)
+                    .ok()
+                    .and_then(|json| {
+                        json.get("result")
+                            .and_then(|v| v.as_str())
+                            .and_then(try_extract_field)
+                    })
+            } else {
+                None
             }
-
-            for field_name in ["content", "message", "output", "text"] {
-                if let Some(field_value) = json.get(field_name).and_then(|v| v.as_str()) {
-                    if let Some(xml) = extract_ralph_issues_from_content(field_value) {
-                        return Some(xml);
-                    }
-
-                    let unescaped = unescape_json_strings_aggressive(field_value);
-                    if let Some(xml) = extract_ralph_issues_from_content(&unescaped) {
-                        return Some(xml);
-                    }
-                }
-            }
-        }
-    }
-
-    // Pattern 2: Direct JSON object (not NDJSON)
-    let trimmed = content.trim();
-    if trimmed.starts_with('{') && trimmed.contains(r#""result""#) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            if let Some(result) = json.get("result").and_then(|v| v.as_str()) {
-                if let Some(xml) = extract_ralph_issues_from_content(result) {
-                    return Some(xml);
-                }
-
-                let unescaped = unescape_json_strings_aggressive(result);
-                if let Some(xml) = extract_ralph_issues_from_content(&unescaped) {
-                    return Some(xml);
-                }
-            }
-        }
-    }
-
-    None
+        })
 }
 
 /// Strategy 4: Search for XML tags anywhere in content.
@@ -226,5 +212,16 @@ That's all!";
         let content = r"This is just plain text without any XML tags.";
         let result = extract_issues_xml(content);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_from_json_message_field() {
+        // Validates multi-field search: should find in "message" when "result" absent
+        let content = r#"{"type":"event","message":"<ralph-issues>\n<ralph-issue>Issue from message</ralph-issue>\n</ralph-issues>"}"#;
+        let result = extract_issues_xml(content);
+        assert!(result.is_some());
+        let xml = result.unwrap();
+        assert!(xml.contains("<ralph-issues>"));
+        assert!(xml.contains("Issue from message"));
     }
 }

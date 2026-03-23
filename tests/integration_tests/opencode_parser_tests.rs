@@ -30,7 +30,7 @@ fn test_opencode_parser_normal_flow() {
 
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer;
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Quiet, printer)
                 .with_log_file_for_test(log_path.to_str().unwrap());
 
@@ -66,7 +66,7 @@ fn test_opencode_parser_text_streaming() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -96,7 +96,7 @@ fn test_opencode_parser_none_mode_flushes_at_step_finish() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::None);
 
@@ -132,7 +132,7 @@ fn test_opencode_parser_tool_use_completed() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Verbose, printer);
 
         let input = r#"{"type":"tool_use","timestamp":1768191346712,"sessionID":"ses_44f9562d4ffe","part":{"id":"prt_bb06ac80c001","sessionID":"ses_44f9562d4ffe","messageID":"msg_bb06a9dc1001","type":"tool","callID":"call_8a2985d92e63","tool":"read","state":{"status":"completed","input":{"filePath":"/test/PLAN.md"},"output":"<file>\n00001| # Implementation Plan\n</file>","title":"PLAN.md"}}}"#;
@@ -152,7 +152,7 @@ fn test_opencode_parser_tool_use_started() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -176,7 +176,7 @@ fn test_opencode_parser_step_finish_with_stats() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -200,7 +200,7 @@ fn test_opencode_parser_step_finish_reasons() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -224,7 +224,7 @@ fn test_opencode_parser_tool_output_object() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Verbose, printer);
 
         let input = r#"{"type":"tool_use","timestamp":1768191346712,"sessionID":"test","part":{"id":"prt_001","type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"/test.rs"},"output":{"ok":true,"bytes":123}}}}"#;
@@ -246,7 +246,7 @@ fn test_opencode_parser_log_file_flushed() {
 
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer;
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Quiet, printer)
                 .with_log_file_for_test(log_path.to_str().unwrap());
 
@@ -277,7 +277,7 @@ fn test_opencode_parser_tool_sequence() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -306,7 +306,7 @@ fn test_opencode_parser_log_contains_events() {
 
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer;
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Quiet, printer)
                 .with_log_file_for_test(log_path.to_str().unwrap());
 
@@ -343,7 +343,7 @@ fn test_opencode_parser_multiple_steps() {
 
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer;
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Quiet, printer)
                 .with_log_file_for_test(log_path.to_str().unwrap());
 
@@ -372,7 +372,7 @@ fn test_opencode_parser_malformed_json() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -405,7 +405,7 @@ fn test_opencode_parser_truncated_stream() {
 
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer;
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Quiet, printer)
                 .with_log_file_for_test(log_path.to_str().unwrap());
 
@@ -435,7 +435,7 @@ fn test_opencode_parser_error_reason() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -461,7 +461,7 @@ fn test_opencode_parser_consecutive_text_handled() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -492,7 +492,7 @@ fn test_opencode_parser_interleaved_tool_text() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer)
                 .with_terminal_mode(ralph_workflow::json_parser::TerminalMode::Full);
 
@@ -525,7 +525,7 @@ fn test_opencode_parser_cost_and_tokens() {
         let workspace = MemoryWorkspace::new_test();
         let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
         let printer: SharedPrinter = test_printer.clone();
-        let parser =
+        let mut parser =
             OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Verbose, printer);
 
         let input = r#"{"type":"step_start","timestamp":1000,"sessionID":"cost-test","part":{"type":"step-start"}}

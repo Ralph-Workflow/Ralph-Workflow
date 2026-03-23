@@ -5,7 +5,7 @@
 
 use super::event::CliEvent;
 
-/// Convert CLI arguments into a sequence of events.
+/// Convert CLI arguments into a sequence of events (functional pattern with iterator pipeline).
 ///
 /// This function maps each relevant field in the Args struct to a
 /// corresponding `CliEvent`. Events are generated in a deterministic order,
@@ -34,121 +34,141 @@ use super::event::CliEvent;
 /// A vector of `CliEvents` representing all specified CLI arguments.
 #[must_use]
 pub fn args_to_events(args: &super::super::Args) -> Vec<CliEvent> {
-    let mut events = Vec::new();
+    let verbosity_events = std::iter::empty()
+        .chain(
+            args.verbosity_shorthand
+                .quiet
+                .then_some(CliEvent::QuietModeEnabled),
+        )
+        .chain(
+            args.verbosity_shorthand
+                .full
+                .then_some(CliEvent::FullModeEnabled),
+        )
+        .chain(
+            args.debug_verbosity
+                .debug
+                .then_some(CliEvent::DebugModeEnabled),
+        )
+        .chain(args.verbosity.map(|level| CliEvent::VerbositySet { level }));
 
-    // ===== Verbosity Events =====
-    if args.verbosity_shorthand.quiet {
-        events.push(CliEvent::QuietModeEnabled);
-    }
-    if args.verbosity_shorthand.full {
-        events.push(CliEvent::FullModeEnabled);
-    }
-    if args.debug_verbosity.debug {
-        events.push(CliEvent::DebugModeEnabled);
-    }
-    if let Some(level) = args.verbosity {
-        events.push(CliEvent::VerbositySet { level });
-    }
+    let preset_events = std::iter::empty()
+        .chain(
+            args.quick_presets
+                .quick
+                .then_some(CliEvent::QuickPresetApplied),
+        )
+        .chain(
+            args.quick_presets
+                .rapid
+                .then_some(CliEvent::RapidPresetApplied),
+        )
+        .chain(
+            args.quick_presets
+                .long
+                .then_some(CliEvent::LongPresetApplied),
+        )
+        .chain(
+            args.standard_presets
+                .standard
+                .then_some(CliEvent::StandardPresetApplied),
+        )
+        .chain(
+            args.standard_presets
+                .thorough
+                .then_some(CliEvent::ThoroughPresetApplied),
+        );
 
-    // ===== Preset Events =====
-    // Order matters: later presets override earlier ones
-    if args.quick_presets.quick {
-        events.push(CliEvent::QuickPresetApplied);
-    }
-    if args.quick_presets.rapid {
-        events.push(CliEvent::RapidPresetApplied);
-    }
-    // THE FIX: These three preset flags were missing!
-    if args.quick_presets.long {
-        events.push(CliEvent::LongPresetApplied);
-    }
-    if args.standard_presets.standard {
-        events.push(CliEvent::StandardPresetApplied);
-    }
-    if args.standard_presets.thorough {
-        events.push(CliEvent::ThoroughPresetApplied);
-    }
+    let iteration_events = std::iter::empty()
+        .chain(
+            args.developer_iters
+                .map(|v| CliEvent::DeveloperItersSet { value: v }),
+        )
+        .chain(
+            args.reviewer_reviews
+                .map(|v| CliEvent::ReviewerReviewsSet { value: v }),
+        );
 
-    // ===== Iteration Count Events =====
-    // Explicit iteration counts come after presets so they override preset defaults
-    if let Some(iters) = args.developer_iters {
-        events.push(CliEvent::DeveloperItersSet { value: iters });
-    }
-    if let Some(reviews) = args.reviewer_reviews {
-        events.push(CliEvent::ReviewerReviewsSet { value: reviews });
-    }
+    let agent_events = std::iter::empty()
+        .chain(
+            args.developer_agent
+                .clone()
+                .map(|a| CliEvent::DeveloperAgentSet { agent: a }),
+        )
+        .chain(
+            args.reviewer_agent
+                .clone()
+                .map(|a| CliEvent::ReviewerAgentSet { agent: a }),
+        )
+        .chain(
+            args.developer_model
+                .clone()
+                .map(|m| CliEvent::DeveloperModelSet { model: m }),
+        )
+        .chain(
+            args.reviewer_model
+                .clone()
+                .map(|m| CliEvent::ReviewerModelSet { model: m }),
+        )
+        .chain(
+            args.developer_provider
+                .clone()
+                .map(|p| CliEvent::DeveloperProviderSet { provider: p }),
+        )
+        .chain(
+            args.reviewer_provider
+                .clone()
+                .map(|p| CliEvent::ReviewerProviderSet { provider: p }),
+        )
+        .chain(
+            args.reviewer_json_parser
+                .clone()
+                .map(|p| CliEvent::ReviewerJsonParserSet { parser: p }),
+        );
 
-    // ===== Agent Selection Events =====
-    if let Some(ref agent) = args.developer_agent {
-        events.push(CliEvent::DeveloperAgentSet {
-            agent: agent.clone(),
-        });
-    }
-    if let Some(ref agent) = args.reviewer_agent {
-        events.push(CliEvent::ReviewerAgentSet {
-            agent: agent.clone(),
-        });
-    }
-    if let Some(ref model) = args.developer_model {
-        events.push(CliEvent::DeveloperModelSet {
-            model: model.clone(),
-        });
-    }
-    if let Some(ref model) = args.reviewer_model {
-        events.push(CliEvent::ReviewerModelSet {
-            model: model.clone(),
-        });
-    }
-    if let Some(ref provider) = args.developer_provider {
-        events.push(CliEvent::DeveloperProviderSet {
-            provider: provider.clone(),
-        });
-    }
-    if let Some(ref provider) = args.reviewer_provider {
-        events.push(CliEvent::ReviewerProviderSet {
-            provider: provider.clone(),
-        });
-    }
-    if let Some(ref parser) = args.reviewer_json_parser {
-        events.push(CliEvent::ReviewerJsonParserSet {
-            parser: parser.clone(),
-        });
-    }
+    let preset_selection_events = args
+        .preset
+        .as_ref()
+        .map(|p| CliEvent::AgentPresetSet {
+            preset: format!("{p:?}"),
+        })
+        .into_iter();
 
-    // ===== Agent Preset Events =====
-    if let Some(ref preset) = args.preset {
-        events.push(CliEvent::AgentPresetSet {
-            preset: format!("{preset:?}"),
-        });
-    }
+    let config_events = std::iter::empty()
+        .chain(args.no_isolation.then_some(CliEvent::IsolationModeDisabled))
+        .chain(
+            args.review_depth
+                .clone()
+                .map(|d| CliEvent::ReviewDepthSet { depth: d }),
+        )
+        .chain(
+            args.git_user_name
+                .as_ref()
+                .map(|n| CliEvent::GitUserNameSet {
+                    name: n.trim().to_string(),
+                }),
+        )
+        .chain(
+            args.git_user_email
+                .as_ref()
+                .map(|e| CliEvent::GitUserEmailSet {
+                    email: e.trim().to_string(),
+                }),
+        )
+        .chain(
+            args.show_streaming_metrics
+                .then_some(CliEvent::StreamingMetricsEnabled),
+        );
 
-    // ===== Configuration Events =====
-    if args.no_isolation {
-        events.push(CliEvent::IsolationModeDisabled);
-    }
-    if let Some(ref depth) = args.review_depth {
-        events.push(CliEvent::ReviewDepthSet {
-            depth: depth.clone(),
-        });
-    }
-    if let Some(ref name) = args.git_user_name {
-        events.push(CliEvent::GitUserNameSet {
-            name: name.trim().to_string(),
-        });
-    }
-    if let Some(ref email) = args.git_user_email {
-        events.push(CliEvent::GitUserEmailSet {
-            email: email.trim().to_string(),
-        });
-    }
-    if args.show_streaming_metrics {
-        events.push(CliEvent::StreamingMetricsEnabled);
-    }
-
-    // ===== Finalization =====
-    events.push(CliEvent::CliProcessingComplete);
-
-    events
+    verbosity_events
+        .into_iter()
+        .chain(preset_events)
+        .chain(iteration_events)
+        .chain(agent_events)
+        .chain(preset_selection_events)
+        .chain(config_events)
+        .chain(std::iter::once(CliEvent::CliProcessingComplete))
+        .collect()
 }
 
 #[cfg(test)]

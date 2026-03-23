@@ -2,29 +2,133 @@
 
 This repository uses [dylint](https://github.com/trailofbits/dylint) for custom Rust lints.
 
+## Consolidation: All Lints in ralph_lints
+
+**All custom lints have been consolidated into a single crate: `ralph_lints`.**
+
+This was done for performance reasons:
+- Building multiple separate lint crates (`--all`) significantly increases dylint driver build time
+- Loading a single consolidated lint library reduces initialization overhead
+- Faster iteration cycles during development
+
+The individual lint crates (file_too_long, forbid_mut_binding, forbid_imperative_loops, forbid_mutating_receiver_methods, forbid_interior_mutability) have been removed. All lint implementations are now located in `lints/ralph_lints/src/`.
+
+## Lint Severity Levels
+
+The dylint lints are configured at varying severity levels in their definitions (e.g., `pub FORBID_MUT_BINDING, Warn, ...` or `pub FORBID_DOMAIN_BOUNDARY_DEPENDENCIES, Deny, ...`). Lint definitions use `Deny` for architectural rules that must never be bypassed, and `Warn` for rules where narrow heuristics approximate a property rather than fully proving it. The `--cap-lints=deny` flag in the build system ensures that all lints respect their configured severity:
+
+- **`--cap-lints=deny`**: Lints stay at their defined level (`Deny`, `Warn`, or `Allow`). If a lint is set to `Deny`, violations cause the build to fail.
+- **`--cap-lints=allow`**: Would cap ALL lints to `Allow`, effectively disabling them. This is never used in this repository.
+
+Using `--cap-lints=deny` is essential because:
+1. It preserves the intended severity of each lint
+2. It ensures violations are caught at compile time rather than silently ignored
+3. It makes the lint system effective as a quality gate
+
+## Lint policy
+
+The four functional-programming lints (`forbid_mut_binding`, `forbid_imperative_loops`,
+`forbid_mutating_receiver_methods`, `forbid_interior_mutability`) each enforce a specific
+functional programming principle.  The **rule itself** — what it forbids and where it
+permits exceptions — **MUST NOT be altered**.  If the *implementation* has a bug (false
+positives, false negatives, or code that contradicts the principle it enforces), fix the
+implementation.  The spirit of the rule is authoritative, not the current code.
+
+## FP principles behind the lints
+
+The four functional lints are grounded in established functional programming practice,
+particularly lessons from Haskell:
+
+| Lint | FP principle | Haskell analogy |
+|------|-------------|-----------------|
+| `forbid_mut_binding` | **Immutability by default.** All bindings are immutable; values are transformed by producing new values. | Haskell has no `let mut` — every binding is immutable. |
+| `forbid_imperative_loops` | **Avoid explicit recursion and imperative iteration.** Prefer higher-order combinators (`map`, `filter`, `fold`). | HaskellWiki: "Avoid explicit recursion — prefer `map`, `filter`, `foldr`." |
+| `forbid_mutating_receiver_methods` | **Referential transparency and value semantics.** Data structures are persistent — operations return new values, not mutate in place. | `Data.Map.insert` returns a new map. |
+| `forbid_interior_mutability` | **`&T` must mean truly immutable.** No mechanism to mutate behind a shared reference in pure code. | Haskell values are immutable; `IORef`/`MVar` exist only in `IO`. |
+
+For practical examples of how to rewrite imperative code to satisfy these lints, see
+`docs/code-style/functional-transformations.md`.
+
 ## Available Lints
 
-| Lint | Description |
-|------|-------------|
-| `file_too_long` | Warns when a source file exceeds 500 lines (consider refactoring) or 1000 lines (MUST refactor) |
-| `forbid_mut_binding` | Rejects `let mut` bindings outside boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`) |
-| `forbid_imperative_loops` | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules |
-| `forbid_mutating_receiver_methods` | Rejects calls to `&mut self` methods unless the receiver type is in the boundary allowlist |
-| `forbid_interior_mutability` | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules |
+| Lint | Severity | Description |
+|------|----------|-------------|
+| `file_too_long` | Deny | Rejects source files at 1000+ lines; 500+ lines remain a style-review guideline rather than a build-stopping lint |
+| `forbid_mut_binding` | Warn | Rejects mutable bindings (`let mut`, mutable function parameters) outside boundary modules. **v1 scope:** pattern-based heuristic; does not prove the binding never escapes. |
+| `forbid_imperative_loops` | Warn | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules. **v1 scope:** pattern-based heuristic; does not prove the loop never performs effects. |
+| `forbid_mutating_receiver_methods` | Warn | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module. **v1 scope:** type-based heuristic; does not prove the method has no side effects. |
+| `forbid_interior_mutability` | Warn | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules. **v1 scope:** type-based heuristic; does not prove interior mutation never occurs. |
+| `forbid_terminal_output` | Warn | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules. **v1 scope:** pattern-based heuristic; does not prove no output occurs. |
+| `forbid_io_effects` | Warn | Rejects direct effect access (`std::fs`, `std::env`, `std::process`, network, threads/tasks, randomness, stdio, clock reads) outside boundary modules. **v1 scope:** path-based heuristic; does not prove all effect paths are caught. |
+| `forbid_nested_boundary_modules` | Deny | Rejects nested modules inside boundary directories so effect seams stay flat and wiring-focused |
+| `boundary_function_too_complex` | Warn | Flags boundary functions exceeding a complexity threshold |
+| `forbid_domain_boundary_dependencies` | Deny | Rejects `use` / `import` items that reference boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`, etc.) from non-boundary modules. Prevents domain code from directly depending on boundary implementations. **v1 scope:** path-based import matching only; does not trace re-exports. |
+| `forbid_boundary_policy_calls` | Deny | Rejects direct calls from boundary modules to reducer/orchestrator policy helpers. Policy decisions belong in domain code. **v1 scope:** matches `reducer::determine_*`, `reducer::reduce_*`, `orchestrator::determine_*`, `orchestrator::reduce_*` call paths only; does not track indirect calls. |
+| `forbid_result_swallowing` | Deny | Rejects silent Result discard patterns (`let _ = result`, `.ok()` on Result, single-arm `if let Err(_)` with unit body). Hidden failure handling undermines the explicit-effect model. **v1 scope:** does not detect match arms that explicitly handle both variants. |
+| `forbid_raw_effect_types_in_public_apis` | Warn | Rejects public functions that return raw effect-native types (`std::process::Output`, `std::process::Child`) without translation. Boundary adapters should translate before returning inward. **v1 scope:** string-based type matching on function signatures; does not follow type aliases or trait bounds. |
+| `forbid_boundary_retry_loops` | Deny | Rejects inline retry loops inside boundary modules that both perform I/O and track attempt counters (effect call + counter variable + increment + max check). Retry policy belongs in orchestration, not inline boundary code. **v1 scope:** pattern-based heuristic; does not prove termination or correctness. |
 
 ### Boundary modules
 
 The lints `forbid_mut_binding`, `forbid_imperative_loops`, `forbid_mutating_receiver_methods`,
-and `forbid_interior_mutability` all share a **boundary module** concept. Code in a directory
-whose path contains one of these components is exempt from the restriction:
+`forbid_interior_mutability`, `forbid_terminal_output`, `forbid_io_effects`, and all the
+**forbid_boundary_*** and **forbid_raw_*** lints share the **boundary module** concept. Code in a
+directory whose path contains one of these components is treated as an effect boundary.
+
+Canonical architectural boundary categories:
 
 - `io/`
 - `runtime/`
 - `ffi/`
 - `boundary/`
+- `executor/`
 
-This allows low-level I/O, FFI glue, and runtime bootstrap code to use mutation where the
-underlying API demands it, while keeping all application-level code purely functional.
+The lint crate also recognizes a small set of implementation-specific boundary markers used by
+existing adapter code:
+
+- `claude/`
+- `codex/`
+- `gemini/`
+- `opencode/`
+- `streaming_state/`
+- `health/`
+- `deduplication/`
+- `delta_display/`
+- `printer/`
+
+This mirrors the Haskell separation between pure computation and the `IO` monad, but with an
+important repository-specific rule: a boundary marker is an effect seam, not a general escape
+hatch. Mutation is tolerated there only because the underlying capability demands it.
+
+Boundary modules are expected to:
+
+- gather inputs from capabilities
+- call pure helpers on ordinary values
+- execute the requested effect
+- translate effect failures or raw outputs into typed results and descriptive events
+
+Boundary modules must not become a second policy engine. In particular they should not own:
+
+- retry or fallback policy
+- workflow progression decisions
+- reducer/orchestrator decisions hidden behind effectful helpers
+- business branching that should live in pure domain logic
+
+`boundary_function_too_complex`, `forbid_nested_boundary_modules`, `forbid_boundary_policy_calls`,
+and `forbid_boundary_retry_loops` exist specifically to keep those seams thin and visible.
+
+When adding a new boundary marker to `BOUNDARY_MODULES`, the bar is high: the module's primary
+purpose must be executing real effects (filesystem, env, process, network, stdio, time, threads,
+randomness, or FFI). Local mutation alone is not enough.
+
+Current `boundary_function_too_complex` thresholds:
+
+- line threshold: 12+
+- decision threshold: 2+
+- complexity score threshold: 6+
+
+The score also grows with statement count, boolean guard operators, match-arm count, and nesting.
+The intent is to catch boundary functions that are no longer just wiring.
 
 ### Autogenerated file exemption
 
@@ -32,26 +136,72 @@ Autogenerated Rust files may opt out of `file_too_long` by placing `reason = "au
 near the top of the file. When `cargo xtask verify` sees that marker, it prints
 `[file] has been marked as autogenerated` as informational output.
 
+### File length policy
+
+`docs/code-style/module-organization.md` treats line count as a signal, not a goal in itself. This repository therefore uses `file_too_long` only for the hard-fail case at 1000+ lines, where a file is overwhelmingly likely to own too many responsibilities. The 500-line threshold remains a review guideline for contributors, not a deny-level lint.
+
 ## Running Lints
 
 ```bash
-# Run all custom lints
-cargo dylint --all
-
-# Run all custom lints (recommended: via make)
+# Run all custom lints (via make - recommended)
 make dylint
-# or run a specific lint:
-cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
+
+# Run using cargo dylint directly with ralph_lints
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
 ```
+
+## Local Crate Verification
+
+To verify the lint crate itself compiles and passes its own unit tests without invoking the full
+dylint driver UI test harness (which has a separate upstream toolchain issue), use these commands
+from the `lints/ralph_lints` directory:
+
+```bash
+# Check the lint crate compiles cleanly
+cd lints/ralph_lints && export RUSTUP_TOOLCHAIN="$(rustup show active-toolchain | cut -d' ' -f1)" && cargo check
+
+# Run crate-local unit tests only (no dylint driver UI test)
+cd lints/ralph_lints && export RUSTUP_TOOLCHAIN="$(rustup show active-toolchain | cut -d' ' -f1)" && cargo test --lib
+```
+
+**Note:** After the crate-local tests pass, the full `cargo test` run (which includes the
+`dylint_testing::ui_test` in `lib.rs`) will still encounter a known upstream `dylint_driver` /
+`dylint_testing` UI/toolchain issue. This failure is in the dylint harness itself, not in the
+crate-local lint logic. Distinguish between "crate-local unit test failures" (real bugs) and
+"dylint driver UI test failures" (known upstream issue).
+
+## Rust LSP Integration
+
+This repository includes a wrapper at `.cargo/rust-analyzer-dylint` for Rust LSP clients that use
+`rust-analyzer.check.overrideCommand`.
+
+- The wrapper runs `cargo clippy` first so standard Rust and clippy warnings surface in the editor.
+- The wrapper then runs `cargo dylint` with JSON diagnostics enabled so custom lint diagnostics surface too.
+- The wrapper finally runs `cargo xtask lsp-forbidden-allow-expect` so the native forbidden `#[allow(...)]` / `#[expect(...)]` audit also appears in the editor as JSON diagnostics.
+- It filters non-JSON progress lines to stderr so rust-analyzer sees clean JSON on stdout.
+- VS Code is preconfigured through `.vscode/settings.json`.
+- Claude Code exposes the shared wrapper path through `.claude/settings.json` so the same command is available in project settings.
+
+Use this command in clients that expose rust-analyzer settings, including VS Code and Claude Code:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    ".cargo/rust-analyzer-dylint"
+  ]
+}
+```
+
+OpenCode v1.2.27 rejects a top-level `lsp` key in `opencode.json`, so this repository does not check in an OpenCode project config for the wrapper.
 
 ## Developing Lints
 
-Custom lints are in the `lints/` directory. Each lint is a separate crate that compiles to a dynamic library.
+Custom lints are consolidated in `lints/ralph_lints/`. Each lint module is located in `lints/ralph_lints/src/`.
 
-To build and test a lint:
+To build and test lints:
 
 ```bash
-cd lints/file_too_long
+cd lints/ralph_lints
 cargo +nightly test
 ```
 
@@ -80,7 +230,7 @@ make dylint
 When `CARGO_HOME` points to a writable temp directory in a sandboxed environment, `make dylint`
 will reuse the existing `~/.cargo/registry/cache` and `~/.cargo/registry/index` data when
 available and automatically switch Cargo to offline mode. This avoids unnecessary network access
-while still allowing the local lint crate under `lints/file_too_long` to build.
+while still allowing the lint crate under `lints/ralph_lints` to build.
 
 ## Known Issues
 

@@ -52,21 +52,21 @@ pub(super) fn save_interrupt_checkpoint(context: &InterruptContext) -> anyhow::R
     use std::path::Path;
 
     // Read checkpoint from file if exists, update it with current operational phase
-    if let Ok(Some(mut checkpoint)) = load_checkpoint_with_workspace(&*context.workspace) {
+    if let Ok(Some(checkpoint)) = load_checkpoint_with_workspace(&*context.workspace) {
         // Update existing checkpoint with current operational phase and progress.
-        checkpoint.phase = context.phase;
-        checkpoint.iteration = context.iteration;
-        checkpoint.total_iterations = context.total_iterations;
-        checkpoint.reviewer_pass = context.reviewer_pass;
-        checkpoint.total_reviewer_passes = context.total_reviewer_passes;
-        checkpoint.actual_developer_runs = context.run_context.actual_developer_runs;
-        checkpoint.actual_reviewer_runs = context.run_context.actual_reviewer_runs;
-        checkpoint.execution_history = Some(context.execution_history.clone());
-        checkpoint.prompt_history = Some(context.prompt_history.clone());
-
-        // Mark this as a user-initiated interrupt (Ctrl+C)
-        // This exempts the pipeline from the pre-termination commit safety check
-        checkpoint.interrupted_by_user = true;
+        let checkpoint = PipelineCheckpoint {
+            phase: context.phase,
+            iteration: context.iteration,
+            total_iterations: context.total_iterations,
+            reviewer_pass: context.reviewer_pass,
+            total_reviewer_passes: context.total_reviewer_passes,
+            actual_developer_runs: context.run_context.actual_developer_runs,
+            actual_reviewer_runs: context.run_context.actual_reviewer_runs,
+            execution_history: Some(context.execution_history.clone()),
+            prompt_history: Some(context.prompt_history.clone()),
+            interrupted_by_user: true,
+            ..checkpoint
+        };
 
         save_checkpoint_with_workspace(&*context.workspace, &checkpoint)?;
     } else {
@@ -107,7 +107,7 @@ pub(super) fn save_interrupt_checkpoint(context: &InterruptContext) -> anyhow::R
         );
 
         let working_dir = context.workspace.root().to_string_lossy().to_string();
-        let mut checkpoint = PipelineCheckpoint::from_params(CheckpointParams {
+        let base_checkpoint = PipelineCheckpoint::from_params(CheckpointParams {
             phase: context.phase,
             iteration: context.iteration,
             total_iterations: context.total_iterations,
@@ -132,9 +132,12 @@ pub(super) fn save_interrupt_checkpoint(context: &InterruptContext) -> anyhow::R
             config_checksum: None,
         });
 
-        checkpoint.execution_history = Some(context.execution_history.clone());
-        checkpoint.prompt_history = Some(context.prompt_history.clone());
-        checkpoint.interrupted_by_user = true;
+        let checkpoint = PipelineCheckpoint {
+            execution_history: Some(context.execution_history.clone()),
+            prompt_history: Some(context.prompt_history.clone()),
+            interrupted_by_user: true,
+            ..base_checkpoint
+        };
 
         save_checkpoint_with_workspace(&*context.workspace, &checkpoint)?;
     }

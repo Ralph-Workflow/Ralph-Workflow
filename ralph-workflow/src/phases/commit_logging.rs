@@ -20,4 +20,5 @@ use crate::workspace::Workspace;
 
 include!("commit_logging/message_generation.rs");
 include!("commit_logging/file_logging.rs");
+include!("commit_logging/io.rs");
 include!("commit_logging/tests.rs");

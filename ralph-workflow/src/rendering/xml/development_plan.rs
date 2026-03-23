@@ -8,8 +8,6 @@
 //! - Risks and mitigations with severity
 //! - Verification strategy
 
-use std::fmt::Write;
-
 use crate::files::llm_output_extraction::validate_plan_xml;
 use crate::files::llm_output_extraction::xsd_validation_plan::{
     FileAction, Priority, Severity, SkillsMcp,
@@ -17,140 +15,208 @@ use crate::files::llm_output_extraction::xsd_validation_plan::{
 
 /// Render development plan XML with semantic formatting.
 pub fn render(content: &str) -> String {
-    let mut output = String::new();
-
-    output.push_str("\n╔════════════════════════════════════╗\n");
-    output.push_str("║      Implementation Plan           ║\n");
-    output.push_str("╚════════════════════════════════════╝\n\n");
+    let header = "\n╔════════════════════════════════════╗\n\
+║      Implementation Plan           ║\n\
+╚════════════════════════════════════╝\n\n";
 
     if let Ok(elements) = validate_plan_xml(content) {
-        // Context section
-        output.push_str("📋 Context:\n");
-        writeln!(output, "   {}\n", elements.summary.context).unwrap();
+        let context_part = format!("📋 Context:\n   {}\n\n", elements.summary.context);
 
-        // Scope section with categories
-        output.push_str("📊 Scope:\n");
-        for item in &elements.summary.scope_items {
-            if let Some(ref count) = item.count {
-                write!(output, "   • {} {}", count, item.description).unwrap();
-            } else {
-                write!(output, "   • {}", item.description).unwrap();
-            }
-            if let Some(ref category) = item.category {
-                write!(output, " ({category})").unwrap();
-            }
-            output.push('\n');
-        }
+        let scope_part = {
+            let scope_lines: String = elements
+                .summary
+                .scope_items
+                .iter()
+                .map(|item| {
+                    let count_part = item
+                        .count
+                        .as_ref()
+                        .map(|c| format!("   • {} {}", c, item.description))
+                        .unwrap_or_else(|| format!("   • {}", item.description));
+                    let category_part = item
+                        .category
+                        .as_ref()
+                        .map(|c| format!(" ({c})"))
+                        .unwrap_or_default();
+                    format!("{}{}\n", count_part, category_part)
+                })
+                .collect();
+            format!("📊 Scope:\n{}", scope_lines)
+        };
 
-        // Skills & MCP recommendations (if present)
-        render_skills_mcp(&mut output, elements.skills_mcp.as_ref());
+        let skills_mcp_part = render_skills_mcp_to_string(elements.skills_mcp.as_ref());
 
-        // Steps section with priorities and dependencies
-        output.push_str("\n───────────────────────────────────\n");
-        output.push_str("📝 Implementation Steps:\n\n");
-        for step in &elements.steps {
-            let priority_badge = step.priority.map_or(String::new(), |p| {
-                format!(
-                    " [{}]",
-                    match p {
-                        Priority::Critical => "🔴 critical",
-                        Priority::High => "🟠 high",
-                        Priority::Medium => "🟡 medium",
-                        Priority::Low => "🟢 low",
-                    }
-                )
-            });
-            writeln!(
-                output,
-                "   {}. {}{}",
-                step.number, step.title, priority_badge
+        let steps_part = {
+            let steps_output: String = elements
+                .steps
+                .iter()
+                .map(|step| {
+                    let priority_badge = step.priority.map_or(String::new(), |p| {
+                        format!(
+                            " [{}]",
+                            match p {
+                                Priority::Critical => "🔴 critical",
+                                Priority::High => "🟠 high",
+                                Priority::Medium => "🟡 medium",
+                                Priority::Low => "🟢 low",
+                            }
+                        )
+                    });
+
+                    let files_output: String = step
+                        .target_files
+                        .iter()
+                        .map(|file| {
+                            let action_icon = match file.action {
+                                FileAction::Create => "➕",
+                                FileAction::Modify => "📝",
+                                FileAction::Delete => "🗑️",
+                            };
+                            format!("      {} {}\n", action_icon, file.path)
+                        })
+                        .collect();
+
+                    let rationale_part = step
+                        .rationale
+                        .as_ref()
+                        .map(|r| format!("      💡 {r}\n"))
+                        .unwrap_or_default();
+
+                    let deps_part = if step.depends_on.is_empty() {
+                        String::new()
+                    } else {
+                        let deps: Vec<String> = step
+                            .depends_on
+                            .iter()
+                            .map(|d| format!("Step {d}"))
+                            .collect();
+                        format!("      🔗 Depends on: {}\n", deps.join(", "))
+                    };
+
+                    format!(
+                        "   {}. {}{}\n{}{}{}\n",
+                        step.number,
+                        step.title,
+                        priority_badge,
+                        files_output,
+                        rationale_part,
+                        deps_part
+                    )
+                })
+                .collect();
+            format!(
+                "\n───────────────────────────────────\n📝 Implementation Steps:\n\n{}",
+                steps_output
             )
-            .unwrap();
+        };
 
-            for file in &step.target_files {
-                let action_icon = match file.action {
-                    FileAction::Create => "➕",
-                    FileAction::Modify => "📝",
-                    FileAction::Delete => "🗑️",
-                };
-                writeln!(output, "      {} {}", action_icon, file.path).unwrap();
-            }
+        let risks_part = if elements.risks_mitigations.is_empty() {
+            String::new()
+        } else {
+            let risks_output: String = elements
+                .risks_mitigations
+                .iter()
+                .map(|risk| {
+                    let severity_icon = risk.severity.map_or("", |s| match s {
+                        Severity::Critical => "🔴",
+                        Severity::High => "🟠",
+                        Severity::Medium => "🟡",
+                        Severity::Low => "🟢",
+                    });
+                    format!(
+                        "   {} Risk: {}\n     → Mitigation: {}\n\n",
+                        severity_icon, risk.risk, risk.mitigation
+                    )
+                })
+                .collect();
+            format!(
+                "───────────────────────────────────\n⚠️  Risks & Mitigations:\n\n{}",
+                risks_output
+            )
+        };
 
-            if let Some(ref rationale) = step.rationale {
-                writeln!(output, "      💡 {rationale}").unwrap();
-            }
+        let verification_part = if elements.verification_strategy.is_empty() {
+            String::new()
+        } else {
+            let verification_output: String = elements
+                .verification_strategy
+                .iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    format!(
+                        "   {}. {}\n      Expected: {}\n",
+                        i + 1,
+                        v.method,
+                        v.expected_outcome
+                    )
+                })
+                .collect();
+            format!(
+                "───────────────────────────────────\n✓ Verification Strategy:\n\n{}",
+                verification_output
+            )
+        };
 
-            if !step.depends_on.is_empty() {
-                let deps: Vec<String> = step
-                    .depends_on
-                    .iter()
-                    .map(|d| format!("Step {d}"))
-                    .collect();
-                writeln!(output, "      🔗 Depends on: {}", deps.join(", ")).unwrap();
-            }
-            output.push('\n');
-        }
-
-        // Risks section with severity
-        if !elements.risks_mitigations.is_empty() {
-            output.push_str("───────────────────────────────────\n");
-            output.push_str("⚠️  Risks & Mitigations:\n\n");
-            for risk in &elements.risks_mitigations {
-                let severity_icon = risk.severity.map_or("", |s| match s {
-                    Severity::Critical => "🔴",
-                    Severity::High => "🟠",
-                    Severity::Medium => "🟡",
-                    Severity::Low => "🟢",
-                });
-                writeln!(output, "   {} Risk: {}", severity_icon, risk.risk).unwrap();
-                writeln!(output, "     → Mitigation: {}\n", risk.mitigation).unwrap();
-            }
-        }
-
-        // Verification section
-        if !elements.verification_strategy.is_empty() {
-            output.push_str("───────────────────────────────────\n");
-            output.push_str("✓ Verification Strategy:\n\n");
-            for (i, v) in elements.verification_strategy.iter().enumerate() {
-                writeln!(output, "   {}. {}", i + 1, v.method).unwrap();
-                writeln!(output, "      Expected: {}", v.expected_outcome).unwrap();
-            }
-        }
+        format!(
+            "{}{}{}{}{}{}{}",
+            header,
+            context_part,
+            scope_part,
+            skills_mcp_part,
+            steps_part,
+            risks_part,
+            verification_part
+        )
     } else {
-        output.push_str("⚠️  Unable to parse plan XML\n\n");
-        output.push_str(content);
+        format!("{}⚠️  Unable to parse plan XML\n\n{}", header, content)
     }
-
-    output
 }
 
-/// Render skills-mcp recommendations to the output string.
-fn render_skills_mcp(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
+fn render_skills_mcp_to_string(skills_mcp: Option<&SkillsMcp>) -> String {
     if let Some(sm) = skills_mcp {
         let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
         if has_structured || sm.raw_content.is_some() {
-            output.push_str("\n🛠️  Skills & MCP Recommendations:\n");
-            for skill in &sm.skills {
-                if let Some(ref reason) = skill.reason {
-                    writeln!(output, "   - skill: {} \u{2014} {}", skill.name, reason).unwrap();
-                } else {
-                    writeln!(output, "   - skill: {}", skill.name).unwrap();
-                }
-            }
-            for mcp in &sm.mcps {
-                if let Some(ref reason) = mcp.reason {
-                    writeln!(output, "   - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
-                } else {
-                    writeln!(output, "   - mcp: {}", mcp.name).unwrap();
-                }
-            }
-            if let Some(ref raw) = sm.raw_content {
-                let trimmed: &str = raw.trim();
-                if !trimmed.is_empty() && !has_structured {
-                    writeln!(output, "   {trimmed}").unwrap();
-                }
-            }
+            let header = "\n🛠️  Skills & MCP Recommendations:\n";
+
+            let skill_lines: String = sm
+                .skills
+                .iter()
+                .map(|skill| {
+                    skill
+                        .reason
+                        .as_ref()
+                        .map(|r| format!("   - skill: {} \u{2014} {}\n", skill.name, r))
+                        .unwrap_or_else(|| format!("   - skill: {}\n", skill.name))
+                })
+                .collect();
+
+            let mcp_lines: String = sm
+                .mcps
+                .iter()
+                .map(|mcp| {
+                    mcp.reason
+                        .as_ref()
+                        .map(|r| format!("   - mcp: {} \u{2014} {}\n", mcp.name, r))
+                        .unwrap_or_else(|| format!("   - mcp: {}\n", mcp.name))
+                })
+                .collect();
+
+            let raw_part = sm
+                .raw_content
+                .as_ref()
+                .filter(|raw| {
+                    let trimmed: &str = raw.trim();
+                    !trimmed.is_empty() && !has_structured
+                })
+                .map(|raw| format!("   {}\n", raw.trim()))
+                .unwrap_or_default();
+
+            format!("{}{}{}{}", header, skill_lines, mcp_lines, raw_part)
+        } else {
+            String::new()
         }
+    } else {
+        String::new()
     }
 }
 

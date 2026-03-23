@@ -16,7 +16,7 @@ use crate::config::Config;
 use crate::git_helpers::rebase_in_progress;
 use crate::logger::Logger;
 use crate::workspace::Workspace;
-use std::io::{self, IsTerminal};
+
 use std::path::Path;
 
 /// Result of handling resume, containing the checkpoint.

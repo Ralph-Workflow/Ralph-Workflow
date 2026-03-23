@@ -76,7 +76,6 @@ impl StreamEventClassifier {
     /// # Returns
     /// A `ClassificationResult` with the detected event type and metadata
     pub fn classify(&self, value: &Value) -> ClassificationResult {
-        // Extract the object if present
         let Some(obj) = value.as_object() else {
             return ClassificationResult {
                 event_type: StreamEventType::Complete,
@@ -85,20 +84,17 @@ impl StreamEventClassifier {
             };
         };
 
-        // Extract the type field
         let type_name = obj
             .get("type")
             .or_else(|| obj.get("event_type"))
             .and_then(|v| v.as_str())
             .map(std::string::ToString::to_string);
 
-        // Check for explicit delta flag
         let is_delta = obj
             .get("delta")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
-        // Check for control event patterns
         if Self::is_control_event(type_name.as_ref(), obj) {
             return ClassificationResult {
                 event_type: StreamEventType::Control,
@@ -107,7 +103,6 @@ impl StreamEventClassifier {
             };
         }
 
-        // Check for partial/delta indicators
         if self.is_partial_event(type_name.as_ref(), obj, is_delta) {
             return ClassificationResult {
                 event_type: StreamEventType::Partial,
@@ -116,8 +111,6 @@ impl StreamEventClassifier {
             };
         }
 
-        // Default to complete for unknown events
-        // (prefer showing content over hiding it)
         ClassificationResult {
             event_type: StreamEventType::Complete,
             type_name,
@@ -125,9 +118,7 @@ impl StreamEventClassifier {
         }
     }
 
-    /// Check if an event is a control/metadata event
     fn is_control_event(type_name: Option<&String>, obj: &serde_json::Map<String, Value>) -> bool {
-        // Check type name for control patterns
         if let Some(name) = type_name {
             let control_patterns = [
                 "start",
@@ -152,32 +143,29 @@ impl StreamEventClassifier {
             ];
 
             let name_lower = name.to_lowercase();
-            for pattern in control_patterns {
-                if name_lower.contains(pattern) {
-                    return true;
-                }
+            if control_patterns
+                .iter()
+                .any(|pattern| name_lower.contains(pattern))
+            {
+                return true;
             }
         }
 
-        // Check for status/error fields without content
         let has_status = obj.contains_key("status") || obj.contains_key("error");
         let has_content = Self::has_content_field(obj);
         has_status && !has_content
     }
 
-    /// Check if an event is a partial/delta event
     fn is_partial_event(
         &self,
         type_name: Option<&String>,
         obj: &serde_json::Map<String, Value>,
         explicit_delta: bool,
     ) -> bool {
-        // Explicit delta flag
         if explicit_delta {
             return true;
         }
 
-        // Check type name for partial patterns
         if let Some(name) = type_name {
             let partial_patterns = [
                 "delta",
@@ -190,32 +178,26 @@ impl StreamEventClassifier {
             ];
 
             let name_lower = name.to_lowercase();
-            for pattern in partial_patterns {
-                if name_lower.contains(pattern) {
-                    return true;
-                }
+            if partial_patterns
+                .iter()
+                .any(|pattern| name_lower.contains(pattern))
+            {
+                return true;
             }
         }
 
-        // Check for delta fields in the object (content fields, not boolean flags)
-        // Only treat as partial if the field contains actual content (string, array, or object),
-        // not if it's just a boolean flag or null
         let delta_fields = ["delta", "partial", "increment"];
-        for field in delta_fields {
-            if let Some(value) = obj.get(field) {
-                // Check if the field contains actual content, not just a boolean or null
-                let has_content = value.is_string()
+        if delta_fields.iter().any(|field| {
+            obj.get(*field).is_some_and(|value| {
+                value.is_string()
                     || value.is_array()
                     || value.is_object()
-                    || (value.is_number() && value.as_i64() != Some(0));
-                if has_content {
-                    return true;
-                }
-            }
+                    || (value.is_number() && value.as_i64() != Some(0))
+            })
+        }) {
+            return true;
         }
 
-        // Check for small content fragments that might be partial
-        // Only apply this heuristic if there's no explicit delta flag or type name
         if !explicit_delta
             && (type_name.is_none()
                 || !type_name.as_ref().is_some_and(|n| {
@@ -227,13 +209,10 @@ impl StreamEventClassifier {
         {
             if let Some(content) = Self::find_content_field(obj) {
                 if let Some(text) = obj.get(&content).and_then(|v| v.as_str()) {
-                    // Short text fragments are likely partial, BUT check for complete patterns
                     if text.len() < self.substantial_content_threshold {
                         let text_lower = text.to_lowercase();
                         let trimmed = text.trim();
 
-                        // Check for complete message indicators:
-                        // 1. Common response words that are complete on their own
                         let complete_responses = [
                             "ok",
                             "okay",
@@ -259,21 +238,17 @@ impl StreamEventClassifier {
                         ];
                         let is_complete_response = complete_responses.contains(&trimmed);
 
-                        // 2. Messages ending with terminal punctuation
                         let ends_with_terminal = trimmed.ends_with('.')
                             || trimmed.ends_with('!')
                             || trimmed.ends_with('?');
 
-                        // 3. Messages containing newlines (usually intentional formatting)
                         let has_newline = text.contains('\n');
 
-                        // 4. Error/warning patterns (these are complete messages)
                         let is_error_message = text_lower.contains("error:")
                             || text_lower.contains("warning:")
                             || text_lower.starts_with("error")
                             || text_lower.starts_with("warning");
 
-                        // If any complete indicator is present, it's NOT partial
                         if is_complete_response
                             || ends_with_terminal
                             || has_newline
@@ -282,7 +257,6 @@ impl StreamEventClassifier {
                             return false;
                         }
 
-                        // Otherwise, short text without clear completion markers is likely partial
                         return true;
                     }
                 }
@@ -292,9 +266,7 @@ impl StreamEventClassifier {
         false
     }
 
-    /// Find the primary content field in an object
     fn find_content_field(obj: &serde_json::Map<String, Value>) -> Option<String> {
-        // Common content field names in priority order
         let content_fields = [
             "content",
             "text",
@@ -309,19 +281,15 @@ impl StreamEventClassifier {
             "delta",
         ];
 
-        for field in content_fields {
-            if obj.contains_key(field) {
-                // Only consider it a content field if it has a string value
-                if let Some(Value::String(_)) = obj.get(field) {
-                    return Some(field.to_string());
-                }
-            }
-        }
-
-        None
+        content_fields
+            .iter()
+            .find(|field| {
+                obj.get(**field)
+                    .is_some_and(|v| matches!(v, Value::String(_)))
+            })
+            .map(|f| f.to_string())
     }
 
-    /// Check if an object has any content field
     fn has_content_field(obj: &serde_json::Map<String, Value>) -> bool {
         Self::find_content_field(obj).is_some()
     }

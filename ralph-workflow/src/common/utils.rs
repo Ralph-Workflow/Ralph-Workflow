@@ -5,9 +5,7 @@
 //! - Text truncation for display
 //! - Secret redaction for logging
 
-use std::io;
-
-use regex::Regex;
+mod io;
 
 /// Split a shell-like command string into argv parts.
 ///
@@ -23,54 +21,21 @@ use regex::Regex;
 /// # Errors
 ///
 /// Returns an error if the command string has unmatched quotes.
-pub fn split_command(cmd: &str) -> io::Result<Vec<String>> {
+pub fn split_command(cmd: &str) -> std::io::Result<Vec<String>> {
     let cmd = cmd.trim();
     if cmd.is_empty() {
         return Ok(vec![]);
     }
 
     shell_words::split(cmd).map_err(|err| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             format!("Failed to parse command string: {err}"),
         )
     })
 }
 
-static SECRET_LIKE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    // Fixed ReDoS vulnerability by:
-    // 1. Using \b (word boundary) anchors to prevent overlapping matches
-    // 2. Making patterns more specific with exact length ranges
-    // 3. Limiting max character class repetition to 100
-    Regex::new(
-        r"(?ix)
-        \b(
-          # OpenAI API keys
-          sk-[a-z0-9]{20,100} |
-          # GitHub tokens
-          ghp_[a-z0-9]{20,100} |
-          github_pat_[a-z0-9_]{20,100} |
-          # Slack tokens
-          xox[baprs]-[a-z0-9-]{10,100} |
-          # AWS access keys
-          AKIA[0-9A-Z]{16} |
-          # AWS session tokens
-          (?:Aws)?[A-Z0-9]{40,100} |
-          # Stripe keys
-          sk_live_[a-zA-Z0-9]{24,100} |
-          sk_test_[a-zA-Z0-9]{24,100} |
-          # Firebase tokens
-          [a-zA-Z0-9_/+-]{40,100}\.firebaseio\.com |
-          [a-z0-9:_-]{40,100}@apps\.googleusercontent\.com |
-          # Generic JWT patterns
-          ey[a-zA-Z0-9_-]{1,100}\.[a-zA-Z0-9_-]{1,100}\.[a-zA-Z0-9_-]{1,100}
-        )\b
-        ",
-    )
-    .ok()
-});
-
-fn is_sensitive_key(key: &str) -> bool {
+pub(crate) fn is_sensitive_key(key: &str) -> bool {
     let key = key.trim().trim_start_matches('-').trim_start_matches('-');
     let key = key
         .split_once('=')
@@ -102,7 +67,7 @@ fn redact_arg_value(key: &str, value: &str) -> String {
     if is_sensitive_key(key) {
         return "<redacted>".to_string();
     }
-    SECRET_LIKE_RE.as_ref().map_or_else(
+    io::secret_like_regex().map_or_else(
         || value.to_string(),
         |re| re.replace_all(value, "<redacted>").to_string(),
     )
@@ -124,46 +89,45 @@ fn shell_quote_for_log(arg: &str) -> String {
 
 /// Format argv for logs, redacting likely secrets.
 pub fn format_argv_for_log(argv: &[String]) -> String {
-    let mut out = Vec::with_capacity(argv.len());
-    let mut redact_next_value = false;
+    // Use indices to track state across iterations - simpler than scan for this use case
+    let indices = 0..argv.len();
+    let out: Vec<String> = indices
+        .map(|i| {
+            let arg = &argv[i];
+            // Check if previous arg was a sensitive key that should trigger redaction
+            let prev_was_sensitive = i > 0 && is_sensitive_key(&argv[i - 1]);
 
-    for arg in argv {
-        if redact_next_value {
-            out.push("<redacted>".to_string());
-            redact_next_value = false;
-            continue;
-        }
-        redact_next_value = false;
-
-        if let Some((k, v)) = arg.split_once('=') {
-            // Flag-style (--token=...) or env-style (GITHUB_TOKEN=...)
-            let env_key = k.to_ascii_uppercase();
-            let looks_like_secret_env = env_key.contains("TOKEN")
-                || env_key.contains("SECRET")
-                || env_key.contains("PASSWORD")
-                || env_key.contains("PASS")
-                || env_key.contains("KEY");
-            if is_sensitive_key(k) || looks_like_secret_env {
-                out.push(format!("{}=<redacted>", shell_quote_for_log(k)));
-                continue;
+            if prev_was_sensitive {
+                return "<redacted>".to_string();
             }
-            let redacted = redact_arg_value(k, v);
-            out.push(shell_quote_for_log(&format!("{k}={redacted}")));
-            continue;
-        }
 
-        if is_sensitive_key(arg) {
-            out.push(shell_quote_for_log(arg));
-            redact_next_value = true;
-            continue;
-        }
+            if let Some((k, v)) = arg.split_once('=') {
+                // Flag-style (--token=...) or env-style (GITHUB_TOKEN=...)
+                let env_key = k.to_ascii_uppercase();
+                let looks_like_secret_env = env_key.contains("TOKEN")
+                    || env_key.contains("SECRET")
+                    || env_key.contains("PASSWORD")
+                    || env_key.contains("PASS")
+                    || env_key.contains("KEY");
+                if is_sensitive_key(k) || looks_like_secret_env {
+                    return format!("{}=<redacted>", shell_quote_for_log(k));
+                }
+                let redacted = redact_arg_value(k, v);
+                return shell_quote_for_log(&format!("{k}={redacted}"));
+            }
 
-        let redacted = SECRET_LIKE_RE.as_ref().map_or_else(
-            || arg.clone(),
-            |re| re.replace_all(arg, "<redacted>").to_string(),
-        );
-        out.push(shell_quote_for_log(&redacted));
-    }
+            if is_sensitive_key(arg) {
+                // Return as-is, next iteration will redact
+                return arg.to_string();
+            }
+
+            let redacted = io::secret_like_regex().map_or_else(
+                || arg.clone(),
+                |re| re.replace_all(arg, "<redacted>").to_string(),
+            );
+            shell_quote_for_log(&redacted)
+        })
+        .collect();
 
     out.join(" ")
 }

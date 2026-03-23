@@ -61,8 +61,6 @@
 use super::event::{CheckpointTrigger, PipelinePhase, RebasePhase};
 use super::state::{CommitState, PipelineState, PromptMode, RebaseState};
 
-#[cfg(test)]
-use crate::agents::AgentRole;
 use crate::reducer::effect::{ContinuationContextData, Effect};
 
 mod phase_effects;
@@ -89,5 +87,5 @@ pub(in crate::reducer::orchestration) const fn is_recovery_state_active(
 }
 
 #[cfg(test)]
-#[path = "orchestration/tests.rs"]
+#[path = "orchestration/io_tests/mod.rs"]
 mod tests;

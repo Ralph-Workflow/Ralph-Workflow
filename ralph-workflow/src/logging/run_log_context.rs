@@ -122,54 +122,12 @@ impl RunLogContext {
     pub fn new(workspace: &dyn Workspace) -> Result<Self> {
         let base_run_id = RunId::new();
 
-        // Try base run_id first, then collision variants 1-99
-        for counter in 0..=99 {
-            let run_id = if counter == 0 {
-                base_run_id.clone()
-            } else {
-                base_run_id.with_collision_counter(counter)
-            };
+        let (run_id, run_dir) = crate::logging::collision::create_run_dir_with_collision_handling(
+            workspace,
+            &base_run_id,
+        )?;
 
-            let run_dir = PathBuf::from(format!(".agent/logs-{run_id}"));
-            let agents_dir = run_dir.join("agents");
-
-            // Fast path: if agents subdirectory exists, this run_id is taken
-            if workspace.exists(&agents_dir) {
-                continue;
-            }
-
-            // Try to create the run directory and subdirectories
-            // create_dir_all is idempotent (Ok if directory exists)
-            workspace
-                .create_dir_all(&run_dir)
-                .context("Failed to create run log directory")?;
-
-            workspace
-                .create_dir_all(&agents_dir)
-                .context("Failed to create agents log subdirectory")?;
-
-            workspace
-                .create_dir_all(&run_dir.join("provider"))
-                .context("Failed to create provider log subdirectory")?;
-
-            workspace
-                .create_dir_all(&run_dir.join("debug"))
-                .context("Failed to create debug log subdirectory")?;
-
-            // Verify we're the ones who created it (agents_dir should exist now)
-            // If it doesn't, another process might have raced us, try next variant
-            if workspace.exists(&agents_dir) {
-                return Ok(Self { run_id, run_dir });
-            }
-        }
-
-        // If we exhausted all collision counters, bail
-        anyhow::bail!(
-            "Too many collisions creating run log directory (tried base + 99 variants). \
-             This is extremely rare (100+ runs in the same millisecond). \
-             Possible causes: clock skew, or filesystem issues. \
-             Suggestion: Wait 1ms and retry, or check system clock."
-        )
+        Ok(Self { run_id, run_dir })
     }
 
     /// Create a `RunLogContext` from an existing checkpoint (for resume).
@@ -235,54 +193,12 @@ impl RunLogContext {
     ///
     /// Returns error if the operation fails.
     pub fn for_testing(base_run_id: &RunId, workspace: &dyn Workspace) -> Result<Self> {
-        // Try base run_id first, then collision variants 1-99
-        for counter in 0..=99 {
-            let run_id = if counter == 0 {
-                base_run_id.clone()
-            } else {
-                base_run_id.with_collision_counter(counter)
-            };
+        let (run_id, run_dir) = crate::logging::collision::create_run_dir_with_collision_handling(
+            workspace,
+            base_run_id,
+        )?;
 
-            let run_dir = PathBuf::from(format!(".agent/logs-{run_id}"));
-            let agents_dir = run_dir.join("agents");
-
-            // Fast path: if agents subdirectory exists, this run_id is taken
-            if workspace.exists(&agents_dir) {
-                continue;
-            }
-
-            // Try to create the run directory and subdirectories
-            // create_dir_all is idempotent (Ok if directory exists)
-            workspace
-                .create_dir_all(&run_dir)
-                .context("Failed to create run log directory")?;
-
-            workspace
-                .create_dir_all(&agents_dir)
-                .context("Failed to create agents log subdirectory")?;
-
-            workspace
-                .create_dir_all(&run_dir.join("provider"))
-                .context("Failed to create provider log subdirectory")?;
-
-            workspace
-                .create_dir_all(&run_dir.join("debug"))
-                .context("Failed to create debug log subdirectory")?;
-
-            // Verify we're the ones who created it (agents_dir should exist now)
-            // If it doesn't, another process might have raced us, try next variant
-            if workspace.exists(&agents_dir) {
-                return Ok(Self { run_id, run_dir });
-            }
-        }
-
-        // If we exhausted all collision counters, bail
-        anyhow::bail!(
-            "Too many collisions creating run log directory (tried base + 99 variants). \
-             This is extremely rare (100+ runs in the same millisecond). \
-             Possible causes: clock skew, or filesystem issues. \
-             Suggestion: Wait 1ms and retry, or check system clock."
-        )
+        Ok(Self { run_id, run_dir })
     }
 
     /// Get a reference to the run ID.

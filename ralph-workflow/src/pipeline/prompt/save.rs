@@ -1,7 +1,7 @@
 use super::types::{PromptArchiveInfo, PromptSaveOptions};
 use crate::logger::Logger;
+use crate::Workspace;
 
-use std::io::{self, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static PROMPT_ARCHIVE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -28,8 +28,8 @@ pub(super) fn save_prompt_to_file_and_clipboard(
     options: PromptSaveOptions<'_>,
     logger: &Logger,
     executor: &dyn crate::executor::ProcessExecutor,
-    workspace: &dyn crate::workspace::Workspace,
-) -> io::Result<()> {
+    workspace: &dyn Workspace,
+) -> std::io::Result<()> {
     // Save prompt to primary location (existing behavior)
     workspace.write(prompt_path, prompt)?;
     logger.info(&format!(
@@ -50,12 +50,8 @@ pub(super) fn save_prompt_to_file_and_clipboard(
     // Copy to clipboard if interactive
     if options.interactive {
         if let Some(clipboard_cmd) = super::super::clipboard::get_platform_clipboard_command() {
-            match executor.spawn(clipboard_cmd.binary, clipboard_cmd.args, &[], None) {
-                Ok(mut child) => {
-                    if let Some(mut stdin) = child.stdin.take() {
-                        let _ = stdin.write_all(prompt.as_bytes());
-                    }
-                    let _ = child.wait();
+            match super::io_clipboard::copy_to_clipboard(executor, prompt, clipboard_cmd.clone()) {
+                Ok(()) => {
                     logger.info(&format!(
                         "Prompt copied to clipboard {}({}){}",
                         options.colors.dim(),
@@ -89,17 +85,14 @@ fn archive_prompt(
     prompt: &str,
     info: &PromptArchiveInfo<'_>,
     logger: &Logger,
-    workspace: &dyn crate::workspace::Workspace,
-) -> io::Result<()> {
+    workspace: &dyn Workspace,
+) -> std::io::Result<()> {
     use std::path::PathBuf;
 
     let prompts_dir = PathBuf::from(".agent/prompts");
     workspace.create_dir_all(&prompts_dir)?;
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
+    let timestamp = super::time::current_timestamp_ms();
 
     let archive_filename = build_prompt_archive_filename(
         info.phase_label,
@@ -128,13 +121,11 @@ pub(super) fn build_prompt_archive_filename(
     use crate::pipeline::logfile::sanitize_agent_name;
     use std::path::Path;
 
-    // Ensure uniqueness even when multiple invocations land in the same millisecond.
-    // This is per-process and monotonically increasing.
     let seq = PROMPT_ARCHIVE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
 
     let safe_agent = sanitize_agent_name(&agent_name.to_lowercase());
 
-    let mut prefix_part = Path::new(log_prefix)
+    let prefix_part = Path::new(log_prefix)
         .file_name()
         .and_then(|s| s.to_str())
         .filter(|s| !s.is_empty())
@@ -143,17 +134,22 @@ pub(super) fn build_prompt_archive_filename(
             |s| sanitize_agent_name(&s.to_lowercase()),
         );
 
-    if prefix_part.is_empty() || prefix_part == "unknown" || prefix_part == safe_agent {
-        prefix_part = sanitize_agent_name(&phase_label.to_lowercase());
-    }
+    let prefix_part =
+        if prefix_part.is_empty() || prefix_part == "unknown" || prefix_part == safe_agent {
+            sanitize_agent_name(&phase_label.to_lowercase())
+        } else {
+            prefix_part
+        };
 
-    let mut parts = vec![prefix_part, safe_agent];
-    if let Some(model) = model_index {
-        parts.push(model.to_string());
-    }
-    if let Some(a) = attempt {
-        parts.push(format!("a{a}"));
-    }
+    let parts: Vec<String> = [
+        Some(prefix_part),
+        Some(safe_agent),
+        model_index.map(|m| m.to_string()),
+        attempt.map(|a| format!("a{a}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
     format!("{}_s{}_{}.txt", parts.join("_"), seq, timestamp_ms)
 }

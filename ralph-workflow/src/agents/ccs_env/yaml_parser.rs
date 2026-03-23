@@ -8,81 +8,119 @@ fn parse_ccs_profiles_from_config_yaml(content: &str) -> std::collections::HashM
     //   glm:
     //     type: api
     //     settings: "~/.ccs/glm.settings.json"
-    let mut in_profiles = false;
-    let mut profiles_indent = 0usize;
-    let mut current_profile: Option<(String, usize)> = None;
-    let mut out: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
-    for raw_line in content.lines() {
-        let line = raw_line.trim_end();
-        if line.trim().is_empty() {
-            continue;
+    // Process lines recursively - functional state machine
+    let lines: Vec<&str> = content.lines().collect();
+    process_lines(&lines, 0, ParserState::default(), Vec::new())
+        .into_iter()
+        .collect()
+}
+
+fn process_lines(
+    lines: &[&str],
+    index: usize,
+    state: ParserState,
+    entries: Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    if index >= lines.len() {
+        return entries;
+    }
+
+    let line = lines[index];
+    let trimmed = line.trim_end();
+    if trimmed.trim().is_empty() {
+        return process_lines(lines, index + 1, state, entries);
+    }
+    let trimmed_start = trimmed.trim_start();
+    if trimmed_start.starts_with('#') {
+        return process_lines(lines, index + 1, state, entries);
+    }
+
+    let indent = trimmed.len().saturating_sub(trimmed_start.len());
+
+    // State machine transitions - return new state and potentially new entries
+    if !state.in_profiles {
+        if trimmed_start == "profiles:" {
+            let new_state = ParserState {
+                in_profiles: true,
+                profiles_indent: indent,
+                ..ParserState::default()
+            };
+            return process_lines(lines, index + 1, new_state, entries);
         }
-        let trimmed = line.trim_start();
-        if trimmed.starts_with('#') {
-            continue;
-        }
+        return process_lines(lines, index + 1, state, entries);
+    }
 
-        let indent = line.len().saturating_sub(trimmed.len());
+    if indent <= state.profiles_indent {
+        return process_lines(lines, index + 1, ParserState::default(), entries);
+    }
 
-        if !in_profiles {
-            if trimmed == "profiles:" {
-                in_profiles = true;
-                profiles_indent = indent;
-                continue;
-            }
-            continue;
-        }
+    if state.current_profile.is_none() {
+        if let Some((name, rest)) = trimmed_start.split_once(':') {
+            let profile_name = name.trim().to_string();
+            let rest = rest.trim();
+            let new_profile = Some((profile_name.clone(), indent));
 
-        // End of `profiles:` block when indentation drops back.
-        if indent <= profiles_indent {
-            break;
-        }
-
-        // Profile entry line: "<indent> name:" (or with inline mapping).
-        //
-        // CCS writes YAML with two-space indentation, but be tolerant of other indentation
-        // styles to reduce surprising `ProfileNotFound` behavior.
-        if indent > profiles_indent && current_profile.is_none() {
-            if let Some((name, rest)) = trimmed.split_once(':') {
-                let profile_name = name.trim().to_string();
-                let rest = rest.trim();
-                current_profile = Some((profile_name.clone(), indent));
-
-                // Inline mapping form: name: { ..., settings: "..." }
-                if rest.contains("settings:") {
-                    if let Some(settings) = extract_yaml_inline_settings_value(rest) {
-                        out.insert(profile_name, settings);
-                    }
+            // Build new entries list using iterator chain (no mutation)
+            let new_entries = if rest.contains("settings:") {
+                if let Some(settings) = extract_yaml_inline_settings_value(rest) {
+                    entries.into_iter().chain([(profile_name, settings)]).collect()
+                } else {
+                    entries
                 }
-                continue;
-            }
+            } else {
+                entries
+            };
+
+            let new_state = ParserState {
+                in_profiles: state.in_profiles,
+                profiles_indent: state.profiles_indent,
+                current_profile: new_profile,
+            };
+            return process_lines(lines, index + 1, new_state, new_entries);
+        }
+        return process_lines(lines, index + 1, state, entries);
+    }
+
+    if let Some((profile_name, profile_indent)) = state.current_profile.as_ref() {
+        if indent <= *profile_indent {
+            let new_state = ParserState {
+                in_profiles: state.in_profiles,
+                profiles_indent: state.profiles_indent,
+                current_profile: None,
+            };
+            return process_lines(lines, index + 1, new_state, entries);
         }
 
-        // Nested under a profile. Look for "settings:".
-        if let Some((profile_name, profile_indent)) = current_profile.as_ref() {
-            if indent <= *profile_indent {
-                // We've left the current profile's block.
-                current_profile = None;
-                continue;
-            }
-            if let Some(value) = trimmed.strip_prefix("settings:") {
-                let settings = unquote_yaml_scalar(value.trim());
-                if !settings.is_empty() {
-                    out.insert(profile_name.clone(), settings);
-                }
+        if let Some(value) = trimmed_start.strip_prefix("settings:") {
+            let settings = unquote_yaml_scalar(value.trim());
+            if !settings.is_empty() {
+                // Build new entries list using iterator chain (no mutation)
+                let new_entries: Vec<_> = entries
+                    .into_iter()
+                    .chain([(profile_name.clone(), settings)])
+                    .collect();
+                return process_lines(lines, index + 1, state, new_entries);
             }
         }
     }
 
-    out
+    process_lines(lines, index + 1, state, entries)
+}
+
+#[derive(Default)]
+struct ParserState {
+    in_profiles: bool,
+    profiles_indent: usize,
+    current_profile: Option<(String, usize)>,
 }
 
 fn extract_yaml_inline_settings_value(inline: &str) -> Option<String> {
     // Very small parser for "{ ..., settings: \"...\" }" emitted by yaml.dump().
     let needle = "settings:";
     let idx = inline.find(needle)?;
-    let after = inline[idx + needle.len()..].trim_start();
+    let start = idx.checked_add(needle.len())?;
+    let after = inline[start..].trim_start();
     let token = after
         .split(',')
         .next()
@@ -103,7 +141,9 @@ fn unquote_yaml_scalar(value: &str) -> String {
     if v.len() >= 2
         && ((v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\'')))
     {
-        let inner = &v[1..v.len() - 1];
+        // Use checked subtraction - the len() >= 2 check guarantees this is safe
+        let end_idx = v.len().saturating_sub(1);
+        let inner = &v[1..end_idx];
         // CCS uses js-yaml with double quotes; keep unescaping minimal for paths.
         inner.replace("\\\"", "\"").replace("\\\\", "\\")
     } else {
@@ -172,11 +212,17 @@ fn resolve_ccs_settings_path_with_deps(
             ccs_dir.join(format!("{profile}.settings.json")),
             ccs_dir.join(format!("{profile}.setting.json")),
         ];
-        for candidate in candidates {
-            if fs.exists(&candidate) {
-                return Ok(candidate);
-            }
-        }
+        // Find first existing candidate
+        return candidates
+            .iter()
+            .find(|c| fs.exists(c))
+            .map(|c| Ok(c.clone()))
+            .unwrap_or_else(|| {
+                Err(CcsEnvVarsError::ProfileNotFound {
+                    profile: profile.to_string(),
+                    ccs_dir,
+                })
+            });
     }
 
     Err(CcsEnvVarsError::ProfileNotFound {
@@ -192,12 +238,14 @@ fn is_absolute_path(path: &str) -> bool {
         return true;
     }
     if cfg!(windows) {
-        let mut chars = path.chars();
-        match (chars.next(), chars.next()) {
-            // UNC paths: \\server\share or \\?\device
-            // Drive letter paths: C:\
-            (Some('\\'), Some('\\')) | (Some(_), Some(':')) => return true,
-            _ => {}
+        // Check for UNC paths (\\server\share) or drive letters (C:\)
+        // Use bytes to avoid mutable iterator
+        let bytes = path.as_bytes();
+        if bytes.len() >= 2 {
+            let first = bytes.first();
+            let second = bytes.get(1);
+            return (first == Some(&b'\\') && second == Some(&b'\\'))
+                || (first.copied().map(|b| b.is_ascii_alphabetic()).unwrap_or(false) && second == Some(&b':'));
         }
     }
     false

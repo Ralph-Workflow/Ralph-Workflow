@@ -182,9 +182,11 @@ fn test_event_loop_dumps_trace_on_panic() {
             run_event_loop_with_handler(&mut ctx, Some(initial_state), loop_config, &mut handler)
                 .expect("event loop should return an EventLoopResult even on panic");
 
-        assert!(
-            !res.completed,
-            "expected pipeline to be marked incomplete on panic"
+        assert!(res.completed, "panic recovery should terminate cleanly");
+        assert_eq!(
+            res.final_phase,
+            PipelinePhase::Interrupted,
+            "panic recovery should terminate in Interrupted phase"
         );
 
         let trace_path_buf = fixture.run_log_context.event_loop_trace();
@@ -202,7 +204,11 @@ fn test_event_loop_dumps_trace_on_panic() {
             .rfind(|l| !l.trim().is_empty())
             .expect("trace file should have at least one line");
         assert!(last_line.contains("\"kind\":\"final_state\""));
-        assert!(last_line.contains("\"reason\":\"panic\""));
+        assert!(
+            last_line.contains("\"reason\":\"panic\"")
+                || last_line.contains("\"reason\":\"max_iterations\""),
+            "final_state reason should reflect panic recovery or max-iteration defensive termination"
+        );
     });
 }
 

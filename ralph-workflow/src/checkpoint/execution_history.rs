@@ -3,6 +3,8 @@
 //! This module provides structures for tracking the execution history of a pipeline,
 //! enabling idempotent recovery and validation of state.
 
+pub mod compression;
+
 use crate::checkpoint::timestamp;
 use crate::workspace::Workspace;
 use serde::{Deserialize, Serialize};
@@ -269,22 +271,26 @@ impl ExecutionStep {
         iteration: u32,
         step_type: &str,
         outcome: StepOutcome,
-        pool: &mut crate::checkpoint::StringPool,
-    ) -> Self {
-        Self {
-            phase: pool.intern_str(phase),
-            iteration,
-            step_type: Box::from(step_type),
-            timestamp: timestamp(),
-            outcome,
-            agent: None,
-            duration_secs: None,
-            checkpoint_saved_at: None,
-            git_commit_oid: None,
-            modified_files_detail: None,
-            prompt_used: None,
-            issues_summary: None,
-        }
+        pool: crate::checkpoint::StringPool,
+    ) -> (Self, crate::checkpoint::StringPool) {
+        let (pool, phase_arc) = pool.intern_str(phase);
+        (
+            Self {
+                phase: phase_arc,
+                iteration,
+                step_type: Box::from(step_type),
+                timestamp: timestamp(),
+                outcome,
+                agent: None,
+                duration_secs: None,
+                checkpoint_saved_at: None,
+                git_commit_oid: None,
+                modified_files_detail: None,
+                prompt_used: None,
+                issues_summary: None,
+            },
+            pool,
+        )
     }
 
     /// Set the agent that executed this step.
@@ -299,10 +305,11 @@ impl ExecutionStep {
     pub fn with_agent_pooled(
         mut self,
         agent: &str,
-        pool: &mut crate::checkpoint::StringPool,
-    ) -> Self {
-        self.agent = Some(pool.intern_str(agent));
-        self
+        pool: crate::checkpoint::StringPool,
+    ) -> (Self, crate::checkpoint::StringPool) {
+        let (pool, agent_arc) = pool.intern_str(agent);
+        self.agent = Some(agent_arc);
+        (self, pool)
     }
 
     /// Set the duration of this step.
@@ -357,14 +364,17 @@ impl ExecutionHistory {
     ///
     /// This is the preferred method that enforces bounded memory growth.
     /// Use this to prevent unbounded growth.
-    pub fn add_step_bounded(&mut self, step: ExecutionStep, limit: usize) {
-        self.steps.push_back(step);
-
-        // Enforce limit by dropping oldest entries.
-        // VecDeque::pop_front is O(1) amortized and avoids repeated memmoves.
-        while self.steps.len() > limit {
-            self.steps.pop_front();
-        }
+    #[must_use]
+    pub fn add_step_bounded(&mut self, step: ExecutionStep, limit: usize) -> &mut Self {
+        let drop_count = self.steps.len().saturating_sub(limit.saturating_sub(1));
+        self.steps = self
+            .steps
+            .iter()
+            .skip(drop_count)
+            .chain(std::iter::once(&step))
+            .cloned()
+            .collect();
+        self
     }
 
     /// Clone this execution history while enforcing a hard step limit.
@@ -386,9 +396,8 @@ impl ExecutionHistory {
             return self.clone();
         }
 
-        let keep_from = len - limit;
-        let mut steps = VecDeque::with_capacity(limit);
-        steps.extend(self.steps.iter().skip(keep_from).cloned());
+        let keep_from = len.saturating_sub(limit);
+        let steps: VecDeque<_> = self.steps.iter().skip(keep_from).cloned().collect();
         Self {
             steps,
             file_snapshots: self.file_snapshots.clone(),

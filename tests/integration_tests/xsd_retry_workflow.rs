@@ -391,7 +391,7 @@ fn test_fix_timeout_retry_recleans_fix_xml_from_fix_drain_without_review_issue_f
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Reviewer,
-                "codex".to_string(),
+                "codex".into(),
                 ralph_workflow::reducer::event::TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/reviewer_0.log".to_string()),
                 None,
@@ -767,7 +767,7 @@ fn test_full_xsd_exhaustion_to_fallback_success() {
             state,
             PipelineEvent::agent_session_established(
                 AgentRole::Reviewer,
-                "agent2".to_string(),
+                "agent2".into(),
                 "session-2".to_string(),
             ),
         );

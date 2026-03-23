@@ -9,7 +9,7 @@ NEVER run these commands (not exhaustive — when in doubt, do NOT run it):
 - push — Ralph orchestrates ALL pushes
 - tag — Ralph orchestrates ALL tagging
 - merge — Ralph controls branching strategy
-- rebase — Ralph controls history (use rebase effects only)
+- history rewriting commands — Ralph controls history (apply history-rewriting effects only through Ralph)
 - reset --hard — Destroys uncommitted work irreversibly
 - reset --soft / --mixed — Modifies history
 - checkout -- . / restore . — Destroys uncommitted changes

@@ -1,14 +1,16 @@
 /// Maximum safe prompt size in bytes before pre-truncation.
-const MAX_SAFE_PROMPT_SIZE: u64 = 200_000;
+pub const MAX_SAFE_PROMPT_SIZE: u64 = 200_000;
+
+use itertools::Itertools;
 
 /// Maximum prompt size for GLM-like agents (GLM, Zhipu, Qwen, `DeepSeek`).
-const GLM_MAX_PROMPT_SIZE: u64 = 100_000;
+pub const GLM_MAX_PROMPT_SIZE: u64 = 100_000;
 
 /// Maximum prompt size for Claude-based agents.
-const CLAUDE_MAX_PROMPT_SIZE: u64 = 300_000;
+pub const CLAUDE_MAX_PROMPT_SIZE: u64 = 300_000;
 
 /// Get the maximum safe prompt size for a specific agent.
-#[must_use] 
+#[must_use]
 pub fn model_budget_bytes_for_agent_name(commit_agent: &str) -> u64 {
     let agent_lower = commit_agent.to_lowercase();
 
@@ -29,7 +31,7 @@ pub fn model_budget_bytes_for_agent_name(commit_agent: &str) -> u64 {
     }
 }
 
-#[must_use] 
+#[must_use]
 pub fn effective_model_budget_bytes(agent_names: &[String]) -> u64 {
     agent_names
         .iter()
@@ -39,92 +41,150 @@ pub fn effective_model_budget_bytes(agent_names: &[String]) -> u64 {
 }
 
 /// Truncate diff if it's too large for agents with small context windows.
-fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
+pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
     if diff.len() <= max_size {
         return diff.to_string();
     }
 
-    let mut files: Vec<DiffFile> = Vec::new();
-    let mut current_file = DiffFile::default();
-    let mut in_file = false;
+    #[derive(Default)]
+    struct Accumulator {
+        files: Vec<DiffFile>,
+        current_file: Option<DiffFile>,
+    }
 
-    for line in diff.lines() {
-        if line.starts_with("diff --git ") {
-            if in_file && !current_file.lines.is_empty() {
-                files.push(std::mem::take(&mut current_file));
+    impl Accumulator {
+        fn process_line(self, line: &str) -> Self {
+            if line.starts_with("diff --git ") {
+                let priority = line
+                    .split_once(" b/")
+                    .map(|(_, after)| prioritize_file_path(after))
+                    .unwrap_or_default();
+                let new_file = DiffFile {
+                    priority,
+                    lines: vec![line.to_string()],
+                };
+                // Finalize the previous file and start a new one.
+                let finalized_files: Vec<DiffFile> = self
+                    .files
+                    .into_iter()
+                    .chain(
+                        self.current_file
+                            .into_iter()
+                            .filter(|f| !f.lines.is_empty()),
+                    )
+                    .collect();
+                Self {
+                    files: finalized_files,
+                    current_file: Some(new_file),
+                }
+            } else {
+                match self.current_file {
+                    Some(current) => Self {
+                        files: self.files,
+                        current_file: Some(DiffFile {
+                            priority: current.priority,
+                            lines: current
+                                .lines
+                                .into_iter()
+                                .chain(std::iter::once(line.to_string()))
+                                .collect(),
+                        }),
+                    },
+                    None => self,
+                }
             }
-            in_file = true;
-            current_file.lines.push(line.to_string());
-
-            if let Some(path) = line.split(" b/").nth(1) {
-                current_file.path = path.to_string();
-                current_file.priority = prioritize_file_path(path);
-            }
-        } else if in_file {
-            current_file.lines.push(line.to_string());
         }
     }
 
-    if in_file && !current_file.lines.is_empty() {
-        files.push(current_file);
-    }
+    let final_acc = diff
+        .lines()
+        .fold(Accumulator::default(), |acc, line| acc.process_line(line));
 
-    files.sort_by(|a, b| b.priority.cmp(&a.priority));
+    let sorted_files: Vec<_> = {
+        let Accumulator {
+            files,
+            current_file,
+        } = final_acc;
+        files
+            .into_iter()
+            .chain(current_file.into_iter().filter(|f| !f.lines.is_empty()))
+            .sorted_by_key(|f| -f.priority)
+            .collect()
+    };
 
-    let mut result = String::new();
-    let mut current_size = 0;
-    let mut files_included = 0;
-    let total_files = files.len();
+    let total_files = sorted_files.len();
 
-    for file in &files {
-        let file_size: usize = file.lines.iter().map(|l| l.len() + 1).sum();
+    let (result, files_included) = {
+        let file_data: Vec<_> = sorted_files
+            .iter()
+            .map(|file| {
+                let lines_text: String = file.lines.iter().map(|l| format!("{l}\n")).collect();
+                (lines_text.clone(), lines_text.len())
+            })
+            .collect();
 
-        if current_size + file_size <= max_size {
-            for line in &file.lines {
-                result.push_str(line);
-                result.push('\n');
-            }
-            current_size += file_size;
-            files_included += 1;
-        } else if files_included == 0 {
-            let truncated_lines = truncate_lines_to_fit(&file.lines, max_size);
-            for line in truncated_lines {
-                result.push_str(&line);
-                result.push('\n');
-            }
-            files_included = 1;
-            break;
+        let total_chunks_len: usize = file_data.iter().map(|(_, len)| *len).sum();
+        if total_chunks_len <= max_size {
+            let result = file_data
+                .iter()
+                .map(|(t, _)| t.clone())
+                .collect::<Vec<_>>()
+                .join("");
+            return result;
+        }
+
+        let cumulative_sizes: Vec<_> = file_data
+            .iter()
+            .scan(0usize, |acc, (_, len)| {
+                *acc += len;
+                Some(*acc)
+            })
+            .collect();
+
+        let last_fitting_index = cumulative_sizes
+            .iter()
+            .position(|&size| size > max_size)
+            .unwrap_or(file_data.len());
+
+        if last_fitting_index == 0 {
+            let truncated = truncate_lines_to_fit(&sorted_files[0].lines, max_size);
+            let truncated_text: String = truncated.iter().map(|l| format!("{l}\n")).collect();
+            (truncated_text, 1)
         } else {
-            break;
+            let included: Vec<_> = file_data
+                .iter()
+                .take(last_fitting_index)
+                .map(|(t, _)| t.clone())
+                .collect();
+            (included.join(""), included.len())
         }
-    }
+    };
 
-    if files_included < total_files {
-        let summary = format!(
-            "\n[Truncated: {files_included} of {total_files} files shown]\n"
-        );
+    let was_truncated = result.len() < diff.len();
+
+    if files_included < total_files || was_truncated {
+        let summary = format!("\n[Truncated: {files_included} of {total_files} files shown]\n");
         if summary.len() <= max_size {
             if result.len() + summary.len() > max_size {
                 let target_bytes = max_size.saturating_sub(summary.len());
                 if target_bytes < result.len() {
-                    let mut cut = 0usize;
-                    for (idx, _) in result.char_indices() {
-                        if idx > target_bytes {
-                            break;
-                        }
-                        cut = idx;
-                    }
-                    result.truncate(cut);
+                    let cut = result
+                        .char_indices()
+                        .take_while(|(idx, _)| *idx <= target_bytes)
+                        .last()
+                        .map(|(idx, _)| idx)
+                        .unwrap_or(0);
+                    return format!("{}{}", &result[..cut], summary);
                 }
             }
-            result.push_str(&summary);
+            return format!("{result}{summary}");
         }
     }
 
     result
 }
 
-#[must_use] 
+#[must_use]
 pub fn truncate_diff_to_model_budget(diff: &str, max_size_bytes: u64) -> (String, bool) {
     let max_size = usize::try_from(max_size_bytes).unwrap_or(usize::MAX);
     if diff.len() <= max_size {
@@ -136,7 +196,6 @@ pub fn truncate_diff_to_model_budget(diff: &str, max_size_bytes: u64) -> (String
 
 #[derive(Default)]
 struct DiffFile {
-    path: String,
     priority: i32,
     lines: Vec<String>,
 }
@@ -159,62 +218,107 @@ fn prioritize_file_path(path: &str) -> i32 {
     }
 }
 
-fn truncate_to_utf8_boundary(s: &mut String, max_bytes: usize) {
+fn truncate_to_utf8_boundary(s: &str, max_bytes: usize) -> String {
     if s.len() <= max_bytes {
-        return;
+        return s.to_string();
     }
-    let mut cut = 0usize;
-    for (idx, _) in s.char_indices() {
-        if idx > max_bytes {
-            break;
-        }
-        cut = idx;
-    }
-    s.truncate(cut);
+    let cut = s
+        .char_indices()
+        .take_while(|(idx, _)| *idx <= max_bytes)
+        .last()
+        .map(|(idx, _)| idx)
+        .unwrap_or(0);
+    s[..cut].to_string()
 }
 
-fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
-    let mut result = Vec::new();
-    let mut current_size = 0;
-
-    for line in lines {
-        let line_size = line.len() + 1;
-        if current_size + line_size <= max_size {
-            current_size += line_size;
-            result.push(line.clone());
-        } else {
-            break;
-        }
-    }
-
+pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
     let suffix = " [truncated...]";
     let suffix_len = suffix.len();
 
-    if !result.is_empty() {
-        // current_size tracks line lengths + '\n' for each included line.
-        // Appending the suffix increases size; ensure we stay within max_size
-        // by trimming from the last included line if needed.
-        let mut total_size = current_size;
-        while !result.is_empty() && total_size + suffix_len > max_size {
-            let last_len = result.last().expect("checked non-empty").len();
-            let excess = total_size + suffix_len - max_size;
-            if excess < last_len {
-                let new_len = last_len - excess;
-                let last = result.last_mut().expect("checked non-empty");
-                truncate_to_utf8_boundary(last, new_len);
-                break;
-            }
-            // Can't trim enough from last line; drop it and retry.
-            let dropped = result.pop().expect("checked non-empty");
-            total_size = total_size.saturating_sub(dropped.len() + 1);
-        }
-
-        if let Some(last) = result.last_mut() {
-            last.push_str(suffix);
-        }
+    if lines.is_empty() {
+        return Vec::new();
     }
 
-    result
+    let line_sizes: Vec<usize> = lines.iter().map(|l| l.len() + 1).collect();
+    let total_size: usize = line_sizes.iter().sum();
+
+    if total_size <= max_size {
+        return lines.to_vec();
+    }
+
+    let available_for_lines = max_size.saturating_sub(suffix_len);
+
+    let result: Vec<_> = lines
+        .iter()
+        .scan(0usize, |size, line| {
+            let line_size = line.len() + 1;
+            if *size + line_size <= available_for_lines {
+                *size += line_size;
+                Some(line.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if result.is_empty() {
+        return result;
+    }
+
+    let current_size: usize = result.iter().map(|l| l.len() + 1).sum();
+
+    let adjusted: Vec<String> = if current_size + suffix_len > max_size {
+        let target_bytes = max_size.saturating_sub(suffix_len);
+        // Scan in reverse to collect lines that fit within target_bytes.
+        // The scan state is (accumulated_so_far, still_accepting).
+        // When a line doesn't fit and nothing has been accumulated yet,
+        // we truncate that line to the UTF-8 boundary and stop.
+        result
+            .iter()
+            .rev()
+            .scan((0usize, true), |(accumulated, accepting), line| {
+                if !*accepting {
+                    return None;
+                }
+                let line_size = line.len() + 1;
+                if *accumulated + line_size <= target_bytes {
+                    *accumulated += line_size;
+                    Some(Some(line.clone()))
+                } else if *accumulated == 0 {
+                    // First line already too big: truncate it.
+                    *accepting = false;
+                    let max_for_line = target_bytes.saturating_sub(1);
+                    let new_line = truncate_to_utf8_boundary(line, max_for_line);
+                    if new_line.is_empty() {
+                        Some(None)
+                    } else {
+                        Some(Some(new_line))
+                    }
+                } else {
+                    *accepting = false;
+                    None
+                }
+            })
+            .flatten()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
+    } else {
+        result
+    };
+
+    if adjusted.is_empty() {
+        adjusted
+    } else {
+        let last_idx = adjusted.len() - 1;
+        let (init, last) = adjusted.split_at(last_idx);
+        let last_formatted = format!("{}{}", last[0], suffix);
+        init.iter()
+            .map(String::clone)
+            .chain(std::iter::once(last_formatted))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -223,10 +327,11 @@ mod diff_truncation_tests {
 
     #[test]
     fn prioritize_file_path_handles_crate_prefixed_paths() {
-        // Real diffs in this repo often include crate-prefixed paths like `ralph-workflow/src/...`.
-        // These should still be treated as high-priority source changes.
         assert_eq!(prioritize_file_path("ralph-workflow/src/lib.rs"), 100);
-        assert_eq!(prioritize_file_path("ralph-workflow/tests/integration.rs"), 50);
+        assert_eq!(
+            prioritize_file_path("ralph-workflow/tests/integration.rs"),
+            50
+        );
         assert_eq!(prioritize_file_path("README.md"), 10);
     }
 
@@ -234,16 +339,10 @@ mod diff_truncation_tests {
     fn truncate_diff_to_model_budget_never_exceeds_max_size() {
         let files_included = 1;
         let total_files = 2;
-        let summary = format!(
-            "\n[Truncated: {files_included} of {total_files} files shown]\n"
-        );
+        let summary = format!("\n[Truncated: {files_included} of {total_files} files shown]\n");
 
         let max_size = 1_000usize;
 
-        // Craft a diff where:
-        // - file 1 fits within max_size
-        // - file 2 does not fit, so a truncation summary is appended
-        // - file 1 content is sized so adding summary would exceed max_size
         let file1_header = "diff --git a/src/a.rs b/src/a.rs";
         let desired_file1_size = max_size - summary.len() + 1;
         let filler_line_len = desired_file1_size.saturating_sub(file1_header.len() + 2);
@@ -256,7 +355,10 @@ mod diff_truncation_tests {
         let diff = format!("{file1}{file2}");
 
         let (truncated, was_truncated) = truncate_diff_to_model_budget(&diff, max_size as u64);
-        assert!(was_truncated, "expected truncation when diff exceeds max size");
+        assert!(
+            was_truncated,
+            "expected truncation when diff exceeds max size"
+        );
         assert!(
             truncated.len() <= max_size,
             "truncated diff must not exceed max_size (got {} > {})",
@@ -267,9 +369,6 @@ mod diff_truncation_tests {
 
     #[test]
     fn truncate_lines_to_fit_reserves_space_for_truncation_suffix() {
-        // Regression test: truncate_lines_to_fit() used to append " [truncated...]" after
-        // selecting lines that fit max_size, which could push the final output over the
-        // intended max_size budget.
         let max_size = 20usize;
         let lines = vec!["x".repeat(max_size - 1)];
 
@@ -282,28 +381,21 @@ mod diff_truncation_tests {
         );
     }
 
-    // =========================================================================
-    // Exhaustive edge case tests for truncation invariants
-    // =========================================================================
-
-    /// Test that truncation output never exceeds `max_size` for various edge cases.
-    ///
-    /// This exhaustively tests boundary conditions around the truncation summary
-    /// appending logic to ensure the invariant "`output.len()` <= `max_size`" holds.
     #[test]
     fn truncate_diff_invariant_never_exceeds_max_size_edge_cases() {
-        // Test various max_size values around the summary length
         let summary_len = "\n[Truncated: 1 of 2 files shown]\n".len();
 
-        for max_size in [
-            10,                 // Very small
-            summary_len - 1,    // Just under summary
-            summary_len,        // Exactly summary
-            summary_len + 1,    // Just over summary
-            summary_len + 10,   // Summary + small content
-            100,                // Reasonable small size
-            1000,               // Reasonable larger size
-        ] {
+        [
+            10,
+            summary_len - 1,
+            summary_len,
+            summary_len + 1,
+            summary_len + 10,
+            100,
+            1000,
+        ]
+        .into_iter()
+        .for_each(|max_size| {
             let file1 = format!(
                 "diff --git a/src/a.rs b/src/a.rs\n+{}\n",
                 "x".repeat(max_size)
@@ -319,14 +411,12 @@ mod diff_truncation_tests {
                 truncated.len(),
                 &truncated[..truncated.len().min(100)]
             );
-        }
+        });
     }
 
-    /// Test truncation with content exactly at boundary conditions.
     #[test]
     fn truncate_diff_boundary_content_sizes() {
-        for max_size in [50usize, 100, 200, 500] {
-            // Content exactly at max_size - should not truncate
+        [50usize, 100, 200, 500].into_iter().for_each(|max_size| {
             let header = "diff --git a/a b/a\n+";
             let exact_diff = format!(
                 "{}{}",
@@ -340,12 +430,7 @@ mod diff_truncation_tests {
                 assert_eq!(result.len(), max_size);
             }
 
-            // Content one byte over max_size - should truncate
-            let over_diff = format!(
-                "{}{}",
-                header,
-                "x".repeat(max_size + 1 - header.len())
-            );
+            let over_diff = format!("{}{}", header, "x".repeat(max_size + 1 - header.len()));
             let (result, was_truncated) =
                 truncate_diff_to_model_budget(&over_diff, max_size as u64);
             assert!(was_truncated, "over size should trigger truncation");
@@ -355,15 +440,13 @@ mod diff_truncation_tests {
                 result.len(),
                 max_size
             );
-        }
+        });
     }
 
-    /// Test that single-file diffs that exceed `max_size` are properly truncated.
     #[test]
     fn truncate_single_large_file_stays_within_budget() {
         let max_size = 100usize;
 
-        // Single file that's way too big
         let large_file = format!(
             "diff --git a/src/big.rs b/src/big.rs\n+{}\n",
             "x".repeat(max_size * 3)
@@ -380,13 +463,11 @@ mod diff_truncation_tests {
         );
     }
 
-    /// Test truncation with unicode content (multi-byte characters).
     #[test]
     fn truncate_diff_handles_unicode_boundaries() {
         let max_size = 50usize;
 
-        // Unicode content: each emoji is 4 bytes
-        let emoji_line = "🎉".repeat(20); // 80 bytes
+        let emoji_line = "🎉".repeat(20);
         let diff = format!("diff --git a/a b/a\n+{emoji_line}\n");
 
         let (truncated, was_truncated) = truncate_diff_to_model_budget(&diff, max_size as u64);
@@ -397,14 +478,26 @@ mod diff_truncation_tests {
             truncated.len(),
             max_size
         );
-        // Verify we didn't split a multi-byte character
         assert!(
             std::str::from_utf8(truncated.as_bytes()).is_ok(),
             "truncated output should be valid UTF-8"
         );
     }
 
-    /// Test that empty diff is handled correctly.
+    #[test]
+    fn truncate_diff_preserves_header_only_file() {
+        let diff = "diff --git a/src/existing.rs b/src/existing.rs\n+line\n".to_string();
+        let header_only = "diff --git a/src/header_only.rs b/src/header_only.rs\n";
+        let combined = format!("{diff}{header_only}");
+
+        let (result, was_truncated) = truncate_diff_to_model_budget(&combined, 512);
+        assert!(!was_truncated, "diff should fit within budget");
+        assert!(
+            result.contains(header_only),
+            "header-only file should still be present"
+        );
+    }
+
     #[test]
     fn truncate_empty_diff() {
         let (result, was_truncated) = truncate_diff_to_model_budget("", 100);
@@ -412,12 +505,10 @@ mod diff_truncation_tests {
         assert_eq!(result, "");
     }
 
-    /// Test truncation with multiple small files.
     #[test]
     fn truncate_multiple_small_files_prefers_high_priority() {
         let max_size = 200usize;
 
-        // Create multiple files with different priorities
         let src_file = "diff --git a/src/main.rs b/src/main.rs\n+high priority\n";
         let test_file = "diff --git a/tests/test.rs b/tests/test.rs\n+medium priority\n";
         let doc_file = "diff --git a/README.md b/README.md\n+low priority docs\n";
@@ -433,7 +524,6 @@ mod diff_truncation_tests {
             truncated.len(),
             max_size
         );
-        // High priority src file should be included before low priority docs
         if truncated.contains("priority") {
             assert!(
                 truncated.contains("high priority") || truncated.contains("medium priority"),

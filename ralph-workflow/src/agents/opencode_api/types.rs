@@ -88,36 +88,45 @@ struct RawModelLimit {
 
 impl From<HashMap<String, RawProviderEntry>> for ApiCatalog {
     fn from(raw: HashMap<String, RawProviderEntry>) -> Self {
-        let mut providers = HashMap::new();
-        let mut models = HashMap::new();
-
-        for (provider_id, entry) in raw {
-            // Create provider entry
-            providers.insert(
-                provider_id.clone(),
-                Provider {
+        let entries: Vec<_> = raw
+            .into_iter()
+            .map(|(provider_id, entry)| {
+                let provider = Provider {
                     id: entry.id.clone(),
                     name: entry.name.clone(),
                     description: entry.doc.unwrap_or_default(),
-                },
-            );
+                };
 
-            // Convert models from HashMap to Vec
-            let model_list: Vec<Model> = entry
-                .models
-                .into_values()
-                .map(|m| Model {
-                    id: m.id,
-                    name: m.name,
-                    description: m.family.unwrap_or_default(),
-                    context_length: m.limit.and_then(|l| l.context),
-                })
-                .collect();
+                let model_list: Vec<Model> = entry
+                    .models
+                    .into_values()
+                    .map(|m| Model {
+                        id: m.id,
+                        name: m.name,
+                        description: m.family.unwrap_or_default(),
+                        context_length: m.limit.and_then(|l| l.context),
+                    })
+                    .collect();
 
-            if !model_list.is_empty() {
-                models.insert(provider_id, model_list);
-            }
-        }
+                (provider_id, provider, model_list)
+            })
+            .collect();
+
+        let providers: HashMap<_, _> = entries
+            .iter()
+            .map(|(id, provider, _)| (id.clone(), provider.clone()))
+            .collect();
+
+        let models: HashMap<_, _> = entries
+            .iter()
+            .filter_map(|(id, _, model_list)| {
+                if model_list.is_empty() {
+                    None
+                } else {
+                    Some((id.clone(), model_list.clone()))
+                }
+            })
+            .collect();
 
         Self {
             providers,
@@ -233,51 +242,53 @@ mod tests {
     use super::*;
 
     fn create_test_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
-            "anthropic".to_string(),
-            Provider {
-                id: "anthropic".to_string(),
-                name: "Anthropic".to_string(),
-                description: "Anthropic Claude models".to_string(),
-            },
-        );
-        providers.insert(
-            "openai".to_string(),
-            Provider {
-                id: "openai".to_string(),
-                name: "OpenAI".to_string(),
-                description: "OpenAI GPT models".to_string(),
-            },
-        );
+        let providers = HashMap::from([
+            (
+                "anthropic".to_string(),
+                Provider {
+                    id: "anthropic".to_string(),
+                    name: "Anthropic".to_string(),
+                    description: "Anthropic Claude models".to_string(),
+                },
+            ),
+            (
+                "openai".to_string(),
+                Provider {
+                    id: "openai".to_string(),
+                    name: "OpenAI".to_string(),
+                    description: "OpenAI GPT models".to_string(),
+                },
+            ),
+        ]);
 
-        let mut models = HashMap::new();
-        models.insert(
-            "anthropic".to_string(),
-            vec![
-                Model {
-                    id: "claude-sonnet-4-5".to_string(),
-                    name: "Claude Sonnet 4.5".to_string(),
-                    description: "Latest Claude Sonnet".to_string(),
-                    context_length: Some(200_000),
-                },
-                Model {
-                    id: "claude-opus-4".to_string(),
-                    name: "Claude Opus 4".to_string(),
-                    description: "Most capable Claude".to_string(),
-                    context_length: Some(200_000),
-                },
-            ],
-        );
-        models.insert(
-            "openai".to_string(),
-            vec![Model {
-                id: "gpt-4".to_string(),
-                name: "GPT-4".to_string(),
-                description: "OpenAI's GPT-4".to_string(),
-                context_length: Some(8192),
-            }],
-        );
+        let models = HashMap::from([
+            (
+                "anthropic".to_string(),
+                vec![
+                    Model {
+                        id: "claude-sonnet-4-5".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
+                        description: "Latest Claude Sonnet".to_string(),
+                        context_length: Some(200_000),
+                    },
+                    Model {
+                        id: "claude-opus-4".to_string(),
+                        name: "Claude Opus 4".to_string(),
+                        description: "Most capable Claude".to_string(),
+                        context_length: Some(200_000),
+                    },
+                ],
+            ),
+            (
+                "openai".to_string(),
+                vec![Model {
+                    id: "gpt-4".to_string(),
+                    name: "GPT-4".to_string(),
+                    description: "OpenAI's GPT-4".to_string(),
+                    context_length: Some(8192),
+                }],
+            ),
+        ]);
 
         ApiCatalog {
             providers,

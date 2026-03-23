@@ -65,47 +65,69 @@ pub struct ReviewSummary {
 /// * `developer_agent` - Name of the developer agent
 /// * `reviewer_agent` - Name of the reviewer agent
 pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agent: &str) {
-    println!();
-    println!(
-        "{}{}╭────────────────────────────────────────────────────────────╮{}",
-        colors.bold(),
-        colors.cyan(),
-        colors.reset()
-    );
-    println!(
-        "{}{}│{}  {}{}🤖 Ralph{} {}─ PROMPT-driven agent orchestrator{}              {}{}│{}",
-        colors.bold(),
-        colors.cyan(),
-        colors.reset(),
-        colors.bold(),
-        colors.white(),
-        colors.reset(),
-        colors.dim(),
-        colors.reset(),
-        colors.bold(),
-        colors.cyan(),
-        colors.reset()
-    );
-    println!(
-        "{}{}│{}  {}{} × {} pipeline for autonomous development{}                 {}{}│{}",
-        colors.bold(),
-        colors.cyan(),
-        colors.reset(),
-        colors.dim(),
-        developer_agent,
-        reviewer_agent,
-        colors.reset(),
-        colors.bold(),
-        colors.cyan(),
-        colors.reset()
-    );
-    println!(
-        "{}{}╰────────────────────────────────────────────────────────────╯{}",
-        colors.bold(),
-        colors.cyan(),
-        colors.reset()
-    );
-    println!();
+    let _ = print_welcome_banner_to(colors, developer_agent, reviewer_agent, std::io::stdout());
+}
+
+pub fn print_welcome_banner_to<W: std::io::Write>(
+    colors: Colors,
+    developer_agent: &str,
+    reviewer_agent: &str,
+    output: W,
+) -> std::io::Result<()> {
+    let content = build_welcome_banner_content(colors, developer_agent, reviewer_agent);
+    write_banner_to(output, &content)
+}
+
+fn build_welcome_banner_content(
+    colors: Colors,
+    developer_agent: &str,
+    reviewer_agent: &str,
+) -> String {
+    let lines = [
+        "",
+        &format!(
+            "{}{}╭────────────────────────────────────────────────────────────╮{}",
+            colors.bold(),
+            colors.cyan(),
+            colors.reset()
+        ),
+        &format!(
+            "{}{}│{}  {}{}🤖 Ralph{} {}─ PROMPT-driven agent orchestrator{}              {}{}│{}",
+            colors.bold(),
+            colors.cyan(),
+            colors.reset(),
+            colors.bold(),
+            colors.white(),
+            colors.reset(),
+            colors.dim(),
+            colors.reset(),
+            colors.bold(),
+            colors.cyan(),
+            colors.reset()
+        ),
+        &format!(
+            "{}{}│{}  {}{} × {} pipeline for autonomous development{}                 {}{}│{}",
+            colors.bold(),
+            colors.cyan(),
+            colors.reset(),
+            colors.dim(),
+            developer_agent,
+            reviewer_agent,
+            colors.reset(),
+            colors.bold(),
+            colors.cyan(),
+            colors.reset()
+        ),
+        &format!(
+            "{}{}╰────────────────────────────────────────────────────────────╯{}",
+            colors.bold(),
+            colors.cyan(),
+            colors.reset()
+        ),
+        "",
+        "",
+    ];
+    lines.join("\n")
 }
 
 /// Print the final summary after pipeline completion.
@@ -119,73 +141,20 @@ pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agen
 /// * `summary` - Pipeline summary data
 /// * `logger` - Logger for final success message (via Loggable trait)
 pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummary, logger: &L) {
+    let _ = print_final_summary_to(colors, summary, logger, std::io::stdout());
+}
+
+pub fn print_final_summary_to<L: Loggable, W: std::io::Write>(
+    colors: Colors,
+    summary: &PipelineSummary,
+    logger: &L,
+    output: W,
+) -> std::io::Result<()> {
     logger.header("Pipeline Complete", crate::logger::Colors::green);
 
-    println!();
-    println!(
-        "{}{}📊 Summary{}",
-        colors.bold(),
-        colors.white(),
-        colors.reset()
-    );
-    println!(
-        "{}──────────────────────────────────{}",
-        colors.dim(),
-        colors.reset()
-    );
-    println!(
-        "  {}⏱{}  Total time:      {}{}{}",
-        colors.cyan(),
-        colors.reset(),
-        colors.bold(),
-        summary.total_time,
-        colors.reset()
-    );
-    println!(
-        "  {}🔄{}  Dev runs:        {}{}{}/{}",
-        colors.blue(),
-        colors.reset(),
-        colors.bold(),
-        summary.dev_runs_completed,
-        colors.reset(),
-        summary.dev_runs_total
-    );
-    println!(
-        "  {}🔍{}  Review passes:   {}{}{}/{}",
-        colors.magenta(),
-        colors.reset(),
-        colors.bold(),
-        summary.review_passes_completed,
-        colors.reset(),
-        summary.review_passes_total
-    );
-    if summary.verbose {
-        println!(
-            "  {}  {}  (Total runs:     {}{}{}){}",
-            colors.dim(),
-            colors.magenta(),
-            colors.bold(),
-            summary.review_runs,
-            colors.reset(),
-            colors.reset()
-        );
-    }
-    println!(
-        "  {}📝{}  Changes detected: {}{}{}",
-        colors.green(),
-        colors.reset(),
-        colors.bold(),
-        summary.changes_detected,
-        colors.reset()
-    );
+    let content = build_final_summary_content(colors, summary);
 
-    // Review metrics
-    if let Some(ref review) = summary.review_summary {
-        print_review_summary(colors, summary.verbose, review);
-    }
-    println!();
-
-    print_output_files(colors, summary.isolation_mode);
+    write_banner_to(output, &content)?;
 
     // Use the Loggable trait's success method
     logger.success("Ralph pipeline completed successfully!");
@@ -216,119 +185,256 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
             ));
         }
     }
+
+    Ok(())
 }
 
-/// Print review metrics summary.
-fn print_review_summary(colors: Colors, verbose: bool, review: &ReviewSummary) {
-    // No issues case
+fn write_banner_to<W: std::io::Write>(mut output: W, content: &str) -> std::io::Result<()> {
+    output.write_all(content.as_bytes())
+}
+
+fn build_final_summary_content(colors: Colors, summary: &PipelineSummary) -> String {
+    let base_lines: Vec<String> = vec![
+        "".to_string(),
+        format!(
+            "{}{}📊 Summary{}",
+            colors.bold(),
+            colors.white(),
+            colors.reset()
+        ),
+        format!(
+            "{}──────────────────────────────────{}",
+            colors.dim(),
+            colors.reset()
+        ),
+        format!(
+            "  {}⏱{}  Total time:      {}{}{}",
+            colors.cyan(),
+            colors.reset(),
+            colors.bold(),
+            summary.total_time,
+            colors.reset()
+        ),
+        format!(
+            "  {}🔄{}  Dev runs:        {}{}{}/{}",
+            colors.blue(),
+            colors.reset(),
+            colors.bold(),
+            summary.dev_runs_completed,
+            colors.reset(),
+            summary.dev_runs_total
+        ),
+        format!(
+            "  {}🔍{}  Review passes:   {}{}{}/{}",
+            colors.magenta(),
+            colors.reset(),
+            colors.bold(),
+            summary.review_passes_completed,
+            colors.reset(),
+            summary.review_passes_total
+        ),
+        format!(
+            "  {}📝{}  Changes detected: {}{}{}",
+            colors.green(),
+            colors.reset(),
+            colors.bold(),
+            summary.changes_detected,
+            colors.reset()
+        ),
+    ];
+
+    let verbose_line: Vec<String> = if summary.verbose {
+        vec![format!(
+            "  {}  {}  (Total runs:     {}{}{}){}",
+            colors.dim(),
+            colors.magenta(),
+            colors.bold(),
+            summary.review_runs,
+            colors.reset(),
+            colors.reset()
+        )]
+    } else {
+        Vec::new()
+    };
+
+    let review_lines: Vec<String> = summary
+        .review_summary
+        .as_ref()
+        .map_or(Vec::new(), |review| {
+            build_review_summary_content(colors, summary.verbose, review)
+                .lines()
+                .map(String::from)
+                .collect()
+        });
+
+    let output_files_lines: Vec<String> =
+        build_output_files_content(colors, summary.isolation_mode)
+            .lines()
+            .map(String::from)
+            .collect();
+
+    base_lines
+        .into_iter()
+        .chain(verbose_line)
+        .chain(std::iter::once("".to_string()))
+        .chain(review_lines)
+        .chain(std::iter::once("".to_string()))
+        .chain(output_files_lines)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn build_review_summary_content(colors: Colors, verbose: bool, review: &ReviewSummary) -> String {
     if review.unresolved_count == 0 && review.blocking_count == 0 {
-        println!(
+        return [format!(
             "  {}✓{}   Review result:   {}{}{}",
             colors.green(),
             colors.reset(),
             colors.bold(),
             review.summary,
             colors.reset()
-        );
-        return;
+        )]
+        .join("\n");
     }
 
-    // Issues present
-    println!(
+    let base_line: Vec<String> = vec![format!(
         "  {}🔎{}  Review summary:  {}{}{}",
         colors.yellow(),
         colors.reset(),
         colors.bold(),
         review.summary,
         colors.reset()
-    );
+    )];
 
-    // Show unresolved count
-    if review.unresolved_count > 0 {
-        println!(
+    let unresolved_line: Vec<String> = if review.unresolved_count > 0 {
+        vec![format!(
             "  {}⚠{}   Unresolved:      {}{}{} issues remaining",
             colors.red(),
             colors.reset(),
             colors.bold(),
             review.unresolved_count,
             colors.reset()
-        );
-    }
+        )]
+    } else {
+        Vec::new()
+    };
 
-    // Show detailed breakdown in verbose mode
-    if verbose {
-        if let Some(ref breakdown) = review.detailed_breakdown {
-            println!("  {}📊{}  Breakdown:", colors.dim(), colors.reset());
-            for line in breakdown.lines() {
-                println!("      {}{}{}", colors.dim(), line.trim(), colors.reset());
-            }
-        }
-        // Show sample unresolved issues
-        if !review.samples.is_empty() {
-            println!(
+    let verbose_lines: Vec<String> = if verbose {
+        let breakdown_lines: Vec<String> =
+            review
+                .detailed_breakdown
+                .as_ref()
+                .map_or_else(Vec::<String>::new, |breakdown| {
+                    let line_strs: Vec<&str> = breakdown.lines().collect();
+                    let dimmed: Vec<String> = line_strs
+                        .iter()
+                        .map(|line| {
+                            format!("      {}{}{}", colors.dim(), line.trim(), colors.reset())
+                        })
+                        .collect();
+                    std::iter::once(format!(
+                        "  {}📊{}  Breakdown:",
+                        colors.dim(),
+                        colors.reset()
+                    ))
+                    .chain(dimmed)
+                    .collect()
+                });
+
+        let sample_lines: Vec<String> = if !review.samples.is_empty() {
+            std::iter::once(format!(
                 "  {}🧾{}  Unresolved samples:",
                 colors.dim(),
                 colors.reset()
-            );
-            for s in &review.samples {
-                println!("      {}- {}{}", colors.dim(), s, colors.reset());
-            }
-        }
-    }
+            ))
+            .chain(
+                review
+                    .samples
+                    .iter()
+                    .map(|s| format!("      {}- {}{}", colors.dim(), s, colors.reset())),
+            )
+            .collect()
+        } else {
+            Vec::new()
+        };
 
-    // Highlight blocking issues
-    if review.blocking_count > 0 {
-        println!(
+        breakdown_lines.into_iter().chain(sample_lines).collect()
+    } else {
+        Vec::new()
+    };
+
+    let blocking_line: Vec<String> = if review.blocking_count > 0 {
+        vec![format!(
             "  {}🚨{}  BLOCKING:        {}{}{} critical/high issues unresolved",
             colors.red(),
             colors.reset(),
             colors.bold(),
             review.blocking_count,
             colors.reset()
-        );
-    }
+        )]
+    } else {
+        Vec::new()
+    };
+
+    base_line
+        .into_iter()
+        .chain(unresolved_line)
+        .chain(verbose_lines)
+        .chain(blocking_line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
-/// Print the output files list.
-fn print_output_files(colors: Colors, isolation_mode: bool) {
-    println!(
-        "{}{}📁 Output Files{}",
-        colors.bold(),
-        colors.white(),
-        colors.reset()
-    );
-    println!(
-        "{}──────────────────────────────────{}",
-        colors.dim(),
-        colors.reset()
-    );
-    println!(
-        "  → {}PROMPT.md{}           Goal definition",
-        colors.cyan(),
-        colors.reset()
-    );
-    println!(
-        "  → {}.agent/STATUS.md{}    Current status",
-        colors.cyan(),
-        colors.reset()
-    );
-    // Only show ISSUES.md and NOTES.md when NOT in isolation mode
-    if !isolation_mode {
-        println!(
-            "  → {}.agent/ISSUES.md{}    Review findings",
+fn build_output_files_content(colors: Colors, isolation_mode: bool) -> String {
+    let base_lines: Vec<String> = vec![
+        format!(
+            "{}{}📁 Output Files{}",
+            colors.bold(),
+            colors.white(),
+            colors.reset()
+        ),
+        format!(
+            "{}──────────────────────────────────{}",
+            colors.dim(),
+            colors.reset()
+        ),
+        format!(
+            "  → {}PROMPT.md{}           Goal definition",
             colors.cyan(),
             colors.reset()
-        );
-        println!(
-            "  → {}.agent/NOTES.md{}     Progress notes",
+        ),
+        format!(
+            "  → {}.agent/STATUS.md{}    Current status",
             colors.cyan(),
             colors.reset()
-        );
-    }
-    println!(
-        "  → {}.agent/logs/{}        Detailed logs",
-        colors.cyan(),
-        colors.reset()
-    );
-    println!();
+        ),
+    ];
+
+    let isolation_lines: Vec<String> = if !isolation_mode {
+        vec![
+            format!(
+                "  → {}.agent/ISSUES.md{}    Review findings",
+                colors.cyan(),
+                colors.reset()
+            ),
+            format!(
+                "  → {}.agent/NOTES.md{}     Progress notes",
+                colors.cyan(),
+                colors.reset()
+            ),
+        ]
+    } else {
+        Vec::new()
+    };
+
+    base_lines
+        .into_iter()
+        .chain(isolation_lines)
+        .chain(std::iter::once(format!(
+            "  → {}.agent/logs/{}        Detailed logs",
+            colors.cyan(),
+            colors.reset()
+        )))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

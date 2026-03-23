@@ -1,6 +1,6 @@
 //! Application entrypoint and pipeline orchestration.
 //!
-//! This module is the CLI layer operating **before the repository root is known**.
+//! This module is the CLI layer operating **before** the repository root is known.
 //! It uses [`AppEffect`][effect::AppEffect] for side effects, which is distinct from
 //! [`Effect`][crate::reducer::effect::Effect] used after repo root discovery.
 //!
@@ -34,48 +34,28 @@
 //! - [`detection`]: Project stack detection
 //! - [`finalization`]: Pipeline cleanup and finalization
 
-use super::{config_init, effect, effect_handler, effectful, event_loop, plumbing};
-
-use crate::agents::AgentRegistry;
-use crate::app::finalization::finalize_pipeline;
-use crate::banner::print_welcome_banner;
-use crate::checkpoint::{
-    save_checkpoint_with_workspace, CheckpointBuilder, PipelineCheckpoint, PipelinePhase,
-};
-use crate::cli::{
-    create_prompt_from_template, handle_diagnose, handle_dry_run, handle_list_agents,
-    handle_list_available_agents, handle_list_providers, handle_show_baseline,
-    handle_template_commands, prompt_template_selection, Args,
-};
-
-use crate::executor::ProcessExecutor;
-use crate::files::protection::monitoring::PromptMonitor;
-use crate::files::{
-    create_prompt_backup_with_workspace,
-    // make_prompt_read_only_with_workspace no longer used in runner
-    update_status_with_workspace,
-    validate_prompt_md_with_workspace,
-};
-use crate::git_helpers::{
-    abort_rebase, continue_rebase, get_conflicted_files, is_main_or_master_branch, RebaseResult,
-};
-use crate::logger::Colors;
-use crate::logger::Logger;
-use crate::phases::PhaseContext;
-use crate::pipeline::{AgentPhaseGuard, Timer};
-use crate::prompts::template_context::TemplateContext;
-
-use super::config_init::initialize_config;
-use super::context::PipelineContext;
-use super::detection::detect_project_stack;
-use super::rebase::{run_rebase_to_default, try_resolve_conflicts_without_phase_ctx};
-use super::resume::{handle_resume_with_validation, offer_resume_if_checkpoint_exists};
-use super::validation::{
-    resolve_required_agents, validate_agent_chains, validate_agent_commands, validate_can_commit,
-};
-
 // Include sub-modules
-include!("runner/command_handlers.rs");
-include!("runner/setup_helpers.rs");
-include!("runner/pipeline_execution.rs");
-include!("runner/tests.rs");
+pub mod command_handlers;
+pub mod pipeline_execution;
+pub mod setup_helpers;
+#[cfg(test)]
+pub mod tests;
+
+// Re-exports from pipeline_execution
+pub use pipeline_execution::run;
+
+// Re-exports from pipeline_execution (helpers is included via include!)
+pub use pipeline_execution::CommandExitCleanupGuard;
+
+// Re-exports from pipeline_execution (initialization is included via include!)
+pub use pipeline_execution::PipelinePreparationParams;
+
+// Re-export test entry points when the helpers feature is enabled.
+#[cfg(feature = "test-utils")]
+pub use pipeline_execution::{
+    run_pipeline_with_effect_handler, run_with_config, run_with_config_and_handlers,
+    run_with_config_and_resolver, RunWithHandlersParams,
+};
+
+// Re-exports from setup_helpers
+pub use setup_helpers::{validate_and_setup_agents, AgentSetupParams};

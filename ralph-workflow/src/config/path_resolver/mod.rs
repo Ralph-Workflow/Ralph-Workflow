@@ -33,11 +33,12 @@
 //!     .with_file("/test/repo/PROMPT.md", "# Goal\nTest");
 //! ```
 
-use std::io;
 use std::path::{Path, PathBuf};
 
-mod memory_env;
-pub use memory_env::MemoryConfigEnvironment;
+#[path = "boundary.rs"]
+mod implementations;
+// Re-export from boundary for backward compatibility
+pub use implementations::{MemoryConfigEnvironment, RealConfigEnvironment};
 
 /// Trait for configuration environment access.
 ///
@@ -83,21 +84,21 @@ pub trait ConfigEnvironment: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn read_file(&self, path: &Path) -> io::Result<String>;
+    fn read_file(&self, path: &Path) -> std::io::Result<String>;
 
     /// Write content to a file, creating parent directories if needed.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn write_file(&self, path: &Path, content: &str) -> io::Result<()>;
+    fn write_file(&self, path: &Path, content: &str) -> std::io::Result<()>;
 
     /// Create directories recursively.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn create_dir_all(&self, path: &Path) -> io::Result<()>;
+    fn create_dir_all(&self, path: &Path) -> std::io::Result<()>;
 
     /// Get the canonical root of the git repository, even from a worktree.
     ///
@@ -123,69 +124,8 @@ pub trait ConfigEnvironment: Send + Sync {
     }
 }
 
-/// Production implementation of [`ConfigEnvironment`].
-///
-/// Uses real environment variables and filesystem operations:
-/// - Reads `XDG_CONFIG_HOME` for config path resolution
-/// - Uses `std::fs` for all file operations
-#[derive(Debug, Default, Clone, Copy)]
-pub struct RealConfigEnvironment;
-
-impl ConfigEnvironment for RealConfigEnvironment {
-    fn unified_config_path(&self) -> Option<PathBuf> {
-        super::unified::unified_config_path()
-    }
-
-    fn get_env_var(&self, key: &str) -> Option<String> {
-        std::env::var(key).ok()
-    }
-
-    fn file_exists(&self, path: &Path) -> bool {
-        path.exists()
-    }
-
-    fn read_file(&self, path: &Path) -> io::Result<String> {
-        std::fs::read_to_string(path)
-    }
-
-    fn write_file(&self, path: &Path, content: &str) -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, content)
-    }
-
-    fn create_dir_all(&self, path: &Path) -> io::Result<()> {
-        std::fs::create_dir_all(path)
-    }
-
-    fn worktree_root(&self) -> Option<PathBuf> {
-        let repo = git2::Repository::discover(".").ok()?;
-        let gitdir = repo.path();
-
-        // Detect worktrees: in a git worktree, repo.path() returns something like
-        // <main-repo>/.git/worktrees/<worktree-name>/
-        // We detect this by checking if the gitdir is inside a "worktrees" subdirectory
-        // of the main repo's .git directory.
-        if let Some(parent) = gitdir.parent() {
-            if parent.file_name().and_then(|n| n.to_str()) == Some("worktrees") {
-                // parent is <main-repo>/.git/worktrees
-                // parent.parent() is <main-repo>/.git
-                // parent.parent().parent() is <main-repo> (the canonical root)
-                return parent.parent().and_then(|p| p.parent()).map(PathBuf::from);
-            }
-        }
-
-        repo.workdir().map(PathBuf::from)
-    }
-
-    fn local_config_path(&self) -> Option<PathBuf> {
-        // Try worktree root first, fall back to default behavior
-        self.worktree_root()
-            .map(|root| root.join(".agent/ralph-workflow.toml"))
-            .or_else(|| Some(PathBuf::from(".agent/ralph-workflow.toml")))
-    }
-}
+// RealConfigEnvironment has been moved to boundary/real_env.rs
+// to comply with dylint boundary module requirements
 
 #[cfg(test)]
 mod tests {
@@ -260,7 +200,7 @@ mod tests {
         let env = MemoryConfigEnvironment::new();
         let result = env.read_file(Path::new("/nonexistent"));
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 
     #[test]

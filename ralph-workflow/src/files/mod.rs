@@ -14,7 +14,6 @@
 //!
 //! The files module is organized by domain concern:
 //!
-//! - [`io`] - File I/O operations (agent files, recovery, backup, context)
 //! - [`protection`] - File protection and integrity (validation, integrity, monitoring)
 //! - [`llm_output_extraction`] - LLM output extraction (commit message, JSON extraction)
 //! - [`result_extraction`] - File path extraction from ISSUES content
@@ -31,27 +30,42 @@
 //! Agent JSON output is extracted and written by the orchestrator, ensuring
 //! consistent file handling regardless of agent behavior.
 
-// Domain-driven submodules
-pub mod io;
-pub mod protection;
-
-// Extraction modules (already domain-organized)
-pub mod llm_output_extraction;
-pub mod result_extraction;
-
-// Re-exports from domain submodules for API convenience
-pub use io::{
-    clean_context_for_reviewer_with_workspace, cleanup_generated_files_with_workspace,
-    create_prompt_backup_with_workspace, delete_commit_message_file_with_workspace,
-    delete_issues_file_for_isolation_with_workspace, delete_plan_file_with_workspace,
-    ensure_files_with_workspace, file_contains_marker, file_contains_marker_with_workspace,
-    make_prompt_read_only_with_workspace, make_prompt_writable_with_workspace,
-    read_commit_message_file_with_workspace, setup_xsd_schemas_with_workspace,
-    update_status_with_workspace, verify_file_not_corrupted_with_workspace,
-    write_commit_message_file_with_workspace, write_diff_backup_with_workspace,
-    write_file_atomic_with_workspace,
+pub mod agent_files;
+pub use self::agent_files::{
+    cleanup_generated_files_with_workspace, delete_commit_message_file_with_workspace,
+    delete_plan_file_with_workspace, ensure_files_with_workspace, file_contains_marker,
+    file_contains_marker_with_workspace, read_commit_message_file_with_workspace,
+    setup_xsd_schemas_with_workspace, write_commit_message_file_with_workspace, GENERATED_FILES,
 };
 
-pub use protection::{
+pub mod backup;
+pub use self::backup::{
+    create_prompt_backup_with_workspace, make_prompt_read_only_with_workspace,
+    make_prompt_writable_with_workspace, write_diff_backup_with_workspace,
+};
+
+pub mod context;
+pub use self::context::{
+    clean_context_for_reviewer_with_workspace, delete_issues_file_for_isolation_with_workspace,
+    update_status_with_workspace,
+};
+
+pub mod integrity;
+pub use self::integrity::{
+    check_and_cleanup_xml_before_retry_with_workspace, check_filesystem_ready_with_workspace,
+    check_xml_file_writable_with_workspace, cleanup_stale_xml_files_with_workspace,
+    verify_file_not_corrupted_with_workspace, write_file_atomic_with_workspace,
+};
+
+pub mod monitoring;
+pub mod protection;
+pub use self::protection::{
     restore_prompt_if_needed, validate_prompt_md, validate_prompt_md_with_workspace,
 };
+
+pub mod recovery;
+pub use self::recovery::{auto_repair_with_workspace, RecoveryStatus};
+
+pub mod llm_output_extraction;
+
+pub mod result_extraction;

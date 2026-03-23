@@ -20,14 +20,25 @@ pub fn prompt_review_xml_with_context(
     changes_content: &str,
     workspace: &dyn Workspace,
 ) -> String {
+    let plan_value = if plan_content.trim().is_empty() {
+        "(no plan available)".to_string()
+    } else {
+        plan_content.to_string()
+    };
+    let changes_value = if changes_content.trim().is_empty() {
+        "(no diff available)".to_string()
+    } else {
+        changes_content.to_string()
+    };
+
     let partials = get_shared_partials();
     let template_content = context
         .registry()
         .get_template("review_xml")
         .unwrap_or_else(|_| include_str!("../templates/review_xml.txt").to_string());
     let variables = HashMap::from([
-        ("PLAN", plan_content.to_string()),
-        ("CHANGES", changes_content.to_string()),
+        ("PLAN", plan_value),
+        ("CHANGES", changes_value),
         (
             "ISSUES_XML_PATH",
             workspace.absolute_str(".agent/tmp/issues.xml"),
@@ -210,30 +221,35 @@ pub fn prompt_review_xsd_retry_with_context_files(
     let last_output_exists = workspace.exists(last_output_path);
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
-    let mut diagnostic_prefix = String::new();
-    if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
-        if !schema_exists {
-            writeln!(
-                diagnostic_prefix,
-                "  - Schema file: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/issues.xsd"),
-                workspace.root().display()
-            )
-            .unwrap();
-        }
-        if !last_output_exists {
-            writeln!(
-                diagnostic_prefix,
-                "  - Last output: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/last_output.xml"),
-                workspace.root().display()
-            )
-            .unwrap();
-        }
-        diagnostic_prefix
-            .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
-    }
+    let diagnostic_prefix = if !schema_exists || !last_output_exists {
+        let parts: Vec<String> =
+            std::iter::once("⚠️  WARNING: Required XSD retry files are missing:\n".to_string())
+                .chain(if !schema_exists {
+                    Some(format!(
+                        "  - Schema file: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/issues.xsd"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
+                .chain(if !last_output_exists {
+                    Some(format!(
+                        "  - Last output: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/last_output.xml"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
+                .chain(std::iter::once(
+                    "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),
+                ))
+                .collect();
+        parts.concat()
+    } else {
+        String::new()
+    };
 
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {
@@ -306,30 +322,35 @@ pub fn prompt_review_xsd_retry_with_context_files_and_log(
     let last_output_exists = workspace.exists(last_output_path);
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
-    let mut diagnostic_prefix = String::new();
-    if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
-        if !schema_exists {
-            writeln!(
-                diagnostic_prefix,
-                "  - Schema file: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/issues.xsd"),
-                workspace.root().display()
-            )
-            .unwrap();
-        }
-        if !last_output_exists {
-            writeln!(
-                diagnostic_prefix,
-                "  - Last output: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/last_output.xml"),
-                workspace.root().display()
-            )
-            .unwrap();
-        }
-        diagnostic_prefix
-            .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
-    }
+    let diagnostic_prefix = if !schema_exists || !last_output_exists {
+        let parts: Vec<String> =
+            std::iter::once("⚠️  WARNING: Required XSD retry files are missing:\n".to_string())
+                .chain(if !schema_exists {
+                    Some(format!(
+                        "  - Schema file: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/issues.xsd"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
+                .chain(if !last_output_exists {
+                    Some(format!(
+                        "  - Last output: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/last_output.xml"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
+                .chain(std::iter::once(
+                    "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),
+                ))
+                .collect();
+        parts.concat()
+    } else {
+        String::new()
+    };
 
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {
@@ -375,27 +396,30 @@ pub fn prompt_review_xsd_retry_with_context_files_and_log(
     ]);
 
     let template = Template::new(&template_content);
-    if let Ok(mut rendered) = template.render_with_log(template_name, &variables, &partials) {
-        if !diagnostic_prefix.is_empty() {
-            rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
-        }
-        rendered
-    } else {
-        let prompt_content = format!(
-            "Your previous review failed XSD validation.\n\nError: {xsd_error}\n\n\
-             Read .agent/tmp/issues.xsd for the schema and .agent/tmp/last_output.xml for your previous output.\n\
-             Please resend your review in valid XML format conforming to the XSD schema.\n"
-        );
-        RenderedTemplate {
-            content: prompt_content,
-            log: SubstitutionLog {
-                template_name: template_name.to_string(),
-                substituted: vec![SubstitutionEntry {
-                    name: "XSD_ERROR".to_string(),
-                    source: SubstitutionSource::Value,
-                }],
-                unsubstituted: vec![],
-            },
-        }
-    }
+    template
+        .render_with_log(template_name, &variables, &partials)
+        .map(|mut rendered| {
+            if !diagnostic_prefix.is_empty() {
+                rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
+            }
+            rendered
+        })
+        .unwrap_or_else(|_| {
+            let prompt_content = format!(
+                "Your previous review failed XSD validation.\n\nError: {xsd_error}\n\n\
+                 Read .agent/tmp/issues.xsd for the schema and .agent/tmp/last_output.xml for your previous output.\n\
+                 Please resend your review in valid XML format conforming to the XSD schema.\n"
+            );
+            RenderedTemplate {
+                content: prompt_content,
+                log: SubstitutionLog {
+                    template_name: template_name.to_string(),
+                    substituted: vec![SubstitutionEntry {
+                        name: "XSD_ERROR".to_string(),
+                        source: SubstitutionSource::Value,
+                    }],
+                    unsubstituted: vec![],
+                },
+            }
+        })
 }

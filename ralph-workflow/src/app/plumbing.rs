@@ -17,7 +17,6 @@
 use crate::agents::{AgentDrain, AgentRegistry};
 use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult};
 use crate::config::Config;
-use crate::executor::ProcessExecutor;
 use crate::files::{
     delete_commit_message_file_with_workspace, read_commit_message_file_with_workspace,
     write_commit_message_file_with_workspace,
@@ -26,10 +25,10 @@ use crate::git_helpers::git_diff;
 use crate::logger::Colors;
 use crate::logger::Logger;
 use crate::phases::generate_commit_message_with_chain;
-use crate::pipeline::PipelineRuntime;
-use crate::pipeline::Timer;
+
 use crate::prompts::TemplateContext;
 use crate::workspace::Workspace;
+use crate::ProcessExecutor;
 use std::sync::Arc;
 
 /// Configuration for commit message generation in plumbing commands.
@@ -59,20 +58,19 @@ pub struct CommitGenerationConfig<'a> {
     pub executor: Arc<dyn ProcessExecutor>,
 }
 
-fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
-    if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit) {
+fn resolve_commit_message_agents(registry: &AgentRegistry, reviewer_agent: &str) -> Vec<String> {
+    if let Some(commit_binding) = registry.resolved_drain(AgentDrain::Commit) {
         return commit_binding.agents.clone();
     }
 
-    let review_chain = config
-        .registry
+    let review_chain = registry
         .resolved_drain(AgentDrain::Review)
         .map_or(&[] as &[String], |binding| binding.agents.as_slice());
     if !review_chain.is_empty() {
         return review_chain.to_vec();
     }
 
-    vec![config.reviewer_agent.to_string()]
+    vec![reviewer_agent.to_string()]
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -80,7 +78,7 @@ fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<Str
 pub fn resolve_commit_message_agents_for_testing(
     config: &CommitGenerationConfig<'_>,
 ) -> Vec<String> {
-    resolve_commit_message_agents(config)
+    resolve_commit_message_agents(config.registry, config.reviewer_agent)
 }
 
 /// Handles the `--show-commit-msg` command using workspace abstraction.
@@ -94,21 +92,13 @@ pub fn resolve_commit_message_agents_for_testing(
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` on success or an error if the file cannot be read.
+/// Returns the commit message string on success.
 ///
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_show_commit_msg_with_workspace(workspace: &dyn Workspace) -> anyhow::Result<()> {
-    match read_commit_message_file_with_workspace(workspace) {
-        Ok(msg) => {
-            println!("{msg}");
-            Ok(())
-        }
-        Err(e) => {
-            anyhow::bail!("Failed to read commit message: {e}");
-        }
-    }
+pub fn get_commit_message_from_workspace(workspace: &dyn Workspace) -> anyhow::Result<String> {
+    read_commit_message_file_with_workspace(workspace).map_err(anyhow::Error::from)
 }
 
 /// Handles the `--apply-commit` command using effect handler abstraction.
@@ -221,29 +211,16 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         anyhow::bail!("No changes to commit");
     }
 
-    // Create a timer for the pipeline runtime
-    let mut timer = Timer::new();
-
-    // Set up pipeline runtime with the injected executor
-    let executor_ref: &dyn ProcessExecutor = &*config.executor;
-    let mut runtime = PipelineRuntime {
-        timer: &mut timer,
-        logger: config.logger,
-        colors: &config.colors,
-        config: config.config,
-        executor: executor_ref,
-        executor_arc: Arc::clone(&config.executor),
-        workspace: config.workspace,
-        workspace_arc: Arc::clone(&config.workspace_arc),
-    };
-
-    let agents = resolve_commit_message_agents(config);
+    let agents = resolve_commit_message_agents(config.registry, config.reviewer_agent);
 
     // Use the chain-aware commit message generation from phases/commit.rs.
     let result = generate_commit_message_with_chain(
         &diff,
         config.registry,
-        &mut runtime,
+        &mut crate::app::plumbing_boundary::run_pipeline_for_commit_message(
+            &mut crate::app::runtime_factory::create_timer(),
+            config,
+        )?,
         &agents,
         config.template_context,
         config.workspace,
@@ -260,14 +237,12 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
     };
 
     config.logger.success("Commit message generated:");
-    println!();
-    println!(
+    config.logger.info(&format!(
         "{}{}{}",
         config.colors.cyan(),
         commit_message,
         config.colors.reset()
-    );
-    println!();
+    ));
 
     // Write the message to file for use with --apply-commit (using workspace)
     write_commit_message_file_with_workspace(config.workspace, &commit_message)?;

@@ -17,13 +17,13 @@
 //! - `regression_tests` - Performance regression detection tests
 
 #[cfg(test)]
-mod memory_usage;
+mod io_memory_usage;
 
 #[cfg(test)]
-mod checkpoint_serialization;
+mod io_checkpoint_serialization;
 
 #[cfg(test)]
-mod regression_tests;
+mod io_regression_tests;
 
 // Baselines module is public for use in integration tests
-pub mod baselines;
+pub mod io_baselines;

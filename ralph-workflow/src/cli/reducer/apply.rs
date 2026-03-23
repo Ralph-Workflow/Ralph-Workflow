@@ -6,10 +6,10 @@
 use super::state::CliState;
 use crate::config::{Config, ReviewDepth, Verbosity};
 
-/// Apply CLI state to configuration.
+/// Apply CLI state to configuration (functional pattern - returns new Config).
 ///
 /// This function takes the accumulated CLI state and applies all values
-/// to the Config struct, respecting priority rules:
+/// to a new Config struct, respecting priority rules:
 ///
 /// - Verbosity: debug > full > quiet > explicit > base
 /// - Iterations: explicit -D/-R > preset > config default
@@ -18,89 +18,120 @@ use crate::config::{Config, ReviewDepth, Verbosity};
 /// # Arguments
 ///
 /// * `cli_state` - The CLI state after processing all events
-/// * `config` - The configuration to modify (will be updated in-place)
-pub fn apply_cli_state_to_config(cli_state: &CliState, config: &mut Config) {
+/// * `config` - The base configuration to apply state to
+///
+/// # Returns
+///
+/// A new Config with CLI state applied
+#[must_use]
+pub fn apply_cli_state_to_config(cli_state: &CliState, config: &Config) -> Config {
     // ===== Verbosity =====
     // Priority: debug > full > quiet > explicit > base
-    if cli_state.debug_mode {
-        config.verbosity = Verbosity::Debug;
+    let verbosity = if cli_state.debug_mode {
+        Verbosity::Debug
     } else if cli_state.full_mode {
-        config.verbosity = Verbosity::Full;
+        Verbosity::Full
     } else if cli_state.quiet_mode {
-        config.verbosity = Verbosity::Quiet;
-    } else if let Some(level) = cli_state.verbosity {
-        config.verbosity = Verbosity::from(level);
-    }
+        Verbosity::Quiet
+    } else {
+        cli_state
+            .verbosity
+            .map(Verbosity::from)
+            .unwrap_or(config.verbosity)
+    };
 
     // ===== Iteration Counts =====
-    // Resolve using CliState's built-in logic (explicit > preset > default)
     let current_developer_iters = config.developer_iters;
     let current_reviewer_reviews = config.reviewer_reviews;
-
-    config.developer_iters = cli_state.resolved_developer_iters(current_developer_iters);
-    config.reviewer_reviews = cli_state.resolved_reviewer_reviews(current_reviewer_reviews);
+    let developer_iters = cli_state.resolved_developer_iters(current_developer_iters);
+    let reviewer_reviews = cli_state.resolved_reviewer_reviews(current_reviewer_reviews);
 
     // ===== Agent Selection =====
-    if let Some(ref agent) = cli_state.developer_agent {
-        config.developer_agent = Some(agent.clone());
-    }
-    if let Some(ref agent) = cli_state.reviewer_agent {
-        config.reviewer_agent = Some(agent.clone());
-    }
+    let developer_agent = cli_state
+        .developer_agent
+        .clone()
+        .or_else(|| config.developer_agent.clone());
+    let reviewer_agent = cli_state
+        .reviewer_agent
+        .clone()
+        .or_else(|| config.reviewer_agent.clone());
 
     // ===== Model and Provider Overrides =====
-    if let Some(ref model) = cli_state.developer_model {
-        config.developer_model = Some(model.clone());
-    }
-    if let Some(ref model) = cli_state.reviewer_model {
-        config.reviewer_model = Some(model.clone());
-    }
-    if let Some(ref provider) = cli_state.developer_provider {
-        config.developer_provider = Some(provider.clone());
-    }
-    if let Some(ref provider) = cli_state.reviewer_provider {
-        config.reviewer_provider = Some(provider.clone());
-    }
-    if let Some(ref parser) = cli_state.reviewer_json_parser {
-        config.reviewer_json_parser = Some(parser.clone());
-    }
+    let developer_model = cli_state
+        .developer_model
+        .clone()
+        .or_else(|| config.developer_model.clone());
+    let reviewer_model = cli_state
+        .reviewer_model
+        .clone()
+        .or_else(|| config.reviewer_model.clone());
+    let developer_provider = cli_state
+        .developer_provider
+        .clone()
+        .or_else(|| config.developer_provider.clone());
+    let reviewer_provider = cli_state
+        .reviewer_provider
+        .clone()
+        .or_else(|| config.reviewer_provider.clone());
+    let reviewer_json_parser = cli_state
+        .reviewer_json_parser
+        .clone()
+        .or_else(|| config.reviewer_json_parser.clone());
 
     // ===== Configuration Flags =====
     // Isolation mode: explicit CLI flag > config default
-    if let Some(isolation_mode) = cli_state.isolation_mode {
-        config.isolation_mode = isolation_mode;
-    }
+    let isolation_mode = cli_state.isolation_mode.unwrap_or(config.isolation_mode);
 
     // Review depth
-    if let Some(ref depth) = cli_state.review_depth {
-        if let Some(parsed) = ReviewDepth::from_str(depth) {
-            config.review_depth = parsed;
-        }
-        // Invalid depth values are silently ignored (will use config default)
-    }
+    let review_depth = cli_state
+        .review_depth
+        .as_ref()
+        .and_then(|d| ReviewDepth::from_str(d))
+        .unwrap_or(config.review_depth);
 
     // Git identity (highest priority in resolution chain)
-    if let Some(ref name) = cli_state.git_user_name {
-        config.git_user_name = Some(name.clone());
-    }
-    if let Some(ref email) = cli_state.git_user_email {
-        config.git_user_email = Some(email.clone());
-    }
+    let git_user_name = cli_state
+        .git_user_name
+        .clone()
+        .or_else(|| config.git_user_name.clone());
+    let git_user_email = cli_state
+        .git_user_email
+        .clone()
+        .or_else(|| config.git_user_email.clone());
 
     // Streaming metrics
-    if cli_state.streaming_metrics {
-        config.show_streaming_metrics = true;
-    }
+    let show_streaming_metrics = config.show_streaming_metrics || cli_state.streaming_metrics;
 
     // ===== Agent Presets =====
     // Handle named presets (default, opencode)
-    if let Some(ref preset) = cli_state.agent_preset {
+    let (developer_agent, reviewer_agent) = if let Some(ref preset) = cli_state.agent_preset {
         if preset.as_str() == "opencode" {
-            config.developer_agent = Some("opencode".to_string());
-            config.reviewer_agent = Some("opencode".to_string());
+            (Some("opencode".to_string()), Some("opencode".to_string()))
         } else {
-            // No override - use agent_chain defaults from config, or ignore unknown preset
+            (developer_agent, reviewer_agent)
         }
+    } else {
+        (developer_agent, reviewer_agent)
+    };
+
+    // Build new config using struct update syntax (functional pattern)
+    Config {
+        verbosity,
+        developer_iters,
+        reviewer_reviews,
+        developer_agent,
+        reviewer_agent,
+        developer_model,
+        reviewer_model,
+        developer_provider,
+        reviewer_provider,
+        reviewer_json_parser,
+        isolation_mode,
+        review_depth,
+        git_user_name,
+        git_user_email,
+        show_streaming_metrics,
+        ..config.clone()
     }
 }
 
@@ -161,10 +192,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.verbosity, Verbosity::Debug);
+        assert_eq!(result.verbosity, Verbosity::Debug);
     }
 
     #[test]
@@ -174,10 +205,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.verbosity, Verbosity::Full);
+        assert_eq!(result.verbosity, Verbosity::Full);
     }
 
     #[test]
@@ -187,10 +218,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.verbosity, Verbosity::Quiet);
+        assert_eq!(result.verbosity, Verbosity::Quiet);
     }
 
     #[test]
@@ -200,10 +231,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.verbosity, Verbosity::Full); // level 3 = Full
+        assert_eq!(result.verbosity, Verbosity::Full); // level 3 = Full
     }
 
     #[test]
@@ -215,14 +246,16 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.developer_iters = 5;
-        config.reviewer_reviews = 2;
+        let config = Config {
+            developer_iters: 5,
+            reviewer_reviews: 2,
+            ..create_test_config()
+        };
 
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.developer_iters, 15);
-        assert_eq!(config.reviewer_reviews, 10);
+        assert_eq!(result.developer_iters, 15);
+        assert_eq!(result.reviewer_reviews, 10);
     }
 
     #[test]
@@ -236,12 +269,12 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
         // Explicit values should override preset
-        assert_eq!(config.developer_iters, 7);
-        assert_eq!(config.reviewer_reviews, 3);
+        assert_eq!(result.developer_iters, 7);
+        assert_eq!(result.reviewer_reviews, 3);
     }
 
     #[test]
@@ -251,10 +284,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.developer_agent, Some("claude".to_string()));
+        assert_eq!(result.developer_agent, Some("claude".to_string()));
     }
 
     #[test]
@@ -264,10 +297,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.reviewer_agent, Some("gpt".to_string()));
+        assert_eq!(result.reviewer_agent, Some("gpt".to_string()));
     }
 
     #[test]
@@ -277,12 +310,14 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.isolation_mode = true;
+        let config = Config {
+            isolation_mode: true,
+            ..create_test_config()
+        };
 
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert!(!config.isolation_mode);
+        assert!(!result.isolation_mode);
     }
 
     #[test]
@@ -292,10 +327,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.review_depth, ReviewDepth::Comprehensive);
+        assert_eq!(result.review_depth, ReviewDepth::Comprehensive);
     }
 
     #[test]
@@ -306,11 +341,11 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.git_user_name, Some("John Doe".to_string()));
-        assert_eq!(config.git_user_email, Some("john@example.com".to_string()));
+        assert_eq!(result.git_user_name, Some("John Doe".to_string()));
+        assert_eq!(result.git_user_email, Some("john@example.com".to_string()));
     }
 
     #[test]
@@ -320,10 +355,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert!(config.show_streaming_metrics);
+        assert!(result.show_streaming_metrics);
     }
 
     #[test]
@@ -333,11 +368,11 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let config = create_test_config();
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
-        assert_eq!(config.developer_agent, Some("opencode".to_string()));
-        assert_eq!(config.reviewer_agent, Some("opencode".to_string()));
+        assert_eq!(result.developer_agent, Some("opencode".to_string()));
+        assert_eq!(result.reviewer_agent, Some("opencode".to_string()));
     }
 
     #[test]
@@ -347,15 +382,17 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.developer_agent = Some("existing-dev".to_string());
-        config.reviewer_agent = Some("existing-rev".to_string());
+        let config = Config {
+            developer_agent: Some("existing-dev".to_string()),
+            reviewer_agent: Some("existing-rev".to_string()),
+            ..create_test_config()
+        };
 
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
         // Default preset should not change existing agents
-        assert_eq!(config.developer_agent, Some("existing-dev".to_string()));
-        assert_eq!(config.reviewer_agent, Some("existing-rev".to_string()));
+        assert_eq!(result.developer_agent, Some("existing-dev".to_string()));
+        assert_eq!(result.reviewer_agent, Some("existing-rev".to_string()));
     }
 
     #[test]
@@ -365,15 +402,17 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.isolation_mode = true;
-        config.review_depth = ReviewDepth::Comprehensive;
+        let config = Config {
+            isolation_mode: true,
+            review_depth: ReviewDepth::Comprehensive,
+            ..create_test_config()
+        };
 
-        apply_cli_state_to_config(&cli_state, &mut config);
+        let result = apply_cli_state_to_config(&cli_state, &config);
 
         // Should only change developer_agent
-        assert_eq!(config.developer_agent, Some("new-agent".to_string()));
-        assert!(config.isolation_mode);
-        assert_eq!(config.review_depth, ReviewDepth::Comprehensive);
+        assert_eq!(result.developer_agent, Some("new-agent".to_string()));
+        assert!(result.isolation_mode);
+        assert_eq!(result.review_depth, ReviewDepth::Comprehensive);
     }
 }

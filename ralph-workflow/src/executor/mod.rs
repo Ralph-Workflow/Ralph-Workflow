@@ -46,9 +46,13 @@
 //!
 //! - [`crate::workspace::Workspace`] - Similar abstraction for filesystem operations
 
+pub mod bfs;
+pub mod command;
 mod executor_trait;
+pub mod macos;
 #[cfg(any(test, feature = "test-utils"))]
 mod mock;
+pub mod ps;
 mod real;
 mod types;
 
@@ -57,7 +61,7 @@ pub use executor_trait::ProcessExecutor;
 pub use real::RealProcessExecutor;
 pub use types::{
     AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
-    ProcessOutput, RealAgentChild,
+    ProcessOutput, RealAgentChild, SpawnedProcess,
 };
 
 #[cfg(any(test, feature = "test-utils"))]

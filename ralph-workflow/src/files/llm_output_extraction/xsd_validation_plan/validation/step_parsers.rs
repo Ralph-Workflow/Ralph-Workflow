@@ -1,4 +1,5 @@
-// Step parsing functions (parse_steps, parse_single_step, parse_file_element, parse_target_files, parse_critical_files)
+// Step parsing functions (parse_steps, parse_single_step, parse_file_element, parse_target_files)
+// Critical files parsers (parse_critical_files and helpers) are in critical_files_parsers.rs
 
 // Note: normalize_tag_name is imported in main_validator.rs and available in this module
 // via the include! statement that combines all validation/*.rs files
@@ -14,6 +15,8 @@ const STEP_SUB_ELEMENT_TAGS: &[&str] = &[
     "rationale",
     "file",
 ];
+
+use std::collections::HashSet;
 
 struct ParsedStep {
     step: Step,
@@ -31,64 +34,12 @@ struct ParsedStep {
 ///
 /// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
 /// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
-fn parse_steps(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Vec<Step>, XsdValidationError> {
+fn parse_steps(
+    reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
+) -> Result<Vec<Step>, XsdValidationError> {
     let canonical_tag = b"ralph-implementation-steps";
-    let mut steps = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"step" => {
-                let attrs = get_attributes(&e);
-                let parse_order =
-                    u32::try_from(steps.len() + 1).map_err(|_| XsdValidationError {
-                        error_type: XsdErrorType::InvalidContent,
-                        element_path: "ralph-implementation-steps".to_string(),
-                        expected: "step count that fits within u32".to_string(),
-                        found: format!("{} steps", steps.len() + 1),
-                        suggestion: "Reduce the number of implementation steps in the plan."
-                            .to_string(),
-                        example: None,
-                    })?;
-                let step = parse_single_step(reader, &attrs)?;
-                let explicit_number = (step.number != 0).then_some(step.number);
-                let dependency_targets = step
-                    .depends_on
-                    .iter()
-                    .copied()
-                    .map(|dependency_number| {
-                        resolve_dependency_parse_order(dependency_number, &steps)
-                    })
-                    .collect();
-                let step = ParsedStep {
-                    step,
-                    explicit_number,
-                    parse_order,
-                    dependency_targets,
-                };
-                steps.push(step);
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag OR original (misspelled) tag
-                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-implementation-steps".to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
+    let steps = parse_steps_events(reader, original_tag, canonical_tag, Vec::new())?;
 
     if steps.is_empty() {
         return Err(XsdValidationError {
@@ -101,43 +52,158 @@ fn parse_steps(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Vec<St
         });
     }
 
-    let mut used_numbers: std::collections::HashSet<u32> = steps
+    let explicit_numbers: HashSet<u32> = steps
         .iter()
         .filter_map(|step| step.explicit_number)
         .collect();
-    let mut next_auto = 1u32;
-    for step in &mut steps {
-        if step.step.number == 0 {
-            while used_numbers.contains(&next_auto) {
-                next_auto += 1;
-            }
-            step.step.number = next_auto;
-            used_numbers.insert(next_auto);
-            next_auto += 1;
-        }
-    }
+    let (renumbered_steps, _, _) = steps.into_iter().fold(
+        (Vec::new(), explicit_numbers, 1u32),
+        |(renumbered, used_numbers, next_candidate), parsed| {
+            let ParsedStep {
+                step,
+                parse_order,
+                dependency_targets,
+                ..
+            } = parsed;
 
-    let final_numbers_by_parse_order: std::collections::HashMap<u32, u32> = steps
+            let assigned_number = if step.number == 0 {
+                next_unused_number(&used_numbers, next_candidate)
+            } else {
+                step.number
+            };
+
+            let updated_used_numbers = used_numbers
+                .into_iter()
+                .chain(std::iter::once(assigned_number))
+                .collect();
+            let updated_step = ParsedStep {
+                step: Step {
+                    number: assigned_number,
+                    ..step
+                },
+                explicit_number: Some(assigned_number),
+                parse_order,
+                dependency_targets,
+            };
+            (
+                renumbered
+                    .into_iter()
+                    .chain(std::iter::once(updated_step))
+                    .collect(),
+                updated_used_numbers,
+                assigned_number.saturating_add(1),
+            )
+        },
+    );
+
+    let final_numbers_by_parse_order: HashMap<u32, u32> = renumbered_steps
         .iter()
         .map(|step| (step.parse_order, step.step.number))
         .collect();
 
-    Ok(steps
+    Ok(renumbered_steps
         .into_iter()
-        .map(|mut parsed| {
-            parsed.step.depends_on = parsed
-                .dependency_targets
+        .map(|parsed| {
+            let ParsedStep {
+                step,
+                dependency_targets,
+                ..
+            } = parsed;
+            let Step {
+                depends_on,
+                number,
+                kind,
+                priority,
+                title,
+                target_files,
+                location,
+                rationale,
+                content,
+            } = step;
+            let depends_on = dependency_targets
                 .into_iter()
-                .zip(parsed.step.depends_on.iter().copied())
+                .zip(depends_on)
                 .map(|(target, original)| {
                     target.map_or(original, |parse_order| {
                         final_numbers_by_parse_order[&parse_order]
                     })
                 })
                 .collect();
-            parsed.step
+            Step {
+                number,
+                kind,
+                priority,
+                title,
+                target_files,
+                location,
+                rationale,
+                content,
+                depends_on,
+            }
         })
         .collect())
+}
+
+fn parse_steps_events(
+    reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
+    canonical_tag: &[u8],
+    steps: Vec<ParsedStep>,
+) -> Result<Vec<ParsedStep>, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"step" => {
+            let attrs = get_attributes(&e);
+            let parse_order = u32::try_from(steps.len() + 1).map_err(|_| XsdValidationError {
+                error_type: XsdErrorType::InvalidContent,
+                element_path: "ralph-implementation-steps".to_string(),
+                expected: "step count that fits within u32".to_string(),
+                found: format!("{} steps", steps.len() + 1),
+                suggestion: "Reduce the number of implementation steps in the plan.".to_string(),
+                example: None,
+            })?;
+            let step = parse_single_step(reader, &attrs)?;
+            let explicit_number = (step.number != 0).then_some(step.number);
+            let dependency_targets = step
+                .depends_on
+                .iter()
+                .copied()
+                .map(|dependency_number| resolve_dependency_parse_order(dependency_number, &steps))
+                .collect();
+            let parsed = ParsedStep {
+                step,
+                explicit_number,
+                parse_order,
+                dependency_targets,
+            };
+            parse_steps_events(
+                reader,
+                original_tag,
+                canonical_tag,
+                steps.into_iter().chain(std::iter::once(parsed)).collect(),
+            )
+        }
+        Ok(Event::End(e))
+            if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag =>
+        {
+            Ok(steps)
+        }
+        Ok(Event::Eof) => Ok(steps),
+        Ok(_) => parse_steps_events(reader, original_tag, canonical_tag, steps),
+        Err(e) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: "ralph-implementation-steps".to_string(),
+            expected: "valid XML".to_string(),
+            found: format!("parse error: {e}"),
+            suggestion: "Check XML syntax".to_string(),
+            example: None,
+        }),
+    }
+}
+
+fn next_unused_number(used: &HashSet<u32>, start: u32) -> u32 {
+    std::iter::successors(Some(start), |value| value.checked_add(1))
+        .find(|value| !used.contains(value))
+        .unwrap_or(u32::MAX)
 }
 
 /// Content element names that can appear directly under a step (without a `<content>` wrapper).
@@ -156,15 +222,18 @@ fn reconstruct_element(name: &[u8], attrs_str: &str, inner: &str) -> String {
 
 /// Extract attribute string from a quick-xml `BytesStart` for re-serialization.
 fn attrs_to_string(e: &quick_xml::events::BytesStart<'_>) -> String {
-    let mut result = String::new();
-    for attr in e.attributes().flatten() {
-        result.push(' ');
-        result.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-        result.push_str("=\"");
-        result.push_str(&String::from_utf8_lossy(&attr.value));
-        result.push('"');
-    }
-    result
+    e.attributes()
+        .flatten()
+        .map(|attr| {
+            format!(
+                " {name}={quote}{value}{quote}",
+                name = String::from_utf8_lossy(attr.key.as_ref()),
+                value = String::from_utf8_lossy(&attr.value),
+                quote = '"'
+            )
+        })
+        .collect::<Vec<_>>()
+        .concat()
 }
 
 /// Parse a single step element.
@@ -207,180 +276,32 @@ fn parse_single_step(
         0
     };
 
-    let mut kind = attrs
-        .get("type")
-        .and_then(|s| StepType::from_str(s))
-        .unwrap_or_default();
-
-    let priority = attrs.get("priority").and_then(|s| Priority::from_str(s));
-
-    let mut title = None;
-    let mut target_files = Vec::new();
-    let mut location = None;
-    let mut rationale = None;
-    let mut content_fragments = Vec::new();
-    let mut depends_on = Vec::new();
-    // Accumulator for bare content elements (no <content> wrapper)
-    let mut bare_content_xml = String::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"title" => {
-                    title = Some(read_text_until_end(reader, b"title")?);
-                }
-                b"target-files" => {
-                    let mut wrapped = parse_target_files(reader)?;
-                    target_files.append(&mut wrapped);
-                }
-                b"location" => {
-                    location = Some(read_text_until_end(reader, b"location")?);
-                }
-                b"rationale" => {
-                    rationale = Some(read_text_until_end(reader, b"rationale")?);
-                }
-                b"content" => {
-                    if !bare_content_xml.is_empty() {
-                        content_fragments.push(parse_rich_content(&bare_content_xml)?);
-                        bare_content_xml.clear();
-                    }
-                    let inner = read_inner_xml(reader, b"content")?;
-                    content_fragments.push(parse_rich_content(&inner)?);
-                }
-                b"depends-on" => {
-                    let dep_attrs = get_attributes(&e);
-                    if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
-                        depends_on.push(step_num);
-                    }
-                    let _ = skip_to_end(reader, b"depends-on");
-                }
-                b"file" => {
-                    // Tolerant: bare <file> element without <target-files> wrapper.
-                    let file_attrs = get_attributes(&e);
-                    let file = parse_file_element(&file_attrs)?;
-                    target_files.push(file);
-                    // Skip to end of file element (it may have text content even if unlikely)
-                    let _ = skip_to_end(reader, b"file");
-                }
-                name if BARE_CONTENT_ELEMENTS.contains(&name) => {
-                    // Tolerant: bare content element without <content> wrapper.
-                    let attrs_str = attrs_to_string(&e);
-                    let inner = read_inner_xml(reader, name)?;
-                    let element_xml = reconstruct_element(name, &attrs_str, &inner);
-                    bare_content_xml.push_str(&element_xml);
-                }
-                other => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known sub-element with minor typo, route to correct handler.
-                    let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, STEP_SUB_ELEMENT_TAGS) {
-                        // Re-parse with the canonical tag name by recursing with the correct name
-                        match canonical {
-                            "title" => {
-                                title = Some(read_text_until_end_fuzzy(reader, b"title", other)?);
-                            }
-                            "content" => {
-                                if !bare_content_xml.is_empty() {
-                                    content_fragments.push(parse_rich_content(&bare_content_xml)?);
-                                    bare_content_xml.clear();
-                                }
-                                let inner = read_inner_xml(reader, b"content")?;
-                                content_fragments.push(parse_rich_content(&inner)?);
-                            }
-                            "target-files" => {
-                                let mut wrapped = parse_target_files(reader)?;
-                                target_files.append(&mut wrapped);
-                            }
-                            "location" => {
-                                location = Some(read_text_until_end_fuzzy(reader, b"location", other)?);
-                            }
-                            "rationale" => {
-                                rationale = Some(read_text_until_end_fuzzy(reader, b"rationale", other)?);
-                            }
-                            "depends-on" => {
-                                let dep_attrs = get_attributes(&e);
-                                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
-                                    depends_on.push(step_num);
-                                }
-                                let _ = skip_to_end(reader, b"depends-on");
-                            }
-                            "file" => {
-                                let file_attrs = get_attributes(&e);
-                                let file = parse_file_element(&file_attrs)?;
-                                target_files.push(file);
-                                let _ = skip_to_end(reader, b"file");
-                            }
-                            _ => {
-                                // Should not happen - canonical tags are from our known list
-                                let _ = skip_to_end(reader, other);
-                            }
-                        }
-                    } else {
-                        let _ = skip_to_end(reader, other);
-                    }
-                }
-            },
-            Ok(Event::Empty(e)) => match e.name().as_ref() {
-                b"depends-on" => {
-                    let dep_attrs = get_attributes(&e);
-                    if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
-                        depends_on.push(step_num);
-                    }
-                }
-                b"file" => {
-                    // Tolerant: self-closing bare <file> element without <target-files> wrapper.
-                    let file_attrs = get_attributes(&e);
-                    let file = parse_file_element(&file_attrs)?;
-                    target_files.push(file);
-                }
-                other => {
-                    // Tolerant: try fuzzy tag matching before skipping.
-                    // If the tag is a known sub-element with minor typo, route to correct handler.
-                    let tag_name = String::from_utf8_lossy(other);
-                    if let Some(canonical) = normalize_tag_name(&tag_name, STEP_SUB_ELEMENT_TAGS) {
-                        match canonical {
-                            "depends-on" => {
-                                let dep_attrs = get_attributes(&e);
-                                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
-                                    depends_on.push(step_num);
-                                }
-                            }
-                            "file" => {
-                                let file_attrs = get_attributes(&e);
-                                let file = parse_file_element(&file_attrs)?;
-                                target_files.push(file);
-                            }
-                            _ => {
-                                // Self-closing title, content, target-files, location, rationale - ignore
-                            }
-                        }
-                    }
-                    // Else: skip unknown self-closing element
-                }
-            },
-            Ok(Event::End(e)) if e.name().as_ref() == b"step" => break,
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: format!("step[{number}]"),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
-
-    // If no explicit <content> wrapper was found but bare content elements were accumulated,
-    // parse those as the step content.
-    if !bare_content_xml.is_empty() {
-        content_fragments.push(parse_rich_content(&bare_content_xml)?);
-    }
+    let initial_state = SingleStepState {
+        kind: attrs
+            .get("type")
+            .and_then(|s| StepType::from_str(s))
+            .unwrap_or_default(),
+        priority: attrs.get("priority").and_then(|s| Priority::from_str(s)),
+        title: None,
+        target_files: Vec::new(),
+        location: None,
+        rationale: None,
+        content_fragments: Vec::new(),
+        depends_on: Vec::new(),
+        bare_content_elements: Vec::new(),
+    };
+    let parsed_state = parse_single_step_events(reader, number, initial_state)?;
+    let SingleStepState {
+        kind,
+        priority,
+        title,
+        target_files,
+        location,
+        rationale,
+        content_fragments,
+        depends_on,
+        ..
+    } = flush_bare_content_fragments(parsed_state)?;
 
     let title = title.ok_or_else(|| XsdValidationError {
         error_type: XsdErrorType::MissingRequiredElement,
@@ -393,9 +314,11 @@ fn parse_single_step(
 
     // Tolerant: file-change step without target-files is reclassified as action.
     // The step content still describes what to do; the type metadata is secondary.
-    if kind == StepType::FileChange && target_files.is_empty() {
-        kind = StepType::Action;
-    }
+    let kind = if kind == StepType::FileChange && target_files.is_empty() {
+        StepType::Action
+    } else {
+        kind
+    };
 
     let content = (!content_fragments.is_empty())
         .then(|| merge_rich_content_fragments(content_fragments))
@@ -421,22 +344,284 @@ fn parse_single_step(
     })
 }
 
+#[derive(Clone)]
+struct SingleStepState {
+    kind: StepType,
+    priority: Option<Priority>,
+    title: Option<String>,
+    target_files: Vec<TargetFile>,
+    location: Option<String>,
+    rationale: Option<String>,
+    content_fragments: Vec<RichContent>,
+    depends_on: Vec<u32>,
+    bare_content_elements: Vec<String>,
+}
+
+fn parse_single_step_events(
+    reader: &mut Reader<&[u8]>,
+    number: u32,
+    state: SingleStepState,
+) -> Result<SingleStepState, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) => {
+            let updated_state = handle_single_step_start_event(reader, e, state)?;
+            parse_single_step_events(reader, number, updated_state)
+        }
+        Ok(Event::Empty(e)) => {
+            let updated_state = handle_single_step_empty_event(e, state)?;
+            parse_single_step_events(reader, number, updated_state)
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == b"step" => Ok(state),
+        Ok(Event::Eof) => Ok(state),
+        Ok(_) => parse_single_step_events(reader, number, state),
+        Err(e) => Err(XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: format!("step[{number}]"),
+            expected: "valid XML".to_string(),
+            found: format!("parse error: {e}"),
+            suggestion: "Check XML syntax".to_string(),
+            example: None,
+        }),
+    }
+}
+
+fn flush_bare_content_fragments(
+    state: SingleStepState,
+) -> Result<SingleStepState, XsdValidationError> {
+    if state.bare_content_elements.is_empty() {
+        Ok(state)
+    } else {
+        let bare_content_xml = state.bare_content_elements.join("");
+        Ok(SingleStepState {
+            content_fragments: state
+                .content_fragments
+                .into_iter()
+                .chain(std::iter::once(parse_rich_content(&bare_content_xml)?))
+                .collect(),
+            bare_content_elements: Vec::new(),
+            ..state
+        })
+    }
+}
+
+fn handle_single_step_start_event(
+    reader: &mut Reader<&[u8]>,
+    event: quick_xml::events::BytesStart<'_>,
+    state: SingleStepState,
+) -> Result<SingleStepState, XsdValidationError> {
+    match event.name().as_ref() {
+        b"title" => Ok(SingleStepState {
+            title: Some(read_text_until_end(reader, b"title")?),
+            ..state
+        }),
+        b"target-files" => Ok(SingleStepState {
+            target_files: state
+                .target_files
+                .into_iter()
+                .chain(parse_target_files(reader)?)
+                .collect(),
+            ..state
+        }),
+        b"location" => Ok(SingleStepState {
+            location: Some(read_text_until_end(reader, b"location")?),
+            ..state
+        }),
+        b"rationale" => Ok(SingleStepState {
+            rationale: Some(read_text_until_end(reader, b"rationale")?),
+            ..state
+        }),
+        b"content" => {
+            let flushed_state = flush_bare_content_fragments(state)?;
+            let inner = read_inner_xml(reader, b"content")?;
+            Ok(SingleStepState {
+                content_fragments: flushed_state
+                    .content_fragments
+                    .into_iter()
+                    .chain(std::iter::once(parse_rich_content(&inner)?))
+                    .collect(),
+                ..flushed_state
+            })
+        }
+        b"depends-on" => {
+            let dep_attrs = get_attributes(&event);
+            let parsed_dep = dep_attrs.get("step").and_then(|s| s.parse().ok());
+            let _ = skip_to_end(reader, b"depends-on");
+            Ok(SingleStepState {
+                depends_on: state.depends_on.into_iter().chain(parsed_dep).collect(),
+                ..state
+            })
+        }
+        b"file" => {
+            let file_attrs = get_attributes(&event);
+            let file = parse_file_element(&file_attrs)?;
+            let _ = skip_to_end(reader, b"file");
+            Ok(SingleStepState {
+                target_files: state
+                    .target_files
+                    .into_iter()
+                    .chain(std::iter::once(file))
+                    .collect(),
+                ..state
+            })
+        }
+        name if BARE_CONTENT_ELEMENTS.contains(&name) => {
+            let attrs_str = attrs_to_string(&event);
+            let inner = read_inner_xml(reader, name)?;
+            let element_xml = reconstruct_element(name, &attrs_str, &inner);
+            Ok(SingleStepState {
+                bare_content_elements: state
+                    .bare_content_elements
+                    .into_iter()
+                    .chain(std::iter::once(element_xml))
+                    .collect(),
+                ..state
+            })
+        }
+        other => handle_single_step_fuzzy_start_event(reader, &event, other, state),
+    }
+}
+
+fn handle_single_step_fuzzy_start_event(
+    reader: &mut Reader<&[u8]>,
+    event: &quick_xml::events::BytesStart<'_>,
+    other: &[u8],
+    state: SingleStepState,
+) -> Result<SingleStepState, XsdValidationError> {
+    let tag_name = String::from_utf8_lossy(other);
+    match normalize_tag_name(&tag_name, STEP_SUB_ELEMENT_TAGS) {
+        Some("title") => Ok(SingleStepState {
+            title: Some(read_text_until_end_fuzzy(reader, b"title", other)?),
+            ..state
+        }),
+        Some("content") => {
+            let flushed_state = flush_bare_content_fragments(state)?;
+            let inner = read_inner_xml(reader, b"content")?;
+            Ok(SingleStepState {
+                content_fragments: flushed_state
+                    .content_fragments
+                    .into_iter()
+                    .chain(std::iter::once(parse_rich_content(&inner)?))
+                    .collect(),
+                ..flushed_state
+            })
+        }
+        Some("target-files") => Ok(SingleStepState {
+            target_files: state
+                .target_files
+                .into_iter()
+                .chain(parse_target_files(reader)?)
+                .collect(),
+            ..state
+        }),
+        Some("location") => Ok(SingleStepState {
+            location: Some(read_text_until_end_fuzzy(reader, b"location", other)?),
+            ..state
+        }),
+        Some("rationale") => Ok(SingleStepState {
+            rationale: Some(read_text_until_end_fuzzy(reader, b"rationale", other)?),
+            ..state
+        }),
+        Some("depends-on") => {
+            let dep_attrs = get_attributes(event);
+            let parsed_dep = dep_attrs.get("step").and_then(|s| s.parse().ok());
+            let _ = skip_to_end(reader, b"depends-on");
+            Ok(SingleStepState {
+                depends_on: state.depends_on.into_iter().chain(parsed_dep).collect(),
+                ..state
+            })
+        }
+        Some("file") => {
+            let file_attrs = get_attributes(event);
+            let file = parse_file_element(&file_attrs)?;
+            let _ = skip_to_end(reader, b"file");
+            Ok(SingleStepState {
+                target_files: state
+                    .target_files
+                    .into_iter()
+                    .chain(std::iter::once(file))
+                    .collect(),
+                ..state
+            })
+        }
+        _ => {
+            let _ = skip_to_end(reader, other);
+            Ok(state)
+        }
+    }
+}
+
+fn handle_single_step_empty_event(
+    event: quick_xml::events::BytesStart<'_>,
+    state: SingleStepState,
+) -> Result<SingleStepState, XsdValidationError> {
+    match event.name().as_ref() {
+        b"depends-on" => {
+            let dep_attrs = get_attributes(&event);
+            let parsed_dep = dep_attrs.get("step").and_then(|s| s.parse().ok());
+            Ok(SingleStepState {
+                depends_on: state.depends_on.into_iter().chain(parsed_dep).collect(),
+                ..state
+            })
+        }
+        b"file" => {
+            let file_attrs = get_attributes(&event);
+            let file = parse_file_element(&file_attrs)?;
+            Ok(SingleStepState {
+                target_files: state
+                    .target_files
+                    .into_iter()
+                    .chain(std::iter::once(file))
+                    .collect(),
+                ..state
+            })
+        }
+        other => {
+            let tag_name = String::from_utf8_lossy(other);
+            match normalize_tag_name(&tag_name, STEP_SUB_ELEMENT_TAGS) {
+                Some("depends-on") => {
+                    let dep_attrs = get_attributes(&event);
+                    let parsed_dep = dep_attrs.get("step").and_then(|s| s.parse().ok());
+                    Ok(SingleStepState {
+                        depends_on: state.depends_on.into_iter().chain(parsed_dep).collect(),
+                        ..state
+                    })
+                }
+                Some("file") => {
+                    let file_attrs = get_attributes(&event);
+                    let file = parse_file_element(&file_attrs)?;
+                    Ok(SingleStepState {
+                        target_files: state
+                            .target_files
+                            .into_iter()
+                            .chain(std::iter::once(file))
+                            .collect(),
+                        ..state
+                    })
+                }
+                _ => Ok(state),
+            }
+        }
+    }
+}
+
 fn resolve_dependency_parse_order(
     dependency_number: u32,
     parsed_steps: &[ParsedStep],
 ) -> Option<u32> {
-    let mut matches = parsed_steps.iter().filter_map(|parsed_step| {
-        let is_match = parsed_step.explicit_number == Some(dependency_number)
-            || (parsed_step.explicit_number.is_none()
-                && parsed_step.parse_order == dependency_number);
-        is_match.then_some(parsed_step.parse_order)
-    });
+    let matches: Vec<_> = parsed_steps
+        .iter()
+        .filter_map(|parsed_step| {
+            let is_match = parsed_step.explicit_number == Some(dependency_number)
+                || (parsed_step.explicit_number.is_none()
+                    && parsed_step.parse_order == dependency_number);
+            is_match.then_some(parsed_step.parse_order)
+        })
+        .take(2)
+        .collect();
 
-    let first = matches.next()?;
-    if matches.next().is_some() {
-        None
-    } else {
-        Some(first)
+    match matches.as_slice() {
+        [only] => Some(*only),
+        _ => None,
     }
 }
 
@@ -489,296 +674,34 @@ fn parse_file_element(attrs: &HashMap<String, String>) -> Result<TargetFile, Xsd
 
 /// Parse target-files
 fn parse_target_files(reader: &mut Reader<&[u8]>) -> Result<Vec<TargetFile>, XsdValidationError> {
-    let mut files = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                if e.name().as_ref() == b"file" {
-                    let attrs = get_attributes(&e);
-                    let file = parse_file_element(&attrs)?;
-                    files.push(file);
-                    // Skip to </file> end tag
-                    let _ = skip_to_end(reader, b"file");
-                }
-            }
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"file" => {
-                let attrs = get_attributes(&e);
-                let file = parse_file_element(&attrs)?;
-                files.push(file);
-                // No need to skip - self-closing tag has no end
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"target-files" => break,
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
-        }
-        buf.clear();
-    }
-
-    Ok(files)
+    parse_target_files_events(reader, Vec::new())
 }
 
-/// Parse the ralph-critical-files section.
-///
-/// Tolerant behavior: bare `<file>` elements directly under `<ralph-critical-files>`
-/// (without a `<primary-files>` or `<reference-files>` wrapper) are classified by
-/// their unambiguous attributes:
-/// - File with `action` only → primary file
-/// - File with `purpose` only → reference file
-/// - File with both or neither → rejected as ambiguous
-///
-/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
-/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
-fn parse_critical_files(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<CriticalFiles, XsdValidationError> {
-    let canonical_tag = b"ralph-critical-files";
-    let mut primary_files = Vec::new();
-    let mut reference_files = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match e.name().as_ref() {
-                b"primary-files" => {
-                    let mut wrapped = parse_primary_files(reader)?;
-                    primary_files.append(&mut wrapped);
-                }
-                b"reference-files" => {
-                    let mut wrapped = parse_reference_files(reader)?;
-                    reference_files.append(&mut wrapped);
-                }
-                b"file" => {
-                    // Tolerant: bare file element without wrapper.
-                    let file_attrs = get_attributes(&e);
-                    classify_bare_critical_file(
-                        &file_attrs,
-                        &mut primary_files,
-                        &mut reference_files,
-                    )?;
-                    let _ = skip_to_end(reader, b"file");
-                }
-                _ => {
-                    let _ = skip_to_end(reader, e.name().as_ref());
-                }
-            },
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"file" => {
-                // Tolerant: self-closing bare file element without wrapper.
-                let file_attrs = get_attributes(&e);
-                classify_bare_critical_file(&file_attrs, &mut primary_files, &mut reference_files)?;
-            }
-            Ok(Event::End(e)) => {
-                // Accept either canonical tag OR original (misspelled) tag
-                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MalformedXml,
-                    element_path: "ralph-critical-files".to_string(),
-                    expected: "valid XML".to_string(),
-                    found: format!("parse error: {e}"),
-                    suggestion: "Check XML syntax".to_string(),
-                    example: None,
-                });
-            }
-        }
-        buf.clear();
-    }
-
-    if primary_files.is_empty() {
-        return Err(XsdValidationError {
-            error_type: XsdErrorType::MissingRequiredElement,
-            element_path: "ralph-critical-files/primary-files".to_string(),
-            expected: "at least one <file> element".to_string(),
-            found: "no files".to_string(),
-            suggestion: "Add <file path=\"...\" action=\"modify\"/> to primary-files".to_string(),
-            example: None,
-        });
-    }
-
-    Ok(CriticalFiles {
-        primary_files,
-        reference_files,
-    })
-}
-
-/// Classify a bare `<file>` element under `<ralph-critical-files>` into primary or reference.
-///
-/// Classification rules:
-/// - Has `action` only → primary file
-/// - Has `purpose` only → reference file
-/// - Has both or neither → rejected as ambiguous
-fn classify_bare_critical_file(
-    attrs: &HashMap<String, String>,
-    primary_files: &mut Vec<PrimaryFile>,
-    reference_files: &mut Vec<ReferenceFile>,
-) -> Result<(), XsdValidationError> {
-    let Some(path) = attrs.get("path").cloned() else {
-        return Err(XsdValidationError {
-            error_type: XsdErrorType::MissingRequiredElement,
-            element_path: "ralph-critical-files/file".to_string(),
-            expected: "path attribute".to_string(),
-            found: "no path attribute".to_string(),
-            suggestion: "Add path=\"...\" to the critical file element".to_string(),
-            example: None,
-        });
-    };
-
-    match (attrs.get("action"), attrs.get("purpose")) {
-        (Some(action_str), None) => {
-            let action = FileAction::from_str(action_str).ok_or_else(|| XsdValidationError {
-                error_type: XsdErrorType::InvalidContent,
-                element_path: "ralph-critical-files/file/@action".to_string(),
-                expected: "create, modify, or delete".to_string(),
-                found: action_str.clone(),
-                suggestion: "Use action=\"create\", action=\"modify\", or action=\"delete\""
-                    .to_string(),
-                example: None,
-            })?;
-            primary_files.push(PrimaryFile {
-                path,
-                action,
-                estimated_changes: attrs.get("estimated-changes").cloned(),
-            });
-            Ok(())
-        }
-        (None, Some(purpose)) => {
-            reference_files.push(ReferenceFile {
-                path,
-                purpose: purpose.clone(),
-            });
-            Ok(())
-        }
-        (Some(_), Some(_)) => Err(XsdValidationError {
-            error_type: XsdErrorType::InvalidContent,
-            element_path: "ralph-critical-files/file".to_string(),
-            expected: "exactly one classification attribute: action or purpose".to_string(),
-            found: format!("file {path:?} has both action and purpose"),
-            suggestion:
-                "Keep action for a primary file or purpose for a reference file, but not both"
-                    .to_string(),
-            example: None,
-        }),
-        (None, None) => Err(XsdValidationError {
-            error_type: XsdErrorType::InvalidContent,
-            element_path: "ralph-critical-files/file".to_string(),
-            expected: "exactly one classification attribute: action or purpose".to_string(),
-            found: format!("file {path:?} has neither action nor purpose"),
-            suggestion: "Add action for a primary file or purpose for a reference file".to_string(),
-            example: None,
-        }),
-    }
-}
-
-/// Parse primary-files
-fn parse_primary_files(reader: &mut Reader<&[u8]>) -> Result<Vec<PrimaryFile>, XsdValidationError> {
-    let mut files = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) if e.name().as_ref() == b"file" => {
-                let attrs = get_attributes(&e);
-                let path = attrs
-                    .get("path")
-                    .cloned()
-                    .ok_or_else(|| XsdValidationError {
-                        error_type: XsdErrorType::MissingRequiredElement,
-                        element_path: "primary-files/file".to_string(),
-                        expected: "path attribute".to_string(),
-                        found: "no path attribute".to_string(),
-                        suggestion: "Add path=\"...\" to the file element".to_string(),
-                        example: None,
-                    })?;
-
-                let action_str =
-                    attrs
-                        .get("action")
-                        .cloned()
-                        .ok_or_else(|| XsdValidationError {
-                            error_type: XsdErrorType::MissingRequiredElement,
-                            element_path: "primary-files/file".to_string(),
-                            expected: "action attribute".to_string(),
-                            found: "no action attribute".to_string(),
-                            suggestion: "Add action=\"create|modify|delete\" to the file element"
-                                .to_string(),
-                            example: None,
-                        })?;
-
-                let action =
-                    FileAction::from_str(&action_str).ok_or_else(|| XsdValidationError {
-                        error_type: XsdErrorType::InvalidContent,
-                        element_path: "primary-files/file/@action".to_string(),
-                        expected: "create, modify, or delete".to_string(),
-                        found: action_str,
-                        suggestion:
-                            "Use action=\"create\", action=\"modify\", or action=\"delete\""
-                                .to_string(),
-                        example: None,
-                    })?;
-
-                files.push(PrimaryFile {
-                    path,
-                    action,
-                    estimated_changes: attrs.get("estimated-changes").cloned(),
-                });
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"primary-files" => break,
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
-        }
-        buf.clear();
-    }
-
-    Ok(files)
-}
-
-/// Parse reference-files
-fn parse_reference_files(
+fn parse_target_files_events(
     reader: &mut Reader<&[u8]>,
-) -> Result<Vec<ReferenceFile>, XsdValidationError> {
-    let mut files = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) if e.name().as_ref() == b"file" => {
-                let attrs = get_attributes(&e);
-                let path = attrs
-                    .get("path")
-                    .cloned()
-                    .ok_or_else(|| XsdValidationError {
-                        error_type: XsdErrorType::MissingRequiredElement,
-                        element_path: "reference-files/file".to_string(),
-                        expected: "path attribute".to_string(),
-                        found: "no path attribute".to_string(),
-                        suggestion: "Add path=\"...\" to the file element".to_string(),
-                        example: None,
-                    })?;
-
-                let purpose = attrs
-                    .get("purpose")
-                    .cloned()
-                    .ok_or_else(|| XsdValidationError {
-                        error_type: XsdErrorType::MissingRequiredElement,
-                        element_path: "reference-files/file".to_string(),
-                        expected: "purpose attribute".to_string(),
-                        found: "no purpose attribute".to_string(),
-                        suggestion: "Add purpose=\"...\" to the file element".to_string(),
-                        example: None,
-                    })?;
-
-                files.push(ReferenceFile { path, purpose });
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"reference-files" => break,
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(_) => {}
+    files: Vec<TargetFile>,
+) -> Result<Vec<TargetFile>, XsdValidationError> {
+    match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"file" => {
+            let attrs = get_attributes(&e);
+            let file = parse_file_element(&attrs)?;
+            let _ = skip_to_end(reader, b"file");
+            parse_target_files_events(
+                reader,
+                files.into_iter().chain(std::iter::once(file)).collect(),
+            )
         }
-        buf.clear();
+        Ok(Event::Empty(e)) if e.name().as_ref() == b"file" => {
+            let attrs = get_attributes(&e);
+            let file = parse_file_element(&attrs)?;
+            parse_target_files_events(
+                reader,
+                files.into_iter().chain(std::iter::once(file)).collect(),
+            )
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == b"target-files" => Ok(files),
+        Ok(Event::Eof) | Err(_) => Ok(files),
+        Ok(_) => parse_target_files_events(reader, files),
     }
-
-    Ok(files)
 }
+

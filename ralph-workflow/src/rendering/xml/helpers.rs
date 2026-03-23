@@ -2,9 +2,6 @@
 //!
 //! This module contains utilities used by multiple XML renderer modules.
 
-/// Action type for file changes.
-use std::fmt::Write;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeAction {
     Create,
@@ -36,26 +33,31 @@ pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
 
 /// Parse unified diff format into per-file sections.
 pub fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
-    let mut sections: Vec<Vec<&str>> = Vec::new();
-    let mut current: Vec<&str> = Vec::new();
+    let lines: Vec<&str> = diff.lines().collect();
 
-    for line in diff.lines() {
-        if line.starts_with("diff --git ") {
-            if !current.is_empty() {
-                sections.push(current);
+    let diff_starts: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.starts_with("diff --git "))
+        .map(|(i, _)| i)
+        .collect();
+
+    if diff_starts.is_empty() {
+        return Vec::new();
+    }
+
+    diff_starts
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &start)| {
+            let end = diff_starts.get(idx + 1).copied().unwrap_or(lines.len());
+            let section_lines = &lines[start..end];
+            if section_lines.is_empty() {
+                None
+            } else {
+                parse_diff_section(section_lines)
             }
-            current = vec![line];
-        } else if !current.is_empty() {
-            current.push(line);
-        }
-    }
-    if !current.is_empty() {
-        sections.push(current);
-    }
-
-    sections
-        .into_iter()
-        .filter_map(|lines| parse_diff_section(&lines))
+        })
         .collect()
 }
 
@@ -63,11 +65,12 @@ pub fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
 fn parse_diff_section(lines: &[&str]) -> Option<DiffFileSection> {
     let header = *lines.first()?;
     // Example: "diff --git a/src/main.rs b/src/main.rs"
-    let mut parts = header.split_whitespace();
-    let _ = parts.next()?; // diff
-    let _ = parts.next()?; // --git
-    let a_path = parts.next()?.trim();
-    let b_path = parts.next()?.trim();
+    let parts: Vec<&str> = header.split_whitespace().collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    let a_path = parts[2].trim();
+    let b_path = parts[3].trim();
 
     let path = if b_path == "/dev/null" {
         a_path
@@ -78,17 +81,18 @@ fn parse_diff_section(lines: &[&str]) -> Option<DiffFileSection> {
     .trim_start_matches("b/")
     .to_string();
 
-    let mut action = ChangeAction::Modify;
-    for line in lines {
-        if line.starts_with("new file mode ") {
-            action = ChangeAction::Create;
-            break;
-        }
-        if line.starts_with("deleted file mode ") {
-            action = ChangeAction::Delete;
-            break;
-        }
-    }
+    let action = lines
+        .iter()
+        .find_map(|line| {
+            if line.starts_with("new file mode ") {
+                Some(ChangeAction::Create)
+            } else if line.starts_with("deleted file mode ") {
+                Some(ChangeAction::Delete)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(ChangeAction::Modify);
 
     Some(DiffFileSection {
         path,
@@ -103,38 +107,38 @@ pub fn render_diff_sections(title: &str, sections: &[DiffFileSection]) -> String
         return String::new();
     }
 
-    let mut output = String::new();
-    writeln!(output, "\n{title}:").unwrap();
-    writeln!(
-        output,
-        "   Modified {} file(s): {}",
-        sections.len(),
-        sections
-            .iter()
-            .map(|s| s.path.as_str())
-            .collect::<Vec<&str>>()
-            .join(", ")
-    )
-    .unwrap();
+    let file_list = sections
+        .iter()
+        .map(|s| s.path.as_str())
+        .collect::<Vec<&str>>()
+        .join(", ");
 
-    for section in sections {
-        writeln!(output, "\n   📄 {}", section.path).unwrap();
-        writeln!(
-            output,
-            "      Action: {}",
-            match section.action {
+    let sections_output: String = sections
+        .iter()
+        .map(|section| {
+            let action_str = match section.action {
                 ChangeAction::Create => "created",
                 ChangeAction::Modify => "modified",
                 ChangeAction::Delete => "deleted",
-            }
-        )
-        .unwrap();
-        for line in section.diff.lines() {
-            writeln!(output, "      {line}").unwrap();
-        }
-    }
+            };
+            let diff_lines = section
+                .diff
+                .lines()
+                .map(|line| format!("      {line}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\n   📄 {}\n      Action: {}\n{}",
+                section.path, action_str, diff_lines
+            )
+        })
+        .collect();
 
-    output
+    format!(
+        "\n{title}:\n   Modified {} file(s): {}{sections_output}",
+        sections.len(),
+        file_list
+    )
 }
 
 /// Parse a simple file list into file paths with actions.

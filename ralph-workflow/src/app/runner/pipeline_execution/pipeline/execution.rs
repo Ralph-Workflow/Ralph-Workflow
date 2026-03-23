@@ -40,9 +40,28 @@
 
 use anyhow::Context;
 
+trait Write {
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()>;
+}
+
+impl<T> Write for T
+where
+    T: std::io::Write + ?Sized,
+{
+    fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+        std::io::Write::write_fmt(self, args)
+    }
+}
+
+macro_rules! writeln {
+    ($dst:expr) => {
+        Write::write_fmt(&mut ($dst), format_args!("\n"))
+    };
+}
+
 // Include sub-modules
 include!("initialization.rs");
-include!("execution_core.rs");
+include!("runtime_execution_core.rs");
 include!("completion.rs");
 
 /// Runs the full development/review/commit pipeline using reducer-based event loop.

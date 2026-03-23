@@ -3,6 +3,7 @@
 //! Provides visual progress feedback for long-running operations.
 
 use super::Colors;
+use crate::logger::stdout_writer::stdout_write_line;
 
 /// Print a progress bar with percentage and counts.
 ///
@@ -17,7 +18,7 @@ pub fn print_progress(current: u32, total: u32, label: &str) {
     let c = Colors::new();
 
     if total == 0 {
-        println!(
+        let line = format!(
             "{}{}:{} {}[no progress data]{}",
             c.dim(),
             label,
@@ -25,6 +26,7 @@ pub fn print_progress(current: u32, total: u32, label: &str) {
             c.yellow(),
             c.reset()
         );
+        let _ = stdout_write_line(&line);
         return;
     }
 
@@ -49,7 +51,7 @@ pub fn print_progress(current: u32, total: u32, label: &str) {
 
     let bar: String = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
 
-    println!(
+    let line = format!(
         "{}{}:{} {}[{}]{} {}{}%{} ({}/{})",
         c.dim(),
         label,
@@ -63,6 +65,7 @@ pub fn print_progress(current: u32, total: u32, label: &str) {
         current,
         total
     );
+    let _ = stdout_write_line(&line);
 }
 
 #[cfg(test)]

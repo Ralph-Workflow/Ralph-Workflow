@@ -2,6 +2,8 @@
 //
 // Contains the ParserHealth struct for tracking event processing statistics.
 
+use crate::logger::Colors;
+
 /// Parser health statistics
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ParserHealth {
@@ -23,21 +25,21 @@ pub struct ParserHealth {
 
 impl ParserHealth {
     /// Create a new health tracker
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Record a parsed event
     pub const fn record_parsed(&mut self) {
-        self.total_events += 1;
-        self.parsed_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.parsed_events = self.parsed_events.saturating_add(1);
     }
 
     /// Record an ignored event
     pub const fn record_ignored(&mut self) {
-        self.total_events += 1;
-        self.ignored_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.ignored_events = self.ignored_events.saturating_add(1);
     }
 
     /// Record an unknown event type (valid JSON but unhandled)
@@ -46,16 +48,16 @@ impl ParserHealth {
     /// but doesn't have specific handling for. These should not trigger health
     /// warnings as they represent future/new event types, not parser errors.
     pub const fn record_unknown_event(&mut self) {
-        self.total_events += 1;
-        self.unknown_events += 1;
-        self.ignored_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.unknown_events = self.unknown_events.saturating_add(1);
+        self.ignored_events = self.ignored_events.saturating_add(1);
     }
 
     /// Record a parse error (malformed JSON)
     pub const fn record_parse_error(&mut self) {
-        self.total_events += 1;
-        self.parse_errors += 1;
-        self.ignored_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.parse_errors = self.parse_errors.saturating_add(1);
+        self.ignored_events = self.ignored_events.saturating_add(1);
     }
 
     /// Record a control event (state management with no user-facing output)
@@ -64,8 +66,8 @@ impl ParserHealth {
     /// rather than user-facing content. They should not be counted as
     /// "ignored" for health monitoring purposes.
     pub const fn record_control_event(&mut self) {
-        self.total_events += 1;
-        self.control_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.control_events = self.control_events.saturating_add(1);
     }
 
     /// Record a partial/delta event (streaming content displayed incrementally)
@@ -74,14 +76,14 @@ impl ParserHealth {
     /// in real-time as deltas. These are NOT errors and should not trigger
     /// health warnings. They are tracked separately to show streaming activity.
     pub const fn record_partial_event(&mut self) {
-        self.total_events += 1;
-        self.partial_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.partial_events = self.partial_events.saturating_add(1);
     }
 
     /// Get the percentage of parse errors (excluding unknown events)
     ///
     /// Returns percentage using integer-safe arithmetic to avoid precision loss warnings.
-    #[must_use] 
+    #[must_use]
     pub fn parse_error_percentage(&self) -> f64 {
         if self.total_events == 0 {
             return 0.0;
@@ -104,7 +106,7 @@ impl ParserHealth {
     /// Get the percentage of parse errors as a rounded integer.
     ///
     /// This is for display purposes where a whole number is sufficient.
-    #[must_use] 
+    #[must_use]
     pub fn parse_error_percentage_int(&self) -> u32 {
         if self.total_events == 0 {
             return 0;
@@ -123,48 +125,71 @@ impl ParserHealth {
     /// Only returns true if there are actual parse errors (malformed JSON),
     /// not just unknown event types. Unknown events are valid JSON that we
     /// don't have specific handling for, which is not a health concern.
-    #[must_use] 
+    #[must_use]
     pub fn is_concerning(&self) -> bool {
         self.total_events > 10 && self.parse_error_percentage() > 50.0
     }
 
     /// Get a warning message if health is concerning
-    #[must_use] 
+    #[must_use]
     pub fn warning(&self, parser_name: &str, colors: Colors) -> Option<String> {
         if !self.is_concerning() {
             return None;
         }
+        Some(self.format_warning_message(parser_name, colors))
+    }
 
-        let msg = if self.unknown_events > 0 || self.control_events > 0 || self.partial_events > 0 {
-            format!(
-                "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
-                 Also encountered {} unknown event types (valid JSON but unhandled), \
-                 {} control events (state management), \
-                 and {} partial events (streaming deltas). \
-                 This may indicate a parser mismatch. Consider using a different json_parser in your agent config.",
-                colors.yellow(),
-                colors.reset(),
+    fn format_warning_message(&self, parser_name: &str, colors: Colors) -> String {
+        let has_extra_events =
+            self.unknown_events > 0 || self.control_events > 0 || self.partial_events > 0;
+        if has_extra_events {
+            self.format_warning_with_extra_events(parser_name, colors)
+        } else {
+            format_basic_warning(
                 parser_name,
+                colors,
                 self.parse_errors,
                 self.parse_error_percentage_int(),
                 self.total_events,
-                self.unknown_events,
-                self.control_events,
-                self.partial_events
             )
-        } else {
-            format!(
-                "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
-                 This may indicate malformed JSON output. Consider using a different json_parser in your agent config.",
-                colors.yellow(),
-                colors.reset(),
-                parser_name,
-                self.parse_errors,
-                self.parse_error_percentage_int(),
-                self.total_events
-            )
-        };
-
-        Some(msg)
+        }
     }
+
+    fn format_warning_with_extra_events(&self, parser_name: &str, colors: Colors) -> String {
+        format!(
+            "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
+             Also encountered {} unknown event types (valid JSON but unhandled), \
+             {} control events (state management), \
+             and {} partial events (streaming deltas). \
+             This may indicate a parser mismatch. Consider using a different json_parser in your agent config.",
+            colors.yellow(),
+            colors.reset(),
+            parser_name,
+            self.parse_errors,
+            self.parse_error_percentage_int(),
+            self.total_events,
+            self.unknown_events,
+            self.control_events,
+            self.partial_events
+        )
+    }
+}
+
+fn format_basic_warning(
+    parser_name: &str,
+    colors: Colors,
+    parse_errors: u64,
+    error_pct: u32,
+    total_events: u64,
+) -> String {
+    format!(
+        "{}[Parser Health Warning]{} {} parser has {} parse errors ({}% of {} events). \
+         This may indicate malformed JSON output. Consider using a different json_parser in your agent config.",
+        colors.yellow(),
+        colors.reset(),
+        parser_name,
+        parse_errors,
+        error_pct,
+        total_events
+    )
 }

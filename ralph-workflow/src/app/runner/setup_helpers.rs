@@ -1,3 +1,13 @@
+use crate::agents::AgentRegistry;
+use crate::checkpoint::PipelinePhase;
+use crate::cli::{create_prompt_from_template, prompt_template_selection};
+use crate::logger::{Colors, Logger};
+use crate::workspace::Workspace;
+
+use super::super::effect::{AppEffect, AppEffectHandler, AppEffectResult};
+use super::super::effectful;
+use super::super::validation::{validate_agent_commands, validate_can_commit};
+
 // Setup helpers for agent validation and pipeline preparation.
 //
 // This module contains:
@@ -7,24 +17,24 @@
 // - Configuration validation helpers
 
 /// Parameters for agent validation and setup.
-struct AgentSetupParams<'a> {
-    config: &'a crate::config::Config,
-    registry: &'a AgentRegistry,
-    developer_agent: &'a str,
-    reviewer_agent: &'a str,
-    config_path: &'a std::path::Path,
-    colors: Colors,
-    logger: &'a Logger,
+pub struct AgentSetupParams<'a> {
+    pub(crate) config: &'a crate::config::Config,
+    pub(crate) registry: &'a AgentRegistry,
+    pub(crate) developer_agent: &'a str,
+    pub(crate) reviewer_agent: &'a str,
+    pub(crate) config_path: &'a std::path::Path,
+    pub(crate) colors: Colors,
+    pub(crate) logger: &'a Logger,
     /// If Some, use this path as the working directory without discovering the repo root
     /// or changing the global CWD. This enables test parallelism.
-    working_dir_override: Option<&'a std::path::Path>,
+    pub(crate) working_dir_override: Option<&'a std::path::Path>,
 }
 
 /// Validates agent commands and workflow capability, then sets up git repo and PROMPT.md.
 ///
 /// Returns `Some(repo_root)` if setup succeeded and should continue.
 /// Returns `None` if the user declined PROMPT.md creation (to exit early).
-fn validate_and_setup_agents<H: effect::AppEffectHandler>(
+pub fn validate_and_setup_agents<H: AppEffectHandler>(
     params: &AgentSetupParams<'_>,
     handler: &mut H,
 ) -> anyhow::Result<Option<std::path::PathBuf>> {
@@ -59,31 +69,31 @@ fn validate_and_setup_agents<H: effect::AppEffectHandler>(
     // Determine repo root - use override if provided (for testing), otherwise discover
     let repo_root = if let Some(override_dir) = working_dir_override {
         // Testing mode: use provided directory and change CWD to it via handler
-        let result = handler.execute(effect::AppEffect::SetCurrentDir {
+        let result = handler.execute(AppEffect::SetCurrentDir {
             path: override_dir.to_path_buf(),
         });
-        if let effect::AppEffectResult::Error(e) = result {
+        if let AppEffectResult::Error(e) = result {
             anyhow::bail!("Failed to set working directory: {e}");
         }
         override_dir.to_path_buf()
     } else {
         // Production mode: discover repo root and change CWD via handler
-        let require_result = handler.execute(effect::AppEffect::GitRequireRepo);
-        if let effect::AppEffectResult::Error(e) = require_result {
+        let require_result = handler.execute(AppEffect::GitRequireRepo);
+        if let AppEffectResult::Error(e) = require_result {
             anyhow::bail!("Not in a git repository: {e}");
         }
 
-        let root_result = handler.execute(effect::AppEffect::GitGetRepoRoot);
+        let root_result = handler.execute(AppEffect::GitGetRepoRoot);
         let root = match root_result {
-            effect::AppEffectResult::Path(p) => p,
-            effect::AppEffectResult::Error(e) => {
+            AppEffectResult::Path(p) => p,
+            AppEffectResult::Error(e) => {
                 anyhow::bail!("Failed to get repo root: {e}");
             }
             _ => anyhow::bail!("Unexpected result from GitGetRepoRoot"),
         };
 
-        let set_result = handler.execute(effect::AppEffect::SetCurrentDir { path: root.clone() });
-        if let effect::AppEffectResult::Error(e) = set_result {
+        let set_result = handler.execute(AppEffect::SetCurrentDir { path: root.clone() });
+        if let AppEffectResult::Error(e) = set_result {
             anyhow::bail!("Failed to set working directory: {e}");
         }
         root
@@ -102,7 +112,7 @@ fn validate_and_setup_agents<H: effect::AppEffectHandler>(
 ///
 /// Returns `Ok(Some(()))` if setup succeeded and should continue.
 /// Returns `Ok(None)` if the user declined PROMPT.md creation (to exit early).
-fn setup_git_and_prompt_file<H: effect::AppEffectHandler>(
+fn setup_git_and_prompt_file<H: AppEffectHandler>(
     config: &crate::config::Config,
     colors: Colors,
     logger: &Logger,
@@ -116,22 +126,22 @@ fn setup_git_and_prompt_file<H: effect::AppEffectHandler>(
     if config.behavior.interactive && !prompt_exists {
         if let Some(template_name) = prompt_template_selection(colors) {
             create_prompt_from_template(&template_name, colors)?;
-            println!();
+            logger.info(""); // Empty line for spacing
             logger.info(
                 "PROMPT.md created. Please edit it with your task details, then run ralph again.",
             );
             logger.info("Tip: Edit PROMPT.md, then run: ralph");
             return Ok(None);
         }
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.error("PROMPT.md not found in current directory.");
         logger.warn("PROMPT.md is required to run the Ralph pipeline.");
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.info("To get started:");
         logger.info("  ralph --init                    # Smart setup wizard");
         logger.info("  ralph --init bug-fix             # Create from Work Guide");
         logger.info("  ralph --list-work-guides          # See all Work Guides");
-        println!();
+        logger.info(""); // Empty line for spacing
         return Ok(None);
     }
 
@@ -139,14 +149,14 @@ fn setup_git_and_prompt_file<H: effect::AppEffectHandler>(
     if !prompt_exists {
         logger.error("PROMPT.md not found in current directory.");
         logger.warn("PROMPT.md is required to run the Ralph pipeline.");
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.info("Quick start:");
         logger.info("  ralph --init                    # Smart setup wizard");
         logger.info("  ralph --init bug-fix             # Create from Work Guide");
         logger.info("  ralph --list-work-guides          # See all Work Guides");
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.info("Use -i flag for interactive mode to be prompted for template selection.");
-        println!();
+        logger.info(""); // Empty line for spacing
         return Ok(None);
     }
 
@@ -157,14 +167,14 @@ fn setup_git_and_prompt_file<H: effect::AppEffectHandler>(
 ///
 /// This function initializes the global interrupt context so that if
 /// the user presses Ctrl+C, the interrupt handler can save a checkpoint.
-fn setup_interrupt_context_for_pipeline(
+pub(crate) fn setup_interrupt_context_for_pipeline(
     phase: PipelinePhase,
     total_iterations: u32,
     total_reviewer_passes: u32,
     execution_history: &crate::checkpoint::ExecutionHistory,
     prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     run_context: &crate::checkpoint::RunContext,
-    workspace: std::sync::Arc<dyn crate::workspace::Workspace>,
+    workspace: std::sync::Arc<dyn Workspace>,
 ) {
     use crate::interrupt::{set_interrupt_context, InterruptContext};
 
@@ -204,14 +214,14 @@ fn setup_interrupt_context_for_pipeline(
 /// checkpoint write from live `PipelineState` (including up-to-date
 /// `prompt_history`). This interrupt context is used only for early interrupts
 /// before the event loop starts.
-fn update_interrupt_context_from_phase(
+pub(crate) fn update_interrupt_context_from_phase(
     execution_history: &crate::checkpoint::ExecutionHistory,
     prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     phase: PipelinePhase,
     total_iterations: u32,
     total_reviewer_passes: u32,
     run_context: &crate::checkpoint::RunContext,
-    workspace: std::sync::Arc<dyn crate::workspace::Workspace>,
+    workspace: std::sync::Arc<dyn Workspace>,
 ) {
     use crate::interrupt::{set_interrupt_context, InterruptContext};
 
@@ -249,7 +259,7 @@ fn update_interrupt_context_from_phase(
 /// Uses a scope guard pattern to ensure the interrupt context is cleared
 /// when the pipeline completes successfully, preventing an "interrupted"
 /// checkpoint from being saved after normal completion.
-const fn defer_clear_interrupt_context() -> InterruptContextGuard {
+pub(crate) const fn defer_clear_interrupt_context() -> InterruptContextGuard {
     InterruptContextGuard
 }
 
@@ -258,7 +268,7 @@ const fn defer_clear_interrupt_context() -> InterruptContextGuard {
 /// Ensures the interrupt context is cleared when the guard is dropped,
 /// preventing an "interrupted" checkpoint from being saved after normal
 /// pipeline completion.
-struct InterruptContextGuard;
+pub(crate) struct InterruptContextGuard;
 
 impl Drop for InterruptContextGuard {
     fn drop(&mut self) {

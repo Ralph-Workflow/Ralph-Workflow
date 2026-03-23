@@ -256,14 +256,14 @@ fn starts_with_markdown_bold_analysis(text: &str) -> bool {
     // Pattern 3: Check if first few lines contain markdown bold patterns
     // like "**Category**:" which indicates analysis breakdown
     if lines.len() >= 2 {
-        let mut bold_header_count = 0;
+        let mut bold_header_count: usize = 0;
         for line in lines.iter().take(5) {
             let trimmed = line.trim();
             // Check for patterns like "**Category**:" or "**Category** (file):"
             if (trimmed.contains("**") && trimmed.contains("**:"))
                 || (trimmed.contains("**") && trimmed.contains("** ("))
             {
-                bold_header_count += 1;
+                bold_header_count = bold_header_count.saturating_add(1);
             }
         }
         if bold_header_count >= 1 {
@@ -379,7 +379,7 @@ pub fn looks_like_analysis_text(text: &str) -> bool {
     // Check for numbered/bullet list patterns
     let lines: Vec<&str> = text.lines().collect();
     if lines.len() >= 2 {
-        let mut numbered_count = 0;
+        let mut numbered_count: usize = 0;
         for line in &lines {
             let trimmed = line.trim();
             if trimmed.starts_with("1. ")
@@ -388,7 +388,7 @@ pub fn looks_like_analysis_text(text: &str) -> bool {
                 || trimmed.starts_with("- ")
                 || trimmed.starts_with("* ")
             {
-                numbered_count += 1;
+                numbered_count = numbered_count.saturating_add(1);
             }
         }
         if numbered_count >= 2 {

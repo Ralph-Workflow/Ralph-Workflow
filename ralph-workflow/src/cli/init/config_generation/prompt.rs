@@ -6,6 +6,7 @@
 use crate::config::ConfigEnvironment;
 use crate::logger::Colors;
 use crate::templates::{get_template, list_templates};
+use std::io::Write;
 use std::path::Path;
 
 use super::global::handle_init_global_with;
@@ -52,325 +53,251 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
 ) -> anyhow::Result<bool> {
     // Validate the template exists first, before any file operations
     let Some(template) = get_template(template_name) else {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}Unknown Work Guide: '{}'{}",
             colors.red(),
             template_name,
             colors.reset()
         );
-        println!();
+        // Show similar templates
         let similar = find_similar_templates(template_name);
         if !similar.is_empty() {
-            println!("{}Did you mean?{}", colors.yellow(), colors.reset());
-            for (name, score) in similar {
-                println!(
-                    "  {}{}{}  ({}% similar)",
-                    colors.cyan(),
-                    name,
-                    colors.reset(),
-                    score
-                );
-            }
-            println!();
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Did you mean:?{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            similar.into_iter().for_each(|(name, score)| {
+                let _ = writeln!(std::io::stdout(), "  - {} ({}% match)", name, score);
+            });
         }
-        println!("Commonly used Work Guides:");
-        print_common_work_guides(colors);
-        println!("Usage: ralph --init <work-guide>");
-        return Ok(true);
+        return Ok(false);
     };
 
-    let content = template.content();
-
-    // Check if file exists using the environment
-    let file_exists = env.file_exists(prompt_path);
-
-    if force || !file_exists {
-        // Write file using the environment
-        env.write_file(prompt_path, content)?;
-    } else {
-        // File exists and not forcing - check if we can prompt
-        if can_prompt_user() {
-            if !prompt_overwrite_confirmation(prompt_path, colors)? {
-                return Ok(true);
-            }
-            env.write_file(prompt_path, content)?;
-        } else {
-            return Err(anyhow::anyhow!(
-                "PROMPT.md already exists: {}\nRefusing to overwrite in non-interactive mode. Use --force-overwrite to overwrite, or delete/backup the existing file.",
-                prompt_path.display()
-            ));
+    // Check if file already exists
+    if env.file_exists(prompt_path) && !force {
+        let response =
+            prompt_overwrite_confirmation(prompt_path.to_string_lossy().as_ref(), colors)?;
+        if !response {
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Aborted.{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            return Ok(false);
         }
     }
 
-    println!(
-        "{}Created PROMPT.md from template: {}{}{}",
+    // Write the template content to the file
+    env.write_file(prompt_path, template.content().as_bytes())?;
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Created PROMPT.md from '{}' work guide{}",
         colors.green(),
-        colors.bold(),
-        template_name,
+        template.name(),
         colors.reset()
     );
-    println!();
-    println!(
-        "Template: {}{}{}  {}",
-        colors.cyan(),
-        template.name(),
-        colors.reset(),
-        template.description()
-    );
-    println!();
-    println!("Next steps:");
-    println!("  1. Edit PROMPT.md with your task details");
-    println!("  2. Run: ralph \"your commit message\"");
-    println!();
-    println!("Tip: Use --list-work-guides to see all available Work Guides.");
 
     Ok(true)
 }
 
-/// Handle --init with template argument using the provided environment.
+/// Infer the best init action based on existing files in the project.
+///
+/// Returns the appropriate init action based on what files exist.
+pub fn infer_init_action<R: ConfigEnvironment>(
+    config_path: &Path,
+    prompt_path: &Path,
+    colors: Colors,
+    env: &R,
+) -> InitInferredAction {
+    let has_config = env.file_exists(config_path);
+    let has_prompt = env.file_exists(prompt_path);
+
+    match (has_config, has_prompt) {
+        (true, true) => InitInferredAction::BothExist,
+        (true, false) => InitInferredAction::ConfigOnly,
+        (false, true) => InitInferredAction::PromptOnly,
+        (false, false) => InitInferredAction::NeitherExists,
+    }
+}
+
+/// Action inferred from existing files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitInferredAction {
+    /// Both config and PROMPT.md exist
+    BothExists,
+    /// Only config exists
+    ConfigOnly,
+    /// Only PROMPT.md exists
+    PromptOnly,
+    /// Neither exists
+    NeitherExists,
+}
+
+/// Handle --init with state inference (smart init).
+pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
+    config_path: &Path,
+    prompt_path: &Path,
+    template_arg: Option<&str>,
+    colors: Colors,
+    env: &R,
+) -> anyhow::Result<bool> {
+    let action = infer_init_action(config_path, prompt_path, colors, env);
+
+    match (action, template_arg) {
+        // User specified a template - create PROMPT.md from template
+        (_, Some(template_name)) => {
+            create_prompt_from_template(template_name, prompt_path, false, colors, env)
+        }
+
+        // Both exist - offer to reinitialize
+        (InitInferredAction::BothExists, None) => {
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Found existing config and PROMPT.md{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            let response = prompt_overwrite_confirmation("Reinitialize both?", colors)?;
+            if response {
+                handle_init_global_with(config_path, true, colors, env)?;
+                create_prompt_from_template("blank", prompt_path, true, colors, env)?;
+                return Ok(true);
+            }
+            Ok(false)
+        }
+
+        // Only config exists - offer to create PROMPT.md
+        (InitInferredAction::ConfigOnly, None) => {
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Found existing config but no PROMPT.md{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            let response = prompt_overwrite_confirmation("Create PROMPT.md?", colors)?;
+            if response {
+                // Show available templates
+                let _ = writeln!(
+                    std::io::stdout(),
+                    "\n{}Available Work Guides:{}",
+                    colors.blue(),
+                    colors.reset()
+                );
+                list_templates(colors);
+
+                if can_prompt_user() {
+                    if let Some(template_name) = prompt_for_template(colors) {
+                        return create_prompt_from_template(
+                            &template_name,
+                            prompt_path,
+                            false,
+                            colors,
+                            env,
+                        );
+                    }
+                } else {
+                    // Non-interactive: create minimal PROMPT.md
+                    let content = create_minimal_prompt_md();
+                    env.write_file(prompt_path, content.as_bytes())?;
+                    let _ = writeln!(
+                        std::io::stdout(),
+                        "{}Created minimal PROMPT.md (non-interactive mode){}",
+                        colors.green(),
+                        colors.reset()
+                    );
+                }
+            }
+            Ok(false)
+        }
+
+        // Only PROMPT.md exists - offer to create config
+        (InitInferredAction::PromptOnly, None) => {
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Found existing PROMPT.md but no config{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            let response = prompt_overwrite_confirmation("Create config?", colors)?;
+            if response {
+                handle_init_global_with(config_path, false, colors, env)?;
+                return Ok(true);
+            }
+            Ok(false)
+        }
+
+        // Neither exists - full init
+        (InitInferredAction::NeitherExists, None) => {
+            // Show available templates
+            let _ = writeln!(
+                std::io::stdout(),
+                "\n{}Available Work Guides:{}",
+                colors.blue(),
+                colors.reset()
+            );
+            list_templates(colors);
+            let _ = writeln!(std::io::stdout());
+
+            // Show common Work Guides inline
+            print_common_work_guides(colors);
+
+            // Check if we're in a TTY for interactive prompting
+            if can_prompt_user() {
+                // Interactive mode: prompt for template selection
+                if let Some(template_name) = prompt_for_template(colors) {
+                    match create_prompt_from_template(
+                        &template_name,
+                        prompt_path,
+                        false,
+                        colors,
+                        env,
+                    ) {
+                        Ok(true) => return Ok(true),
+                        Ok(false) => {
+                            // User declined or invalid template, fall through to show usage
+                        }
+                        Err(e) => {
+                            let _ = writeln!(
+                                std::io::stdout(),
+                                "{}Failed to create PROMPT.md: {}{}",
+                                colors.red(),
+                                e,
+                                colors.reset()
+                            );
+                            return Ok(false);
+                        }
+                    }
+                }
+                // User declined or entered invalid input, fall through to show usage
+            }
+            // Non-interactive or user declined: create minimal PROMPT.md and show help
+            let content = create_minimal_prompt_md();
+            env.write_file(prompt_path, content.as_bytes())?;
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Created minimal PROMPT.md (non-interactive mode){}",
+                colors.green(),
+                colors.reset()
+            );
+
+            // Show extended help for first-time users
+            super::super::handle_extended_help();
+
+            Ok(true)
+        }
+    }
+}
+
+/// Handle --init with explicit template argument.
 pub fn handle_init_template_arg_at_path_with_env<R: ConfigEnvironment>(
     template_name: &str,
     prompt_path: &Path,
-    force: bool,
     colors: Colors,
     env: &R,
 ) -> anyhow::Result<bool> {
-    if get_template(template_name).is_some() {
-        return create_prompt_from_template(template_name, prompt_path, force, colors, env);
-    }
-
-    // Unknown value - show helpful error with suggestions
-    println!(
-        "{}Unknown Work Guide: '{}'{}",
-        colors.red(),
-        template_name,
-        colors.reset()
-    );
-    println!();
-
-    // Try to find similar template names
-    let similar = find_similar_templates(template_name);
-    if !similar.is_empty() {
-        println!("{}Did you mean?{}", colors.yellow(), colors.reset());
-        for (name, score) in similar {
-            println!(
-                "  {}{}{}  ({}% similar)",
-                colors.cyan(),
-                name,
-                colors.reset(),
-                score
-            );
-        }
-        println!();
-    }
-
-    println!("Commonly used Work Guides:");
-    print_common_work_guides(colors);
-    println!("Usage: ralph --init=<work-guide>");
-    println!("       ralph --init            # Smart init (infers intent)");
-    Ok(true)
-}
-
-/// Handle --init with smart inference using the provided environment.
-///
-/// Dispatches to the appropriate handler based on which files exist.
-pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
-    config_path: &std::path::Path,
-    prompt_path: &Path,
-    config_exists: bool,
-    prompt_exists: bool,
-    force: bool,
-    colors: Colors,
-    env: &R,
-) -> anyhow::Result<bool> {
-    match (config_exists, prompt_exists) {
-        (false, false) => super::global::handle_init_none_exist_with_env(config_path, colors, env),
-        (true, false) => Ok(handle_init_only_config_exists_with_env(
-            config_path,
-            prompt_path,
-            force,
-            colors,
-            env,
-        )),
-        (false, true) => handle_init_only_prompt_exists_with_env(colors, env),
-        (true, true) => Ok(handle_init_both_exist(
-            config_path,
-            prompt_path,
-            force,
-            colors,
-        )),
-    }
-}
-
-/// Handle --init when both config and PROMPT.md exist.
-fn handle_init_both_exist(
-    config_path: &std::path::Path,
-    prompt_path: &Path,
-    force: bool,
-    colors: Colors,
-) -> bool {
-    // If force is set, show that they can use --force-overwrite to overwrite
-    if force {
-        println!(
-            "{}Note:{} --force-overwrite has no effect when not specifying a Work Guide.",
-            colors.yellow(),
-            colors.reset()
-        );
-        println!("Use: ralph --init <work-guide> --force-overwrite  to overwrite PROMPT.md");
-        println!();
-    }
-
-    println!("{}Setup complete!{}", colors.green(), colors.reset());
-    println!();
-    println!(
-        "  Config: {}{}{}",
-        colors.dim(),
-        config_path.display(),
-        colors.reset()
-    );
-    println!(
-        "  PROMPT: {}{}{}",
-        colors.dim(),
-        prompt_path.display(),
-        colors.reset()
-    );
-    println!();
-    println!("You're ready to run Ralph:");
-    println!("  ralph \"your commit message\"");
-    println!();
-    println!("Other commands:");
-    println!("  ralph --list-work-guides   # Show all Work Guides");
-    println!("  ralph --init <work-guide> --force-overwrite  # Overwrite PROMPT.md");
-    true
-}
-
-/// Handle --init when only config exists (no PROMPT.md), using the provided environment.
-pub fn handle_init_only_config_exists_with_env<R: ConfigEnvironment>(
-    config_path: &std::path::Path,
-    prompt_path: &Path,
-    force: bool,
-    colors: Colors,
-    env: &R,
-) -> bool {
-    println!(
-        "{}Config found at:{} {}",
-        colors.green(),
-        colors.reset(),
-        config_path.display()
-    );
-    println!(
-        "{}PROMPT.md not found in current directory.{}",
-        colors.yellow(),
-        colors.reset()
-    );
-    println!();
-
-    // Show common Work Guides inline
-    print_common_work_guides(colors);
-
-    // Check if we're in a TTY for interactive prompting
-    if can_prompt_user() {
-        // Interactive mode: prompt for template selection
-        if let Some(template_name) = prompt_for_template(colors) {
-            match create_prompt_from_template(&template_name, prompt_path, force, colors, env) {
-                Ok(_) => return true,
-                Err(e) => {
-                    println!(
-                        "{}Failed to create PROMPT.md: {}{}",
-                        colors.red(),
-                        e,
-                        colors.reset()
-                    );
-                    return true;
-                }
-            }
-        }
-        // User declined or entered invalid input, fall through to show usage
-    } else {
-        // Non-interactive mode: create a minimal default PROMPT.md
-        let default_content = create_minimal_prompt_md();
-
-        // Check if file exists using the environment
-        if env.file_exists(prompt_path) {
-            println!(
-                "{}PROMPT.md already exists:{} {}",
-                colors.yellow(),
-                colors.reset(),
-                prompt_path.display()
-            );
-            println!("Use --force-overwrite to overwrite, or delete/backup the existing file.");
-            return true;
-        }
-
-        // Write file using the environment
-        match env.write_file(prompt_path, &default_content) {
-            Ok(()) => {
-                println!(
-                    "{}Created minimal PROMPT.md{}",
-                    colors.green(),
-                    colors.reset()
-                );
-                println!();
-                println!("Next steps:");
-                println!("  1. Edit PROMPT.md with your task details");
-                println!("  2. Run: ralph \"your commit message\"");
-                println!();
-                println!("Tip: Use ralph --list-work-guides to see all available Work Guides.");
-                return true;
-            }
-            Err(e) => {
-                println!(
-                    "{}Failed to create PROMPT.md: {}{}",
-                    colors.red(),
-                    e,
-                    colors.reset()
-                );
-                return true;
-            }
-        }
-    }
-
-    // Show template list if we didn't create PROMPT.md
-    println!("Create a PROMPT.md from a Work Guide to get started:");
-    println!();
-
-    for (name, description) in list_templates() {
-        println!(
-            "  {}{}{}  {}{}{}",
-            colors.cyan(),
-            name,
-            colors.reset(),
-            colors.dim(),
-            description,
-            colors.reset()
-        );
-    }
-
-    println!();
-    println!("Usage: ralph --init <work-guide>");
-    println!();
-    println!("Example:");
-    println!("  ralph --init bug-fix");
-    println!("  ralph --init feature-spec");
-    true
-}
-
-/// Handle --init when only PROMPT.md exists (no config), using the provided environment.
-pub fn handle_init_only_prompt_exists_with_env<R: ConfigEnvironment>(
-    colors: Colors,
-    env: &R,
-) -> anyhow::Result<bool> {
-    println!(
-        "{}PROMPT.md found in current directory.{}",
-        colors.green(),
-        colors.reset()
-    );
-    println!(
-        "{}No config found. Creating unified config...{}",
-        colors.dim(),
-        colors.reset()
-    );
-    println!();
-    handle_init_global_with(colors, env)?;
-    Ok(true)
+    create_prompt_from_template(template_name, prompt_path, false, colors, env)
 }

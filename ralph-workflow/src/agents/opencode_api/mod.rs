@@ -16,12 +16,16 @@
 //! Production code uses [`RealCatalogLoader`] which fetches from the network,
 //! while tests can provide mock implementations.
 
+mod boundary;
 mod cache;
 mod fetch;
 mod types;
 
-pub use cache::{load_api_catalog, CacheError};
+pub use cache::{load_api_catalog, CacheError, CacheWarning};
+pub use fetch::{CatalogHttpClient, RealCatalogFetcher};
 pub use types::{ApiCatalog, Model, Provider};
+
+use std::sync::Arc;
 
 /// `OpenCode` API endpoint for model catalog.
 pub const API_URL: &str = "https://models.dev/api.json";
@@ -53,11 +57,40 @@ pub trait CatalogLoader: Send + Sync {
 /// 1. Check for a valid cached catalog
 /// 2. If cache is missing or expired, fetch from the API
 /// 3. Cache the fetched result for future use
-#[derive(Debug, Default, Clone)]
-pub struct RealCatalogLoader;
+
+#[derive(Clone)]
+pub struct RealCatalogLoader {
+    fetcher: Arc<dyn fetch::CatalogHttpClient>,
+}
+
+impl RealCatalogLoader {
+    /// Create a new catalog loader with the given HTTP client.
+    pub fn new(fetcher: Arc<dyn fetch::CatalogHttpClient>) -> Self {
+        Self { fetcher }
+    }
+
+    /// Convenience constructor that wraps the client in an [`Arc`].
+    pub fn with_fetcher<F>(fetcher: F) -> Self
+    where
+        F: fetch::CatalogHttpClient + 'static,
+    {
+        Self::new(Arc::new(fetcher))
+    }
+}
 
 impl CatalogLoader for RealCatalogLoader {
     fn load(&self) -> Result<ApiCatalog, CacheError> {
-        load_api_catalog()
+        let (catalog, warnings) = cache::load_api_catalog(self.fetcher.as_ref())?;
+        warnings.into_iter().for_each(|warning| {
+            match warning {
+                CacheWarning::StaleCacheUsed { stale_days, error } => {
+                    eprintln!("Warning: Failed to fetch fresh OpenCode API catalog ({error}), using stale cache from {stale_days} days ago");
+                }
+                CacheWarning::CacheSaveFailed { error } => {
+                    eprintln!("Warning: Failed to cache OpenCode API catalog: {error}");
+                }
+            }
+        });
+        Ok(catalog)
     }
 }

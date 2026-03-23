@@ -134,5 +134,5 @@ include!("delta_display/formatter.rs");
 
 // Tests
 #[cfg(test)]
-#[path = "delta_display/tests/mod.rs"]
+#[path = "delta_display/io_tests/mod.rs"]
 mod tests;

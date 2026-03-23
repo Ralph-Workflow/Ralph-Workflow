@@ -7,7 +7,7 @@
 {#   The agent must complete its task autonomously without user interaction.   #}
 {#                                                                             #}
 {# USAGE:                                                                      #}
-{#   {{> shared/_unattended_mode}}                                             #}
+{#   Include shared/_unattended_mode to highlight the unattended automation guardrails. #}
 {#                                                                             #}
 {# VARIABLES: None                                                             #}
 {#                                                                             #}
@@ -29,4 +29,3 @@ CRITICAL REQUIREMENTS:
 - If you encounter ambiguity, document your assumptions and continue
 - Complete your task autonomously from start to finish
 - DO NOT WRITE ANY STATUS .md FILES OF ANY TYPE UNLESS SPECIFICALLY REQUESTED, TEMPORARY DOCUMENTATION WILL POLLUTE CONTEXT AND SHOULD BE AVOIDED
-

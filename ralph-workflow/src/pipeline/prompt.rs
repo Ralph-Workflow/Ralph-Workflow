@@ -1,48 +1,44 @@
 //! Prompt-based command execution.
 
-mod agent_spawn;
+mod io;
+mod io_agent_spawn;
 
 #[cfg(test)]
-mod agent_spawn_test;
+mod io_agent_spawn_test;
 
-mod cleanup;
 mod environment;
-mod process_wait;
+mod io_clipboard;
+mod io_process_wait;
+mod io_stderr_collector;
+mod io_streaming;
 mod run;
+mod runtime;
 mod save;
-mod stderr_collector;
-mod streaming;
-mod streaming_line_reader;
+mod time;
 mod types;
 
+pub use io_streaming::extract_error_identifier_from_logfile;
+pub use io_streaming::extract_error_message_from_logfile;
 pub use run::run_with_prompt;
-pub use streaming::extract_error_identifier_from_logfile;
-pub use streaming::extract_error_message_from_logfile;
 pub use types::{PipelineRuntime, PromptCommand};
 
 /// Exit code returned when a process is killed due to SIGTERM.
-const SIGTERM_EXIT_CODE: i32 = 143;
+pub const SIGTERM_EXIT_CODE: i32 = 143;
 
 #[cfg(test)]
-pub use agent_spawn_test::run_with_agent_spawn_with_monitor_config;
+pub use io_agent_spawn_test::run_with_agent_spawn_with_monitor_config;
 
 #[cfg(test)]
-use agent_spawn::run_with_agent_spawn;
+use io_agent_spawn::run_with_agent_spawn;
 
 #[cfg(test)]
 use crate::agents::JsonParserType;
 
-#[cfg(test)]
-use stderr_collector::collect_stderr_with_cap_and_drain;
+// #[cfg(test)]
+// use runtime::stderr_collector::collect_stderr_with_cap_and_drain;
 
 #[cfg(test)]
 use save::build_prompt_archive_filename;
-
-#[cfg(test)]
-use streaming_line_reader::StreamingLineReader;
-
-#[cfg(test)]
-use streaming_line_reader::MAX_BUFFER_SIZE;
 
 #[cfg(test)]
 use crate::config::Config;
@@ -52,9 +48,6 @@ use crate::logger::{Colors, Logger};
 
 #[cfg(test)]
 use crate::pipeline::Timer;
-
-#[cfg(test)]
-use std::io::BufRead;
 
 /// Maximum safe prompt size in bytes for command-line arguments.
 ///
@@ -94,27 +87,29 @@ fn truncate_prompt_if_needed(prompt: &str, logger: &Logger) -> String {
         "\nPrevious output:",
     ];
 
-    for marker in truncation_markers {
-        if let Some(marker_pos) = prompt.find(marker) {
-            let content_start = marker_pos + marker.len();
-            if content_start < prompt.len() {
-                let before_marker = &prompt[..content_start];
-                let after_marker = &prompt[content_start..];
-
-                if after_marker.len() > excess + 100 {
-                    let keep_from = excess + 100;
-                    let truncated_content = &after_marker[keep_from..];
-                    let clean_start = truncated_content.find('\n').map_or(0, |i| i + 1);
-
-                    return format!(
-                        "{}\n[... {} bytes truncated to fit CLI argument limit ...]\n{}",
-                        before_marker,
-                        keep_from + clean_start,
-                        &truncated_content[clean_start..]
-                    );
-                }
-            }
+    if let Some(early_result) = truncation_markers.iter().find_map(|marker| {
+        let marker_pos = prompt.find(marker)?;
+        let content_start = marker_pos + marker.len();
+        if content_start >= prompt.len() {
+            return None;
         }
+        let before_marker = &prompt[..content_start];
+        let after_marker = &prompt[content_start..];
+        if after_marker.len() > excess + 100 {
+            let keep_from = excess + 100;
+            let truncated_content = &after_marker[keep_from..];
+            let clean_start = truncated_content.find('\n').map_or(0, |i| i + 1);
+            Some(format!(
+                "{}\n[... {} bytes truncated to fit CLI argument limit ...]\n{}",
+                before_marker,
+                keep_from + clean_start,
+                &truncated_content[clean_start..]
+            ))
+        } else {
+            None
+        }
+    }) {
+        return early_result;
     }
 
     let keep_start = MAX_PROMPT_SIZE / 3;

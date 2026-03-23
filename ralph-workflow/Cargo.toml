@@ -96,9 +96,17 @@ strsim = "0.11"
 # XML parsing for plan validation
 quick-xml = "0.37"
 
+# Functional programming helpers (HList, LabelledGeneric, Validated, etc.)
+frunk = "0.4.4"
+
+# Iterator utilities (sorted, unique, etc.)
+itertools = "0.13"
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.10"
 test-helpers = { path = "../test-helpers" }
 # Serial test execution for tests that modify global state (env vars)
 serial_test = "3"
+mockito = "1.7"
+proptest = "1"

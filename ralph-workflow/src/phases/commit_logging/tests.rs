@@ -15,15 +15,15 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let log_dir = Path::new(".agent/logs/commit_generation/run_test");
 
-        let mut log = CommitAttemptLog::new(1, "claude", "initial");
-        log.set_prompt_size(5000);
-        log.set_diff_info(10000, false);
-        log.set_raw_output("raw agent output here");
-        log.add_extraction_attempt(ExtractionAttempt::failure(
-            "XML",
-            "No <ralph-commit> tag found".to_string(),
-        ));
-        log.set_outcome(AttemptOutcome::Success("feat: add feature".to_string()));
+        let log = CommitAttemptLog::new(1, "claude", "initial")
+            .with_prompt_size(5000)
+            .with_diff_info(10000, false)
+            .with_raw_output("raw agent output here")
+            .add_extraction_attempt(ExtractionAttempt::failure(
+                "XML",
+                "No <ralph-commit> tag found".to_string(),
+            ))
+            .with_outcome(AttemptOutcome::Success("feat: add feature".to_string()));
 
         let log_path = log.write_to_workspace(log_dir, &workspace).unwrap();
         assert!(workspace.exists(&log_path));
@@ -39,23 +39,23 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let log_dir = Path::new(".agent/logs/commit_generation/run_test");
 
-        let mut log = CommitAttemptLog::new(1, "claude", "initial");
-        log.set_prompt_size(5000);
-        log.set_diff_info(10000, false);
-        log.set_raw_output("raw agent output here");
-        log.add_extraction_attempt(ExtractionAttempt::failure(
-            "XML",
-            "No <ralph-commit> tag found".to_string(),
-        ));
-        log.add_extraction_attempt(ExtractionAttempt::success(
-            "JSON",
-            "Extracted from JSON".to_string(),
-        ));
-        log.set_validation_checks(vec![
-            ValidationCheck::pass("basic_length"),
-            ValidationCheck::fail("no_bad_patterns", "File list pattern detected".to_string()),
-        ]);
-        log.set_outcome(AttemptOutcome::ExtractionFailed("bad pattern".to_string()));
+        let log = CommitAttemptLog::new(1, "claude", "initial")
+            .with_prompt_size(5000)
+            .with_diff_info(10000, false)
+            .with_raw_output("raw agent output here")
+            .add_extraction_attempt(ExtractionAttempt::failure(
+                "XML",
+                "No <ralph-commit> tag found".to_string(),
+            ))
+            .add_extraction_attempt(ExtractionAttempt::success(
+                "JSON",
+                "Extracted from JSON".to_string(),
+            ))
+            .with_validation_checks(vec![
+                ValidationCheck::pass("basic_length"),
+                ValidationCheck::fail("no_bad_patterns", "File list pattern detected".to_string()),
+            ])
+            .with_outcome(AttemptOutcome::ExtractionFailed("bad pattern".to_string()));
 
         let log_path = log.write_to_workspace(log_dir, &workspace).unwrap();
         assert!(workspace.exists(&log_path));
@@ -74,14 +74,14 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let log_dir = Path::new(".agent/logs/commit_generation/run_test");
 
-        let mut trace = ParsingTraceLog::new(1, "claude", "initial");
-        trace.set_raw_output("raw agent output");
-        trace.add_step(
-            ParsingTraceStep::new(1, "XML extraction")
-                .with_input("input")
-                .with_success(true),
-        );
-        trace.set_final_message("feat: add feature");
+        let trace = ParsingTraceLog::new(1, "claude", "initial")
+            .with_raw_output("raw agent output")
+            .add_step(
+                ParsingTraceStep::new(1, "XML extraction")
+                    .with_input("input")
+                    .with_success(true),
+            )
+            .with_final_message("feat: add feature");
 
         let trace_path = trace.write_to_workspace(log_dir, &workspace).unwrap();
         assert!(workspace.exists(&trace_path));
@@ -96,21 +96,21 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let log_dir = Path::new(".agent/logs/commit_generation/run_test");
 
-        let mut trace = ParsingTraceLog::new(1, "claude", "initial");
-        trace.set_raw_output("raw agent output");
-        trace.add_step(
-            ParsingTraceStep::new(1, "XML extraction")
-                .with_input("input")
-                .with_result("result")
-                .with_success(true)
-                .with_details("success"),
-        );
-        trace.add_step(
-            ParsingTraceStep::new(2, "Validation")
-                .with_success(false)
-                .with_details("failed"),
-        );
-        trace.set_final_message("feat: add feature");
+        let trace = ParsingTraceLog::new(1, "claude", "initial")
+            .with_raw_output("raw agent output")
+            .add_step(
+                ParsingTraceStep::new(1, "XML extraction")
+                    .with_input("input")
+                    .with_result("result")
+                    .with_success(true)
+                    .with_details("success"),
+            )
+            .add_step(
+                ParsingTraceStep::new(2, "Validation")
+                    .with_success(false)
+                    .with_details("failed"),
+            )
+            .with_final_message("feat: add feature");
 
         let trace_path = trace.write_to_workspace(log_dir, &workspace).unwrap();
         assert!(workspace.exists(&trace_path));
@@ -131,32 +131,6 @@ mod tests {
         let session = CommitLogSession::new(".agent/logs/commit_generation", &workspace).unwrap();
         assert!(workspace.exists(session.run_dir()));
         assert!(session.run_dir().to_string_lossy().contains("run_"));
-    }
-
-    #[test]
-    fn test_session_increments_attempt_number() {
-        let workspace = MemoryWorkspace::new_test();
-
-        let mut session =
-            CommitLogSession::new(".agent/logs/commit_generation", &workspace).unwrap();
-
-        assert_eq!(session.next_attempt_number(), 1);
-        assert_eq!(session.next_attempt_number(), 2);
-        assert_eq!(session.next_attempt_number(), 3);
-    }
-
-    #[test]
-    fn test_session_new_attempt() {
-        let workspace = MemoryWorkspace::new_test();
-
-        let mut session =
-            CommitLogSession::new(".agent/logs/commit_generation", &workspace).unwrap();
-
-        let log1 = session.new_attempt("claude", "initial");
-        assert_eq!(log1.attempt_number, 1);
-
-        let log2 = session.new_attempt("glm", "strict_json");
-        assert_eq!(log2.attempt_number, 2);
     }
 
     #[test]
@@ -199,14 +173,6 @@ mod tests {
     }
 
     #[test]
-    fn test_noop_session_attempt_counter() {
-        let mut session = CommitLogSession::noop();
-        assert_eq!(session.next_attempt_number(), 1);
-        assert_eq!(session.next_attempt_number(), 2);
-        assert_eq!(session.next_attempt_number(), 3);
-    }
-
-    #[test]
     fn test_sanitize_agent_name() {
         assert_eq!(sanitize_agent_name("claude"), "claude");
         assert_eq!(sanitize_agent_name("agent/commit"), "agent_commit");
@@ -218,9 +184,8 @@ mod tests {
 
     #[test]
     fn test_large_output_truncation() {
-        let mut log = CommitAttemptLog::new(1, "test", "test");
         let large_output = "x".repeat(100_000);
-        log.set_raw_output(&large_output);
+        let log = CommitAttemptLog::new(1, "test", "test").with_raw_output(&large_output);
 
         let output = log.raw_output.unwrap();
         assert!(output.len() < large_output.len());
@@ -275,17 +240,15 @@ mod tests {
 
     #[test]
     fn test_parsing_trace_log_set_raw_output() {
-        let mut trace = ParsingTraceLog::new(1, "claude", "initial");
-        trace.set_raw_output("test output");
+        let trace = ParsingTraceLog::new(1, "claude", "initial").with_raw_output("test output");
 
         assert_eq!(trace.raw_output.as_deref(), Some("test output"));
     }
 
     #[test]
     fn test_parsing_trace_raw_output_truncation() {
-        let mut trace = ParsingTraceLog::new(1, "claude", "initial");
         let large_output = "x".repeat(100_000);
-        trace.set_raw_output(&large_output);
+        let trace = ParsingTraceLog::new(1, "claude", "initial").with_raw_output(&large_output);
 
         let output = trace.raw_output.unwrap();
         assert!(output.len() < large_output.len());
@@ -294,9 +257,8 @@ mod tests {
 
     #[test]
     fn test_parsing_trace_add_step() {
-        let mut trace = ParsingTraceLog::new(1, "claude", "initial");
-        let step = ParsingTraceStep::new(1, "XML extraction");
-        trace.add_step(step);
+        let trace = ParsingTraceLog::new(1, "claude", "initial")
+            .add_step(ParsingTraceStep::new(1, "XML extraction"));
 
         assert_eq!(trace.steps.len(), 1);
         assert_eq!(trace.steps[0].description, "XML extraction");
@@ -304,8 +266,8 @@ mod tests {
 
     #[test]
     fn test_parsing_trace_set_final_message() {
-        let mut trace = ParsingTraceLog::new(1, "claude", "initial");
-        trace.set_final_message("feat: add feature");
+        let trace =
+            ParsingTraceLog::new(1, "claude", "initial").with_final_message("feat: add feature");
 
         assert_eq!(trace.final_message.as_deref(), Some("feat: add feature"));
     }
@@ -324,11 +286,10 @@ mod tests {
 
     #[test]
     fn test_attempt_log_set_values() {
-        let mut log = CommitAttemptLog::new(2, "glm", "strict_json");
-
-        log.set_prompt_size(10_000);
-        log.set_diff_info(50_000, true);
-        log.set_raw_output("test output");
+        let log = CommitAttemptLog::new(2, "glm", "strict_json")
+            .with_prompt_size(10_000)
+            .with_diff_info(50_000, true)
+            .with_raw_output("test output");
 
         assert_eq!(log.prompt_size_bytes, 10_000);
         assert_eq!(log.diff_size_bytes, 50_000);

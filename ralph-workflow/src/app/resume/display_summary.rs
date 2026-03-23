@@ -41,13 +41,12 @@ fn log_rebase_conflict_summary(checkpoint: &PipelineCheckpoint, logger: &Logger)
             "Rebase conflicts detected in {} file(s)",
             files.len()
         ));
-        // Show up to 5 conflicted files
         let display_files: Vec<_> = files.iter().take(5).cloned().collect();
-        for file in display_files {
+        display_files.iter().for_each(|file| {
             logger.info(&format!("  - {file}"));
-        }
+        });
         if files.len() > 5 {
-            logger.info(&format!("  ... and {} more", files.len() - 5));
+            logger.info(&format!("  ... and {} more", files.len().saturating_sub(5)));
         }
     }
 }
@@ -111,7 +110,10 @@ fn log_agent_and_command_summary(checkpoint: &PipelineCheckpoint, logger: &Logge
     }
 }
 
-fn log_recent_activity_step(step: &crate::checkpoint::execution_history::ExecutionStep, logger: &Logger) {
+fn log_recent_activity_step(
+    step: &crate::checkpoint::execution_history::ExecutionStep,
+    logger: &Logger,
+) {
     // ASCII-only outcome markers (stable across non-UTF8 terminals)
     let outcome_marker = outcome_marker_ascii(&step.outcome);
 
@@ -125,20 +127,19 @@ fn log_recent_activity_step(step: &crate::checkpoint::execution_history::Executi
         let added_count = detail.added.as_ref().map_or(0, |v| v.len());
         let modified_count = detail.modified.as_ref().map_or(0, |v| v.len());
         let deleted_count = detail.deleted.as_ref().map_or(0, |v| v.len());
-        let total_files = added_count + modified_count + deleted_count;
+        let total_files = added_count
+            .saturating_add(modified_count)
+            .saturating_add(deleted_count);
         if total_files > 0 {
-            let mut file_summary = String::from("    Files: ");
-            let mut parts = Vec::new();
-            if added_count > 0 {
-                parts.push(format!("{added_count} added"));
-            }
-            if modified_count > 0 {
-                parts.push(format!("{modified_count} modified"));
-            }
-            if deleted_count > 0 {
-                parts.push(format!("{deleted_count} deleted"));
-            }
-            file_summary.push_str(&parts.join(", "));
+            let parts: Vec<String> = [
+                (added_count > 0).then(|| format!("{added_count} added")),
+                (modified_count > 0).then(|| format!("{modified_count} modified")),
+                (deleted_count > 0).then(|| format!("{deleted_count} deleted")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let file_summary = format!("    Files: {}", parts.join(", "));
             logger.info(&file_summary);
         }
     }
@@ -164,7 +165,10 @@ fn log_recent_activity_step(step: &crate::checkpoint::execution_history::Executi
     }
 }
 
-fn log_recent_activity(history: &crate::checkpoint::execution_history::ExecutionHistory, logger: &Logger) {
+fn log_recent_activity(
+    history: &crate::checkpoint::execution_history::ExecutionHistory,
+    logger: &Logger,
+) {
     if history.steps.is_empty() {
         return;
     }
@@ -188,9 +192,9 @@ fn log_recent_activity(history: &crate::checkpoint::execution_history::Execution
     logger.info("");
     logger.info("Recent Activity:");
 
-    for step in &recent_steps {
+    recent_steps.iter().for_each(|step| {
         log_recent_activity_step(step, logger);
-    }
+    });
 }
 
 fn log_resume_next_steps(checkpoint: &PipelineCheckpoint, logger: &Logger) {
@@ -235,7 +239,7 @@ fn display_checkpoint_summary(checkpoint: &PipelineCheckpoint, logger: &Logger) 
         logger.info(&format!(
             "Resume count: {} (this is resume #{} of this session)",
             checkpoint.resume_count,
-            checkpoint.resume_count + 1
+            checkpoint.resume_count.saturating_add(1)
         ));
     }
     if let Some(ref parent_id) = checkpoint.parent_run_id {
@@ -302,11 +306,11 @@ fn display_checkpoint_summary(checkpoint: &PipelineCheckpoint, logger: &Logger) 
         }
         crate::checkpoint::RebaseState::HasConflicts { files } => {
             logger.warn(&format!("Rebase has conflicts in {} files", files.len()));
-            for file in files.iter().take(3) {
+            files.iter().take(3).for_each(|file| {
                 logger.warn(&format!("  - {file}"));
-            }
+            });
             if files.len() > 3 {
-                logger.warn(&format!("  ... and {} more", files.len() - 3));
+                logger.warn(&format!("  ... and {} more", files.len().saturating_sub(3)));
             }
         }
         _ => {}

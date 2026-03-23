@@ -14,37 +14,64 @@ pub mod output;
 #[cfg(not(any(test, feature = "test-utils")))]
 mod output;
 
+mod ansi;
+mod ansi_stripper;
+mod file_writer;
+mod io;
+mod logger_wrapper;
 mod progress;
+mod runtime;
+mod stdout_writer;
 
+pub use ansi::strip_ansi_codes;
 pub use output::{argv_requests_json, format_generic_json_for_display, Loggable, Logger};
 pub use progress::print_progress;
 
-// ===== Colors & Formatting =====
+pub use crate::logger::file_writer::append_to_file;
+pub use crate::logger::logger_wrapper::LoggerIoWrapper;
 
-use std::io::IsTerminal;
-
-/// Environment abstraction for color detection.
-///
-/// This trait enables testing color detection logic without modifying
-/// real environment variables (which would cause test interference).
 pub trait ColorEnvironment {
-    /// Get an environment variable value.
     fn get_var(&self, name: &str) -> Option<String>;
-    /// Check if stdout is a terminal.
     fn is_terminal(&self) -> bool;
 }
 
-/// Real environment implementation for production use.
 pub struct RealColorEnvironment;
 
 impl ColorEnvironment for RealColorEnvironment {
     fn get_var(&self, name: &str) -> Option<String> {
-        std::env::var(name).ok()
+        runtime::get_color_env_var(name)
     }
 
     fn is_terminal(&self) -> bool {
-        std::io::stdout().is_terminal()
+        runtime_color_env_is_terminal()
     }
+}
+
+pub fn stdout_write(buf: &[u8]) -> std::io::Result<usize> {
+    runtime::stdout_write(buf)
+}
+
+pub fn stdout_write_line(s: &str) -> std::io::Result<()> {
+    runtime::stdout_write_line(s)
+}
+
+pub fn stderr_write_line(s: &str) -> std::io::Result<()> {
+    runtime::stderr_write_line(s)
+}
+
+pub fn stdout_flush() -> std::io::Result<()> {
+    runtime::stdout_flush()
+}
+
+#[must_use]
+pub fn stdout_is_terminal() -> bool {
+    runtime::stdout_is_terminal()
+}
+
+fn runtime_color_env_is_terminal() -> bool {
+    let env = runtime::RealColorEnvironment;
+    let _ = runtime::ColorEnvironment::get_var(&env, "TERM");
+    runtime::ColorEnvironment::is_terminal(&env)
 }
 
 /// Check if colors should be enabled using the provided environment.
@@ -354,13 +381,10 @@ mod tests {
 
     #[test]
     fn test_colors_enabled_term_dumb_case_insensitive() {
-        for term in ["dumb", "DUMB", "Dumb", "DuMb"] {
+        assert!(["dumb", "DUMB", "Dumb", "DuMb"].iter().all(|&term| {
             let env = MockColorEnvironment::new().with_var("TERM", term);
-            assert!(
-                !colors_enabled_with_env(&env),
-                "TERM={term} should disable colors"
-            );
-        }
+            !colors_enabled_with_env(&env)
+        }));
     }
 
     #[test]

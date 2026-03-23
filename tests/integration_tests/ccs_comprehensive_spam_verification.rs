@@ -140,7 +140,7 @@ fn test_ccs_glm_architecture_verification_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::None);
 
@@ -247,7 +247,7 @@ fn test_ccs_glm_architecture_verification_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
+        let mut parser = ClaudeParser::with_printer(colors, verbosity, test_printer.clone())
             .with_display_name("ccs/glm")
             .with_terminal_mode(TerminalMode::Basic);
 
@@ -300,9 +300,10 @@ fn test_ccs_codex_architecture_verification_none_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::None);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::None);
 
         // Test scenario: 150 reasoning deltas + 150 agent_message deltas = 300 total
         // Expected: At most 2 lines (one per item type), proving suppression works
@@ -377,9 +378,10 @@ fn test_ccs_codex_architecture_verification_basic_mode() {
         let colors = Colors::new();
         let verbosity = Verbosity::Normal;
 
-        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-            .with_display_name_for_test("ccs/codex")
-            .with_terminal_mode(TerminalMode::Basic);
+        let mut parser =
+            CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+                .with_display_name_for_test("ccs/codex")
+                .with_terminal_mode(TerminalMode::Basic);
 
         // Test scenario: 200 agent_message deltas
         // Expected: At most 1 line, proving suppression works in Basic mode

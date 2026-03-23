@@ -26,24 +26,36 @@ impl AgentRegistry {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn load_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<usize, AgentConfigError> {
+    pub fn load_from_file<P: AsRef<Path>>(self, path: P) -> Result<Self, AgentConfigError> {
         match AgentsConfigFile::load_from_file(path)? {
             Some(config) => {
-                let count = config.agents.len();
                 let resolved_drains = config.resolve_drains_checked()?;
 
-                for (name, agent_toml) in config.agents {
-                    self.register(&name, AgentConfig::from(agent_toml));
-                }
-                self.resolved_drains = resolved_drains.unwrap_or_else(|| {
+                // Collect agents functionally - build new HashMap with chain
+                let agents_to_register: HashMap<_, _> = config
+                    .agents
+                    .into_iter()
+                    .map(|(name, agent_toml)| (name, AgentConfig::from(agent_toml)))
+                    .collect();
+                // Rebuild with chain instead of extend
+                let agents = self.agents.into_iter().chain(agents_to_register).collect();
+
+                let resolved_drains = resolved_drains.unwrap_or_else(|| {
                     Self::merge_general_runtime_settings(
                         &self.resolved_drains,
                         &crate::config::unified::GeneralConfig::default(),
                     )
                 });
-                Ok(count)
+
+                Ok(Self {
+                    agents,
+                    resolved_drains,
+                    ccs_resolver: self.ccs_resolver,
+                    opencode_resolver: self.opencode_resolver,
+                    retry_timer: self.retry_timer,
+                })
             }
-            None => Ok(0),
+            None => Ok(self),
         }
     }
 
@@ -59,27 +71,40 @@ impl AgentRegistry {
     /// # Errors
     ///
     /// Returns an error when the named drain configuration is invalid.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "small counter that cannot realistically overflow"
+    )]
     pub fn apply_unified_config(
-        &mut self,
+        self,
         unified: &crate::config::UnifiedConfig,
-    ) -> Result<usize, AgentConfigError> {
-        let mut loaded = self.apply_ccs_aliases(unified);
-        loaded += self.apply_agent_overrides(unified);
+    ) -> Result<Self, AgentConfigError> {
+        let (registry, ccs_loaded) = self.apply_ccs_aliases(unified);
+        let (registry, agent_loaded) = registry.apply_agent_overrides(unified);
+        let _loaded = ccs_loaded + agent_loaded;
 
-        self.resolved_drains = unified
+        let resolved_drains = unified
             .resolve_agent_drains_checked()
-            .map_err(AgentConfigError::InvalidDrainConfig)?
+            .map_err(|err: crate::config::unified::types::ResolveDrainError| {
+                AgentConfigError::InvalidDrainConfig(err.to_string())
+            })?
             .unwrap_or_else(|| {
-                Self::merge_general_runtime_settings(&self.resolved_drains, &unified.general)
+                Self::merge_general_runtime_settings(&registry.resolved_drains, &unified.general)
             });
 
-        Ok(loaded)
+        Ok(Self {
+            agents: registry.agents,
+            resolved_drains,
+            ccs_resolver: registry.ccs_resolver,
+            opencode_resolver: registry.opencode_resolver,
+            retry_timer: registry.retry_timer,
+        })
     }
 
     /// Apply CCS aliases from the unified config.
-    fn apply_ccs_aliases(&mut self, unified: &crate::config::UnifiedConfig) -> usize {
+    fn apply_ccs_aliases(self, unified: &crate::config::UnifiedConfig) -> (Self, usize) {
         if unified.ccs_aliases.is_empty() {
-            return 0;
+            return (self, 0);
         }
 
         let loaded = unified.ccs_aliases.len();
@@ -88,32 +113,43 @@ impl AgentRegistry {
             .iter()
             .map(|(name, v)| (name.clone(), v.as_config()))
             .collect::<HashMap<_, _>>();
-        self.set_ccs_aliases(&aliases, unified.ccs.clone());
-        loaded
+        let registry = self.set_ccs_aliases(&aliases, unified.ccs.clone());
+        (registry, loaded)
     }
 
     /// Apply agent overrides from the unified config.
-    fn apply_agent_overrides(&mut self, unified: &crate::config::UnifiedConfig) -> usize {
+    fn apply_agent_overrides(self, unified: &crate::config::UnifiedConfig) -> (Self, usize) {
         if unified.agents.is_empty() {
-            return 0;
+            return (self, 0);
         }
 
-        let mut loaded = 0usize;
-        for (name, overrides) in &unified.agents {
-            if let Some(existing) = self.agents.get(name).cloned() {
-                // Merge with existing agent
-                let merged = Self::merge_agent_config(existing, overrides);
-                self.register(name, merged);
-                loaded += 1;
-            } else {
-                // New agent definition: require a non-empty command.
-                if let Some(config) = Self::create_new_agent_config(overrides) {
-                    self.register(name, config);
-                    loaded += 1;
-                }
-            }
-        }
-        loaded
+        let registrations: Vec<_> = unified
+            .agents
+            .iter()
+            .filter_map(|(name, overrides)| {
+                Self::resolve_agent_config(&self.agents, name, overrides)
+                    .map(|config| (name.clone(), config))
+            })
+            .collect();
+
+        let len = registrations.len();
+        let registry = registrations
+            .into_iter()
+            .fold(self, |reg, (name, config)| reg.register(&name, config));
+
+        (registry, len)
+    }
+
+    fn resolve_agent_config(
+        agents: &HashMap<String, AgentConfig>,
+        name: &str,
+        overrides: &crate::config::unified::AgentConfigToml,
+    ) -> Option<AgentConfig> {
+        agents
+            .get(name)
+            .cloned()
+            .map(|existing| Self::merge_agent_config(existing, overrides))
+            .or_else(|| Self::create_new_agent_config(overrides))
     }
 
     /// Create a new agent config from unified config overrides.

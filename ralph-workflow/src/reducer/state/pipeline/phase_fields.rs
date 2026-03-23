@@ -107,37 +107,47 @@ impl PromptInputsState {
     /// Clear commit inputs without cloning other fields.
     /// Uses consuming builder pattern for zero-cost state updates.
     #[must_use]
-    pub fn with_commit_cleared(mut self) -> Self {
-        self.commit = None;
-        self
+    pub fn with_commit_cleared(self) -> Self {
+        Self {
+            commit: None,
+            ..self
+        }
     }
 
     /// Clear planning inputs without cloning other fields.
     #[must_use]
-    pub fn with_planning_cleared(mut self) -> Self {
-        self.planning = None;
-        self
+    pub fn with_planning_cleared(self) -> Self {
+        Self {
+            planning: None,
+            ..self
+        }
     }
 
     /// Clear development inputs without cloning other fields.
     #[must_use]
-    pub fn with_development_cleared(mut self) -> Self {
-        self.development = None;
-        self
+    pub fn with_development_cleared(self) -> Self {
+        Self {
+            development: None,
+            ..self
+        }
     }
 
     /// Clear review inputs without cloning other fields.
     #[must_use]
-    pub fn with_review_cleared(mut self) -> Self {
-        self.review = None;
-        self
+    pub fn with_review_cleared(self) -> Self {
+        Self {
+            review: None,
+            ..self
+        }
     }
 
     /// Clear XSD retry last output without cloning other fields.
     #[must_use]
-    pub fn with_xsd_retry_cleared(mut self) -> Self {
-        self.xsd_retry_last_output = None;
-        self
+    pub fn with_xsd_retry_cleared(self) -> Self {
+        Self {
+            xsd_retry_last_output: None,
+            ..self
+        }
     }
 }
 

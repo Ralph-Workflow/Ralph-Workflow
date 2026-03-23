@@ -16,7 +16,7 @@
 //! - **Legacy (v0):** `"some prompt text"` → `PromptHistoryEntry { content: "some prompt text", content_id: None }`
 //! - **Current (v1):** `{"content":"...","content_id":"abc123"}` → full struct
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer};
 
 /// A stored prompt with optional content-id for stale-replay detection.
 ///
@@ -59,27 +59,8 @@ impl PromptHistoryEntry {
     }
 }
 
-// =========================================================================
-// Serde implementation for backward compatibility
-// =========================================================================
-//
-// Serializes as {"content":"...","content_id":"..."} (v1 format).
-// Deserializes from either bare string (v0) or object (v1).
-
-impl Serialize for PromptHistoryEntry {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct(
-            "PromptHistoryEntry",
-            if self.content_id.is_some() { 2 } else { 1 },
-        )?;
-        s.serialize_field("content", &self.content)?;
-        if let Some(content_id) = &self.content_id {
-            s.serialize_field("content_id", content_id)?;
-        }
-        s.end()
-    }
-}
+// Serde Serialize is implemented in ralph_workflow::prompts::io::serde_serialization
+// (boundary module), which is found via normal module resolution.
 
 /// Internal untagged representation for backward-compatible deserialization.
 #[derive(Deserialize)]

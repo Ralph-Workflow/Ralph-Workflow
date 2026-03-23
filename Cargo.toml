@@ -9,11 +9,7 @@ test-members = ["tests"]
 
 [workspace.metadata.dylint]
 libraries = [
-    { path = "lints/file_too_long" },
-    { path = "lints/forbid_mut_binding" },
-    { path = "lints/forbid_imperative_loops" },
-    { path = "lints/forbid_mutating_receiver_methods" },
-    { path = "lints/forbid_interior_mutability" },
+    { path = "lints/ralph_lints" },
 ]
 
 [workspace.dependencies]
@@ -27,6 +23,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 specta = { version = "2.0.0-rc", features = ["serde", "chrono"] }
 specta-typescript = "0.0.7"
 tauri-specta = { version = "2.0.0-rc", features = ["typescript"] }
+frunk = "0.4.4"
 
 [profile.release]
 opt-level = 3

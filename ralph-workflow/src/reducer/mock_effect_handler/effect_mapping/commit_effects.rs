@@ -224,6 +224,7 @@ impl MockEffectHandler {
 mod tests {
     use super::*;
     use crate::reducer::event::CommitEvent;
+    use crate::reducer::state::PipelineState;
 
     #[test]
     fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {
@@ -265,8 +266,15 @@ mod tests {
 
     #[test]
     fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
-        let mut state = crate::reducer::state::PipelineState::initial(1, 0);
-        state.continuation.xsd_retry_count = 3;
+        let state = {
+            let s = crate::reducer::state::PipelineState::initial(1, 0);
+            let continuation = s
+                .continuation
+                .trigger_xsd_retry()
+                .trigger_xsd_retry()
+                .trigger_xsd_retry();
+            PipelineState { continuation, ..s }
+        };
 
         let handler = MockEffectHandler::new(state);
         let (_event, ui) = handler

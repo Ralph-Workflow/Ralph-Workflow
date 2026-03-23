@@ -95,7 +95,7 @@ impl CheckpointSizeMonitor {
             let pct_of_error_threshold: u128 = if self.thresholds.error_threshold == 0 {
                 100
             } else {
-                (size_bytes as u128 * 100) / (self.thresholds.error_threshold as u128)
+                (size_bytes as u128).saturating_mul(100) / (self.thresholds.error_threshold as u128)
             };
             SizeAlert::Warning(format!(
                 "Checkpoint size {} bytes exceeds warning threshold {} bytes; \

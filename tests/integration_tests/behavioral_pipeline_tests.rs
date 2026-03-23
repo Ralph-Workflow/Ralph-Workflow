@@ -84,7 +84,7 @@ fn test_successful_dev_agent_transitions_to_analysis_not_next_agent() {
             state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
             }),
         );
 
@@ -168,7 +168,7 @@ fn test_effective_agent_invocation_state_after_success() {
             state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
             }),
         );
 
@@ -212,23 +212,23 @@ fn test_fallback_chain_advances_only_on_failure() {
         let failure_events = vec![
             PipelineEvent::Agent(AgentEvent::RateLimited {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
                 prompt_context: None,
             }),
             PipelineEvent::Agent(AgentEvent::AuthFailed {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
             }),
             PipelineEvent::Agent(AgentEvent::TimedOut {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
                 output_kind: TimeoutOutputKind::NoOutput,
                 child_status_at_timeout: None,
                 logfile_path: None,
             }),
             PipelineEvent::Agent(AgentEvent::InvocationFailed {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
                 exit_code: 1,
                 error_kind: AgentErrorKind::InternalError,
                 retriable: false,
@@ -265,7 +265,7 @@ fn test_fallback_chain_advances_only_on_failure() {
             success_state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
             }),
         );
 
@@ -306,7 +306,7 @@ fn test_agent_success_vs_failure_effect_sequences_differ() {
             success_state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
             }),
         );
 
@@ -314,7 +314,7 @@ fn test_agent_success_vs_failure_effect_sequences_differ() {
             failure_state,
             PipelineEvent::Agent(AgentEvent::RateLimited {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
                 prompt_context: None,
             }),
         );
@@ -376,7 +376,7 @@ fn test_drain_transition_after_success_correct_for_every_phase() {
             dev_state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Developer,
-                agent: "primary-agent".to_string(),
+                agent: "primary-agent".into(),
             }),
         );
 
@@ -410,7 +410,7 @@ fn test_drain_transition_after_success_correct_for_every_phase() {
             fix_state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Reviewer,
-                agent: "primary-fix-agent".to_string(),
+                agent: "primary-fix-agent".into(),
             }),
         );
 
@@ -525,7 +525,7 @@ fn test_fix_agent_success_transitions_to_analysis_via_composed_pipeline() {
             state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Reviewer,
-                agent: "primary-fix-agent".to_string(),
+                agent: "primary-fix-agent".into(),
             }),
         );
 

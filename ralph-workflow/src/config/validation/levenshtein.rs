@@ -3,17 +3,11 @@
 //! This module provides string similarity matching to suggest corrections
 //! for unknown configuration keys.
 
-/// Calculate Levenshtein distance between two strings.
-///
-/// Returns the minimum number of single-character edits (insertions, deletions,
-/// or substitutions) required to transform string `a` into string `b`.
-///
-/// # Examples
-///
-/// See the unit tests in this module for working examples of Levenshtein distance calculation.
 pub fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_len = a.len();
-    let b_len = b.len();
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
 
     if a_len == 0 {
         return b_len;
@@ -22,27 +16,34 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
         return a_len;
     }
 
-    let mut prev_row: Vec<usize> = (0..=b_len).collect();
-    let mut curr_row = vec![0; b_len + 1];
+    // Standard algorithm: iterate over b as outer, a as inner
+    // Functional style: use fold to build rows, scan for inner dependency
+    let final_row = b_chars.iter().enumerate().fold(
+        (0..=a_len).collect::<Vec<usize>>(),
+        |prev_row, (j, b_char)| {
+            // Use fold to compute current row - maintains the sequential dependency
+            // curr_row[i+1] depends on curr_row[i]
+            let first_val = j + 1;
+            let curr_row: Vec<usize> = (0..=a_len)
+                .scan(first_val, |prev_val, i| {
+                    if i == 0 {
+                        Some(first_val)
+                    } else {
+                        let cost = usize::from(*b_char != a_chars[i - 1]);
+                        let curr = (*prev_val)
+                            .saturating_add(1)
+                            .min(prev_row[i].saturating_add(1))
+                            .min(prev_row[i - 1].saturating_add(cost));
+                        *prev_val = curr;
+                        Some(curr)
+                    }
+                })
+                .collect();
+            curr_row
+        },
+    );
 
-    for (i, a_char) in a.chars().enumerate() {
-        curr_row[0] = i + 1;
-
-        for (j, b_char) in b.chars().enumerate() {
-            let cost = usize::from(a_char != b_char);
-            curr_row[j + 1] = std::cmp::min(
-                std::cmp::min(
-                    curr_row[j] + 1,     // insertion
-                    prev_row[j + 1] + 1, // deletion
-                ),
-                prev_row[j] + cost, // substitution
-            );
-        }
-
-        std::mem::swap(&mut prev_row, &mut curr_row);
-    }
-
-    prev_row[b_len]
+    *final_row.get(a_len).unwrap_or(&a_len)
 }
 
 /// Find the closest valid key name for typo detection.

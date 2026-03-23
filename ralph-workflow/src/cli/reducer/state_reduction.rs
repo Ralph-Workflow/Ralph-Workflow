@@ -26,49 +26,122 @@ use super::state::{CliState, PresetType};
 /// (like multiple presets), the last one wins. This allows users to combine
 /// flags where the later flag takes precedence.
 #[must_use]
-pub fn reduce(mut state: CliState, event: CliEvent) -> CliState {
+pub fn reduce(state: CliState, event: CliEvent) -> CliState {
     match event {
         // ===== Verbosity Events =====
-        CliEvent::VerbositySet { level } => state.verbosity = Some(level),
-        CliEvent::QuietModeEnabled => state.quiet_mode = true,
-        CliEvent::FullModeEnabled => state.full_mode = true,
-        CliEvent::DebugModeEnabled => state.debug_mode = true,
+        CliEvent::VerbositySet { level } => CliState {
+            verbosity: Some(level),
+            ..state
+        },
+        CliEvent::QuietModeEnabled => CliState {
+            quiet_mode: true,
+            ..state
+        },
+        CliEvent::FullModeEnabled => CliState {
+            full_mode: true,
+            ..state
+        },
+        CliEvent::DebugModeEnabled => CliState {
+            debug_mode: true,
+            ..state
+        },
 
         // ===== Preset Events (last wins) =====
-        CliEvent::QuickPresetApplied => state.preset_applied = Some(PresetType::Quick),
-        CliEvent::RapidPresetApplied => state.preset_applied = Some(PresetType::Rapid),
-        CliEvent::LongPresetApplied => state.preset_applied = Some(PresetType::Long),
-        CliEvent::StandardPresetApplied => state.preset_applied = Some(PresetType::Standard),
-        CliEvent::ThoroughPresetApplied => state.preset_applied = Some(PresetType::Thorough),
+        CliEvent::QuickPresetApplied => CliState {
+            preset_applied: Some(PresetType::Quick),
+            ..state
+        },
+        CliEvent::RapidPresetApplied => CliState {
+            preset_applied: Some(PresetType::Rapid),
+            ..state
+        },
+        CliEvent::LongPresetApplied => CliState {
+            preset_applied: Some(PresetType::Long),
+            ..state
+        },
+        CliEvent::StandardPresetApplied => CliState {
+            preset_applied: Some(PresetType::Standard),
+            ..state
+        },
+        CliEvent::ThoroughPresetApplied => CliState {
+            preset_applied: Some(PresetType::Thorough),
+            ..state
+        },
 
         // ===== Iteration Count Events =====
-        CliEvent::DeveloperItersSet { value } => state.developer_iters = Some(value),
-        CliEvent::ReviewerReviewsSet { value } => state.reviewer_reviews = Some(value),
+        CliEvent::DeveloperItersSet { value } => CliState {
+            developer_iters: Some(value),
+            ..state
+        },
+        CliEvent::ReviewerReviewsSet { value } => CliState {
+            reviewer_reviews: Some(value),
+            ..state
+        },
 
         // ===== Agent Selection Events =====
-        CliEvent::DeveloperAgentSet { agent } => state.developer_agent = Some(agent),
-        CliEvent::ReviewerAgentSet { agent } => state.reviewer_agent = Some(agent),
-        CliEvent::DeveloperModelSet { model } => state.developer_model = Some(model),
-        CliEvent::ReviewerModelSet { model } => state.reviewer_model = Some(model),
-        CliEvent::DeveloperProviderSet { provider } => state.developer_provider = Some(provider),
-        CliEvent::ReviewerProviderSet { provider } => state.reviewer_provider = Some(provider),
-        CliEvent::ReviewerJsonParserSet { parser } => state.reviewer_json_parser = Some(parser),
+        CliEvent::DeveloperAgentSet { agent } => CliState {
+            developer_agent: Some(agent),
+            ..state
+        },
+        CliEvent::ReviewerAgentSet { agent } => CliState {
+            reviewer_agent: Some(agent),
+            ..state
+        },
+        CliEvent::DeveloperModelSet { model } => CliState {
+            developer_model: Some(model),
+            ..state
+        },
+        CliEvent::ReviewerModelSet { model } => CliState {
+            reviewer_model: Some(model),
+            ..state
+        },
+        CliEvent::DeveloperProviderSet { provider } => CliState {
+            developer_provider: Some(provider),
+            ..state
+        },
+        CliEvent::ReviewerProviderSet { provider } => CliState {
+            reviewer_provider: Some(provider),
+            ..state
+        },
+        CliEvent::ReviewerJsonParserSet { parser } => CliState {
+            reviewer_json_parser: Some(parser),
+            ..state
+        },
 
         // ===== Configuration Events =====
-        CliEvent::IsolationModeDisabled => state.isolation_mode = Some(false),
-        CliEvent::ReviewDepthSet { depth } => state.review_depth = Some(depth),
-        CliEvent::GitUserNameSet { name } => state.git_user_name = Some(name),
-        CliEvent::GitUserEmailSet { email } => state.git_user_email = Some(email),
-        CliEvent::StreamingMetricsEnabled => state.streaming_metrics = true,
+        CliEvent::IsolationModeDisabled => CliState {
+            isolation_mode: Some(false),
+            ..state
+        },
+        CliEvent::ReviewDepthSet { depth } => CliState {
+            review_depth: Some(depth),
+            ..state
+        },
+        CliEvent::GitUserNameSet { name } => CliState {
+            git_user_name: Some(name),
+            ..state
+        },
+        CliEvent::GitUserEmailSet { email } => CliState {
+            git_user_email: Some(email),
+            ..state
+        },
+        CliEvent::StreamingMetricsEnabled => CliState {
+            streaming_metrics: true,
+            ..state
+        },
 
         // ===== Agent Preset Events =====
-        CliEvent::AgentPresetSet { preset } => state.agent_preset = Some(preset),
+        CliEvent::AgentPresetSet { preset } => CliState {
+            agent_preset: Some(preset),
+            ..state
+        },
 
         // ===== Finalization =====
-        CliEvent::CliProcessingComplete => state.complete = true,
+        CliEvent::CliProcessingComplete => CliState {
+            complete: true,
+            ..state
+        },
     }
-
-    state
 }
 
 #[cfg(test)]
@@ -186,8 +259,10 @@ mod tests {
 
     #[test]
     fn test_reduce_preserves_unrelated_fields() {
-        let mut state = CliState::initial();
-        state.developer_agent = Some("existing".to_string());
+        let state = CliState {
+            developer_agent: Some("existing".to_string()),
+            ..CliState::initial()
+        };
 
         // Applying unrelated event should preserve developer_agent
         let new_state = reduce(state, CliEvent::QuietModeEnabled);
@@ -211,10 +286,7 @@ mod tests {
             CliEvent::CliProcessingComplete,
         ];
 
-        let mut state = CliState::initial();
-        for event in events {
-            state = reduce(state, event);
-        }
+        let state = events.into_iter().fold(CliState::initial(), reduce);
 
         assert!(state.complete);
         assert!(state.debug_mode);

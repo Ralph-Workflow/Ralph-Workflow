@@ -33,8 +33,14 @@
 //! ```
 
 pub mod builder;
+pub mod current_dir;
+pub mod env_capture;
+pub mod environment;
 pub mod execution_history;
+pub mod file_capture;
 pub mod file_state;
+pub mod git_capture;
+pub mod io;
 pub mod recovery;
 pub mod restore;
 pub mod run_context;
@@ -49,10 +55,13 @@ pub use file_state::FileSystemState;
 pub use restore::apply_checkpoint_to_config;
 pub use run_context::RunContext;
 pub use size_monitor::{CheckpointSizeMonitor, SizeAlert, SizeThresholds};
-pub use state::{
-    calculate_file_checksum_with_workspace, checkpoint_exists_with_workspace,
-    clear_checkpoint_with_workspace, load_checkpoint_with_workspace,
-    save_checkpoint_with_workspace, timestamp, PipelineCheckpoint, PipelinePhase, RebaseState,
-};
 pub use string_pool::StringPool;
 pub use validation::validate_checkpoint;
+
+// Re-export commonly used items from state module
+pub use state::{
+    checkpoint_exists_with_workspace, clear_checkpoint_with_workspace,
+    load_checkpoint_with_workspace, save_checkpoint_with_workspace, timestamp, AgentConfigSnapshot,
+    CheckpointParams, CliArgsSnapshot, CliArgsSnapshotBuilder, CloudCheckpointState,
+    EnvironmentSnapshot, PipelineCheckpoint, PipelinePhase, RebaseState,
+};

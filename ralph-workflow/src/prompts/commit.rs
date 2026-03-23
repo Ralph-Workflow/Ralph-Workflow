@@ -8,10 +8,8 @@ use crate::prompts::template_engine::Template;
 use crate::prompts::{RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource};
 use crate::workspace::Workspace;
 use std::collections::HashMap;
-use std::fmt::Write;
 
-const COMMIT_MESSAGE_XSD_SCHEMA: &str =
-    include_str!("../files/llm_output_extraction/commit_message.xsd");
+const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("xsd/commit_message.xsd");
 
 use crate::files::result_extraction::extract_file_paths_from_issues;
 
@@ -20,4 +18,4 @@ include!("commit/commit_message_generate.rs");
 include!("commit/commit_xsd_retry.rs");
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

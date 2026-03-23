@@ -29,6 +29,7 @@
 
 use super::effect::{AppEffect, AppEffectHandler, AppEffectResult};
 use std::path::PathBuf;
+use thiserror::Error;
 
 /// XSD schemas for XML validation - included at compile time.
 const PLAN_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/plan.xsd");
@@ -42,7 +43,74 @@ const COMMIT_MESSAGE_XSD_SCHEMA: &str =
     include_str!("../files/llm_output_extraction/commit_message.xsd");
 
 // Re-use the canonical vague line constants from context module
-use crate::files::io::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
+use crate::files::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
+
+#[derive(Debug, Error)]
+pub enum AppEffectError {
+    #[error("effect {effect:?} handler failed: {message}")]
+    Handler { effect: AppEffect, message: String },
+    #[error("effect {effect:?} returned unexpected result: {result:?}")]
+    UnexpectedResult {
+        effect: AppEffect,
+        result: AppEffectResult,
+    },
+}
+
+fn execute_expect_ok<H: AppEffectHandler>(
+    handler: &mut H,
+    effect: AppEffect,
+) -> Result<(), AppEffectError> {
+    match handler.execute(effect.clone()) {
+        AppEffectResult::Ok => Ok(()),
+        AppEffectResult::Error(message) => Err(AppEffectError::Handler { effect, message }),
+        other => Err(AppEffectError::UnexpectedResult {
+            effect,
+            result: other,
+        }),
+    }
+}
+
+fn execute_expect_string<H: AppEffectHandler>(
+    handler: &mut H,
+    effect: AppEffect,
+) -> Result<String, AppEffectError> {
+    match handler.execute(effect.clone()) {
+        AppEffectResult::String(value) => Ok(value),
+        AppEffectResult::Error(message) => Err(AppEffectError::Handler { effect, message }),
+        other => Err(AppEffectError::UnexpectedResult {
+            effect,
+            result: other,
+        }),
+    }
+}
+
+fn execute_expect_path<H: AppEffectHandler>(
+    handler: &mut H,
+    effect: AppEffect,
+) -> Result<PathBuf, AppEffectError> {
+    match handler.execute(effect.clone()) {
+        AppEffectResult::Path(path) => Ok(path),
+        AppEffectResult::Error(message) => Err(AppEffectError::Handler { effect, message }),
+        other => Err(AppEffectError::UnexpectedResult {
+            effect,
+            result: other,
+        }),
+    }
+}
+
+fn execute_expect_bool<H: AppEffectHandler>(
+    handler: &mut H,
+    effect: AppEffect,
+) -> Result<bool, AppEffectError> {
+    match handler.execute(effect.clone()) {
+        AppEffectResult::Bool(value) => Ok(value),
+        AppEffectResult::Error(message) => Err(AppEffectError::Handler { effect, message }),
+        other => Err(AppEffectError::UnexpectedResult {
+            effect,
+            result: other,
+        }),
+    }
+}
 
 /// Handle the `--reset-start-commit` command using effects.
 ///
@@ -72,47 +140,25 @@ use crate::files::io::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATU
 pub fn handle_reset_start_commit<H: AppEffectHandler>(
     handler: &mut H,
     working_dir_override: Option<&PathBuf>,
-) -> Result<String, String> {
-    // Effect 1: Set CWD if override provided
+) -> Result<String, AppEffectError> {
     if let Some(dir) = working_dir_override {
-        match handler.execute(AppEffect::SetCurrentDir { path: dir.clone() }) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => return Err(e),
-            other => return Err(format!("unexpected result from SetCurrentDir: {other:?}")),
-        }
+        execute_expect_ok(handler, AppEffect::SetCurrentDir { path: dir.clone() })?;
     }
 
-    // Effect 2: Validate git repo
-    match handler.execute(AppEffect::GitRequireRepo) {
-        AppEffectResult::Ok => {}
-        AppEffectResult::Error(e) => return Err(e),
-        other => return Err(format!("unexpected result from GitRequireRepo: {other:?}")),
-    }
+    execute_expect_ok(handler, AppEffect::GitRequireRepo)?;
 
-    // Effect 3: Get repo root and set CWD
-    let repo_root = match handler.execute(AppEffect::GitGetRepoRoot) {
-        AppEffectResult::Path(p) => p,
-        AppEffectResult::Error(e) => return Err(e),
-        other => return Err(format!("unexpected result from GitGetRepoRoot: {other:?}")),
-    };
+    let repo_root = execute_expect_path(handler, AppEffect::GitGetRepoRoot)?;
 
-    // Effect 4: Set CWD to repo root if no override was provided
     if working_dir_override.is_none() {
-        match handler.execute(AppEffect::SetCurrentDir { path: repo_root }) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => return Err(e),
-            other => return Err(format!("unexpected result from SetCurrentDir: {other:?}")),
-        }
+        execute_expect_ok(
+            handler,
+            AppEffect::SetCurrentDir {
+                path: repo_root.clone(),
+            },
+        )?;
     }
 
-    // Effect 5: Reset start commit
-    match handler.execute(AppEffect::GitResetStartCommit) {
-        AppEffectResult::String(oid) => Ok(oid),
-        AppEffectResult::Error(e) => Err(e),
-        other => Err(format!(
-            "unexpected result from GitResetStartCommit: {other:?}"
-        )),
-    }
+    execute_expect_string(handler, AppEffect::GitResetStartCommit)
 }
 
 /// Save the starting commit at pipeline start using effects.
@@ -127,14 +173,8 @@ pub fn handle_reset_start_commit<H: AppEffectHandler>(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn save_start_commit<H: AppEffectHandler>(handler: &mut H) -> Result<String, String> {
-    match handler.execute(AppEffect::GitSaveStartCommit) {
-        AppEffectResult::String(oid) => Ok(oid),
-        AppEffectResult::Error(e) => Err(e),
-        other => Err(format!(
-            "unexpected result from GitSaveStartCommit: {other:?}"
-        )),
-    }
+pub fn save_start_commit<H: AppEffectHandler>(handler: &mut H) -> Result<String, AppEffectError> {
+    execute_expect_string(handler, AppEffect::GitSaveStartCommit)
 }
 
 /// Check if the current branch is main/master using effects.
@@ -146,12 +186,8 @@ pub fn save_start_commit<H: AppEffectHandler>(handler: &mut H) -> Result<String,
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn is_on_main_branch<H: AppEffectHandler>(handler: &mut H) -> Result<bool, String> {
-    match handler.execute(AppEffect::GitIsMainBranch) {
-        AppEffectResult::Bool(b) => Ok(b),
-        AppEffectResult::Error(e) => Err(e),
-        other => Err(format!("unexpected result from GitIsMainBranch: {other:?}")),
-    }
+pub fn is_on_main_branch<H: AppEffectHandler>(handler: &mut H) -> Result<bool, AppEffectError> {
+    execute_expect_bool(handler, AppEffect::GitIsMainBranch)
 }
 
 /// Get the current HEAD OID using effects.
@@ -163,12 +199,8 @@ pub fn is_on_main_branch<H: AppEffectHandler>(handler: &mut H) -> Result<bool, S
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_head_oid<H: AppEffectHandler>(handler: &mut H) -> Result<String, String> {
-    match handler.execute(AppEffect::GitGetHeadOid) {
-        AppEffectResult::String(oid) => Ok(oid),
-        AppEffectResult::Error(e) => Err(e),
-        other => Err(format!("unexpected result from GitGetHeadOid: {other:?}")),
-    }
+pub fn get_head_oid<H: AppEffectHandler>(handler: &mut H) -> Result<String, AppEffectError> {
+    execute_expect_string(handler, AppEffect::GitGetHeadOid)
 }
 
 /// Validate that we're in a git repository using effects.
@@ -180,12 +212,8 @@ pub fn get_head_oid<H: AppEffectHandler>(handler: &mut H) -> Result<String, Stri
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn require_repo<H: AppEffectHandler>(handler: &mut H) -> Result<(), String> {
-    match handler.execute(AppEffect::GitRequireRepo) {
-        AppEffectResult::Ok => Ok(()),
-        AppEffectResult::Error(e) => Err(e),
-        other => Err(format!("unexpected result from GitRequireRepo: {other:?}")),
-    }
+pub fn require_repo<H: AppEffectHandler>(handler: &mut H) -> Result<(), AppEffectError> {
+    execute_expect_ok(handler, AppEffect::GitRequireRepo)
 }
 
 /// Get the repository root path using effects.
@@ -197,12 +225,8 @@ pub fn require_repo<H: AppEffectHandler>(handler: &mut H) -> Result<(), String> 
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_repo_root<H: AppEffectHandler>(handler: &mut H) -> Result<PathBuf, String> {
-    match handler.execute(AppEffect::GitGetRepoRoot) {
-        AppEffectResult::Path(p) => Ok(p),
-        AppEffectResult::Error(e) => Err(e),
-        other => Err(format!("unexpected result from GitGetRepoRoot: {other:?}")),
-    }
+pub fn get_repo_root<H: AppEffectHandler>(handler: &mut H) -> Result<PathBuf, AppEffectError> {
+    execute_expect_path(handler, AppEffect::GitGetRepoRoot)
 }
 
 /// Ensure required files and directories exist using effects.
@@ -220,7 +244,7 @@ pub fn get_repo_root<H: AppEffectHandler>(handler: &mut H) -> Result<PathBuf, St
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` on success or an error message.
+/// Returns `Ok(())` on success or `AppEffectError` when an effect fails.
 ///
 /// # Effects Emitted
 ///
@@ -235,26 +259,21 @@ pub fn get_repo_root<H: AppEffectHandler>(handler: &mut H) -> Result<PathBuf, St
 pub fn ensure_files_effectful<H: AppEffectHandler>(
     handler: &mut H,
     isolation_mode: bool,
-) -> Result<(), String> {
-    // Create .agent/logs directory
-    match handler.execute(AppEffect::CreateDir {
-        path: PathBuf::from(".agent/logs"),
-    }) {
-        AppEffectResult::Ok => {}
-        AppEffectResult::Error(e) => return Err(format!("Failed to create .agent/logs: {e}")),
-        other => return Err(format!("Unexpected result from CreateDir: {other:?}")),
-    }
+) -> Result<(), AppEffectError> {
+    execute_expect_ok(
+        handler,
+        AppEffect::CreateDir {
+            path: PathBuf::from(".agent/logs"),
+        },
+    )?;
 
-    // Create .agent/tmp directory
-    match handler.execute(AppEffect::CreateDir {
-        path: PathBuf::from(".agent/tmp"),
-    }) {
-        AppEffectResult::Ok => {}
-        AppEffectResult::Error(e) => return Err(format!("Failed to create .agent/tmp: {e}")),
-        other => return Err(format!("Unexpected result from CreateDir: {other:?}")),
-    }
+    execute_expect_ok(
+        handler,
+        AppEffect::CreateDir {
+            path: PathBuf::from(".agent/tmp"),
+        },
+    )?;
 
-    // Write XSD schemas
     let schemas = [
         (".agent/tmp/plan.xsd", PLAN_XSD_SCHEMA),
         (
@@ -270,18 +289,19 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
         (".agent/tmp/commit_message.xsd", COMMIT_MESSAGE_XSD_SCHEMA),
     ];
 
-    for (path, content) in schemas {
-        match handler.execute(AppEffect::WriteFile {
-            path: PathBuf::from(path),
-            content: content.to_string(),
-        }) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
-            other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
-        }
-    }
+    schemas
+        .iter()
+        .map(|(path, content)| {
+            execute_expect_ok(
+                handler,
+                AppEffect::WriteFile {
+                    path: PathBuf::from(*path),
+                    content: content.to_string(),
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-    // Only create context files in non-isolation mode
     if !isolation_mode {
         let context_files = [
             (".agent/STATUS.md", VAGUE_STATUS_LINE),
@@ -289,18 +309,19 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
             (".agent/ISSUES.md", VAGUE_ISSUES_LINE),
         ];
 
-        for (path, line) in context_files {
-            // Match overwrite_one_liner behavior: add trailing newline
-            let content = format!("{}\n", line.lines().next().unwrap_or_default().trim());
-            match handler.execute(AppEffect::WriteFile {
-                path: PathBuf::from(path),
-                content,
-            }) {
-                AppEffectResult::Ok => {}
-                AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
-                other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
-            }
-        }
+        context_files
+            .iter()
+            .map(|(path, line)| {
+                let content = format!("{}\n", line.lines().next().unwrap_or_default().trim());
+                execute_expect_ok(
+                    handler,
+                    AppEffect::WriteFile {
+                        path: PathBuf::from(*path),
+                        content,
+                    },
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
     }
 
     Ok(())
@@ -330,50 +351,24 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
 /// Returns error if the operation fails.
 pub fn reset_context_for_isolation_effectful<H: AppEffectHandler>(
     handler: &mut H,
-) -> Result<(), String> {
+) -> Result<(), AppEffectError> {
     let context_files = [
         PathBuf::from(".agent/STATUS.md"),
         PathBuf::from(".agent/NOTES.md"),
         PathBuf::from(".agent/ISSUES.md"),
     ];
 
-    for path in context_files {
-        // Check if file exists
-        let exists = match handler.execute(AppEffect::PathExists { path: path.clone() }) {
-            AppEffectResult::Bool(b) => b,
-            AppEffectResult::Error(e) => {
-                return Err(format!(
-                    "Failed to check if {} exists: {}",
-                    path.display(),
-                    e
-                ))
+    context_files
+        .iter()
+        .map(|path| -> Result<(), AppEffectError> {
+            let exists =
+                execute_expect_bool(handler, AppEffect::PathExists { path: path.clone() })?;
+            if exists {
+                execute_expect_ok(handler, AppEffect::DeleteFile { path: path.clone() })?;
             }
-            other => {
-                return Err(format!(
-                    "Unexpected result from PathExists for {}: {:?}",
-                    path.display(),
-                    other
-                ))
-            }
-        };
-
-        // Delete if exists
-        if exists {
-            match handler.execute(AppEffect::DeleteFile { path: path.clone() }) {
-                AppEffectResult::Ok => {}
-                AppEffectResult::Error(e) => {
-                    return Err(format!("Failed to delete {}: {}", path.display(), e))
-                }
-                other => {
-                    return Err(format!(
-                        "Unexpected result from DeleteFile for {}: {:?}",
-                        path.display(),
-                        other
-                    ))
-                }
-            }
-        }
-    }
+            Ok(())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(())
 }
@@ -395,14 +390,15 @@ pub fn reset_context_for_isolation_effectful<H: AppEffectHandler>(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn check_prompt_exists_effectful<H: AppEffectHandler>(handler: &mut H) -> Result<bool, String> {
-    match handler.execute(AppEffect::PathExists {
-        path: PathBuf::from("PROMPT.md"),
-    }) {
-        AppEffectResult::Bool(exists) => Ok(exists),
-        AppEffectResult::Error(e) => Err(format!("Failed to check PROMPT.md: {e}")),
-        other => Err(format!("Unexpected result from PathExists: {other:?}")),
-    }
+pub fn check_prompt_exists_effectful<H: AppEffectHandler>(
+    handler: &mut H,
+) -> Result<bool, AppEffectError> {
+    execute_expect_bool(
+        handler,
+        AppEffect::PathExists {
+            path: PathBuf::from("PROMPT.md"),
+        },
+    )
 }
 
 #[cfg(test)]

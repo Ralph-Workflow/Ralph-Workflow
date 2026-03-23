@@ -1,113 +1,76 @@
 # AGENTS.md
 
+## > [!IMPORTANT]
+> 
+THERE ARE OTHER DEVELOPERS WORKING ON THIS, DO NOT REVERT THEIR CHANGES WORK WITH THEM
+
+## Context — Re-read When Needed
+- **Current plan:** `.agent/PLAN.md`
+- **Overall objective:** `PROMPT.md`
+
+THERE ARE OTHER DEVELOPERS WORKING ON THIS, DO NOT REVERT THEIR CHANGES WORK WITH THEM
 ---
 
-## UNATTENDED SYSTEM (TOP PRIORITY)
+## 🚨 TOP PRIORITY: Fix ALL Pre-existing Issues Immediately UNLESS YOU WERE TOLD NOT TO 
+It does not matter if something is Pre-existing **Every surfaced issue becomes your #1 priority immediately.** 
+No exceptions, no "pre-existing" carve-outs UNLESS YOUR PROMPT HAS ONE THAT SPECIFICALLY SAYS IT, ASSUME NO CARVE-OUTS IF PROMPT DOES NOT SPECIFY
 
-Ralph runs in unattended mode. Agent workflows must never depend on interactive human/operator decisions during pipeline execution.
+1. Discover any issue → STOP → Fix it completely → Verify clean → Return to original task.
 
-For commit handling and leftover files:
-- Never block waiting for human approval.
-- Never silently discard changes.
-- Prefer deterministic automatic handling with safe non-destructive defaults.
-- If work cannot be finalized in the current commit pass, carry it forward automatically to the next cycle with explicit machine-readable state.
+Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required.
 
 ---
 
-## ⚠️ EVERY PRE-EXISTING ISSUE MUST BE FIXED NOW — NO EXCEPTIONS ⚠️
+## Git: User-Directed Only
+**By default, keep git usage read-only. If the current user prompt directly and explicitly requests a git operation, you may perform that specific operation.**
 
-This is the most important rule in this file. Read it. Internalize it. It overrides everything else.
+| Allowed by default | Allowed only when directly requested in the user prompt | Still forbidden unless the user explicitly asks for them |
+|---------|-----------|-----------|
+| `git status`, `git log`, `git diff`, `git show`, `git branch` (list), `git remote -v` | `git add`, `git commit`, `git push`, `git merge`, `git rebase`, `git stash`, `git cherry-pick`, `git revert` | destructive or high-risk git commands such as `git reset --hard`, `git clean`, `git branch -D`, or equivalent force operations |
 
-**THE INSTANT ANY ISSUE IS SURFACED — broken test, warning, lint violation, failing check, dead code, stale doc, regression — THAT ISSUE BECOMES YOUR #1 PRIORITY. YOUR ORIGINAL PROMPT IS NOW SECONDARY.**
+**MCP git tools follow the same rule.** Only perform the exact git operation the user directly asked for, and do not broaden that permission to other git actions. Hook/marker tampering remains a security violation.
 
-There is no such thing as "pre-existing." There is no such thing as "not mine." There is no such thing as "unrelated to my task." The moment you see a problem, it is yours. You own it. Fix it now.
+---
 
-**The rule, stated plainly:**
+## Lint Policy (Strict)
+- **`#[allow(...)]` macro — Forbidden.** Zero exceptions. Use `#[expect(..., reason = "...")]` only for external proc-macro output.
+- **`.expect()`/`.unwrap()` — Forbidden** except at: `test-helpers/src/lib.rs`, `xtask/src/main.rs`, `ralph-gui/src/main.rs`, boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`).
+- **Functional lints:** Never suppress. Don't fake a boundary module just to silence a lint.
+- Check compliance: `cargo xtask lsp-forbidden-allow-expect`
+- See `docs/agents/verification.md` for `#[allow]`/`#[expect]` enforcement; `docs/tooling/dylint.md` for boundary module definitions.
 
-1. You discover an issue — anything: a failing test, a warning, a lint error, dead code, a broken doc link, anything.
-2. You STOP what you were doing.
-3. Fixing the surfaced issue is now your entire job. The user's original request waits.
-4. You fix it completely.
-5. You return to the original task.
+---
 
-**Do not:**
-- Say "I'll note this for later."
-- Say "this is pre-existing and out of scope."
-- Say "I didn't cause this."
-- File a mental note and keep going.
-- Defer to a follow-up task.
-
-**None of those are acceptable responses.** They are rationalizations for shipping brokenness.
-
-### Why pre-existing issues are MORE urgent, not less
-
-A "pre-existing" issue means it has already been tolerated too long. It is not a reason to defer. It is proof that no one has fixed it yet — which means you are now the fix. The longer something has been broken, the more urgently it must be addressed.
-
-Every known failure left unfixed poisons every task that follows it. Continuing past a known issue is an explicit decision to make the codebase worse. That is never acceptable.
-
-### The verification loop
-
-Run `docs/agents/verification.md` before marking any task complete. If verification fails:
-
-- **Stop everything.**
-- The original task is suspended.
-- Fix the failing check.
-- Re-run verification.
-- Repeat until clean.
-- Only then return to the original task.
-
-There is no "mostly passing." There is no "just one warning." Every ERROR and WARNING must be zero before you are done.
-
-### Pre-existing failures encountered mid-task
-
-If you discover an issue while working on something else:
-
-- Fix it in the same work cycle, immediately.
-- Do not batch it for later.
-- Do not leave a TODO comment.
-- Do not document it and move on.
-- **Fix it now, then continue.**
-
-This is not optional. This is not extra credit. It is the first and most fundamental rule of this repository.
+## Required Workflows
+| Trigger | Action |
+|---------|--------|
+| Feature/bugfix | Use `test-driven-development` skill first |
+| Debugging | Use `systematic-debugging` skill first |
+| Angular/GUI | Use Angular MCP + `frontend-angular` skill |
+| Styling/visual | Use `frontend-design` skill |
+| Any pipeline/reducer change | Read architecture docs first |
+| Any test work | Read `docs/agents/testing-guide.md` |
+| Filesystem I/O | Read `docs/agents/workspace-trait.md` |
 
 ---
 
 ## Non-Negotiables
-
-- **FIRST RULE (repeated): EVERY issue surfaced during your work MUST be fixed NOW.** No carve-outs. No deferrals. It overrides your current prompt the moment it surfaces.
-- **TDD is required for all code changes.** No production code without a failing test first.
-- **Verification is required for ANY code change** (prod code or tests): run `docs/agents/verification.md` before PR/completion.
-- **Architecture reading is REQUIRED** before any pipeline/reducer/behavioral change: `CODE_STYLE.md` (Architecture), `docs/architecture/event-loop-and-reducers.md`, `docs/architecture/effect-system.md`.
-- **Testing guide is REQUIRED reading** before writing/changing tests: `docs/agents/testing-guide.md`.
-- **The GUI is Angular v21, not React.** If older prompts, docs, or comments mention React for the GUI, treat that as stale and update the reference to Angular v21 when touching it.
-- **Prefer Tailwind over inline CSS styles in the GUI.** Use inline styles only when there is a clear reason they are necessary.
-- **Do not introduce tech debt.** If the alternative is adding/keeping tech debt, **prefer refactor** even when it makes the diff larger; do not leave deprecated/unused code behind.
-- **Do not change linting rules without explicit direction.** Lint policy is a repository contract, not a convenience setting.
-- **Never weaken or disable lint rules just to avoid refactoring.** "Being lazy to refactor" is explicitly forbidden as a reason to change linting behavior.
-- **`#[allow(...)]` is never permitted** — zero exceptions; see Lint Policy below.
-- **`.expect()` and `.unwrap()` are forbidden** except at the documented sites; see Lint Policy below.
-- **Lint-policy exceptions must stay narrow and documented.** `#[allow(...)]` has zero exceptions. `#[expect(...)]` is the only permitted suppression mechanism and requires all three documented conditions.
+- TDD required (failing test first)
+- Verification required before PR
+- GUI: Angular v21 + Tailwind (prefer)
+- No tech debt (prefer refactor)
+- No dead code (`#[allow(dead_code)]` forbidden)
+- Never weaken lint rules
 
 ---
 
-## Skill Usage (CRITICAL)
-
-- **Consolidated rule:** keep skill requirements here; when updating skill workflow guidance, update this section instead of scattering rules elsewhere in this file.
-- **Mandatory workflow:** before any meaningful action, agents MUST check whether any skill might apply. This check happens before any response or action, including code edits, debugging, file exploration, planning, implementation, analysis, refactors, documentation lookup, or asking clarifying questions.
-- **Questions are tasks:** user questions, codebase exploration, planning, debugging, and "just looking around" all count as tasks and therefore require a skill check first.
-- **Default behavior:** use skills liberally and proactively. If there is any reasonable chance a skill is relevant, agents MUST invoke it.
-- **No narrow interpretation:** these requirements are minimums, not the full list of valid skill use cases. If a skill is plausibly relevant, invoke it even if the task seems small, obvious, routine, or informational.
-- **Prefer false positives over misses:** it is better to use a skill and not need it than to skip a skill that would have improved the work.
-- **Do not rationalize skipping:** thoughts like "this is simple," "I know this already," "I'll inspect files first," "I'll gather context first," "this is just a question," or "this probably doesn't need a skill" are not valid reasons to skip skill invocation.
-- **Uncertainty rule:** when uncertain, agents MUST invoke the most likely applicable skill first and may skip a skill only when it is clearly inapplicable.
-- **Major feature or bug fix:** use the `test-driven-development` skill before changing code.
-- **Debugging:** use the `systematic-debugging` skill before proposing or applying fixes.
-- **Angular and GUI work:** use the Angular MCP server and the `frontend-angular` skill first for implementation, debugging, analysis, refactors, and documentation lookup.
-- **Styling and visual design:** use the `frontend-design` skill for any styling work, visual polish, layout design, or UI presentation changes.
-- **Enforcement mindset:** treat failure to use an applicable skill as a process failure, even if the resulting code or answer would otherwise be acceptable.
-
-This repository welcomes automated code assistants ("agents") and human contributors.
-Follow these rules so changes stay safe, consistent, and easy to review.
+## Key References
+| Topic | File |
+|-------|------|
+| Verification commands | `docs/agents/verification.md` |
+| Testing guide | `docs/agents/testing-guide.md` |
+| Architecture | `docs/code-style/architecture.md`, `docs/architecture/event-loop-and-reducers.md` |
+| Dylint lints | `docs/tooling/dylint.md` |
 
 ---
 

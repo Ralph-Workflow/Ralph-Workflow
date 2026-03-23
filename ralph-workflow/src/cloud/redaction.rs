@@ -5,18 +5,21 @@
 //!
 //! This module provides a conservative sanitizer for untrusted error strings.
 
+use itertools::Itertools;
+
+use crate::cloud::io_redaction::redact_bearer_tokens;
+use crate::cloud::io_redaction::redact_common_query_params;
+use crate::cloud::io_redaction::redact_token_like_substrings;
+
 /// Redact likely secrets from an untrusted, user-controlled string.
 ///
 /// This is intentionally conservative. It may redact non-secret strings if they
 /// resemble tokens.
 #[must_use]
 pub fn redact_secrets(input: &str) -> String {
-    let mut s = input.to_string();
-    s = redact_http_url_userinfo(&s);
-    s = redact_common_query_params(&s);
-    s = redact_bearer_tokens(&s);
-    s = redact_token_like_substrings(&s);
-    truncate_redacted(&s)
+    truncate_redacted(&redact_token_like_substrings(&redact_bearer_tokens(
+        &redact_common_query_params(&redact_http_url_userinfo(input)),
+    )))
 }
 
 fn truncate_redacted(input: &str) -> String {
@@ -26,175 +29,80 @@ fn truncate_redacted(input: &str) -> String {
         return input.to_string();
     }
 
-    let mut out = input[..MAX_LEN].to_string();
-    out.push_str("...<truncated>");
-    out
+    format!("{}...<truncated>", &input[..MAX_LEN])
 }
 
 fn redact_http_url_userinfo(input: &str) -> String {
-    // Replace `http(s)://user[:pass]@host` with `http(s)://<redacted>@host`.
-    // This is conservative: we only redact when an '@' appears in the URL authority.
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
+    let http_positions: Vec<(usize, &str)> = [("https://", "https://"), ("http://", "http://")]
+        .iter()
+        .flat_map(|(pattern, replacement)| {
+            input
+                .match_indices(*pattern)
+                .map(move |(idx, _)| (idx, *replacement))
+        })
+        .collect();
 
-    while i < bytes.len() {
-        let rest = &input[i..];
-        let (scheme, scheme_len) = if rest.starts_with("https://") {
-            ("https://", 8usize)
-        } else if rest.starts_with("http://") {
-            ("http://", 7usize)
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
-            continue;
-        };
-
-        // Copy the scheme.
-        out.push_str(scheme);
-        let scheme_end = i + scheme_len;
-
-        // URL authority ends at '/' or whitespace (or end-of-string).
-        let mut end = scheme_end;
-        while end < bytes.len() {
-            let b = bytes[end];
-            if b == b'/' || b.is_ascii_whitespace() {
-                break;
-            }
-            end += 1;
-        }
-
-        let authority = &input[scheme_end..end];
-        if let Some(at_pos) = authority.rfind('@') {
-            // Keep only the host portion after the last '@'.
-            out.push_str("<redacted>@");
-            out.push_str(&authority[at_pos + 1..]);
-        } else {
-            out.push_str(authority);
-        }
-
-        // Continue copying the remainder (including the slash/whitespace that stopped us).
-        i = end;
+    if http_positions.is_empty() {
+        return input.to_string();
     }
 
-    out
-}
+    let sorted_positions: Vec<(usize, &str)> = http_positions
+        .into_iter()
+        .sorted_by_key(|(idx, _)| *idx)
+        .collect();
 
-fn redact_bearer_tokens(input: &str) -> String {
-    // Replace `Bearer <token>` with `Bearer <redacted>` (case-insensitive match on "bearer").
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let rest = &input[i..];
-        if starts_with_ignore_ascii_case(rest, "bearer ") {
-            out.push_str("Bearer ");
-            out.push_str("<redacted>");
-            i += "bearer ".len();
-            // Skip token characters (up to whitespace).
-            while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
-                i += 1;
-            }
-            continue;
-        }
+    let (result_parts, last_end): (Vec<&str>, usize) = sorted_positions.iter().fold(
+        (Vec::new(), 0usize),
+        |(parts, last_end): (Vec<&str>, usize), (start, scheme): &(usize, &str)| {
+            let new_parts: Vec<&str> = if *start > last_end {
+                parts
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(&input[last_end..*start]))
+                    .collect()
+            } else {
+                parts
+            };
 
-        out.push(bytes[i] as char);
-        i += 1;
+            let scheme_len = scheme.len();
+            let authority_start = start + scheme_len;
+            let authority_end = input[authority_start..]
+                .find(|c: char| c == '/' || c.is_ascii_whitespace())
+                .map(|pos| authority_start + pos)
+                .unwrap_or(input.len());
+
+            let authority = &input[authority_start..authority_end];
+            let final_parts: Vec<&str> = if let Some(at_pos) = authority.rfind('@') {
+                new_parts
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(*scheme))
+                    .chain(std::iter::once("<redacted>@"))
+                    .chain(std::iter::once(&authority[at_pos + 1..]))
+                    .collect()
+            } else {
+                new_parts
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(*scheme))
+                    .chain(std::iter::once(authority))
+                    .collect()
+            };
+
+            (final_parts, authority_end)
+        },
+    );
+
+    if last_end < input.len() {
+        result_parts
+            .iter()
+            .copied()
+            .chain(std::iter::once(&input[last_end..]))
+            .collect::<Vec<_>>()
+            .concat()
+    } else {
+        result_parts.concat()
     }
-    out
-}
-
-fn redact_common_query_params(input: &str) -> String {
-    // Redact common credential-bearing query params and key/value fragments.
-    // We intentionally handle both '&' separated and whitespace terminated values.
-    const KEYS: [&str; 5] = [
-        "access_token=",
-        "token=",
-        "password=",
-        "passwd=",
-        "oauth_token=",
-    ];
-
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let mut matched: Option<&'static str> = None;
-        for key in KEYS {
-            if input[i..].starts_with(key) {
-                matched = Some(key);
-                break;
-            }
-        }
-
-        if let Some(key) = matched {
-            out.push_str(key);
-            out.push_str("<redacted>");
-            i += key.len();
-            while i < bytes.len() {
-                let b = bytes[i];
-                if b == b'&' || b.is_ascii_whitespace() {
-                    break;
-                }
-                i += 1;
-            }
-            continue;
-        }
-
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-
-    out
-}
-
-fn redact_token_like_substrings(input: &str) -> String {
-    // Redact substrings that look like common tokens, even if not in a URL.
-    // Examples: GitHub PATs, GitLab PATs, Slack tokens, Google OAuth tokens.
-    const PREFIXES: [&str; 6] = ["ghp_", "github_pat_", "glpat-", "xoxb-", "xapp-", "ya29."];
-
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let mut matched_prefix: Option<&'static str> = None;
-        for p in PREFIXES {
-            if input[i..].starts_with(p) {
-                matched_prefix = Some(p);
-                break;
-            }
-        }
-
-        if let Some(prefix) = matched_prefix {
-            // Consume token characters.
-            let mut end = i + prefix.len();
-            while end < bytes.len() {
-                let b = bytes[end];
-                let c = b as char;
-                if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-                    end += 1;
-                    continue;
-                }
-                break;
-            }
-
-            out.push_str("<redacted>");
-            i = end;
-            continue;
-        }
-
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-
-    out
-}
-
-fn starts_with_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
-    haystack
-        .get(0..needle.len())
-        .is_some_and(|p| p.eq_ignore_ascii_case(needle))
 }
 
 #[cfg(test)]

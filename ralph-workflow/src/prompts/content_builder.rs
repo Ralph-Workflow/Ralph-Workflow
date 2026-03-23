@@ -39,14 +39,16 @@ impl<'a> PromptContentBuilder<'a> {
     /// If the content exceeds [`MAX_INLINE_CONTENT_SIZE`], the builder will
     /// create a reference to the backup file instead of embedding inline.
     #[must_use]
-    pub fn with_prompt(mut self, content: String) -> Self {
+    pub fn with_prompt(self, content: String) -> Self {
         let backup_path = self.workspace.prompt_backup();
-        self.prompt_ref = Some(PromptContentReference::from_content(
-            content,
-            &backup_path,
-            "Original user requirements from PROMPT.md",
-        ));
-        self
+        Self {
+            prompt_ref: Some(PromptContentReference::from_content(
+                content,
+                &backup_path,
+                "Original user requirements from PROMPT.md",
+            )),
+            ..self
+        }
     }
 
     /// Add PLAN content with automatic size checking.
@@ -54,15 +56,17 @@ impl<'a> PromptContentBuilder<'a> {
     /// If the content exceeds [`MAX_INLINE_CONTENT_SIZE`], the builder will
     /// create instructions to read from .agent/PLAN.md with optional XML fallback.
     #[must_use]
-    pub fn with_plan(mut self, content: String) -> Self {
+    pub fn with_plan(self, content: String) -> Self {
         let plan_path = Path::new(".agent/PLAN.md");
         let xml_fallback = Path::new(".agent/tmp/plan.xml");
-        self.plan_ref = Some(PlanContentReference::from_plan(
-            content,
-            plan_path,
-            Some(xml_fallback),
-        ));
-        self
+        Self {
+            plan_ref: Some(PlanContentReference::from_plan(
+                content,
+                plan_path,
+                Some(xml_fallback),
+            )),
+            ..self
+        }
     }
 
     /// Add DIFF content with automatic size checking.
@@ -70,7 +74,7 @@ impl<'a> PromptContentBuilder<'a> {
     /// If the content exceeds [`MAX_INLINE_CONTENT_SIZE`], the builder will
     /// create instructions to use `git diff` instead of embedding inline.
     #[must_use]
-    pub fn with_diff(mut self, content: String, start_commit: &str) -> Self {
+    pub fn with_diff(self, content: String, start_commit: &str) -> Self {
         // For oversize diffs, write the diff to .agent/tmp/diff.txt so agents can read it
         // without relying on git being available.
         let is_oversize = content.len() > MAX_INLINE_CONTENT_SIZE;
@@ -83,12 +87,14 @@ impl<'a> PromptContentBuilder<'a> {
         }
 
         let diff_abs = self.workspace.absolute(Path::new(".agent/tmp/diff.txt"));
-        self.diff_ref = Some(DiffContentReference::from_diff(
-            content,
-            start_commit,
-            &diff_abs,
-        ));
-        self
+        Self {
+            diff_ref: Some(DiffContentReference::from_diff(
+                content,
+                start_commit,
+                &diff_abs,
+            )),
+            ..self
+        }
     }
 
     /// Build the references.

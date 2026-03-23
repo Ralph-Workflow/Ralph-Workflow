@@ -8,52 +8,71 @@
 //!
 //! # Module Structure
 //!
-//! - `hooks` - Git hooks installation and removal
+//! - `runtime/hooks` - Git hooks installation and removal (boundary module)
 //! - [`identity`] - Git identity resolution with comprehensive fallback chain
 //! - `repo` - Basic git repository operations (add, commit, snapshot)
 //! - `start_commit` - Starting commit tracking for incremental diffs
 //! - `review_baseline` - Per-review-cycle baseline tracking
-//! - `wrapper` - Agent phase git wrapper for safe concurrent execution
+//! - `runtime/wrapper` - Agent phase git wrapper for safe concurrent execution (boundary module)
 //! - [`branch`] - Branch detection and default branch resolution
 //! - `rebase` - Rebase operations with fault tolerance
 
 #![deny(unsafe_code)]
 
-use std::io;
-
 /// Convert git2 errors to `std::io` errors for consistent error handling.
 #[cfg(any(test, feature = "test-utils"))]
 #[must_use]
-pub fn git2_to_io_error(err: &git2::Error) -> io::Error {
+pub fn git2_to_io_error(err: &git2::Error) -> std::io::Error {
     git2_to_io_error_impl(err)
 }
 
 #[cfg(not(any(test, feature = "test-utils")))]
-pub(crate) fn git2_to_io_error(err: &git2::Error) -> io::Error {
+pub(crate) fn git2_to_io_error(err: &git2::Error) -> std::io::Error {
     git2_to_io_error_impl(err)
 }
 
-fn git2_to_io_error_impl(err: &git2::Error) -> io::Error {
+fn git2_to_io_error_impl(err: &git2::Error) -> std::io::Error {
     // Fall back to mapping git2 error codes to a best-effort io::ErrorKind.
     let kind = match err.code() {
-        git2::ErrorCode::NotFound | git2::ErrorCode::UnbornBranch => io::ErrorKind::NotFound,
-        git2::ErrorCode::Exists => io::ErrorKind::AlreadyExists,
-        git2::ErrorCode::Auth | git2::ErrorCode::Certificate => io::ErrorKind::PermissionDenied,
-        git2::ErrorCode::Invalid => io::ErrorKind::InvalidInput,
-        git2::ErrorCode::Eof => io::ErrorKind::UnexpectedEof,
-        _ => io::ErrorKind::Other,
+        git2::ErrorCode::NotFound | git2::ErrorCode::UnbornBranch => std::io::ErrorKind::NotFound,
+        git2::ErrorCode::Exists => std::io::ErrorKind::AlreadyExists,
+        git2::ErrorCode::Auth | git2::ErrorCode::Certificate => {
+            std::io::ErrorKind::PermissionDenied
+        }
+        git2::ErrorCode::Invalid => std::io::ErrorKind::InvalidInput,
+        git2::ErrorCode::Eof => std::io::ErrorKind::UnexpectedEof,
+        _ => std::io::ErrorKind::Other,
     };
 
-    io::Error::new(kind, err.to_string())
+    std::io::Error::new(kind, err.to_string())
 }
 
 pub mod branch;
-#[cfg(any(test, feature = "test-utils"))]
+pub mod cleanup;
+pub mod config_state;
+pub(crate) mod domain;
 pub mod hooks;
-#[cfg(not(any(test, feature = "test-utils")))]
-mod hooks;
+pub mod hooks_dir;
 pub mod identity;
-mod rebase;
+pub mod install;
+pub mod lock;
+pub mod marker;
+pub mod path_wrapper;
+pub mod phase;
+/// Runtime module containing OS-boundary code (std::fs, std::process, std::env, Mutex).
+/// This module is exempt from functional Rust dylint rules.
+pub mod phase_state;
+pub mod rebase;
+mod repo;
+mod review_baseline;
+pub mod runtime;
+pub mod runtime_identity;
+pub mod script;
+mod start_commit;
+pub mod uninstall;
+pub mod verify;
+pub mod worktree;
+pub mod wrapper;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod rebase_checkpoint;
@@ -61,21 +80,18 @@ pub mod rebase_checkpoint;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod rebase_state_machine;
 
-mod repo;
-
 /// # Errors
 ///
 /// Returns an error if the git repository cannot be found or hooks directory cannot be determined.
-pub fn get_hooks_dir() -> io::Result<std::path::PathBuf> {
+pub fn get_hooks_dir() -> std::io::Result<std::path::PathBuf> {
     repo::get_hooks_dir_from(std::path::Path::new("."))
 }
 
-pub(crate) fn get_hooks_dir_in_repo(repo_root: &std::path::Path) -> io::Result<std::path::PathBuf> {
+pub(crate) fn get_hooks_dir_in_repo(
+    repo_root: &std::path::Path,
+) -> std::io::Result<std::path::PathBuf> {
     repo::get_hooks_dir_from(repo_root)
 }
-mod review_baseline;
-mod start_commit;
-mod wrapper;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use branch::get_default_branch_at;
@@ -129,8 +145,9 @@ pub use review_baseline::{
 #[cfg(any(test, feature = "test-utils"))]
 pub use start_commit::load_start_point_with_workspace;
 pub use start_commit::{
-    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
-    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
+    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, git_oid_to_git2_oid,
+    load_start_point, reset_start_commit, save_start_commit, save_start_commit_with_workspace,
+    StartPoint,
 };
 pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_protections_silent_at, cleanup_agent_phase_silent,
@@ -149,9 +166,9 @@ pub use wrapper::{
 };
 
 #[cfg(any(test, feature = "test-utils"))]
-pub use wrapper::{
-    agent_phase_test_lock, get_agent_phase_paths_for_test, set_agent_phase_paths_for_test,
-};
+pub use runtime::agent_phase_test_lock;
+#[cfg(any(test, feature = "test-utils"))]
+pub use wrapper::{get_agent_phase_paths_for_test, set_agent_phase_paths_for_test};
 
 // Re-export checkpoint and recovery action for tests only
 #[cfg(any(test, feature = "test-utils"))]
@@ -159,6 +176,10 @@ pub use rebase_checkpoint::RebaseCheckpoint;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use rebase_state_machine::RecoveryAction;
+
+// Re-export rebase lock functions for tests only
+#[cfg(any(test, feature = "test-utils"))]
+pub use lock::{acquire_rebase_lock, release_rebase_lock};
 
 #[cfg(test)]
 mod tests;
