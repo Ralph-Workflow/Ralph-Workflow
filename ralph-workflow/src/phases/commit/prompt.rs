@@ -177,19 +177,16 @@ fn build_commit_prompt(
     working_diff: &str,
     workspace: &dyn Workspace,
 ) -> (String, crate::prompts::SubstitutionLog) {
-    let capabilities = crate::agents::session::CapabilitySet::defaults_for_drain(
+    let (capabilities, policy_flags) = crate::prompts::SessionCapabilities::from_drain(
         crate::agents::session::SessionDrain::Commit,
     );
-    let policy_flags = crate::agents::session::PolicyFlagSet::defaults_for_drain(
-        crate::agents::session::SessionDrain::Commit,
-    );
+    let session_caps = crate::prompts::SessionCapabilities::new(&capabilities, &policy_flags);
     let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
         template_context,
         working_diff,
         workspace,
         "commit_message_xml",
-        &capabilities,
-        &policy_flags,
+        session_caps,
     );
     (rendered.content, rendered.log)
 }

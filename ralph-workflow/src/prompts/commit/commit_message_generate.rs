@@ -85,15 +85,13 @@ pub fn prompt_generate_commit_message_with_diff(diff: &str) -> String {
 /// * `diff` - The git diff to generate a commit message for
 /// * `workspace` - Workspace for resolving absolute paths
 /// * `template_name` - Name of the template for logging
-/// * `capabilities` - The capabilities available to the agent
-/// * `policy_flags` - The policy flags in effect
+/// * `session_caps` - Session capabilities bundle (RFC-009)
 pub fn prompt_generate_commit_message_with_diff_with_log(
     context: &TemplateContext,
     diff: &str,
     workspace: &dyn Workspace,
     template_name: &str,
-    capabilities: &crate::agents::session::CapabilitySet,
-    policy_flags: &crate::agents::session::PolicyFlagSet,
+    session_caps: crate::prompts::SessionCapabilities<'_>,
 ) -> RenderedTemplate {
     // Ensure the commit XSD schema is available on disk for agents to reference.
     let tmp_dir = std::path::Path::new(".agent/tmp");
@@ -141,7 +139,8 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
         ),
     ]);
 
-    // Compute capability variables using provided capabilities and policy flags
+    // Compute capability variables using provided session capabilities
+    let (capabilities, policy_flags) = session_caps.as_parts();
     let capability_vars = crate::prompts::template_variables::capability_template_variables(
         capabilities,
         policy_flags,
@@ -193,14 +192,12 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
 /// * `context` - Template context containing the template registry
 /// * `diff` - The git diff to generate a commit message for
 /// * `workspace` - Workspace for resolving absolute paths (accepts any Workspace implementation)
-/// * `capabilities` - The capabilities available to the agent
-/// * `policy_flags` - The policy flags in effect
+/// * `session_caps` - Session capabilities bundle (RFC-009)
 pub fn prompt_generate_commit_message_with_diff_with_context(
     context: &TemplateContext,
     diff: &str,
     workspace: &dyn Workspace,
-    capabilities: &crate::agents::session::CapabilitySet,
-    policy_flags: &crate::agents::session::PolicyFlagSet,
+    session_caps: crate::prompts::SessionCapabilities<'_>,
 ) -> String {
     // Ensure the commit XSD schema is available on disk for agents to reference.
     // In production this is also written during app bootstrap, but tests and some
@@ -242,7 +239,8 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
         ),
     ]);
 
-    // Compute capability variables using provided capabilities and policy flags
+    // Compute capability variables using provided session capabilities
+    let (capabilities, policy_flags) = session_caps.as_parts();
     let capability_vars = crate::prompts::template_variables::capability_template_variables(
         capabilities,
         policy_flags,

@@ -8,6 +8,7 @@ use crate::prompts::partials::get_shared_partials;
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_engine::Template;
 use crate::prompts::template_variables::capability_template_variables;
+use crate::prompts::template_variables::SessionCapabilities;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -81,16 +82,14 @@ fn build_template_variables(
 /// * `fix_result_content` - The fix agent's self-assessment result
 /// * `is_continuation` - Whether this is a continuation prompt
 /// * `workspace` - Workspace for resolving absolute paths
-/// * `capabilities` - The capabilities available to the agent
-/// * `policy_flags` - The policy flags in effect
+/// * `session_caps` - The session capabilities bundle
 pub fn generate_fix_analysis_prompt(
     issues_content: &str,
     diff_content: &str,
     fix_result_content: &str,
     is_continuation: bool,
     workspace: &dyn crate::workspace::Workspace,
-    capabilities: &crate::agents::session::CapabilitySet,
-    policy_flags: &crate::agents::session::PolicyFlagSet,
+    session_caps: SessionCapabilities<'_>,
 ) -> String {
     let partials = get_shared_partials();
     let context = TemplateContext::default();
@@ -109,8 +108,9 @@ pub fn generate_fix_analysis_prompt(
         is_continuation,
     );
 
-    // Compute capability variables using provided capabilities and policy flags
-    let capability_vars = capability_template_variables(capabilities, policy_flags);
+    // Compute capability variables using provided session capabilities
+    let (caps, flags) = session_caps.as_parts();
+    let capability_vars = capability_template_variables(caps, flags);
 
     // Merge base and capability variables using functional style (no mutation)
     let variables: HashMap<String, String> = base_vars.into_iter().chain(capability_vars).collect();

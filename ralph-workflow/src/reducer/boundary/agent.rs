@@ -67,7 +67,9 @@ impl MainEffectHandler {
             handshake.policy_flags.to_vec(),
         ));
 
-        // Build AuditTrail with Approved records for each granted capability
+        // Build AuditTrail with PolicyOutcome records for each granted capability.
+        // RFC-009 Step 8: call check_capability to capture PolicyOutcome values
+        // so denied capabilities are auditable (V1: all granted capabilities return Approved).
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -76,15 +78,30 @@ impl MainEffectHandler {
             .capabilities
             .iter()
             .map(|cap| {
+                let outcome = session.check_capability(cap);
+                let description = match outcome {
+                    PolicyOutcome::Approved => {
+                        format!(
+                            "Capability {} granted for {} drain via session handshake",
+                            cap.identifier(),
+                            session.drain
+                        )
+                    }
+                    PolicyOutcome::Denied { ref reason } => reason.clone(),
+                    PolicyOutcome::ApprovedWithRestriction { ref restriction } => {
+                        format!(
+                            "Capability {} approved with restriction: {}",
+                            cap.identifier(),
+                            restriction
+                        )
+                    }
+                };
                 AuditRecord::new(
                     session.session_id.clone(),
                     timestamp,
                     cap,
-                    PolicyOutcome::Approved,
-                    format!(
-                        "Capability {} issued via session handshake",
-                        cap.identifier()
-                    ),
+                    outcome,
+                    description,
                 )
             })
             .collect();

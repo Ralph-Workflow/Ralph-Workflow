@@ -15,9 +15,9 @@
 ///
 /// * `plan_content` - The implementation plan (PLAN.md content)
 /// * `diff_content` - The git diff since HEAD (working-tree vs. last commit; may be empty)
+/// * `is_continuation` - Whether this is a continuation prompt
 /// * `workspace` - Workspace for resolving absolute paths
-/// * `capabilities` - The capabilities available to the agent
-/// * `policy_flags` - The policy flags in effect
+/// * `session_caps` - The session capabilities bundle
 ///
 /// # Returns
 ///
@@ -27,8 +27,7 @@ pub fn generate_analysis_prompt(
     diff_content: &str,
     is_continuation: bool,
     workspace: &dyn crate::workspace::Workspace,
-    capabilities: &crate::agents::session::CapabilitySet,
-    policy_flags: &crate::agents::session::PolicyFlagSet,
+    session_caps: crate::prompts::template_variables::SessionCapabilities<'_>,
 ) -> String {
     use crate::prompts::content_reference::{DiffContentReference, PlanContentReference};
     use crate::prompts::partials::get_shared_partials;
@@ -103,8 +102,9 @@ pub fn generate_analysis_prompt(
         ("REQUIRED_OUTPUT_XML", required_output.to_string()),
     ]);
 
-    // Compute capability variables using provided capabilities and policy flags
-    let capability_vars = capability_template_variables(capabilities, policy_flags);
+    // Compute capability variables using provided session capabilities
+    let (caps, flags) = session_caps.as_parts();
+    let capability_vars = capability_template_variables(caps, flags);
 
     // Merge base and capability variables using functional style (no mutation)
     let variables: HashMap<String, String> = base_vars
@@ -141,6 +141,7 @@ mod tests {
     use super::*;
     use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
+    use crate::prompts::template_variables::SessionCapabilities;
 
     #[test]
     fn test_generate_analysis_prompt_includes_all_parts() {
@@ -149,11 +150,11 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         let plan = "Step 1: Add feature X\nStep 2: Add tests";
         let diff = "diff --git a/src/main.rs b/src/main.rs\n+fn feature_x() {}";
 
-        let prompt =
-            generate_analysis_prompt(plan, diff, false, &workspace, &capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt(plan, diff, false, &workspace, session_caps);
 
         assert!(prompt.contains("Step 1: Add feature X"));
         assert!(prompt.contains("Step 2: Add tests"));
@@ -168,11 +169,11 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         let plan = "Verify feature exists";
         let diff = "";
 
-        let prompt =
-            generate_analysis_prompt(plan, diff, false, &workspace, &capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt(plan, diff, false, &workspace, session_caps);
 
         assert!(prompt.contains("Verify feature exists"));
         assert!(
@@ -192,10 +193,10 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         let plan = "x".repeat(MAX_INLINE_CONTENT_SIZE + 1);
         let diff = "small diff";
-        let prompt =
-            generate_analysis_prompt(&plan, diff, false, &workspace, &capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt(&plan, diff, false, &workspace, session_caps);
 
         assert!(
             prompt.contains("[PLAN too large to embed"),
@@ -214,10 +215,10 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         let plan = "small plan";
         let diff = "d".repeat(MAX_INLINE_CONTENT_SIZE + 1);
-        let prompt =
-            generate_analysis_prompt(plan, &diff, false, &workspace, &capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt(plan, &diff, false, &workspace, session_caps);
 
         assert!(
             prompt.contains("[DIFF too large to embed"),
@@ -236,13 +237,13 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         let plan = "Plan content";
         let diff = "Diff content";
 
-        let prompt =
-            generate_analysis_prompt(plan, diff, false, &workspace, &capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt(plan, diff, false, &workspace, session_caps);
         let continuation_prompt =
-            generate_analysis_prompt(plan, diff, true, &workspace, &capabilities, &policy_flags);
+            generate_analysis_prompt(plan, diff, true, &workspace, session_caps);
 
         assert!(prompt.contains("<ralph-development-result>"));
         assert!(prompt.contains("<ralph-status>"));
@@ -272,16 +273,10 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         // The analysis agent must be context-free: it should assess PLAN vs DIFF only.
         // Working-tree fallback instructions can bias results and expand what the agent reads.
-        let prompt = generate_analysis_prompt(
-            "Plan",
-            "Diff",
-            false,
-            &workspace,
-            &capabilities,
-            &policy_flags,
-        );
+        let prompt = generate_analysis_prompt("Plan", "Diff", false, &workspace, session_caps);
 
         assert!(
             !prompt.to_lowercase().contains("working tree"),
@@ -303,16 +298,10 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
         // When the diff is oversized, the prompt should reference a file path rather than inline.
         let large_diff = "d".repeat(MAX_INLINE_CONTENT_SIZE + 1);
-        let prompt = generate_analysis_prompt(
-            "Plan",
-            &large_diff,
-            false,
-            &workspace,
-            &capabilities,
-            &policy_flags,
-        );
+        let prompt = generate_analysis_prompt("Plan", &large_diff, false, &workspace, session_caps);
         assert!(
             prompt.contains(".agent/tmp/diff.txt") || prompt.contains(".agent/DIFF.backup"),
             "expected oversize diff prompt to mention a DIFF file path reference; got: {prompt}"
@@ -326,14 +315,8 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
-        let prompt = generate_analysis_prompt(
-            "Plan",
-            "Diff",
-            false,
-            &workspace,
-            &capabilities,
-            &policy_flags,
-        );
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt("Plan", "Diff", false, &workspace, session_caps);
 
         // The prompt should not contain any iteration-related information
         assert!(
@@ -349,14 +332,8 @@ mod tests {
         let workspace = MemoryWorkspace::new_test();
         let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
         let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
-        let prompt = generate_analysis_prompt(
-            "Plan",
-            "Diff",
-            false,
-            &workspace,
-            &capabilities,
-            &policy_flags,
-        );
+        let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
+        let prompt = generate_analysis_prompt("Plan", "Diff", false, &workspace, session_caps);
 
         assert!(
             prompt

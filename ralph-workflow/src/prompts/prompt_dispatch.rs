@@ -81,12 +81,16 @@ pub fn prompt_for_agent(
             let (prompt_content, plan_content, issues_content) = config
                 .prompt_plan_and_issues
                 .unwrap_or((String::new(), String::new(), String::new()));
+            let caps = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+            let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
+            let session_caps = SessionCapabilities::new(&caps, &flags);
             prompt_fix_with_context(
                 template_context,
                 &prompt_content,
                 &plan_content,
                 &issues_content,
                 workspace,
+                session_caps,
             )
         }
     };

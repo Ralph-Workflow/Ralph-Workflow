@@ -21,7 +21,9 @@
 //! `Effect::EmitCompletionMarkerAndTerminate`.
 
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::phases::PhaseContext;
+use crate::prompts::SessionCapabilities;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 
@@ -130,12 +132,17 @@ fn build_dev_fix_prompt(
     let issues_content = format!(
         "# Issues\n\n- [High] Pipeline failure (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle}).\n  Diagnose the root cause and fix the failure.\n"
     );
+    // Dev-fix always uses Development drain capabilities for RFC-009 session capability injection
+    let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
+    let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Development);
+    let session_caps = SessionCapabilities::new(&caps, &flags);
     let prompt = crate::prompts::prompt_fix_with_context(
         ctx.template_context,
         &prompt_content,
         &plan_content,
         &issues_content,
         ctx.workspace,
+        session_caps,
     );
     if let Err(err) = ctx.workspace.write(
         std::path::Path::new(".agent/tmp/dev_fix_prompt.txt"),

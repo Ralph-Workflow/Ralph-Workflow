@@ -130,12 +130,13 @@ fn test_commit_prompts_use_workspace_root() {
         let template_context = TemplateContext::default();
 
         // Generate commit prompt
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
         let prompt = prompt_generate_commit_message_with_diff_with_context(
             &template_context,
             "Test diff",
             &workspace,
-            &CapabilitySet::defaults_for_drain(SessionDrain::Commit),
-            &PolicyFlagSet::defaults_for_drain(SessionDrain::Commit),
+            session_caps,
         );
 
         // Verify: prompt contains workspace root paths

@@ -48,6 +48,39 @@ impl<'a> SessionCapabilities<'a> {
             policy_flags: session.policy_flags(),
         }
     }
+
+    /// Create default capabilities and policy flags for a drain.
+    ///
+    /// This returns owned values, not a SessionCapabilities, because
+    /// SessionCapabilities holds references. Use this to get the defaults,
+    /// then wrap in SessionCapabilities::new().
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+    /// let session_caps = SessionCapabilities::new(&caps, &flags);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn from_drain(
+        drain: crate::agents::session::SessionDrain,
+    ) -> (CapabilitySet, PolicyFlagSet) {
+        (
+            CapabilitySet::defaults_for_drain(drain),
+            PolicyFlagSet::defaults_for_drain(drain),
+        )
+    }
+
+    /// Destructure SessionCapabilities into its component parts.
+    ///
+    /// This is useful when you need to pass the inner references to functions
+    /// that accept bare `&CapabilitySet` and `&PolicyFlagSet` parameters.
+    #[inline]
+    #[must_use]
+    pub fn as_parts(&self) -> (&CapabilitySet, &PolicyFlagSet) {
+        (self.capabilities, self.policy_flags)
+    }
 }
 
 /// Helper to get default capabilities and policy flags for a drain as a tuple.

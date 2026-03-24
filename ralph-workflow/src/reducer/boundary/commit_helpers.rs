@@ -4,9 +4,10 @@
 //! 1000-line boundary module limit. These functions are called by the
 //! `MainEffectHandler` implementation in commit.rs.
 
-use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::agents::session::SessionDrain;
 use crate::phases::commit;
 use crate::phases::PhaseContext;
+use crate::prompts::SessionCapabilities;
 use crate::prompts::{
     get_stored_or_generate_prompt, prompt_generate_commit_message_with_diff_with_log,
     RenderedTemplate,
@@ -196,15 +197,14 @@ fn needs_commit_template_validation(gen: &CommitPromptGenerated) -> bool {
 }
 
 fn render_commit_template(ctx: &PhaseContext<'_>, diff_for_prompt: &str) -> RenderedTemplate {
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
+    let (capabilities, policy_flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     prompt_generate_commit_message_with_diff_with_log(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
         "commit_message_xml",
-        &capabilities,
-        &policy_flags,
+        session_caps,
     )
 }
 
@@ -279,15 +279,14 @@ pub(in crate::reducer::boundary) fn gen_same_agent_retry_prompt_text(
         .workspace
         .read(Path::new(".agent/tmp/commit_prompt.txt"))
         .ok();
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
+    let (capabilities, policy_flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let generated_base_prompt = prompt_generate_commit_message_with_diff_with_log(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
         "commit_message_xml",
-        &capabilities,
-        &policy_flags,
+        session_caps,
     )
     .content;
     let (base_prompt, _) = commit::base_prompt_for_same_agent_retry(
@@ -303,15 +302,14 @@ pub(in crate::reducer::boundary) fn gen_normal_commit_prompt_text(
     diff_for_prompt: &str,
     residual_files: &[String],
 ) -> String {
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
+    let (capabilities, policy_flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let rendered = prompt_generate_commit_message_with_diff_with_log(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
         "commit_message_xml",
-        &capabilities,
-        &policy_flags,
+        session_caps,
     );
     commit::prepend_residual_files_context(&rendered.content, residual_files)
 }

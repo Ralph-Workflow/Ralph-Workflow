@@ -1,9 +1,10 @@
 //! Analysis agent effect handlers.
 
-use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::agents::session::SessionDrain;
 use crate::agents::AgentRole;
 use crate::files::write_diff_backup_with_workspace;
 use crate::phases::PhaseContext;
+use crate::prompts::template_variables::SessionCapabilities;
 use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, DevelopmentEvent, PipelineEvent, ReviewEvent};
@@ -36,15 +37,14 @@ impl MainEffectHandler {
     ) -> Result<EffectResult> {
         let plan_content = read_plan_content_with_fallback(ctx);
         let diff_content = read_diff_content_with_backup(ctx);
-        let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
-        let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
         let prompt = crate::prompts::analysis::generate_analysis_prompt(
             &plan_content,
             &diff_content,
             self.state.continuation.is_continuation(),
             ctx.workspace,
-            &capabilities,
-            &policy_flags,
+            session_caps,
         );
         let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
         let prompt = apply_same_agent_retry_prefix(
@@ -80,16 +80,15 @@ impl MainEffectHandler {
         let issues_content = read_issues_content(ctx);
         let diff_content = read_diff_content_with_backup(ctx);
         let fix_result_content = read_fix_result_content(ctx);
-        let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
-        let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
         let prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
             &issues_content,
             &diff_content,
             &fix_result_content,
             self.state.continuation.fix_continue_pending,
             ctx.workspace,
-            &capabilities,
-            &policy_flags,
+            session_caps,
         );
         let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
         let prompt = apply_same_agent_retry_prefix(
