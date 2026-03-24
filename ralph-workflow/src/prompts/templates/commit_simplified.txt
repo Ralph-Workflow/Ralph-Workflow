@@ -28,6 +28,8 @@
 
 {{> shared/_unattended_mode}}
 
+{{> shared/_session_capabilities}}
+
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 Generate a commit message for the following diff.

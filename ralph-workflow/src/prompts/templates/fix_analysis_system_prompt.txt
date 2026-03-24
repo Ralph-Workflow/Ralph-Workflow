@@ -20,6 +20,8 @@ Your task is to VERIFY whether the fix changes address the REVIEW ISSUES.
 
 {{> shared/_unattended_mode}}
 
+{{> shared/_session_capabilities}}
+
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ───────────────────────────────────────────────────────────────────────────────

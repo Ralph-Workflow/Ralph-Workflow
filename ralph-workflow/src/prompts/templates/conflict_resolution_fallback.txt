@@ -33,6 +33,8 @@
 
 {{> shared/_unattended_mode}}
 
+{{> shared/_session_capabilities}}
+
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 There are merge conflicts that need to be resolved. Below are the files with conflicts, showing both versions of the conflicting changes.
