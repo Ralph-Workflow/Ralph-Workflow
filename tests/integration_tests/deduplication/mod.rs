@@ -42,7 +42,7 @@ use ralph_workflow::workspace::MemoryWorkspace;
 // =============================================================================
 
 /// Create a Claude parser with `VirtualTerminal` in Full mode (ANSI sequences enabled).
-pub fn create_parser_with_vterm() -> (ClaudeParser, Rc<RefCell<VirtualTerminal>>) {
+pub(crate) fn create_parser_with_vterm() -> (ClaudeParser, Rc<RefCell<VirtualTerminal>>) {
     let vterm = Rc::new(RefCell::new(VirtualTerminal::new()));
     let printer: SharedPrinter = vterm.clone();
     let parser = ClaudeParser::with_printer(Colors::new(), Verbosity::Normal, printer)
@@ -51,7 +51,7 @@ pub fn create_parser_with_vterm() -> (ClaudeParser, Rc<RefCell<VirtualTerminal>>
 }
 
 /// Parse events and return the `VirtualTerminal` for inspection.
-pub fn parse_events(events: &[&str]) -> Rc<RefCell<VirtualTerminal>> {
+pub(crate) fn parse_events(events: &[&str]) -> Rc<RefCell<VirtualTerminal>> {
     let (mut parser, vterm) = create_parser_with_vterm();
     let workspace = MemoryWorkspace::new_test();
     let input = events.join("\n");

@@ -242,8 +242,7 @@ impl CapabilitySet {
 
 impl From<Vec<Capability>> for CapabilitySet {
     fn from(caps: Vec<Capability>) -> Self {
-        let mut bits = 0u128;
-        for cap in caps {
+        let bits = caps.into_iter().fold(0u128, |acc, cap| {
             let idx = match cap {
                 Capability::WorkspaceRead => 0,
                 Capability::WorkspaceWriteEphemeral => 1,
@@ -256,8 +255,8 @@ impl From<Vec<Capability>> for CapabilitySet {
                 Capability::GitWrite => 8,
                 Capability::EnvRead => 9,
             };
-            bits |= 1u128 << idx;
-        }
+            acc | (1u128 << idx)
+        });
         Self(bits)
     }
 }
@@ -377,8 +376,7 @@ impl PolicyFlagSet {
 
 impl From<Vec<PolicyFlag>> for PolicyFlagSet {
     fn from(flags: Vec<PolicyFlag>) -> Self {
-        let mut bits = 0u128;
-        for flag in flags {
+        let bits = flags.into_iter().fold(0u128, |acc, flag| {
             let idx = match flag {
                 PolicyFlag::NoEdit => 0,
                 PolicyFlag::AllowShell => 1,
@@ -388,8 +386,8 @@ impl From<Vec<PolicyFlag>> for PolicyFlagSet {
                 PolicyFlag::AllowNetwork => 5,
                 PolicyFlag::AllowEnvRead => 6,
             };
-            bits |= 1u128 << idx;
-        }
+            acc | (1u128 << idx)
+        });
         Self(bits)
     }
 }
@@ -563,6 +561,25 @@ impl AgentSession {
         capabilities: CapabilitySet,
         policy_flags: PolicyFlagSet,
     ) -> Self {
+        Self::new_with_created_at(
+            run_id,
+            drain,
+            counter,
+            capabilities,
+            policy_flags,
+            SystemTime::UNIX_EPOCH,
+        )
+    }
+
+    /// Create a new agent session with an explicit creation timestamp.
+    pub fn new_with_created_at(
+        run_id: String,
+        drain: SessionDrain,
+        counter: u32,
+        capabilities: CapabilitySet,
+        policy_flags: PolicyFlagSet,
+        created_at: SystemTime,
+    ) -> Self {
         Self {
             session_id: AgentSessionId::new(&run_id, &drain, counter),
             run_id,
@@ -570,7 +587,7 @@ impl AgentSession {
             protocol_version: PROTOCOL_VERSION_V1.to_string(),
             capabilities,
             policy_flags,
-            created_at: SystemTime::now(),
+            created_at,
         }
     }
 
@@ -579,6 +596,16 @@ impl AgentSession {
     /// RFC-009 V1: Uses drain-specific capability defaults as defined
     /// in `CapabilitySet::defaults_for_drain` and `PolicyFlagSet::defaults_for_drain`.
     pub fn for_drain(run_id: String, drain: SessionDrain, counter: u32) -> Self {
+        Self::for_drain_with_created_at(run_id, drain, counter, SystemTime::UNIX_EPOCH)
+    }
+
+    /// Create a new session for a drain with defaults and explicit creation timestamp.
+    pub fn for_drain_with_created_at(
+        run_id: String,
+        drain: SessionDrain,
+        counter: u32,
+        created_at: SystemTime,
+    ) -> Self {
         let session_id = AgentSessionId::new(&run_id, &drain, counter);
         let capabilities = CapabilitySet::defaults_for_drain(drain);
         let policy_flags = PolicyFlagSet::defaults_for_drain(drain);
@@ -589,7 +616,7 @@ impl AgentSession {
             protocol_version: PROTOCOL_VERSION_V1.to_string(),
             capabilities,
             policy_flags,
-            created_at: SystemTime::now(),
+            created_at,
         }
     }
 }

@@ -28,22 +28,22 @@
 //! - Uses `MockAppEffectHandler` for git/filesystem isolation
 //! - Tests are deterministic and black-box (test the workflow as a user would run it)
 
-pub mod analysis;
-pub mod backup;
-pub mod baseline;
-pub mod cleanup;
-pub mod commit_residuals;
-pub mod commit_tests;
-pub mod config;
-pub mod config_test;
-pub mod continuation;
-pub mod continuation_budget;
-pub mod development_xml;
-pub mod fallback;
-pub mod iteration_counter;
-pub mod no_premature_exit;
-pub mod oversize_prompt;
-pub mod plan;
-pub mod resume;
-pub mod review;
-pub mod summary_consistency;
+pub(crate) mod analysis;
+pub(crate) mod backup;
+pub(crate) mod baseline;
+pub(crate) mod cleanup;
+pub(crate) mod commit_residuals;
+pub(crate) mod commit_tests;
+pub(crate) mod config;
+pub(crate) mod config_test;
+pub(crate) mod continuation;
+pub(crate) mod continuation_budget;
+pub(crate) mod development_xml;
+pub(crate) mod fallback;
+pub(crate) mod iteration_counter;
+pub(crate) mod no_premature_exit;
+pub(crate) mod oversize_prompt;
+pub(crate) mod plan;
+pub(crate) mod resume;
+pub(crate) mod review;
+pub(crate) mod summary_consistency;

@@ -6,7 +6,7 @@
 
 /// Check if a string is a valid conventional commit subject line.
 #[must_use]
-pub fn is_conventional_commit_subject(subject: &str) -> bool {
+pub(crate) fn is_conventional_commit_subject(subject: &str) -> bool {
     let valid_types = [
         "feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore",
     ];

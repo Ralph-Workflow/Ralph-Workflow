@@ -5,7 +5,7 @@ use crate::prompts::template_context::TemplateContext;
 ///
 /// Groups together the configuration and runtime state needed for
 /// AI-assisted conflict resolution during rebase operations.
-pub struct ConflictResolutionContext<'a> {
+pub(super) struct ConflictResolutionContext<'a> {
     pub config: &'a crate::config::Config,
     pub registry: &'a crate::agents::AgentRegistry,
     pub template_context: &'a TemplateContext,

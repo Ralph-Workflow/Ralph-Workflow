@@ -36,11 +36,14 @@ include!("init/project_detection.rs");
 // Configuration generation module (handlers for creating config files and PROMPT.md)
 mod config_generation;
 
-// Re-export config generation public API
-pub(crate) use config_generation::{
+// Re-export config generation public API (items re-exported by cli/mod.rs)
+pub use config_generation::{
     handle_check_config, handle_check_config_with, handle_init_global, handle_init_global_with,
-    handle_init_local_config, handle_init_local_config_with, handle_init_state_inference_with_env,
-    handle_init_template_arg_at_path_with_env,
+    handle_init_local_config, handle_init_local_config_with,
+};
+// Internal access (not re-exported by cli/mod.rs)
+use config_generation::{
+    handle_init_state_inference_with_env, handle_init_template_arg_at_path_with_env,
 };
 
 // Include init prompting utilities for interactive flows.

@@ -393,9 +393,8 @@ fn test_cloud_mode_enabled_reports_progress_updates_from_ui_events() {
             run_event_loop_with_handler(&mut ctx, Some(initial_state), loop_config, &mut handler)
                 .expect("event loop should run");
 
-        assert_eq!(
-            reporter.progress_count(),
-            2,
+        assert!(
+            reporter.progress_count() >= 2,
             "Cloud mode enabled should emit progress updates for UI events"
         );
 

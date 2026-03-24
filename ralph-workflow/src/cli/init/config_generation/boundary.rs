@@ -109,7 +109,7 @@ fn validate_or_report_template(template_name: &str, colors: Colors) -> bool {
     true
 }
 
-pub fn create_prompt_from_template<R: ConfigEnvironment>(
+pub(crate) fn create_prompt_from_template<R: ConfigEnvironment>(
     template_name: &str,
     prompt_path: &Path,
     force: bool,
@@ -128,7 +128,7 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
     Ok(true)
 }
 
-pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
+pub(crate) fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
     config_path: &Path,
     prompt_path: &Path,
     template_arg: Option<&str>,
@@ -314,7 +314,7 @@ fn handle_neither_exists<R: ConfigEnvironment>(
     dispatch_neither_exists_action(prompt_path, colors, env)
 }
 
-pub fn handle_init_template_arg_at_path_with_env<R: ConfigEnvironment>(
+pub(crate) fn handle_init_template_arg_at_path_with_env<R: ConfigEnvironment>(
     template_name: &str,
     prompt_path: &Path,
     colors: Colors,

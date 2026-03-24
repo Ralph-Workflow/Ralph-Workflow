@@ -118,7 +118,7 @@ where
     Ok((resolved, replay, prompt_history))
 }
 
-pub(super) fn conflict_resolution_content_id(
+pub(crate) fn conflict_resolution_content_id(
     phase: &str,
     conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
 ) -> String {
@@ -147,7 +147,7 @@ pub(super) fn conflict_resolution_content_id(
     sha256_hex_str(&s)
 }
 
-pub(super) fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
+pub(crate) fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
     logger.info("Agent resolved conflicts via file edits (no JSON output)");
 
     let remaining_conflicts = crate::git_helpers::get_conflicted_files()?;
@@ -163,7 +163,7 @@ pub(super) fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bo
     }
 }
 
-pub(super) fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> bool {
+pub(crate) fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> bool {
     logger.warn("AI conflict resolution failed");
     logger.info("Attempting to continue rebase anyway...");
 
@@ -179,7 +179,7 @@ pub(super) fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessEx
     }
 }
 
-pub(super) fn handle_error_resolution(
+pub(crate) fn handle_error_resolution(
     logger: &Logger,
     executor: &dyn ProcessExecutor,
     e: &anyhow::Error,
@@ -250,7 +250,7 @@ fn build_enhanced_resolution_prompt(
     )
 }
 
-pub(crate) fn run_ai_conflict_resolution(
+pub(super) fn run_ai_conflict_resolution(
     resolution_prompt: &str,
     ctx: &ConflictResolutionContext<'_>,
 ) -> anyhow::Result<ConflictResolutionResult> {

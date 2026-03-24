@@ -1,17 +1,17 @@
 use std::io::{IsTerminal, Write};
 
 #[must_use]
-pub fn strip_ansi_codes(s: &str) -> String {
+pub(super) fn strip_ansi_codes(s: &str) -> String {
     regex::Regex::new(r"\x1b\[[0-9;]*m")
         .map_or_else(|_| s.to_string(), |re| re.replace_all(s, "").to_string())
 }
 
-pub trait ColorEnvironment {
+pub(super) trait ColorEnvironment {
     fn get_var(&self, name: &str) -> Option<String>;
     fn is_terminal(&self) -> bool;
 }
 
-pub struct RealColorEnvironment;
+pub(super) struct RealColorEnvironment;
 
 impl ColorEnvironment for RealColorEnvironment {
     fn get_var(&self, name: &str) -> Option<String> {
@@ -23,27 +23,27 @@ impl ColorEnvironment for RealColorEnvironment {
     }
 }
 
-pub fn get_color_env_var(name: &str) -> Option<String> {
+pub(super) fn get_color_env_var(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
-pub fn stdout_write(buf: &[u8]) -> std::io::Result<usize> {
+pub(super) fn stdout_write(buf: &[u8]) -> std::io::Result<usize> {
     std::io::stdout().write(buf)
 }
 
-pub fn stdout_flush() -> std::io::Result<()> {
+pub(super) fn stdout_flush() -> std::io::Result<()> {
     std::io::stdout().flush()
 }
 
-pub fn stdout_is_terminal() -> bool {
+pub(super) fn stdout_is_terminal() -> bool {
     std::io::stdout().is_terminal()
 }
 
-pub fn stdout_write_line(msg: &str) -> std::io::Result<()> {
+pub(super) fn stdout_write_line(msg: &str) -> std::io::Result<()> {
     writeln!(std::io::stdout(), "{msg}")
 }
 
-pub fn stderr_write_line(msg: &str) -> std::io::Result<()> {
+pub(super) fn stderr_write_line(msg: &str) -> std::io::Result<()> {
     writeln!(std::io::stderr(), "{msg}")
 }
 

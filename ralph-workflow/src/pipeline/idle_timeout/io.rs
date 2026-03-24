@@ -5,13 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Shared agent child handle (Arc-wrapped Mutex over a boxed AgentChild).
-pub type SharedAgentChild = Arc<Mutex<Box<dyn AgentChild>>>;
+pub(crate) type SharedAgentChild = Arc<Mutex<Box<dyn AgentChild>>>;
 /// Shared child-activity observer (Arc-wrapped Mutex over an optional ChildProcessInfo snapshot).
-pub type SharedChildActivityObserver = Arc<Mutex<Option<ChildProcessInfo>>>;
+pub(crate) type SharedChildActivityObserver = Arc<Mutex<Option<ChildProcessInfo>>>;
 
 /// Result of attempting to kill a process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KillResult {
+pub(crate) enum KillResult {
     /// Process was successfully killed with SIGTERM.
     TerminatedByTerm,
     /// Process required SIGKILL/taskkill escalation.
@@ -87,7 +87,7 @@ impl KillConfig {
 /// - SIGKILL confirm timeout: 500ms
 /// - Post-SIGKILL hard cap: 5s
 /// - SIGKILL resend interval: 1s
-pub const DEFAULT_KILL_CONFIG: KillConfig = KillConfig::new(
+pub(crate) const DEFAULT_KILL_CONFIG: KillConfig = KillConfig::new(
     Duration::from_secs(5),
     Duration::from_millis(100),
     Duration::from_millis(500),
@@ -96,7 +96,7 @@ pub const DEFAULT_KILL_CONFIG: KillConfig = KillConfig::new(
 );
 
 #[cfg(unix)]
-pub fn force_kill_best_effort(pid: u32, executor: &dyn ProcessExecutor) -> bool {
+pub(crate) fn force_kill_best_effort(pid: u32, executor: &dyn ProcessExecutor) -> bool {
     let pid_str = pid.to_string();
     let process_group_id = format!("-{pid_str}");
 
@@ -233,7 +233,7 @@ fn kill_process_with_child(
 /// First attempts SIGTERM, waits for a grace period while verifying liveness,
 /// then escalates to SIGKILL if the process hasn't terminated.
 #[cfg(unix)]
-pub fn kill_process(
+pub(crate) fn kill_process(
     pid: u32,
     executor: &dyn ProcessExecutor,
     child: Option<&Arc<Mutex<Box<dyn AgentChild>>>>,

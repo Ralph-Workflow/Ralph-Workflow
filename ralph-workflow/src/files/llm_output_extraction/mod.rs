@@ -62,10 +62,6 @@ pub use cleaning::clean_plain_text;
 // Re-export public functions from commit module
 pub use commit::{try_extract_xml_commit_document_with_trace, CommitExtractionResult};
 
-// Re-export for tests
-#[cfg(test)]
-pub use commit::is_conventional_commit_subject;
-
 // Public exports for commit message XML validation
 pub use xsd_validation::validate_xml_against_xsd;
 

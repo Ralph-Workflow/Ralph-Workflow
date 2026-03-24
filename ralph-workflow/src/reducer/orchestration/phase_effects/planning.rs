@@ -26,7 +26,7 @@ use crate::reducer::state::{PipelineState, PromptMode, RebaseState};
 ///
 /// These files are cleaned up before each planning agent invocation to ensure
 /// fresh output. The planning agent writes to `.agent/tmp/plan.xml`.
-pub const REQUIRED_FILES: &[&str] = &[".agent/tmp/plan.xml"];
+pub(super) const REQUIRED_FILES: &[&str] = &[".agent/tmp/plan.xml"];
 
 pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
     if state.iteration == 0

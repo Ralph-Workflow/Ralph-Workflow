@@ -107,10 +107,17 @@ describe('WorkspaceService', () => {
   });
 
   it('should NOT use localStorage', () => {
-    const localStorageSpy = vi.spyOn(localStorage, 'getItem');
-    const setItemSpy = vi.spyOn(localStorage, 'setItem');
+    const storageProto = globalThis.Storage?.prototype;
+    if (!storageProto) {
+      expect('localStorage' in globalThis).toBe(false);
+      return;
+    }
+    const localStorageSpy = vi.spyOn(storageProto, 'getItem');
+    const setItemSpy = vi.spyOn(storageProto, 'setItem');
     expect(localStorageSpy).not.toHaveBeenCalled();
     expect(setItemSpy).not.toHaveBeenCalled();
+    localStorageSpy.mockRestore();
+    setItemSpy.mockRestore();
   });
 
   it('should set first workspace as active on load', () => {

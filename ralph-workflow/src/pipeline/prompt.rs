@@ -23,7 +23,7 @@ pub use run::run_with_prompt;
 pub use types::{PipelineRuntime, PromptCommand};
 
 /// Exit code returned when a process is killed due to SIGTERM.
-pub const SIGTERM_EXIT_CODE: i32 = 143;
+pub(super) const SIGTERM_EXIT_CODE: i32 = 143;
 
 #[cfg(test)]
 pub(crate) use io_agent_spawn_test::run_with_agent_spawn_with_monitor_config;

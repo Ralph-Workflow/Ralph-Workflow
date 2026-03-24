@@ -183,7 +183,7 @@ fn write_start_point_with_workspace(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn load_start_point_with_workspace(
+pub(super) fn load_start_point_with_workspace(
     workspace: &dyn Workspace,
     repo: &git2::Repository,
 ) -> iot::Result<StartPoint> {

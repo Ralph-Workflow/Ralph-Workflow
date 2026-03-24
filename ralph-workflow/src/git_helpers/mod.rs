@@ -136,18 +136,16 @@ pub use repo::{
 };
 
 #[cfg(any(test, feature = "test-utils"))]
-pub use review_baseline::load_review_baseline_with_workspace;
 pub use review_baseline::update_review_baseline_with_workspace;
 pub use review_baseline::{
     get_baseline_summary, get_review_baseline_info, load_review_baseline, update_review_baseline,
     ReviewBaseline,
 };
 #[cfg(any(test, feature = "test-utils"))]
-pub use start_commit::load_start_point_with_workspace;
+pub use start_commit::save_start_commit_with_workspace;
 pub use start_commit::{
     get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, git_oid_to_git2_oid,
-    load_start_point, reset_start_commit, save_start_commit, save_start_commit_with_workspace,
-    StartPoint,
+    load_start_point, reset_start_commit, save_start_commit, StartPoint,
 };
 pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_protections_silent_at, cleanup_agent_phase_silent,

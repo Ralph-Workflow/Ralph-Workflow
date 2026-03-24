@@ -28,7 +28,7 @@ pub struct CommandResult {
 
 /// Why the idle-timeout monitor stopped waiting for an agent process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdleTimeoutCause {
+pub(super) enum IdleTimeoutCause {
     /// The agent timed out with no qualifying child work present.
     NoQualifying,
     /// The agent timed out while child processes still existed but no longer showed

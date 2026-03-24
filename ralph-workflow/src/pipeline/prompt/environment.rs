@@ -20,7 +20,7 @@
 ///
 /// A new `HashMap` with the sanitized environment variables.
 #[must_use]
-pub fn sanitize_command_env(
+pub(super) fn sanitize_command_env(
     env_vars: std::collections::HashMap<String, String>,
     agent_env_vars: &std::collections::HashMap<String, String>,
     vars_to_sanitize: &[&str],

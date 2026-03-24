@@ -19,11 +19,11 @@ type StdoutChunkResult = Result<Vec<u8>, std::io::Error>;
 type StdoutTx = std::sync::mpsc::SyncSender<StdoutChunkResult>;
 type StdoutRx = std::sync::mpsc::Receiver<StdoutChunkResult>;
 
-pub fn create_stdout_channel() -> (StdoutTx, StdoutRx) {
+pub(crate) fn create_stdout_channel() -> (StdoutTx, StdoutRx) {
     crate::runtime::streaming::create_stdout_channel()
 }
 
-pub fn spawn_stdout_pump(
+pub(crate) fn spawn_stdout_pump(
     stdout: Box<dyn std::io::Read + Send>,
     activity_timestamp: SharedActivityTimestamp,
     tx: std::sync::mpsc::SyncSender<Result<Vec<u8>, std::io::Error>>,
@@ -32,7 +32,7 @@ pub fn spawn_stdout_pump(
     crate::runtime::streaming::spawn_stdout_pump(stdout, activity_timestamp, tx, cancel)
 }
 
-pub fn cleanup_stdout_pump(
+pub(crate) fn cleanup_stdout_pump(
     pump_handle: std::thread::JoinHandle<()>,
     cancel: &Arc<AtomicBool>,
     logger: &crate::logger::Logger,
@@ -147,7 +147,7 @@ fn should_use_json_parser(cmd: &PromptCommand<'_>) -> Result<bool, std::io::Erro
         || argv_requests_json(&split_command(cmd.cmd_str)?))
 }
 
-pub fn stream_agent_output_from_handle(
+pub(crate) fn stream_agent_output_from_handle(
     stdout: Box<dyn std::io::Read + Send>,
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,

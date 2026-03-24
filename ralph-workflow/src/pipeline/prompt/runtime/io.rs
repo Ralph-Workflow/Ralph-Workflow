@@ -61,7 +61,7 @@ fn await_exit_with_sigkill_resend(args: &ExitWaitArgs<'_>) -> bool {
     exited
 }
 
-pub fn terminate_child_best_effort(
+pub(super) fn terminate_child_best_effort(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     executor: &dyn crate::executor::ProcessExecutor,
     kill_config: KillConfig,
@@ -120,7 +120,7 @@ fn stop_monitor_if_exited(
     }
 }
 
-pub fn cleanup_after_agent_failure(
+pub(super) fn cleanup_after_agent_failure(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     monitor_should_stop: &Arc<std::sync::atomic::AtomicBool>,
     monitor_handle: &mut Option<

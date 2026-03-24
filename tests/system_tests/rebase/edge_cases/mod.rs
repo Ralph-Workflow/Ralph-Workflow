@@ -26,15 +26,15 @@
 use tempfile::TempDir;
 use test_helpers::{commit_all, init_git_repo, write_file};
 
-pub mod conflict_scenarios;
-pub mod noop_scenarios;
-pub mod validation;
+pub(crate) mod conflict_scenarios;
+pub(crate) mod noop_scenarios;
+pub(crate) mod validation;
 
 /// Initialize a git repository with an initial commit.
 ///
 /// This helper creates a repository with a single "initial.txt" file
 /// to establish a baseline commit for testing rebase scenarios.
-pub fn init_repo_with_initial_commit(dir: &TempDir) -> git2::Repository {
+pub(crate) fn init_repo_with_initial_commit(dir: &TempDir) -> git2::Repository {
     let repo = init_git_repo(dir);
     write_file(dir.path().join("initial.txt"), "initial content");
     let _ = commit_all(&repo, "initial commit");
@@ -45,7 +45,7 @@ pub fn init_repo_with_initial_commit(dir: &TempDir) -> git2::Repository {
 ///
 /// Returns the shorthand name of the current branch, defaulting to "main"
 /// if the branch cannot be determined.
-pub fn get_default_branch_name(repo: &git2::Repository) -> String {
+pub(crate) fn get_default_branch_name(repo: &git2::Repository) -> String {
     repo.head()
         .ok()
         .and_then(|h| h.shorthand().map(std::string::ToString::to_string))

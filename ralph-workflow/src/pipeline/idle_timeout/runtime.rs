@@ -146,7 +146,7 @@ fn sleep_until_next_check_or_stop(
 }
 
 /// Monitors activity and kills a process if idle timeout is exceeded.
-pub fn monitor_idle_timeout(
+pub(super) fn monitor_idle_timeout(
     activity_timestamp: &SharedActivityTimestamp,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     timeout: Duration,
@@ -169,7 +169,7 @@ pub fn monitor_idle_timeout(
 }
 
 /// Like [`monitor_idle_timeout`] but with a configurable check interval.
-pub fn monitor_idle_timeout_with_interval(
+pub(super) fn monitor_idle_timeout_with_interval(
     activity_timestamp: &SharedActivityTimestamp,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     timeout: Duration,
@@ -192,7 +192,7 @@ pub fn monitor_idle_timeout_with_interval(
     )
 }
 
-pub fn monitor_idle_timeout_with_interval_and_kill_config(
+pub(super) fn monitor_idle_timeout_with_interval_and_kill_config(
     activity_timestamp: &SharedActivityTimestamp,
     file_activity_config: Option<&FileActivityConfig>,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
@@ -893,7 +893,7 @@ fn run_monitor_loop(params: &MonitorParams<'_>) -> MonitorResult {
     }
 }
 
-pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+pub(super) fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     activity_timestamp: &SharedActivityTimestamp,
     file_activity_config: Option<&FileActivityConfig>,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,

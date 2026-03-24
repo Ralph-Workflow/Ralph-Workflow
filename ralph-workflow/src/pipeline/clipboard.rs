@@ -4,7 +4,7 @@ use crate::platform::Platform;
 
 /// Platform-specific clipboard command configuration.
 #[derive(Clone)]
-pub struct ClipboardCommand {
+pub(super) struct ClipboardCommand {
     pub binary: &'static str,
     pub args: &'static [&'static str],
     pub paste_hint: &'static str,
@@ -13,14 +13,14 @@ pub struct ClipboardCommand {
 /// Get platform-specific clipboard command using default process executor.
 ///
 /// Returns None if no clipboard command is available for current platform.
-pub fn get_platform_clipboard_command() -> Option<ClipboardCommand> {
+pub(super) fn get_platform_clipboard_command() -> Option<ClipboardCommand> {
     get_platform_clipboard_command_with_executor(&crate::RealProcessExecutor::new())
 }
 
 /// Get platform-specific clipboard command with a provided process executor.
 ///
 /// Returns None if no clipboard command is available for current platform.
-pub fn get_platform_clipboard_command_with_executor(
+pub(super) fn get_platform_clipboard_command_with_executor(
     executor: &dyn crate::ProcessExecutor,
 ) -> Option<ClipboardCommand> {
     let platform = Platform::detect_with_executor(executor);

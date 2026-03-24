@@ -14,7 +14,8 @@ use std::sync::Arc;
 /// System tests use real git operations via `git2` library, but still need
 /// mock executors for Ralph's process execution layer which is separate
 /// from direct `git2` calls.
-pub fn mock_executor_for_git_success() -> Arc<dyn ralph_workflow::executor::ProcessExecutor> {
+pub(crate) fn mock_executor_for_git_success() -> Arc<dyn ralph_workflow::executor::ProcessExecutor>
+{
     Arc::new(
         ralph_workflow::executor::MockProcessExecutor::new()
             // git status --porcelain (clean working tree)

@@ -38,7 +38,7 @@ use crate::reducer::state::{CommitState, PipelineState, PromptMode};
 /// fresh output. The commit agent writes to `.agent/tmp/commit_message.xml`.
 ///
 /// Note: XSD retry handling skips cleanup on attempt > 1 (see above).
-pub const REQUIRED_FILES: &[&str] = &[".agent/tmp/commit_message.xml"];
+pub(super) const REQUIRED_FILES: &[&str] = &[".agent/tmp/commit_message.xml"];
 
 pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
     // Commit phase requires explicit agent chain initialization like other phases

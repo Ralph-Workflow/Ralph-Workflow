@@ -53,7 +53,7 @@ impl<T: Clone + Default> Default for MockResult<T> {
 ///
 /// Captures all calls and allows tests to control what each execution returns.
 #[derive(Debug)]
-pub(crate) struct MockProcessExecutor {
+pub struct MockProcessExecutor {
     execute_calls: Mutex<Vec<ExecuteCall>>,
     results: Mutex<HashMap<String, MockResult<ProcessOutput>>>,
     default_result: Mutex<MockResult<ProcessOutput>>,
@@ -95,12 +95,12 @@ impl Default for MockProcessExecutor {
 
 impl MockProcessExecutor {
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     #[must_use]
-    pub(crate) fn new_error() -> Self {
+    pub fn new_error() -> Self {
         fn err_result<T: Clone>(msg: &str) -> MockResult<T> {
             MockResult::Err {
                 kind: io::ErrorKind::Other,
@@ -124,7 +124,7 @@ impl MockProcessExecutor {
     ///
     /// Panics if the mutex is poisoned.
     #[must_use]
-    pub(crate) fn with_result(self, command: &str, result: io::Result<ProcessOutput>) -> Self {
+    pub fn with_result(self, command: &str, result: io::Result<ProcessOutput>) -> Self {
         self.results
             .lock()
             .unwrap()
@@ -133,7 +133,7 @@ impl MockProcessExecutor {
     }
 
     #[must_use]
-    pub(crate) fn with_output(self, command: &str, stdout: &str) -> Self {
+    pub fn with_output(self, command: &str, stdout: &str) -> Self {
         #[cfg(unix)]
         use std::os::unix::process::ExitStatusExt;
 
@@ -153,7 +153,7 @@ impl MockProcessExecutor {
     }
 
     #[must_use]
-    pub(crate) fn with_error(self, command: &str, stderr: &str) -> Self {
+    pub fn with_error(self, command: &str, stderr: &str) -> Self {
         #[cfg(unix)]
         use std::os::unix::process::ExitStatusExt;
 
@@ -173,28 +173,28 @@ impl MockProcessExecutor {
     }
 
     #[must_use]
-    pub(crate) fn with_io_error(self, command: &str, kind: io::ErrorKind, message: &str) -> Self {
+    pub fn with_io_error(self, command: &str, kind: io::ErrorKind, message: &str) -> Self {
         self.with_result(command, Err(io::Error::new(kind, message)))
     }
 
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn execute_count(&self) -> usize {
+    pub fn execute_count(&self) -> usize {
         self.execute_calls.lock().unwrap().len()
     }
 
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn execute_calls(&self) -> Vec<ExecuteCall> {
+    pub fn execute_calls(&self) -> Vec<ExecuteCall> {
         self.execute_calls.lock().unwrap().clone()
     }
 
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn execute_calls_for(&self, command: &str) -> Vec<ExecuteCall> {
+    pub fn execute_calls_for(&self, command: &str) -> Vec<ExecuteCall> {
         self.execute_calls
             .lock()
             .unwrap()
@@ -207,7 +207,7 @@ impl MockProcessExecutor {
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn reset_calls(&self) {
+    pub fn reset_calls(&self) {
         self.execute_calls.lock().unwrap().clear();
         self.agent_calls.lock().unwrap().clear();
     }
@@ -216,7 +216,7 @@ impl MockProcessExecutor {
     ///
     /// Panics if the mutex is poisoned.
     #[must_use]
-    pub(crate) fn with_agent_result(
+    pub fn with_agent_result(
         self,
         command_pattern: &str,
         result: io::Result<AgentCommandResult>,
@@ -231,14 +231,14 @@ impl MockProcessExecutor {
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn agent_calls(&self) -> Vec<AgentSpawnConfig> {
+    pub fn agent_calls(&self) -> Vec<AgentSpawnConfig> {
         self.agent_calls.lock().unwrap().clone()
     }
 
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn agent_calls_for(&self, command_pattern: &str) -> Vec<AgentSpawnConfig> {
+    pub fn agent_calls_for(&self, command_pattern: &str) -> Vec<AgentSpawnConfig> {
         self.agent_calls
             .lock()
             .unwrap()
@@ -257,7 +257,7 @@ impl MockProcessExecutor {
     ///
     /// Panics if the mutex is poisoned.
     #[must_use]
-    pub(crate) fn with_active_children_for(self, parent_pid: u32) -> Self {
+    pub fn with_active_children_for(self, parent_pid: u32) -> Self {
         self.active_children.lock().unwrap().insert(
             parent_pid,
             ChildProcessInfo {
@@ -276,7 +276,7 @@ impl MockProcessExecutor {
     ///
     /// Panics if the mutex is poisoned.
     #[must_use]
-    pub(crate) fn with_active_children_info(self, parent_pid: u32, info: ChildProcessInfo) -> Self {
+    pub fn with_active_children_info(self, parent_pid: u32, info: ChildProcessInfo) -> Self {
         self.active_children
             .lock()
             .unwrap()
@@ -293,7 +293,7 @@ impl MockProcessExecutor {
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn add_active_children_info(&self, parent_pid: u32, info: ChildProcessInfo) {
+    pub fn add_active_children_info(&self, parent_pid: u32, info: ChildProcessInfo) {
         self.active_children
             .lock()
             .unwrap()
@@ -309,7 +309,7 @@ impl MockProcessExecutor {
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn set_child_cpu_time(&self, parent_pid: u32, cpu_time_ms: u64) {
+    pub fn set_child_cpu_time(&self, parent_pid: u32, cpu_time_ms: u64) {
         let mut children = self.active_children.lock().unwrap();
         match children.get_mut(&parent_pid) {
             Some(info) => info.cpu_time_ms = cpu_time_ms,
@@ -334,7 +334,7 @@ impl MockProcessExecutor {
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
-    pub(crate) fn remove_active_children_for(&self, parent_pid: u32) {
+    pub fn remove_active_children_for(&self, parent_pid: u32) {
         self.active_children.lock().unwrap().remove(&parent_pid);
     }
 
@@ -344,7 +344,7 @@ impl MockProcessExecutor {
     ///
     /// Panics if the mutex is poisoned.
     #[must_use]
-    pub(crate) fn child_info_query_count_for(&self, parent_pid: u32) -> u32 {
+    pub fn child_info_query_count_for(&self, parent_pid: u32) -> u32 {
         self.child_info_queries
             .lock()
             .unwrap()

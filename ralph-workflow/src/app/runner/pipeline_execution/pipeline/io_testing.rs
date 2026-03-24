@@ -19,7 +19,7 @@
 /// - Pipeline execution fails
 /// - Effect handling fails
 #[cfg(feature = "test-utils")]
-pub fn run_pipeline_with_effect_handler<'ctx, H>(
+fn run_pipeline_with_effect_handler<'ctx, H>(
     ctx: &PipelineContext,
     effect_handler: &mut H,
 ) -> anyhow::Result<()>

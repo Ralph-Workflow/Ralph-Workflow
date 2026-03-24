@@ -43,11 +43,11 @@ use std::time::Duration;
 ///
 /// System tests are allowed to perform real git operations which may take
 /// longer than mocked integration tests.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Error type for timeout failures.
 #[derive(Debug)]
-pub struct TimeoutError {
+pub(crate) struct TimeoutError {
     pub timeout: Duration,
 }
 
@@ -78,7 +78,7 @@ impl std::error::Error for TimeoutError {}
 /// To support that, tests can register best-effort cleanup callbacks via
 /// [`register_timeout_cleanup`]. These callbacks are invoked immediately before
 /// timing out.
-pub fn with_timeout<F>(f: F, timeout: Duration)
+pub(crate) fn with_timeout<F>(f: F, timeout: Duration)
 where
     F: FnOnce() + Send + 'static,
 {
@@ -123,7 +123,7 @@ static TIMEOUT_CLEANUPS: OnceLock<Mutex<Vec<TimeoutCleanup>>> = OnceLock::new();
 ///
 /// Callbacks run in the timing thread (not the test worker thread), and are
 /// intended for emergency cleanup like killing child processes.
-pub fn register_timeout_cleanup(cleanup: TimeoutCleanup) {
+pub(crate) fn register_timeout_cleanup(cleanup: TimeoutCleanup) {
     let cleanups = TIMEOUT_CLEANUPS.get_or_init(|| Mutex::new(Vec::new()));
     let mut guard = cleanups
         .lock()
@@ -157,7 +157,7 @@ fn clear_timeout_cleanups() {
 ///
 /// This is a convenience wrapper around `with_timeout` that uses
 /// the standard system test timeout.
-pub fn with_default_timeout<F>(f: F)
+pub(crate) fn with_default_timeout<F>(f: F)
 where
     F: FnOnce() + Send + 'static,
 {

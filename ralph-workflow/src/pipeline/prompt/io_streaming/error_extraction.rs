@@ -1,7 +1,7 @@
 use std::path::Path;
 
 /// Extract `session_id` from a log file.
-pub fn extract_session_id_from_logfile(
+pub(crate) fn extract_session_id_from_logfile(
     logfile: &str,
     workspace: &dyn crate::workspace::Workspace,
 ) -> Option<String> {

@@ -129,12 +129,19 @@ describe('PreferencesService', () => {
     });
 
     it('should NOT use localStorage', async () => {
-      const getItemSpy = vi.spyOn(localStorage, 'getItem');
-      const setItemSpy = vi.spyOn(localStorage, 'setItem');
+      const storageProto = globalThis.Storage?.prototype;
+      if (!storageProto) {
+        expect('localStorage' in globalThis).toBe(false);
+        return;
+      }
+      const getItemSpy = vi.spyOn(storageProto, 'getItem');
+      const setItemSpy = vi.spyOn(storageProto, 'setItem');
       service = createService();
       await Promise.resolve();
       expect(getItemSpy).not.toHaveBeenCalled();
       expect(setItemSpy).not.toHaveBeenCalled();
+      getItemSpy.mockRestore();
+      setItemSpy.mockRestore();
     });
   });
 

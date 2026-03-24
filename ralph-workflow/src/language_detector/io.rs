@@ -279,7 +279,7 @@ fn process_dir_queue(
     }
 }
 
-pub fn count_extensions_with_workspace(
+pub(crate) fn count_extensions_with_workspace(
     workspace: &dyn Workspace,
     relative_root: &Path,
 ) -> std::io::Result<HashMap<String, usize>> {
@@ -378,7 +378,7 @@ fn detect_tests_recurse(
     }
 }
 
-pub fn detect_tests_with_workspace(
+pub(crate) fn detect_tests_with_workspace(
     workspace: &dyn Workspace,
     relative_root: &Path,
     primary_lang: &str,

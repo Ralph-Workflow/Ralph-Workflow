@@ -43,7 +43,7 @@ pub type SharedActivityTimestamp = Arc<AtomicU64>;
 
 pub type SharedFileActivityTracker = Arc<inner::FileActivityTrackerInner>;
 
-pub mod inner {
+pub(super) mod inner {
     use crate::pipeline::idle_timeout::FileActivityTracker;
 
     pub struct FileActivityTrackerInner(pub FileActivityTracker);

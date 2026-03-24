@@ -8,7 +8,7 @@ use crate::common::domain_types::{
 };
 
 #[must_use]
-pub fn load_cloud_config_from_env() -> CloudConfig {
+pub(crate) fn load_cloud_config_from_env() -> CloudConfig {
     super::boundary::load_cloud_config_from_env()
 }
 

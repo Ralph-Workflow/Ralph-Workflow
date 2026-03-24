@@ -61,7 +61,7 @@ use crate::reducer::effect::Effect;
 use crate::reducer::event::PipelinePhase;
 use crate::reducer::state::PipelineState;
 
-pub fn determine_next_effect_for_phase(state: &PipelineState) -> Effect {
+pub(super) fn determine_next_effect_for_phase(state: &PipelineState) -> Effect {
     match state.phase {
         PipelinePhase::Planning => planning::determine_planning_effect(state),
         PipelinePhase::Development => development::determine_development_effect(state),

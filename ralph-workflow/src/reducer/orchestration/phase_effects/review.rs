@@ -47,14 +47,14 @@ use crate::reducer::state::{PipelineState, PromptMode};
 ///
 /// These files are cleaned up before each review agent invocation to ensure
 /// fresh output. The review agent writes to `.agent/tmp/issues.xml`.
-pub const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
+pub(super) const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
 
 /// Files that the fix agent writes.
 ///
 /// These files are cleaned up before each fix agent invocation to ensure
 /// fresh output. The fix agent writes to `.agent/tmp/fix_result.xml`.
 /// When fix analysis is enabled, the analysis agent writes to `.agent/tmp/development_result.xml`.
-pub const REQUIRED_FILES_FIX: &[&str] = &[
+pub(super) const REQUIRED_FILES_FIX: &[&str] = &[
     ".agent/tmp/fix_result.xml",
     ".agent/tmp/development_result.xml",
 ];

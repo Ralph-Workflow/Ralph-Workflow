@@ -114,7 +114,7 @@ mod tests {
     use std::fs;
 
     /// Create a mock API catalog for testing.
-    pub fn mock_api_catalog() -> ApiCatalog {
+    fn mock_api_catalog() -> ApiCatalog {
         let providers = HashMap::from([
             (
                 "opencode".to_string(),

@@ -1,7 +1,7 @@
 /// Print a short list of common Work Guides.
 ///
 /// Shows the most commonly used Work Guides with a note to use --list-work-guides for more.
-pub fn print_common_work_guides(colors: Colors) {
+pub(super) fn print_common_work_guides(colors: Colors) {
     let _ = writeln!(
         std::io::stdout(),
         "{}Common Work Guides:{}",

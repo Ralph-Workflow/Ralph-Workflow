@@ -46,7 +46,12 @@ impl MainEffectHandler {
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
         let session_drain = SessionDrain::from(drain);
-        let session = AgentSession::for_drain(run_id, session_drain, attempt);
+        let session = AgentSession::for_drain_with_created_at(
+            run_id,
+            session_drain,
+            attempt,
+            SystemTime::now(),
+        );
         let handshake = SessionHandshake::from_session(&session);
 
         // Log the session handshake for RFC-009 audit trail

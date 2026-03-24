@@ -4,11 +4,11 @@ const RETRY_NOTE_HEADER_PREFIX: &str = "## Retry Note (attempt ";
 const RETRY_NOTE_END_SENTINEL: &str =
     "- Always produce valid XML output that matches the schema.\n";
 
-pub fn is_same_agent_retry_prompt(prompt: &str) -> bool {
+pub(crate) fn is_same_agent_retry_prompt(prompt: &str) -> bool {
     prompt.starts_with(RETRY_NOTE_HEADER_PREFIX)
 }
 
-pub fn strip_existing_same_agent_retry_preamble(prompt: &str) -> &str {
+pub(crate) fn strip_existing_same_agent_retry_preamble(prompt: &str) -> &str {
     if !prompt.starts_with(RETRY_NOTE_HEADER_PREFIX) {
         return prompt;
     }
@@ -21,7 +21,7 @@ pub fn strip_existing_same_agent_retry_preamble(prompt: &str) -> &str {
     after_sentinel.trim_start_matches('\n')
 }
 
-pub fn same_agent_retry_preamble(continuation: &ContinuationState) -> String {
+pub(crate) fn same_agent_retry_preamble(continuation: &ContinuationState) -> String {
     let attempt = continuation.same_agent_retry_count;
     let reason_line = retry_reason_line(continuation);
 

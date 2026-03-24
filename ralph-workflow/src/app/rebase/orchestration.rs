@@ -5,7 +5,7 @@ use crate::logger::{Colors, Logger};
 use crate::phases::PhaseContext;
 use crate::ProcessExecutor;
 
-pub struct InitialRebaseRunResult {
+pub(crate) struct InitialRebaseRunResult {
     pub outcome: InitialRebaseOutcome,
     /// Prompt replay observability for conflict-resolution prompts.
     pub prompt_replay_hits: Vec<(String, bool)>,

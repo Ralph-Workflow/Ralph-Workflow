@@ -175,10 +175,7 @@ impl OpenCodeParser {
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
     ) -> std::io::Result<crate::json_parser::incremental_parser::IncrementalNdjsonParser> {
-        loop {
-            let Some(data) = read_next_chunk(reader)? else {
-                break;
-            };
+        while let Some(data) = read_next_chunk(reader)? {
             let (new_parser, batch) = feed_chunk_data(parser, &data);
             parser = new_parser;
             batch.into_iter().try_for_each(|line| {

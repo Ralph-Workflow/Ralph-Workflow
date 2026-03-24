@@ -5,8 +5,6 @@
 //! - Text truncation for display
 //! - Secret redaction for logging
 
-mod io;
-
 /// Split a shell-like command string into argv parts.
 ///
 /// Supports quotes and backslash escapes (e.g. `cmd --flag "a b"`).
@@ -63,73 +61,11 @@ pub(crate) fn is_sensitive_key(key: &str) -> bool {
     )
 }
 
-fn redact_arg_value(key: &str, value: &str) -> String {
-    if is_sensitive_key(key) {
-        return "<redacted>".to_string();
-    }
-    io::secret_like_regex().map_or_else(
-        || value.to_string(),
-        |re| re.replace_all(value, "<redacted>").to_string(),
-    )
-}
-
-fn shell_quote_for_log(arg: &str) -> String {
-    if arg.is_empty() {
-        return "''".to_string();
-    }
-    if !arg
-        .chars()
-        .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '\\'))
-    {
-        return arg.to_string();
-    }
-    let escaped = arg.replace('\'', r#"'\"'\"'"#);
-    format!("'{escaped}'")
-}
-
 /// Format argv for logs, redacting likely secrets.
+///
+/// This delegates to the boundary module which handles regex-based redaction.
 pub fn format_argv_for_log(argv: &[String]) -> String {
-    // Use indices to track state across iterations - simpler than scan for this use case
-    let indices = 0..argv.len();
-    let out: Vec<String> = indices
-        .map(|i| {
-            let arg = &argv[i];
-            // Check if previous arg was a sensitive key that should trigger redaction
-            let prev_was_sensitive = i > 0 && is_sensitive_key(&argv[i - 1]);
-
-            if prev_was_sensitive {
-                return "<redacted>".to_string();
-            }
-
-            if let Some((k, v)) = arg.split_once('=') {
-                // Flag-style (--token=...) or env-style (GITHUB_TOKEN=...)
-                let env_key = k.to_ascii_uppercase();
-                let looks_like_secret_env = env_key.contains("TOKEN")
-                    || env_key.contains("SECRET")
-                    || env_key.contains("PASSWORD")
-                    || env_key.contains("PASS")
-                    || env_key.contains("KEY");
-                if is_sensitive_key(k) || looks_like_secret_env {
-                    return format!("{}=<redacted>", shell_quote_for_log(k));
-                }
-                let redacted = redact_arg_value(k, v);
-                return shell_quote_for_log(&format!("{k}={redacted}"));
-            }
-
-            if is_sensitive_key(arg) {
-                // Return as-is, next iteration will redact
-                return arg.to_string();
-            }
-
-            let redacted = io::secret_like_regex().map_or_else(
-                || arg.clone(),
-                |re| re.replace_all(arg, "<redacted>").to_string(),
-            );
-            shell_quote_for_log(&redacted)
-        })
-        .collect();
-
-    out.join(" ")
+    crate::common::io::format_argv_for_log(argv)
 }
 
 /// Truncate text to a limit with ellipsis.

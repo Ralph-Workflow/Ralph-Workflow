@@ -22,13 +22,16 @@ mod template_types;
 // Note: TemplateMetadata and VariableInfo are defined in template_types.rs
 // but not re-exported here because they're not currently used by any consumers.
 // If needed in the future, they can be added to this re-export list.
-pub use syntax_validation::validate_syntax;
+pub(crate) use syntax_validation::validate_syntax;
 pub use template_extraction::{extract_metadata, extract_partials, extract_variables};
 pub use template_types::{
     RenderedPromptError, RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
-    TemplateMetadata, TemplateVariablesInvalidError, ValidationError, ValidationResult,
-    ValidationWarning, VariableInfo,
+    TemplateMetadata, TemplateVariablesInvalidError, ValidationError, ValidationWarning,
+    VariableInfo,
 };
+
+// Private import for internal use
+use template_types::ValidationResult;
 
 /// Validate a complete template.
 ///

@@ -63,7 +63,7 @@ pub(crate) fn exit_sigint() -> ! {
 /// This is called from the signal handler to ensure the prompt file
 /// is not left read-only if the process is interrupted.
 #[cfg(unix)]
-pub fn restore_prompt_md_writable(path: &Path) -> bool {
+pub(crate) fn restore_prompt_md_writable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
     fn make_writable(path: &Path) -> bool {
@@ -98,16 +98,16 @@ pub(crate) fn restore_prompt_md_writable_in_repo(repo_root: &Path) -> bool {
 }
 
 #[cfg(not(unix))]
-pub fn restore_prompt_md_writable(_path: &Path) -> bool {
+pub(crate) fn restore_prompt_md_writable(_path: &Path) -> bool {
     false
 }
 
 #[cfg(not(unix))]
-pub fn restore_prompt_md_writable_in_repo(_repo_root: &Path) -> bool {
+pub(crate) fn restore_prompt_md_writable_in_repo(_repo_root: &Path) -> bool {
     false
 }
 
 /// Remove the .git/ralph directory using std::fs.
-pub fn remove_ralph_dir(repo_root: &Path) {
+pub(crate) fn remove_ralph_dir(repo_root: &Path) {
     let _ = std::fs::remove_dir_all(repo_root.join(".git/ralph"));
 }

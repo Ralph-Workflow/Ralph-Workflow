@@ -4,7 +4,10 @@ use crate::reducer::state::{
     MaterializedReviewInputs, MaterializedXsdRetryLastOutput, PipelineState,
 };
 
-pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) -> PipelineState {
+pub(super) fn reduce_prompt_input_event(
+    state: PipelineState,
+    event: PromptInputEvent,
+) -> PipelineState {
     match event {
         PromptInputEvent::OversizeDetected { .. } => state,
         PromptInputEvent::PlanningInputsMaterialized { iteration, prompt } => PipelineState {

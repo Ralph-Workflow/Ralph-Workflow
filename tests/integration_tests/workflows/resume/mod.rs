@@ -19,11 +19,11 @@ mod rebase;
 mod v3;
 
 /// Mock repository path used consistently across resume tests.
-pub const MOCK_REPO_PATH: &str = "/mock/repo";
+pub(crate) const MOCK_REPO_PATH: &str = "/mock/repo";
 
 /// Standard prompt content for tests - matches the required PROMPT.md format.
 /// NOTE: If you change this, run `verify_standard_prompt_checksum` to get the updated hash.
-pub const STANDARD_PROMPT: &str = r"## Goal
+pub(crate) const STANDARD_PROMPT: &str = r"## Goal
 
 Do something.
 
@@ -36,7 +36,7 @@ Do something.
 ///
 /// This constant is verified against the actual prompt content at test time
 /// by [`verify_standard_prompt_checksum`] to prevent silent drift.
-pub const STANDARD_PROMPT_CHECKSUM: &str =
+pub(crate) const STANDARD_PROMPT_CHECKSUM: &str =
     "f3172db90fb9245992bd8ad018ed77821a8765c16d57ca889dc2aa8501953556";
 
 /// Guard test: verifies `STANDARD_PROMPT_CHECKSUM` matches the actual
@@ -55,7 +55,7 @@ fn verify_standard_prompt_checksum() {
 
 /// Helper function to create a valid v3 checkpoint JSON with all required fields.
 /// Always sets `developer_iters` and `reviewer_reviews` to 0 to prevent agent execution.
-pub fn make_checkpoint_json(
+pub(crate) fn make_checkpoint_json(
     working_dir: &str,
     phase: &str,
     iteration: u32,
@@ -118,7 +118,7 @@ pub fn make_checkpoint_json(
 }
 
 /// Helper function to create a v3 checkpoint JSON with execution history.
-pub fn make_checkpoint_with_execution_history(
+pub(crate) fn make_checkpoint_with_execution_history(
     working_dir: &str,
     phase: &str,
     execution_history_json: &str,
@@ -180,7 +180,7 @@ pub fn make_checkpoint_with_execution_history(
 }
 
 /// Helper function to create a v3 checkpoint JSON with file system state.
-pub fn make_checkpoint_with_file_system_state(
+pub(crate) fn make_checkpoint_with_file_system_state(
     working_dir: &str,
     phase: &str,
     file_system_state_json: &str,
@@ -242,7 +242,7 @@ pub fn make_checkpoint_with_file_system_state(
 }
 
 /// Helper function to create a v3 checkpoint JSON with prompt history.
-pub fn make_checkpoint_with_prompt_history(
+pub(crate) fn make_checkpoint_with_prompt_history(
     working_dir: &str,
     phase: &str,
     prompt_history_json: &str,

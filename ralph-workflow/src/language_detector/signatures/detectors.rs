@@ -45,7 +45,7 @@ impl DetectionResults {
     }
 
     #[must_use]
-    pub fn with_framework(self, framework: impl Into<String>) -> Self {
+    pub(super) fn with_framework(self, framework: impl Into<String>) -> Self {
         Self {
             frameworks: push_unique(self.frameworks, framework),
             test_frameworks: self.test_frameworks,
@@ -54,7 +54,7 @@ impl DetectionResults {
     }
 
     #[must_use]
-    pub fn with_test_framework(self, framework: impl Into<String>) -> Self {
+    pub(super) fn with_test_framework(self, framework: impl Into<String>) -> Self {
         Self {
             frameworks: self.frameworks,
             test_frameworks: push_unique(self.test_frameworks, framework),
@@ -63,7 +63,7 @@ impl DetectionResults {
     }
 
     #[must_use]
-    pub fn with_package_manager(self, manager: impl Into<String>) -> Self {
+    pub(super) fn with_package_manager(self, manager: impl Into<String>) -> Self {
         Self {
             frameworks: self.frameworks,
             test_frameworks: self.test_frameworks,

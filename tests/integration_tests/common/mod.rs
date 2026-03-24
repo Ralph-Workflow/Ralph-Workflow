@@ -58,7 +58,7 @@ use std::sync::Arc;
 ///
 /// Eliminates `PhaseContext` construction boilerplate across integration tests.
 /// Supports optional cloud reporter and custom workspace configurations.
-pub struct IntegrationFixture {
+pub(crate) struct IntegrationFixture {
     pub config: ralph_workflow::config::Config,
     pub colors: ralph_workflow::logger::Colors,
     pub logger: ralph_workflow::logger::Logger,
@@ -75,7 +75,7 @@ pub struct IntegrationFixture {
 
 impl IntegrationFixture {
     /// Creates a new fixture with default `MemoryWorkspace`.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let repo_root = PathBuf::from("/test/repo");
         let workspace: Arc<dyn ralph_workflow::workspace::Workspace> =
             Arc::new(ralph_workflow::workspace::MemoryWorkspace::new(repo_root));
@@ -83,7 +83,7 @@ impl IntegrationFixture {
     }
 
     /// Creates a fixture with a custom workspace.
-    pub fn with_workspace(workspace: Arc<dyn ralph_workflow::workspace::Workspace>) -> Self {
+    pub(crate) fn with_workspace(workspace: Arc<dyn ralph_workflow::workspace::Workspace>) -> Self {
         let config = ralph_workflow::config::Config::default();
         let colors = ralph_workflow::logger::Colors::new();
         let repo_root = workspace.root().to_path_buf();
@@ -113,7 +113,7 @@ impl IntegrationFixture {
     ///
     /// Pass `cloud_reporter` as `None` for tests that don't need cloud reporting,
     /// or `Some(&reporter)` for cloud integration tests.
-    pub fn ctx<'a>(
+    pub(crate) fn ctx<'a>(
         &'a mut self,
         cloud_reporter: Option<&'a dyn ralph_workflow::cloud::CloudReporter>,
     ) -> ralph_workflow::phases::PhaseContext<'a> {
@@ -257,7 +257,7 @@ fn sync_workspace_to_handler(
 }
 
 /// Mark prompt permissions as already locked for tests that assert phase effects.
-pub fn with_locked_prompt_permissions(mut state: PipelineState) -> PipelineState {
+pub(crate) fn with_locked_prompt_permissions(mut state: PipelineState) -> PipelineState {
     state.prompt_permissions = PromptPermissionsState {
         locked: true,
         restore_needed: true,
@@ -301,7 +301,7 @@ pub fn with_locked_prompt_permissions(mut state: PipelineState) -> PipelineState
 /// // Verify effects were captured
 /// assert!(handler.captured().iter().any(|e| matches!(e, AppEffect::GitResetStartCommit)));
 /// ```
-pub fn run_ralph_cli_with_handler(
+pub(crate) fn run_ralph_cli_with_handler(
     args: &[&str],
     executor: Arc<dyn ralph_workflow::executor::ProcessExecutor>,
     config: ralph_workflow::config::Config,
@@ -405,7 +405,7 @@ pub fn run_ralph_cli_with_handler(
 /// assert!(app_handler.captured().iter().any(|e| matches!(e, AppEffect::GitRequireRepo)));
 /// assert!(effect_handler.captured_effects().iter().any(|e| matches!(e, Effect::CreateCommit { .. })));
 /// ```
-pub fn run_ralph_cli_with_handlers(
+pub(crate) fn run_ralph_cli_with_handlers(
     args: &[&str],
     executor: Arc<dyn ralph_workflow::executor::ProcessExecutor>,
     config: ralph_workflow::config::Config,
@@ -471,7 +471,7 @@ pub fn run_ralph_cli_with_handlers(
 /// This is like `run_ralph_cli_with_handlers`, but allows injecting any reducer-layer
 /// `EffectHandler` (e.g., `MainEffectHandler`) while still using `MockAppEffectHandler`
 /// and `MemoryWorkspace` for isolation.
-pub fn run_ralph_cli_with_custom_effect_handler<'ctx, E>(
+pub(crate) fn run_ralph_cli_with_custom_effect_handler<'ctx, E>(
     args: &[&str],
     executor: Arc<dyn ralph_workflow::executor::ProcessExecutor>,
     config: ralph_workflow::config::Config,
@@ -566,7 +566,7 @@ where
 /// // Verify config file was created
 /// assert!(env.was_written(Path::new("/test/config/ralph-workflow.toml")));
 /// ```
-pub fn run_ralph_cli_with_env(
+pub(crate) fn run_ralph_cli_with_env(
     args: &[&str],
     executor: Arc<dyn ralph_workflow::executor::ProcessExecutor>,
     config: ralph_workflow::config::Config,
@@ -649,7 +649,7 @@ pub fn run_ralph_cli_with_env(
 /// - whoami - returns "testuser"
 /// - hostname - returns "localhost"
 /// - cargo commands - return empty success
-pub fn mock_executor_with_success() -> Arc<dyn ralph_workflow::executor::ProcessExecutor> {
+pub(crate) fn mock_executor_with_success() -> Arc<dyn ralph_workflow::executor::ProcessExecutor> {
     Arc::new(
         ralph_workflow::executor::MockProcessExecutor::new()
             // git commands - return empty success (clean working tree)
@@ -721,14 +721,14 @@ pub fn mock_executor_with_success() -> Arc<dyn ralph_workflow::executor::Process
 ///     });
 /// }
 /// ```
-pub fn create_test_config_struct() -> ralph_workflow::config::Config {
+pub(crate) fn create_test_config_struct() -> ralph_workflow::config::Config {
     ralph_workflow::config::Config::test_default()
 }
 
 /// Create a test Config with custom isolation mode setting.
 ///
 /// This is useful for tests that specifically need to test isolation mode behavior.
-pub fn create_test_config_struct_with_isolation(
+pub(crate) fn create_test_config_struct_with_isolation(
     isolation_mode: bool,
 ) -> ralph_workflow::config::Config {
     ralph_workflow::config::Config::test_default().with_isolation_mode(isolation_mode)
@@ -737,7 +737,7 @@ pub fn create_test_config_struct_with_isolation(
 /// Create a minimal agent registry for tests.
 ///
 /// Returns a registry with built-in agents only (no config file loading).
-pub fn create_test_registry() -> ralph_workflow::agents::AgentRegistry {
+pub(crate) fn create_test_registry() -> ralph_workflow::agents::AgentRegistry {
     ralph_workflow::agents::AgentRegistry::with_builtins_only()
 }
 
@@ -746,7 +746,7 @@ pub fn create_test_registry() -> ralph_workflow::agents::AgentRegistry {
 /// Used by CCS delta spam tests to verify that parser output does not
 /// repeat prefixed lines (e.g., `[ccs/glm]`) for every delta event.
 #[must_use]
-pub fn count_prefixed_lines(output: &str, prefix: &str) -> usize {
+pub(crate) fn count_prefixed_lines(output: &str, prefix: &str) -> usize {
     output
         .lines()
         .filter(|line| !line.trim().is_empty() && line.contains(prefix))
@@ -758,7 +758,7 @@ pub fn count_prefixed_lines(output: &str, prefix: &str) -> usize {
 /// Used in CCS delta spam test failure messages to show a sample of
 /// the repeated output.
 #[must_use]
-pub fn extract_spam_excerpt(output: &str, prefix: &str, max_lines: usize) -> String {
+pub(crate) fn extract_spam_excerpt(output: &str, prefix: &str, max_lines: usize) -> String {
     output
         .lines()
         .filter(|line| line.contains(prefix))

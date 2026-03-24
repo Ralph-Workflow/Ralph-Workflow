@@ -12,7 +12,7 @@ use crate::reducer::state::PromptMode;
 /// This helper converts that mode into a specific execution path,
 /// removing policy branching from the boundary layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DevelopmentPromptExecutionPath {
+pub(crate) enum DevelopmentPromptExecutionPath {
     /// Execute normal development prompt flow
     Normal,
     /// Execute continuation prompt flow with attempt context
@@ -27,7 +27,7 @@ pub enum DevelopmentPromptExecutionPath {
 ///
 /// **Pure function**: Translates PromptMode policy decision into execution path.
 /// Boundary uses returned path to dispatch to appropriate helper (no branching on mode).
-pub fn derive_development_prompt_execution_path(
+pub(crate) fn derive_development_prompt_execution_path(
     prompt_mode: PromptMode,
 ) -> DevelopmentPromptExecutionPath {
     // Orchestrator already decided the mode based on state/retry/continuation logic.

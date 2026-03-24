@@ -35,8 +35,8 @@ use super::start_commit::get_current_head_oid;
 // Baseline Persistence (from review_baseline/baseline_persistence.rs)
 // =============================================================================
 
-pub const REVIEW_BASELINE_FILE: &str = ".agent/review_baseline.txt";
-pub const BASELINE_NOT_SET: &str = "__BASELINE_NOT_SET__";
+pub(super) const REVIEW_BASELINE_FILE: &str = ".agent/review_baseline.txt";
+pub(super) const BASELINE_NOT_SET: &str = "__BASELINE_NOT_SET__";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReviewBaseline {
@@ -53,7 +53,7 @@ pub fn load_review_baseline() -> iot::Result<ReviewBaseline> {
     load_review_baseline_with_workspace(&workspace)
 }
 
-pub fn load_review_baseline_with_workspace(
+pub(super) fn load_review_baseline_with_workspace(
     workspace: &dyn Workspace,
 ) -> iot::Result<ReviewBaseline> {
     let path = Path::new(REVIEW_BASELINE_FILE);

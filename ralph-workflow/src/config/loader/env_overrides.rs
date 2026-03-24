@@ -40,7 +40,10 @@ impl EnvOverrideResult {
 /// Uses the injected `env` accessor instead of reading from the real process
 /// environment, enabling parallel-safe unit tests without `#[serial]`.
 #[must_use]
-pub(crate) fn apply_env_overrides(config: Config, env: &dyn ConfigEnvironment) -> EnvOverrideResult {
+pub(crate) fn apply_env_overrides(
+    config: Config,
+    env: &dyn ConfigEnvironment,
+) -> EnvOverrideResult {
     const MAX_ITERS: u32 = 50;
     const MAX_REVIEWS: u32 = 10;
     const MAX_CONTEXT: u8 = 2;

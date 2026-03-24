@@ -66,11 +66,11 @@ static SPAWNED_PROCESSES: AtomicUsize = AtomicUsize::new(0);
 /// Tests that exceed 10 seconds likely have external I/O dependencies
 /// (real LLM calls, network requests, long sleeps, or process spawning) which
 /// violate the integration test style guide.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Error type for timeout failures.
 #[derive(Debug)]
-pub struct TimeoutError {
+pub(crate) struct TimeoutError {
     pub timeout: Duration,
 }
 
@@ -93,12 +93,12 @@ fn runaway_timeout_message(test_name: &str, timeout: Duration) -> String {
 /// test body to exit. Test code that might block should periodically check
 /// `is_cancelled()` and return promptly.
 #[derive(Clone, Debug)]
-pub struct TimeoutContext {
+pub(crate) struct TimeoutContext {
     cancelled: Arc<AtomicBool>,
 }
 
 impl TimeoutContext {
-    pub fn is_cancelled(&self) -> bool {
+    pub(crate) fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Acquire)
     }
 }
@@ -146,7 +146,7 @@ impl std::error::Error for TimeoutError {}
 ///     std::time::Duration::from_secs(1),
 /// );
 /// ```
-pub fn with_timeout<F>(f: F, timeout: Duration)
+pub(crate) fn with_timeout<F>(f: F, timeout: Duration)
 where
     F: FnOnce() + Send + 'static,
 {
@@ -154,7 +154,7 @@ where
 }
 
 /// Run a closure with a timeout, passing a `TimeoutContext` for cooperative cancellation.
-pub fn with_timeout_ctx<F>(f: F, timeout: Duration)
+pub(crate) fn with_timeout_ctx<F>(f: F, timeout: Duration)
 where
     F: FnOnce(&TimeoutContext) + Send + 'static,
 {
@@ -230,7 +230,7 @@ where
 ///     assert_eq!(2 + 2, 4);
 /// });
 /// ```
-pub fn with_default_timeout<F>(f: F)
+pub(crate) fn with_default_timeout<F>(f: F)
 where
     F: FnOnce() + Send + 'static,
 {
