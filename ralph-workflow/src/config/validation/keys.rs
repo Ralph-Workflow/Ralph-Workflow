@@ -5,13 +5,13 @@
 
 /// Deprecated keys for the [general] section.
 /// These keys are accepted for backward compatibility but their use should trigger warnings.
-pub const DEPRECATED_GENERAL_KEYS: &[&str] = &[
+pub(crate) const DEPRECATED_GENERAL_KEYS: &[&str] = &[
     "auto_rebase",           // Never implemented, removed in favor of manual git control
     "max_recovery_attempts", // Never implemented, superseded by retry mechanisms
 ];
 
 /// Valid keys for the [general] section.
-pub const VALID_GENERAL_KEYS: &[&str] = &[
+pub(crate) const VALID_GENERAL_KEYS: &[&str] = &[
     "verbosity",
     "interactive",
     "auto_detect_stack",
@@ -48,7 +48,7 @@ pub const VALID_GENERAL_KEYS: &[&str] = &[
 ];
 
 /// Valid keys for the [ccs] section.
-pub const VALID_CCS_KEYS: &[&str] = &[
+pub(crate) const VALID_CCS_KEYS: &[&str] = &[
     "output_flag",
     "yolo_flag",
     "verbose_flag",
@@ -60,7 +60,7 @@ pub const VALID_CCS_KEYS: &[&str] = &[
 ];
 
 /// Valid keys for agent configurations (within [agents.<name>]).
-pub const VALID_AGENT_CONFIG_KEYS: &[&str] = &[
+pub(crate) const VALID_AGENT_CONFIG_KEYS: &[&str] = &[
     "cmd",
     "output_flag",
     "yolo_flag",
@@ -75,7 +75,7 @@ pub const VALID_AGENT_CONFIG_KEYS: &[&str] = &[
 ];
 
 /// Valid keys for CCS alias configurations (within [`ccs_aliases`.<name>]).
-pub const VALID_CCS_ALIAS_CONFIG_KEYS: &[&str] = &[
+pub(crate) const VALID_CCS_ALIAS_CONFIG_KEYS: &[&str] = &[
     "cmd",
     "output_flag",
     "yolo_flag",
@@ -92,7 +92,7 @@ pub const VALID_CCS_ALIAS_CONFIG_KEYS: &[&str] = &[
 ///
 /// Keep these for typo detection so validation can emit a focused migration
 /// message instead of a generic unknown-key error.
-pub const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
+pub(crate) const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
     "developer",
     "reviewer",
     "commit",
@@ -106,7 +106,7 @@ pub const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
 ];
 
 /// Valid keys for the built-in [`agent_drains`] section.
-pub const VALID_AGENT_DRAIN_KEYS: &[&str] = &[
+pub(crate) const VALID_AGENT_DRAIN_KEYS: &[&str] = &[
     "planning",
     "development",
     "review",
@@ -118,7 +118,7 @@ pub const VALID_AGENT_DRAIN_KEYS: &[&str] = &[
 /// Get all valid configuration keys for typo detection.
 ///
 /// Returns a flat list of all valid key names across all sections.
-pub fn get_valid_config_keys() -> Vec<&'static str> {
+pub(crate) fn get_valid_config_keys() -> Vec<&'static str> {
     vec![
         // Top-level sections
         "general",

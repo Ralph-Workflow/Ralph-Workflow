@@ -30,13 +30,13 @@ use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValid
 use quick_xml::events::Event;
 
 /// Example of valid issues XML with issues.
-pub const EXAMPLE_ISSUES_XML: &str = r"<ralph-issues>
+pub(crate) const EXAMPLE_ISSUES_XML: &str = r"<ralph-issues>
 <ralph-issue>Missing error handling in API endpoint</ralph-issue>
 <ralph-issue>Variable shadowing in loop construct</ralph-issue>
 </ralph-issues>";
 
 /// Example of valid issues XML with no issues.
-pub const EXAMPLE_NO_ISSUES_XML: &str = r"<ralph-issues>
+pub(crate) const EXAMPLE_NO_ISSUES_XML: &str = r"<ralph-issues>
 <ralph-no-issues-found>No issues were found during review</ralph-no-issues-found>
 </ralph-issues>";
 

@@ -36,9 +36,9 @@ use std::path::{Path, PathBuf};
 use which::which;
 
 mod io {
-    pub type Result<T> = std::io::Result<T>;
-    pub type Error = std::io::Error;
-    pub type ErrorKind = std::io::ErrorKind;
+    pub(crate) type Result<T> = std::io::Result<T>;
+    pub(crate) type Error = std::io::Error;
+    pub(crate) type ErrorKind = std::io::ErrorKind;
 }
 
 const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";

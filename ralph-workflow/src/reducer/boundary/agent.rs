@@ -1,4 +1,7 @@
 use super::MainEffectHandler;
+use crate::agents::session::{
+    AgentSession, AuditRecord, AuditTrail, PolicyOutcome, SessionDrain, SessionHandshake,
+};
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
 use crate::phases::PhaseContext;
@@ -14,6 +17,7 @@ use crate::reducer::fault_tolerant_executor::{
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use std::time::SystemTime;
 
 impl MainEffectHandler {
     pub(super) fn invoke_agent(
@@ -33,6 +37,58 @@ impl MainEffectHandler {
         log_agent_invocation_start(ctx, &self.state, &effective_agent, model_name);
         let (logfile, attempt) =
             prepare_agent_logfile(ctx, in_dev_fix, &self.state, role, &effective_agent)?;
+
+        // RFC-009: Create AgentSession and SessionHandshake for this invocation
+        let run_id = self
+            .state
+            .cloud
+            .run_id
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let session_drain = SessionDrain::from(drain);
+        let session = AgentSession::for_drain(run_id, session_drain, attempt);
+        let handshake = SessionHandshake::from_session(&session);
+
+        // Log the session handshake for RFC-009 audit trail
+        ctx.logger.info(&format!(
+            "RFC-009 session handshake: session_id={}, drain={}, protocol={}, capabilities={:?}, policy_flags={:?}",
+            handshake.session_id,
+            handshake.drain,
+            handshake.protocol_version,
+            handshake.capabilities.to_vec(),
+            handshake.policy_flags.to_vec(),
+        ));
+
+        // Build AuditTrail with Approved records for each granted capability
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let audit_records: Vec<_> = session
+            .capabilities
+            .iter()
+            .map(|cap| {
+                AuditRecord::new(
+                    session.session_id.clone(),
+                    timestamp,
+                    cap,
+                    PolicyOutcome::Approved,
+                    format!(
+                        "Capability {} issued via session handshake",
+                        cap.identifier()
+                    ),
+                )
+            })
+            .collect();
+        let audit_trail = AuditTrail::from_records(audit_records);
+
+        // Log the audit trail for RFC-009 audit record
+        ctx.logger.info(&format!(
+            "RFC-009 audit trail: {} records for session {}",
+            audit_trail.len(),
+            session.session_id,
+        ));
+
         let session_id = resolve_session_id(&self.state, in_dev_fix);
         let event = run_agent_execution(
             ctx,

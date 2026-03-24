@@ -42,9 +42,9 @@ use std::path::Path;
 use crate::git_helpers::git2_to_io_error;
 
 mod io {
-    pub type Result<T> = std::io::Result<T>;
-    pub type Error = std::io::Error;
-    pub type ErrorKind = std::io::ErrorKind;
+    pub(crate) type Result<T> = std::io::Result<T>;
+    pub(crate) type Error = std::io::Error;
+    pub(crate) type ErrorKind = std::io::ErrorKind;
 }
 
 include!("rebase_kinds.rs");

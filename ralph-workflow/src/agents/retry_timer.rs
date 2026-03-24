@@ -5,13 +5,12 @@
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::agents::{RetryTimerProvider, RetryTimerProviderDebug};
+    use crate::agents::RetryTimerProvider;
     use std::time::Duration;
 
     /// Test retry timer that doesn't actually sleep (immediate return).
     #[derive(Debug, Clone)]
-    pub struct TestRetryTimer {
+    pub(crate) struct TestRetryTimer {
         tracked: Option<std::sync::Arc<std::sync::atomic::AtomicU64>>,
     }
 
@@ -22,11 +21,11 @@ mod tests {
     }
 
     impl TestRetryTimer {
-        pub fn new() -> Self {
+        pub(super) fn new() -> Self {
             Self { tracked: None }
         }
 
-        pub fn with_tracking() -> (Self, std::sync::Arc<std::sync::atomic::AtomicU64>) {
+        pub(super) fn with_tracking() -> (Self, std::sync::Arc<std::sync::atomic::AtomicU64>) {
             let tracked = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
             (
                 Self {
@@ -36,7 +35,7 @@ mod tests {
             )
         }
 
-        pub fn total_sleep_ms(&self) -> Option<u64> {
+        pub(super) fn total_sleep_ms(&self) -> Option<u64> {
             self.tracked
                 .as_ref()
                 .map(|t| t.load(std::sync::atomic::Ordering::Relaxed))

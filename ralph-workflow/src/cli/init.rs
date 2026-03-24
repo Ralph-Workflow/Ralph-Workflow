@@ -37,7 +37,7 @@ include!("init/project_detection.rs");
 mod config_generation;
 
 // Re-export config generation public API
-pub use config_generation::{
+pub(crate) use config_generation::{
     handle_check_config, handle_check_config_with, handle_init_global, handle_init_global_with,
     handle_init_local_config, handle_init_local_config_with, handle_init_state_inference_with_env,
     handle_init_template_arg_at_path_with_env,

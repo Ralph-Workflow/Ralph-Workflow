@@ -36,7 +36,7 @@ pub fn add_elixir_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
     }
 }
 
-pub fn add_scala_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+pub(crate) fn add_scala_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
     ReviewGuidelines {
         quality_checks: guidelines
             .quality_checks
@@ -61,7 +61,7 @@ pub fn add_scala_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
     }
 }
 
-pub fn add_swift_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+pub(crate) fn add_swift_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
     ReviewGuidelines {
         quality_checks: guidelines
             .quality_checks

@@ -22,7 +22,6 @@ fn is_stream_json_output(output_flag: &str) -> bool {
     output_flag.contains("stream_json")
 }
 
-
 /// Config source for tracking where config was loaded from.
 #[derive(Debug, Clone)]
 pub struct ConfigSource {

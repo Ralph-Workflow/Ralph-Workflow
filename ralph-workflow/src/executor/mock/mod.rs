@@ -10,10 +10,10 @@ mod process_executor;
 /// Type alias for captured execute calls.
 ///
 /// Each call is a tuple of (command, args, env, workdir).
-pub type ExecuteCall = (String, Vec<String>, Vec<(String, String)>, Option<String>);
+pub(crate) type ExecuteCall = (String, Vec<String>, Vec<(String, String)>, Option<String>);
 
-pub use agent_child::MockAgentChild;
-pub use process_executor::MockProcessExecutor;
+pub(crate) use agent_child::MockAgentChild;
+pub(crate) use process_executor::MockProcessExecutor;
 
 #[cfg(test)]
 mod tests;

@@ -19,7 +19,7 @@ pub struct InitialRebaseRunResult {
 /// - Empty repository (returns `NoOp`)
 /// - Upstream branch not found (error)
 /// - Conflicts during rebase (returns `Conflicts` result)
-pub fn run_rebase_to_default(
+pub(crate) fn run_rebase_to_default(
     logger: &Logger,
     colors: Colors,
     executor: &dyn ProcessExecutor,
@@ -41,7 +41,7 @@ pub fn run_rebase_to_default(
 ///
 /// Uses a state machine for fault tolerance and automatic recovery from
 /// interruptions or failures.
-pub fn run_initial_rebase(
+pub(crate) fn run_initial_rebase(
     logger: &Logger,
     colors: Colors,
     _phase_ctx: &mut PhaseContext<'_>,

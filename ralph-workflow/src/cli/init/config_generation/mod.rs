@@ -35,14 +35,14 @@ mod local;
 mod validation;
 
 #[path = "boundary.rs"]
-pub mod boundary;
+pub(crate) mod boundary;
 
 // Re-export public API for external callers
-pub use global::{handle_init_global, handle_init_global_with};
-pub use local::{handle_init_local_config, handle_init_local_config_with};
-pub use validation::{handle_check_config, handle_check_config_with};
+pub(crate) use global::{handle_init_global, handle_init_global_with};
+pub(crate) use local::{handle_init_local_config, handle_init_local_config_with};
+pub(crate) use validation::{handle_check_config, handle_check_config_with};
 
-pub fn handle_init_state_inference_with_env<R: crate::config::ConfigEnvironment>(
+pub(crate) fn handle_init_state_inference_with_env<R: crate::config::ConfigEnvironment>(
     config_path: &std::path::Path,
     prompt_path: &std::path::Path,
     template_arg: Option<&str>,
@@ -58,7 +58,7 @@ pub fn handle_init_state_inference_with_env<R: crate::config::ConfigEnvironment>
     )
 }
 
-pub fn handle_init_template_arg_at_path_with_env<R: crate::config::ConfigEnvironment>(
+pub(crate) fn handle_init_template_arg_at_path_with_env<R: crate::config::ConfigEnvironment>(
     template_name: &str,
     prompt_path: &std::path::Path,
     colors: crate::logger::Colors,

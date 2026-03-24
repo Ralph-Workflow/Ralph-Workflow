@@ -61,7 +61,10 @@ pub(crate) fn missing_required_error(
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub(crate) fn duplicate_element_error(element_name: &str, parent_element: &str) -> XsdValidationError {
+pub(crate) fn duplicate_element_error(
+    element_name: &str,
+    parent_element: &str,
+) -> XsdValidationError {
     XsdValidationError {
         error_type: XsdErrorType::UnexpectedElement,
         element_path: format!("{parent_element}/{element_name}"),

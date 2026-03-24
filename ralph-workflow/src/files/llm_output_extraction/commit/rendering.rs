@@ -45,7 +45,7 @@ pub fn is_conventional_commit_subject(subject: &str) -> bool {
 /// # Returns
 ///
 /// The fully rendered commit message with all escape sequences properly handled.
-pub fn render_final_commit_message(message: &str) -> String {
+pub(crate) fn render_final_commit_message(message: &str) -> String {
     message.to_string()
 }
 

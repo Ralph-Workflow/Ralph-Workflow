@@ -40,12 +40,12 @@
 //! }
 //! ```
 
-pub mod types;
-pub mod validation;
+pub(crate) mod types;
+pub(crate) mod validation;
 
 // Re-export main types and functions for convenience
-pub use types::{IssueEntry, IssuesElements};
-pub use validation::validate_issues_xml;
+pub(crate) use types::{IssueEntry, IssuesElements};
+pub(crate) use validation::validate_issues_xml;
 
 #[cfg(test)]
 mod tests;

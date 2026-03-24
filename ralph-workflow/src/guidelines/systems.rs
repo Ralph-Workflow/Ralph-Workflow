@@ -50,7 +50,7 @@ pub fn add_c_cpp_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
     }
 }
 
-pub fn add_csharp_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+pub(crate) fn add_csharp_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
     ReviewGuidelines {
         quality_checks: guidelines
             .quality_checks

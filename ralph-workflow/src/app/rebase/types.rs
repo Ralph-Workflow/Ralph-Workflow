@@ -26,7 +26,7 @@ pub enum ConflictResolutionResult {
     Failed,
 }
 
-pub enum InitialRebaseOutcome {
+pub(crate) enum InitialRebaseOutcome {
     Succeeded { new_head: String },
     Skipped { reason: String },
 }

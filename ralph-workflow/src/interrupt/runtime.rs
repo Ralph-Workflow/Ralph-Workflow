@@ -54,7 +54,7 @@ pub fn get_interrupt_context() -> Option<InterruptContext> {
     clippy::exit,
     reason = "Signal handler requires immediate process termination"
 )]
-pub fn exit_sigint() -> ! {
+pub(crate) fn exit_sigint() -> ! {
     std::process::exit(130)
 }
 
@@ -80,7 +80,7 @@ pub fn restore_prompt_md_writable(path: &Path) -> bool {
 }
 
 #[cfg(unix)]
-pub fn restore_prompt_md_writable_in_repo(repo_root: &Path) -> bool {
+pub(crate) fn restore_prompt_md_writable_in_repo(repo_root: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
     fn make_writable(path: &Path) -> bool {

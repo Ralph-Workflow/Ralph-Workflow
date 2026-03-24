@@ -14,9 +14,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod io {
-    pub type Result<T> = std::io::Result<T>;
-    pub type Error = std::io::Error;
-    pub type ErrorKind = std::io::ErrorKind;
+    pub(crate) type Result<T> = std::io::Result<T>;
+    pub(crate) type Error = std::io::Error;
+    pub(crate) type ErrorKind = std::io::ErrorKind;
 }
 
 fn resolve_absolute_hook_path(hook_path: &Path) -> io::Result<PathBuf> {

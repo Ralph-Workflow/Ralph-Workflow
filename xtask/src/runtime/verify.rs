@@ -2038,7 +2038,12 @@ mod tests {
         assert_eq!(report.exit, VerifyExitCode::Success);
         assert_eq!(
             runner.ran(),
-            vec!["clippy-core", "clippy-core-lib-only", "test-ralph-workflow-lib", "test-integration",]
+            vec![
+                "clippy-core",
+                "clippy-core-lib-only",
+                "test-ralph-workflow-lib",
+                "test-integration",
+            ]
         );
     }
 

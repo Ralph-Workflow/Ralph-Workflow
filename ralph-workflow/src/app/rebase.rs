@@ -4,15 +4,15 @@
 //! and conflict resolution during the pipeline.
 
 #[path = "rebase/types.rs"]
-pub mod types;
+pub(crate) mod types;
 
-pub mod orchestration;
+pub(crate) mod orchestration;
 
-pub mod conflicts;
+pub(crate) mod conflicts;
 
-pub mod boundary;
+pub(crate) mod boundary;
 
-pub use orchestration::run_initial_rebase;
+pub(crate) use orchestration::run_initial_rebase;
 
-pub use types::ConflictResolutionResult;
-pub use types::InitialRebaseOutcome;
+pub(crate) use types::ConflictResolutionResult;
+pub(crate) use types::InitialRebaseOutcome;

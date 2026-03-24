@@ -226,7 +226,10 @@ fn read_text_until_end_fuzzy_next(
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub(crate) fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), XsdValidationError> {
+pub(crate) fn skip_to_end(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+) -> Result<(), XsdValidationError> {
     skip_to_end_with_depth(reader, end_tag, 1)
 }
 

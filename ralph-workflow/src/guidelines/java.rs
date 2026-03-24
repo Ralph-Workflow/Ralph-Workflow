@@ -46,7 +46,7 @@ pub fn add_java_guidelines(guidelines: ReviewGuidelines, stack: &ProjectStack) -
     }
 }
 
-pub fn add_kotlin_guidelines(
+pub(crate) fn add_kotlin_guidelines(
     guidelines: ReviewGuidelines,
     stack: &ProjectStack,
 ) -> ReviewGuidelines {

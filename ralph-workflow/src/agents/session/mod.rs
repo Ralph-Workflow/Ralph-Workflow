@@ -14,6 +14,7 @@
 //! - allowed capability set for this session
 //! - session policy flags such as `no_edit`, `allow_shell`, `allow_git_read`
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::SystemTime;
 
@@ -24,7 +25,7 @@ pub const PROTOCOL_VERSION_V1: &str = "ralph-mcp/1.0";
 ///
 /// Combines run ID, drain identity, and a counter to ensure uniqueness
 /// across parallel workers and retries.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AgentSessionId {
     id: String,
 }
@@ -52,7 +53,7 @@ impl fmt::Display for AgentSessionId {
 ///
 /// Represents the phase of the pipeline this session belongs to.
 /// Each drain has different capability and policy implications.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionDrain {
     Planning,
     Development,
@@ -86,7 +87,7 @@ impl fmt::Display for SessionDrain {
 ///
 /// These are the typed capabilities an agent can request.
 /// V1 focuses on brokered read-only and bounded execution capabilities.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Capability {
     /// Read files and directories in the workspace.
     WorkspaceRead,
@@ -131,41 +132,8 @@ impl Capability {
 /// Set of capabilities granted to a session.
 ///
 /// Implements a bit-set style storage for efficient containment checks.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct CapabilitySet(u128);
-
-/// Iterator over capabilities in a CapabilitySet.
-struct CapabilitySetCapabilityIter {
-    set: u128,
-    idx: u32,
-}
-
-impl Iterator for CapabilitySetCapabilityIter {
-    type Item = Capability;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.idx < 10 {
-            let cap = match self.idx {
-                0 => Capability::WorkspaceRead,
-                1 => Capability::WorkspaceWriteEphemeral,
-                2 => Capability::WorkspaceWriteTracked,
-                3 => Capability::ProcessExecBounded,
-                4 => Capability::ArtifactSubmit,
-                5 => Capability::RunReportProgress,
-                6 => Capability::GitStatusRead,
-                7 => Capability::GitDiffRead,
-                8 => Capability::GitWrite,
-                9 => Capability::EnvRead,
-                _ => return None,
-            };
-            self.idx += 1;
-            if (self.set & (1u128 << (self.idx - 1))) != 0 {
-                return Some(cap);
-            }
-        }
-        None
-    }
-}
 
 impl CapabilitySet {
     /// Create an empty capability set.
@@ -187,10 +155,27 @@ impl CapabilitySet {
 
     /// Returns an iterator over all capabilities in this set.
     pub fn iter(&self) -> impl Iterator<Item = Capability> {
-        CapabilitySetCapabilityIter {
-            set: self.0,
-            idx: 0,
-        }
+        let set = self.0;
+        (0..10).filter_map(move |idx| {
+            let cap = match idx {
+                0 => Capability::WorkspaceRead,
+                1 => Capability::WorkspaceWriteEphemeral,
+                2 => Capability::WorkspaceWriteTracked,
+                3 => Capability::ProcessExecBounded,
+                4 => Capability::ArtifactSubmit,
+                5 => Capability::RunReportProgress,
+                6 => Capability::GitStatusRead,
+                7 => Capability::GitDiffRead,
+                8 => Capability::GitWrite,
+                9 => Capability::EnvRead,
+                _ => return None,
+            };
+            if (set & (1u128 << idx)) != 0 {
+                Some(cap)
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns all capabilities in this set as a vector.
@@ -211,6 +196,69 @@ impl CapabilitySet {
             Capability::GitWrite => 8,
             Capability::EnvRead => 9,
         }
+    }
+
+    /// Returns the default capability set for a given drain.
+    ///
+    /// RFC-009 V1: Planning/Analysis/Review = read-only, Development = write-capable,
+    /// Fix = write-capable (less restricted), Commit = git-write.
+    pub fn defaults_for_drain(drain: SessionDrain) -> Self {
+        match drain {
+            SessionDrain::Planning | SessionDrain::Analysis | SessionDrain::Review => vec![
+                Capability::WorkspaceRead,
+                Capability::GitStatusRead,
+                Capability::GitDiffRead,
+                Capability::ArtifactSubmit,
+            ]
+            .into(),
+            SessionDrain::Development => vec![
+                Capability::WorkspaceRead,
+                Capability::WorkspaceWriteEphemeral,
+                Capability::WorkspaceWriteTracked,
+                Capability::GitStatusRead,
+                Capability::GitDiffRead,
+                Capability::ProcessExecBounded,
+                Capability::ArtifactSubmit,
+            ]
+            .into(),
+            SessionDrain::Fix => vec![
+                Capability::WorkspaceRead,
+                Capability::WorkspaceWriteTracked,
+                Capability::GitStatusRead,
+                Capability::GitDiffRead,
+                Capability::ProcessExecBounded,
+                Capability::ArtifactSubmit,
+            ]
+            .into(),
+            SessionDrain::Commit => vec![
+                Capability::GitStatusRead,
+                Capability::GitDiffRead,
+                Capability::GitWrite,
+            ]
+            .into(),
+        }
+    }
+}
+
+impl From<Vec<Capability>> for CapabilitySet {
+    fn from(caps: Vec<Capability>) -> Self {
+        let mut bits = 0u128;
+        for cap in caps {
+            let idx = match cap {
+                Capability::WorkspaceRead => 0,
+                Capability::WorkspaceWriteEphemeral => 1,
+                Capability::WorkspaceWriteTracked => 2,
+                Capability::ProcessExecBounded => 3,
+                Capability::ArtifactSubmit => 4,
+                Capability::RunReportProgress => 5,
+                Capability::GitStatusRead => 6,
+                Capability::GitDiffRead => 7,
+                Capability::GitWrite => 8,
+                Capability::EnvRead => 9,
+            };
+            bits |= 1u128 << idx;
+        }
+        Self(bits)
     }
 }
 
@@ -251,7 +299,7 @@ impl PolicyFlag {
 }
 
 /// Set of policy flags for a session.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct PolicyFlagSet(u128);
 
 impl PolicyFlagSet {
@@ -274,10 +322,24 @@ impl PolicyFlagSet {
 
     /// Returns an iterator over all policy flags in this set.
     pub fn iter(&self) -> impl Iterator<Item = PolicyFlag> {
-        PolicyFlagSetFlagIter {
-            set: self.0,
-            idx: 0,
-        }
+        let set = self.0;
+        (0..7).filter_map(move |idx| {
+            let flag = match idx {
+                0 => PolicyFlag::NoEdit,
+                1 => PolicyFlag::AllowShell,
+                2 => PolicyFlag::AllowGitRead,
+                3 => PolicyFlag::AllowGitWrite,
+                4 => PolicyFlag::AllowParallelWorkers,
+                5 => PolicyFlag::AllowNetwork,
+                6 => PolicyFlag::AllowEnvRead,
+                _ => return None,
+            };
+            if (set & (1u128 << idx)) != 0 {
+                Some(flag)
+            } else {
+                None
+            }
+        })
     }
 
     /// Returns all policy flags in this set as a vector.
@@ -296,35 +358,173 @@ impl PolicyFlagSet {
             PolicyFlag::AllowEnvRead => 6,
         }
     }
-}
 
-/// Iterator over policy flags in a PolicyFlagSet.
-struct PolicyFlagSetFlagIter {
-    set: u128,
-    idx: u32,
-}
-
-impl Iterator for PolicyFlagSetFlagIter {
-    type Item = PolicyFlag;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.idx < 7 {
-            let flag = match self.idx {
-                0 => PolicyFlag::NoEdit,
-                1 => PolicyFlag::AllowShell,
-                2 => PolicyFlag::AllowGitRead,
-                3 => PolicyFlag::AllowGitWrite,
-                4 => PolicyFlag::AllowParallelWorkers,
-                5 => PolicyFlag::AllowNetwork,
-                6 => PolicyFlag::AllowEnvRead,
-                _ => return None,
-            };
-            self.idx += 1;
-            if (self.set & (1u128 << (self.idx - 1))) != 0 {
-                return Some(flag);
+    /// Returns the default policy flag set for a given drain.
+    ///
+    /// RFC-009 V1: Planning/Analysis/Review drains carry NoEdit flag.
+    /// Development and Fix drains allow shell execution.
+    /// Commit drain allows git write.
+    pub fn defaults_for_drain(drain: SessionDrain) -> Self {
+        match drain {
+            SessionDrain::Planning | SessionDrain::Analysis | SessionDrain::Review => {
+                vec![PolicyFlag::NoEdit].into()
             }
+            SessionDrain::Development | SessionDrain::Fix => vec![PolicyFlag::AllowShell].into(),
+            SessionDrain::Commit => vec![PolicyFlag::AllowGitWrite].into(),
         }
-        None
+    }
+}
+
+impl From<Vec<PolicyFlag>> for PolicyFlagSet {
+    fn from(flags: Vec<PolicyFlag>) -> Self {
+        let mut bits = 0u128;
+        for flag in flags {
+            let idx = match flag {
+                PolicyFlag::NoEdit => 0,
+                PolicyFlag::AllowShell => 1,
+                PolicyFlag::AllowGitRead => 2,
+                PolicyFlag::AllowGitWrite => 3,
+                PolicyFlag::AllowParallelWorkers => 4,
+                PolicyFlag::AllowNetwork => 5,
+                PolicyFlag::AllowEnvRead => 6,
+            };
+            bits |= 1u128 << idx;
+        }
+        Self(bits)
+    }
+}
+
+// ============================================================================
+// RFC-009 V1: Session Handshake, Audit Record, and Audit Trail Types
+// ============================================================================
+
+/// Outcome of a policy check for a requested capability or action.
+///
+/// V1 data model only — policy enforcement gates are future work (Phase 2).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PolicyOutcome {
+    /// The request was approved.
+    Approved,
+    /// The request was denied by policy.
+    Denied { reason: String },
+    /// Approved but with a restriction applied.
+    ApprovedWithRestriction { restriction: String },
+}
+
+/// A single audit record capturing one agent interaction event.
+///
+/// V1 data model only — recording happens at the boundary handler during
+/// agent invocation. The audit trail is logged, not stored in reducer state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditRecord {
+    /// Session this record belongs to.
+    pub session_id: AgentSessionId,
+    /// UTC timestamp of the event (Unix seconds since epoch).
+    pub timestamp: u64,
+    /// The capability that was exercised or checked.
+    pub capability: Capability,
+    /// The policy outcome for this interaction.
+    pub outcome: PolicyOutcome,
+    /// Human-readable description of what was attempted.
+    pub description: String,
+}
+
+impl AuditRecord {
+    /// Create a new audit record.
+    pub fn new(
+        session_id: AgentSessionId,
+        timestamp: u64,
+        capability: Capability,
+        outcome: PolicyOutcome,
+        description: String,
+    ) -> Self {
+        Self {
+            session_id,
+            timestamp,
+            capability,
+            outcome,
+            description,
+        }
+    }
+}
+
+/// Ordered audit trail for a session.
+///
+/// Collects all AuditRecords produced during an agent session.
+/// V1 data model: the trail is built during effect handling and logged
+/// via the boundary handler's ctx.workspace logging. Not stored in reducer state.
+///
+/// Construction is immutable — use [`AuditTrail::from_records`] or collect into it.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuditTrail {
+    records: Vec<AuditRecord>,
+}
+
+impl AuditTrail {
+    /// Create an empty audit trail.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Build an audit trail from an iterator of records.
+    pub fn from_records(records: impl IntoIterator<Item = AuditRecord>) -> Self {
+        Self {
+            records: records.into_iter().collect(),
+        }
+    }
+
+    /// View all records.
+    pub fn records(&self) -> &[AuditRecord] {
+        &self.records
+    }
+
+    /// Number of records.
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    /// True when no records have been recorded.
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+}
+
+/// Session handshake envelope produced before each agent invocation.
+///
+/// V1 data model: the handshake declares the session's identity, protocol version,
+/// capability set, and policy flags. It is the RFC-009 session declaration contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionHandshake {
+    /// The session this handshake belongs to.
+    pub session_id: AgentSessionId,
+    /// The drain (pipeline phase) identity for this session.
+    pub drain: SessionDrain,
+    /// Protocol version string (e.g. "ralph-mcp/1.0").
+    pub protocol_version: String,
+    /// Capabilities granted for this session.
+    pub capabilities: CapabilitySet,
+    /// Policy flags governing this session's behavior.
+    pub policy_flags: PolicyFlagSet,
+    /// UTC timestamp when the handshake was issued (Unix seconds since epoch).
+    pub issued_at: u64,
+}
+
+impl SessionHandshake {
+    /// Create a handshake from an existing AgentSession.
+    pub fn from_session(session: &AgentSession) -> Self {
+        let issued_at = session
+            .created_at
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Self {
+            session_id: session.session_id.clone(),
+            drain: session.drain,
+            protocol_version: session.protocol_version.clone(),
+            capabilities: session.capabilities.clone(),
+            policy_flags: session.policy_flags.clone(),
+            issued_at,
+        }
     }
 }
 
@@ -371,6 +571,41 @@ impl AgentSession {
             capabilities,
             policy_flags,
             created_at: SystemTime::now(),
+        }
+    }
+
+    /// Create a new session for the given drain with default capabilities.
+    ///
+    /// RFC-009 V1: Uses drain-specific capability defaults as defined
+    /// in `CapabilitySet::defaults_for_drain` and `PolicyFlagSet::defaults_for_drain`.
+    pub fn for_drain(run_id: String, drain: SessionDrain, counter: u32) -> Self {
+        let session_id = AgentSessionId::new(&run_id, &drain, counter);
+        let capabilities = CapabilitySet::defaults_for_drain(drain);
+        let policy_flags = PolicyFlagSet::defaults_for_drain(drain);
+        Self {
+            session_id,
+            run_id,
+            drain,
+            protocol_version: PROTOCOL_VERSION_V1.to_string(),
+            capabilities,
+            policy_flags,
+            created_at: SystemTime::now(),
+        }
+    }
+}
+
+/// Conversion from AgentDrain to SessionDrain for RFC-009 session wiring.
+///
+/// Both enums have identical variants, so this is a straightforward mapping.
+impl From<crate::agents::AgentDrain> for SessionDrain {
+    fn from(drain: crate::agents::AgentDrain) -> Self {
+        match drain {
+            crate::agents::AgentDrain::Planning => SessionDrain::Planning,
+            crate::agents::AgentDrain::Development => SessionDrain::Development,
+            crate::agents::AgentDrain::Analysis => SessionDrain::Analysis,
+            crate::agents::AgentDrain::Review => SessionDrain::Review,
+            crate::agents::AgentDrain::Fix => SessionDrain::Fix,
+            crate::agents::AgentDrain::Commit => SessionDrain::Commit,
         }
     }
 }

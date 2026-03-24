@@ -17,23 +17,23 @@ mod discovery;
 mod exclude;
 mod snapshot;
 
-pub use commit::{
+pub(crate) use commit::{
     git_add_all, git_add_all_in_repo, git_add_specific_in_repo, git_commit, git_commit_in_repo,
     CommitResultFallback,
 };
-pub use diff::{
+pub(crate) use diff::{
     get_git_diff_for_review_with_workspace, get_git_diff_from_start,
     get_git_diff_from_start_with_workspace, git_diff, git_diff_from, git_diff_in_repo,
 };
-pub use diff_review::{DiffReviewContent, DiffTruncationLevel};
-pub use discovery::{
+pub(crate) use diff_review::{DiffReviewContent, DiffTruncationLevel};
+pub(crate) use discovery::{
     ensure_ralph_git_dir, normalize_protection_scope_path, quarantine_path_in_place,
     sanitize_ralph_git_dir_at,
 };
-pub use discovery::{get_hooks_dir_from, resolve_protection_scope, resolve_protection_scope_from};
-pub use discovery::{get_repo_root, ralph_git_dir, require_git_repo, ProtectionScope};
-pub use exclude::ensure_local_excludes;
-pub use snapshot::{git_snapshot, git_snapshot_in_repo, parse_git_status_paths};
+pub(crate) use discovery::{get_hooks_dir_from, resolve_protection_scope, resolve_protection_scope_from};
+pub(crate) use discovery::{get_repo_root, ralph_git_dir, require_git_repo, ProtectionScope};
+pub(crate) use exclude::ensure_local_excludes;
+pub(crate) use snapshot::{git_snapshot, git_snapshot_in_repo, parse_git_status_paths};
 
 #[cfg(test)]
 mod tests;

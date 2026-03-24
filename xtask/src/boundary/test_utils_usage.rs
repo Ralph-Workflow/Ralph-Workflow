@@ -70,10 +70,7 @@ pub fn check_test_utils_items_used_in_tests(repo_root: &Path) -> NativeCheckResu
     }
 
     // Phase 2: gather all content from test-side directories
-    let test_dirs = [
-        repo_root.join("tests"),
-        repo_root.join("test-helpers/src"),
-    ];
+    let test_dirs = [repo_root.join("tests"), repo_root.join("test-helpers/src")];
 
     let mut test_content = String::new();
     for test_dir in &test_dirs {
@@ -129,10 +126,7 @@ fn collect_test_utils_items(file_path: &Path, content: &str, out: &mut Vec<TestU
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
     while i < lines.len() {
-        if lines[i]
-            .trim()
-            .contains("#[cfg(feature = \"test-utils\")]")
-        {
+        if lines[i].trim().contains("#[cfg(feature = \"test-utils\")]") {
             // Skip blank lines, comments, and further attributes between the
             // cfg annotation and the actual item declaration.
             let mut j = i + 1;
@@ -239,7 +233,11 @@ mod tests {
     #[test]
     fn passes_when_no_test_utils_items() {
         let dir = make_temp_dir("no-items");
-        write(&dir, "ralph-workflow/src/lib.rs", "pub fn production_fn() {}\n");
+        write(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "pub fn production_fn() {}\n",
+        );
         let result = check_test_utils_items_used_in_tests(&dir);
         assert_eq!(result.status, CheckStatus::Pass);
         let _ = fs::remove_dir_all(&dir);

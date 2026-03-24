@@ -1,8 +1,8 @@
 /// Result of parsing an environment variable with optional warnings.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParsedEnv<T> {
-    pub value: Option<T>,
-    pub warnings: Vec<String>,
+pub(crate) struct ParsedEnv<T> {
+    pub(crate) value: Option<T>,
+    pub(crate) warnings: Vec<String>,
 }
 
 impl<T> Default for ParsedEnv<T> {
@@ -15,14 +15,14 @@ impl<T> Default for ParsedEnv<T> {
 }
 
 impl<T> ParsedEnv<T> {
-    pub fn new(value: Option<T>) -> Self {
+    pub(crate) fn new(value: Option<T>) -> Self {
         Self {
             value,
             warnings: Vec::new(),
         }
     }
 
-    pub fn with_warning(self, warning: impl Into<String>) -> Self {
+    pub(crate) fn with_warning(self, warning: impl Into<String>) -> Self {
         let new_warnings = self
             .warnings
             .into_iter()

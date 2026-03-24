@@ -5,7 +5,7 @@ use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
 use crate::ProcessExecutor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConflictResolutionPromptReplay {
+pub(crate) struct ConflictResolutionPromptReplay {
     pub key: String,
     pub was_replayed: bool,
     pub captured_entry: Option<crate::prompts::PromptHistoryEntry>,
@@ -14,7 +14,7 @@ pub struct ConflictResolutionPromptReplay {
 /// Attempt to resolve rebase conflicts with AI.
 ///
 /// This function returns the prompt_history for callers to persist as needed.
-pub fn try_resolve_conflicts(
+pub(super) fn try_resolve_conflicts(
     conflicted_files: &[String],
     ctx: &ConflictResolutionContext<'_>,
     phase: &str,
@@ -36,7 +36,7 @@ pub fn try_resolve_conflicts(
 /// This is used by callers that need to checkpoint immediately after the conflict
 /// resolution prompt is captured into `prompt_history` (before invoking the agent),
 /// ensuring deterministic prompt replay on resume.
-pub fn try_resolve_conflicts_with_hook<F>(
+pub(super) fn try_resolve_conflicts_with_hook<F>(
     conflicted_files: &[String],
     ctx: &ConflictResolutionContext<'_>,
     phase: &str,
@@ -118,7 +118,7 @@ where
     Ok((resolved, replay, prompt_history))
 }
 
-pub fn conflict_resolution_content_id(
+pub(super) fn conflict_resolution_content_id(
     phase: &str,
     conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
 ) -> String {
@@ -147,7 +147,7 @@ pub fn conflict_resolution_content_id(
     sha256_hex_str(&s)
 }
 
-pub fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
+pub(super) fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
     logger.info("Agent resolved conflicts via file edits (no JSON output)");
 
     let remaining_conflicts = crate::git_helpers::get_conflicted_files()?;
@@ -163,7 +163,7 @@ pub fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
     }
 }
 
-pub fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> bool {
+pub(super) fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> bool {
     logger.warn("AI conflict resolution failed");
     logger.info("Attempting to continue rebase anyway...");
 
@@ -179,7 +179,7 @@ pub fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor)
     }
 }
 
-pub fn handle_error_resolution(
+pub(super) fn handle_error_resolution(
     logger: &Logger,
     executor: &dyn ProcessExecutor,
     e: &anyhow::Error,
@@ -199,7 +199,7 @@ pub fn handle_error_resolution(
     }
 }
 
-pub fn collect_conflict_info_or_error(
+pub(crate) fn collect_conflict_info_or_error(
     conflicted_files: &[String],
     workspace: &dyn crate::workspace::Workspace,
     logger: &Logger,
@@ -215,7 +215,7 @@ pub fn collect_conflict_info_or_error(
     }
 }
 
-pub fn build_resolution_prompt(
+pub(crate) fn build_resolution_prompt(
     conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
     template_context: &TemplateContext,
     workspace: &dyn crate::workspace::Workspace,
@@ -250,7 +250,7 @@ fn build_enhanced_resolution_prompt(
     )
 }
 
-pub fn run_ai_conflict_resolution(
+pub(crate) fn run_ai_conflict_resolution(
     resolution_prompt: &str,
     ctx: &ConflictResolutionContext<'_>,
 ) -> anyhow::Result<ConflictResolutionResult> {
@@ -275,7 +275,7 @@ pub fn run_ai_conflict_resolution(
 ///
 /// This is used for `--rebase-only` mode where we don't have a full pipeline context.
 /// Captured prompts are not persisted since `--rebase-only` has no checkpoint mechanism.
-pub fn try_resolve_conflicts_without_phase_ctx(
+pub(crate) fn try_resolve_conflicts_without_phase_ctx(
     conflicted_files: &[String],
     config: &crate::config::Config,
     template_context: &TemplateContext,

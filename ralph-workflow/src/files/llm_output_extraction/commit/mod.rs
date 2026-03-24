@@ -11,5 +11,5 @@
 mod extraction;
 mod rendering;
 
-pub use extraction::{try_extract_xml_commit_document_with_trace, CommitExtractionResult};
-pub use rendering::is_conventional_commit_subject;
+pub(crate) use extraction::{try_extract_xml_commit_document_with_trace, CommitExtractionResult};
+pub(crate) use rendering::is_conventional_commit_subject;

@@ -535,10 +535,7 @@ enum ConfigOnlyAction {
 }
 
 /// Decide the action when config exists but prompt doesn't.
-fn decide_config_only_action(
-    can_prompt: bool,
-    template_name: Option<String>,
-) -> ConfigOnlyAction {
+fn decide_config_only_action(can_prompt: bool, template_name: Option<String>) -> ConfigOnlyAction {
     if can_prompt {
         if let Some(name) = template_name {
             return ConfigOnlyAction::CreateFromTemplate(name);
@@ -608,7 +605,9 @@ pub(super) enum TemplatePromptResponseDecision {
     Selected,
 }
 
-pub(super) fn evaluate_template_creation_response(response: &str) -> TemplatePromptResponseDecision {
+pub(super) fn evaluate_template_creation_response(
+    response: &str,
+) -> TemplatePromptResponseDecision {
     if did_user_decline_template(response) {
         TemplatePromptResponseDecision::Declined
     } else {

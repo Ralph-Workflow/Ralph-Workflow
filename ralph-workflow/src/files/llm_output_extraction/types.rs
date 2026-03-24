@@ -5,7 +5,7 @@
 /// Parser types supported by the extraction system.
 /// Matches `crate::agents::parser::JsonParserType` but kept separate to avoid circular deps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum OutputFormat {
+pub(crate) enum OutputFormat {
     /// Claude CLI stream-json format (also used by CCS, Qwen)
     #[default]
     Claude,
@@ -35,7 +35,7 @@ impl std::str::FromStr for OutputFormat {
 
 /// Result of LLM output extraction
 #[derive(Debug, Clone)]
-pub struct ExtractionOutput {
+pub(crate) struct ExtractionOutput {
     /// The extracted content (always present if input was non-empty)
     pub content: String,
     /// Whether extraction used a structured format vs fallback
