@@ -2,6 +2,7 @@
 
 use crate::common::with_locked_prompt_permissions;
 use crate::test_timeout::with_default_timeout;
+use ralph_workflow::agents::session::AuditTrail;
 use ralph_workflow::agents::AgentRole;
 use ralph_workflow::config::CloudConfig;
 use ralph_workflow::reducer::determine_next_effect;
@@ -161,6 +162,8 @@ fn attempt_recovery_uses_previous_phase_when_failed_phase_for_recovery_missing()
             cloud_reporter: None,
             cloud: &cloud_config,
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let mut state = PipelineState::initial(1, 0);
@@ -245,6 +248,8 @@ fn attempt_recovery_never_targets_awaiting_dev_fix() {
             cloud_reporter: None,
             cloud: &cloud_config,
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let mut state = PipelineState::initial(1, 0);

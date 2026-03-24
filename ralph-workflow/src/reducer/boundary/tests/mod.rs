@@ -5,6 +5,7 @@
 mod common;
 
 mod analysis_handler;
+mod capability_gate_enforcement;
 mod cloud;
 mod cloud_push_policy;
 mod commit_handler;

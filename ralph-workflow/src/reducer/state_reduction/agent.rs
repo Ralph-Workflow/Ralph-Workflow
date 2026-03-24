@@ -83,6 +83,35 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 ..state
             }
         }
+        // Capability denied: immediate agent switch, clear session and prompt context.
+        // This indicates a misconfiguration — session capabilities don't match the effects
+        // the orchestrator is trying to execute. Try the next agent.
+        AgentEvent::CapabilityDenied {
+            role: _,
+            capability,
+            reason: _,
+        } => {
+            let state = reset_phase_xml_cleanup_for_retry(state);
+            PipelineState {
+                agent_chain: state
+                    .agent_chain
+                    .switch_to_next_agent()
+                    .clear_session_id()
+                    .clear_continuation_prompt()
+                    .with_mode(DrainMode::Normal)
+                    .with_failure_reason(Some(format!("capability denied: {}", capability))),
+                continuation: ContinuationState {
+                    xsd_retry_count: 0,
+                    xsd_retry_pending: false,
+                    xsd_retry_session_reuse_pending: false,
+                    same_agent_retry_count: 0,
+                    same_agent_retry_pending: false,
+                    same_agent_retry_reason: None,
+                    ..state.continuation
+                },
+                ..state
+            }
+        }
         // Timeout with no output: immediate agent switch (no same-agent retry)
         // The agent produced no output at all — likely overloaded or unavailable.
         // Switching agents immediately is safer than retrying the same agent.

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::session::AuditTrail;
 use crate::agents::AgentRegistry;
 use crate::checkpoint::execution_history::ExecutionHistory;
 use crate::checkpoint::RunContext;
@@ -80,6 +81,8 @@ impl TestFixture {
             cloud_reporter: None,
             cloud: &self.cloud,
             env: &self.git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         }
     }
 }
@@ -174,6 +177,8 @@ fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let _ =
@@ -233,6 +238,8 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let resume_ctx: Option<&crate::checkpoint::restore::ResumeContext> = None;
@@ -303,6 +310,8 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let err =
@@ -368,6 +377,8 @@ fn test_run_fix_pass_errors_on_missing_template_variables() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let resume_ctx: Option<&crate::checkpoint::restore::ResumeContext> = None;

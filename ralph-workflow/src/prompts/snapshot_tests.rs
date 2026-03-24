@@ -508,8 +508,8 @@ mod tests {
             "Planning should have workspace.read"
         );
         assert!(
-            !summary.contains("workspace.write"),
-            "Planning should not have workspace.write"
+            !summary.contains("workspace.write_tracked"),
+            "Planning should not have workspace.write_tracked (but may have workspace.write_ephemeral)"
         );
 
         // Development: read + write

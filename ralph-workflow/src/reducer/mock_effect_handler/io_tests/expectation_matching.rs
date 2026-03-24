@@ -1,6 +1,7 @@
 // Tests for effect capture and execution tracking.
 
 use super::*;
+use crate::agents::session::AuditTrail;
 
 #[test]
 fn mock_effect_handler_captures_create_commit_effect() {
@@ -114,6 +115,8 @@ fn mock_effect_handler_trait_execute_with_phase_context() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     // Create handler and execute effect via trait method

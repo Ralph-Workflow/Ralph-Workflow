@@ -4,6 +4,7 @@
 //! of the pipeline. It contains references to configuration, registry,
 //! logging utilities, and runtime state that all phases need access to.
 
+use crate::agents::session::{AgentSession, AuditTrail};
 use crate::agents::{AgentDrain, AgentRegistry};
 use crate::checkpoint::execution_history::ExecutionHistory;
 use crate::checkpoint::RunContext;
@@ -110,6 +111,17 @@ pub struct PhaseContext<'a> {
     /// Used by cloud handlers to configure GIT_SSH_COMMAND and GIT_TERMINAL_PROMPT
     /// without calling `std::env::set_var` directly.
     pub env: &'a dyn crate::runtime::environment::GitEnvironment,
+    /// Active session for the current agent invocation.
+    ///
+    /// Set when an agent is being invoked, None between invocations.
+    /// Used by capability gate to check permissions in Phase 2.
+    /// When None, capability enforcement is bypassed (backward compatibility).
+    pub active_session: Option<AgentSession>,
+    /// Accumulated audit trail for the current run.
+    ///
+    /// Grows as effects are executed and capability checks occur.
+    /// Persisted to workspace at the end of agent invocation.
+    pub audit_trail: AuditTrail,
 }
 
 impl PhaseContext<'_> {
@@ -238,6 +250,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &crate::config::types::CloudConfig::disabled(),
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let result = get_primary_commit_agent(&ctx);
@@ -284,6 +298,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &crate::config::types::CloudConfig::disabled(),
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let result = get_primary_commit_agent(&ctx);
@@ -322,6 +338,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &crate::config::types::CloudConfig::disabled(),
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let result = get_primary_commit_agent(&ctx);

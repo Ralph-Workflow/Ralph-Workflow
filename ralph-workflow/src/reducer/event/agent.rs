@@ -215,4 +215,20 @@ pub enum AgentEvent {
         /// Target temp file path where context was written.
         context_path: String,
     },
+
+    /// A capability check was denied by the policy gate.
+    ///
+    /// Emitted when an effect requires a capability that the session doesn't have.
+    /// This indicates a misconfiguration — the session's capabilities don't match
+    /// the effects the orchestrator is trying to execute.
+    ///
+    /// The reducer handles this by triggering recovery escalation.
+    CapabilityDenied {
+        /// The role whose capability was denied.
+        role: AgentRole,
+        /// The capability identifier that was missing (e.g., "workspace.write_tracked").
+        capability: String,
+        /// Human-readable reason for the denial.
+        reason: String,
+    },
 }

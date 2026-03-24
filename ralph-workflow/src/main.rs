@@ -83,6 +83,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use ralph_workflow::agents::session::AuditTrail;
     use ralph_workflow::agents::{AgentDrain, AgentRegistry};
     use ralph_workflow::checkpoint::execution_history::ExecutionHistory;
     use ralph_workflow::checkpoint::RunContext;
@@ -175,6 +176,8 @@ mod tests {
                 cloud_reporter: None,
                 cloud: &self.cloud,
                 env: &self.mock_env,
+                active_session: None,
+                audit_trail: AuditTrail::new(),
             }
         }
     }

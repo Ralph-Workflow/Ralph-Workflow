@@ -1,6 +1,10 @@
 use super::MainEffectHandler;
+use crate::agents::config::should_use_yolo_mode;
 use crate::agents::session::{
-    AgentSession, AuditRecord, AuditTrail, PolicyOutcome, SessionDrain, SessionHandshake,
+    audit::{persist_audit_trail, persist_session_handshake, record_command_check},
+    command_policy::{check_command, parse_command},
+    AgentSession, AuditRecord, AuditTrail, Capability, PolicyOutcome, SessionDrain,
+    SessionHandshake,
 };
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
@@ -57,6 +61,10 @@ impl MainEffectHandler {
         );
         let handshake = SessionHandshake::from_session(&session);
 
+        // Store session in PhaseContext for capability gate access during effect handling.
+        // This allows subsequent orchestrator effects to check session capabilities.
+        ctx.active_session = Some(session.clone());
+
         // Log the session handshake for RFC-009 audit trail
         ctx.logger.info(&format!(
             "RFC-009 session handshake: session_id={}, drain={}, protocol={}, capabilities={:?}, policy_flags={:?}",
@@ -66,6 +74,40 @@ impl MainEffectHandler {
             handshake.capabilities.to_vec(),
             handshake.policy_flags.to_vec(),
         ));
+
+        // Persist the session handshake to `.agent/audit/{session_id}.jsonl` as the first record.
+        // This happens at session start so the handshake is recorded even if the pipeline crashes.
+        // Errors are logged but don't fail the pipeline (audit is best-effort).
+        let handshake_timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let capabilities_str = session
+            .capabilities
+            .iter()
+            .map(|c| c.identifier())
+            .collect::<Vec<_>>()
+            .join(",");
+        let policy_flags_str = session
+            .policy_flags
+            .iter()
+            .map(|f| f.identifier())
+            .collect::<Vec<_>>()
+            .join(",");
+        if let Err(e) = persist_session_handshake(
+            ctx.workspace,
+            &session.session_id,
+            handshake_timestamp,
+            session.drain.as_str(),
+            &session.protocol_version,
+            &capabilities_str,
+            &policy_flags_str,
+        ) {
+            ctx.logger.warn(&format!(
+                "Failed to persist session handshake for session {}: {}",
+                session.session_id, e
+            ));
+        }
 
         // Build AuditTrail with PolicyOutcome records for each granted capability.
         // RFC-009 Step 8: call check_capability to capture PolicyOutcome values
@@ -123,6 +165,48 @@ impl MainEffectHandler {
             session.session_id,
         ));
 
+        // Build the session handshake description for audit trail.
+        // This records the session's declared capabilities and policy flags at invocation start.
+        let capabilities_str = session
+            .capabilities
+            .iter()
+            .map(|c| c.identifier())
+            .collect::<Vec<_>>()
+            .join(",");
+        let policy_flags_str = session
+            .policy_flags
+            .iter()
+            .map(|f| f.identifier())
+            .collect::<Vec<_>>()
+            .join(",");
+        let handshake_description = format!(
+            "Session handshake: drain={}, protocol={}, capabilities=[{}], policy_flags=[{}]",
+            session.drain.as_str(),
+            session.protocol_version,
+            capabilities_str,
+            policy_flags_str
+        );
+
+        // Create the session handshake record and add it to the beginning of the audit trail.
+        // This uses EnvRead as a placeholder capability since AuditRecord requires a Capability.
+        // The handshake information is preserved in the description field.
+        let handshake_record = AuditRecord::new(
+            session.session_id.clone(),
+            timestamp,
+            Capability::EnvRead, // Placeholder - handshake is encoded in description
+            PolicyOutcome::Approved,
+            handshake_description,
+        );
+
+        // Merge audit trail into PhaseContext for persistence at end of invocation.
+        // Handshake record is added first so it appears as the first record in the audit trail.
+        // This accumulates audit records across all agent invocations in a run.
+        let combined_records: Vec<_> = std::iter::once(handshake_record)
+            .chain(ctx.audit_trail.records().iter().cloned())
+            .chain(audit_trail.records().iter().cloned())
+            .collect();
+        ctx.audit_trail = AuditTrail::from_records(combined_records);
+
         // Determine effective prompt: use continuation prompt if applicable,
         // otherwise generate prompt via closure.
         let effective_prompt = resolve_effective_prompt_for_invocation(
@@ -146,8 +230,19 @@ impl MainEffectHandler {
                 effective_prompt: &effective_prompt,
                 attempt,
                 logfile: &logfile,
+                session: &session,
             },
         )?;
+
+        // Persist the audit trail to workspace at `.agent/audit/{session_id}.jsonl`.
+        // Errors are logged but don't fail the pipeline (audit is best-effort).
+        if let Err(e) = persist_audit_trail(ctx.workspace, &session.session_id, &ctx.audit_trail) {
+            ctx.logger.warn(&format!(
+                "Failed to persist audit trail for session {}: {}",
+                session.session_id, e
+            ));
+        }
+
         Ok(build_agent_invocation_result(
             &self.state,
             event,
@@ -229,6 +324,7 @@ struct AgentRunInputs<'a> {
     effective_prompt: &'a str,
     attempt: u32,
     logfile: &'a str,
+    session: &'a AgentSession,
 }
 
 fn run_agent_execution(
@@ -247,7 +343,51 @@ fn run_agent_execution(
         .map(std::string::String::as_str)
         .or(inputs.model);
     let session_id = resolve_session_id(state, inputs.in_dev_fix);
-    let cmd_str = agent_config.build_cmd_with_session(true, true, true, model_override, session_id);
+    let use_yolo = should_use_yolo_mode(inputs.session);
+    let cmd_str =
+        agent_config.build_cmd_with_session(true, use_yolo, true, model_override, session_id);
+
+    // RFC-009 Phase 2: Advisory command policy check
+    // In Phase 2, this is advisory only - it records what would be denied but does not block
+    // execution for drains with ProcessExecBounded capability. Phase 3 will implement actual blocking.
+    let cmd_tokens = parse_command(&cmd_str);
+    if let Some((cmd, args)) = cmd_tokens.split_first() {
+        // Convert String slices to &str for check_command
+        let cmd_str_ref: &str = cmd;
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let policy_outcome = check_command(cmd_str_ref, &args_refs);
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // Record the command check in the audit trail (advisory - doesn't block)
+        ctx.audit_trail = record_command_check(
+            &ctx.audit_trail,
+            &inputs.session.session_id,
+            timestamp,
+            &cmd_str,
+            &policy_outcome,
+        );
+
+        // Log the advisory check result
+        match policy_outcome {
+            PolicyOutcome::Denied { ref reason } => {
+                ctx.logger.info(&format!(
+                    "RFC-009 advisory command policy: '{}' would be denied: {}",
+                    cmd_str, reason
+                ));
+            }
+            _ => {
+                // Approved or ApprovedWithRestriction - log at info level
+                ctx.logger.info(&format!(
+                    "RFC-009 advisory command policy: '{}' approved",
+                    cmd_str
+                ));
+            }
+        }
+    }
+
     let model_index = if inputs.in_dev_fix {
         0
     } else {

@@ -6,6 +6,7 @@
 //! - `FailingWorkspace` - Workspace that simulates I/O failures
 //! - `StalledAwaitingDevFixHandler` - Mock handler for testing timeout behavior
 
+use ralph_workflow::agents::session::AuditTrail;
 use ralph_workflow::agents::AgentRegistry;
 use ralph_workflow::checkpoint::{ExecutionHistory, RunContext};
 use ralph_workflow::config::Config;
@@ -98,6 +99,8 @@ impl Fixture {
             cloud_reporter: None,
             cloud: &self.cloud,
             env: &self.git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         }
     }
 }

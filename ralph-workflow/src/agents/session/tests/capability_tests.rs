@@ -146,11 +146,13 @@ mod capability_defaults_by_drain_tests {
     use crate::agents::session::{Capability, CapabilitySet, SessionDrain};
 
     /// Helper to get default capabilities for a given drain.
+    /// NOTE: This mirrors CapabilitySet::defaults_for_drain() - keep in sync.
     fn default_capabilities_for_drain(drain: SessionDrain) -> CapabilitySet {
         let mut caps = CapabilitySet::new();
         match drain {
             SessionDrain::Planning | SessionDrain::Analysis | SessionDrain::Review => {
                 caps.insert(Capability::WorkspaceRead);
+                caps.insert(Capability::WorkspaceWriteEphemeral); // Ralph writes .agent/ files
                 caps.insert(Capability::GitStatusRead);
                 caps.insert(Capability::GitDiffRead);
                 caps.insert(Capability::ArtifactSubmit);

@@ -23,6 +23,7 @@ use crate::files::{create_prompt_backup_with_workspace, validate_prompt_md_with_
 use crate::git_helpers::{
     abort_rebase, continue_rebase, get_conflicted_files, is_main_or_master_branch, RebaseResult,
 };
+use crate::agents::session::AuditTrail;
 use crate::phases::PhaseContext;
 use crate::pipeline::Timer;
 
@@ -311,6 +312,8 @@ pub(crate) fn create_phase_context_with_config<'ctx>(
         },
         cloud: &config.cloud,
         env: &crate::runtime::environment::RealGitEnvironment,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     }
 }
 

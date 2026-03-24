@@ -360,6 +360,69 @@ When adding or changing reducer behavior:
 3. Implement the minimal state transition in the reducer.
 4. Add follow-up tests for edge cases (limits, phase boundaries, retries).
 
+## Capability Gate (RFC-009 Phase 2)
+
+The pipeline implements a **capability gate** that enforces protocol-level capability denial for no-edit drains (Planning, Analysis, Review, Commit). This is a safety net that ensures agents can only perform actions their session allows — not just through prompt text, but through actual enforcement at the effect handler level.
+
+### Overview
+
+Before any effect is executed, the `MainEffectHandler::execute()` method checks whether the active session has the required capabilities. If the session lacks a required capability, the effect is denied with a `CapabilityDenied` event before execution.
+
+```
+effect → Capability Gate → [denied: CapabilityDenied event] OR [approved: execute normally]
+```
+
+### How It Works
+
+1. **Pre-execution check**: At the start of `execute()`, the handler checks if `ctx.active_session` is `Some(session)`
+2. **Required capabilities**: The `effect_required_capabilities(effect)` function returns the set of capabilities an effect needs
+3. **Session check**: `check_effect_capability(session, effect)` evaluates whether the session's capability set satisfies the requirement
+4. **Deny or proceed**: If denied, a `CapabilityDenied` event is returned immediately without executing the effect; if approved, normal execution continues
+
+### Ralph-Internal Effects
+
+Some effects are Ralph's own orchestration and bypass the capability gate entirely:
+- `InitializeAgentChain` — runs before session exists
+- `SaveCheckpoint` — Ralph's own persistence
+- `EmitCompletionMarkerAndTerminate` — Ralph's lifecycle
+- `CleanupContext`, `CleanupRequiredFiles` — Ralph's cleanup
+- `EnsureGitignoreEntries` — Ralph's setup
+- `BackoffWait` — Ralph's retry logic
+- `TriggerLoopRecovery`, `AttemptRecovery`, `EmitRecoveryReset`, `EmitRecoverySuccess` — recovery effects
+
+These are classified by `is_ralph_internal_effect(effect) -> bool`.
+
+### Drain Capability Profiles
+
+Each drain type has a specific capability profile:
+
+| Drain | Capabilities | Notes |
+|-------|-------------|-------|
+| Planning | `WorkspaceRead`, `ArtifactSubmit`, `GitStatusRead`, `GitDiffRead` | Read-only, no exec |
+| Analysis | `WorkspaceRead`, `ArtifactSubmit`, `GitStatusRead`, `GitDiffRead` | Read-only, no exec |
+| Review | `WorkspaceRead`, `ArtifactSubmit`, `GitStatusRead`, `GitDiffRead` | Read-only, no exec |
+| Development | All except restricted ones | Full dev capabilities |
+| Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `ArtifactSubmit`, `ProcessExecBounded` | No ephemeral writes |
+| Commit | `WorkspaceRead`, `GitStatusRead`, `GitDiffRead`, `GitWrite` | Git-write only |
+
+### Audit Trail Integration
+
+Every capability check is recorded in `ctx.audit_trail` via `record_effect_check()`:
+- Session ID
+- Timestamp
+- Effect name
+- Required capabilities
+- Outcome (Approved/Denied)
+- For denials: the specific reason string
+
+The audit trail is persisted to `.agent/audit/{session_id}.jsonl` at the end of each agent invocation.
+
+### Behavioral Equivalence Invariant
+
+The capability gate must NOT change behavior for correctly-orchestrated pipelines. The orchestrator already dispatches effects appropriate for each drain. The gate is a safety net that catches misconfigurations and bugs — it approves everything in normal operation.
+
+If an existing test fails after adding a capability check, the most likely cause is that the gate is misclassifying an effect's requirements or a drain's capability profile.
+
 ## Best Practices: Effects and Handlers
 
 Effects are intentions; handlers are execution.

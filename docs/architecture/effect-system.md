@@ -580,6 +580,54 @@ Impure: `(Effect, Context) -> EffectResult`
 
 Executes effects and reports results. The primary reducer event is `EffectResult.event`; handlers may also emit `EffectResult.additional_events` (processed in order) and `EffectResult.ui_events` (display only).
 
+### Capability Gate (RFC-009 Phase 2)
+
+The `MainEffectHandler` implements a **capability gate** that validates effects against the active session's capability set before execution. This enforces protocol-level denial for drains that shouldn't perform certain actions.
+
+#### Gate Location
+
+The capability gate is implemented at the top of `MainEffectHandler::execute()` (in `ralph-workflow/src/reducer/boundary/mod.rs`):
+
+```rust
+impl EffectHandler<'_> for MainEffectHandler {
+    fn execute(&mut self, effect: Effect, ctx: &mut PhaseContext<'_>) -> Result<EffectResult> {
+        // RFC-009 Phase 2: Capability gate pre-check
+        if !is_ralph_internal_effect(&effect) {
+            if let Some(ref session) = ctx.active_session {
+                let outcome = check_effect_capability(session, &effect);
+                // ... record to audit trail, return CapabilityDenied if denied
+            }
+        }
+        // ... execute normally
+    }
+}
+```
+
+The same pattern is mirrored in `MockEffectHandler` for test coverage.
+
+#### Gate Flow
+
+1. Check if effect is Ralph-internal (bypass if true)
+2. Get active session from `ctx.active_session`
+3. Compute required capabilities for the effect (`effect_required_capabilities()`)
+4. Check session against required capabilities (`check_effect_capability()`)
+5. Record check in `ctx.audit_trail`
+6. Return `CapabilityDenied` event if denied, otherwise proceed with execution
+
+#### MockEffectHandler Session Override
+
+For testing capability denial scenarios, `MockEffectHandler` supports `session_override`:
+
+```rust
+let session = AgentSession::for_drain("test".to_string(), SessionDrain::Planning, 0);
+let mut handler = MockEffectHandler::new()
+    .with_session_override(session);
+
+// Planning session trying to execute development effect
+let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx);
+assert!(matches!(result.event, PipelineEvent::Agent(AgentEvent::CapabilityDenied { .. })));
+```
+
 ### Testing Strategy
 
 **Unit test reducers** with synthetic events:

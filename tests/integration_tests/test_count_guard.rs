@@ -125,6 +125,22 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("behavioral_pipeline_tests.rs"),
     },
     SourceFile {
+        path: "brokered_sessions/mod.rs",
+        contents: include_str!("brokered_sessions/mod.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/audit_trail_tests.rs",
+        contents: include_str!("brokered_sessions/audit_trail_tests.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/capability_enforcement_tests.rs",
+        contents: include_str!("brokered_sessions/capability_enforcement_tests.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/session_handshake_tests.rs",
+        contents: include_str!("brokered_sessions/session_handshake_tests.rs"),
+    },
+    SourceFile {
         path: "ccs_all_delta_types_spam_reproduction.rs",
         contents: include_str!("ccs_all_delta_types_spam_reproduction.rs"),
     },

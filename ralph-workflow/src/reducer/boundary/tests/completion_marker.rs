@@ -1,4 +1,5 @@
 use super::common::TestFixture;
+use crate::agents::session::AuditTrail;
 use crate::agents::AgentRole;
 use crate::executor::MockProcessExecutor;
 use crate::logger::{Colors, Logger};
@@ -496,6 +497,8 @@ fn dev_fix_agent_unavailable_log_does_not_claim_termination() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let mut state = PipelineState::initial(1, 0);

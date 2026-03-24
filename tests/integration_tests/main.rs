@@ -56,6 +56,7 @@ mod agent_chain_normalization;
 mod agent_spawn_errors;
 mod awaiting_dev_fix_recovery;
 mod behavioral_pipeline_tests;
+mod brokered_sessions;
 mod ccs_all_delta_types_spam_reproduction;
 mod ccs_ansi_stripping_console;
 mod ccs_ansi_stripping_waterfall;

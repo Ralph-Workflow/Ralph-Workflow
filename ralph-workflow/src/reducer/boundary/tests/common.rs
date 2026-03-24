@@ -2,6 +2,7 @@
 ///
 /// Provides `TestFixture` to eliminate `PhaseContext` construction
 /// boilerplate across handler test modules.
+use crate::agents::session::AuditTrail;
 use crate::agents::AgentRegistry;
 use crate::checkpoint::execution_history::ExecutionHistory;
 use crate::checkpoint::RunContext;
@@ -92,6 +93,8 @@ impl TestFixture {
             cloud_reporter: None,
             cloud: &self.cloud,
             env: &self.git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         }
     }
 
@@ -118,6 +121,8 @@ impl TestFixture {
             cloud_reporter: None,
             cloud: &self.cloud,
             env: &self.git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         }
     }
 }

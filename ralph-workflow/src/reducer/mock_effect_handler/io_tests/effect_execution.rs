@@ -1,6 +1,7 @@
 // Tests for effect simulation and mock behavior.
 
 use super::*;
+use crate::agents::session::AuditTrail;
 
 #[test]
 fn mock_effect_handler_simulates_empty_diff() {
@@ -53,6 +54,8 @@ fn mock_effect_handler_simulates_empty_diff() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     // CheckCommitDiff should mark empty diff
@@ -124,6 +127,8 @@ fn mock_effect_handler_captures_materialize_commit_inputs_even_when_diff_missing
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     // No diff file exists in workspace - should invalidate, but still capture the executed effect.
@@ -196,6 +201,8 @@ fn mock_effect_handler_emits_residual_files_found_when_configured() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let result = handler
@@ -346,6 +353,8 @@ fn mock_effect_handler_trigger_dev_fix_flow_does_not_write_completion_marker() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let state = PipelineState::initial(1, 0);
@@ -424,6 +433,8 @@ fn mock_effect_handler_trigger_dev_fix_flow_emits_events_on_marker_write_failure
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let state = PipelineState::initial(1, 0);
@@ -677,6 +688,8 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let mut state = PipelineState::initial(1, 0);
@@ -768,6 +781,8 @@ fn mock_execute_save_checkpoint_captures_effect_once() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let state = PipelineState::initial(1, 0);
@@ -842,6 +857,8 @@ fn mock_execute_emit_completion_marker_captures_effect_once() {
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: AuditTrail::new(),
     };
 
     let state = PipelineState::initial(1, 0);

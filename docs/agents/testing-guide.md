@@ -189,6 +189,64 @@ Ralph uses two effect layers:
 | `Effect` (pipeline) | `MemoryWorkspace` + `MockProcessExecutor` | integration tests |
 | Real OS / libgit2 | none (real implementations) | system tests only |
 
+### Capability Gate Testing (RFC-009 Phase 2)
+
+The capability gate is tested at two levels:
+
+#### Unit Tests (`reducer/boundary/tests/capability_gate_enforcement.rs`)
+
+Test `MainEffectHandler::execute()` directly with specific drain sessions:
+
+```rust
+#[test]
+fn planning_denies_workspace_write() {
+    let session = AgentSession::for_drain(run_id.clone(), SessionDrain::Planning, 0);
+    let ctx = create_context_with_session(&workspace, session);
+    let mut handler = MainEffectHandler::new(state);
+
+    // Planning trying to execute development effect
+    let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx);
+
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Agent(AgentEvent::CapabilityDenied { capability, .. })
+    ));
+    assert!(capability.contains("WorkspaceWriteTracked"));
+}
+```
+
+#### Integration Tests (`tests/integration_tests/brokered_sessions/`)
+
+Test the full pipeline with `MockEffectHandler` using `session_override`:
+
+```rust
+#[test]
+fn brokered_session_enforces_read_only() {
+    let workspace = MemoryWorkspace::new_test();
+    let session = AgentSession::for_drain("test".to_string(), SessionDrain::Planning, 0);
+
+    let mut handler = MockEffectHandler::new()
+        .with_session_override(session);
+
+    // Planning session trying to invoke development agent
+    let ctx = create_context(&workspace);
+    let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx.clone());
+
+    // Should be denied at capability gate level
+    assert!(matches!(result.event, PipelineEvent::Agent(AgentEvent::CapabilityDenied { .. })));
+}
+```
+
+#### Key Testing Patterns
+
+| Scenario | Test Location | Pattern |
+|----------|---------------|---------|
+| Drain denies wrong effect type | `capability_gate_enforcement.rs` | `MainEffectHandler` + direct session |
+| Behavioral equivalence (dev works) | `capability_gate_enforcement.rs` | `MainEffectHandler` + `Development` session |
+| Full pipeline with session override | `brokered_sessions/` | `MockEffectHandler::with_session_override()` |
+| Audit trail accumulation | `brokered_sessions/audit_trail_tests.rs` | Inspect `ctx.audit_trail` |
+| Session handshake persistence | `brokered_sessions/session_handshake_tests.rs` | Check `.agent/audit/*.jsonl` |
+
 ---
 
 ## Contract and Boundary Testing

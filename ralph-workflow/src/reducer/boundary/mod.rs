@@ -134,10 +134,13 @@ mod run_review_prompt;
 #[cfg(test)]
 mod tests;
 
+use crate::agents::session::audit::record_effect_check;
+use crate::agents::session::capability_gate::required_capabilities as effect_required_capabilities;
+use crate::agents::session::capability_gate::{check_effect_capability, is_ralph_internal_effect};
 use crate::phases::PhaseContext;
 use crate::prompts::{PromptHistoryEntry, PromptScopeKey};
 use crate::reducer::effect::{Effect, EffectHandler, EffectResult};
-use crate::reducer::event::{PipelineEvent, PipelinePhase};
+use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase};
 use crate::reducer::state::PipelineState;
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
@@ -248,6 +251,56 @@ impl MainEffectHandler {
 
 impl EffectHandler<'_> for MainEffectHandler {
     fn execute(&mut self, effect: Effect, ctx: &mut PhaseContext<'_>) -> Result<EffectResult> {
+        // RFC-009 Phase 2: Capability gate pre-check
+        // Ralph-internal effects bypass the capability gate
+        if !is_ralph_internal_effect(&effect) {
+            if let Some(ref session) = ctx.active_session {
+                let required_caps = effect_required_capabilities(&effect);
+                if !required_caps.is_empty() {
+                    let outcome = check_effect_capability(session, &effect);
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let effect_name = crate::agents::session::capability_gate::effect_name(&effect);
+
+                    // Record the capability check in the audit trail
+                    ctx.audit_trail = record_effect_check(
+                        &ctx.audit_trail,
+                        &session.session_id,
+                        timestamp,
+                        &effect_name,
+                        &required_caps,
+                        &outcome,
+                    );
+
+                    if let crate::agents::session::PolicyOutcome::Denied { reason } = outcome {
+                        // Find the first denied capability for the event
+                        let denied_capability = required_caps
+                            .iter()
+                            .find(|cap| {
+                                !matches!(
+                                    session.check_capability(**cap),
+                                    crate::agents::session::PolicyOutcome::Approved
+                                )
+                            })
+                            .map(|c| c.identifier().to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+
+                        let role = session.drain.into_role();
+                        let denied_event = PipelineEvent::Agent(AgentEvent::CapabilityDenied {
+                            role,
+                            capability: denied_capability,
+                            reason,
+                        });
+                        let result = EffectResult::event(denied_event);
+                        self.event_log.push(result.event.clone());
+                        return Ok(result);
+                    }
+                }
+            }
+        }
+
         let result = self.execute_effect(effect, ctx)?;
         self.event_log.push(result.event.clone());
         self.event_log

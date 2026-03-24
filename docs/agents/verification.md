@@ -163,6 +163,13 @@ cargo test -p ralph-workflow --lib executor::tests
 # Per-run logging tests (when changing logging infrastructure)
 cargo test -p ralph-workflow-tests --test integration_tests logging_per_run
 
+# RFC-009 Phase 2: Brokered sessions / capability gate enforcement
+# These verify protocol-level capability denial for no-edit drains
+cargo test -p ralph-workflow --lib agents::session
+cargo test -p ralph-workflow --lib reducer::boundary
+cargo test -p ralph-workflow-tests --test integration_tests brokered_sessions
+cargo test -p ralph-workflow --lib prompts::snapshot_tests
+
 # Metrics regressions (when changing iteration/retry/continuation/fallback logic)
 cargo test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
 cargo test -p ralph-workflow-tests --test integration_tests iteration_counter

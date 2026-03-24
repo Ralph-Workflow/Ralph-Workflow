@@ -14,6 +14,7 @@
 //! - allowed capability set for this session
 //! - session policy flags such as `no_edit`, `allow_shell`, `allow_git_read`
 
+use crate::agents::fallback::AgentRole;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::SystemTime;
@@ -73,6 +74,21 @@ impl SessionDrain {
             SessionDrain::Review => "review",
             SessionDrain::Fix => "fix",
             SessionDrain::Commit => "commit",
+        }
+    }
+
+    /// Returns the corresponding `AgentRole` for this drain.
+    ///
+    /// Note: Planning and Fix drains don't have direct `AgentRole` equivalents,
+    /// so they map to `AgentRole::Analysis` as the most generic fallback.
+    pub fn into_role(self) -> AgentRole {
+        match self {
+            SessionDrain::Planning => AgentRole::Analysis,
+            SessionDrain::Development => AgentRole::Developer,
+            SessionDrain::Analysis => AgentRole::Analysis,
+            SessionDrain::Review => AgentRole::Reviewer,
+            SessionDrain::Fix => AgentRole::Analysis,
+            SessionDrain::Commit => AgentRole::Commit,
         }
     }
 }
@@ -202,10 +218,18 @@ impl CapabilitySet {
     ///
     /// RFC-009 V1: Planning/Analysis/Review = read-only, Development = write-capable,
     /// Fix = write-capable (less restricted), Commit = git-write.
+    ///
+    /// # Ephemeral Write Note
+    ///
+    /// Planning/Analysis/Review drains include `WorkspaceWriteEphemeral` because Ralph
+    /// itself writes artifact files (PLAN.md, ISSUES.md, XML archives) to `.agent/`
+    /// which is ephemeral (gitignored). The `NoEdit` policy flag still prevents
+    /// the agent from writing to tracked source files.
     pub fn defaults_for_drain(drain: SessionDrain) -> Self {
         match drain {
             SessionDrain::Planning | SessionDrain::Analysis | SessionDrain::Review => vec![
                 Capability::WorkspaceRead,
+                Capability::WorkspaceWriteEphemeral,
                 Capability::GitStatusRead,
                 Capability::GitDiffRead,
                 Capability::ArtifactSubmit,
@@ -223,6 +247,7 @@ impl CapabilitySet {
             .into(),
             SessionDrain::Fix => vec![
                 Capability::WorkspaceRead,
+                Capability::WorkspaceWriteEphemeral,
                 Capability::WorkspaceWriteTracked,
                 Capability::GitStatusRead,
                 Capability::GitDiffRead,
@@ -231,9 +256,12 @@ impl CapabilitySet {
             ]
             .into(),
             SessionDrain::Commit => vec![
+                Capability::WorkspaceRead,
+                Capability::WorkspaceWriteEphemeral,
                 Capability::GitStatusRead,
                 Capability::GitDiffRead,
                 Capability::GitWrite,
+                Capability::ArtifactSubmit,
             ]
             .into(),
         }
@@ -729,6 +757,13 @@ impl From<crate::agents::AgentDrain> for SessionDrain {
         }
     }
 }
+
+// Phase 2: Capability gate for policy enforcement
+pub mod capability_gate;
+// Phase 2: Command policy for bash command filtering
+pub mod command_policy;
+// Phase 2: Audit trail persistence
+pub mod audit;
 
 #[cfg(test)]
 mod tests;

@@ -12,4 +12,4 @@ mod types;
 pub(crate) const DEFAULT_AGENTS_TOML: &str = include_str!("../../examples/agents.toml");
 
 pub use file::{AgentConfigError, AgentsConfigFile, ConfigInitResult};
-pub use types::{AgentConfig, AgentConfigBuilder, ConfigSource};
+pub use types::{should_use_yolo_mode, AgentConfig, AgentConfigBuilder, ConfigSource};

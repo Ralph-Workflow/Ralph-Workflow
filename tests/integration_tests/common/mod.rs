@@ -49,6 +49,7 @@
 
 use clap::error::ErrorKind;
 use clap::Parser;
+use ralph_workflow::agents::session::AuditTrail;
 use ralph_workflow::reducer::state::{PipelineState, PromptPermissionsState};
 use ralph_workflow::runtime::environment::mock::MockGitEnvironment;
 use std::path::PathBuf;
@@ -139,6 +140,8 @@ impl IntegrationFixture {
             cloud_reporter,
             cloud: &self.cloud,
             env: &self.git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         }
     }
 }

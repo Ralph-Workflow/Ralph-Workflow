@@ -67,6 +67,64 @@ impl EffectHandler<'_> for MockEffectHandler {
             panic!("MockEffectHandler panic injected by test");
         }
 
+        // RFC-009 Phase 2: Capability gate pre-check
+        // Ralph-internal effects bypass the capability gate
+        // Use session_override if set, otherwise fall back to ctx.active_session
+        if !crate::agents::session::capability_gate::is_ralph_internal_effect(&effect) {
+            let active_session = self
+                .session_override
+                .as_ref()
+                .or(ctx.active_session.as_ref());
+            if let Some(session) = active_session {
+                let required_caps =
+                    crate::agents::session::capability_gate::required_capabilities(&effect);
+                if !required_caps.is_empty() {
+                    let outcome = crate::agents::session::capability_gate::check_effect_capability(
+                        session, &effect,
+                    );
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let effect_name = crate::agents::session::capability_gate::effect_name(&effect);
+
+                    // Record the capability check in the audit trail
+                    ctx.audit_trail = crate::agents::session::audit::record_effect_check(
+                        &ctx.audit_trail,
+                        &session.session_id,
+                        timestamp,
+                        &effect_name,
+                        &required_caps,
+                        &outcome,
+                    );
+
+                    if let crate::agents::session::PolicyOutcome::Denied { reason } = outcome {
+                        // Find the first denied capability for the event
+                        let denied_capability = required_caps
+                            .into_iter()
+                            .find(|cap| {
+                                !matches!(
+                                    session.check_capability(*cap),
+                                    crate::agents::session::PolicyOutcome::Approved
+                                )
+                            })
+                            .map(|c| c.identifier().to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+
+                        let role = session.drain.into_role();
+                        let denied_event = PipelineEvent::Agent(
+                            crate::reducer::event::AgentEvent::CapabilityDenied {
+                                role,
+                                capability: denied_capability,
+                                reason,
+                            },
+                        );
+                        return Ok(EffectResult::event(denied_event));
+                    }
+                }
+            }
+        }
+
         match effect {
             Effect::CheckCommitDiff => {
                 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -537,6 +595,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &cloud,
             env: &git_env,
+            active_session: None,
+            audit_trail: crate::agents::session::AuditTrail::new(),
         };
 
         let mut handler = MockEffectHandler::new(PipelineState::initial(1, 0));

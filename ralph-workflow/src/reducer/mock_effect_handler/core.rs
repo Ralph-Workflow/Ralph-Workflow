@@ -73,6 +73,13 @@ pub struct MockEffectHandler {
     /// generates fresh). Add keys here to simulate a resume scenario where those prompts
     /// were replayed from checkpoint history.
     pub(super) replay_prompt_keys: Option<std::collections::HashSet<String>>,
+
+    /// Session override for capability gate testing.
+    ///
+    /// When set, this session is used instead of `ctx.active_session` for
+    /// capability gate checks. This allows testing capability denial scenarios
+    /// without requiring a full PhaseContext setup.
+    pub(super) session_override: Option<crate::agents::session::AgentSession>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +118,7 @@ impl MockEffectHandler {
             residual_files_pass_2: None,
             panic_on_next_execute: false,
             replay_prompt_keys: None,
+            session_override: None,
         }
     }
 
@@ -192,6 +200,25 @@ impl MockEffectHandler {
             ),
             ..self
         }
+    }
+
+    /// Configure the mock with a session override for capability gate testing.
+    ///
+    /// When set, this session is used instead of `ctx.active_session` for
+    /// capability gate checks during `execute()`. This allows testing capability
+    /// denial scenarios without requiring a full PhaseContext setup.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let session = AgentSession::for_drain("test".to_string(), SessionDrain::Planning, 1);
+    /// let handler = MockEffectHandler::new(state)
+    ///     .with_session_override(session);
+    /// ```
+    #[must_use]
+    pub fn with_session_override(mut self, session: crate::agents::session::AgentSession) -> Self {
+        self.session_override = Some(session);
+        self
     }
 
     /// Configure the mock to simulate a clean working directory for the
