@@ -63,6 +63,7 @@ pub fn prompt_developer_iteration(
 /// * `ctx_level` - The context level (minimal or normal) (accepted for API compatibility, not used in template)
 /// * `prompt_content` - The original user request (PROMPT.md content)
 /// * `plan_content` - The implementation plan (.agent/PLAN.md content)
+/// * `session_caps` - Bundled session capabilities and policy flags
 #[must_use]
 pub fn prompt_developer_iteration_with_context(
     context: &TemplateContext,
@@ -71,6 +72,7 @@ pub fn prompt_developer_iteration_with_context(
     ctx_level: ContextLevel,
     prompt_content: &str,
     plan_content: &str,
+    session_caps: SessionCapabilities,
 ) -> String {
     let partials = get_shared_partials();
     // Note: iteration, total, and ctx_level are accepted for API compatibility
@@ -92,12 +94,10 @@ pub fn prompt_developer_iteration_with_context(
         ("PLAN", plan_content.to_string()),
     ]);
 
-    // Compute capability variables using Development drain defaults
-    // since the session is created after prompt generation in invoke_agent.
-    // This ensures templates receive capability-driven conditionals correctly.
+    // Compute capability variables from session capabilities
     let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        session_caps.capabilities,
+        session_caps.policy_flags,
     );
 
     // Merge base and capability variables using functional style (no mutation)
@@ -134,11 +134,14 @@ pub fn prompt_developer_iteration_with_context(
 /// * `prompt_content` - The original user request (PROMPT.md content)
 /// * `plan_content` - The implementation plan (.agent/PLAN.md content)
 /// * `workspace` - Workspace for resolving absolute paths
+/// * `capabilities` - The session's capability set for capability-driven template variables
+/// * `policy_flags` - The session's policy flag set for policy-driven template variables
 pub fn prompt_developer_iteration_xml_with_context(
     context: &TemplateContext,
     prompt_content: &str,
     plan_content: &str,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     let partials = get_shared_partials();
     let template_content = context
@@ -161,11 +164,10 @@ pub fn prompt_developer_iteration_xml_with_context(
         ),
     ]);
 
-    // Compute capability variables using Development drain defaults
-    // since the session is created after prompt generation in invoke_agent.
+    // Compute capability variables from session capabilities
     let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        session_caps.capabilities,
+        session_caps.policy_flags,
     );
 
     // Merge base and capability variables using functional style (no mutation)
@@ -196,11 +198,21 @@ pub fn prompt_developer_iteration_xml_with_context(
 ///
 /// This is the new log-based version that returns both content and substitution tracking.
 /// Use this version in handlers to enable log-based validation.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `refs` - Content references for PROMPT and PLAN
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `template_name` - Name of the template for logging
+/// * `capabilities` - The session's capability set for capability-driven template variables
+/// * `policy_flags` - The session's policy flag set for policy-driven template variables
 pub fn prompt_developer_iteration_xml_with_references_and_log(
     context: &TemplateContext,
     refs: &super::content_builder::PromptContentReferences,
     workspace: &dyn Workspace,
     template_name: &str,
+    session_caps: SessionCapabilities,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -227,10 +239,10 @@ pub fn prompt_developer_iteration_xml_with_references_and_log(
         ),
     ]);
 
-    // Compute capability variables using Development drain defaults
+    // Compute capability variables from session capabilities
     let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        session_caps.capabilities,
+        session_caps.policy_flags,
     );
 
     // Merge base and capability variables using functional style (no mutation)
@@ -296,10 +308,12 @@ pub fn prompt_developer_iteration_xml_with_references_and_log(
 /// * `context` - Template context containing the template registry
 /// * `refs` - Content references for PROMPT and PLAN
 /// * `workspace` - Workspace for resolving absolute paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xml_with_references(
     context: &TemplateContext,
     refs: &super::content_builder::PromptContentReferences,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     let partials = get_shared_partials();
     let template_content = context
@@ -322,10 +336,10 @@ pub fn prompt_developer_iteration_xml_with_references(
         ),
     ]);
 
-    // Compute capability variables using Development drain defaults
+    // Compute capability variables from session capabilities
     let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        session_caps.capabilities,
+        session_caps.policy_flags,
     );
 
     // Merge base and capability variables using functional style (no mutation)

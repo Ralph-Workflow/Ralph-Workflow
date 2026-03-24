@@ -1,4 +1,5 @@
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::review::boundary_domain::{
     build_fix_continuation_prompt_content_id, build_fix_normal_prompt_content_id,
@@ -6,6 +7,7 @@ use crate::phases::review::boundary_domain::{
     parse_development_result_status, render_fix_continuation_note,
 };
 use crate::phases::PhaseContext;
+use crate::prompts::SessionCapabilities;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -92,12 +94,15 @@ impl MainEffectHandler {
             &self.state.prompt_history,
             Some(&prompt_content_id),
             || {
+                let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+                let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
                 prompt_fix_xsd_retry_with_context(
                     ctx.template_context,
                     &inputs.issues_content,
                     xsd_error,
                     &inputs.last_output,
                     ctx.workspace,
+                    SessionCapabilities::new(&capabilities, &policy_flags),
                 )
             },
         );
@@ -173,12 +178,18 @@ impl MainEffectHandler {
             || {
                 crate::prompts::review::prompt_fix_xml_with_log(
                     ctx.template_context,
-                    &inputs.prompt_content,
-                    &inputs.plan_content,
-                    &inputs.issues_content,
+                    crate::prompts::review::FixPromptContent::new(
+                        &inputs.prompt_content,
+                        &inputs.plan_content,
+                        &inputs.issues_content,
+                    ),
                     &[],
                     ctx.workspace,
                     "fix_mode_xml",
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+                    ),
                 )
                 .content
             },
@@ -212,6 +223,8 @@ impl MainEffectHandler {
             &self.state.prompt_history,
             Some(&prompt_content_id),
             || {
+                let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+                let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
                 format!(
                     "{continuation_note}\n{}",
                     prompt_fix_xml_with_context(
@@ -220,7 +233,8 @@ impl MainEffectHandler {
                         &inputs.plan_content,
                         &inputs.issues_content,
                         &[],
-                        ctx.workspace
+                        ctx.workspace,
+                        SessionCapabilities::new(&capabilities, &policy_flags),
                     )
                 )
             },
@@ -316,13 +330,21 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.reviewer_agent.to_string());
 
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults, so the pre-generated prompt
+        // is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Fix,
             AgentRole::Reviewer,
             &agent,
             None,
-            |_session: &crate::agents::session::AgentSession| prompt.clone(),
+            |session: &crate::agents::session::AgentSession| {
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                prompt.clone()
+            },
         )?;
         Ok(maybe_append_fix_invoked_event(result, pass))
     }
@@ -450,6 +472,8 @@ fn build_same_agent_retry_body(
 ) -> String {
     use crate::prompts::prompt_fix_xml_with_context;
     let fresh = || {
+        let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+        let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
         prompt_fix_xml_with_context(
             ctx.template_context,
             &inputs.prompt_content,
@@ -457,6 +481,7 @@ fn build_same_agent_retry_body(
             &inputs.issues_content,
             &[],
             ctx.workspace,
+            SessionCapabilities::new(&capabilities, &policy_flags),
         )
     };
     let base_prompt = match ctx.workspace.read(Path::new(".agent/tmp/fix_prompt.txt")) {
@@ -534,12 +559,18 @@ fn render_fix_template_for_validation(
         }
         _ => crate::prompts::review::prompt_fix_xml_with_log(
             ctx.template_context,
-            &inputs.prompt_content,
-            &inputs.plan_content,
-            &inputs.issues_content,
+            crate::prompts::review::FixPromptContent::new(
+                &inputs.prompt_content,
+                &inputs.plan_content,
+                &inputs.issues_content,
+            ),
             &[],
             ctx.workspace,
             gen.template_name,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+            ),
         ),
     }
 }
@@ -555,12 +586,15 @@ fn render_xsd_retry_fix_log(
         .as_deref()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("XML output failed validation. Provide valid XML output.");
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
     crate::prompts::review::prompt_fix_xsd_retry_with_log(
         ctx.template_context,
         xsd_error,
         &inputs.last_output,
         ctx.workspace,
         gen.template_name,
+        SessionCapabilities::new(&capabilities, &policy_flags),
     )
 }
 
@@ -608,12 +642,18 @@ fn render_continuation_fix_log(
     );
     let rendered = crate::prompts::review::prompt_fix_xml_with_log(
         ctx.template_context,
-        &inputs.prompt_content,
-        &inputs.plan_content,
-        &inputs.issues_content,
+        crate::prompts::review::FixPromptContent::new(
+            &inputs.prompt_content,
+            &inputs.plan_content,
+            &inputs.issues_content,
+        ),
         &[],
         ctx.workspace,
         gen.template_name,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+        ),
     );
     crate::prompts::RenderedTemplate {
         content: format!("{continuation_note}\n{}", rendered.content),

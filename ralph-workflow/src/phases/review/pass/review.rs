@@ -3,12 +3,15 @@ use super::super::types::{ParseResult, ReviewPassResult};
 use super::super::xml_processing::extract_and_validate_review_output_xml;
 use super::helpers::{handle_postflight_validation, stderr_contains_auth_error};
 
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::files::delete_issues_file_for_isolation_with_workspace;
 use crate::phases::context::PhaseContext;
 use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
-use crate::prompts::{prompt_review_xml_with_references_and_log, PromptContentBuilder};
+use crate::prompts::{
+    prompt_review_xml_with_references_and_log, PromptContentBuilder, SessionCapabilities,
+};
 use anyhow::Context as _;
 
 use std::path::Path;
@@ -74,11 +77,14 @@ pub fn run_review_pass(
         .with_plan(plan_content)
         .with_diff(changes_content, &baseline_oid_for_prompts)
         .build();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let rendered = prompt_review_xml_with_references_and_log(
         ctx.template_context,
         &refs,
         ctx.workspace,
         "review_xml",
+        SessionCapabilities::new(&capabilities, &policy_flags),
     );
     let review_prompt_xml = rendered.content;
 

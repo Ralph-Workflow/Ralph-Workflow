@@ -1,4 +1,5 @@
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::development::boundary_domain::{
@@ -18,6 +19,7 @@ use crate::prompts::{
     prompt_developer_iteration_xml_with_references,
     prompt_developer_iteration_xml_with_references_and_log,
     prompt_developer_iteration_xsd_retry_with_context_files_and_log, PromptScopeKey, RetryMode,
+    SessionCapabilities,
 };
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
@@ -85,6 +87,10 @@ impl MainEffectHandler {
                     ctx.template_context,
                     continuation_state,
                     ctx.workspace,
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+                    ),
                 )
             },
         );
@@ -164,6 +170,10 @@ impl MainEffectHandler {
                     ctx.workspace,
                     "developer_iteration_xsd_retry",
                     is_continuation,
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+                    ),
                 )
                 .content
             },
@@ -289,6 +299,10 @@ impl MainEffectHandler {
                     &refs,
                     ctx.workspace,
                     "developer_iteration_xml",
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+                    ),
                 )
                 .content
             },
@@ -325,6 +339,10 @@ fn build_normal_rendered_log(
         refs,
         ctx.workspace,
         "developer_iteration_xml",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
     check_template_log_complete(
         rendered.log,
@@ -482,6 +500,10 @@ fn build_xsd_retry_rendered_log(
         ctx.workspace,
         "developer_iteration_xsd_retry",
         is_continuation,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
     check_template_log_complete(
         rendered.log,
@@ -506,6 +528,10 @@ fn build_continuation_rendered_log(
         continuation_state,
         ctx.workspace,
         "developer_iteration_continuation_xml",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
     check_template_log_complete(
         rendered.log,
@@ -694,6 +720,10 @@ fn build_same_agent_base_prompt(ctx: &PhaseContext<'_>, refs: &PromptContentRefe
                     ctx.template_context,
                     refs,
                     ctx.workspace,
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+                    ),
                 )
             },
             |previous_prompt| {

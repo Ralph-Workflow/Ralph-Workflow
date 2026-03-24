@@ -7,6 +7,71 @@ use std::collections::HashMap;
 
 use crate::agents::session::{Capability, CapabilitySet, PolicyFlag, PolicyFlagSet};
 
+/// Bundled session capability parameters for prompt generation.
+///
+/// This newtype struct bundles `&CapabilitySet` and `&PolicyFlagSet` together
+/// to reduce function argument counts and improve code organization.
+///
+/// # Example
+///
+/// ```
+/// use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+/// use ralph_workflow::prompts::template_variables::SessionCapabilities;
+///
+/// let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
+/// let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Development);
+/// let session_caps = SessionCapabilities::new(&caps, &flags);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct SessionCapabilities<'a> {
+    pub capabilities: &'a CapabilitySet,
+    pub policy_flags: &'a PolicyFlagSet,
+}
+
+impl<'a> SessionCapabilities<'a> {
+    /// Create a new SessionCapabilities from references to CapabilitySet and PolicyFlagSet.
+    #[inline]
+    #[must_use]
+    pub fn new(capabilities: &'a CapabilitySet, policy_flags: &'a PolicyFlagSet) -> Self {
+        Self {
+            capabilities,
+            policy_flags,
+        }
+    }
+
+    /// Create SessionCapabilities from an AgentSession.
+    #[inline]
+    #[must_use]
+    pub fn from_session(session: &'a crate::agents::session::AgentSession) -> Self {
+        Self {
+            capabilities: session.capabilities(),
+            policy_flags: session.policy_flags(),
+        }
+    }
+}
+
+/// Helper to get default capabilities and policy flags for a drain as a tuple.
+/// This is useful for creating SessionCapabilities in a single expression.
+///
+/// # Example
+///
+/// ```ignore
+/// let session_caps = {
+///     let (caps, flags) = default_caps_and_flags_for_drain(SessionDrain::Development);
+///     SessionCapabilities::new(caps, flags)
+/// };
+/// ```
+#[inline]
+#[must_use]
+pub fn default_caps_and_flags_for_drain(
+    drain: crate::agents::session::SessionDrain,
+) -> (CapabilitySet, PolicyFlagSet) {
+    (
+        CapabilitySet::defaults_for_drain(drain),
+        PolicyFlagSet::defaults_for_drain(drain),
+    )
+}
+
 /// Generate template variables from capabilities and policy flags.
 ///
 /// These variables are used in templates to conditionally include
@@ -75,6 +140,25 @@ pub fn capability_template_variables(
     )
 }
 
+/// Generate template variables from an AgentSession.
+///
+/// This is a convenience wrapper around `capability_template_variables`
+/// that extracts the capabilities and policy flags from the session.
+/// It uses the actual session capabilities rather than drain defaults,
+/// ensuring behavioral equivalence between prompt rendering and session invocation.
+///
+/// # Example
+///
+/// ```ignore
+/// let vars = capability_template_variables_from_session(&session);
+/// ```
+#[must_use]
+pub fn capability_template_variables_from_session(
+    session: &crate::agents::session::AgentSession,
+) -> HashMap<String, String> {
+    capability_template_variables(session.capabilities(), session.policy_flags())
+}
+
 /// Convert a boolean to a template-friendly string value.
 ///
 /// Template conditionals evaluate a variable as truthy if it exists
@@ -121,7 +205,7 @@ fn format_capability_summary(capabilities: &CapabilitySet, policy_flags: &Policy
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::session::{Capability, SessionDrain};
+    use crate::agents::session::{AgentSession, Capability, SessionDrain};
 
     #[test]
     fn test_capability_variables_for_planning_session() {
@@ -206,5 +290,115 @@ mod tests {
     #[test]
     fn test_bool_to_string_false() {
         assert_eq!(bool_to_string(false), "");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_development() {
+        let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Development, 0);
+        let vars = capability_template_variables_from_session(&session);
+
+        // Should match what defaults_for_drain produces for Development
+        assert_eq!(vars.get("HAS_WORKSPACE_WRITE").unwrap(), "true");
+        assert_eq!(vars.get("HAS_PROCESS_EXEC").unwrap(), "true");
+        assert_eq!(vars.get("HAS_GIT_WRITE").unwrap(), "");
+        assert_eq!(vars.get("POLICY_NO_EDIT").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_SHELL").unwrap(), "true");
+        assert_eq!(vars.get("POLICY_ALLOW_GIT_WRITE").unwrap(), "");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_planning() {
+        let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Planning, 0);
+        let vars = capability_template_variables_from_session(&session);
+
+        // Should match what defaults_for_drain produces for Planning
+        assert_eq!(vars.get("HAS_WORKSPACE_WRITE").unwrap(), "");
+        assert_eq!(vars.get("HAS_PROCESS_EXEC").unwrap(), "");
+        assert_eq!(vars.get("HAS_GIT_WRITE").unwrap(), "");
+        assert_eq!(vars.get("POLICY_NO_EDIT").unwrap(), "true");
+        assert_eq!(vars.get("POLICY_ALLOW_SHELL").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_GIT_WRITE").unwrap(), "");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_commit() {
+        let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Commit, 0);
+        let vars = capability_template_variables_from_session(&session);
+
+        // Should match what defaults_for_drain produces for Commit
+        assert_eq!(vars.get("HAS_WORKSPACE_WRITE").unwrap(), "");
+        assert_eq!(vars.get("HAS_PROCESS_EXEC").unwrap(), "");
+        assert_eq!(vars.get("HAS_GIT_WRITE").unwrap(), "true");
+        assert_eq!(vars.get("POLICY_NO_EDIT").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_SHELL").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_GIT_WRITE").unwrap(), "true");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_review() {
+        let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Review, 0);
+        let vars = capability_template_variables_from_session(&session);
+
+        // Should match what defaults_for_drain produces for Review
+        assert_eq!(vars.get("HAS_WORKSPACE_WRITE").unwrap(), "");
+        assert_eq!(vars.get("HAS_PROCESS_EXEC").unwrap(), "");
+        assert_eq!(vars.get("HAS_GIT_WRITE").unwrap(), "");
+        assert_eq!(vars.get("POLICY_NO_EDIT").unwrap(), "true");
+        assert_eq!(vars.get("POLICY_ALLOW_SHELL").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_GIT_WRITE").unwrap(), "");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_fix() {
+        let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Fix, 0);
+        let vars = capability_template_variables_from_session(&session);
+
+        // Should match what defaults_for_drain produces for Fix
+        assert_eq!(vars.get("HAS_WORKSPACE_WRITE").unwrap(), "true");
+        assert_eq!(vars.get("HAS_PROCESS_EXEC").unwrap(), "true");
+        assert_eq!(vars.get("HAS_GIT_WRITE").unwrap(), "");
+        assert_eq!(vars.get("POLICY_NO_EDIT").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_SHELL").unwrap(), "true");
+        assert_eq!(vars.get("POLICY_ALLOW_GIT_WRITE").unwrap(), "");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_analysis() {
+        let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Analysis, 0);
+        let vars = capability_template_variables_from_session(&session);
+
+        // Should match what defaults_for_drain produces for Analysis
+        assert_eq!(vars.get("HAS_WORKSPACE_WRITE").unwrap(), "");
+        assert_eq!(vars.get("HAS_PROCESS_EXEC").unwrap(), "");
+        assert_eq!(vars.get("HAS_GIT_WRITE").unwrap(), "");
+        assert_eq!(vars.get("POLICY_NO_EDIT").unwrap(), "true");
+        assert_eq!(vars.get("POLICY_ALLOW_SHELL").unwrap(), "");
+        assert_eq!(vars.get("POLICY_ALLOW_GIT_WRITE").unwrap(), "");
+    }
+
+    #[test]
+    fn test_capability_template_variables_from_session_matches_direct_for_all_drains() {
+        // Verifies that the session wrapper produces identical output to direct call
+        // for ALL 6 drain types
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Development,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            let session = AgentSession::for_drain("test-run".to_string(), drain, 0);
+
+            let from_session = capability_template_variables_from_session(&session);
+            let direct =
+                capability_template_variables(session.capabilities(), session.policy_flags());
+
+            assert_eq!(
+                from_session, direct,
+                "Session wrapper should produce identical output to direct call for {:?}",
+                drain
+            );
+        }
     }
 }

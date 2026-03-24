@@ -10,7 +10,7 @@ use super::template_context::TemplateContext;
 use super::template_engine::Template;
 use super::template_variables::capability_template_variables;
 use super::types::ContextLevel;
-use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::prompts::SessionCapabilities;
 use crate::workspace::Workspace;
 
 include!("developer/context_injection.rs");

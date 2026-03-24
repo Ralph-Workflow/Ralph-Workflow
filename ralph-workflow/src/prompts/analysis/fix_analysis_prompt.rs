@@ -3,7 +3,6 @@
 // Generates prompts for the fix analysis agent to produce an objective assessment
 // of fix results by comparing git diff against REVIEW ISSUES (from ISSUES.md).
 
-use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::prompts::content_reference::{DiffContentReference, PlanContentReference};
 use crate::prompts::partials::get_shared_partials;
 use crate::prompts::template_context::TemplateContext;
@@ -70,12 +69,28 @@ fn build_template_variables(
     ])
 }
 
+/// Generate fix analysis agent prompt.
+///
+/// The fix analysis agent receives the ISSUES.md content, git diff, and fix result.
+/// It verifies whether the changes satisfy the review requirements.
+///
+/// # Arguments
+///
+/// * `issues_content` - The review issues (ISSUES.md content)
+/// * `diff_content` - The git diff since HEAD
+/// * `fix_result_content` - The fix agent's self-assessment result
+/// * `is_continuation` - Whether this is a continuation prompt
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `capabilities` - The capabilities available to the agent
+/// * `policy_flags` - The policy flags in effect
 pub fn generate_fix_analysis_prompt(
     issues_content: &str,
     diff_content: &str,
     fix_result_content: &str,
     is_continuation: bool,
     workspace: &dyn crate::workspace::Workspace,
+    capabilities: &crate::agents::session::CapabilitySet,
+    policy_flags: &crate::agents::session::PolicyFlagSet,
 ) -> String {
     let partials = get_shared_partials();
     let context = TemplateContext::default();
@@ -94,11 +109,8 @@ pub fn generate_fix_analysis_prompt(
         is_continuation,
     );
 
-    // Compute capability variables using Analysis drain defaults
-    let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Analysis),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis),
-    );
+    // Compute capability variables using provided capabilities and policy flags
+    let capability_vars = capability_template_variables(capabilities, policy_flags);
 
     // Merge base and capability variables using functional style (no mutation)
     let variables: HashMap<String, String> = base_vars.into_iter().chain(capability_vars).collect();

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::workspace::MemoryWorkspace;
 use std::path::PathBuf;
 
@@ -6,12 +7,16 @@ use std::path::PathBuf;
 fn test_prompt_review_xml_with_context() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let result = prompt_review_xml_with_context(
         &context,
         "test prompt",
         "test plan",
         "test changes",
         &workspace,
+        &capabilities,
+        &policy_flags,
     );
     // prompt_content is no longer embedded - reviewer reads PROMPT.md.backup directly
     assert!(!result.contains("test prompt"));
@@ -82,7 +87,9 @@ fn test_prompt_review_xml_with_context() {
 fn test_prompt_review_xml_with_context_allows_empty_plan_and_changes() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
-    let result = prompt_review_xml_with_context(&context, "prompt", "", "", &workspace);
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let result = prompt_review_xml_with_context(&context, "prompt", "", "", &workspace, &capabilities, &policy_flags);
 
     assert!(
         !result.contains("{{PLAN}}"),
@@ -106,8 +113,10 @@ fn test_prompt_review_xml_with_context_allows_empty_plan_and_changes() {
 fn test_prompt_review_xml_with_context_uses_inline_plan_and_changes_when_present() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let result =
-        prompt_review_xml_with_context(&context, "prompt", "plan here", "diff here", &workspace);
+        prompt_review_xml_with_context(&context, "prompt", "plan here", "diff here", &workspace, &capabilities, &policy_flags);
 
     assert!(result.contains("plan here"));
     assert!(result.contains("diff here"));
@@ -280,13 +289,15 @@ fn test_prompt_review_xml_with_references_small_content() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
 
     let refs = PromptContentBuilder::new(&workspace)
         .with_plan("Small plan content".to_string())
         .with_diff("Small diff content".to_string(), "abc123")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, &capabilities, &policy_flags);
 
     // Should embed content inline
     assert!(result.contains("Small plan content"));
@@ -301,6 +312,8 @@ fn test_prompt_review_xml_with_references_large_plan() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let large_plan = "p".repeat(MAX_INLINE_CONTENT_SIZE + 1);
 
     let refs = PromptContentBuilder::new(&workspace)
@@ -308,7 +321,7 @@ fn test_prompt_review_xml_with_references_large_plan() {
         .with_diff("Small diff".to_string(), "abc123")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, &capabilities, &policy_flags);
 
     // Should reference PLAN.md file, not embed content
     assert!(result.contains(".agent/PLAN.md"));
@@ -323,6 +336,8 @@ fn test_prompt_review_xml_with_references_large_diff() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let large_diff = "d".repeat(MAX_INLINE_CONTENT_SIZE + 1);
 
     let refs = PromptContentBuilder::new(&workspace)
@@ -330,7 +345,7 @@ fn test_prompt_review_xml_with_references_large_diff() {
         .with_diff(large_diff, "abc123def")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, &capabilities, &policy_flags);
 
     // Should instruct to use git diff fallback commands, not embed content
     assert!(result.contains("git diff abc123def"));
@@ -345,6 +360,8 @@ fn test_prompt_review_xml_with_references_both_large() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let large_plan = "p".repeat(MAX_INLINE_CONTENT_SIZE + 1);
     let large_diff = "d".repeat(MAX_INLINE_CONTENT_SIZE + 1);
 
@@ -353,7 +370,7 @@ fn test_prompt_review_xml_with_references_both_large() {
         .with_diff(large_diff, "start123")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, &capabilities, &policy_flags);
 
     // Both should be referenced by file/git command
     assert!(result.contains(".agent/PLAN.md"));

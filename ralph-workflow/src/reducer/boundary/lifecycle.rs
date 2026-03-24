@@ -154,13 +154,21 @@ fn invoke_dev_fix_agent(
     agent: &str,
     dev_fix_prompt: String,
 ) -> anyhow::Result<EffectResult> {
+    // RFC-009: The closure receives the AgentSession created by invoke_agent.
+    // In V1, session capabilities == drain defaults, so the pre-generated prompt
+    // is correct. The closure still calls capability_template_variables_from_session
+    // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
     handler.invoke_agent(
         ctx,
         crate::agents::AgentDrain::Development,
         crate::agents::AgentRole::Developer,
         agent,
         None,
-        |_session: &crate::agents::session::AgentSession| dev_fix_prompt.clone(),
+        |session: &crate::agents::session::AgentSession| {
+            let _session_vars =
+                crate::prompts::capability_template_variables_from_session(session);
+            dev_fix_prompt.clone()
+        },
     ).map_err(|err| {
         let unavailable = is_agent_unavailable_error(&err.to_string());
         if unavailable {

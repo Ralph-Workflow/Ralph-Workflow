@@ -8,10 +8,11 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
+use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use ralph_workflow::prompts::{
     prompt_commit_xsd_retry_with_context, prompt_developer_iteration_xsd_retry_with_context_files,
     prompt_fix_xsd_retry_with_context_files, prompt_planning_xsd_retry_with_context_files,
-    prompt_review_xsd_retry_with_context_files, TemplateContext,
+    prompt_review_xsd_retry_with_context_files, SessionCapabilities, TemplateContext,
 };
 use ralph_workflow::workspace::{DirEntry, MemoryWorkspace, Workspace};
 use std::io;
@@ -132,6 +133,10 @@ fn test_planning_xsd_retry_detects_missing_schema() {
             &template_context,
             "Test error",
             &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+            ),
         );
 
         // Verify: prompt indicates missing file AND includes workspace root
@@ -152,8 +157,15 @@ fn test_review_xsd_retry_detects_missing_files() {
         let template_context = TemplateContext::default();
 
         // Generate XSD retry prompt with missing schema
-        let prompt =
-            prompt_review_xsd_retry_with_context_files(&template_context, "Test error", &workspace);
+        let prompt = prompt_review_xsd_retry_with_context_files(
+            &template_context,
+            "Test error",
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Review),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Review),
+            ),
+        );
 
         // Verify: prompt indicates missing file AND includes workspace root
         assert!(
@@ -178,6 +190,10 @@ fn test_development_xsd_retry_detects_missing_files() {
             "Test error",
             &workspace,
             true,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+            ),
         );
 
         // Verify: prompt indicates missing file AND includes workspace root
@@ -202,6 +218,10 @@ fn test_development_xsd_retry_fallback_uses_continuation_contract() {
             "Test error",
             &workspace,
             true,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+            ),
         );
 
         assert!(
@@ -236,8 +256,15 @@ fn test_fix_xsd_retry_detects_missing_files() {
         let template_context = TemplateContext::default();
 
         // Generate XSD retry prompt with missing schema
-        let prompt =
-            prompt_fix_xsd_retry_with_context_files(&template_context, "Test error", &workspace);
+        let prompt = prompt_fix_xsd_retry_with_context_files(
+            &template_context,
+            "Test error",
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+            ),
+        );
 
         // Verify: prompt indicates missing file AND includes workspace root
         assert!(

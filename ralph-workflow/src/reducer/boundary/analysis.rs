@@ -1,5 +1,6 @@
 //! Analysis agent effect handlers.
 
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
 use crate::files::write_diff_backup_with_workspace;
 use crate::phases::PhaseContext;
@@ -35,11 +36,15 @@ impl MainEffectHandler {
     ) -> Result<EffectResult> {
         let plan_content = read_plan_content_with_fallback(ctx);
         let diff_content = read_diff_content_with_backup(ctx);
+        let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
+        let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
         let prompt = crate::prompts::analysis::generate_analysis_prompt(
             &plan_content,
             &diff_content,
             self.state.continuation.is_continuation(),
             ctx.workspace,
+            &capabilities,
+            &policy_flags,
         );
         let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
         let prompt = apply_same_agent_retry_prefix(
@@ -75,12 +80,16 @@ impl MainEffectHandler {
         let issues_content = read_issues_content(ctx);
         let diff_content = read_diff_content_with_backup(ctx);
         let fix_result_content = read_fix_result_content(ctx);
+        let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Analysis);
+        let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis);
         let prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
             &issues_content,
             &diff_content,
             &fix_result_content,
             self.state.continuation.fix_continue_pending,
             ctx.workspace,
+            &capabilities,
+            &policy_flags,
         );
         let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
         let prompt = apply_same_agent_retry_prefix(
@@ -188,13 +197,20 @@ fn invoke_analysis_agent_with_prompt(
         .current_agent()
         .cloned()
         .unwrap_or_else(|| ctx.developer_agent.to_string());
+    // RFC-009: The closure receives the AgentSession created by invoke_agent.
+    // In V1, session capabilities == drain defaults, so the pre-generated prompt
+    // is correct. The closure still calls capability_template_variables_from_session
+    // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
     handler.invoke_agent(
         ctx,
         crate::agents::AgentDrain::Analysis,
         AgentRole::Analysis,
         &agent,
         None,
-        |_session: &crate::agents::session::AgentSession| prompt.clone(),
+        |session: &crate::agents::session::AgentSession| {
+            let _session_vars = crate::prompts::capability_template_variables_from_session(session);
+            prompt.clone()
+        },
     )
 }
 

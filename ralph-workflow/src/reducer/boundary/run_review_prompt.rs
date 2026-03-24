@@ -1,4 +1,5 @@
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::phases::review::boundary_domain::{
     build_review_prompt_content_id, build_review_xsd_retry_prompt_content_id,
 };
@@ -7,6 +8,7 @@ use crate::prompts::content_builder::PromptContentReferences;
 use crate::prompts::content_reference::{
     DiffContentReference, PlanContentReference, MAX_INLINE_CONTENT_SIZE,
 };
+use crate::prompts::SessionCapabilities;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -318,11 +320,14 @@ fn render_and_check_xsd_retry_log(
     xsd_retry_events: Option<&Vec<PipelineEvent>>,
 ) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
     use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let rendered = prompt_review_xsd_retry_with_context_files_and_log(
         ctx.template_context,
         xsd_error,
         ctx.workspace,
         "review_xsd_retry",
+        SessionCapabilities::new(&capabilities, &policy_flags),
     );
     if rendered.log.is_complete() {
         return Ok(Some(rendered.log));
@@ -400,11 +405,14 @@ fn render_and_check_review_xml_log(
     prompt_key: &str,
     was_replayed: bool,
 ) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
         ctx.template_context,
         refs,
         ctx.workspace,
         "review_xml",
+        SessionCapabilities::new(&capabilities, &policy_flags),
     );
     if rendered.log.is_complete() {
         return Ok(Some(rendered.log));
@@ -456,11 +464,14 @@ fn build_xsd_retry_scope_key(
 
 fn generate_xsd_retry_prompt_text(ctx: &PhaseContext<'_>, xsd_error: &str) -> String {
     use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let rendered = prompt_review_xsd_retry_with_context_files_and_log(
         ctx.template_context,
         xsd_error,
         ctx.workspace,
         "review_xsd_retry",
+        SessionCapabilities::new(&capabilities, &policy_flags),
     );
     rendered.content
 }
@@ -569,12 +580,14 @@ fn resolve_same_agent_base_prompt(
     refs: &PromptContentReferences,
 ) -> (String, bool) {
     use crate::prompts::prompt_review_xml_with_references;
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     ctx.workspace
         .read(Path::new(".agent/tmp/review_prompt.txt"))
         .map_or_else(
             |_| {
                 (
-                    prompt_review_xml_with_references(ctx.template_context, refs, ctx.workspace),
+                    prompt_review_xml_with_references(ctx.template_context, refs, ctx.workspace, SessionCapabilities::new(&capabilities, &policy_flags)),
                     true,
                 )
             },
@@ -585,7 +598,7 @@ fn resolve_same_agent_base_prompt(
                     )
                     .to_string();
                 let freshly_rendered =
-                    prompt_review_xml_with_references(ctx.template_context, refs, ctx.workspace);
+                    prompt_review_xml_with_references(ctx.template_context, refs, ctx.workspace, SessionCapabilities::new(&capabilities, &policy_flags));
                 if previous_base == freshly_rendered {
                     (previous_base, false)
                 } else {
@@ -694,11 +707,14 @@ fn build_normal_prompt(
                 plan: Some(plan_ref.clone()),
                 diff: Some(diff_ref.clone()),
             };
+            let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+            let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
             let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
                 ctx.template_context,
                 &refs,
                 ctx.workspace,
                 "review_xml",
+                SessionCapabilities::new(&capabilities, &policy_flags),
             );
             rendered.content
         },

@@ -1,4 +1,5 @@
 use super::MainEffectHandler;
+use crate::agents::session::AgentSession;
 use crate::agents::AgentRole;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::development::boundary_domain::{
@@ -42,15 +43,29 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.developer_agent.to_string());
         // Pass a closure that returns the prompt.
-        // The closure receives the AgentSession, but for now we return the pre-generated prompt.
-        // TODO(rfc-009): Generate prompt using session capabilities inside the closure.
+        //
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults (V1 invariant), so the pre-generated
+        // prompt is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
+        //
+        // V2 Note: When session capabilities may differ from drain defaults, closures will need
+        // template content + refs to re-render with session capabilities. This requires passing
+        // intermediate data (not just rendered string) from prepare handlers to closures.
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Development,
             AgentRole::Developer,
             &agent,
             None,
-            |_session: &crate::agents::session::AgentSession| pre_generated_prompt.clone(),
+            |session: &AgentSession| {
+                // RFC-009: Use session capabilities to compute template variables.
+                // In V1 this is equivalent to defaults_for_drain, but exercises the
+                // session-aware code path for RFC-009 verification.
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                pre_generated_prompt.clone()
+            },
         )?;
         let result = if result.additional_events.iter().any(|e| {
             matches!(

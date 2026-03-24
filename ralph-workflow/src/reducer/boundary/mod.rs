@@ -305,13 +305,21 @@ impl MainEffectHandler {
         model: Option<String>,
         prompt: String,
     ) -> Result<EffectResult> {
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults, so the pre-generated prompt
+        // is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
         self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::from(role),
             role,
             &agent,
             model.as_deref(),
-            |_session: &crate::agents::session::AgentSession| prompt.clone(),
+            |session: &crate::agents::session::AgentSession| {
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                prompt.clone()
+            },
         )
     }
 

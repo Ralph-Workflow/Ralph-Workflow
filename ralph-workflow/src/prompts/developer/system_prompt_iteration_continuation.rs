@@ -84,10 +84,18 @@ fn fallback_continuation_prompt(
 ///
 /// Used when the previous attempt returned status="partial" or "failed".
 /// Includes context about what was previously done and guidance to continue.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `continuation_state` - Continuation state with previous attempt info
+/// * `workspace` - Workspace for resolving paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_continuation_xml(
     context: &TemplateContext,
     continuation_state: &crate::reducer::state::ContinuationState,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     write_dev_iteration_continuation_schema_file(workspace);
 
@@ -146,13 +154,9 @@ pub fn prompt_developer_iteration_continuation_xml(
         ),
     ]);
 
-    // Compute capability variables from default Development drain capabilities
-    // since the session is created after prompt generation in invoke_agent.
-    // This ensures templates receive capability-driven conditionals correctly.
-    let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
-    );
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
 
     // Merge base variables, capability variables, and optional next_steps using functional style
     let variables: HashMap<String, String> = base_variables
@@ -204,11 +208,21 @@ pub fn prompt_developer_iteration_continuation_xml(
 }
 
 /// Generate continuation prompt for development iteration with substitution log.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `continuation_state` - Continuation state with previous attempt info
+/// * `workspace` - Workspace for resolving paths
+/// * `template_name` - Name of the template for logging
+/// * `capabilities` - The session's capability set for capability-driven template variables
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_continuation_xml_with_log(
     context: &TemplateContext,
     continuation_state: &crate::reducer::state::ContinuationState,
     workspace: &dyn Workspace,
     template_name: &str,
+    session_caps: SessionCapabilities,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -271,11 +285,9 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
         ),
     ]);
 
-    // Compute capability variables from default Development drain capabilities
-    let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
-    );
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
 
     // Merge base variables, capability variables, and optional next_steps using functional style
     let variables: HashMap<String, String> = base_variables

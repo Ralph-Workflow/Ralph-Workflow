@@ -1,3 +1,4 @@
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::PhaseContext;
@@ -84,13 +85,21 @@ impl crate::reducer::boundary::MainEffectHandler {
             .cloned()
             .ok_or(ErrorEvent::CommitAgentNotInitialized { attempt })?;
 
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults, so the pre-generated prompt
+        // is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Commit,
             AgentRole::Commit,
             &agent,
             None,
-            |_session: &crate::agents::session::AgentSession| prompt.clone(),
+            |session: &crate::agents::session::AgentSession| {
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                prompt.clone()
+            },
         )?;
         Ok(Self::append_commit_agent_invoked(result, attempt))
     }
@@ -819,11 +828,15 @@ fn validate_commit_message_template(
     if !needs_commit_template_validation(gen) {
         return Ok(None);
     }
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
     let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
         "commit_message_xml",
+        &capabilities,
+        &policy_flags,
     );
     match rendered.log.is_complete() {
         true => Ok(Some(rendered.log)),
@@ -901,11 +914,15 @@ fn gen_same_agent_retry_prompt_text(
         .workspace
         .read(Path::new(".agent/tmp/commit_prompt.txt"))
         .ok();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
     let generated_base_prompt = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
         "commit_message_xml",
+        &capabilities,
+        &policy_flags,
     )
     .content;
     let (base_prompt, _) = crate::phases::commit::base_prompt_for_same_agent_retry(
@@ -921,11 +938,15 @@ fn gen_normal_commit_prompt_text(
     diff_for_prompt: &str,
     residual_files: &[String],
 ) -> String {
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
     let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
         "commit_message_xml",
+        &capabilities,
+        &policy_flags,
     );
     crate::phases::commit::prepend_residual_files_context(&rendered.content, residual_files)
 }

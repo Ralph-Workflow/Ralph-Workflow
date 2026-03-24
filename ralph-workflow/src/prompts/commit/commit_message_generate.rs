@@ -78,11 +78,22 @@ pub fn prompt_generate_commit_message_with_diff(diff: &str) -> String {
 ///
 /// This is the new log-based version that returns both content and substitution tracking.
 /// Use this version in handlers to enable log-based validation.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `diff` - The git diff to generate a commit message for
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `template_name` - Name of the template for logging
+/// * `capabilities` - The capabilities available to the agent
+/// * `policy_flags` - The policy flags in effect
 pub fn prompt_generate_commit_message_with_diff_with_log(
     context: &TemplateContext,
     diff: &str,
     workspace: &dyn Workspace,
     template_name: &str,
+    capabilities: &crate::agents::session::CapabilitySet,
+    policy_flags: &crate::agents::session::PolicyFlagSet,
 ) -> RenderedTemplate {
     // Ensure the commit XSD schema is available on disk for agents to reference.
     let tmp_dir = std::path::Path::new(".agent/tmp");
@@ -130,14 +141,10 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
         ),
     ]);
 
-    // Compute capability variables using Commit drain defaults
+    // Compute capability variables using provided capabilities and policy flags
     let capability_vars = crate::prompts::template_variables::capability_template_variables(
-        &crate::agents::session::CapabilitySet::defaults_for_drain(
-            crate::agents::session::SessionDrain::Commit,
-        ),
-        &crate::agents::session::PolicyFlagSet::defaults_for_drain(
-            crate::agents::session::SessionDrain::Commit,
-        ),
+        capabilities,
+        policy_flags,
     );
 
     // Merge base and capability variables using functional style (no mutation)
@@ -186,10 +193,14 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
 /// * `context` - Template context containing the template registry
 /// * `diff` - The git diff to generate a commit message for
 /// * `workspace` - Workspace for resolving absolute paths (accepts any Workspace implementation)
+/// * `capabilities` - The capabilities available to the agent
+/// * `policy_flags` - The policy flags in effect
 pub fn prompt_generate_commit_message_with_diff_with_context(
     context: &TemplateContext,
     diff: &str,
     workspace: &dyn Workspace,
+    capabilities: &crate::agents::session::CapabilitySet,
+    policy_flags: &crate::agents::session::PolicyFlagSet,
 ) -> String {
     // Ensure the commit XSD schema is available on disk for agents to reference.
     // In production this is also written during app bootstrap, but tests and some
@@ -231,15 +242,10 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
         ),
     ]);
 
-    // Compute capability variables using Commit drain defaults
-    // since the session is created after prompt generation in invoke_agent.
+    // Compute capability variables using provided capabilities and policy flags
     let capability_vars = crate::prompts::template_variables::capability_template_variables(
-        &crate::agents::session::CapabilitySet::defaults_for_drain(
-            crate::agents::session::SessionDrain::Commit,
-        ),
-        &crate::agents::session::PolicyFlagSet::defaults_for_drain(
-            crate::agents::session::SessionDrain::Commit,
-        ),
+        capabilities,
+        policy_flags,
     );
 
     // Merge base and capability variables using functional style (no mutation)

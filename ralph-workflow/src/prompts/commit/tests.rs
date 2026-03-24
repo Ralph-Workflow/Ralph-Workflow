@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::workspace::MemoryWorkspace;
 use regex::Regex;
 
@@ -350,8 +351,10 @@ fn test_prompt_generate_commit_message_with_diff_with_context() {
     let context = TemplateContext::default();
     // Use MemoryWorkspace instead of WorkspaceFs - no real filesystem access needed
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
     let diff = "diff --git a/src/main.rs b/src/main.rs\n+fn new_func() {}";
-    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace);
+    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace, &capabilities, &policy_flags);
     assert!(!result.is_empty());
     assert!(result.contains("DIFF:") || result.contains("diff"));
     assert!(!result.contains("ERROR: Empty diff"));
@@ -419,7 +422,9 @@ fn test_prompt_generate_commit_message_with_diff_with_context_empty() {
     let context = TemplateContext::default();
     // Use MemoryWorkspace instead of WorkspaceFs - no real filesystem access needed
     let workspace = MemoryWorkspace::new_test();
-    let result = prompt_generate_commit_message_with_diff_with_context(&context, "", &workspace);
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
+    let result = prompt_generate_commit_message_with_diff_with_context(&context, "", &workspace, &capabilities, &policy_flags);
     assert!(result.contains("ERROR: Empty diff"));
 }
 
@@ -428,8 +433,10 @@ fn test_context_based_commit_uses_workspace_paths() {
     let context = TemplateContext::default();
     // Use MemoryWorkspace instead of WorkspaceFs - no real filesystem access needed
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
     let diff = "diff --git a/src/main.rs b/src/main.rs\n+fn new_func() {}";
-    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace);
+    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace, &capabilities, &policy_flags);
     // Verify the prompt uses absolute paths from workspace
     assert!(
         result.contains("/test/repo/.agent/tmp/commit_message.xml")

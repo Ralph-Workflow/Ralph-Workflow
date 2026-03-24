@@ -11,19 +11,18 @@
 /// # Arguments
 ///
 /// * `context` - Template context containing the template registry
-/// * `_prompt_content` - The original user request (unused - kept for API compatibility)
-/// * `_plan_content` - The implementation plan (unused - kept for API compatibility)
 /// * `xsd_error` - The XSD validation error message to include in the prompt
 /// * `last_output` - The invalid XML output that failed validation
 /// * `workspace` - Workspace for writing XSD retry context files
+/// * `continuation_mode` - Whether this is a continuation retry
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xsd_retry_with_context(
     context: &TemplateContext,
-    _prompt_content: &str,
-    _plan_content: &str,
     xsd_error: &str,
     last_output: &str,
     workspace: &dyn Workspace,
     continuation_mode: bool,
+    session_caps: SessionCapabilities,
 ) -> String {
     // Write context files to .agent/tmp/ for the agent to read
     write_dev_iteration_xsd_retry_files(workspace, last_output);
@@ -32,6 +31,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context(
         xsd_error,
         workspace,
         continuation_mode,
+        session_caps,
     )
 }
 
@@ -42,11 +42,20 @@ pub fn prompt_developer_iteration_xsd_retry_with_context(
 /// Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
 /// If required files are missing, a deterministic fallback prompt is produced that includes
 /// diagnostic information but still provides valid instructions to the agent.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `xsd_error` - The XSD validation error message
+/// * `workspace` - Workspace for resolving paths
+/// * `continuation_mode` - Whether this is a continuation retry
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
     continuation_mode: bool,
+    session_caps: SessionCapabilities,
 ) -> String {
     use std::path::Path;
 
@@ -145,11 +154,9 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
         ),
     ]);
 
-    // Compute capability variables using Development drain defaults
-    let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
-    );
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
 
     // Merge base and capability variables using functional style (no mutation)
     let variables: HashMap<String, String> = base_vars
@@ -185,12 +192,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
 /// Generate XSD validation retry prompt for developer iteration with substitution log.
 ///
 /// This variant assumes `.agent/tmp/last_output.xml` is already materialized.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `xsd_error` - The XSD validation error message
+/// * `workspace` - Workspace for resolving paths
+/// * `template_name` - Name of the template for logging
+/// * `continuation_mode` - Whether this is a continuation retry
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
     template_name: &str,
     continuation_mode: bool,
+    session_caps: SessionCapabilities,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -303,11 +320,9 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
         ),
     ]);
 
-    // Compute capability variables using Development drain defaults
-    let capability_vars = capability_template_variables(
-        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
-    );
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
 
     // Merge base and capability variables using functional style (no mutation)
     let variables: HashMap<String, String> = base_vars

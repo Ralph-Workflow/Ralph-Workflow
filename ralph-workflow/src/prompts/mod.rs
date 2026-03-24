@@ -59,6 +59,11 @@ mod prompt_dispatch;
 // Re-export ResumeContext for use in prompts
 pub use crate::checkpoint::restore::ResumeContext;
 
+// Re-export SessionCapabilities for use in prompts
+pub use template_variables::capability_template_variables_from_session;
+pub use template_variables::default_caps_and_flags_for_drain;
+pub use template_variables::SessionCapabilities;
+
 // Backwards compatibility alias: registry used to be in prompts, now in agents
 pub mod registry {
     pub use crate::agents::AgentRegistry;

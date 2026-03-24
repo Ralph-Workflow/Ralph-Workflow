@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::prompts::template_context::TemplateContext;
 use crate::workspace::MemoryWorkspace;
 use std::path::PathBuf;
@@ -27,12 +28,15 @@ fn test_prompt_for_agent_developer() {
 fn test_prompt_for_agent_reviewer() {
     // Use the actual review prompt function that's used in production
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let result = prompt_review_xml_with_context(
         &TemplateContext::default(),
         "sample prompt",
         "sample plan",
         "sample diff",
         &workspace,
+        SessionCapabilities::new(&capabilities, &policy_flags),
     );
     // Verify the review_xml template behavior
     assert!(result.contains("REVIEW MODE"));
@@ -69,6 +73,8 @@ fn test_prompts_are_agent_agnostic() {
 
     let template_context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let prompts_to_check: Vec<(&'static str, String)> = vec![
         (
             "developer_iteration_normal",
@@ -80,7 +86,14 @@ fn test_prompts_are_agent_agnostic() {
         ),
         (
             "review_xml",
-            prompt_review_xml_with_context(&template_context, "", "", "sample diff", &workspace),
+            prompt_review_xml_with_context(
+                &template_context,
+                "",
+                "",
+                "sample diff",
+                &workspace,
+                SessionCapabilities::new(&capabilities, &policy_flags),
+            ),
         ),
         ("fix", prompt_fix("", "", "")),
         ("plan", prompt_plan(None)),
@@ -296,10 +309,19 @@ fn test_all_prompts_isolate_agents_from_git() {
 
     let template_context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
     let prompts_to_check: Vec<String> = vec![
         prompt_developer_iteration(1, 5, ContextLevel::Normal, "", ""),
         prompt_developer_iteration(1, 5, ContextLevel::Minimal, "", ""),
-        prompt_review_xml_with_context(&template_context, "", "", "sample diff", &workspace),
+        prompt_review_xml_with_context(
+            &template_context,
+            "",
+            "",
+            "sample diff",
+            &workspace,
+            SessionCapabilities::new(&capabilities, &policy_flags),
+        ),
         // Note: fix_mode_xml.txt is intentionally excluded from "Use git" check
         // because it contains "Use git grep/rg ONLY when issue descriptions lack file context"
         // which is part of the fault tolerance design

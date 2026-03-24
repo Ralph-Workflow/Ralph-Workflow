@@ -9,6 +9,7 @@
 
 use super::get_stored_or_generate_prompt_with_validation;
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
 use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
@@ -20,6 +21,7 @@ use crate::phases::PhaseContext;
 use crate::prompts::content_reference::{PromptContentReference, MAX_INLINE_CONTENT_SIZE};
 use crate::prompts::{
     get_stored_or_generate_prompt, prompt_planning_xml_with_references, PromptScopeKey, RetryMode,
+    SessionCapabilities,
 };
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{
@@ -168,6 +170,10 @@ impl MainEffectHandler {
                     "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
                     ctx.workspace,
                     "planning_xsd_retry",
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+                    ),
                 )
                 .content
             },
@@ -255,6 +261,10 @@ impl MainEffectHandler {
                     &prompt_ref_for_template,
                     ctx.workspace,
                     "planning_xml",
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+                    ),
                 );
                 rendered.content
             },
@@ -317,13 +327,21 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults, so the pre-generated prompt
+        // is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Planning,
             AgentRole::Developer,
             &agent,
             None,
-            |_session: &crate::agents::session::AgentSession| prompt.clone(),
+            |session: &crate::agents::session::AgentSession| {
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                prompt.clone()
+            },
         )?;
         Ok(maybe_add_planning_invoked_event(result, iteration))
     }
@@ -590,6 +608,10 @@ fn load_same_agent_retry_base_prompt(
                         ctx.template_context,
                         prompt_ref,
                         ctx.workspace,
+                        SessionCapabilities::new(
+                            &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                            &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+                        ),
                     ),
                     true,
                 )
@@ -775,6 +797,10 @@ fn gen_planning_xsd_retry_rendered_log(
         "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
         ctx.workspace,
         "planning_xsd_retry",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+        ),
     );
     match rendered.log.is_complete() {
         true => Ok(Some(rendered.log)),
@@ -801,6 +827,10 @@ fn gen_planning_normal_rendered_log(
         prompt_ref,
         ctx.workspace,
         "planning_xml",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+        ),
     );
     match rendered.log.is_complete() {
         true => Ok(Some(rendered.log)),

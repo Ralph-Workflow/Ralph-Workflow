@@ -5,10 +5,14 @@
 //! 1. The capability summary section is included
 //! 2. The correct restrictions are applied based on capabilities
 //! 3. Legacy behavior is preserved (same output as before for each drain type)
+//! 4. Session-derived capabilities produce identical output to drain-default capabilities
 
 #[cfg(test)]
 mod tests {
-    use crate::agents::session::{Capability, CapabilitySet, PolicyFlagSet, SessionDrain};
+    use crate::agents::session::{
+        AgentSession, Capability, CapabilitySet, PolicyFlagSet, SessionDrain,
+    };
+    use crate::prompts::capability_template_variables_from_session;
     use crate::prompts::partials::get_shared_partials;
     use crate::prompts::template_engine::Template;
     use crate::prompts::template_variables::capability_template_variables;
@@ -612,6 +616,160 @@ mod tests {
                 vars.get("POLICY_NO_EDIT").unwrap(),
                 "",
                 "{:?} should have POLICY_NO_EDIT=\"\" (empty)",
+                drain
+            );
+        }
+    }
+
+    /// Test that session-derived capabilities produce identical template variables to drain-defaults.
+    ///
+    /// This is the core behavioral equivalence test for RFC-009: for every drain type,
+    /// `capability_template_variables_from_session(session)` must produce identical output
+    /// to `capability_template_variables(defaults_for_drain(drain))`.
+    #[test]
+    fn test_session_derived_equals_drain_default_for_all_drains() {
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Development,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            // Create session with this drain
+            let session = AgentSession::for_drain("equiv-test".to_string(), drain, 0);
+
+            // Get variables via session wrapper
+            let from_session = capability_template_variables_from_session(&session);
+
+            // Get variables via direct drain-default call
+            let from_drain_default =
+                capability_template_variables(session.capabilities(), session.policy_flags());
+
+            assert_eq!(
+                from_session, from_drain_default,
+                "Session wrapper should produce identical variables to direct drain-default call for {:?}",
+                drain
+            );
+        }
+    }
+
+    /// Test that session-derived and drain-default prompt rendering produces identical output.
+    ///
+    /// This test renders the same template with capability variables derived from both
+    /// the session path and the direct drain-default path, asserting byte-identical output.
+    #[test]
+    fn test_prompt_render_equivalence_session_vs_drain_default() {
+        let partials = get_shared_partials();
+        let template_content = include_str!("templates/developer_iteration_xml.txt");
+        let template = Template::new(template_content);
+
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Development,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            // Create session with this drain
+            let session = AgentSession::for_drain("equiv-test".to_string(), drain, 0);
+
+            // Get variables via session wrapper
+            let session_vars = capability_template_variables_from_session(&session);
+
+            // Get variables via direct drain-default call
+            let drain_vars =
+                capability_template_variables(session.capabilities(), session.policy_flags());
+
+            // Base variables for developer iteration prompt
+            let base_vars: HashMap<&str, String> = HashMap::from([
+                ("PROMPT", "test prompt".to_string()),
+                ("PLAN", "test plan".to_string()),
+            ]);
+
+            // Build variables with session-derived capability vars
+            let variables_session: HashMap<String, String> = base_vars
+                .clone()
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .chain(session_vars)
+                .collect();
+            let variables_ref_session: HashMap<&str, String> = variables_session
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.clone()))
+                .collect();
+
+            // Build variables with drain-default capability vars
+            let variables_drain: HashMap<String, String> = base_vars
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .chain(drain_vars)
+                .collect();
+            let variables_ref_drain: HashMap<&str, String> = variables_drain
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.clone()))
+                .collect();
+
+            // Render with both variable sets
+            let result_session = template
+                .render_with_partials(&variables_ref_session, &partials)
+                .expect("session render should succeed");
+            let result_drain = template
+                .render_with_partials(&variables_ref_drain, &partials)
+                .expect("drain render should succeed");
+
+            assert_eq!(
+                result_session, result_drain,
+                "Session-derived and drain-default rendering should be identical for {:?}",
+                drain
+            );
+        }
+    }
+
+    /// Test that AgentSession::for_drain produces capabilities identical to CapabilitySet::defaults_for_drain.
+    ///
+    /// This invariant is the foundation of RFC-009 behavioral equivalence guarantees.
+    #[test]
+    fn test_agent_session_capabilities_match_drain_defaults() {
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Development,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            let session = AgentSession::for_drain("equiv-test".to_string(), drain, 0);
+            let defaults = CapabilitySet::defaults_for_drain(drain);
+
+            assert_eq!(
+                session.capabilities, defaults,
+                "AgentSession capabilities should match drain defaults for {:?}",
+                drain
+            );
+        }
+    }
+
+    /// Test that AgentSession::for_drain produces policy flags identical to PolicyFlagSet::defaults_for_drain.
+    ///
+    /// This invariant is the foundation of RFC-009 behavioral equivalence guarantees.
+    #[test]
+    fn test_agent_session_policy_flags_match_drain_defaults() {
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Development,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            let session = AgentSession::for_drain("equiv-test".to_string(), drain, 0);
+            let defaults = PolicyFlagSet::defaults_for_drain(drain);
+
+            assert_eq!(
+                session.policy_flags, defaults,
+                "AgentSession policy_flags should match drain defaults for {:?}",
                 drain
             );
         }

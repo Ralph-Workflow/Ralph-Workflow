@@ -2,6 +2,7 @@
 use super::super::types::FixPassResult;
 use super::helpers::stderr_contains_auth_error;
 
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::checkpoint::restore::ResumeContext;
 use crate::files::llm_output_extraction::{
@@ -13,7 +14,8 @@ use crate::files::update_status_with_workspace;
 use crate::phases::context::PhaseContext;
 use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
-use crate::prompts::{prompt_fix_xml_with_log, ContextLevel};
+use crate::prompts::review::FixPromptContent;
+use crate::prompts::{prompt_fix_xml_with_log, ContextLevel, SessionCapabilities};
 
 use std::path::Path;
 
@@ -76,14 +78,15 @@ pub fn run_fix_pass(
 
     let files_to_modify = extract_file_paths_from_issues(&issues_content);
 
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
     let rendered = prompt_fix_xml_with_log(
         ctx.template_context,
-        &prompt_content,
-        &plan_content,
-        &issues_content,
+        FixPromptContent::new(&prompt_content, &plan_content, &issues_content),
         &files_to_modify,
         ctx.workspace,
         "fix_mode_xml",
+        SessionCapabilities::new(&capabilities, &policy_flags),
     );
     let fix_prompt = rendered.content;
 

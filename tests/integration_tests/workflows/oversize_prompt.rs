@@ -13,10 +13,12 @@
 //! - Generated prompts embed small content inline
 //! - Content size is correctly measured in bytes
 
+use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use ralph_workflow::prompts::content_builder::PromptContentBuilder;
 use ralph_workflow::prompts::content_reference::{
     DiffContentReference, PlanContentReference, PromptContentReference, MAX_INLINE_CONTENT_SIZE,
 };
+use ralph_workflow::prompts::SessionCapabilities;
 use ralph_workflow::workspace::MemoryWorkspace;
 use std::path::Path;
 
@@ -461,7 +463,15 @@ fn developer_iteration_prompt_uses_oversize_references() {
             .build();
 
         let workspace = ralph_workflow::workspace::MemoryWorkspace::new_test();
-        let prompt = prompt_developer_iteration_xml_with_references(&context, &refs, &workspace);
+        let prompt = prompt_developer_iteration_xml_with_references(
+            &context,
+            &refs,
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+            ),
+        );
 
         // Should contain file reference instructions, not embedded content
         assert!(
