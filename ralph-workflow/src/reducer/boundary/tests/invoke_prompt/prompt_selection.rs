@@ -105,7 +105,7 @@ fn test_invoke_agent_prefers_same_agent_retry_prompt_over_rate_limit_continuatio
             AgentRole::Developer,
             "claude",
             None,
-            retry_prompt,
+            |_session: &crate::agents::session::AgentSession| retry_prompt.clone(),
         )
         .expect("invoke_agent should succeed");
 
@@ -158,7 +158,7 @@ fn test_invoke_agent_prefers_xsd_retry_prompt_over_rate_limit_continuation_promp
             AgentRole::Developer,
             "claude",
             None,
-            xsd_retry_prompt.clone(),
+            |_session: &crate::agents::session::AgentSession| xsd_retry_prompt.clone(),
         )
         .expect("invoke_agent should succeed");
 

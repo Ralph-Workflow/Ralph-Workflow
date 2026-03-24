@@ -485,6 +485,52 @@ impl AuditTrail {
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }
+
+    /// Record that capabilities were injected into prompt template variables.
+    ///
+    /// This creates an audit record for each granted capability, documenting
+    /// that the session's capabilities were used to generate template variables.
+    /// Each record is marked as `PolicyOutcome::Approved` since these are
+    /// the capabilities granted to the session.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - The session these capabilities belong to
+    /// * `timestamp` - Unix timestamp when the injection occurred
+    /// * `capabilities` - The granted capabilities to record
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let trail = AuditTrail::new();
+    /// let updated_trail = trail.record_capability_injection(
+    ///     &session.session_id,
+    ///     timestamp,
+    ///     session.capabilities(),
+    /// );
+    /// ```
+    pub fn record_capability_injection(
+        &self,
+        session_id: &AgentSessionId,
+        timestamp: u64,
+        capabilities: &CapabilitySet,
+    ) -> AuditTrail {
+        let new_records = capabilities.iter().map(|cap| {
+            AuditRecord::new(
+                session_id.clone(),
+                timestamp,
+                cap,
+                PolicyOutcome::Approved,
+                format!(
+                    "Capability {} injected into prompt template variables for session {}",
+                    cap.identifier(),
+                    session_id.as_str()
+                ),
+            )
+        });
+
+        AuditTrail::from_records(self.records.iter().cloned().chain(new_records))
+    }
 }
 
 /// Session handshake envelope produced before each agent invocation.
@@ -618,6 +664,53 @@ impl AgentSession {
             policy_flags,
             created_at,
         }
+    }
+
+    /// Check if a capability is granted in this session.
+    ///
+    /// Returns `PolicyOutcome::Approved` if the capability is present,
+    /// or `PolicyOutcome::Denied` with a descriptive reason if not.
+    ///
+    /// This method is the primary interface for Phase 2/3 policy enforcement.
+    /// In V1, policy enforcement is not yet active, but this method provides
+    /// the infrastructure for future enforcement gates.
+    #[must_use]
+    pub fn check_capability(&self, requested: Capability) -> PolicyOutcome {
+        if self.capabilities.contains(requested) {
+            PolicyOutcome::Approved
+        } else {
+            PolicyOutcome::Denied {
+                reason: format!(
+                    "Capability {} not granted for {} drain",
+                    requested.identifier(),
+                    self.drain,
+                ),
+            }
+        }
+    }
+
+    /// Get the capabilities for this session.
+    ///
+    /// Returns a reference to the granted capabilities.
+    #[must_use]
+    pub fn capabilities(&self) -> &CapabilitySet {
+        &self.capabilities
+    }
+
+    /// Get the policy flags for this session.
+    ///
+    /// Returns a reference to the policy flags.
+    #[must_use]
+    pub fn policy_flags(&self) -> &PolicyFlagSet {
+        &self.policy_flags
+    }
+
+    /// Get the drain for this session.
+    ///
+    /// Returns the session drain identity.
+    #[must_use]
+    pub fn drain(&self) -> SessionDrain {
+        self.drain
     }
 }
 

@@ -48,6 +48,7 @@ mod template_macros;
 pub mod template_parsing;
 pub mod template_registry;
 mod template_validator;
+pub mod template_variables;
 mod types;
 
 // Sub-modules for split functionality
@@ -137,3 +138,6 @@ pub use content_reference::{
 
 #[cfg(test)]
 mod io_tests;
+
+#[cfg(test)]
+mod snapshot_tests;

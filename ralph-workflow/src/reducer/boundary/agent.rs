@@ -20,25 +20,28 @@ use anyhow::Result;
 use std::time::SystemTime;
 
 impl MainEffectHandler {
-    pub(super) fn invoke_agent(
+    pub(super) fn invoke_agent<F>(
         &self,
         ctx: &mut PhaseContext<'_>,
         drain: AgentDrain,
         role: AgentRole,
         agent: &str,
         model: Option<&str>,
-        prompt: String,
-    ) -> Result<EffectResult> {
+        prompt_generator: F,
+    ) -> Result<EffectResult>
+    where
+        F: FnOnce(&AgentSession) -> String,
+    {
         let in_dev_fix = self.state.phase == PipelinePhase::AwaitingDevFix;
         let effective_agent = resolve_effective_agent(&self.state, in_dev_fix, agent);
-        let effective_prompt =
-            resolve_effective_prompt(&self.state, in_dev_fix, drain, role, prompt);
         let model_name = resolve_model_name(&self.state, in_dev_fix);
         log_agent_invocation_start(ctx, &self.state, &effective_agent, model_name);
         let (logfile, attempt) =
             prepare_agent_logfile(ctx, in_dev_fix, &self.state, role, &effective_agent)?;
 
         // RFC-009: Create AgentSession and SessionHandshake for this invocation
+        // IMPORTANT: Session is created BEFORE prompt generation so that prompt generators
+        // can use the actual session capabilities instead of drain defaults.
         let run_id = self
             .state
             .cloud
@@ -85,7 +88,16 @@ impl MainEffectHandler {
                 )
             })
             .collect();
-        let audit_trail = AuditTrail::from_records(audit_records);
+        let mut audit_trail = AuditTrail::from_records(audit_records);
+
+        // Record that capabilities were injected into prompt template variables.
+        // This creates audit records documenting that the session's capabilities
+        // were used to generate template variables for prompt rendering.
+        audit_trail = audit_trail.record_capability_injection(
+            &session.session_id,
+            timestamp,
+            &session.capabilities,
+        );
 
         // Log the audit trail for RFC-009 audit record
         ctx.logger.info(&format!(
@@ -93,6 +105,16 @@ impl MainEffectHandler {
             audit_trail.len(),
             session.session_id,
         ));
+
+        // Determine effective prompt: use continuation prompt if applicable,
+        // otherwise generate prompt via closure.
+        let effective_prompt = resolve_effective_prompt_for_invocation(
+            &self.state,
+            drain,
+            role,
+            &session,
+            prompt_generator,
+        );
 
         let session_id = resolve_session_id(&self.state, in_dev_fix);
         let event = run_agent_execution(
@@ -378,6 +400,106 @@ fn clear_session_for_same_agent_retry(state: &mut crate::reducer::state::Pipelin
 }
 
 // ---------------------------------------------------------------------------
+// Pure policy helpers for continuation prompt selection
+// ---------------------------------------------------------------------------
+
+fn continuation_prompt_exists_and_matches(
+    chain: &crate::reducer::state::AgentChainState,
+    drain: AgentDrain,
+    role: AgentRole,
+) -> bool {
+    chain
+        .rate_limit_continuation_prompt
+        .as_ref()
+        .is_some_and(|saved| saved.drain == drain && saved.role == role)
+}
+
+fn role_allows_continuation_prompt(role: AgentRole) -> bool {
+    role != AgentRole::Analysis
+}
+
+fn retry_mode_allows_continuation_prompt(state: &crate::reducer::state::PipelineState) -> bool {
+    !state.continuation.xsd_retry_session_reuse_pending
+}
+
+/// Check state-based conditions for whether continuation prompt should be considered.
+///
+/// Returns true only if ALL state-based conditions are met:
+/// 1. `rate_limit_continuation_prompt` is set in agent chain and matches drain/role
+/// 2. The role is not Analysis (analysis agent has its own continuation mechanism)
+/// 3. XSD retry is NOT pending (XSD retry has its own continuation mechanism)
+///
+/// Note: This does NOT check if the generated prompt is a retry prompt.
+/// The caller must check that separately by calling is_same_agent_retry_prompt on the generated prompt.
+fn should_use_continuation_prompt(
+    state: &crate::reducer::state::PipelineState,
+    drain: AgentDrain,
+    role: AgentRole,
+) -> bool {
+    continuation_prompt_exists_and_matches(&state.agent_chain, drain, role)
+        && role_allows_continuation_prompt(role)
+        && retry_mode_allows_continuation_prompt(state)
+}
+
+/// Pure domain enum representing the choice of prompt source.
+#[derive(Debug, Clone, Copy)]
+enum PromptSource {
+    /// Use the rate limit continuation prompt
+    Continuation,
+    /// Use the generated prompt
+    Generated,
+}
+
+/// Determine which prompt source to use based on state and generated prompt.
+///
+/// This is the pure policy logic extracted from the invocation flow.
+fn determine_prompt_source(
+    state: &crate::reducer::state::PipelineState,
+    drain: AgentDrain,
+    role: AgentRole,
+    generated_prompt: &str,
+) -> PromptSource {
+    if should_use_continuation_prompt(state, drain, role) {
+        if super::retry_guidance::is_same_agent_retry_prompt(generated_prompt) {
+            PromptSource::Generated
+        } else {
+            PromptSource::Continuation
+        }
+    } else {
+        PromptSource::Generated
+    }
+}
+
+/// Resolve the effective prompt for agent invocation.
+///
+/// This is a thin wiring function that:
+/// 1. Generates the prompt using the closure
+/// 2. Determines which prompt source to use via pure policy
+/// 3. Returns the appropriate prompt
+fn resolve_effective_prompt_for_invocation<F>(
+    state: &crate::reducer::state::PipelineState,
+    drain: AgentDrain,
+    role: AgentRole,
+    session: &AgentSession,
+    prompt_generator: F,
+) -> String
+where
+    F: FnOnce(&AgentSession) -> String,
+{
+    let generated_prompt = prompt_generator(session);
+    let source = determine_prompt_source(state, drain, role, &generated_prompt);
+    match source {
+        PromptSource::Continuation => state
+            .agent_chain
+            .rate_limit_continuation_prompt
+            .as_ref()
+            .map(|p| p.prompt.clone())
+            .unwrap_or(generated_prompt),
+        PromptSource::Generated => generated_prompt,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Free helpers extracted from invoke_agent to reduce per-function complexity
 // ---------------------------------------------------------------------------
 
@@ -394,38 +516,6 @@ fn resolve_effective_agent(
             .current_agent()
             .map_or_else(|| agent.to_owned(), Clone::clone)
     }
-}
-
-fn resolve_effective_prompt(
-    state: &crate::reducer::state::PipelineState,
-    in_dev_fix: bool,
-    drain: AgentDrain,
-    role: AgentRole,
-    prompt: String,
-) -> String {
-    if in_dev_fix {
-        return prompt;
-    }
-    state
-        .agent_chain
-        .rate_limit_continuation_prompt
-        .as_ref()
-        .filter(|saved| continuation_prompt_applies(saved, drain, role, state, &prompt))
-        .map_or(prompt, |saved| saved.prompt.clone())
-}
-
-fn continuation_prompt_applies(
-    saved: &crate::reducer::state::RateLimitContinuationPrompt,
-    drain: AgentDrain,
-    role: AgentRole,
-    state: &crate::reducer::state::PipelineState,
-    prompt: &str,
-) -> bool {
-    saved.drain == drain
-        && saved.role == role
-        && role != AgentRole::Analysis
-        && !state.continuation.xsd_retry_session_reuse_pending
-        && !super::retry_guidance::is_same_agent_retry_prompt(prompt)
 }
 
 fn log_agent_invocation_start(

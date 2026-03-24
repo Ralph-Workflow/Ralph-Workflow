@@ -26,10 +26,12 @@ pub fn generate_analysis_prompt(
     is_continuation: bool,
     workspace: &dyn crate::workspace::Workspace,
 ) -> String {
+    use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use crate::prompts::content_reference::{DiffContentReference, PlanContentReference};
     use crate::prompts::partials::get_shared_partials;
     use crate::prompts::template_context::TemplateContext;
     use crate::prompts::template_engine::Template;
+    use crate::prompts::template_variables::capability_template_variables;
     use std::collections::HashMap;
     use std::path::Path;
 
@@ -74,7 +76,8 @@ pub fn generate_analysis_prompt(
 </ralph-development-result>"#
     };
 
-    let variables = HashMap::from([
+    // Base variables for analysis prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PLAN", plan_ref.render_for_template()),
         (
             "DIFF",
@@ -97,8 +100,27 @@ pub fn generate_analysis_prompt(
         ("REQUIRED_OUTPUT_XML", required_output.to_string()),
     ]);
 
+    // Compute capability variables using Analysis drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Analysis),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Analysis),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             let plan = plan_ref.render_for_template();
             let diff = diff_ref.render_for_template();

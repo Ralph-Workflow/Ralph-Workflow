@@ -311,7 +311,7 @@ impl MainEffectHandler {
             role,
             &agent,
             model.as_deref(),
-            prompt,
+            |_session: &crate::agents::session::AgentSession| prompt.clone(),
         )
     }
 

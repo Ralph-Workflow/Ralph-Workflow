@@ -160,7 +160,7 @@ fn invoke_dev_fix_agent(
         crate::agents::AgentRole::Developer,
         agent,
         None,
-        dev_fix_prompt,
+        |_session: &crate::agents::session::AgentSession| dev_fix_prompt.clone(),
     ).map_err(|err| {
         let unavailable = is_agent_unavailable_error(&err.to_string());
         if unavailable {

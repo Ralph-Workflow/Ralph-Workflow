@@ -90,7 +90,7 @@ impl crate::reducer::boundary::MainEffectHandler {
             AgentRole::Commit,
             &agent,
             None,
-            prompt,
+            |_session: &crate::agents::session::AgentSession| prompt.clone(),
         )?;
         Ok(Self::append_commit_agent_invoked(result, attempt))
     }

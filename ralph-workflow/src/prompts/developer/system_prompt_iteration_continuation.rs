@@ -146,18 +146,30 @@ pub fn prompt_developer_iteration_continuation_xml(
         ),
     ]);
 
-    let variables: HashMap<&str, String> = previous_next_steps
-        .map(|next_steps| {
-            base_variables
-                .clone()
-                .into_iter()
-                .chain(std::iter::once(("PREVIOUS_NEXT_STEPS", next_steps)))
-                .collect()
-        })
-        .unwrap_or(base_variables);
+    // Compute capability variables from default Development drain capabilities
+    // since the session is created after prompt generation in invoke_agent.
+    // This ensures templates receive capability-driven conditionals correctly.
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base variables, capability variables, and optional next_steps using functional style
+    let variables: HashMap<String, String> = base_variables
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .chain(previous_next_steps.map(|s| ("PREVIOUS_NEXT_STEPS".to_string(), s)))
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             let status =
                 continuation_state
@@ -177,7 +189,7 @@ pub fn prompt_developer_iteration_continuation_xml(
             ));
 
             builtin_template
-                .render_with_partials(&variables, &partials)
+                .render_with_partials(&variables_ref, &partials)
                 .unwrap_or_else(|_| {
                     fallback_continuation_prompt(
                         continuation_state.continuation_attempt,
@@ -259,17 +271,28 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
         ),
     ]);
 
-    let variables = if let Some(next_steps) = previous_next_steps {
-        base_variables
-            .into_iter()
-            .chain(std::iter::once(("PREVIOUS_NEXT_STEPS", next_steps)))
-            .collect()
-    } else {
-        base_variables
-    };
+    // Compute capability variables from default Development drain capabilities
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base variables, capability variables, and optional next_steps using functional style
+    let variables: HashMap<String, String> = base_variables
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .chain(previous_next_steps.map(|s| ("PREVIOUS_NEXT_STEPS".to_string(), s)))
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     template
-        .render_with_log(template_name, &variables, &partials)
+        .render_with_log(template_name, &variables_ref, &partials)
         .unwrap_or_else(|_| {
             let status =
                 continuation_state
@@ -287,7 +310,7 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
             let prompt_content = Template::new(include_str!(
                 "../templates/developer_iteration_continuation_xml.txt"
             ))
-            .render_with_partials(&variables, &partials)
+            .render_with_partials(&variables_ref, &partials)
             .unwrap_or_else(|_| {
                 fallback_continuation_prompt(
                     continuation_state.continuation_attempt,

@@ -127,7 +127,9 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
                 include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
             }
         });
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "DEVELOPMENT_RESULT_XML_PATH",
@@ -143,8 +145,27 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
         ),
     ]);
 
+    // Compute capability variables using Development drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let rendered_prompt = Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             fallback_xsd_retry_render_error_prompt(
                 xsd_error,
@@ -264,7 +285,9 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
                 include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
             }
         });
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "DEVELOPMENT_RESULT_XML_PATH",
@@ -280,9 +303,28 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
         ),
     ]);
 
+    // Compute capability variables using Development drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let template = Template::new(&template_content);
     template
-        .render_with_log(actual_template_name, &variables, &partials)
+        .render_with_log(actual_template_name, &variables_ref, &partials)
         .map(|mut rendered| {
             if !diagnostic_prefix.is_empty() {
                 rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);

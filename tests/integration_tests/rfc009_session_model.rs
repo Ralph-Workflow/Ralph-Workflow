@@ -339,6 +339,173 @@ fn session_counter_increments_session_id() {
     });
 }
 
+/// Test that check_capability returns Approved for granted capabilities.
+#[test]
+fn check_capability_returns_approved_for_granted_capabilities() {
+    with_default_timeout(|| {
+        let session =
+            AgentSession::for_drain("run-check".to_string(), SessionDrain::Development, 0);
+
+        // Development has WorkspaceWriteTracked - should be Approved
+        assert_eq!(
+            session.check_capability(Capability::WorkspaceWriteTracked),
+            PolicyOutcome::Approved,
+            "WorkspaceWriteTracked should be Approved for Development drain"
+        );
+
+        // Development has ProcessExecBounded - should be Approved
+        assert_eq!(
+            session.check_capability(Capability::ProcessExecBounded),
+            PolicyOutcome::Approved,
+            "ProcessExecBounded should be Approved for Development drain"
+        );
+
+        // Development has GitWrite (NO) - should be Denied
+        let outcome = session.check_capability(Capability::GitWrite);
+        assert!(
+            matches!(outcome, PolicyOutcome::Denied { .. }),
+            "GitWrite should be Denied for Development drain"
+        );
+    });
+}
+
+/// Test that check_capability returns Denied for non-granted capabilities.
+#[test]
+fn check_capability_returns_denied_for_missing_capabilities() {
+    with_default_timeout(|| {
+        let session =
+            AgentSession::for_drain("run-check-deny".to_string(), SessionDrain::Planning, 0);
+
+        // Planning does NOT have WorkspaceWriteTracked - should be Denied
+        let outcome = session.check_capability(Capability::WorkspaceWriteTracked);
+        match outcome {
+            PolicyOutcome::Denied { ref reason } => {
+                assert!(
+                    reason.contains("workspace.write_tracked"),
+                    "Denial reason should mention the capability: {}",
+                    reason
+                );
+                assert!(
+                    reason.contains("planning"),
+                    "Denial reason should mention the drain: {}",
+                    reason
+                );
+            }
+            other => panic!(
+                "Expected PolicyOutcome::Denied for WorkspaceWriteTracked on Planning, got {:?}",
+                other
+            ),
+        }
+
+        // Planning does NOT have ProcessExecBounded - should be Denied
+        let outcome = session.check_capability(Capability::ProcessExecBounded);
+        assert!(
+            matches!(outcome, PolicyOutcome::Denied { .. }),
+            "ProcessExecBounded should be Denied for Planning drain"
+        );
+    });
+}
+
+/// Test check_capability for all drain types.
+#[test]
+fn check_capability_for_all_drain_types() {
+    with_default_timeout(|| {
+        // Development: has write and exec capabilities
+        let dev_session =
+            AgentSession::for_drain("run-dev".to_string(), SessionDrain::Development, 0);
+        assert_eq!(
+            dev_session.check_capability(Capability::WorkspaceWriteTracked),
+            PolicyOutcome::Approved,
+            "Development should approve WorkspaceWriteTracked"
+        );
+        assert_eq!(
+            dev_session.check_capability(Capability::ProcessExecBounded),
+            PolicyOutcome::Approved,
+            "Development should approve ProcessExecBounded"
+        );
+
+        // Planning: read-only, no write/exec
+        let planning_session =
+            AgentSession::for_drain("run-planning".to_string(), SessionDrain::Planning, 0);
+        assert!(matches!(
+            planning_session.check_capability(Capability::WorkspaceWriteTracked),
+            PolicyOutcome::Denied { .. }
+        ));
+        assert!(matches!(
+            planning_session.check_capability(Capability::ProcessExecBounded),
+            PolicyOutcome::Denied { .. }
+        ));
+
+        // Commit: has git write
+        let commit_session =
+            AgentSession::for_drain("run-commit".to_string(), SessionDrain::Commit, 0);
+        assert_eq!(
+            commit_session.check_capability(Capability::GitWrite),
+            PolicyOutcome::Approved,
+            "Commit should approve GitWrite"
+        );
+        assert!(matches!(
+            commit_session.check_capability(Capability::WorkspaceWriteTracked),
+            PolicyOutcome::Denied { .. }
+        ));
+
+        // Fix: has write and exec (similar to Development)
+        let fix_session = AgentSession::for_drain("run-fix".to_string(), SessionDrain::Fix, 0);
+        assert_eq!(
+            fix_session.check_capability(Capability::WorkspaceWriteTracked),
+            PolicyOutcome::Approved,
+            "Fix should approve WorkspaceWriteTracked"
+        );
+        assert_eq!(
+            fix_session.check_capability(Capability::ProcessExecBounded),
+            PolicyOutcome::Approved,
+            "Fix should approve ProcessExecBounded"
+        );
+
+        // Review: read-only
+        let review_session =
+            AgentSession::for_drain("run-review".to_string(), SessionDrain::Review, 0);
+        assert!(matches!(
+            review_session.check_capability(Capability::WorkspaceWriteTracked),
+            PolicyOutcome::Denied { .. }
+        ));
+        assert!(matches!(
+            review_session.check_capability(Capability::ProcessExecBounded),
+            PolicyOutcome::Denied { .. }
+        ));
+    });
+}
+
+/// Test accessor methods: capabilities(), policy_flags(), drain().
+#[test]
+fn session_accessor_methods() {
+    with_default_timeout(|| {
+        let session =
+            AgentSession::for_drain("run-accessors".to_string(), SessionDrain::Development, 0);
+
+        // Test capabilities() accessor
+        let caps = session.capabilities();
+        assert!(
+            caps.contains(Capability::WorkspaceWriteTracked),
+            "capabilities() should return reference with WorkspaceWriteTracked"
+        );
+
+        // Test policy_flags() accessor
+        let flags = session.policy_flags();
+        assert!(
+            flags.contains(PolicyFlag::AllowShell),
+            "policy_flags() should return reference with AllowShell"
+        );
+
+        // Test drain() accessor
+        assert_eq!(
+            session.drain(),
+            SessionDrain::Development,
+            "drain() should return Development"
+        );
+    });
+}
+
 /// Test PolicyOutcome variants serialize and deserialize correctly.
 #[test]
 fn policy_outcome_serde_roundtrip() {

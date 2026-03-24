@@ -49,7 +49,9 @@ You are in PLANNING MODE. Create a detailed, structured implementation plan.
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 CRITICAL: This is a READ-ONLY planning task EXCEPT FOR writing `{{PLAN_XML_PATH}}`. You are STRICTLY PROHIBITED from:
 - Creating, modifying, or deleting any files EXCEPT FOR writing `{{PLAN_XML_PATH}}`

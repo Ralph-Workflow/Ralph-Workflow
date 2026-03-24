@@ -43,7 +43,9 @@ pub fn prompt_fix_xml_with_log(
         .registry()
         .get_template("fix_mode_xml")
         .unwrap_or_else(|_| include_str!("../templates/fix_mode_xml.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for fix prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_content.to_string()),
         ("PLAN", plan_content.to_string()),
         ("ISSUES", issues_content.to_string()),
@@ -57,7 +59,27 @@ pub fn prompt_fix_xml_with_log(
             workspace.absolute_str(".agent/tmp/fix_result.xsd"),
         ),
     ]);
-    match Template::new(&template_content).render_with_log(template_name, &variables, &partials) {
+
+    // Compute capability variables using Fix drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
+    match Template::new(&template_content).render_with_log(template_name, &variables_ref, &partials) {
         Ok(rendered) => rendered,
         Err(err) => {
             // Extract missing variable from error
@@ -187,7 +209,9 @@ pub fn prompt_fix_xsd_retry_with_log(
         .registry()
         .get_template("fix_mode_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/fix_mode_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "FIX_RESULT_XML_PATH",
@@ -203,9 +227,28 @@ pub fn prompt_fix_xsd_retry_with_log(
         ),
     ]);
 
+    // Compute capability variables using Fix drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let template = Template::new(&template_content);
     template
-        .render_with_log(template_name, &variables, &partials)
+        .render_with_log(template_name, &variables_ref, &partials)
         .map(|mut rendered| {
             if !diagnostic_prefix.is_empty() {
                 rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
@@ -250,7 +293,9 @@ pub fn prompt_fix_xml_with_context(
         .registry()
         .get_template("fix_mode_xml")
         .unwrap_or_else(|_| include_str!("../templates/fix_mode_xml.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for fix prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_content.to_string()),
         ("PLAN", plan_content.to_string()),
         ("ISSUES", issues_content.to_string()),
@@ -264,8 +309,28 @@ pub fn prompt_fix_xml_with_context(
             workspace.absolute_str(".agent/tmp/fix_result.xsd"),
         ),
     ]);
+
+    // Compute capability variables using Fix drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "FIX MODE\n\nFix the issues:\n\n{issues_content}\n\n\
@@ -372,7 +437,9 @@ pub fn prompt_fix_xsd_retry_with_context_files(
         .registry()
         .get_template("fix_mode_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/fix_mode_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "FIX_RESULT_XML_PATH",
@@ -388,8 +455,27 @@ pub fn prompt_fix_xsd_retry_with_context_files(
         ),
     ]);
 
+    // Compute capability variables using Fix drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let rendered_prompt = Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "Your previous fix failed XSD validation.\n\nError: {xsd_error}\n\n\

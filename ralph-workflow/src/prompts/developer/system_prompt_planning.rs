@@ -65,7 +65,9 @@ pub fn prompt_plan_with_context(
         });
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
-    let variables = HashMap::from([
+
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_md.to_string()),
         (
             "PLAN_XML_PATH",
@@ -77,8 +79,27 @@ pub fn prompt_plan_with_context(
         ),
     ]);
 
+    // Compute capability variables using Planning drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             // Embedded fallback template (XML format)
             format!(
@@ -103,7 +124,9 @@ pub fn prompt_planning_xml_with_context(
         .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
-    let variables = HashMap::from([
+
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_md.to_string()),
         (
             "PLAN_XML_PATH",
@@ -115,8 +138,27 @@ pub fn prompt_planning_xml_with_context(
         ),
     ]);
 
+    // Compute capability variables using Planning drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "PLANNING MODE\n\nCreate an implementation plan for:\n\n{prompt_md}\n\n\
@@ -149,7 +191,8 @@ pub fn prompt_planning_xml_with_references_and_log(
         .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
     let template = Template::new(&template_content);
 
-    let variables = HashMap::from([
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_ref.render_for_template()),
         (
             "PLAN_XML_PATH",
@@ -161,7 +204,26 @@ pub fn prompt_planning_xml_with_references_and_log(
         ),
     ]);
 
-    match template.render_with_log(template_name, &variables, &partials) {
+    // Compute capability variables using Planning drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
+    match template.render_with_log(template_name, &variables_ref, &partials) {
         Ok(rendered) => rendered,
         Err(err) => {
             // Extract missing variable from error
@@ -216,7 +278,8 @@ pub fn prompt_planning_xml_with_references(
         .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
     let template = Template::new(&template_content);
 
-    let variables = HashMap::from([
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_ref.render_for_template()),
         (
             "PLAN_XML_PATH",
@@ -228,8 +291,27 @@ pub fn prompt_planning_xml_with_references(
         ),
     ]);
 
+    // Compute capability variables using Planning drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             let prompt = prompt_ref.render_for_template();
             format!("PLANNING MODE\n\nCreate an implementation plan for:\n\n{prompt}\n")
@@ -310,7 +392,9 @@ pub fn prompt_planning_xsd_retry_with_context_files(
         .registry()
         .get_template("planning_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/planning_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "PLAN_XML_PATH",
@@ -326,8 +410,27 @@ pub fn prompt_planning_xsd_retry_with_context_files(
         ),
     ]);
 
+    // Compute capability variables using Planning drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let rendered_prompt = Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "Your previous plan failed XSD validation.\n\nError: {xsd_error}\n\n\
@@ -429,7 +532,9 @@ pub fn prompt_planning_xsd_retry_with_context_files_and_log(
         .registry()
         .get_template("planning_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/planning_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "PLAN_XML_PATH",
@@ -445,9 +550,28 @@ pub fn prompt_planning_xsd_retry_with_context_files_and_log(
         ),
     ]);
 
+    // Compute capability variables using Planning drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let template = Template::new(&template_content);
     template
-        .render_with_log(template_name, &variables, &partials)
+        .render_with_log(template_name, &variables_ref, &partials)
         .map(|mut rendered| {
             if !diagnostic_prefix.is_empty() {
                 rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);

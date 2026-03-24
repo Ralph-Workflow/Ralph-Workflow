@@ -116,7 +116,9 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
         .unwrap_or_else(|_| include_str!("../templates/commit_message_xml.txt").to_string());
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
-    let variables = HashMap::from([
+
+    // Base variables for commit message prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("DIFF", diff_content.to_string()),
         (
             "COMMIT_MESSAGE_XML_PATH",
@@ -128,7 +130,30 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
         ),
     ]);
 
-    match template.render_with_log(template_name, &variables, &partials) {
+    // Compute capability variables using Commit drain defaults
+    let capability_vars = crate::prompts::template_variables::capability_template_variables(
+        &crate::agents::session::CapabilitySet::defaults_for_drain(
+            crate::agents::session::SessionDrain::Commit,
+        ),
+        &crate::agents::session::PolicyFlagSet::defaults_for_drain(
+            crate::agents::session::SessionDrain::Commit,
+        ),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
+    match template.render_with_log(template_name, &variables_ref, &partials) {
         Ok(rendered) => rendered,
         Err(_e) => {
             // Last resort: simple inline prompt with manual log
@@ -192,7 +217,9 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
         .unwrap_or_else(|_| include_str!("../templates/commit_message_xml.txt").to_string());
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
-    let variables = HashMap::from([
+
+    // Base variables for commit message prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("DIFF", diff_content.to_string()),
         (
             "COMMIT_MESSAGE_XML_PATH",
@@ -204,8 +231,32 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
         ),
     ]);
 
+    // Compute capability variables using Commit drain defaults
+    // since the session is created after prompt generation in invoke_agent.
+    let capability_vars = crate::prompts::template_variables::capability_template_variables(
+        &crate::agents::session::CapabilitySet::defaults_for_drain(
+            crate::agents::session::SessionDrain::Commit,
+        ),
+        &crate::agents::session::PolicyFlagSet::defaults_for_drain(
+            crate::agents::session::SessionDrain::Commit,
+        ),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_e| {
         // Last resort: simple inline prompt (no fallback template needed)
         format!(

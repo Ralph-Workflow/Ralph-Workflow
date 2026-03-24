@@ -194,7 +194,7 @@ fn invoke_analysis_agent_with_prompt(
         AgentRole::Analysis,
         &agent,
         None,
-        prompt,
+        |_session: &crate::agents::session::AgentSession| prompt.clone(),
     )
 }
 

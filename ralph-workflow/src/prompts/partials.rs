@@ -23,6 +23,7 @@
 //! - `shared/_no_git_commit` - Prohibits any git commit operations
 //! - `shared/_output_checklist` - Prioritized checklist output format
 //! - `shared/_safety_no_execute` - No command execution, read-only mode
+//! - `shared/_session_capabilities` - Session granted capabilities display
 //! - `shared/_unattended_mode` - Automated pipeline, no user interaction
 
 use std::collections::HashMap;
@@ -59,6 +60,10 @@ pub fn get_shared_partials() -> HashMap<String, String> {
             include_str!("templates/shared/_output_checklist.txt").to_string(),
         ),
         (
+            "shared/_session_capabilities".to_string(),
+            include_str!("templates/shared/_session_capabilities.txt").to_string(),
+        ),
+        (
             "shared/_safety_no_execute".to_string(),
             include_str!("templates/shared/_safety_no_execute.txt").to_string(),
         ),
@@ -84,6 +89,7 @@ mod tests {
         assert!(partials.contains_key("shared/_unattended_mode"));
         assert!(partials.contains_key("shared/_developer_iteration_guidance"));
         assert!(partials.contains_key("shared/_no_git_commit"));
+        assert!(partials.contains_key("shared/_session_capabilities"));
     }
 
     #[test]

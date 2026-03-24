@@ -30,7 +30,8 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> Result<EffectResult> {
         self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Development);
-        let prompt = ctx
+        // Read the pre-generated prompt for replay determinism
+        let pre_generated_prompt = ctx
             .workspace
             .read(Path::new(".agent/tmp/development_prompt.txt"))
             .map_err(|_| ErrorEvent::DevelopmentPromptMissing { iteration })?;
@@ -40,13 +41,16 @@ impl MainEffectHandler {
             .current_agent()
             .cloned()
             .unwrap_or_else(|| ctx.developer_agent.to_string());
+        // Pass a closure that returns the prompt.
+        // The closure receives the AgentSession, but for now we return the pre-generated prompt.
+        // TODO(rfc-009): Generate prompt using session capabilities inside the closure.
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Development,
             AgentRole::Developer,
             &agent,
             None,
-            prompt,
+            |_session: &crate::agents::session::AgentSession| pre_generated_prompt.clone(),
         )?;
         let result = if result.additional_events.iter().any(|e| {
             matches!(

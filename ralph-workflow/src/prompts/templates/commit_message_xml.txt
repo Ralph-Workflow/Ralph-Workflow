@@ -47,11 +47,13 @@
 {#   - No JSON artifacts or escape sequences                                   #}
 {#   - No AI thought process leakage                                           #}
 {# ============================================================================ #}
-{{> shared/_safety_no_execute}}
+{% if POLICY_NO_EDIT %}{{> shared/_safety_no_execute}}{% endif %}
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 You are a commit message generation expert. Analyze the following git diff and generate a high-quality Conventional Commits message.
 

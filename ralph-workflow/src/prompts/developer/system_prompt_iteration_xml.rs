@@ -85,13 +85,36 @@ pub fn prompt_developer_iteration_with_context(
             include_str!("../templates/developer_iteration_xml.txt").to_string()
         });
     let template = Template::new(&template_content);
-    let variables = HashMap::from([
+
+    // Base variables for developer iteration prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_content.to_string()),
         ("PLAN", plan_content.to_string()),
     ]);
 
+    // Compute capability variables using Development drain defaults
+    // since the session is created after prompt generation in invoke_agent.
+    // This ensures templates receive capability-driven conditionals correctly.
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             // Embedded fallback template (XML format)
             format!(
@@ -123,7 +146,9 @@ pub fn prompt_developer_iteration_xml_with_context(
         .get_template("developer_iteration_xml")
         .unwrap_or_else(|_| include_str!("../templates/developer_iteration_xml.txt").to_string());
     let template = Template::new(&template_content);
-    let variables = HashMap::from([
+
+    // Base variables for developer iteration prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_content.to_string()),
         ("PLAN", plan_content.to_string()),
         (
@@ -136,8 +161,28 @@ pub fn prompt_developer_iteration_xml_with_context(
         ),
     ]);
 
+    // Compute capability variables using Development drain defaults
+    // since the session is created after prompt generation in invoke_agent.
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "IMPLEMENTATION MODE\n\nORIGINAL REQUEST:\n{prompt_content}\n\n\
@@ -167,7 +212,9 @@ pub fn prompt_developer_iteration_xml_with_references_and_log(
         .get_template("developer_iteration_xml")
         .unwrap_or_else(|_| include_str!("../templates/developer_iteration_xml.txt").to_string());
     let template = Template::new(&template_content);
-    let variables = HashMap::from([
+
+    // Base variables for developer iteration prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", refs.prompt_for_template()),
         ("PLAN", refs.plan_for_template()),
         (
@@ -180,7 +227,26 @@ pub fn prompt_developer_iteration_xml_with_references_and_log(
         ),
     ]);
 
-    match template.render_with_log(template_name, &variables, &partials) {
+    // Compute capability variables using Development drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
+    match template.render_with_log(template_name, &variables_ref, &partials) {
         Ok(rendered) => rendered,
         Err(err) => {
             // Extract missing variable from error
@@ -241,7 +307,9 @@ pub fn prompt_developer_iteration_xml_with_references(
         .get_template("developer_iteration_xml")
         .unwrap_or_else(|_| include_str!("../templates/developer_iteration_xml.txt").to_string());
     let template = Template::new(&template_content);
-    let variables = HashMap::from([
+
+    // Base variables for developer iteration prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", refs.prompt_for_template()),
         ("PLAN", refs.plan_for_template()),
         (
@@ -254,8 +322,27 @@ pub fn prompt_developer_iteration_xml_with_references(
         ),
     ]);
 
+    // Compute capability variables using Development drain defaults
+    let capability_vars = capability_template_variables(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             let prompt = refs.prompt_for_template();
             let plan = refs.plan_for_template();
