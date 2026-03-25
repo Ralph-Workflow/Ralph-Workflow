@@ -358,6 +358,70 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             },
             ..state
         },
+
+        // =====================================================================
+        // Phase 4: Parallel Worker Events
+        // =====================================================================
+        // Note: These events are handled here for state tracking during parallel execution.
+        // The actual worker dispatch and coordination happens via effects.
+        AgentEvent::ParallelPlanProduced { plan } => {
+            // Store the parallel plan in state for tracking.
+            // The orchestration layer will derive the EvaluateParallelPlan effect.
+            PipelineState {
+                parallel_plan: Some(plan),
+                parallel_plan_validated: false,
+                ..state
+            }
+        }
+        AgentEvent::ParallelPlanValidated { plan } => {
+            // Plan validated - store it (orchestration will derive DispatchParallelWorkers).
+            // Keep any existing parallel state since the plan is now validated and ready for dispatch.
+            PipelineState {
+                parallel_plan: Some(plan),
+                parallel_plan_validated: true,
+                ..state
+            }
+        }
+        AgentEvent::ParallelPlanRejected { plan: _, reason } => {
+            // Plan rejected - fall back to single-agent mode.
+            // Clear the parallel plan and record the rejection reason.
+            // The orchestration layer will continue with single-agent planning.
+            PipelineState {
+                parallel_plan: None,
+                parallel_plan_validated: false,
+                parallel_workers: Vec::new(),
+                parallel_workers_completed: Vec::new(),
+                parallel_plan_rejected_reason: Some(reason),
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkersDispatched {
+            worker_count: _,
+            workers,
+        } => {
+            // Workers dispatched - track the worker identities.
+            // The orchestration layer manages worker lifecycle via events.
+            PipelineState {
+                parallel_workers: workers,
+                parallel_workers_completed: Vec::new(),
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkerCompleted {
+            worker_id,
+            metadata: _,
+        } => {
+            // Worker completed - track completion status.
+            // When all workers complete, orchestration will trigger verification.
+            let mut completed = state.parallel_workers_completed.clone();
+            if !completed.contains(&worker_id) {
+                completed.push(worker_id);
+            }
+            PipelineState {
+                parallel_workers_completed: completed,
+                ..state
+            }
+        }
     }
 }
 

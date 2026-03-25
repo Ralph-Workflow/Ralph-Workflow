@@ -652,3 +652,4 @@ pub fn prompt_planning_xsd_retry_with_context(
     write_planning_xsd_retry_files(workspace, last_output);
     prompt_planning_xsd_retry_with_context_files(context, xsd_error, workspace, session_caps)
 }
+

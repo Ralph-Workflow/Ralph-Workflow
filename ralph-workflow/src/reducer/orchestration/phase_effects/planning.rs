@@ -108,6 +108,21 @@ pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
         };
     }
 
+    // Phase 4: If parallel plan is present, evaluate or dispatch based on validation state
+    if let Some(ref parallel_plan) = state.parallel_plan {
+        if state.parallel_plan_validated {
+            // Plan has been validated - dispatch workers
+            return Effect::DispatchParallelWorkers {
+                plan: parallel_plan.clone(),
+            };
+        } else {
+            // Plan needs evaluation
+            return Effect::EvaluateParallelPlan {
+                plan: parallel_plan.clone(),
+            };
+        }
+    }
+
     if state.planning_markdown_written_iteration != Some(state.iteration) {
         return Effect::WritePlanningMarkdown {
             iteration: state.iteration,

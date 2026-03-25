@@ -61,6 +61,14 @@ pub struct PersistedAuditRecord {
     /// The command for command checks (optional).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// Execution duration in milliseconds (optional, for telemetry).
+    /// Recorded for development and fix drain effects involving process execution or workspace writes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    /// Execution result status (success/failure/timeout) for telemetry.
+    /// Recorded for development and fix drain effects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_status: Option<String>,
 }
 
 impl From<&AuditRecord> for PersistedAuditRecord {
@@ -80,6 +88,9 @@ impl From<&AuditRecord> for PersistedAuditRecord {
             description: record.description.clone(),
             effect_name: None,
             command: None,
+            // Telemetry fields are populated from the AuditRecord when available
+            duration_ms: record.duration_ms,
+            result_status: record.result_status.clone(),
         }
     }
 }
@@ -224,6 +235,61 @@ pub fn record_command_check(
     )
 }
 
+/// Record execution telemetry for an agent invocation.
+///
+/// This creates a new audit record documenting the execution duration and result
+/// for development and fix drain effects.
+///
+/// # Arguments
+///
+/// * `trail` - The current audit trail
+/// * `session_id` - The session this record belongs to
+/// * `timestamp` - Unix timestamp when the execution completed
+/// * `effect_name` - Name of the effect that was executed
+/// * `duration_ms` - Execution duration in milliseconds
+/// * `result_status` - Execution result status ("success", "failure", or "timeout")
+///
+/// # Returns
+///
+/// A new audit trail with the appended telemetry record.
+#[must_use]
+pub fn record_execution_telemetry(
+    trail: &AuditTrail,
+    session_id: &AgentSessionId,
+    timestamp: u64,
+    effect_name: &str,
+    duration_ms: u64,
+    result_status: &str,
+) -> AuditTrail {
+    let capability = Capability::WorkspaceWriteTracked;
+    let description = format!(
+        "Execution of {} completed in {}ms with status '{}' in session {}",
+        effect_name,
+        duration_ms,
+        result_status,
+        session_id.as_str()
+    );
+    let outcome = PolicyOutcome::Approved;
+
+    let record = AuditRecord::with_telemetry(
+        session_id.clone(),
+        timestamp,
+        capability,
+        outcome,
+        description,
+        duration_ms,
+        result_status.to_string(),
+    );
+
+    AuditTrail::from_records(
+        trail
+            .records()
+            .iter()
+            .cloned()
+            .chain(std::iter::once(record)),
+    )
+}
+
 /// Serialize an audit trail to NDJSON format.
 ///
 /// Each line is a valid JSON object representing one audit record.
@@ -333,6 +399,9 @@ pub fn persist_session_handshake(
         ),
         effect_name: None,
         command: None,
+        // Telemetry fields not applicable for handshake records
+        duration_ms: None,
+        result_status: None,
     };
 
     let content = serde_json::to_string(&handshake_record)

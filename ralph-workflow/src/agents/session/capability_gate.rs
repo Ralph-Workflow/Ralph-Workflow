@@ -45,6 +45,16 @@ pub fn is_ralph_internal_effect(effect: &Effect) -> bool {
             | Effect::ValidateFinalState
             | Effect::CleanupContext
             | Effect::EnsureGitignoreEntries
+            // Phase 4: Parallel worker effects are Ralph-internal
+            | Effect::EvaluateParallelPlan { .. }
+            | Effect::DispatchParallelWorkers { .. }
+            // Archive effects write to .agent/ directory which is Ralph's internal ephemeral storage.
+            // These are not user-driven writes - they're Ralph persisting its own artifacts.
+            | Effect::ArchivePlanningXml { .. }
+            | Effect::ArchiveDevelopmentXml { .. }
+            | Effect::ArchiveReviewIssuesXml { .. }
+            | Effect::ArchiveFixResultXml { .. }
+            | Effect::ArchiveCommitXml
     )
 }
 
@@ -68,6 +78,12 @@ pub fn is_ralph_internal_effect(effect: &Effect) -> bool {
 /// ```
 #[must_use]
 pub fn check_effect_capability(session: &AgentSession, effect: &Effect) -> PolicyOutcome {
+    // Ralph-internal effects bypass capability checks entirely.
+    // These are Ralph's own operations, not user-driven actions.
+    if is_ralph_internal_effect(effect) {
+        return PolicyOutcome::Approved;
+    }
+
     let required = required_capabilities(effect);
     for cap in &required {
         let outcome = session.check_capability(*cap);
@@ -236,10 +252,14 @@ pub fn required_capabilities(effect: &Effect) -> Vec<Capability> {
         Effect::ConfigureGitAuth { .. } => vec![Capability::EnvRead],
         Effect::PushToRemote { .. } => vec![Capability::GitStatusRead, Capability::GitWrite],
         Effect::CreatePullRequest { .. } => vec![Capability::GitStatusRead, Capability::GitWrite],
+
+        // =====================================================================
+        // Phase 4: Parallel Worker Effects
+        // =====================================================================
+        Effect::EvaluateParallelPlan { .. } => vec![],
+        Effect::DispatchParallelWorkers { .. } => vec![],
     }
 }
-
-/// Returns a human-readable description of the effect for audit purposes.
 #[must_use]
 pub fn effect_name(effect: &Effect) -> String {
     format_effect_name(effect)
@@ -328,6 +348,12 @@ pub fn effect_kind(effect: &Effect) -> EffectKind {
         Effect::ConfigureGitAuth { .. } => EffectKind::EnvRead,
         Effect::PushToRemote { .. } => EffectKind::GitWrite,
         Effect::CreatePullRequest { .. } => EffectKind::GitWrite,
+
+        // =====================================================================
+        // Phase 4: Parallel Worker Effects
+        // =====================================================================
+        Effect::EvaluateParallelPlan { .. } => EffectKind::System,
+        Effect::DispatchParallelWorkers { .. } => EffectKind::System,
     }
 }
 
@@ -639,6 +665,11 @@ fn format_effect_name(effect: &Effect) -> String {
                 base_branch, head_branch, title
             )
         }
+        // =====================================================================
+        // Phase 4: Parallel Worker Effects
+        // =====================================================================
+        Effect::EvaluateParallelPlan { .. } => "EvaluateParallelPlan".to_string(),
+        Effect::DispatchParallelWorkers { .. } => "DispatchParallelWorkers".to_string(),
     }
 }
 
@@ -1303,6 +1334,19 @@ mod tests {
                 head_branch: "".to_string(),
                 title: "".to_string(),
                 body: "".to_string(),
+            },
+            // Phase 4: Parallel worker effects
+            Effect::EvaluateParallelPlan {
+                plan: crate::agents::session::ParallelPlan {
+                    parent_plan_id: "".to_string(),
+                    work_units: vec![],
+                },
+            },
+            Effect::DispatchParallelWorkers {
+                plan: crate::agents::session::ParallelPlan {
+                    parent_plan_id: "".to_string(),
+                    work_units: vec![],
+                },
             },
         ];
 

@@ -337,14 +337,67 @@
   </xs:complexType>
 
   <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+  <!-- PARALLEL PLAN TYPES (RFC-009 Phase 4)                                       -->
+  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Edit area for a work unit - files and directories it can modify -->
+  <xs:complexType name="EditAreaType">
+    <xs:sequence>
+      <xs:element name="paths" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="directories" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="directory" type="xs:string" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Work unit dependencies (references to other work unit IDs) -->
+  <xs:complexType name="DependenciesType">
+    <xs:sequence>
+      <xs:element name="depends-on" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:attribute name="unit-id" type="xs:string" use="required"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Single work unit in a parallel plan -->
+  <xs:complexType name="WorkUnitType">
+    <xs:sequence>
+      <xs:element name="description" type="xs:string"/>
+      <xs:element name="edit-area" type="EditAreaType"/>
+      <xs:element name="dependencies" type="DependenciesType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <!-- Parallel plan container - groups work units for parallel execution -->
+  <xs:complexType name="ParallelPlanType">
+    <xs:sequence>
+      <xs:element name="work-unit" type="WorkUnitType" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
   <!-- ROOT ELEMENT                                                                 -->
   <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
+
   <xs:element name="ralph-plan">
     <xs:complexType>
       <xs:sequence>
         <xs:element name="ralph-summary" type="SummaryType"/>
         <xs:element name="skills-mcp" type="SkillsMcpType" minOccurs="0"/>
+        <xs:element name="ralph-parallel-plan" type="ParallelPlanType" minOccurs="0"/>
         <xs:element name="ralph-implementation-steps" type="ImplementationStepsType"/>
         <xs:element name="ralph-critical-files" type="CriticalFilesType"/>
         <xs:element name="ralph-risks-mitigations" type="RisksMitigationsType"/>

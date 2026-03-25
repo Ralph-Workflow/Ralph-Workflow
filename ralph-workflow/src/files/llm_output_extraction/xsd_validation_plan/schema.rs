@@ -327,4 +327,39 @@ pub struct PlanElements {
     pub verification_strategy: Vec<Verification>,
     /// Optional skills and MCP recommendations for the next execution agent
     pub skills_mcp: Option<SkillsMcp>,
+    /// Optional parallel plan for Phase 4 parallel execution
+    pub parallel_plan: Option<ParallelPlanElements>,
+}
+
+// ===============================================================================
+// PARALLEL PLAN TYPES (RFC-009 Phase 4)
+// ===============================================================================
+
+/// Edit area defining what paths a work unit can modify
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditAreaElements {
+    /// Exact file paths allowed
+    pub paths: Vec<String>,
+    /// Directory prefixes allowed
+    pub directories: Vec<String>,
+}
+
+/// Work unit in a parallel plan
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkUnitElements {
+    /// Unique identifier for the work unit
+    pub unit_id: String,
+    /// Human-readable description
+    pub description: String,
+    /// The restricted edit area
+    pub edit_area: EditAreaElements,
+    /// IDs of work units this depends on
+    pub dependencies: Vec<String>,
+}
+
+/// Parallel plan containing work units for Phase 4 execution
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParallelPlanElements {
+    /// The work units to execute in parallel
+    pub work_units: Vec<WorkUnitElements>,
 }

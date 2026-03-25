@@ -97,9 +97,10 @@ pub use developer::{
     prompt_developer_iteration_xsd_retry_with_context,
     prompt_developer_iteration_xsd_retry_with_context_files,
     prompt_developer_iteration_xsd_retry_with_context_files_and_log,
-    prompt_planning_xml_with_context, prompt_planning_xml_with_references,
-    prompt_planning_xml_with_references_and_log, prompt_planning_xsd_retry_with_context,
-    prompt_planning_xsd_retry_with_context_files,
+    prompt_parallel_dev_worker_with_context, prompt_parallel_planning_with_context,
+    prompt_parallel_verifier_with_context, prompt_planning_xml_with_context,
+    prompt_planning_xml_with_references, prompt_planning_xml_with_references_and_log,
+    prompt_planning_xsd_retry_with_context, prompt_planning_xsd_retry_with_context_files,
     prompt_planning_xsd_retry_with_context_files_and_log,
 };
 pub use developer::{prompt_developer_iteration_with_context, prompt_plan_with_context};

@@ -115,6 +115,8 @@ mod agent_session_tests {
             capabilities: caps,
             policy_flags: flags,
             created_at: SystemTime::now(),
+            worker_identity: None,
+            edit_area: None,
         };
 
         assert_eq!(session.run_id, "run-123");

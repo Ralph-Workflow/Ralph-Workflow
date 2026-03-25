@@ -6,6 +6,7 @@
 //!
 //! See `docs/architecture/effect-system.md` for the design overview.
 
+use crate::agents::session::ParallelPlan;
 use crate::agents::{AgentDrain, AgentRole};
 use serde::{Deserialize, Serialize};
 
@@ -393,6 +394,33 @@ pub enum Effect {
         level: u32,
         /// Total attempts before success.
         total_attempts: u32,
+    },
+
+    // ========================================================================
+    // Phase 4: Parallel Worker Effects
+    // ========================================================================
+    /// Evaluate a parallel plan for validity before dispatching workers.
+    ///
+    /// Validates that:
+    /// - No two work units have overlapping edit areas
+    /// - All dependency references are valid (no circular dependencies)
+    /// - All file paths in edit areas exist or are valid creation targets
+    ///
+    /// Emits `ParallelPlanValidated` event if valid, or `ParallelPlanRejected` if invalid.
+    EvaluateParallelPlan {
+        /// The parallel plan to validate.
+        plan: ParallelPlan,
+    },
+
+    /// Dispatch parallel workers to execute the work units.
+    ///
+    /// Creates worktrees and spawns agent processes concurrently (one per work unit).
+    /// Each worker gets its own session with restricted edit area.
+    ///
+    /// Emits `ParallelWorkersDispatched` event when workers are spawned.
+    DispatchParallelWorkers {
+        /// The parallel plan containing work units to dispatch.
+        plan: ParallelPlan,
     },
 
     // ========================================================================

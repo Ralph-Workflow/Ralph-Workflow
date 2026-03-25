@@ -20,6 +20,8 @@ mod tests {
             description: "Session handshake: drain=planning, protocol=1.0, capabilities=[workspace.read,artifact.submit,run.report_progress,git.status_read,git.diff_read], policy_flags=[]".to_string(),
             effect_name: None,
             command: None,
+            duration_ms: None,
+            result_status: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -50,6 +52,8 @@ mod tests {
                     .to_string(),
             effect_name: Some("InvokePlanningAgent".to_string()),
             command: None,
+            duration_ms: None,
+            result_status: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -77,6 +81,8 @@ mod tests {
                     .to_string(),
             effect_name: Some("CreateCommit".to_string()),
             command: None,
+            duration_ms: None,
+            result_status: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -101,6 +107,8 @@ mod tests {
             description: "Command 'git' is blacklisted: version control commands must go through Ralph's git capabilities".to_string(),
             effect_name: None,
             command: Some("git commit -m \"fix\"".to_string()),
+            duration_ms: None,
+            result_status: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -129,6 +137,8 @@ mod tests {
             description: "Capabilities injected into prompt template: workspace.read, artifact.submit, run.report_progress, git.status_read, git.diff_read".to_string(),
             effect_name: None,
             command: None,
+            duration_ms: None,
+            result_status: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -154,6 +164,8 @@ mod tests {
                 description: "Session handshake: drain=planning".to_string(),
                 effect_name: None,
                 command: None,
+                duration_ms: None,
+                result_status: None,
             },
             PersistedAuditRecord {
                 session_id: "test-run-planning-1".to_string(),
@@ -164,6 +176,8 @@ mod tests {
                 description: "Capability granted".to_string(),
                 effect_name: Some("InvokePlanningAgent".to_string()),
                 command: None,
+                duration_ms: None,
+                result_status: None,
             },
         ];
 

@@ -1,13 +1,4 @@
-use crate::files::llm_output_extraction::validate_plan_xml;
 use crate::reducer::prompt_inputs::sha256_hex_str;
-
-use super::development::format_plan_as_markdown;
-
-pub(crate) fn parse_planning_markdown(plan_xml: &str) -> Option<String> {
-    validate_plan_xml(plan_xml)
-        .ok()
-        .map(|elements| format_plan_as_markdown(&elements))
-}
 
 pub(crate) fn apply_same_agent_retry_preamble(retry_preamble: &str, base_prompt: &str) -> String {
     format!("{retry_preamble}\n{base_prompt}")
@@ -35,9 +26,11 @@ pub(crate) fn planning_xsd_retry_prompt_content_id(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_same_agent_retry_preamble, parse_planning_markdown, planning_prompt_content_id,
+        apply_same_agent_retry_preamble, planning_prompt_content_id,
         planning_xsd_retry_prompt_content_id,
     };
+    use crate::files::llm_output_extraction::validate_plan_xml;
+    use crate::phases::development::format_plan_as_markdown;
     use crate::reducer::prompt_inputs::sha256_hex_str;
 
     #[test]
@@ -78,7 +71,8 @@ mod tests {
 </ralph-verification-strategy>
 </ralph-plan>"#;
 
-        let markdown = parse_planning_markdown(xml).expect("valid XML should parse");
+        let elements = validate_plan_xml(xml).expect("valid XML should parse");
+        let markdown = format_plan_as_markdown(&elements);
 
         assert!(markdown.contains("## Summary"));
         assert!(markdown.contains("Do the thing"));

@@ -5,6 +5,7 @@
 //! - Audit trail accumulates capability checks during agent invocations
 //! - Audit trail is persisted to `.agent/audit/{session_id}.jsonl` after session ends
 //! - Capability gates correctly deny effects that require capabilities the session doesn't have
+//! - Command policy blacklist is enforced for shell command execution
 //!
 //! # Integration Test Style Guide
 //!
@@ -18,5 +19,9 @@
 //! - Tests are deterministic and verify effects, not real filesystem state
 
 pub(crate) mod audit_trail_tests;
+pub(crate) mod behavioral_equivalence_tests;
 pub(crate) mod capability_enforcement_tests;
+pub(crate) mod command_policy_tests;
+pub(crate) mod parallel_worker_tests;
+pub(crate) mod regression_tests;
 pub(crate) mod session_handshake_tests;

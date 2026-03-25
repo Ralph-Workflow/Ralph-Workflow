@@ -247,7 +247,8 @@ impl CapabilitySet {
             .into(),
             SessionDrain::Fix => vec![
                 Capability::WorkspaceRead,
-                Capability::WorkspaceWriteEphemeral,
+                // NOTE: Fix does NOT have WorkspaceWriteEphemeral - it can only write tracked files.
+                // This is the key distinction from Development which gets ephemeral write.
                 Capability::WorkspaceWriteTracked,
                 Capability::GitStatusRead,
                 Capability::GitDiffRead,
@@ -453,6 +454,14 @@ pub struct AuditRecord {
     pub outcome: PolicyOutcome,
     /// Human-readable description of what was attempted.
     pub description: String,
+    /// Execution duration in milliseconds (optional, for telemetry).
+    /// Recorded for development and fix drain effects involving process execution or workspace writes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    /// Execution result status (success/failure/timeout) for telemetry.
+    /// Recorded for development and fix drain effects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_status: Option<String>,
 }
 
 impl AuditRecord {
@@ -470,6 +479,29 @@ impl AuditRecord {
             capability,
             outcome,
             description,
+            duration_ms: None,
+            result_status: None,
+        }
+    }
+
+    /// Create a new audit record with execution telemetry.
+    pub fn with_telemetry(
+        session_id: AgentSessionId,
+        timestamp: u64,
+        capability: Capability,
+        outcome: PolicyOutcome,
+        description: String,
+        duration_ms: u64,
+        result_status: String,
+    ) -> Self {
+        Self {
+            session_id,
+            timestamp,
+            capability,
+            outcome,
+            description,
+            duration_ms: Some(duration_ms),
+            result_status: Some(result_status),
         }
     }
 }
@@ -565,6 +597,9 @@ impl AuditTrail {
 ///
 /// V1 data model: the handshake declares the session's identity, protocol version,
 /// capability set, and policy flags. It is the RFC-009 session declaration contract.
+///
+/// Phase 4 extension: for parallel worker sessions, the handshake also includes
+/// the worker's identity and restricted edit area.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionHandshake {
     /// The session this handshake belongs to.
@@ -579,6 +614,12 @@ pub struct SessionHandshake {
     pub policy_flags: PolicyFlagSet,
     /// UTC timestamp when the handshake was issued (Unix seconds since epoch).
     pub issued_at: u64,
+    /// Worker identity for parallel worker sessions (None for single-agent sessions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worker_identity: Option<WorkerIdentity>,
+    /// Restricted edit area for parallel worker sessions (None for single-agent sessions).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edit_area: Option<RestrictedEditArea>,
 }
 
 impl SessionHandshake {
@@ -596,6 +637,8 @@ impl SessionHandshake {
             capabilities: session.capabilities.clone(),
             policy_flags: session.policy_flags.clone(),
             issued_at,
+            worker_identity: session.worker_identity.clone(),
+            edit_area: session.edit_area.clone(),
         }
     }
 }
@@ -608,6 +651,7 @@ impl SessionHandshake {
 /// - Capability set granted to this session
 /// - Policy flags restricting session behavior
 /// - Session creation timestamp
+/// - Parallel worker identity and edit area (for Phase 4 parallel workers)
 #[derive(Debug, Clone)]
 pub struct AgentSession {
     /// Unique session identifier.
@@ -624,6 +668,10 @@ pub struct AgentSession {
     pub policy_flags: PolicyFlagSet,
     /// When this session was created.
     pub created_at: SystemTime,
+    /// Identity of the parallel worker (None for single-agent sessions).
+    pub worker_identity: Option<WorkerIdentity>,
+    /// Restricted edit area for parallel workers (None for single-agent sessions).
+    pub edit_area: Option<RestrictedEditArea>,
 }
 
 impl AgentSession {
@@ -662,6 +710,8 @@ impl AgentSession {
             capabilities,
             policy_flags,
             created_at,
+            worker_identity: None,
+            edit_area: None,
         }
     }
 
@@ -691,6 +741,57 @@ impl AgentSession {
             capabilities,
             policy_flags,
             created_at,
+            worker_identity: None,
+            edit_area: None,
+        }
+    }
+
+    /// Create a new session for a parallel worker with restricted edit area.
+    ///
+    /// This constructor creates a session for a parallel worker that operates
+    /// within a restricted edit area. The capabilities are narrowed based on
+    /// the drain defaults, and the edit area restricts which files the worker
+    /// can modify.
+    pub fn for_parallel_worker(
+        run_id: String,
+        drain: SessionDrain,
+        counter: u32,
+        worker_identity: WorkerIdentity,
+        edit_area: RestrictedEditArea,
+        created_at: SystemTime,
+    ) -> Self {
+        let session_id = AgentSessionId::new(&run_id, &drain, counter);
+        let capabilities = CapabilitySet::defaults_for_drain(drain);
+        let policy_flags = PolicyFlagSet::defaults_for_drain(drain);
+        Self {
+            session_id,
+            run_id,
+            drain,
+            protocol_version: PROTOCOL_VERSION_V1.to_string(),
+            capabilities,
+            policy_flags,
+            created_at,
+            worker_identity: Some(worker_identity),
+            edit_area: Some(edit_area),
+        }
+    }
+
+    /// Check if this is a parallel worker session.
+    #[must_use]
+    pub fn is_parallel_worker(&self) -> bool {
+        self.worker_identity.is_some()
+    }
+
+    /// Check if a workspace write to the given path is allowed by the edit area.
+    ///
+    /// Returns `PolicyOutcome::Approved` if the write is allowed, or
+    /// `PolicyOutcome::Denied` if the path is outside the restricted edit area.
+    /// If this is not a parallel worker session (no edit area), returns Approved.
+    #[must_use]
+    pub fn check_edit_area(&self, path: &str) -> PolicyOutcome {
+        match &self.edit_area {
+            Some(area) => check_write_within_edit_area(path, area),
+            None => PolicyOutcome::Approved,
         }
     }
 
@@ -764,6 +865,14 @@ pub mod capability_gate;
 pub mod command_policy;
 // Phase 2: Audit trail persistence
 pub mod audit;
+// Phase 4: Parallel worker orchestration types
+pub mod parallel;
+
+// Re-export parallel types for convenient access
+pub use parallel::{
+    check_write_within_edit_area, edit_areas_overlap, ParallelPlan, ReconciliationDecision,
+    RestrictedEditArea, WorkUnit, WorkerIdentity, WorkerReconciliationMetadata,
+};
 
 #[cfg(test)]
 mod tests;

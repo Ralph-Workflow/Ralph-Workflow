@@ -14,20 +14,23 @@ use super::planning_helpers::{
     read_planning_xsd_retry_last_output, write_planning_prompt, XsdRetryLastOutputParams,
 };
 use super::MainEffectHandler;
+use crate::agents::session::parallel::{
+    ParallelPlan as AgentParallelPlan, RestrictedEditArea, WorkUnit,
+};
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
 use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
-use crate::phases::planning::{
-    parse_planning_markdown, planning_prompt_content_id, planning_xsd_retry_prompt_content_id,
-};
+use crate::files::llm_output_extraction::validate_plan_xml;
+use crate::phases::development::format_plan_as_markdown;
+use crate::phases::planning::{planning_prompt_content_id, planning_xsd_retry_prompt_content_id};
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
 use crate::prompts::{
     get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SessionCapabilities,
 };
 use crate::reducer::effect::EffectResult;
-use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
+use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::PromptMode;
 use crate::reducer::state::{
@@ -39,6 +42,32 @@ use anyhow::Result;
 use std::path::Path;
 
 const PLANNING_PROMPT_PATH: &str = ".agent/tmp/planning_prompt.txt";
+
+/// Convert `ParallelPlanElements` (from XSD parsing) to `AgentParallelPlan` (for state).
+fn convert_parallel_plan_elements(
+    elements: &crate::files::llm_output_extraction::xsd_validation_plan::ParallelPlanElements,
+) -> AgentParallelPlan {
+    use crate::files::llm_output_extraction::xsd_validation_plan::WorkUnitElements;
+
+    let work_units: Vec<WorkUnit> = elements
+        .work_units
+        .iter()
+        .map(|wu: &WorkUnitElements| WorkUnit {
+            unit_id: wu.unit_id.clone(),
+            description: wu.description.clone(),
+            edit_area: RestrictedEditArea {
+                allowed_paths: wu.edit_area.paths.clone(),
+                allowed_directories: wu.edit_area.directories.clone(),
+            },
+            dependencies: wu.dependencies.clone(),
+        })
+        .collect();
+
+    AgentParallelPlan {
+        parent_plan_id: "planning".to_string(), // Planning phase doesn't have a parent plan ID
+        work_units,
+    }
+}
 
 impl MainEffectHandler {
     pub(in crate::reducer::boundary) fn materialize_planning_inputs(
@@ -371,30 +400,47 @@ impl MainEffectHandler {
             ));
         };
 
-        parse_planning_markdown(&plan_xml).map_or_else(
-            || {
-                Ok(EffectResult::event(
+        // Validate the XML and get structured elements
+        let elements = match validate_plan_xml(&plan_xml) {
+            Ok(elements) => elements,
+            Err(_) => {
+                return Ok(EffectResult::event(
                     PipelineEvent::planning_output_validation_failed(
                         iteration,
                         self.state.continuation.invalid_output_attempts,
                     ),
-                ))
-            },
-            |markdown| {
-                Ok(EffectResult::with_ui(
-                    PipelineEvent::planning_xml_validated(iteration, true, Some(markdown)),
-                    vec![UIEvent::XmlOutput {
-                        xml_type: XmlOutputType::DevelopmentPlan,
-                        content: plan_xml,
-                        context: Some(XmlOutputContext {
-                            iteration: Some(iteration),
-                            pass: None,
-                            snippets: Vec::new(),
-                        }),
-                    }],
-                ))
-            },
-        )
+                ));
+            }
+        };
+
+        // Convert PlanElements to markdown
+        let markdown = format_plan_as_markdown(&elements);
+
+        // Start with the planning_xml_validated event
+        let mut result = EffectResult::with_ui(
+            PipelineEvent::planning_xml_validated(iteration, true, Some(markdown)),
+            vec![UIEvent::XmlOutput {
+                xml_type: XmlOutputType::DevelopmentPlan,
+                content: plan_xml,
+                context: Some(XmlOutputContext {
+                    iteration: Some(iteration),
+                    pass: None,
+                    snippets: Vec::new(),
+                }),
+            }],
+        );
+
+        // If parallel plan is present, emit ParallelPlanProduced event as additional event
+        if let Some(parallel_elements) = &elements.parallel_plan {
+            let parallel_plan = convert_parallel_plan_elements(parallel_elements);
+            result = result.with_additional_event(PipelineEvent::Agent(
+                AgentEvent::ParallelPlanProduced {
+                    plan: parallel_plan,
+                },
+            ));
+        }
+
+        Ok(result)
     }
 
     pub(in crate::reducer::boundary) fn write_planning_markdown(

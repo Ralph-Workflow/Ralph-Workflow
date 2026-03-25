@@ -123,6 +123,7 @@ mod development_prompt;
 mod io_agent;
 mod io_commit;
 mod lifecycle;
+mod parallel;
 mod planning;
 mod planning_helpers;
 mod rebase;
@@ -393,6 +394,13 @@ impl MainEffectHandler {
                 crate::reducer::event::ErrorEvent::AgentChainExhausted { role, phase, cycle }
                     .into(),
             ),
+            // Phase 4: Parallel worker orchestration effects
+            Effect::EvaluateParallelPlan { plan } => {
+                crate::reducer::boundary::parallel::evaluate_parallel_plan(ctx, &plan)
+            }
+            Effect::DispatchParallelWorkers { plan } => {
+                crate::reducer::boundary::parallel::dispatch_parallel_workers(ctx, &plan)
+            }
             e => self.execute_phase_effect(e, ctx),
         }
     }

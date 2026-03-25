@@ -242,6 +242,14 @@ impl PipelineState {
                 // checkpoint.prompt_history is already typed as HashMap<String, PromptHistoryEntry>
                 // (via the updated PipelineCheckpoint type), so no conversion needed.
                 .collect(),
+            // Phase 4: Parallel worker state fields (reset on checkpoint resume)
+            // Parallel workflows cannot be reliably resumed from checkpoint -
+            // they must restart from the planning phase.
+            parallel_plan: None,
+            parallel_plan_validated: false,
+            parallel_workers: Vec::new(),
+            parallel_workers_completed: Vec::new(),
+            parallel_plan_rejected_reason: None,
         }
     }
 }

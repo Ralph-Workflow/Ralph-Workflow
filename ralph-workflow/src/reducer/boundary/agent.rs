@@ -1,7 +1,10 @@
 use super::MainEffectHandler;
 use crate::agents::config::should_use_yolo_mode;
 use crate::agents::session::{
-    audit::{persist_audit_trail, persist_session_handshake, record_command_check},
+    audit::{
+        persist_audit_trail, persist_session_handshake, record_command_check,
+        record_execution_telemetry,
+    },
     command_policy::{check_command, parse_command},
     AgentSession, AuditRecord, AuditTrail, Capability, PolicyOutcome, SessionDrain,
     SessionHandshake,
@@ -218,6 +221,10 @@ impl MainEffectHandler {
         );
 
         let session_id = resolve_session_id(&self.state, in_dev_fix);
+
+        // RFC-009 Phase 3: Capture execution timing for telemetry
+        let execution_start = SystemTime::now();
+
         let event = run_agent_execution(
             ctx,
             &self.state,
@@ -232,16 +239,57 @@ impl MainEffectHandler {
                 logfile: &logfile,
                 session: &session,
             },
-        )?;
+        );
+
+        // Calculate execution duration for telemetry
+        let execution_duration_ms = execution_start
+            .elapsed()
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        // Determine result status based on execution outcome
+        let result_status = match &event {
+            Ok(evt) => match evt {
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. }) => "success",
+                PipelineEvent::Agent(AgentEvent::InvocationFailed { .. }) => "failure",
+                PipelineEvent::Agent(AgentEvent::CapabilityDenied { .. }) => "denied",
+                _ => "success",
+            }
+            .to_string(),
+            Err(_) => "failure".to_string(),
+        };
+
+        // Record execution telemetry if we have a successful or failed execution
+        if execution_duration_ms > 0 {
+            let effect_name = format!("{:?}", role);
+            let timestamp = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            ctx.audit_trail = record_execution_telemetry(
+                &ctx.audit_trail,
+                &session.session_id,
+                timestamp,
+                &effect_name,
+                execution_duration_ms,
+                &result_status,
+            );
+        }
 
         // Persist the audit trail to workspace at `.agent/audit/{session_id}.jsonl`.
         // Errors are logged but don't fail the pipeline (audit is best-effort).
+        // This is called BEFORE error propagation to ensure audit trail is persisted
+        // on both success and failure paths.
         if let Err(e) = persist_audit_trail(ctx.workspace, &session.session_id, &ctx.audit_trail) {
             ctx.logger.warn(&format!(
                 "Failed to persist audit trail for session {}: {}",
                 session.session_id, e
             ));
         }
+
+        // Propagate error if execution failed
+        let event = event?;
 
         Ok(build_agent_invocation_result(
             &self.state,
@@ -370,22 +418,23 @@ fn run_agent_execution(
             &policy_outcome,
         );
 
-        // Log the advisory check result
-        match policy_outcome {
-            PolicyOutcome::Denied { ref reason } => {
-                ctx.logger.info(&format!(
-                    "RFC-009 advisory command policy: '{}' would be denied: {}",
-                    cmd_str, reason
-                ));
-            }
-            _ => {
-                // Approved or ApprovedWithRestriction - log at info level
-                ctx.logger.info(&format!(
-                    "RFC-009 advisory command policy: '{}' approved",
-                    cmd_str
-                ));
-            }
+        // RFC-009 Phase 2: Command policy check - blocking enforcement
+        // If the command is denied by policy, do not execute the agent
+        if let PolicyOutcome::Denied { ref reason } = policy_outcome {
+            ctx.logger.info(&format!(
+                "RFC-009 command policy: '{}' denied: {}",
+                cmd_str, reason
+            ));
+            let role = inputs.session.drain.into_role();
+            return Ok(PipelineEvent::Agent(AgentEvent::CapabilityDenied {
+                role,
+                capability: "process.exec_bounded".into(),
+                reason: reason.clone(),
+            }));
         }
+
+        ctx.logger
+            .info(&format!("RFC-009 command policy: '{}' approved", cmd_str));
     }
 
     let model_index = if inputs.in_dev_fix {

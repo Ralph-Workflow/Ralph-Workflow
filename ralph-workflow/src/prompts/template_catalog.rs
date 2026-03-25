@@ -222,6 +222,34 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
                 deprecated: false,
             },
         ),
+        // Phase 4: Parallel Worker Templates
+        (
+            "parallel_planning_xml",
+            EmbeddedTemplate {
+                name: "parallel_planning_xml",
+                content: include_str!("templates/parallel_planning_xml.txt"),
+                description: "Parallel planning phase prompt with XML output for splitting work across workers",
+                deprecated: false,
+            },
+        ),
+        (
+            "parallel_dev_worker_xml",
+            EmbeddedTemplate {
+                name: "parallel_dev_worker_xml",
+                content: include_str!("templates/parallel_dev_worker_xml.txt"),
+                description: "Parallel development worker prompt scoped to restricted edit area",
+                deprecated: false,
+            },
+        ),
+        (
+            "parallel_verifier_xml",
+            EmbeddedTemplate {
+                name: "parallel_verifier_xml",
+                content: include_str!("templates/parallel_verifier_xml.txt"),
+                description: "Verifier/reconciler prompt for reviewing parallel worker outputs",
+                deprecated: false,
+            },
+        ),
     ]
     .into_iter()
     .collect()

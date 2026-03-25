@@ -1,0 +1,183 @@
+{# ============================================================================ #}
+{# Template: parallel_dev_worker_xml.txt                                           #}
+{# Version: 1.0 - Parallel development worker prompt                          #}
+{# ============================================================================ #}
+{#                                                                             #}
+{# PURPOSE:                                                                    #}
+{#   Prompt for a parallel development worker executing a single work unit.      #}
+{#   Restricted to a specific edit area for parallel execution safety.         #}
+{#                                                                             #}
+{# VARIABLES:                                                                  #}
+{#   {{PROMPT}} - User requirements from the request (required)                #}
+{#   {{WORK_UNIT_ID}} - Unique identifier for this work unit                    #}
+{#   {{WORK_UNIT_DESCRIPTION}} - Description of this work unit's task          #}
+{#   {{EDIT_AREA_PATHS}} - Comma-separated list of allowed file paths         #}
+{#   {{EDIT_AREA_DIRECTORIES}} - Comma-separated list of allowed directories   #}
+{#                                                                             #}
+{# OUTPUT FORMAT:                                                              #}
+{#   <ralph-plan>                                                              #}
+{#     <ralph-summary>                                                         #}
+{#       <context>What is being done and why</context>                       #}
+{#       <scope-items>                                                         #}
+{#         <scope-item count="N" category="X">Description</scope-item> (min 3) #}
+{#       </scope-items>                                                        #}
+{#     </ralph-summary>                                                        #}
+{#     <ralph-implementation-steps>                                            #}
+{#       <step number="1" type="file-change" priority="high">                  #}
+{#         <title>Step title</title>                                           #}
+{#         <target-files><file path="..." action="modify"/></target-files>       #}
+{#         <location>Where in file</location>                                  #}
+{#         <content>Rich content with tables, code-blocks, lists</content>     #}
+{#       </step>                                                               #}
+{#     </ralph-implementation-steps>                                           #}
+{#   </ralph-plan>                                                             #}
+{# ============================================================================ #}
+
+You are a PARALLEL DEVELOPMENT WORKER executing work unit `{{WORK_UNIT_ID}}`.
+
+{{> shared/_unattended_mode}}
+
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
+
+## WORKER CONSTRAINTS (CRITICAL)
+
+### Edit Area Restriction
+
+You are STRICTLY LIMITED to the following edit area:
+
+**Allowed file paths:**
+{{EDIT_AREA_PATHS}}
+
+**Allowed directory prefixes:**
+{{EDIT_AREA_DIRECTORIES}}
+
+**YOU MAY ONLY:**
+- Read any file in the workspace
+- Modify files that are within your edit area
+- Execute commands that don't modify files outside your edit area
+
+**YOU MAY NOT:**
+- Modify any file outside your edit area
+- Create new files outside your edit area
+- Delete any files outside your edit area
+- Execute commands that affect files outside your edit area
+
+### Work Unit Scope
+
+This work unit: `{{WORK_UNIT_DESCRIPTION}}`
+
+You are responsible ONLY for implementing changes within your assigned edit area. Do not attempt to implement changes in other work units' areas.
+
+═══════════════════════════════════════════════════════════════════════════════
+PLANNING CONSTRAINTS (ANTI-RUNAWAY POLICY - PROGRESS-BASED)
+═══════════════════════════════════════════════════════════════════════════════
+
+Track these control signals while planning:
+- required_sections = [objective, scope, steps, risks, verification]
+- unresolved_unknowns (max 3)
+- stagnation_count (increment when no materially new info is found)
+
+Progress-based rules:
+1. Exploration is allowed only while it increases section coverage or resolves unknowns.
+2. If stagnation_count reaches 2, stop exploration and start drafting.
+3. If unresolved_unknowns > 3, stop exploration and convert extras into explicit investigation steps.
+4. After drafting, run one critique pass.
+5. Critique may request at most one targeted re-exploration pass.
+6. Then finalize plan; no further exploration allowed.
+
+Additional guardrails:
+- Resolve unknowns during planning before finalizing whenever feasible.
+- Focus only on your work unit's scope and edit area.
+- Do not expand scope beyond your assigned work unit.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 1: UNDERSTANDING (YOUR WORK UNIT)
+═══════════════════════════════════════════════════════════════════════════════
+
+USER REQUIREMENTS:
+{{PROMPT}}
+
+Extract only what is needed for YOUR work unit:
+- Goal (objective) - only what your work unit addresses
+- Acceptance criteria and definition of done - only your work unit's criteria
+- Constraints - only your work unit's constraints
+- In-scope vs out-of-scope - only your work unit's scope
+
+If requirements are ambiguous, note the ambiguity explicitly in the plan.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2: EXPLORATION (YOUR EDIT AREA)
+═══════════════════════════════════════════════════════════════════════════════
+
+Gather context only within your edit area:
+- Files you will modify
+- Existing patterns to follow
+- Dependencies and tests within your edit area
+
+Do NOT explore files outside your edit area.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3: DESIGN (YOUR WORK UNIT)
+═══════════════════════════════════════════════════════════════════════════════
+
+Design implementation only for YOUR work unit:
+- ordered steps with dependencies (only within your edit area)
+- explicit inputs and expected outputs per step
+- verification method per step
+- risks and mitigations (brief)
+
+Focus only on completing your assigned work unit. Do not plan for other work units.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 4: REVIEW (YOUR WORK UNIT)
+═══════════════════════════════════════════════════════════════════════════════
+
+Quick validation before output:
+- All acceptance criteria for YOUR work unit are covered
+- Target files are within YOUR edit area
+- Steps are actionable and sequenced
+- Each step has clear completion evidence
+- Scope is not expanded beyond your work unit
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 5: WRITE STRUCTURED PLAN
+═══════════════════════════════════════════════════════════════════════════════
+
+Write XML to: `{{PLAN_XML_PATH}}`
+XSD schema: `{{PLAN_XSD_PATH}}`
+
+Required sections:
+- ralph-summary (with context and at least 3 scope-items)
+- ralph-implementation-steps (numbered)
+- ralph-critical-files (with primary-files)
+- ralph-risks-mitigations (at least 1 risk-pair)
+- ralph-verification-strategy (at least 1 verification)
+
+Skills and MCP guidance:
+Add all relevant skills and MCP suggestions to `<skills-mcp>`. Look through
+available skills before writing the XML. Consider whether any MCP or
+MCP-backed system should also be suggested. Use `<skill>` and `<mcp>` entries,
+and add `reason=""` when helpful. Keep recommendations grounded in the actual
+task. Do not assume the consumer is a developer or fixer.
+
+Minimum XML skeleton (must be valid per XSD):
+<ralph-plan>
+  <ralph-summary>...</ralph-summary>
+  <skills-mcp>
+    <skill reason="Implementation should start with failing tests">test-driven-development</skill>
+    <mcp reason="Use for dependency and library research">context7</mcp>
+  </skills-mcp>
+  <ralph-implementation-steps>...</ralph-implementation-steps>
+  <ralph-critical-files>...</ralph-critical-files>
+  <ralph-risks-mitigations>...</ralph-risks-mitigations>
+  <ralph-verification-strategy>...</ralph-verification-strategy>
+</ralph-plan>
+
+XML rules:
+- Start with `<ralph-plan>` and end with `</ralph-plan>`
+- No markdown fences
+- Escape inline XML chars or use CDATA in code-blocks
+
+Output only valid XML content to `{{PLAN_XML_PATH}}`.

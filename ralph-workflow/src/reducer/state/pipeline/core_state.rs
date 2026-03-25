@@ -453,6 +453,50 @@ pub struct PipelineState {
     #[serde(default)]
     pub pr_number: Option<u32>,
 
+    // ========================================================================
+    // Phase 4: Parallel Worker State Fields
+    // ========================================================================
+    //
+    // Tracks parallel plan execution state for RFC-009 Phase 4 parallel workers.
+    // These fields manage the parallel plan lifecycle:
+    // parallel_plan -> EvaluateParallelPlan -> ParallelWorkersDispatched -> ParallelWorkerCompleted
+
+    /// The current parallel plan being evaluated or executed.
+    ///
+    /// Set when `ParallelPlanProduced` or `ParallelPlanValidated` is reduced.
+    /// Cleared when the parallel workflow completes or falls back to single-agent.
+    #[serde(default)]
+    pub parallel_plan: Option<crate::agents::session::ParallelPlan>,
+
+    /// Identities of workers that have been dispatched for the parallel plan.
+    ///
+    /// Set when `ParallelWorkersDispatched` is reduced.
+    /// Cleared when the parallel workflow completes or falls back.
+    #[serde(default)]
+    pub parallel_workers: Vec<crate::agents::session::WorkerIdentity>,
+
+    /// IDs of workers that have completed their work units.
+    ///
+    /// Updated when `ParallelWorkerCompleted` is reduced.
+    /// When all workers in `parallel_workers` have completed, verification is triggered.
+    #[serde(default)]
+    pub parallel_workers_completed: Vec<String>,
+
+    /// Reason for parallel plan rejection, if the plan was rejected.
+    ///
+    /// Set when `ParallelPlanRejected` is reduced.
+    /// Cleared when falling back to single-agent mode completes.
+    #[serde(default)]
+    pub parallel_plan_rejected_reason: Option<String>,
+
+    /// Whether the parallel plan has been validated and is ready for dispatch.
+    ///
+    /// Set to true when `ParallelPlanValidated` is reduced.
+    /// Set to false when `ParallelPlanProduced` is reduced (new plan needs evaluation).
+    /// Cleared when the parallel workflow completes or falls back.
+    #[serde(default)]
+    pub parallel_plan_validated: bool,
+
     /// Reducer-owned prompt history for deterministic resume replay (RFC-007).
     ///
     /// Maps `PromptScopeKey::to_string()` keys to [`PromptHistoryEntry`] values

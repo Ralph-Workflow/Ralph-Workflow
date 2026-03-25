@@ -147,6 +147,12 @@ impl PipelineState {
             unpushed_commits: Vec::new(),
             last_pushed_commit: None,
             pr_number: None,
+            // Phase 4: Parallel worker state fields
+            parallel_plan: None,
+            parallel_plan_validated: false,
+            parallel_workers: Vec::new(),
+            parallel_workers_completed: Vec::new(),
+            parallel_plan_rejected_reason: None,
             prompt_history: std::collections::HashMap::new(),
         }
     }

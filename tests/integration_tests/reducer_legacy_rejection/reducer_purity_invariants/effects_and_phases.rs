@@ -194,6 +194,19 @@ fn test_effects_are_single_task() {
             },
             Effect::CheckUncommittedChangesBeforeTermination,
             Effect::CheckResidualFiles { pass: 1 },
+            // Phase 4: Parallel worker effects
+            Effect::EvaluateParallelPlan {
+                plan: ralph_workflow::agents::session::ParallelPlan {
+                    parent_plan_id: "test-plan".to_string(),
+                    work_units: vec![],
+                },
+            },
+            Effect::DispatchParallelWorkers {
+                plan: ralph_workflow::agents::session::ParallelPlan {
+                    parent_plan_id: "test-plan".to_string(),
+                    work_units: vec![],
+                },
+            },
         ];
 
         // Exhaustive match guard: forces compile error when new variants are added.
@@ -274,14 +287,17 @@ fn test_effects_are_single_task() {
                 Effect::EmitCompletionMarkerAndTerminate { .. } => "emit-completion",
                 Effect::CheckUncommittedChangesBeforeTermination => "check-uncommitted",
                 Effect::CheckResidualFiles { .. } => "check-residual-files",
+                // Phase 4: Parallel worker effects
+                Effect::EvaluateParallelPlan { .. } => "evaluate-parallel-plan",
+                Effect::DispatchParallelWorkers { .. } => "dispatch-parallel-workers",
             };
         }
 
         // Variant count guard: catches additions/removals even if the match is updated.
         assert_eq!(
             effects.len(),
-            73,
-            "Expected 73 Effect instances; update this test if variants were added or removed"
+            75,
+            "Expected 75 Effect instances; update this test if variants were added or removed"
         );
     });
 }
