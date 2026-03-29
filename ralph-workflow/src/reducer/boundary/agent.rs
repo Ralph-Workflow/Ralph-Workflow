@@ -12,7 +12,6 @@ use crate::agents::session::{
 };
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
-use crate::mcp_server::session_bridge::{SessionBridge, MCP_ENDPOINT_ENV};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -26,6 +25,7 @@ use crate::reducer::fault_tolerant_executor::{
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use mcp_server::io::{SessionBridge, MCP_ENDPOINT_ENV};
 use std::sync::Arc;
 use std::time::SystemTime;
 

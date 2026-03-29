@@ -2586,6 +2586,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 
 [[package]]
+name = "mcp-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "test-helpers",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3561,6 +3576,7 @@ dependencies = [
  "itertools",
  "jsonschema",
  "libc",
+ "mcp-server",
  "mockito",
  "notify",
  "proptest",
@@ -3590,6 +3606,7 @@ dependencies = [
  "clap",
  "git2",
  "libc",
+ "mcp-server",
  "predicates",
  "ralph-workflow",
  "regex",

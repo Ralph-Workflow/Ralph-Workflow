@@ -102,6 +102,7 @@ lint:
 	$(CARGO) clippy -p test-helpers $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p xtask $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p ralph-gui $(CARGO_FLAGS) --all-targets -- -D warnings
+	$(CARGO) clippy -p mcp-server $(CARGO_FLAGS) --all-targets -- -D warnings
 	echo "Lint check passed"
 
 # Run custom dylint lints (safe default: lib only)
@@ -337,7 +338,7 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=deny" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+		RUSTFLAGS="--cap-lints=deny" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -p mcp-server -- --lib --quiet >/dev/null 2>&1; \
 	'
 
 # Run the canonical verification contract.

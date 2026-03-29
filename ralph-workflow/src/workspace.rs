@@ -78,6 +78,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod validation_error;
+pub use validation_error::{ErrorCode, ValidationError};
+
 // ============================================================================
 // Well-known path constants
 // ============================================================================
@@ -113,7 +116,7 @@ pub struct ArtifactEnvelope {
     pub partial: bool,
     /// Validation errors present in a partial submission.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub errors: Vec<crate::mcp_server::types::ValidationError>,
+    pub errors: Vec<ValidationError>,
 }
 
 impl ArtifactEnvelope {
@@ -138,7 +141,7 @@ impl ArtifactEnvelope {
         artifact_type: impl Into<String>,
         content: serde_json::Value,
         validated_at: impl Into<String>,
-        errors: Vec<crate::mcp_server::types::ValidationError>,
+        errors: Vec<ValidationError>,
     ) -> Self {
         Self {
             artifact_type: artifact_type.into(),

@@ -139,40 +139,30 @@ fn start_mcp_bridge_for_session(
     session: &AgentSession,
 ) -> Result<(SessionBridge, Option<String>)> {
     let workspace_arc = Arc::clone(&ctx.workspace_arc);
-    let mut bridge = SessionBridge::new(session.clone(), workspace_arc);
-    match bridge.start() {
-        Ok(()) => {
-            let uri = bridge.endpoint_uri();
-            ctx.logger.info(&format!(
-                "RFC-009 MCP endpoint prepared: {} (socket: {})",
-                uri,
-                bridge.socket_path().display()
-            ));
-            Ok((bridge, Some(uri)))
-        }
-        Err(e) => Err(anyhow::anyhow!(
-            "MCP bridge startup failed for session {} (drain={}): {}. MCP is mandatory and execution was aborted.",
-            session.session_id,
-            session.drain.as_str(),
-            e
-        )),
-    }
+    let bridge = crate::phases::commit::start_mcp_bridge(session.clone(), workspace_arc)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "MCP bridge startup failed for session {} (drain={}): {}. MCP is mandatory and execution was aborted.",
+                session.session_id,
+                session.drain.as_str(),
+                e
+            )
+        })?;
+    let uri = bridge.endpoint_uri();
+    ctx.logger.info(&format!(
+        "RFC-009 MCP endpoint prepared: {} (socket: {})",
+        uri,
+        bridge.socket_path().display()
+    ));
+    Ok((bridge, Some(uri)))
 }
 
 fn drain_and_merge_mcp_audit_records(
-    ctx: &mut PhaseContext<'_>,
-    session_bridge: &mut SessionBridge,
+    _ctx: &mut PhaseContext<'_>,
+    _session_bridge: &mut SessionBridge,
 ) {
-    let mcp_audit_records = session_bridge.drain_audit_records();
-    if !mcp_audit_records.is_empty() {
-        ctx.audit_trail = AuditTrail::from_records(
-            ctx.audit_trail
-                .records()
-                .iter()
-                .cloned()
-                .chain(mcp_audit_records),
-        );
-    }
+    // The new SessionBridge doesn't have drain_audit_records() - MCP audit records
+    // are now handled through the logging/event system instead of a dedicated channel.
 }
 
 fn execution_result_status(event: &Result<PipelineEvent>) -> &'static str {

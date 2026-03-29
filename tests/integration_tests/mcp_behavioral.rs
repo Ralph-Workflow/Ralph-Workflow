@@ -45,7 +45,7 @@ fn start_bridge(
 }
 
 /// Connect to the socket with a 10s read timeout.
-fn connect(socket_path: &std::path::Path) -> UnixStream {
+fn connect(socket_path: &Path) -> UnixStream {
     let stream = UnixStream::connect(socket_path)
         .expect("UnixStream::connect must succeed immediately after start()");
     stream

@@ -275,8 +275,13 @@ fn persist_partial_artifact(
     now: &str,
     validation_errors: Vec<ValidationError>,
 ) -> Result<ToolResult, ToolError> {
-    let envelope =
-        ArtifactEnvelope::new_partial(artifact_type, content, now, validation_errors.clone());
+    // Convert to workspace validation error type for ArtifactEnvelope
+    let workspace_errors: Vec<crate::workspace::ValidationError> = validation_errors
+        .iter()
+        .cloned()
+        .map(|e| e.into())
+        .collect();
+    let envelope = ArtifactEnvelope::new_partial(artifact_type, content, now, workspace_errors);
     workspace
         .write_partial_artifact_json(&envelope)
         .map_err(|e| {

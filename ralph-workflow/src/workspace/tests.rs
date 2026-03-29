@@ -359,7 +359,7 @@ fn artifact_envelope_round_trip() {
 
 #[test]
 fn partial_artifact_persists_with_errors() {
-    use crate::mcp_server::types::ValidationError;
+    use crate::workspace::{ErrorCode, ValidationError};
 
     let ws = MemoryWorkspace::new_test();
 
@@ -385,10 +385,7 @@ fn partial_artifact_persists_with_errors() {
     let parsed: ArtifactEnvelope = serde_json::from_str(&content).unwrap();
     assert!(parsed.partial);
     assert_eq!(parsed.errors.len(), 1);
-    assert_eq!(
-        parsed.errors[0].code,
-        crate::mcp_server::types::ErrorCode::ConstraintViolation
-    );
+    assert_eq!(parsed.errors[0].code, ErrorCode::ConstraintViolation);
 }
 
 #[test]

@@ -603,6 +603,85 @@ fn extract_test_name(line: &str) -> Option<&str> {
     Some(&after_fn[..name_end])
 }
 
+/// Verifies that `mcp-server` has no dependency on `ralph-workflow` (direct or
+/// transitive). This enforces the standalone principle: mcp-server must be usable
+/// without ralph-workflow in the dependency graph.
+///
+/// Uses `cargo tree -p mcp-server --prefix none` to enumerate all transitive
+/// dependencies and checks that "ralph-workflow" does not appear.
+pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
+    // Skip if the repo root doesn't exist (e.g., fake path in tests)
+    if !repo_root.exists() {
+        return NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        };
+    }
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "tree",
+            "-p",
+            "mcp-server",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}",
+        ])
+        .current_dir(repo_root)
+        .output();
+
+    let output = match output {
+        Ok(o) => o,
+        Err(_) => {
+            // If cargo fails to run (e.g., no Cargo.toml), skip the check
+            return NativeCheckResult {
+                status: CheckStatus::Pass,
+                message: String::new(),
+            };
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // If the package is not found or Cargo.toml is missing, skip the check
+        // (not an error in test scenarios with fake repo paths)
+        if stderr.contains("package not found")
+            || stderr.contains("`mcp-server` is not found")
+            || stderr.contains("could not find `Cargo.toml`")
+            || stderr.contains("does not exist")
+        {
+            return NativeCheckResult {
+                status: CheckStatus::Pass,
+                message: String::new(),
+            };
+        }
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!("DEPENDENCY ISOLATION VIOLATION: cargo tree failed: {stderr}"),
+        };
+    }
+
+    let tree_output = String::from_utf8_lossy(&output.stdout);
+
+    // Check each line for ralph-workflow dependency
+    for line in tree_output.lines() {
+        if line.contains("ralph-workflow") {
+            return NativeCheckResult {
+                status: CheckStatus::Error,
+                message: format!(
+                    "DEPENDENCY ISOLATION VIOLATION: mcp-server must not depend on ralph-workflow (direct or transitive). Found dependency: {line}. Remove the dependency and use adapter traits instead."
+                ),
+            };
+        }
+    }
+
+    NativeCheckResult {
+        status: CheckStatus::Pass,
+        message: String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

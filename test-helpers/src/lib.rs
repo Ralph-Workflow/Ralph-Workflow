@@ -97,6 +97,40 @@ pub fn assert_repo_is_isolated(repo: &Repository) {
     }
 }
 
+/// Enforce that a `Repository` is inside a temporary directory.
+///
+/// This prevents tests from accidentally creating repos in the project directory
+/// even if TMPDIR is set to a subdirectory of the project.
+///
+/// # Panics
+///
+/// Panics with a policy-violation message if `repo.workdir()` is not inside
+/// `std::env::temp_dir()`. Uses `canonicalize()` on both paths to resolve
+/// symlinks (important on macOS where `/var/folders` symlinks to `/private/var/folders`).
+pub fn assert_repo_is_temp_isolated(repo: &Repository) {
+    let Some(workdir) = repo.workdir() else {
+        return; // Bare repo - skip check
+    };
+
+    let workdir_abs = std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf());
+    let temp_dir_abs =
+        std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
+
+    if !workdir_abs.starts_with(&temp_dir_abs) {
+        panic!(
+            "POLICY VIOLATION: repository workdir '{}' is not inside temp directory '{}'. \
+             All test repositories must be created with TempDir::new() and live under the \
+             system's temp directory. This prevents tests from modifying the project repo \
+             even if TMPDIR is misconfigured. \
+             Workdir canonicalized: '{}', TempDir canonicalized: '{}'",
+            workdir.display(),
+            temp_dir_abs.display(),
+            workdir_abs.display(),
+            temp_dir_abs.display()
+        );
+    }
+}
+
 /// Capture the HEAD OID of the project repository.
 ///
 /// Returns `None` if the project root cannot be determined or if reading fails.
@@ -226,6 +260,7 @@ pub fn write_file<P: AsRef<Path>>(path: P, contents: &str) {
 #[must_use]
 pub fn commit_all(repo: &Repository, message: &str) -> Oid {
     assert_repo_is_isolated(repo);
+    assert_repo_is_temp_isolated(repo);
     stage_all(repo);
 
     let mut index = repo.index().expect("open index");
@@ -314,6 +349,7 @@ pub fn stage_all(repo: &Repository) {
 #[must_use]
 pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
     assert_repo_is_isolated(repo);
+    assert_repo_is_temp_isolated(repo);
     // Stage all changes using git2 (same as commit_all, but for git CLI migration)
     stage_all(repo);
 

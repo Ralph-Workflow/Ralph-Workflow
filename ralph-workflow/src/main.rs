@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     // Handle MCP proxy mode before anything else - this is a lightweight
     // stdio-to-socket bridge that doesn't need the full pipeline.
     if args.commit_plumbing.mcp_proxy {
-        return ralph_workflow::mcp_server::proxy::run_mcp_proxy();
+        return ralph_workflow::boundary::stdio_proxy::run_mcp_proxy();
     }
 
     let pause_mode = args.pause_on_exit;

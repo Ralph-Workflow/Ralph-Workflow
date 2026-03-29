@@ -101,7 +101,7 @@ cargo fmt --all --check
 # Note: Enforces clippy::all plus explicit deny rules (unwrap_used, panic, indexing_slicing, etc.)
 # via #![deny(...)] and #![forbid(unsafe_code)] attributes in lib.rs and main.rs
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings
+cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-server --all-targets --all-features -- -D warnings
 
 # Dead code that is only used by tests.
 # Runs lib-only with DEFAULT features (no test-utils, no #[cfg(test)] blocks).

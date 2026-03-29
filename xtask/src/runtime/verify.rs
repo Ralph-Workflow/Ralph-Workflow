@@ -315,6 +315,10 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
         name: "audit-test-utils-used-in-tests",
         run: crate::boundary::test_utils_usage::check_test_utils_items_used_in_tests,
     },
+    NativeCheck {
+        name: "dep-isolation-mcp-server",
+        run: crate::boundary::compliance::check_mcp_server_dep_isolation,
+    },
 ];
 
 const FRONTEND_TEST_CHECK_NAME: &str = "ralph-gui-frontend-test";
@@ -1084,6 +1088,8 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
             "ralph-workflow-tests",
             "-p",
             "test-helpers",
+            "-p",
+            "mcp-server",
             "--all-targets",
             "--all-features",
             "--",

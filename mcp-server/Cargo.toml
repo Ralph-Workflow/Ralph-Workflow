@@ -1,0 +1,38 @@
+[package]
+name = "mcp-server"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server implementation for Ralph workflow orchestration"
+authors = ["Mistlight"]
+license = "AGPL-3.0-only"
+
+[lib]
+name = "mcp_server"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Enable test utilities for deterministic testing with in-memory adapters
+test-utils = []
+
+[dependencies]
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Bytes handling for transport framing
+bytes = "1"
+
+[dev-dependencies]
+test-helpers = { path = "../test-helpers" }
+ tempfile = "3.10"

@@ -20,6 +20,7 @@ path = "process_system_tests/main.rs"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 ralph-workflow = { path = "../ralph-workflow", features = ["test-utils"] }
+mcp-server = { path = "../mcp-server" }
 serde_json = "1"
 test-helpers = { path = "../test-helpers" }
 tempfile = "3.10"
