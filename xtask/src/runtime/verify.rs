@@ -1225,10 +1225,25 @@ pub const FRONTEND_CHECKS: &[CommandSpec] = &[
     },
 ];
 
-/// Release build and custom lints.
-///
-/// Uses a separate `CARGO_TARGET_DIR` to avoid cargo lock contention with the
-/// debug cargo group running in parallel.
+pub const DYLINT_CHECKS: &[CommandSpec] = &[CommandSpec {
+    name: "dylint",
+    program: "make",
+    args: &["dylint"],
+    success_exit_codes: &[0],
+    extra_env: &[
+        ("DYLINT_DRIVER_PATH", "target/dylint-driver"),
+        ("CARGO_TARGET_DIR", "target/release-parallel-verify"),
+    ],
+}];
+
+pub const RELEASE_BUILD_CHECKS: &[CommandSpec] = &[CommandSpec {
+    name: "release-build",
+    program: "cargo",
+    args: &["build", "--release"],
+    success_exit_codes: &[0],
+    extra_env: &[("CARGO_TARGET_DIR", "target/release-parallel-verify")],
+}];
+
 pub const RELEASE_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "release-build",

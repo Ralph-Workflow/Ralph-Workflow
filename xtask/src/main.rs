@@ -118,12 +118,13 @@ fn main() -> ExitCode {
                 + 1
                 + verify::FMT_CHECKS.len()
                 + verify::CORE_CARGO_CHECKS.len()
-                + verify::XTASK_CARGO_CHECKS.len();
+                + verify::XTASK_CARGO_CHECKS.len()
+                + verify::DYLINT_CHECKS.len();
             let gui_checks = if include_gui {
                 verify::GUI_CARGO_CHECKS.len()
                     + verify::FRONTEND_INSTALL_CHECKS.len()
                     + verify::FRONTEND_POST_INSTALL_CHECKS.len()
-                    + verify::RELEASE_CHECKS.len()
+                    + verify::RELEASE_BUILD_CHECKS.len()
             } else {
                 0
             };
@@ -147,7 +148,7 @@ fn main() -> ExitCode {
                 gui_cargo: &[],
                 frontend_install: &[],
                 frontend_post_install: &[],
-                release: &[],
+                release: verify::DYLINT_CHECKS,
             };
 
             let backend_report = match verify::verify_fast_with_options(
@@ -173,7 +174,7 @@ fn main() -> ExitCode {
                     gui_cargo: verify::GUI_CARGO_CHECKS,
                     frontend_install: verify::FRONTEND_INSTALL_CHECKS,
                     frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
-                    release: verify::RELEASE_CHECKS,
+                    release: verify::RELEASE_BUILD_CHECKS,
                 };
                 match verify::verify_fast_with_options(
                     runner.clone(),

@@ -30,14 +30,13 @@ const INTERRUPT_KILL_CONFIG: KillConfig = KillConfig::new(
     std::time::Duration::from_millis(500),
 );
 
-fn map_spawn_error_to_result(
-    e: std::io::Error,
-    argv0: &str,
-) -> CommandResult {
+fn map_spawn_error_to_result(e: std::io::Error, argv0: &str) -> CommandResult {
     let (exit_code, detail) = match e.kind() {
         std::io::ErrorKind::NotFound => (127, "command not found"),
         std::io::ErrorKind::PermissionDenied => (126, "permission denied"),
-        std::io::ErrorKind::ArgumentListTooLong => (7, "argument list too long (prompt exceeds OS limit)"),
+        std::io::ErrorKind::ArgumentListTooLong => {
+            (7, "argument list too long (prompt exceeds OS limit)")
+        }
         std::io::ErrorKind::InvalidInput => (22, "invalid input"),
         std::io::ErrorKind::OutOfMemory => (12, "out of memory"),
         _ => (1, "spawn failed"),
@@ -50,11 +49,7 @@ fn map_spawn_error_to_result(
     }
 }
 
-fn log_glm_info(
-    argv: &[String],
-    display_cmd: &str,
-    logger: &crate::logger::Logger,
-) {
+fn log_glm_info(argv: &[String], display_cmd: &str, logger: &crate::logger::Logger) {
     logger.info(&format!("GLM command details: {display_cmd}"));
     if argv.iter().any(|arg| arg == "-p") {
         logger.info("GLM command includes '-p' flag (correct)");
@@ -94,16 +89,34 @@ fn classify_idle_timeout_cause(
 fn spawn_stdout_cancel_watcher(
     stdout_cancel: Arc<std::sync::atomic::AtomicBool>,
     monitor_should_stop: Arc<std::sync::atomic::AtomicBool>,
+    child_shared: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    activity_timestamp: crate::pipeline::idle_timeout::SharedActivityTimestamp,
     is_interrupted: impl Fn() -> bool + Send + 'static,
 ) {
     use std::sync::atomic::Ordering;
+
+    const CHILD_EXIT_STDOUT_DRAIN_GRACE: std::time::Duration =
+        std::time::Duration::from_millis(200);
+
     std::thread::spawn(move || {
         let poll = std::time::Duration::from_millis(50);
         loop {
             if monitor_should_stop.load(Ordering::Acquire) {
                 return;
             }
-            if is_interrupted() {
+
+            let child_exited = {
+                let mut child = child_shared
+                    .lock()
+                    .expect("child process mutex poisoned - indicates panic in another thread");
+                matches!(child.try_wait(), Ok(Some(_)))
+            };
+
+            let may_cancel_for_child_exit = child_exited
+                && crate::pipeline::idle_timeout::time_since_activity(&activity_timestamp)
+                    >= CHILD_EXIT_STDOUT_DRAIN_GRACE;
+
+            if is_interrupted() || may_cancel_for_child_exit {
                 stdout_cancel.store(true, Ordering::Release);
                 return;
             }
@@ -186,6 +199,24 @@ fn is_timeout_cleanup_needed(monitor_result_early: &Option<MonitorResult>) -> bo
     matches!(monitor_result_early, Some(MonitorResult::TimedOut { .. }))
 }
 
+enum PostMonitorCleanupAction {
+    Interrupt,
+    Timeout,
+    Complete,
+}
+
+fn post_monitor_cleanup_action(
+    monitor_result_early: &Option<MonitorResult>,
+) -> PostMonitorCleanupAction {
+    if is_interrupt_cleanup_needed(monitor_result_early) {
+        PostMonitorCleanupAction::Interrupt
+    } else if is_timeout_cleanup_needed(monitor_result_early) {
+        PostMonitorCleanupAction::Timeout
+    } else {
+        PostMonitorCleanupAction::Complete
+    }
+}
+
 fn handle_post_monitor_cleanup(
     child_shared: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     monitor_should_stop: &Arc<std::sync::atomic::AtomicBool>,
@@ -195,12 +226,26 @@ fn handle_post_monitor_cleanup(
     runtime: &PipelineRuntime<'_>,
 ) {
     use std::sync::atomic::Ordering;
-    if is_interrupt_cleanup_needed(monitor_result_early) {
-        handle_interrupt_cleanup(child_shared, monitor_should_stop, stderr_join_handle, stderr_cancel, runtime);
-    } else if is_timeout_cleanup_needed(monitor_result_early) {
-        handle_timeout_cleanup(child_shared, monitor_should_stop, stderr_join_handle, stderr_cancel, runtime);
-    } else {
-        monitor_should_stop.store(true, Ordering::Release);
+    match post_monitor_cleanup_action(monitor_result_early) {
+        PostMonitorCleanupAction::Interrupt => {
+            handle_interrupt_cleanup(
+                child_shared,
+                monitor_should_stop,
+                stderr_join_handle,
+                stderr_cancel,
+                runtime,
+            );
+        }
+        PostMonitorCleanupAction::Timeout => {
+            handle_timeout_cleanup(
+                child_shared,
+                monitor_should_stop,
+                stderr_join_handle,
+                stderr_cancel,
+                runtime,
+            );
+        }
+        PostMonitorCleanupAction::Complete => monitor_should_stop.store(true, Ordering::Release),
     }
 }
 
@@ -246,11 +291,19 @@ fn log_child_activity_suppression(
     runtime.logger.info(&format!(
         "idle timeout suppression: child processes showed fresh progress and remained relevant \
          ({} active of {} total, CPU at {}ms, signature {})",
-        info.active_child_count,
-        info.child_count,
-        info.cpu_time_ms,
-        info.descendant_pid_signature
+        info.active_child_count, info.child_count, info.cpu_time_ms, info.descendant_pid_signature
     ));
+}
+
+fn resolve_process_completed_exit(
+    exit_code: i32,
+    child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
+    runtime: &PipelineRuntime<'_>,
+) -> (i32, Option<crate::executor::ChildProcessInfo>) {
+    if let Some(info) = child_activity_suppression_info {
+        log_child_activity_suppression(info, runtime);
+    }
+    (exit_code, None)
 }
 
 fn resolve_final_exit_code(
@@ -260,16 +313,20 @@ fn resolve_final_exit_code(
     child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
     runtime: &PipelineRuntime<'_>,
 ) -> (i32, Option<crate::executor::ChildProcessInfo>) {
-    match monitor_result {
-        MonitorResult::TimedOut { escalated, child_status_at_timeout } => {
-            resolve_timed_out_exit(escalated, child_status_at_timeout, exit_code, activity_timestamp, runtime)
-        }
-        MonitorResult::ProcessCompleted => {
-            if let Some(info) = child_activity_suppression_info {
-                log_child_activity_suppression(info, runtime);
-            }
-            (exit_code, None)
-        }
+    if let MonitorResult::TimedOut {
+        escalated,
+        child_status_at_timeout,
+    } = monitor_result
+    {
+        resolve_timed_out_exit(
+            escalated,
+            child_status_at_timeout,
+            exit_code,
+            activity_timestamp,
+            runtime,
+        )
+    } else {
+        resolve_process_completed_exit(exit_code, child_activity_suppression_info, runtime)
     }
 }
 
@@ -307,7 +364,9 @@ fn log_command_info(parsed: &ParsedArgv, cmd: &PromptCommand<'_>, runtime: &Pipe
         log_glm_info(&parsed.argv, &parsed.display_cmd, runtime.logger);
     }
     let _uses_json = cmd.parser_type != JsonParserType::Generic || argv_requests_json(&parsed.argv);
-    runtime.logger.info(&format!("Using {} parser...", cmd.parser_type));
+    runtime
+        .logger
+        .info(&format!("Using {} parser...", cmd.parser_type));
 }
 
 fn prepare_logfile_and_spawn_config(
@@ -350,8 +409,10 @@ struct SpawnedAgentHandles {
 }
 
 /// `Ok(Ok((handles, stdout)))` on success, `Ok(Err(result))` on spawn error.
-type SpawnAgentResult =
-    Result<Result<(SpawnedAgentHandles, Box<dyn std::io::Read + Send>), CommandResult>, std::io::Error>;
+type SpawnAgentResult = Result<
+    Result<(SpawnedAgentHandles, Box<dyn std::io::Read + Send>), CommandResult>,
+    std::io::Error,
+>;
 
 struct SharedMonitorState {
     child_shared: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
@@ -499,6 +560,8 @@ fn spawn_agent_with_monitoring(
     spawn_stdout_cancel_watcher(
         Arc::clone(&state.stdout_cancel),
         Arc::clone(&state.monitor_should_stop),
+        Arc::clone(&state.child_shared),
+        state.activity_timestamp.clone(),
         crate::interrupt::is_user_interrupt_requested,
     );
     let stderr_cancel = Arc::new(AtomicBool::new(false));
@@ -605,7 +668,8 @@ pub(crate) fn run_with_agent_spawn(
 ) -> Result<CommandResult, std::io::Error> {
     let parsed = parse_and_validate_argv(cmd)?;
     log_command_info(&parsed, cmd, runtime);
-    let spawn_config = prepare_logfile_and_spawn_config(&parsed, cmd, runtime, anthropic_env_vars_to_sanitize)?;
+    let spawn_config =
+        prepare_logfile_and_spawn_config(&parsed, cmd, runtime, anthropic_env_vars_to_sanitize)?;
     let argv0 = parsed.argv[0].clone();
     let (mut handles, stdout) = match spawn_agent_with_monitoring(spawn_config, runtime, &argv0)? {
         Ok(pair) => pair,
@@ -613,7 +677,14 @@ pub(crate) fn run_with_agent_spawn(
     };
     let (exit_code, stderr_output, monitor_result_early) =
         stream_and_wait(stdout, &mut handles, cmd, runtime)?;
-    Ok(finalize_result(&mut handles, exit_code, stderr_output, monitor_result_early, cmd, runtime))
+    Ok(finalize_result(
+        &mut handles,
+        exit_code,
+        stderr_output,
+        monitor_result_early,
+        cmd,
+        runtime,
+    ))
 }
 
 #[cfg(test)]
@@ -624,6 +695,8 @@ mod tests {
 
     #[test]
     fn stdout_cancel_watcher_sets_cancel_flag_promptly_on_user_interrupt() {
+        use crate::executor::MockAgentChild;
+
         let _lock = crate::interrupt::interrupt_test_lock();
 
         let _ = crate::interrupt::take_user_interrupt_request();
@@ -633,10 +706,15 @@ mod tests {
         let interrupt_flag_for_watcher = Arc::clone(&interrupt_flag);
         let stdout_cancel = Arc::new(AtomicBool::new(false));
         let monitor_should_stop = Arc::new(AtomicBool::new(false));
+        let (child, _controller) = MockAgentChild::new_running(0);
+        let child_shared: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>> =
+            Arc::new(std::sync::Mutex::new(Box::new(child)));
 
         super::spawn_stdout_cancel_watcher(
             Arc::clone(&stdout_cancel),
             Arc::clone(&monitor_should_stop),
+            Arc::clone(&child_shared),
+            crate::pipeline::idle_timeout::new_activity_timestamp(),
             move || interrupt_flag_for_watcher.load(Ordering::Acquire),
         );
 
@@ -661,6 +739,44 @@ mod tests {
         assert!(
             stdout_cancel.load(Ordering::Acquire),
             "stdout_cancel_watcher did not set cancel flag within 300ms of user interrupt"
+        );
+    }
+
+    #[test]
+    fn stdout_cancel_watcher_sets_cancel_flag_when_child_process_exits() {
+        use crate::executor::MockAgentChild;
+
+        let (child, controller) = MockAgentChild::new_running(0);
+        let child_shared: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>> =
+            Arc::new(std::sync::Mutex::new(Box::new(child)));
+
+        let stdout_cancel = Arc::new(AtomicBool::new(false));
+        let monitor_should_stop = Arc::new(AtomicBool::new(false));
+
+        super::spawn_stdout_cancel_watcher(
+            Arc::clone(&stdout_cancel),
+            Arc::clone(&monitor_should_stop),
+            Arc::clone(&child_shared),
+            crate::pipeline::idle_timeout::new_activity_timestamp(),
+            || false,
+        );
+
+        std::thread::sleep(Duration::from_millis(20));
+        controller.store(false, Ordering::Release);
+
+        let deadline = Instant::now() + Duration::from_millis(600);
+        while Instant::now() < deadline {
+            if stdout_cancel.load(Ordering::Acquire) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        monitor_should_stop.store(true, Ordering::Release);
+
+        assert!(
+            stdout_cancel.load(Ordering::Acquire),
+            "stdout_cancel_watcher did not set cancel flag within 300ms of child exit"
         );
     }
 }

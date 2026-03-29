@@ -326,7 +326,8 @@ pub fn execute_dylint(
         cmd.arg("--quiet");
     }
 
-    cmd.env("PATH", path_env)
+    cmd.env("RUSTFLAGS", "--cap-lints=deny -D warnings")
+        .env("PATH", path_env)
         .env("CARGO_HOME", &dylint_env.cargo_home)
         .env("RUSTUP_HOME", &dylint_env.rustup_home)
         .env("DYLINT_DRIVER_PATH", &dylint_env.dylint_driver)
