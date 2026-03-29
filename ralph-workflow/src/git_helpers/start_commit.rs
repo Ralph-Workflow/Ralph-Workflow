@@ -62,8 +62,8 @@ pub enum StartPoint {
 ///
 /// **Note:** This function uses the current working directory to discover the repo.
 pub fn get_current_head_oid() -> iot::Result<String> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
-    get_current_head_oid_impl(&repo)
+    let repo_root = get_current_dir()?;
+    get_current_head_oid_at(&repo_root)
 }
 
 /// Get the current HEAD commit OID for an explicit repository root.
@@ -75,7 +75,7 @@ pub fn get_current_head_oid() -> iot::Result<String> {
 ///
 /// Returns an error if the repository cannot be opened or HEAD cannot be resolved.
 pub fn get_current_head_oid_at(repo_root: &Path) -> iot::Result<String> {
-    let repo = git2::Repository::open(repo_root).map_err(|e| to_io_error(&e))?;
+    let repo = git2::Repository::discover(repo_root).map_err(|e| to_io_error(&e))?;
     get_current_head_oid_impl(&repo)
 }
 
@@ -123,11 +123,8 @@ fn get_current_start_point(repo: &git2::Repository) -> iot::Result<StartPoint> {
 /// - The `.agent` directory cannot be created
 /// - The file cannot be written
 ///
-pub fn save_start_commit() -> iot::Result<()> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
-    let repo_root = repo
-        .workdir()
-        .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
+pub fn save_start_commit(repo_root: &Path) -> iot::Result<()> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| to_io_error(&e))?;
     save_start_commit_impl(&repo, repo_root)
 }
 
@@ -255,8 +252,8 @@ pub fn save_start_commit_with_workspace(
 /// - The file cannot be read
 /// - The file content is invalid
 ///
-pub fn load_start_point() -> iot::Result<StartPoint> {
-    let repo = git2::Repository::discover(".").map_err(|e| {
+pub fn load_start_point(repo_root: &Path) -> iot::Result<StartPoint> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| {
         iot::Error::new(
             iot::ErrorKind::NotFound,
             format!("Git repository error: {e}. Run 'ralph --reset-start-commit' to fix."),
@@ -301,8 +298,8 @@ pub struct ResetStartCommitResult {
 /// - No common ancestor exists between HEAD and the default branch
 /// - The file cannot be written
 ///
-pub fn reset_start_commit() -> iot::Result<ResetStartCommitResult> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
+pub fn reset_start_commit(repo_root: &Path) -> iot::Result<ResetStartCommitResult> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
         .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
@@ -431,8 +428,8 @@ impl StartCommitSummary {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_start_commit_summary() -> iot::Result<StartCommitSummary> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
+pub fn get_start_commit_summary(repo_root: &Path) -> iot::Result<StartCommitSummary> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
         .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;

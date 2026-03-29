@@ -35,17 +35,6 @@
 /// - Submodules are initialized and in a valid state
 /// - Sparse checkout is properly configured (if enabled)
 ///
-/// # Example
-///
-/// ```ignore
-/// use ralph_workflow::git_helpers::rebase::validate_rebase_preconditions;
-///
-/// match validate_rebase_preconditions(&executor) {
-///     Ok(()) => println!("All preconditions met, safe to rebase"),
-///     Err(e) => eprintln!("Cannot rebase: {e}"),
-/// }
-/// ```
-///
 /// # Errors
 ///
 /// Returns an error if preconditions are not met or validation fails.
@@ -53,13 +42,33 @@
 pub fn validate_rebase_preconditions(
     executor: &dyn crate::executor::ProcessExecutor,
 ) -> io::Result<()> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = std::env::current_dir()?;
+    validate_rebase_preconditions_at(&repo_root, executor)
+}
 
+/// Validate preconditions before starting a rebase operation using explicit repo root.
+///
+/// This is the explicit path variant that should be used in tests and
+/// production code where the repository path is known.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn validate_rebase_preconditions_at(
+    repo_root: &std::path::Path,
+    executor: &dyn crate::executor::ProcessExecutor,
+) -> io::Result<()> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    validate_rebase_preconditions_impl(&repo, executor)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn validate_rebase_preconditions_impl(
+    repo: &git2::Repository,
+    executor: &dyn crate::executor::ProcessExecutor,
+) -> io::Result<()> {
     // 1. Check repository integrity
-    validate_git_state()?;
+    validate_git_state_impl(repo)?;
 
     // 2. Check for concurrent Git operations
-    if let Some(concurrent_op) = detect_concurrent_git_operations()? {
+    if let Some(concurrent_op) = detect_concurrent_git_operations_impl(repo)? {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
@@ -114,16 +123,16 @@ pub fn validate_rebase_preconditions(
     }
 
     // 5. Check for shallow clone (limited history)
-    check_shallow_clone()?;
+    check_shallow_clone_impl(repo)?;
 
     // 6. Check for worktree conflicts (branch checked out in another worktree)
-    check_worktree_conflicts()?;
+    check_worktree_conflicts_impl(repo)?;
 
     // 7. Check submodule state (if submodules exist)
-    check_submodule_state()?;
+    check_submodule_state_impl(repo)?;
 
     // 8. Check sparse checkout configuration (if enabled)
-    check_sparse_checkout_state()?;
+    check_sparse_checkout_state_impl(repo)?;
 
     Ok(())
 }
@@ -138,10 +147,9 @@ pub fn validate_rebase_preconditions(
 /// Returns `Ok(())` if the repository is a full clone, or an error if
 /// it's a shallow clone.
 #[cfg(any(test, feature = "test-utils"))]
-fn check_shallow_clone() -> io::Result<()> {
+fn check_shallow_clone_impl(repo: &git2::Repository) -> io::Result<()> {
     use std::fs;
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
 
     // Check for shallow marker file
@@ -168,16 +176,9 @@ fn check_shallow_clone() -> io::Result<()> {
 ///
 /// Git does not allow a branch to be checked out in multiple worktrees
 /// simultaneously.
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the branch is not checked out elsewhere, or an
-/// error if there's a worktree conflict.
 #[cfg(any(test, feature = "test-utils"))]
-fn check_worktree_conflicts() -> io::Result<()> {
+fn check_worktree_conflicts_impl(repo: &git2::Repository) -> io::Result<()> {
     use std::fs;
-
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
 
     // Get current branch name
     let head = repo.head().map_err(|e| git2_to_io_error(&e))?;
@@ -239,16 +240,10 @@ fn check_worktree_conflicts() -> io::Result<()> {
 ///
 /// Submodules should be initialized and updated before rebasing to avoid
 /// conflicts and errors.
-///
-/// # Returns
-///
-/// Returns `Ok(())` if submodules are in a valid state or no submodules
-/// exist, or an error if there are submodule issues.
 #[cfg(any(test, feature = "test-utils"))]
-fn check_submodule_state() -> io::Result<()> {
+fn check_submodule_state_impl(repo: &git2::Repository) -> io::Result<()> {
     use std::fs;
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
 
     // Check if .gitmodules exists
@@ -300,16 +295,10 @@ fn check_submodule_state() -> io::Result<()> {
 ///
 /// Sparse checkout can cause issues during rebase if files outside the
 /// sparse checkout cone are modified.
-///
-/// # Returns
-///
-/// Returns `Ok(())` if sparse checkout is not enabled or is properly
-/// configured, or an error if there are issues.
 #[cfg(any(test, feature = "test-utils"))]
-fn check_sparse_checkout_state() -> io::Result<()> {
+fn check_sparse_checkout_state_impl(repo: &git2::Repository) -> io::Result<()> {
     use std::fs;
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
 
     // Check if sparse checkout is enabled

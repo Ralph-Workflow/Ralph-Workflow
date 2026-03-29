@@ -127,6 +127,14 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         pass: u32,
     ) -> EffectResult {
+        // JSON-first: check for issues.json artifact before XML
+        match ctx.workspace.read_artifact_json("issues") {
+            Ok(Some(_)) | Err(_) => {
+                return EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass));
+            }
+            Ok(None) => {}
+        }
+        // XML fallback
         let issues_xml = Path::new(xml_paths::ISSUES_XML);
         match ctx.workspace.read(issues_xml) {
             Ok(_) => EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass)),
@@ -144,6 +152,9 @@ impl MainEffectHandler {
         pass: u32,
     ) -> EffectResult {
         let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
+        if let Some(result) = try_validate_review_from_json(ctx, pass, invalid_output_attempts) {
+            return result;
+        }
         let issues_xml =
             match read_review_issues_xml_for_validation(ctx, invalid_output_attempts, pass) {
                 Ok(s) => s,
@@ -244,6 +255,10 @@ impl MainEffectHandler {
         use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::ISSUES_XML));
+        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+            ctx.workspace,
+            "issues",
+        );
         EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
 
@@ -769,6 +784,77 @@ fn build_validation_success(
     )
 }
 
+fn validate_review_json_envelope(
+    envelope: crate::workspace::ArtifactEnvelope,
+    pass: u32,
+    invalid_output_attempts: u32,
+) -> EffectResult {
+    match super::json_artifact::issues_elements_from_envelope(&envelope) {
+        Ok(elements) => {
+            build_review_validation_from_elements(pass, elements, invalid_output_attempts)
+        }
+        Err(err) => EffectResult::event(PipelineEvent::review_output_validation_failed(
+            pass,
+            invalid_output_attempts,
+            Some(err.to_string()),
+        )),
+    }
+}
+
+/// Build review validation result directly from parsed `IssuesElements` (JSON-first path).
+///
+/// This mirrors `build_validation_success` but does not require raw XML content,
+/// since the JSON artifact path produces domain types directly.
+fn try_validate_review_from_json(
+    ctx: &PhaseContext<'_>,
+    pass: u32,
+    invalid_output_attempts: u32,
+) -> Option<EffectResult> {
+    match ctx.workspace.read_artifact_json("issues") {
+        Ok(Some(envelope)) => Some(validate_review_json_envelope(
+            envelope,
+            pass,
+            invalid_output_attempts,
+        )),
+        Ok(None) => None,
+        Err(err) => Some(EffectResult::event(
+            PipelineEvent::review_output_validation_failed(
+                pass,
+                invalid_output_attempts,
+                Some(format!("Invalid JSON artifact 'issues': {err}")),
+            ),
+        )),
+    }
+}
+
+fn build_review_validation_from_elements(
+    pass: u32,
+    elements: crate::files::llm_output_extraction::IssuesElements,
+    _invalid_output_attempts: u32,
+) -> EffectResult {
+    let (issues_found, clean_no_issues, _, _) = derive_review_validation_flags(&elements);
+    // Synthesize a placeholder content string for the UI event since there is no raw XML.
+    let json_note = String::from("[validated from JSON artifact]");
+    EffectResult::with_ui(
+        PipelineEvent::review_issues_xml_validated(
+            pass,
+            issues_found,
+            clean_no_issues,
+            elements.issue_texts(),
+            elements.no_issues_found.clone(),
+        ),
+        vec![UIEvent::XmlOutput {
+            xml_type: XmlOutputType::ReviewIssues,
+            content: json_note,
+            context: Some(XmlOutputContext {
+                iteration: None,
+                pass: Some(pass),
+                snippets: Vec::new(),
+            }),
+        }],
+    )
+}
+
 // --- materialize_xsd_retry_last_output helpers ---
 
 fn read_xsd_retry_source(
@@ -837,90 +923,4 @@ fn find_existing_xsd_signature(
         })
 }
 
-fn write_xsd_last_output(ctx: &PhaseContext<'_>, path: &Path, content: &str) -> Result<()> {
-    ctx.workspace.write_atomic(path, content).map_err(|err| {
-        ErrorEvent::WorkspaceWriteFailed {
-            path: path.display().to_string(),
-            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-        }
-        .into()
-    })
-}
-
-fn build_xsd_last_output_input(
-    candidate: &crate::phases::review::boundary_domain::XsdRetryMaterializationSignature,
-    last_output_bytes: u64,
-    inline_budget_bytes: u64,
-    last_output_path: &Path,
-) -> MaterializedPromptInput {
-    MaterializedPromptInput {
-        kind: PromptInputKind::LastOutput,
-        content_id_sha256: candidate.content_id_sha256.clone(),
-        consumer_signature_sha256: candidate.consumer_signature_sha256.clone(),
-        original_bytes: last_output_bytes,
-        final_bytes: last_output_bytes,
-        model_budget_bytes: None,
-        inline_budget_bytes: Some(inline_budget_bytes),
-        representation: PromptInputRepresentation::FileReference {
-            path: last_output_path.to_path_buf(),
-        },
-        reason: PromptMaterializationReason::PolicyForcedReference,
-    }
-}
-
-fn build_xsd_materialized_events(
-    input: MaterializedPromptInput,
-    pass: u32,
-    content_id_sha256: &str,
-    last_output_bytes: u64,
-    inline_budget_bytes: u64,
-) -> Vec<PipelineEvent> {
-    let base_event = PipelineEvent::xsd_retry_last_output_materialized(
-        crate::reducer::event::PipelinePhase::Review,
-        pass,
-        input,
-    );
-    if last_output_bytes > inline_budget_bytes {
-        vec![
-            base_event,
-            PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::Review,
-                PromptInputKind::LastOutput,
-                content_id_sha256.to_string(),
-                last_output_bytes,
-                inline_budget_bytes,
-                "xsd-retry-context".to_string(),
-            ),
-        ]
-    } else {
-        vec![base_event]
-    }
-}
-
-fn extract_issue_snippets(
-    issues: &[String],
-    workspace: &dyn crate::workspace::Workspace,
-) -> Vec<XmlCodeSnippet> {
-    let requests = crate::phases::review::snippet_domain::collect_issue_snippet_requests(
-        issues,
-        workspace.root(),
-    );
-
-    requests
-        .into_iter()
-        .filter_map(|request| {
-            let content = workspace.read(Path::new(&request.file)).ok()?;
-            let snippet = crate::phases::review::snippet_domain::extract_snippet_lines(
-                &content,
-                request.start,
-                request.end,
-            )?;
-            Some(XmlCodeSnippet {
-                file: request.file,
-                line_start: request.start,
-                line_end: request.end,
-                content: snippet,
-            })
-        })
-        .collect()
-}
+include!("run_review_helpers.rs");

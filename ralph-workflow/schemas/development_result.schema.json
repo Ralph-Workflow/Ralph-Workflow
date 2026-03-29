@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DevelopmentResult",
+  "description": "Result of a development execution phase. Covers both normal and continuation submissions. For continuations, include the optional continuation object.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "Outcome of the development phase. Values: completed (all work done), partial (some work remains), failed (could not proceed).",
+      "enum": ["completed", "partial", "failed"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "Summary of what was accomplished during this development session. May contain markdown."
+    },
+    "files_changed": {
+      "type": "string",
+      "description": "Optional list of files that were created, modified, or deleted. May contain markdown. Omit if no files were changed."
+    },
+    "next_steps": {
+      "type": "string",
+      "description": "Optional description of what should be done next. Required for continuation submissions. May contain markdown. Omit if status is completed and no follow-up is needed."
+    },
+    "skills_mcp": {
+      "type": "object",
+      "description": "Optional skill and MCP server recommendations for subsequent phases. Omit if none are needed.",
+      "properties": {
+        "skills": {
+          "type": "array",
+          "description": "Skill names recommended for subsequent phases (e.g. 'frontend-angular', 'test-driven-development').",
+          "items": {
+            "type": "string",
+            "description": "A skill name."
+          }
+        },
+        "mcps": {
+          "type": "array",
+          "description": "MCP server names recommended for subsequent phases (e.g. 'context7', 'angular-mcp').",
+          "items": {
+            "type": "string",
+            "description": "An MCP server name."
+          }
+        }
+      },
+      "required": ["skills", "mcps"],
+      "additionalProperties": false
+    },
+    "continuation": {
+      "type": "object",
+      "description": "Present only for continuation submissions. Signals this is a follow-up to a prior development session.",
+      "properties": {
+        "prior_session_id": {
+          "type": "string",
+          "description": "Identifier of the prior development session being continued."
+        }
+      },
+      "required": ["prior_session_id"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["status", "summary"],
+  "additionalProperties": false
+}

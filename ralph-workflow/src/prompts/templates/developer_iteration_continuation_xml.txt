@@ -6,8 +6,6 @@
 {# VARIABLES:                                                                  #}
 {#   PREVIOUS_STATUS/SUMMARY       - Minimal continuation context              #}
 {#   CONTINUATION_ATTEMPT          - Current attempt number (1+)               #}
-{#   DEVELOPMENT_RESULT_XML_PATH   - Path to write result XML                  #}
-{#   DEVELOPMENT_RESULT_XSD_PATH   - Path to XSD schema                        #}
 {# ============================================================================ #}
 
 You are in IMPLEMENTATION MODE. Recover from the previous failure to fully complete the entire plan.

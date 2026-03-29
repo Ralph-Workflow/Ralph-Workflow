@@ -76,6 +76,9 @@ fn review_phase_uses_fix_drain(state: &PipelineState) -> bool {
 
 fn fix_drain_is_loaded(state: &PipelineState) -> bool {
     state.agent_chain.current_drain == crate::agents::AgentDrain::Fix
+        || (state.agent_chain.current_mode == crate::agents::DrainMode::Continuation
+            && state.agent_chain.agents.is_empty()
+            && state.runtime_drain() == crate::agents::AgentDrain::Fix)
 }
 
 fn development_retry_uses_analysis_drain(state: &PipelineState) -> bool {

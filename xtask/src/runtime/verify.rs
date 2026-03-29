@@ -1262,10 +1262,35 @@ pub const FRONTEND_CHECKS: &[CommandSpec] = &[
     },
 ];
 
-/// Release build and custom lints.
+/// Custom lints (dylint).
+///
+/// Runs in the default `cargo xtask verify` backend lane so every verify
+/// invocation enforces the FP and boundary lints, even without `--gui`.
+pub const DYLINT_CHECKS: &[CommandSpec] = &[CommandSpec {
+    name: "dylint",
+    program: "make",
+    args: &["dylint"],
+    success_exit_codes: &[0],
+    extra_env: &[
+        ("DYLINT_DRIVER_PATH", "target/dylint-driver"),
+        ("CARGO_TARGET_DIR", "target/release-parallel-verify"),
+    ],
+}];
+
+/// Release build (GUI/release lane only — runs behind `--gui`).
 ///
 /// Uses a separate `CARGO_TARGET_DIR` to avoid cargo lock contention with the
 /// debug cargo group running in parallel.
+pub const RELEASE_BUILD_CHECKS: &[CommandSpec] = &[CommandSpec {
+    name: "release-build",
+    program: "cargo",
+    args: &["build", "--release"],
+    success_exit_codes: &[0],
+    extra_env: &[("CARGO_TARGET_DIR", "target/release-parallel-verify")],
+}];
+
+/// Combined release checks (release build + dylint) — kept for test helpers
+/// that need the full set in a single slice.
 pub const RELEASE_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "release-build",

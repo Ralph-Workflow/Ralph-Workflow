@@ -186,6 +186,27 @@ fn ralph_apply_commit_creates_commit() {
     });
 }
 
+#[test]
+fn ralph_apply_commit_cleans_message_file_when_working_tree_clean() {
+    with_default_timeout(|| {
+        let mut handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from("/mock/repo"))
+            .with_file(".agent/commit-message.txt", "feat: no-op commit")
+            .with_staged_changes(false);
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handler(&["--apply-commit"], executor, config, &mut handler).unwrap();
+
+        assert!(
+            !handler.file_exists(&PathBuf::from(".agent/commit-message.txt")),
+            "commit-message.txt should be deleted even when nothing is committed"
+        );
+    });
+}
+
 /// Test that the `--apply-commit` flag fails when the commit message file is missing.
 ///
 /// This verifies that when a user invokes ralph with the `--apply-commit` flag
@@ -216,7 +237,7 @@ fn ralph_generate_commit_msg_succeeds_without_prompt_md() {
         let mut handler = MockAppEffectHandler::new()
             .with_head_oid("a".repeat(40))
             .with_cwd(PathBuf::from("/mock/repo"))
-            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
+            .with_file(".agent/tmp/commit_diff.txt", "diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
                 ".agent/tmp/commit_message.xml",
                 "<ralph-commit><ralph-subject>feat: generated without prompt</ralph-subject></ralph-commit>",
@@ -245,7 +266,7 @@ fn ralph_generate_commit_msg_keeps_generated_message_after_command_cleanup() {
         let mut handler = MockAppEffectHandler::new()
             .with_head_oid("a".repeat(40))
             .with_cwd(PathBuf::from("/mock/repo"))
-            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
+            .with_file(".agent/tmp/commit_diff.txt", "diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
                 ".agent/tmp/commit_message.xml",
                 "<ralph-commit><ralph-subject>feat: preserved message</ralph-subject></ralph-commit>",
@@ -260,6 +281,75 @@ fn ralph_generate_commit_msg_keeps_generated_message_after_command_cleanup() {
         assert!(
             handler.file_exists(&PathBuf::from(".agent/commit-message.txt")),
             "generated commit message should survive command cleanup"
+        );
+    });
+}
+
+#[test]
+fn ralph_generate_commit_generates_and_applies_commit() {
+    with_default_timeout(|| {
+        let mut handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from("/mock/repo"))
+            .with_file("PROMPT.md", STANDARD_PROMPT)
+            .with_file("src/new_file.rs", "pub fn new_file() {}\n")
+            .with_file(
+                ".agent/tmp/commit_diff.txt",
+                "diff --git a/src/new_file.rs b/src/new_file.rs\n+pub fn new_file() {}\n",
+            )
+            .with_file(
+                ".agent/tmp/commit_message.xml",
+                "<ralph-commit><ralph-subject>feat: add new file flow</ralph-subject></ralph-commit>",
+            )
+            .with_staged_changes(true);
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handler(&["--generate-commit"], executor, config, &mut handler).unwrap();
+
+        assert!(
+            !handler.file_exists(&PathBuf::from(".agent/commit-message.txt")),
+            "commit-message.txt should be cleaned up after --generate-commit applies commit"
+        );
+    });
+}
+
+#[test]
+fn ralph_generate_commit_skips_apply_when_agent_requests_skip() {
+    with_default_timeout(|| {
+        let mut handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from("/mock/repo"))
+            .with_file(
+                ".agent/tmp/commit_diff.txt",
+                "diff --git a/src/lib.rs b/src/lib.rs\n+change\n",
+            )
+            .with_file(
+                ".agent/tmp/commit_message.json",
+                r#"{
+  "artifact_type": "commit_message",
+  "version": "1.0",
+  "content": {
+    "type": "skip",
+    "reason": "No meaningful changes"
+  },
+  "validated_at": "2026-01-01T00:00:00Z",
+  "partial": false,
+  "errors": []
+}"#,
+            )
+            .with_file(".agent/commit-message.txt", "feat: stale old message")
+            .with_staged_changes(true);
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handler(&["--generate-commit"], executor, config, &mut handler).unwrap();
+
+        assert!(
+            !handler.file_exists(&PathBuf::from(".agent/commit-message.txt")),
+            "stale commit-message.txt must be removed when generation is skipped"
         );
     });
 }

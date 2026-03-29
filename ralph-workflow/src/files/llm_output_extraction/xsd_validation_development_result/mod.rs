@@ -14,6 +14,7 @@ mod types;
 mod validation;
 
 pub use types::DevelopmentResultElements;
+pub use validation::apply_continuation_development_result_contract;
 pub use validation::validate_continuation_development_result_xml;
 pub use validation::validate_development_result_xml;
 

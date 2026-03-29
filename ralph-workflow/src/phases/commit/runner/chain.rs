@@ -32,6 +32,7 @@ pub fn generate_commit_message(
     commit_agent: &str,
     template_context: &TemplateContext,
     workspace: &dyn Workspace,
+    workspace_arc: &std::sync::Arc<dyn Workspace>,
 ) -> anyhow::Result<CommitMessageResult> {
     // For CLI plumbing, we truncate to the single agent's budget.
     // This is different from the reducer path which uses min budget across the chain.
@@ -58,7 +59,54 @@ pub fn generate_commit_message(
     let agent_config = registry
         .resolve_config(commit_agent)
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {commit_agent}"))?;
-    let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
+
+    let base_cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
+
+    // Start MCP bridge so the agent can submit artifacts via ralph_submit_artifact
+    let session = crate::agents::session::AgentSession::for_drain(
+        unique_commit_plumbing_run_id("cps"),
+        crate::agents::session::SessionDrain::Commit,
+        1,
+    );
+    let harness_session = session.clone();
+    let bridge = start_mcp_bridge(session, std::sync::Arc::clone(workspace_arc))
+        .map_err(|e| anyhow::anyhow!(
+            "MCP bridge startup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
+            commit_agent,
+            e
+        ))?;
+    let mcp_env: std::collections::HashMap<String, String> = std::collections::HashMap::from([(
+        crate::mcp_server::session_bridge::MCP_ENDPOINT_ENV.to_string(),
+        bridge.endpoint_uri(),
+    )]);
+
+    // Apply harness configuration if MCP bridge started successfully
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
+    let (harness_env, harness_extra_cmd_args) = if !mcp_env.is_empty() {
+        let result = crate::agents::harness::applicator::apply_harness_config(
+            agent_type,
+            &harness_session,
+            &bridge.endpoint_uri(),
+            workspace,
+        )
+        .map_err(|e| anyhow::anyhow!(
+            "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
+            commit_agent,
+            e
+        ))?;
+        (result.extra_env_vars, result.extra_cmd_args)
+    } else {
+        (std::collections::HashMap::new(), Vec::new())
+    };
+
+    // Merge agent env vars with MCP env vars and harness env vars
+    let merged_env: std::collections::HashMap<String, String> = agent_config
+        .env_vars
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .chain(mcp_env)
+        .chain(harness_env)
+        .collect();
 
     let log_prefix = ".agent/logs/commit_generation/commit_generation";
     let model_index = 0usize;
@@ -70,6 +118,7 @@ pub fn generate_commit_message(
         model_index,
         attempt,
     );
+    let cmd_str = append_extra_cmd_args(&base_cmd_str, &harness_extra_cmd_args);
     let prompt_cmd = PromptCommand {
         label: commit_agent,
         display_name: commit_agent,
@@ -80,7 +129,7 @@ pub fn generate_commit_message(
         attempt: Some(attempt),
         logfile: &logfile,
         parser_type: agent_config.json_parser,
-        env_vars: &agent_config.env_vars,
+        env_vars: &merged_env,
     };
 
     let result = run_with_prompt(&prompt_cmd, runtime)?;
@@ -118,17 +167,29 @@ pub fn generate_commit_message(
 enum TryAgentResult {
     Success(CommitMessageResult),
     Skip(Option<anyhow::Error>),
+    Fatal(anyhow::Error),
+}
+
+/// Contextual parameters for a single commit agent attempt.
+struct CommitAgentContext<'a> {
+    template_context: &'a TemplateContext,
+    model_safe_diff: &'a str,
+    registry: &'a AgentRegistry,
+    workspace: &'a dyn Workspace,
+    workspace_arc: &'a std::sync::Arc<dyn Workspace>,
 }
 
 fn try_single_commit_agent(
     agent_index: usize,
     commit_agent: &str,
-    template_context: &TemplateContext,
-    model_safe_diff: &str,
-    registry: &AgentRegistry,
+    ctx: &CommitAgentContext<'_>,
     runtime: &mut PipelineRuntime<'_>,
-    workspace: &dyn Workspace,
 ) -> TryAgentResult {
+    let template_context = ctx.template_context;
+    let model_safe_diff = ctx.model_safe_diff;
+    let registry = ctx.registry;
+    let workspace = ctx.workspace;
+    let workspace_arc = ctx.workspace_arc;
     let (prompt, substitution_log) =
         build_commit_prompt(template_context, model_safe_diff, workspace);
     if !substitution_log.is_complete() {
@@ -141,7 +202,60 @@ fn try_single_commit_agent(
     let Some(agent_config) = registry.resolve_config(commit_agent) else {
         return TryAgentResult::Skip(Some(anyhow::anyhow!("Agent not found: {commit_agent}")));
     };
-    let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
+    let base_cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
+
+    // Start MCP bridge so the agent can submit artifacts via ralph_submit_artifact
+    let session = crate::agents::session::AgentSession::for_drain(
+        unique_commit_plumbing_run_id(&format!("cp{agent_index}")),
+        crate::agents::session::SessionDrain::Commit,
+        1,
+    );
+    let harness_session = session.clone();
+    let bridge = match start_mcp_bridge(session, std::sync::Arc::clone(workspace_arc)) {
+        Ok(b) => b,
+        Err(e) => {
+            return TryAgentResult::Fatal(anyhow::anyhow!(
+                "MCP bridge startup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
+                commit_agent,
+                e
+            ));
+        }
+    };
+    let mcp_env: std::collections::HashMap<String, String> = std::collections::HashMap::from([(
+        crate::mcp_server::session_bridge::MCP_ENDPOINT_ENV.to_string(),
+        bridge.endpoint_uri(),
+    )]);
+
+    // Apply harness configuration if MCP bridge started successfully
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
+    let (harness_env, harness_extra_cmd_args) = if !mcp_env.is_empty() {
+        match crate::agents::harness::applicator::apply_harness_config(
+            agent_type,
+            &harness_session,
+            &bridge.endpoint_uri(),
+            workspace,
+        ) {
+            Ok(result) => (result.extra_env_vars, result.extra_cmd_args),
+            Err(e) => {
+                return TryAgentResult::Fatal(anyhow::anyhow!(
+                    "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
+                    commit_agent,
+                    e
+                ));
+            }
+        }
+    } else {
+        (std::collections::HashMap::new(), Vec::new())
+    };
+
+    // Merge agent env vars with MCP env vars and harness env vars
+    let merged_env: std::collections::HashMap<String, String> = agent_config
+        .env_vars
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .chain(mcp_env)
+        .chain(harness_env)
+        .collect();
 
     let log_prefix = ".agent/logs/commit_generation/commit_generation";
     let model_index = agent_index;
@@ -153,6 +267,7 @@ fn try_single_commit_agent(
         model_index,
         attempt,
     );
+    let cmd_str = append_extra_cmd_args(&base_cmd_str, &harness_extra_cmd_args);
     let prompt_cmd = PromptCommand {
         label: commit_agent,
         display_name: commit_agent,
@@ -163,7 +278,7 @@ fn try_single_commit_agent(
         attempt: Some(attempt),
         logfile: &logfile,
         parser_type: agent_config.json_parser,
-        env_vars: &agent_config.env_vars,
+        env_vars: &merged_env,
     };
 
     let result = match run_with_prompt(&prompt_cmd, runtime) {
@@ -238,6 +353,7 @@ pub fn generate_commit_message_with_chain(
     agents: &[String],
     template_context: &TemplateContext,
     workspace: &dyn Workspace,
+    workspace_arc: &std::sync::Arc<dyn Workspace>,
 ) -> anyhow::Result<CommitMessageResult> {
     if agents.is_empty() {
         anyhow::bail!("No agents provided in commit chain");
@@ -255,30 +371,58 @@ pub fn generate_commit_message_with_chain(
         ));
     }
 
-    let last_error =
-        agents
-            .iter()
-            .enumerate()
-            .try_fold(
-                None,
-                |last_err, (agent_index, commit_agent)| match try_single_commit_agent(
-                    agent_index,
-                    commit_agent,
-                    template_context,
-                    &model_safe_diff,
-                    registry,
-                    runtime,
-                    workspace,
-                ) {
-                    TryAgentResult::Success(result) => Err(result),
-                    TryAgentResult::Skip(opt_err) => Ok(opt_err.or(last_err)),
-                },
-            );
+    use std::ops::ControlFlow;
 
-    match last_error {
-        Ok(last_err) => {
+    let fold_result = agents.iter().enumerate().try_fold(
+        None::<anyhow::Error>,
+        |last_err, (agent_index, commit_agent)| {
+            let ctx = CommitAgentContext {
+                template_context,
+                model_safe_diff: &model_safe_diff,
+                registry,
+                workspace,
+                workspace_arc,
+            };
+            match try_single_commit_agent(agent_index, commit_agent, &ctx, runtime) {
+                TryAgentResult::Success(result) => ControlFlow::Break(Ok(result)),
+                TryAgentResult::Skip(opt_err) => ControlFlow::Continue(opt_err.or(last_err)),
+                TryAgentResult::Fatal(err) => ControlFlow::Break(Err(err)),
+            }
+        },
+    );
+
+    match fold_result {
+        ControlFlow::Break(result) => result,
+        ControlFlow::Continue(last_err) => {
             Err(last_err.unwrap_or_else(|| anyhow::anyhow!("All agents in commit chain failed")))
         }
-        Err(result) => Ok(result),
+    }
+}
+
+fn append_extra_cmd_args(cmd: &str, extra_args: &[String]) -> String {
+    if extra_args.is_empty() {
+        cmd.to_string()
+    } else {
+        let joined = extra_args.join(" ");
+        format!("{cmd} {joined}")
+    }
+}
+
+#[cfg(test)]
+mod append_extra_cmd_args_tests {
+    use super::*;
+
+    #[test]
+    fn append_extra_cmd_args_noop() {
+        assert_eq!(append_extra_cmd_args("cmd", &[]), "cmd");
+    }
+
+    #[test]
+    fn append_extra_cmd_args_appends_values() {
+        let args = vec!["--settings".to_string(), "'/tmp/cache'".to_string()];
+        assert_eq!(
+            append_extra_cmd_args("claude", &args),
+            "claude --settings '/tmp/cache'"
+        );
     }
 }

@@ -38,7 +38,11 @@ use crate::reducer::state::{CommitState, PipelineState, PromptMode};
 /// fresh output. The commit agent writes to `.agent/tmp/commit_message.xml`.
 ///
 /// Note: XSD retry handling skips cleanup on attempt > 1 (see above).
-pub(super) const REQUIRED_FILES: &[&str] = &[".agent/tmp/commit_message.xml"];
+pub(super) const REQUIRED_FILES: &[&str] = &[
+    ".agent/tmp/commit_message.xml",
+    ".agent/tmp/commit_message.json",
+    ".agent/tmp/commit_message.partial.json",
+];
 
 pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
     // Commit phase requires explicit agent chain initialization like other phases
@@ -72,7 +76,20 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
                         files: REQUIRED_FILES.iter().map(ToString::to_string).collect(),
                     };
                 }
-                if !state.commit_agent_invoked {
+
+                let last_effect_was_commit_agent = state
+                    .continuation
+                    .last_effect_kind
+                    .as_deref()
+                    .is_some_and(|k| k.contains("InvokeCommitAgent"));
+
+                let effective_commit_agent_invoked = state.commit_agent_invoked
+                    || (last_effect_was_commit_agent
+                        && state.commit_prompt_prepared
+                        && (current_attempt != 1 || state.commit_required_files_cleaned)
+                        && state.agent_chain.current_drain == AgentDrain::Commit);
+
+                if !effective_commit_agent_invoked {
                     return Effect::InvokeCommitAgent;
                 }
                 if !state.commit_xml_extracted {

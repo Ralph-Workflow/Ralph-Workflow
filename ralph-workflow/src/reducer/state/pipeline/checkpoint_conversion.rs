@@ -250,6 +250,8 @@ impl PipelineState {
             parallel_workers: Vec::new(),
             parallel_workers_completed: Vec::new(),
             parallel_plan_rejected_reason: None,
+            parallel_verification_completed: false,
+            parallel_verification_iteration: 0,
         }
     }
 }

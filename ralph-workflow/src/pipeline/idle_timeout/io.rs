@@ -137,7 +137,19 @@ fn try_wait_child(child_arc: &Arc<Mutex<Box<dyn AgentChild>>>) -> bool {
             .expect("child process mutex poisoned - indicates panic in another thread");
         locked.try_wait()
     };
-    matches!(status, Ok(Some(_)))
+    if matches!(status, Ok(Some(_))) {
+        // Unregister the PID on confirmed exit
+        let pid = {
+            let locked = child_arc
+                .lock()
+                .expect("child process mutex poisoned - indicates panic in another thread");
+            locked.id()
+        };
+        crate::executor::process_registry::unregister(pid);
+        true
+    } else {
+        false
+    }
 }
 
 /// Check if a child process has exited; sleep briefly if not. Returns `true` if exited.

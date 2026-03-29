@@ -71,6 +71,10 @@ pub fn get_shared_partials() -> HashMap<String, String> {
             "shared/_unattended_mode".to_string(),
             include_str!("templates/shared/_unattended_mode.txt").to_string(),
         ),
+        (
+            "shared/_mcp_tools".to_string(),
+            include_str!("templates/shared/_mcp_tools.txt").to_string(),
+        ),
     ])
 }
 
@@ -90,6 +94,7 @@ mod tests {
         assert!(partials.contains_key("shared/_developer_iteration_guidance"));
         assert!(partials.contains_key("shared/_no_git_commit"));
         assert!(partials.contains_key("shared/_session_capabilities"));
+        assert!(partials.contains_key("shared/_mcp_tools"));
     }
 
     #[test]

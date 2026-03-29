@@ -54,13 +54,13 @@ System tests are **NOT** appropriate for:
 
 ```bash
 # Run system tests (not part of CI)
-cargo test -p ralph-workflow-tests --test git2-system-tests
+cargo test -p ralph-workflow-tests --test system_tests
 
 # Run with verbose output
-cargo test -p ralph-workflow-tests --test git2-system-tests -- --nocapture
+cargo test -p ralph-workflow-tests --test system_tests -- --nocapture
 
 # Run specific test module
-cargo test -p ralph-workflow-tests --test git2-system-tests -- rebase::edge_cases
+cargo test -p ralph-workflow-tests --test system_tests -- rebase::edge_cases
 ```
 
 ## NOT Allowed

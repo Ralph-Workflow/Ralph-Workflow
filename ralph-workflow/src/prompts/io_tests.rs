@@ -56,9 +56,9 @@ fn test_prompt_for_agent_plan() {
         PromptConfig::new().with_prompt_md("test requirements".to_string()),
         &workspace,
     );
-    // Plan is now returned as XML structured output
+    // Plan is now returned as JSON via MCP
     assert!(result.contains("PLANNING MODE"));
-    assert!(result.contains("<ralph-implementation-steps>"));
+    assert!(result.contains("ralph_submit_artifact"));
 }
 
 #[test]

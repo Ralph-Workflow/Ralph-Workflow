@@ -80,7 +80,7 @@ fn validate_hook_path_in_hooks_dir(hook_path: &Path, hooks_dir: &Path) -> std::i
 }
 
 fn resolve_orig_path(hooks_dir: &Path, hook_path: &Path) -> std::io::Result<PathBuf> {
-    let resolved_hook_dir = fs::canonicalize(hooks_dir)?;
+    let resolved_hook_dir = fs::canonicalize(hooks_dir).unwrap_or_else(|_| hooks_dir.to_path_buf());
     let hook_file_name = hook_path.file_name().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -88,7 +88,10 @@ fn resolve_orig_path(hooks_dir: &Path, hook_path: &Path) -> std::io::Result<Path
         )
     })?;
     let hook_path_abs = resolved_hook_dir.join(hook_file_name);
-    Ok(PathBuf::from(format!("{}.ralph.orig", hook_path_abs.display())))
+    Ok(PathBuf::from(format!(
+        "{}.ralph.orig",
+        hook_path_abs.display()
+    )))
 }
 
 fn backup_existing_hook(hook_path: &Path, orig_path: &Path) -> std::io::Result<()> {
@@ -168,6 +171,7 @@ fn install_hooks_for_hook_names(
 }
 
 pub fn install_hooks_in_repo(repo_root: &Path) -> std::io::Result<()> {
+    assert_not_project_repo_for_install(repo_root)?;
     let scope = resolve_protection_scope_from(repo_root)?;
 
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(repo_root)?;
@@ -176,6 +180,67 @@ pub fn install_hooks_in_repo(repo_root: &Path) -> std::io::Result<()> {
     worktree::ensure_worktree_hook_scoping(&scope)?;
 
     install_hooks_for_hook_names(&ralph_dir, &hooks_dir, RALPH_HOOK_NAMES)
+}
+
+/// Enforce that hook installation does not target the project's real git repository.
+fn assert_not_project_repo_for_install(repo_root: &Path) -> std::io::Result<()> {
+    let violation = check_install_policy_violation(repo_root);
+    translate_policy_result(violation)
+}
+
+/// Find project root by walking up from current exe.
+fn find_project_root() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let start = exe.parent()?.to_path_buf();
+    std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
+        .find(|p| p.join(".git").exists())
+}
+
+/// Check if repo is at or under project path.
+fn repo_under_project(repo_abs: &Path, project_abs: &Path) -> bool {
+    repo_abs == project_abs || repo_abs.starts_with(project_abs)
+}
+
+/// Normalize paths for policy comparison.
+fn normalize_path(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// Policy violation for repo at project location.
+fn violation_repo_at_project(repo_abs: &Path) -> Option<String> {
+    Some(format!(
+        "POLICY VIOLATION: install_hooks_in_repo attempted to install hooks on the \
+             project's real git repository at '{}'. Tests must use isolated temporary \
+             repositories. This check exists because previous test runs installed hooks \
+             in the development repository, corrupting git configuration.",
+        repo_abs.display()
+    ))
+}
+
+/// Pure policy check: returns the violation message if policy is violated, None otherwise.
+fn check_install_policy_violation(repo_root: &Path) -> Option<String> {
+    let project = find_project_root();
+    let repo_abs = normalize_path(repo_root);
+    let repo_at_project = project
+        .as_ref()
+        .map(|p| {
+            let project_abs = normalize_path(p);
+            repo_under_project(&repo_abs, &project_abs)
+        })
+        .unwrap_or(false);
+    match (project.is_some(), repo_at_project) {
+        // Block if we're in the project repo.
+        (true, true) => violation_repo_at_project(&repo_abs),
+        _ => None,
+    }
+}
+
+/// Translate the policy check result into an io::Result.
+fn translate_policy_result(violation: Option<String>) -> std::io::Result<()> {
+    match violation {
+        Some(msg) => Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg)),
+        None => Ok(()),
+    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]

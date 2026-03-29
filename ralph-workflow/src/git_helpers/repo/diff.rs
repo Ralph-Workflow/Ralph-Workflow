@@ -66,6 +66,24 @@ pub fn git_diff_from(start_oid: &str) -> std::io::Result<String> {
     io::diff_from_oid_impl(&repo, oid)
 }
 
+/// Generate a diff from a specific starting commit using explicit repo root.
+///
+/// This avoids coupling diff generation to the process current working directory.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn git_diff_from_in_repo(repo_root: &Path, start_oid: &str) -> std::io::Result<String> {
+    let repo = io::discover_repo(repo_root)?;
+    let oid = git2::Oid::from_str(start_oid).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid commit OID: {start_oid}"),
+        )
+    })?;
+    io::diff_from_oid_impl(&repo, oid)
+}
+
 /// Get the git diff from the starting commit.
 ///
 /// Uses the saved starting commit from `.agent/start_commit` to generate
@@ -75,16 +93,16 @@ pub fn git_diff_from(start_oid: &str) -> std::io::Result<String> {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn get_git_diff_from_start() -> std::io::Result<String> {
+pub fn get_git_diff_from_start(repo_root: &Path) -> std::io::Result<String> {
     use crate::git_helpers::start_commit::{load_start_point, save_start_commit, StartPoint};
 
     // Ensure a valid starting point exists. This is expected to persist across runs,
     // but we also repair missing/corrupt files opportunistically for robustness.
-    save_start_commit()?;
+    save_start_commit(repo_root)?;
 
-    let repo = io::discover_repo(Path::new("."))?;
+    let repo = io::discover_repo(repo_root)?;
 
-    match load_start_point()? {
+    match load_start_point(repo_root)? {
         StartPoint::Commit(oid) => {
             let git2_oid = git_oid_to_git2_oid(&oid)?;
             io::diff_from_oid_impl(&repo, git2_oid)
@@ -120,7 +138,7 @@ pub fn get_git_diff_from_start_with_workspace(
         ));
     }
 
-    let repo = io::discover_repo(Path::new("."))?;
+    let repo = io::discover_repo(workspace.root())?;
 
     // Ensure a valid start point exists. This is expected to persist across runs, but we also
     // repair missing/corrupt files opportunistically for robustness.
@@ -161,10 +179,10 @@ pub fn get_git_diff_for_review_with_workspace(
         load_start_point_with_workspace, save_start_commit_with_workspace, StartPoint,
     };
 
-    // NOTE: We discover the repo from CWD here because the `ReviewBaseline` and `start_commit`
+    // NOTE: We discover the repo from workspace root because the `ReviewBaseline` and `start_commit`
     // files live in the injected Workspace, but the diff itself must be generated from the real
     // on-disk git repository.
-    let repo = io::discover_repo(Path::new("."))?;
+    let repo = io::discover_repo(workspace.root())?;
 
     let baseline = load_review_baseline_with_workspace(workspace).unwrap_or(ReviewBaseline::NotSet);
     match baseline {

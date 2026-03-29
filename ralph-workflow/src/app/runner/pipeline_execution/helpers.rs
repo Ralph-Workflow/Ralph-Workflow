@@ -13,6 +13,7 @@
 // - check_prompt_restoration: Check for PROMPT.md restoration after a phase
 // - handle_rebase_only: Handle --rebase-only flag
 
+use crate::agents::session::AuditTrail;
 use crate::app::context::PipelineContext;
 use crate::app::pipeline_setup::RepoCommandBoundaryParams;
 use crate::app::rebase::conflicts::try_resolve_conflicts_without_phase_ctx;
@@ -21,9 +22,9 @@ use crate::checkpoint::PipelineCheckpoint;
 use crate::files::protection::monitoring::PromptMonitor;
 use crate::files::{create_prompt_backup_with_workspace, validate_prompt_md_with_workspace};
 use crate::git_helpers::{
-    abort_rebase, continue_rebase, get_conflicted_files, is_main_or_master_branch, RebaseResult,
+    abort_rebase_at, continue_rebase_at, get_conflicted_files_at, is_main_or_master_branch,
+    RebaseResult,
 };
-use crate::agents::session::AuditTrail;
 use crate::phases::PhaseContext;
 use crate::pipeline::Timer;
 
@@ -32,6 +33,7 @@ pub(crate) const fn command_requires_prompt_setup(args: &Args) -> bool {
         && !args.recovery.inspect_checkpoint
         && !args.rebase_flags.rebase_only
         && !args.commit_plumbing.generate_commit_msg
+        && !args.commit_plumbing.generate_commit
         && !args.commit_plumbing.apply_commit
         && !args.commit_display.show_commit_msg
         && !args.commit_display.reset_start_commit
@@ -134,7 +136,6 @@ pub(crate) fn prepare_agent_phase_for_workspace(
     }
 }
 
-#[derive(Copy, Clone)]
 pub(crate) struct RepoCommandParams<'a> {
     pub(crate) args: &'a Args,
     pub(crate) config: &'a crate::config::Config,
@@ -146,6 +147,7 @@ pub(crate) struct RepoCommandParams<'a> {
     pub(crate) executor: &'a std::sync::Arc<dyn ProcessExecutor>,
     pub(crate) repo_root: &'a std::path::Path,
     pub(crate) workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
+    pub(crate) app_handler: Option<&'a mut dyn crate::app::effect::AppEffectHandler>,
 }
 
 pub(crate) fn handle_repo_commands_without_prompt_setup(
@@ -162,6 +164,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         executor,
         repo_root,
         workspace,
+        app_handler,
     } = params;
 
     crate::app::pipeline_setup::handle_repo_commands_boundary(RepoCommandBoundaryParams {
@@ -175,6 +178,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         executor,
         repo_root,
         workspace,
+        app_handler,
     })
 }
 
@@ -334,7 +338,7 @@ pub(crate) fn print_pipeline_info_with_config(
 ///
 /// This is best-effort: failures here must not terminate the pipeline.
 pub(crate) fn save_start_commit_or_warn(ctx: &PipelineContext) {
-    match crate::git_helpers::save_start_commit() {
+    match crate::git_helpers::save_start_commit(&ctx.repo_root) {
         Ok(()) => {
             if ctx.config.verbosity.is_debug() {
                 ctx.logger
@@ -353,7 +357,7 @@ pub(crate) fn save_start_commit_or_warn(ctx: &PipelineContext) {
     }
 
     // Display start commit information to user
-    match crate::git_helpers::get_start_commit_summary() {
+    match crate::git_helpers::get_start_commit_summary(&ctx.repo_root) {
         Ok(summary) => {
             if ctx.config.verbosity.is_debug() || summary.commits_since > 5 || summary.is_stale {
                 ctx.logger.info(&summary.format_compact());
@@ -420,7 +424,7 @@ pub fn handle_rebase_only(
 
     logger.header("Rebase to default branch", Colors::cyan);
 
-    match run_rebase_to_default(logger, colors, &**executor) {
+    match run_rebase_to_default(logger, colors, repo_root, &**executor) {
         Ok(RebaseResult::Success) => {
             logger.success("Rebase completed successfully");
             Ok(())
@@ -435,10 +439,10 @@ pub fn handle_rebase_only(
         }
         Ok(RebaseResult::Conflicts(_conflicts)) => {
             // Get the actual conflicted files
-            let conflicted_files = get_conflicted_files()?;
+            let conflicted_files = get_conflicted_files_at(repo_root)?;
             if conflicted_files.is_empty() {
                 logger.warn("Rebase reported conflicts but no conflicted files found");
-                let _ = abort_rebase(&**executor);
+                let _ = abort_rebase_at(repo_root, &**executor);
                 return Ok(());
             }
 
@@ -460,14 +464,14 @@ pub fn handle_rebase_only(
                 Ok(true) => {
                     // Conflicts resolved, continue the rebase
                     logger.info("Continuing rebase after conflict resolution");
-                    match continue_rebase(&**executor) {
+                    match continue_rebase_at(repo_root, &**executor) {
                         Ok(()) => {
                             logger.success("Rebase completed successfully after AI resolution");
                             Ok(())
                         }
                         Err(e) => {
                             logger.error(&format!("Failed to continue rebase: {e}"));
-                            let _ = abort_rebase(&**executor);
+                            let _ = abort_rebase_at(repo_root, &**executor);
                             anyhow::bail!("Rebase failed after conflict resolution")
                         }
                     }
@@ -475,12 +479,12 @@ pub fn handle_rebase_only(
                 Ok(false) => {
                     // AI resolution failed
                     logger.error("AI conflict resolution failed, aborting rebase");
-                    let _ = abort_rebase(&**executor);
+                    let _ = abort_rebase_at(repo_root, &**executor);
                     anyhow::bail!("Rebase conflicts could not be resolved by AI")
                 }
                 Err(e) => {
                     logger.error(&format!("Conflict resolution error: {e}"));
-                    let _ = abort_rebase(&**executor);
+                    let _ = abort_rebase_at(repo_root, &**executor);
                     anyhow::bail!("Rebase conflict resolution failed: {e}")
                 }
             }
@@ -537,6 +541,9 @@ mod helpers_tests {
 
         let apply_commit_args = crate::cli::Args::parse_from(["ralph", "--apply-commit"]);
         assert!(!command_requires_prompt_setup(&apply_commit_args));
+
+        let generate_commit_args = crate::cli::Args::parse_from(["ralph", "--generate-commit"]);
+        assert!(!command_requires_prompt_setup(&generate_commit_args));
 
         let inspect_checkpoint_args =
             crate::cli::Args::parse_from(["ralph", "--inspect-checkpoint"]);
@@ -625,6 +632,82 @@ mod helpers_tests {
         assert!(
             !marker_path.exists(),
             "promptless commands must still remove their owned protections"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_command_cleanup_guard_owned_with_prompt_restore_unlocks_prompt() {
+        let _test_lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+        let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
+        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
+
+        let prompt_path = repo_root.join("PROMPT.md");
+        std::fs::write(&prompt_path, "# locked\n").unwrap();
+        std::fs::set_permissions(&prompt_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        let marker_path = repo_root.join(".git/ralph/no_agent_commit");
+        std::fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
+        std::fs::write(&marker_path, "").unwrap();
+
+        {
+            let mut guard = CommandExitCleanupGuard::new(&logger, &workspace, true);
+            guard.mark_owned();
+        }
+
+        let mode = std::fs::metadata(&prompt_path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_ne!(
+            mode & 0o200,
+            0,
+            "owned command cleanup with prompt restoration enabled must unlock PROMPT.md"
+        );
+        assert!(
+            !marker_path.exists(),
+            "owned command cleanup must remove protections"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_command_cleanup_guard_unowned_does_not_restore_prompt_permissions() {
+        let _test_lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+        let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
+        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
+
+        let prompt_path = repo_root.join("PROMPT.md");
+        std::fs::write(&prompt_path, "# locked\n").unwrap();
+        std::fs::set_permissions(&prompt_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        let marker_path = repo_root.join(".git/ralph/no_agent_commit");
+        std::fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
+        std::fs::write(&marker_path, "").unwrap();
+
+        {
+            let _guard = CommandExitCleanupGuard::new(&logger, &workspace, true);
+        }
+
+        let mode = std::fs::metadata(&prompt_path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o444,
+            "unowned command cleanup must not restore prompt permissions"
+        );
+        assert!(
+            marker_path.exists(),
+            "unowned command cleanup must preserve pre-existing protections"
         );
     }
 }

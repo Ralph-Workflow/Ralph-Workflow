@@ -297,6 +297,14 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("loop_detection_recovery.rs"),
     },
     SourceFile {
+        path: "mcp_artifact_reducer_parity.rs",
+        contents: include_str!("mcp_artifact_reducer_parity.rs"),
+    },
+    SourceFile {
+        path: "mcp_behavioral.rs",
+        contents: include_str!("mcp_behavioral.rs"),
+    },
+    SourceFile {
         path: "memory_safety/mod.rs",
         contents: include_str!("memory_safety/mod.rs"),
     },

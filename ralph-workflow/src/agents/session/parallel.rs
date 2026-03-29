@@ -196,20 +196,20 @@ pub fn check_write_within_edit_area(path: &str, area: &RestrictedEditArea) -> Po
     let normalized = normalize_path(path);
 
     // Check exact path matches first (highest priority)
-    for allowed in &area.allowed_paths {
+    if area.allowed_paths.iter().any(|allowed| {
         let allowed_normalized = normalize_path(allowed);
-        if normalized == allowed_normalized {
-            return PolicyOutcome::Approved;
-        }
+        normalized == allowed_normalized
+    }) {
+        return PolicyOutcome::Approved;
     }
 
     // Check directory prefix matches
-    for dir in &area.allowed_directories {
+    if area.allowed_directories.iter().any(|dir| {
         let dir_normalized = normalize_path(dir);
         // "/" as a directory matches all paths
-        if dir_normalized == "/" || normalized.starts_with(&dir_normalized) {
-            return PolicyOutcome::Approved;
-        }
+        dir_normalized == "/" || normalized.starts_with(&dir_normalized)
+    }) {
+        return PolicyOutcome::Approved;
     }
 
     PolicyOutcome::Denied {
@@ -256,26 +256,28 @@ fn normalize_path(path: &str) -> String {
 #[must_use]
 pub fn edit_areas_overlap(a: &RestrictedEditArea, b: &RestrictedEditArea) -> bool {
     // Check if any of a's allowed paths are within b's allowed directories
-    for path in &a.allowed_paths {
-        if path_is_within_edit_area(path, b) {
-            return true;
-        }
+    if a.allowed_paths
+        .iter()
+        .any(|path| path_is_within_edit_area(path, b))
+    {
+        return true;
     }
 
     // Check if any of b's allowed paths are within a's allowed directories
-    for path in &b.allowed_paths {
-        if path_is_within_edit_area(path, a) {
-            return true;
-        }
+    if b.allowed_paths
+        .iter()
+        .any(|path| path_is_within_edit_area(path, a))
+    {
+        return true;
     }
 
     // Check directory prefix overlaps
-    for dir_a in &a.allowed_directories {
-        for dir_b in &b.allowed_directories {
-            if dir_a.starts_with(dir_b) || dir_b.starts_with(dir_a) {
-                return true;
-            }
-        }
+    if a.allowed_directories.iter().any(|dir_a| {
+        b.allowed_directories
+            .iter()
+            .any(|dir_b| dir_a.starts_with(dir_b) || dir_b.starts_with(dir_a))
+    }) {
+        return true;
     }
 
     false
@@ -285,18 +287,19 @@ pub fn edit_areas_overlap(a: &RestrictedEditArea, b: &RestrictedEditArea) -> boo
 fn path_is_within_edit_area(path: &str, area: &RestrictedEditArea) -> bool {
     let normalized = normalize_path(path);
 
-    for allowed in &area.allowed_paths {
-        let allowed_normalized = normalize_path(allowed);
-        if normalized == allowed_normalized {
-            return true;
-        }
+    if area
+        .allowed_paths
+        .iter()
+        .any(|allowed| normalize_path(allowed) == normalized)
+    {
+        return true;
     }
 
-    for dir in &area.allowed_directories {
+    if area.allowed_directories.iter().any(|dir| {
         let dir_normalized = normalize_path(dir);
-        if normalized.starts_with(&dir_normalized) {
-            return true;
-        }
+        normalized.starts_with(&dir_normalized)
+    }) {
+        return true;
     }
 
     false

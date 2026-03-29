@@ -243,6 +243,8 @@ impl CapabilitySet {
                 Capability::GitDiffRead,
                 Capability::ProcessExecBounded,
                 Capability::ArtifactSubmit,
+                Capability::RunReportProgress,
+                Capability::EnvRead,
             ]
             .into(),
             SessionDrain::Fix => vec![
@@ -254,6 +256,8 @@ impl CapabilitySet {
                 Capability::GitDiffRead,
                 Capability::ProcessExecBounded,
                 Capability::ArtifactSubmit,
+                Capability::RunReportProgress,
+                Capability::EnvRead,
             ]
             .into(),
             SessionDrain::Commit => vec![
@@ -263,6 +267,7 @@ impl CapabilitySet {
                 Capability::GitDiffRead,
                 Capability::GitWrite,
                 Capability::ArtifactSubmit,
+                Capability::RunReportProgress,
             ]
             .into(),
         }

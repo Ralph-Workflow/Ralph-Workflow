@@ -9,7 +9,7 @@ name = "integration_tests"
 path = "integration_tests/main.rs"
 
 [[test]]
-name = "git2-system-tests"
+name = "system_tests"
 path = "system_tests/main.rs"
 
 [[test]]

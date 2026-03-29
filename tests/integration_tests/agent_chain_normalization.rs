@@ -801,9 +801,8 @@ fn test_xsd_retry_reinitializes_analysis_drain_when_loaded_chain_is_development(
     });
 }
 
-/// Test that fix continuation in Review uses drain identity, not stale role metadata.
 #[test]
-fn test_fix_continuation_uses_fix_drain_even_when_role_is_stale() {
+fn test_fix_continuation_uses_fix_drain_when_chain_unloaded_and_role_is_stale() {
     with_default_timeout(|| {
         let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
         state.phase = PipelinePhase::Review;
@@ -821,7 +820,36 @@ fn test_fix_continuation_uses_fix_drain_even_when_role_is_stale() {
                     prompt_mode: PromptMode::Continuation,
                 }
             ),
-            "fix continuation should stay on fix consumer, got: {effect:?}"
+            "fix continuation with unloaded fix chain should stay on fix consumer, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_fix_continuation_uses_loaded_fix_chain_when_role_is_stale() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.continuation.fix_continue_pending = true;
+        state.agent_chain = state.agent_chain.with_agents(
+            vec!["fix-primary".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        );
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 0,
+                    prompt_mode: PromptMode::Continuation,
+                }
+            ),
+            "loaded fix continuation should stay on fix consumer, got: {effect:?}"
         );
     });
 }

@@ -416,6 +416,38 @@ fn test_same_agent_retry_in_fix_drain_uses_fix_prompt_without_review_flags() {
 }
 
 #[test]
+fn test_fix_continuation_from_analysis_prepares_prompt_before_chain_reinit() {
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        reviewer_pass: 1,
+        total_reviewer_passes: 2,
+        review_issues_found: true,
+        agent_chain: AgentChainState::initial()
+            .with_drain(crate::agents::AgentDrain::Review)
+            .with_mode(crate::agents::DrainMode::Continuation),
+        continuation: crate::reducer::state::ContinuationState {
+            fix_continue_pending: true,
+            fix_continuation_attempt: 1,
+            ..crate::reducer::state::ContinuationState::default()
+        },
+        ..create_test_state()
+    };
+
+    let effect = determine_next_effect(&state);
+
+    assert!(
+        matches!(
+            effect,
+            Effect::PrepareFixPrompt {
+                pass: 1,
+                prompt_mode: crate::reducer::state::PromptMode::Continuation,
+            }
+        ),
+        "analysis->fix continuation should prepare continuation prompt before reinitializing chain, got {effect:?}"
+    );
+}
+
+#[test]
 fn test_determine_effect_review_phase_with_wrong_role_chain() {
     // Scenario: Review phase with a non-empty chain, but the role is Commit
     // This simulates the bug where we transition from CommitMessage back to Review

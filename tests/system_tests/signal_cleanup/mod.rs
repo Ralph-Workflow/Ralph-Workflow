@@ -70,7 +70,10 @@ fn collect_output(mut child: Child) -> (ExitStatus, String, String) {
     (status, stdout, stderr)
 }
 use tempfile::TempDir;
-use test_helpers::{commit_all, create_isolated_config, init_git_repo};
+use test_helpers::{
+    assert_project_head_unchanged, capture_project_head_oid, commit_all, create_isolated_config,
+    init_git_repo,
+};
 
 fn assert_status_is_sigint_130(status: ExitStatus, stdout: &str, stderr: &str) {
     assert_eq!(
@@ -171,7 +174,11 @@ fn find_ralph_binary() -> Option<std::path::PathBuf> {
 /// `.no_agent_commit` marker when entering the agent phase.
 ///
 /// Returns `None` if the ralph binary cannot be found.
-fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
+fn spawn_ralph_pipeline_with_commands(
+    repo_dir: &Path,
+    developer_cmd: &str,
+    reviewer_cmd: &str,
+) -> Option<Child> {
     let ralph_bin = find_ralph_binary()?;
 
     // Isolate config home so user configuration can't affect system test behavior.
@@ -188,16 +195,8 @@ fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
         .env("RALPH_LOG", "warn") // Reduce log noise
         .env("RALPH_NO_RESUME_PROMPT", "1") // Ensure non-interactive in tests
         .env("XDG_CONFIG_HOME", xdg_config_home)
-        // Use a command that blocks until SIGINT so the agent phase is long enough
-        // for the test to reliably observe the marker.
-        .env(
-            "RALPH_DEVELOPER_CMD",
-            "bash -lc 'trap \"exit 0\" INT; while true; do sleep 1; done'",
-        )
-        .env(
-            "RALPH_REVIEWER_CMD",
-            "bash -lc 'trap \"exit 0\" INT; while true; do sleep 1; done'",
-        )
+        .env("RALPH_DEVELOPER_CMD", developer_cmd)
+        .env("RALPH_REVIEWER_CMD", reviewer_cmd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -225,6 +224,16 @@ fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
     }));
 
     Some(child)
+}
+
+fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
+    // Use a command that blocks until SIGINT so the agent phase is long enough
+    // for the test to reliably observe the marker.
+    spawn_ralph_pipeline_with_commands(
+        repo_dir,
+        "bash -lc 'trap \"exit 0\" INT; while true; do sleep 1; done'",
+        "bash -lc 'trap \"exit 0\" INT; while true; do sleep 1; done'",
+    )
 }
 
 /// Wait for `.no_agent_commit` marker to appear.
@@ -279,6 +288,24 @@ fn send_sigint(child: &Child) {
     assert_eq!(rc, 0, "expected SIGINT delivery via kill() to succeed");
 }
 
+fn wait_for_exit_with_timeout(mut child: Child, timeout: Duration) -> (ExitStatus, String, String) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        match child.try_wait() {
+            Ok(Some(_)) => return collect_output(child),
+            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+            Err(e) => panic!("try_wait failed while waiting for child exit: {e}"),
+        }
+    }
+
+    let _ = unsafe { libc::kill(child.id().cast_signed(), libc::SIGKILL) };
+    let (status, stdout, stderr) = collect_output(child);
+    panic!(
+        "child did not exit within {:?}. forced SIGKILL. status={:?}\nstdout:\n{}\nstderr:\n{}",
+        timeout, status, stdout, stderr
+    );
+}
+
 /// Assert PROMPT.md has write permission for owner.
 fn assert_prompt_writable(prompt_path: &Path) {
     let metadata = std::fs::metadata(prompt_path).expect("stat PROMPT.md");
@@ -305,6 +332,17 @@ fn contains_ralph_marker(path: &Path) -> bool {
     std::fs::read_to_string(path)
         .map(|content| content.contains("RALPH_RUST_MANAGED_HOOK"))
         .unwrap_or(false)
+}
+
+fn assert_no_ralph_managed_hooks(repo_dir: &Path) {
+    let hooks_dir = repo_dir.join(".git/hooks");
+    for hook_name in &["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"] {
+        let hook_path = hooks_dir.join(hook_name);
+        assert!(
+            !contains_ralph_marker(&hook_path),
+            "{hook_name} should not retain Ralph hook marker after cleanup"
+        );
+    }
 }
 
 /// Require ralph binary to be available.
@@ -340,6 +378,8 @@ fn test_ctrl_c_restores_prompt_md_writable() {
         || {
             require_ralph_binary!();
 
+            let head_before = capture_project_head_oid();
+
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
 
@@ -362,7 +402,8 @@ fn test_ctrl_c_restores_prompt_md_writable() {
             send_sigint(&child);
 
             // Wait for exit and capture output for debugging on failure.
-            let (status, stdout, stderr) = collect_output(child);
+            let (status, stdout, stderr) =
+                wait_for_exit_with_timeout(child, Duration::from_secs(20));
             assert_status_is_sigint_130(status, &stdout, &stderr);
 
             // Key assertion: PROMPT.md must be writable after cleanup
@@ -376,6 +417,57 @@ fn test_ctrl_c_restores_prompt_md_writable() {
 
             // Wrapper tracking file (PATH injection) should be cleaned up
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+#[test]
+#[serial]
+fn test_double_ctrl_c_performs_cleanup_before_exit() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            let prompt_path = temp_dir.path().join("PROMPT.md");
+            assert!(prompt_path.exists(), "PROMPT.md should exist in test repo");
+            set_readonly(&prompt_path);
+
+            let mut child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
+
+            let marker_appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
+            assert!(
+                marker_appeared,
+                "Agent phase should start (marker should appear)"
+            );
+
+            send_sigint(&child);
+            std::thread::sleep(Duration::from_millis(100));
+            if child
+                .try_wait()
+                .expect("try_wait after first SIGINT should succeed")
+                .is_none()
+            {
+                send_sigint(&child);
+            }
+
+            let (status, stdout, stderr) =
+                wait_for_exit_with_timeout(child, Duration::from_secs(20));
+            assert_status_is_sigint_130(status, &stdout, &stderr);
+
+            assert_prompt_writable(&prompt_path);
+            assert_git_wrapper_track_file_removed(temp_dir.path());
+            assert_no_ralph_managed_hooks(temp_dir.path());
+            assert_ralph_dir_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -399,6 +491,8 @@ fn test_ctrl_c_before_lock_restores_prompt_md_writable() {
     with_timeout(
         || {
             require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
 
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
@@ -470,6 +564,11 @@ fn test_ctrl_c_before_lock_restores_prompt_md_writable() {
             // Key assertion: PROMPT.md must be writable after exit.
             // Even with early interrupt, startup cleanup should have restored it.
             assert_prompt_writable(&prompt_path);
+
+            assert_git_wrapper_track_file_removed(temp_dir.path());
+            assert_no_ralph_managed_hooks(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -495,6 +594,8 @@ fn test_ctrl_c_removes_no_agent_commit() {
     with_timeout(
         || {
             require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
 
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
@@ -524,6 +625,8 @@ fn test_ctrl_c_removes_no_agent_commit() {
 
             // The entire .git/ralph/ directory must be removed, not just its contents.
             assert_ralph_dir_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -548,6 +651,8 @@ fn test_ctrl_c_restores_git_hooks() {
     with_timeout(
         || {
             require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
 
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
@@ -582,6 +687,8 @@ fn test_ctrl_c_restores_git_hooks() {
 
             // Wrapper tracking file (PATH injection) should be cleaned up
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -607,6 +714,8 @@ fn test_ctrl_c_removes_hook_when_no_prior_hook_existed() {
     with_timeout(
         || {
             require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
 
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
@@ -640,6 +749,8 @@ fn test_ctrl_c_removes_hook_when_no_prior_hook_existed() {
 
             // Wrapper tracking file (PATH injection) should be cleaned up
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -666,6 +777,8 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
     with_timeout(
         || {
             require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
 
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
@@ -714,6 +827,8 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
 
             // Wrapper tracking file (PATH injection) should be cleaned up
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -793,6 +908,8 @@ fn test_ctrl_c_removes_head_oid_file() {
         || {
             require_ralph_binary!();
 
+            let head_before = capture_project_head_oid();
+
             let temp_dir = TempDir::new().expect("create temp dir");
             let repo = init_git_repo(&temp_dir);
 
@@ -820,6 +937,8 @@ fn test_ctrl_c_removes_head_oid_file() {
 
             assert_head_oid_removed(temp_dir.path());
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -837,6 +956,8 @@ fn test_ctrl_c_removes_generated_files() {
         || {
             require_ralph_binary!();
 
+            let head_before = capture_project_head_oid();
+
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
 
@@ -853,6 +974,8 @@ fn test_ctrl_c_removes_generated_files() {
 
             // The entire .git/ralph/ directory must be removed, not just its contents.
             assert_ralph_dir_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -886,6 +1009,8 @@ fn test_ctrl_c_removes_wrapper_temp_dir() {
         || {
             require_ralph_binary!();
 
+            let head_before = capture_project_head_oid();
+
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
 
@@ -908,6 +1033,8 @@ fn test_ctrl_c_removes_wrapper_temp_dir() {
             if let Some(wrapper_dir) = wrapper_dir {
                 assert_wrapper_temp_dir_removed(&wrapper_dir);
             }
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -923,6 +1050,8 @@ fn test_startup_cleans_orphaned_wrapper_dir() {
     with_timeout(
         || {
             require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
 
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
@@ -964,6 +1093,8 @@ fn test_startup_cleans_orphaned_wrapper_dir() {
 
             // After exit, the new wrapper dir (created by this run) should also be cleaned.
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -978,6 +1109,8 @@ fn test_startup_cleans_orphaned_wrapper_dir() {
 fn test_graceful_exit_removes_wrapper_temp_dir() {
     with_timeout(
         || {
+            let head_before = capture_project_head_oid();
+
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
 
@@ -1045,6 +1178,8 @@ fn test_graceful_exit_removes_wrapper_temp_dir() {
 
             // The entire .git/ralph/ directory must be removed, not just its contents.
             assert_ralph_dir_removed(temp_dir.path());
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -1057,6 +1192,8 @@ fn test_graceful_exit_removes_wrapper_temp_dir() {
 fn test_graceful_exit_warns_when_ralph_dir_still_exists() {
     with_timeout(
         || {
+            let head_before = capture_project_head_oid();
+
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
 
@@ -1115,6 +1252,261 @@ fn test_graceful_exit_warns_when_ralph_dir_still_exists() {
                 quarantine_file.exists(),
                 "unexpected artifact should remain in place for inspection rather than being deleted"
             );
+
+            assert_project_head_unchanged(&head_before);
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Test: SIGINT cleanup kills spawned agent processes.
+///
+/// Verifies that when kill_all_registered_raw() is called (which happens during
+/// SIGINT cleanup), registered agent processes are properly killed.
+///
+/// This test exercises the process registry's three-phase shutdown end-to-end
+/// with a real process.
+#[test]
+#[serial]
+fn test_sigint_cleanup_kills_agent_processes() {
+    with_timeout(
+        || {
+            // Spawn a long-running process and register it
+            let mut child = ralph_workflow::executor::process_registry::spawn_and_register_for_test(
+                "sleep",
+                &["30"],
+            );
+
+            let pid = child.id();
+
+            // Verify the process is running
+            assert!(
+                child.try_wait().expect("try_wait").is_none(),
+                "sleep process should be running before kill"
+            );
+
+            // Verify it's registered
+            let pids = ralph_workflow::executor::process_registry::registered_pids();
+            assert!(
+                pids.contains(&pid),
+                "process should be registered before kill"
+            );
+
+            // Call kill_all_registered_raw (simulating SIGINT cleanup)
+            ralph_workflow::executor::process_registry::kill_all_registered_raw();
+
+            // Verify registry is empty
+            assert!(
+                ralph_workflow::executor::process_registry::registered_pids().is_empty(),
+                "registry should be empty after kill_all_registered_raw"
+            );
+
+            // Verify the process is dead within a timeout
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut killed = false;
+            while Instant::now() < deadline {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        use std::os::unix::process::ExitStatusExt;
+                        let was_killed = status.signal().is_some();
+                        assert!(
+                            was_killed,
+                            "sleep process should have been killed by signal, got: {status}"
+                        );
+                        killed = true;
+                        break;
+                    }
+                    Ok(None) => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(e) => {
+                        panic!("try_wait failed: {e}");
+                    }
+                }
+            }
+
+            assert!(
+                killed,
+                "sleep process should have been killed within 5 seconds"
+            );
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Test: SIGTERM-resistant process is escalated to SIGKILL during cleanup.
+///
+/// Verifies that processes which ignore SIGTERM are eventually killed
+/// by SIGKILL escalation in Phase 3.
+#[test]
+#[serial]
+fn test_sigint_cleanup_kills_sigterm_resistant_processes() {
+    with_timeout(
+        || {
+            // Spawn a process that ignores SIGTERM
+            let mut child = ralph_workflow::executor::process_registry::spawn_and_register_for_test(
+                "bash",
+                &["-c", "trap '' TERM; sleep 30"],
+            );
+
+            let pid = child.id();
+
+            // Brief pause to let the trap handler install
+            std::thread::sleep(Duration::from_millis(100));
+
+            // Verify the process is running
+            assert!(
+                child.try_wait().expect("try_wait").is_none(),
+                "bash process should be running before kill"
+            );
+
+            // Verify it's registered
+            let pids = ralph_workflow::executor::process_registry::registered_pids();
+            assert!(
+                pids.contains(&pid),
+                "process should be registered before kill"
+            );
+
+            // Call kill_all_registered_raw (simulating SIGINT cleanup)
+            ralph_workflow::executor::process_registry::kill_all_registered_raw();
+
+            // Verify registry is empty
+            assert!(
+                ralph_workflow::executor::process_registry::registered_pids().is_empty(),
+                "registry should be empty after kill_all_registered_raw"
+            );
+
+            // Verify the process is dead within a timeout
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut killed = false;
+            while Instant::now() < deadline {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        use std::os::unix::process::ExitStatusExt;
+                        let was_killed = status.signal().is_some();
+                        assert!(
+                            was_killed,
+                            "SIGTERM-resistant process should have been killed by signal, got: {status}"
+                        );
+                        killed = true;
+                        break;
+                    }
+                    Ok(None) => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(e) => {
+                        panic!("try_wait failed: {e}");
+                    }
+                }
+            }
+
+            assert!(
+                killed,
+                "SIGTERM-resistant process should have been killed within 5 seconds"
+            );
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Test: SIGINT to ralph process kills spawned agent subprocesses.
+///
+/// Verifies the actual SIGINT cleanup path: when SIGINT is sent to a running
+/// ralph process, the agent subprocess is terminated and the registry is
+/// emptied, rather than orphaned.
+///
+/// This is an integration test that drives the true external signal path
+/// (send SIGINT to ralph process), unlike the tests at
+/// `test_sigint_cleanup_kills_agent_processes` which directly call
+/// `kill_all_registered_raw()` to unit-test the function in isolation.
+#[test]
+#[serial]
+fn test_sigint_to_ralph_kills_agent_subprocess() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let head_before = capture_project_head_oid();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            fn child_pids_of(parent_pid: u32) -> Vec<u32> {
+                let output = Command::new("ps")
+                    .args(["-ax", "-o", "pid=,ppid="])
+                    .output()
+                    .expect("run ps");
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .filter_map(|line| {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() != 2 {
+                            return None;
+                        }
+                        let pid = parts[0].parse::<u32>().ok()?;
+                        let ppid = parts[1].parse::<u32>().ok()?;
+                        (ppid == parent_pid).then_some(pid)
+                    })
+                    .collect()
+            }
+
+            fn pid_is_alive(pid: u32) -> bool {
+                let rc = unsafe { libc::kill(pid.cast_signed(), 0) };
+                if rc == 0 {
+                    return true;
+                }
+                std::io::Error::last_os_error()
+                    .raw_os_error()
+                    .map(|code| code != libc::ESRCH)
+                    .unwrap_or(false)
+            }
+
+            // Spawn ralph pipeline
+            let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
+            let ralph_pid = child.id();
+
+            let marker_appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
+            assert!(marker_appeared, "agent phase should start before SIGINT");
+
+            let observed_deadline = Instant::now() + Duration::from_secs(10);
+            let mut agent_pids_before = child_pids_of(ralph_pid);
+            while Instant::now() < observed_deadline {
+                agent_pids_before = child_pids_of(ralph_pid);
+                if !agent_pids_before.is_empty() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            assert!(
+                !agent_pids_before.is_empty(),
+                "expected to observe at least one direct child process before SIGINT (ralph_pid={ralph_pid})"
+            );
+
+            // Send SIGINT to ralph process
+            send_sigint(&child);
+
+            let (status, stdout, stderr) =
+                wait_for_exit_with_timeout(child, Duration::from_secs(20));
+            assert_status_is_sigint_130(status, &stdout, &stderr);
+
+            let cleanup_deadline = Instant::now() + Duration::from_secs(10);
+            let mut remaining: Vec<u32> = agent_pids_before
+                .iter()
+                .copied()
+                .filter(|pid| pid_is_alive(*pid))
+                .collect();
+            while Instant::now() < cleanup_deadline && !remaining.is_empty() {
+                std::thread::sleep(Duration::from_millis(100));
+                remaining.retain(|pid| pid_is_alive(*pid));
+            }
+
+            assert!(
+                remaining.is_empty(),
+                "agent processes should be gone after SIGINT cleanup. \
+                 ralph_pid={ralph_pid} observed_before={agent_pids_before:?} remaining={remaining:?}"
+            );
+
+            assert_project_head_unchanged(&head_before);
         },
         SIGNAL_TEST_TIMEOUT,
     );

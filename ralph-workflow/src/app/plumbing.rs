@@ -58,6 +58,12 @@ pub struct CommitGenerationConfig<'a> {
     pub executor: Arc<dyn ProcessExecutor>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitGenerationOutcome {
+    Generated,
+    Skipped,
+}
+
 fn resolve_commit_message_agents(registry: &AgentRegistry, reviewer_agent: &str) -> Vec<String> {
     if let Some(commit_binding) = registry.resolved_drain(AgentDrain::Commit) {
         return commit_binding.agents.clone();
@@ -120,9 +126,9 @@ pub fn get_commit_message_from_workspace(workspace: &dyn Workspace) -> anyhow::R
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
+pub fn handle_apply_commit_with_handler(
     workspace: &dyn Workspace,
-    handler: &mut H,
+    handler: &mut dyn AppEffectHandler,
     logger: &Logger,
     colors: Colors,
 ) -> anyhow::Result<()> {
@@ -170,6 +176,11 @@ pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
         | AppEffectResult::Ok => {
             // No changes to commit (clean working tree)
             logger.warn("Nothing to commit (working tree clean)");
+            if let Err(err) = delete_commit_message_file_with_workspace(workspace) {
+                logger.warn(&format!(
+                    "Failed to delete commit-message.txt after no-op commit: {err}"
+                ));
+            }
             Ok(())
         }
         AppEffectResult::Error(e) => anyhow::bail!("Failed to create commit: {e}"),
@@ -199,11 +210,24 @@ pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow::Result<()> {
+pub fn handle_generate_commit_msg(
+    config: &CommitGenerationConfig<'_>,
+) -> anyhow::Result<CommitGenerationOutcome> {
     config.logger.info("Generating commit message...");
 
-    // Generate the commit message using standard pipeline
-    let diff = git_diff()?;
+    let fallback_diff = || {
+        config
+            .workspace
+            .read(std::path::Path::new(".agent/tmp/commit_diff.txt"))
+            .ok()
+            .filter(|content| !content.trim().is_empty())
+    };
+
+    let diff = match git_diff() {
+        Ok(live) if !live.trim().is_empty() => live,
+        Ok(_) => fallback_diff().unwrap_or_default(),
+        Err(err) => fallback_diff().ok_or(err)?,
+    };
     if diff.trim().is_empty() {
         config
             .logger
@@ -224,6 +248,7 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         &agents,
         config.template_context,
         config.workspace,
+        &config.workspace_arc,
     )
     .map_err(|e| anyhow::anyhow!("Failed to generate commit message: {e}"))?;
     let commit_message = match result.outcome {
@@ -232,7 +257,10 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
             config.logger.warn(&format!(
                 "No commit needed (agent requested skip): {reason}"
             ));
-            return Ok(());
+            let _ = config
+                .workspace
+                .remove(std::path::Path::new(".agent/commit-message.txt"));
+            return Ok(CommitGenerationOutcome::Skipped);
         }
     };
 
@@ -254,5 +282,5 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         .logger
         .info("Run 'ralph --apply-commit' to create the commit");
 
-    Ok(())
+    Ok(CommitGenerationOutcome::Generated)
 }

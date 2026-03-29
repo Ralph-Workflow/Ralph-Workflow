@@ -47,6 +47,9 @@ mod io {
     pub(crate) type ErrorKind = std::io::ErrorKind;
 }
 
+// Boundary module for environment access.
+include!("rebase/io.rs");
+
 include!("rebase_kinds.rs");
 include!("rebase_classification.rs");
 include!("conflict_detection.rs");

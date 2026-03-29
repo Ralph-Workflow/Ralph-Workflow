@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: parallel_verifier_xml.txt                                           #}
-{# Version: 1.0 - Parallel verifier/reconciler prompt                         #}
+{# Version: 2.0 - MCP JSON submission only                                    #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -12,28 +12,7 @@
 {#   {{ALL_WORK_UNITS_COMPLETED}} - Whether all workers completed (true/false) #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                              #}
-{#   <ralph-verdict>                                                          #}
-{#     <decision>accept|rework|spawn-new|collapse-to-single</decision>        #}
-{#     <reasoning>Why this decision was made</reasoning>                     #}
-{#     {% if decision == 'accept' %}                                          #}
-{#     <accepted-units>                                                      #}
-{#       <unit id="unit-1">...</unit>                                        #}
-{#     </accepted-units>                                                      #}
-{#     {% elif decision == 'rework' %}                                        #}
-{#     <rework-units>                                                         #}
-{#       <unit id="unit-1" feedback="Fix this">...</unit>                  #}
-{#     </rework-units>                                                        #}
-{#     {% elif decision == 'spawn-new' %}                                      #}
-{#     <new-units>                                                            #}
-{#       <unit>...</unit>                                                     #}
-{#     </new-units>                                                           #}
-{#     {% elif decision == 'collapse-to-single' %}                             #}
-{#     <remaining-units>                                                      #}
-{#       <unit id="unit-3">...</unit>                                         #}
-{#     </remaining-units>                                                    #}
-{#     <reason>Why collapse to single-agent</reason>                         #}
-{#     {% endif %}                                                            #}
-{#   </ralph-verdict>                                                         #}
+{#   JSON submitted via ralph_submit_artifact with artifact_type="verdict"     #}
 {# ============================================================================ #}
 
 You are a VERIFIER/RECONCILER agent reviewing parallel worker outputs.
@@ -66,45 +45,53 @@ For each work unit, evaluate:
 
 ## OUTPUT FORMAT
 
-Write your verdict to: `{{VERDICT_XML_PATH}}`
+Call `ralph_submit_artifact` with artifact_type="verdict" and content as a
+JSON string:
 
-Format:
-<ralph-verdict>
-  <decision>accept|rework|spawn-new|collapse-to-single</decision>
-  <reasoning>Detailed explanation of the decision</reasoning>
+For "accept" decision:
+{
+  "decision": "accept",
+  "reasoning": "Detailed explanation of the decision",
+  "accepted_units": [
+    {"id": "unit-1", "summary": "What was accomplished", "status": "complete"}
+  ]
+}
 
-  {% if decision == 'accept' %}
-  <accepted-units>
-    <unit id="unit-1">
-      <summary>What was accomplished</summary>
-      <status>complete</status>
-    </unit>
-  </accepted-units>
-  {% elif decision == 'rework' %}
-  <rework-units>
-    <unit id="unit-1">
-      <summary>What was accomplished</summary>
-      <feedback>Specific changes requested</feedback>
-    </unit>
-  </rework-units>
-  {% elif decision == 'spawn-new' %}
-  <new-units>
-    <unit id="new-1">
-      <description>New work unit description</description>
-      <edit-area>
-        <paths><path>file.rs</path></paths>
-        <directories><directory>src/</directory></directories>
-      </edit-area>
-      <dependencies/>
-    </unit>
-  </new-units>
-  {% elif decision == 'collapse-to-single' %}
-  <remaining-units>
-    <unit id="unit-3">Description of remaining work</unit>
-  </remaining-units>
-  <reason>Why single-agent is needed</reason>
-  {% endif %}
-</ralph-verdict>
+For "rework" decision:
+{
+  "decision": "rework",
+  "reasoning": "Detailed explanation of the decision",
+  "rework_units": [
+    {"id": "unit-1", "summary": "What was accomplished", "feedback": "Specific changes requested"}
+  ]
+}
+
+For "spawn-new" decision:
+{
+  "decision": "spawn-new",
+  "reasoning": "Detailed explanation of the decision",
+  "new_units": [
+    {
+      "id": "new-1",
+      "description": "New work unit description",
+      "edit_area": {
+        "paths": ["file.rs"],
+        "directories": ["src/"]
+      },
+      "dependencies": []
+    }
+  ]
+}
+
+For "collapse-to-single" decision:
+{
+  "decision": "collapse-to-single",
+  "reasoning": "Detailed explanation of the decision",
+  "remaining_units": [
+    {"id": "unit-3", "description": "Description of remaining work"}
+  ],
+  "reason": "Why single-agent is needed"
+}
 
 ## WORKER OUTPUTS SUMMARY
 
@@ -154,4 +141,4 @@ DECISION GUIDANCE
 - Parallel execution is no longer beneficial
 - Complexity exceeds parallelization benefit
 
-Output your verdict to `{{VERDICT_XML_PATH}}`.
+Submit your verdict via `ralph_submit_artifact`.

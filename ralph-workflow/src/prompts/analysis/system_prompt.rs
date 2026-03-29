@@ -159,7 +159,7 @@ mod tests {
         assert!(prompt.contains("Step 1: Add feature X"));
         assert!(prompt.contains("Step 2: Add tests"));
         assert!(prompt.contains("diff --git"));
-        assert!(prompt.contains("development_result.xml"));
+        assert!(prompt.contains("development_result"));
     }
 
     #[test]
@@ -245,15 +245,13 @@ mod tests {
         let continuation_prompt =
             generate_analysis_prompt(plan, diff, true, &workspace, session_caps);
 
-        assert!(prompt.contains("<ralph-development-result>"));
-        assert!(prompt.contains("<ralph-status>"));
-        assert!(prompt.contains("<ralph-summary>"));
+        assert!(prompt.contains("ralph_submit_artifact"));
+        assert!(prompt.contains("development_result"));
+        assert!(prompt.contains("status"));
         assert!(prompt.contains("completed|partial|failed"));
-        assert!(continuation_prompt.contains("development_continuation_result.xsd"));
         assert!(continuation_prompt.contains("partial|failed"));
-        assert!(!continuation_prompt.contains("<ralph-files-changed>"));
         assert!(
-            continuation_prompt.contains("comprehensive, detailed, ordered checklist"),
+            continuation_prompt.contains("comprehensive, detailed,"),
             "continuation prompt must demand a detailed recovery checklist; got: {continuation_prompt}"
         );
         assert!(
@@ -261,7 +259,7 @@ mod tests {
             "continuation prompt must tie the checklist to plan completion; got: {continuation_prompt}"
         );
         assert!(
-            continuation_prompt.contains("failed verification commands or checks"),
+            continuation_prompt.contains("failed verification"),
             "continuation prompt must include failed verification guidance; got: {continuation_prompt}"
         );
     }

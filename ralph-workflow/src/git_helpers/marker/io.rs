@@ -34,14 +34,6 @@ fn quarantine_and_create_marker(marker_path: &Path, repo_root: &Path) -> std::io
     create_marker_in_repo_root(repo_root)
 }
 
-fn marker_needs_creation(meta: Result<std::fs::Metadata, std::io::Error>) -> bool {
-    match meta {
-        Ok(meta) => !is_regular_file(&meta),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-        Err(_) => true,
-    }
-}
-
 fn open_marker_create_new(marker_path: &Path) -> std::io::Result<Option<std::fs::File>> {
     let open_res = {
         #[cfg(unix)]
@@ -80,8 +72,15 @@ fn flush_marker_file(marker_path: &Path) -> std::io::Result<()> {
 pub(crate) fn ensure_marker_exists(repo_root: &Path) -> std::io::Result<()> {
     let ralph_dir = ensure_ralph_git_dir(repo_root)?;
     let marker_path = marker_path_from_ralph_dir(&ralph_dir);
-    if marker_needs_creation(fs::symlink_metadata(&marker_path)) {
-        quarantine_and_create_marker(&marker_path, repo_root)?;
+    match fs::symlink_metadata(&marker_path) {
+        Ok(meta) if !is_regular_file(&meta) => {
+            quarantine_and_create_marker(&marker_path, repo_root)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            create_marker_in_repo_root(repo_root)?;
+        }
+        Err(e) => return Err(e),
+        Ok(_) => {}
     }
     flush_marker_file(&marker_path)
 }

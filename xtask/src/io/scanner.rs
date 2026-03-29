@@ -292,6 +292,16 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
             skip_comment_lines: false,
         },
     },
+    NativeScanCheck {
+        name: "audit-no-tempdir-src",
+        literals: &["TempDir"],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &["**/git_helpers/**", "main.rs", "**/tests/**", "tests.rs"],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
     // ── tests/integration_tests group ────────────────────────────────────────
     NativeScanCheck {
         name: "compliance-no-process-spawn",

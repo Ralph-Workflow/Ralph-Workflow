@@ -497,6 +497,21 @@ pub struct PipelineState {
     #[serde(default)]
     pub parallel_plan_validated: bool,
 
+    /// Whether the verifier has completed review of parallel worker outputs.
+    ///
+    /// Set to true when `VerifierCompleted` is reduced.
+    /// Used by the orchestration layer to determine the next action.
+    #[serde(default)]
+    pub parallel_verification_completed: bool,
+
+    /// Current iteration of the parallel verification loop.
+    ///
+    /// Incremented each time `ParallelWorkReworked` is reduced.
+    /// Used as a max-iteration guard to prevent infinite verification loops.
+    /// When this reaches the max verification iterations, the workflow falls back to single-agent.
+    #[serde(default)]
+    pub parallel_verification_iteration: u32,
+
     /// Reducer-owned prompt history for deterministic resume replay (RFC-007).
     ///
     /// Maps `PromptScopeKey::to_string()` keys to [`PromptHistoryEntry`] values

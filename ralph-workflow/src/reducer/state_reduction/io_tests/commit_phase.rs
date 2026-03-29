@@ -690,6 +690,53 @@ fn test_residual_files_found_invalid_pass_routes_to_awaiting_dev_fix() {
 }
 
 #[test]
+fn test_residual_files_found_over_budget_pass_routes_to_awaiting_dev_fix() {
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.max_commit_residual_retries = 1;
+    state.commit_residual_retry_pass = 2;
+
+    let event = PipelineEvent::residual_files_found(vec!["src/leftover.rs".to_string()], 3);
+    let new_state = reduce(state, event);
+
+    assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
+    assert_eq!(
+        new_state.failed_phase_for_recovery,
+        Some(PipelinePhase::CommitMessage)
+    );
+    assert_eq!(new_state.previous_phase, Some(PipelinePhase::CommitMessage));
+    assert_eq!(
+        new_state.commit_residual_retry_pass, 2,
+        "over-budget pass must preserve current retry state for deterministic diagnosis"
+    );
+    assert!(
+        new_state.commit_residual_files.is_empty(),
+        "over-budget pass must not silently carry forward residual files"
+    );
+}
+
+#[test]
+fn test_residual_files_none_over_budget_pass_routes_to_awaiting_dev_fix() {
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.max_commit_residual_retries = 1;
+    state.commit_residual_retry_pass = 3;
+
+    let new_state = reduce(state, PipelineEvent::residual_files_none());
+
+    assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
+    assert_eq!(
+        new_state.failed_phase_for_recovery,
+        Some(PipelinePhase::CommitMessage)
+    );
+    assert_eq!(new_state.previous_phase, Some(PipelinePhase::CommitMessage));
+    assert_eq!(
+        new_state.commit_residual_retry_pass, 3,
+        "invariant violation must preserve offending retry pass for investigation"
+    );
+}
+
+#[test]
 fn test_commit_residual_files_survives_generation_started() {
     // commit_residual_files is carry-forward state: it must NOT be cleared when
     // GenerationStarted resets the commit phase for a new cycle.

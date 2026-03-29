@@ -6,7 +6,7 @@
 //!
 //! See `docs/architecture/effect-system.md` for the design overview.
 
-use crate::agents::session::ParallelPlan;
+use crate::agents::session::{ParallelPlan, WorkerReconciliationMetadata};
 use crate::agents::{AgentDrain, AgentRole};
 use serde::{Deserialize, Serialize};
 
@@ -421,6 +421,25 @@ pub enum Effect {
     DispatchParallelWorkers {
         /// The parallel plan containing work units to dispatch.
         plan: ParallelPlan,
+    },
+
+    /// Invoke the verifier agent to review parallel worker outputs.
+    ///
+    /// Spawns a verifier agent (read-only, same as Analysis drain) with all worker results.
+    /// The verifier reviews combined output and produces a `ReconciliationDecision`:
+    /// - `Accept`: Work is complete, proceed to next phase
+    /// - `Rework`: Send specific units back to workers
+    /// - `SpawnNew`: Create new work units for additional work
+    /// - `CollapseToSingle`: Remaining work is interdependent, fall back to single agent
+    ///
+    /// Emits `VerifierCompleted { decision }` event with the verifier's decision.
+    InvokeParallelVerifier {
+        /// The original parallel plan for context.
+        plan: ParallelPlan,
+        /// Metadata from all completed workers for the verifier to review.
+        worker_results: Vec<WorkerReconciliationMetadata>,
+        /// Current iteration of the verification loop (for max-iteration guard).
+        iteration: u32,
     },
 
     // ========================================================================

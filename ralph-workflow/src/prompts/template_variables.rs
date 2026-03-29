@@ -121,6 +121,10 @@ pub fn default_caps_and_flags_for_drain(
 /// | `POLICY_ALLOW_SHELL` | `policy_flags.contains(AllowShell)` | Controls shell execution instructions |
 /// | `POLICY_ALLOW_GIT_WRITE` | `policy_flags.contains(AllowGitWrite)` | Controls git write permission text |
 /// | `CAPABILITY_SUMMARY` | Formatted list | Human-readable capability block |
+/// | `MCP_TOOLS_LIST` | Comma-separated MCP tool names | Available MCP tools for RFC-009 |
+/// | `HAS_MCP_WRITE` | `capabilities.contains(WorkspaceWriteTracked|WorkspaceWriteEphemeral)` | MCP write tools available |
+/// | `HAS_MCP_EXEC` | `capabilities.contains(ProcessExecBounded)` | MCP exec tool available |
+/// | `HAS_MCP_GIT` | `capabilities.contains(GitStatusRead|GitDiffRead|GitWrite)` | MCP git tools available |
 #[must_use]
 pub fn capability_template_variables(
     capabilities: &CapabilitySet,
@@ -158,6 +162,24 @@ pub fn capability_template_variables(
         ),
     ];
 
+    // MCP tool variables for RFC-009
+    // HAS_MCP_WRITE is true only when WorkspaceWriteTracked is present.
+    // WorkspaceWriteEphemeral allows writing to .agent/ but not tracked source files,
+    // so it doesn't enable ralph_write_file in the MCP tools list.
+    let has_mcp_write = capabilities.contains(Capability::WorkspaceWriteTracked);
+    let has_mcp_exec = capabilities.contains(Capability::ProcessExecBounded);
+    let has_mcp_git = capabilities.contains(Capability::GitStatusRead)
+        || capabilities.contains(Capability::GitDiffRead)
+        || capabilities.contains(Capability::GitWrite);
+
+    let mcp_tools_list = format_mcp_tools_list(capabilities);
+    let mcp_vars = [
+        ("MCP_TOOLS_LIST".to_string(), mcp_tools_list),
+        ("HAS_MCP_WRITE".to_string(), bool_to_string(has_mcp_write)),
+        ("HAS_MCP_EXEC".to_string(), bool_to_string(has_mcp_exec)),
+        ("HAS_MCP_GIT".to_string(), bool_to_string(has_mcp_git)),
+    ];
+
     // Capability summary for human-readable display
     let summary_var = (
         "CAPABILITY_SUMMARY".to_string(),
@@ -169,6 +191,7 @@ pub fn capability_template_variables(
         capability_vars
             .into_iter()
             .chain(policy_vars)
+            .chain(mcp_vars)
             .chain(std::iter::once(summary_var)),
     )
 }
@@ -233,6 +256,62 @@ fn format_capability_summary(capabilities: &CapabilitySet, policy_flags: &Policy
         "Capabilities:\n{}\n\nPolicy Flags:\n{}",
         caps_section, flags_section
     )
+}
+
+/// Format the list of available MCP tools based on session capabilities.
+///
+/// This generates the comma-separated list of MCP tool names that the
+/// agent is allowed to use in this session, for display in the
+/// `_mcp_tools.txt` partial.
+fn format_mcp_tools_list(capabilities: &CapabilitySet) -> String {
+    // Base tools always available
+    let base_tools = vec![
+        "ralph_read_file",
+        "ralph_list_directory",
+        "ralph_search_files",
+        "ralph_submit_artifact",
+        "ralph_report_progress",
+        "ralph_read_env",
+        "ralph_declare_complete",
+    ];
+
+    // Conditionally available tools built via functional chain
+    let git_read_tools: Vec<&str> = if capabilities.contains(Capability::GitStatusRead) {
+        vec!["ralph_git_status", "ralph_git_log", "ralph_git_show"]
+    } else {
+        vec![]
+    };
+    let git_diff_tool: Vec<&str> = if capabilities.contains(Capability::GitDiffRead) {
+        vec!["ralph_git_diff"]
+    } else {
+        vec![]
+    };
+    let write_tool: Vec<&str> = if capabilities.contains(Capability::WorkspaceWriteTracked) {
+        vec!["ralph_write_file"]
+    } else {
+        vec![]
+    };
+    let git_write_tool: Vec<&str> = if capabilities.contains(Capability::GitWrite) {
+        vec!["ralph_git_commit"]
+    } else {
+        vec![]
+    };
+    let exec_tool: Vec<&str> = if capabilities.contains(Capability::ProcessExecBounded) {
+        vec!["ralph_exec_command"]
+    } else {
+        vec![]
+    };
+
+    let all_tools: Vec<&str> = base_tools
+        .into_iter()
+        .chain(git_read_tools)
+        .chain(git_diff_tool)
+        .chain(write_tool)
+        .chain(git_write_tool)
+        .chain(exec_tool)
+        .collect();
+
+    all_tools.join(", ")
 }
 
 #[cfg(test)]
@@ -433,5 +512,177 @@ mod tests {
                 drain
             );
         }
+    }
+
+    #[test]
+    fn test_mcp_tools_list_for_development_session() {
+        let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
+        let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Development);
+        let vars = capability_template_variables(&caps, &flags);
+
+        let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
+        // Development has write, exec, git read
+        assert!(mcp_list.contains("ralph_read_file"));
+        assert!(mcp_list.contains("ralph_write_file"));
+        assert!(mcp_list.contains("ralph_exec_command"));
+        assert!(mcp_list.contains("ralph_git_status"));
+        assert!(mcp_list.contains("ralph_git_diff"));
+        // Commit-specific tools should not be present
+        assert!(!mcp_list.contains("ralph_git_commit"));
+    }
+
+    #[test]
+    fn test_mcp_tools_list_for_planning_session() {
+        let caps = CapabilitySet::defaults_for_drain(SessionDrain::Planning);
+        let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Planning);
+        let vars = capability_template_variables(&caps, &flags);
+
+        let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
+        // Planning has read-only, git read, no write, no exec
+        assert!(mcp_list.contains("ralph_read_file"));
+        assert!(mcp_list.contains("ralph_git_status"));
+        assert!(mcp_list.contains("ralph_git_diff"));
+        assert!(mcp_list.contains("ralph_git_log"));
+        assert!(mcp_list.contains("ralph_git_show"));
+        // No write_file (only WorkspaceWriteEphemeral, not WorkspaceWriteTracked)
+        assert!(!mcp_list.contains("ralph_write_file"));
+        // No exec
+        assert!(!mcp_list.contains("ralph_exec_command"));
+        // No git commit (no GitWrite)
+        assert!(!mcp_list.contains("ralph_git_commit"));
+    }
+
+    #[test]
+    fn test_mcp_tools_list_for_commit_session() {
+        let caps = CapabilitySet::defaults_for_drain(SessionDrain::Commit);
+        let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Commit);
+        let vars = capability_template_variables(&caps, &flags);
+
+        let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
+        // Commit has git write, git read, no write_file, no exec
+        assert!(mcp_list.contains("ralph_git_commit"));
+        assert!(mcp_list.contains("ralph_git_status"));
+        assert!(mcp_list.contains("ralph_git_diff"));
+        assert!(mcp_list.contains("ralph_git_log"));
+        assert!(mcp_list.contains("ralph_git_show"));
+        // No write_file (only WorkspaceWriteEphemeral, not WorkspaceWriteTracked)
+        assert!(!mcp_list.contains("ralph_write_file"));
+        // No exec
+        assert!(!mcp_list.contains("ralph_exec_command"));
+    }
+
+    #[test]
+    fn test_has_mcp_write_for_different_drains() {
+        // Development and Fix have WorkspaceWriteTracked
+        for drain in [SessionDrain::Development, SessionDrain::Fix] {
+            let caps = CapabilitySet::defaults_for_drain(drain);
+            let flags = PolicyFlagSet::defaults_for_drain(drain);
+            let vars = capability_template_variables(&caps, &flags);
+            assert_eq!(
+                vars.get("HAS_MCP_WRITE").unwrap(),
+                "true",
+                " {:?} should have HAS_MCP_WRITE",
+                drain
+            );
+        }
+
+        // Planning, Review, Analysis, Commit only have WorkspaceWriteEphemeral (not WorkspaceWriteTracked)
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Review,
+            SessionDrain::Analysis,
+            SessionDrain::Commit,
+        ] {
+            let caps = CapabilitySet::defaults_for_drain(drain);
+            let flags = PolicyFlagSet::defaults_for_drain(drain);
+            let vars = capability_template_variables(&caps, &flags);
+            assert_eq!(
+                vars.get("HAS_MCP_WRITE").unwrap(),
+                "",
+                " {:?} should NOT have HAS_MCP_WRITE",
+                drain
+            );
+        }
+    }
+
+    #[test]
+    fn test_has_mcp_exec_for_different_drains() {
+        // Development and Fix have ProcessExecBounded
+        for drain in [SessionDrain::Development, SessionDrain::Fix] {
+            let caps = CapabilitySet::defaults_for_drain(drain);
+            let flags = PolicyFlagSet::defaults_for_drain(drain);
+            let vars = capability_template_variables(&caps, &flags);
+            assert_eq!(
+                vars.get("HAS_MCP_EXEC").unwrap(),
+                "true",
+                " {:?} should have HAS_MCP_EXEC",
+                drain
+            );
+        }
+
+        // Planning, Review, Analysis, Commit don't have ProcessExecBounded
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Review,
+            SessionDrain::Analysis,
+            SessionDrain::Commit,
+        ] {
+            let caps = CapabilitySet::defaults_for_drain(drain);
+            let flags = PolicyFlagSet::defaults_for_drain(drain);
+            let vars = capability_template_variables(&caps, &flags);
+            assert_eq!(
+                vars.get("HAS_MCP_EXEC").unwrap(),
+                "",
+                " {:?} should NOT have HAS_MCP_EXEC",
+                drain
+            );
+        }
+    }
+
+    #[test]
+    fn test_has_mcp_git_for_different_drains() {
+        // All 6 drain types have git capabilities:
+        // - Planning/Analysis/Review: GitStatusRead, GitDiffRead
+        // - Development/Fix: GitStatusRead, GitDiffRead
+        // - Commit: GitStatusRead, GitDiffRead, GitWrite
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Development,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            let caps = CapabilitySet::defaults_for_drain(drain);
+            let flags = PolicyFlagSet::defaults_for_drain(drain);
+            let vars = capability_template_variables(&caps, &flags);
+            assert_eq!(
+                vars.get("HAS_MCP_GIT").unwrap(),
+                "true",
+                " {:?} should have HAS_MCP_GIT",
+                drain
+            );
+        }
+    }
+
+    #[test]
+    fn test_format_mcp_tools_list_contains_all_required_tools() {
+        let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
+        let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Development);
+        let vars = capability_template_variables(&caps, &flags);
+
+        let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
+        // Base tools always present
+        assert!(mcp_list.contains("ralph_submit_artifact"));
+        assert!(mcp_list.contains("ralph_report_progress"));
+        assert!(mcp_list.contains("ralph_declare_complete"));
+        assert!(mcp_list.contains("ralph_read_env"));
+        // Development has tracked write and exec
+        assert!(mcp_list.contains("ralph_write_file"));
+        assert!(mcp_list.contains("ralph_exec_command"));
+        // Development has git read but not git write
+        assert!(mcp_list.contains("ralph_git_status"));
+        assert!(mcp_list.contains("ralph_git_diff"));
+        assert!(!mcp_list.contains("ralph_git_commit"));
     }
 }

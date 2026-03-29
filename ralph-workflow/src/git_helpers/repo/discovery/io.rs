@@ -248,7 +248,17 @@ pub(crate) fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> std::io::Result<boo
 ///
 /// Returns error if the operation fails.
 pub fn require_git_repo() -> std::io::Result<()> {
-    git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = std::env::current_dir()?;
+    require_git_repo_at(&repo_root)
+}
+
+/// Check if we're in a git repository using explicit repo root.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn require_git_repo_at(repo_root: &Path) -> std::io::Result<()> {
+    git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     Ok(())
 }
 
@@ -258,7 +268,17 @@ pub fn require_git_repo() -> std::io::Result<()> {
 ///
 /// Returns error if the operation fails.
 pub fn get_repo_root() -> std::io::Result<PathBuf> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = std::env::current_dir()?;
+    get_repo_root_at(&repo_root)
+}
+
+/// Get the git repository root using explicit repo root.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn get_repo_root_at(repo_root: &Path) -> std::io::Result<PathBuf> {
+    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     repo.workdir().map(PathBuf::from).ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "No workdir for repository")
     })

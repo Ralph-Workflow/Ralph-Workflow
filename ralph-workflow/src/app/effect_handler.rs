@@ -114,29 +114,69 @@ impl RealAppEffectHandler {
         }
     }
 
-    fn execute_git_get_repo_root() -> AppEffectResult {
-        match crate::git_helpers::get_repo_root() {
+    fn execute_git_get_repo_root(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get repository root: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::get_repo_root_in_repo(workspace_root) {
             Ok(root) => AppEffectResult::Path(root),
             Err(error) => AppEffectResult::Error(format!("Failed to get repository root: {error}")),
         }
     }
 
-    fn execute_git_get_head_oid() -> AppEffectResult {
-        match crate::git_helpers::get_current_head_oid() {
+    fn execute_git_get_head_oid(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get HEAD OID: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::get_current_head_oid_at(workspace_root) {
             Ok(oid) => AppEffectResult::String(oid),
             Err(error) => AppEffectResult::Error(format!("Failed to get HEAD OID: {error}")),
         }
     }
 
-    fn execute_git_diff() -> AppEffectResult {
-        match crate::git_helpers::git_diff() {
+    fn execute_git_diff(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get git diff: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::git_diff_in_repo(workspace_root) {
             Ok(diff) => AppEffectResult::String(diff),
             Err(error) => AppEffectResult::Error(format!("Failed to get git diff: {error}")),
         }
     }
 
-    fn execute_git_diff_from(start_oid: &str) -> AppEffectResult {
-        match crate::git_helpers::git_diff_from(start_oid) {
+    fn execute_git_diff_from(&self, start_oid: &str) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get diff from start commit: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::git_diff_from_in_repo(workspace_root, start_oid) {
             Ok(diff) => AppEffectResult::String(diff),
             Err(error) => {
                 AppEffectResult::Error(format!("Failed to get diff from '{start_oid}': {error}"))
@@ -144,8 +184,18 @@ impl RealAppEffectHandler {
         }
     }
 
-    fn execute_git_diff_from_start() -> AppEffectResult {
-        match crate::git_helpers::get_git_diff_from_start() {
+    fn execute_git_diff_from_start(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get diff from start commit: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::get_git_diff_from_start(workspace_root) {
             Ok(diff) => AppEffectResult::String(diff),
             Err(error) => {
                 AppEffectResult::Error(format!("Failed to get diff from start commit: {error}"))
@@ -153,41 +203,95 @@ impl RealAppEffectHandler {
         }
     }
 
-    fn execute_git_snapshot() -> AppEffectResult {
-        match crate::git_helpers::git_snapshot() {
+    fn execute_git_snapshot(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot create git snapshot: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::git_snapshot_in_repo(workspace_root) {
             Ok(snapshot) => AppEffectResult::String(snapshot),
             Err(error) => AppEffectResult::Error(format!("Failed to create git snapshot: {error}")),
         }
     }
 
-    fn execute_git_add_all() -> AppEffectResult {
-        match crate::git_helpers::git_add_all() {
+    fn execute_git_add_all(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot stage all changes: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)` \
+                     when git add effects are needed."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::git_add_all_in_repo(workspace_root) {
             Ok(staged) => AppEffectResult::Bool(staged),
             Err(error) => AppEffectResult::Error(format!("Failed to stage all changes: {error}")),
         }
     }
 
     fn execute_git_commit(
+        &self,
         message: &str,
         user_name: Option<&str>,
         user_email: Option<&str>,
     ) -> AppEffectResult {
-        match crate::git_helpers::git_commit(message, user_name, user_email, None, None) {
+        let workspace_root = self.workspace_root.as_ref().expect(
+            "Cannot execute git commit: workspace root is not set. \
+             RealAppEffectHandler must be constructed with `with_workspace_root(root)` \
+             when git commit effects are needed.",
+        );
+        match crate::git_helpers::git_commit_in_repo(
+            workspace_root,
+            message,
+            user_name,
+            user_email,
+            None,
+            None,
+        ) {
             Ok(Some(oid)) => AppEffectResult::Commit(CommitResult::Success(oid.to_string())),
             Ok(None) => AppEffectResult::Commit(CommitResult::NoChanges),
             Err(error) => AppEffectResult::Error(format!("Failed to create commit: {error}")),
         }
     }
 
-    fn execute_git_save_start_commit() -> AppEffectResult {
-        match crate::git_helpers::save_start_commit() {
+    fn execute_git_save_start_commit(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot save start commit: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::save_start_commit(workspace_root) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!("Failed to save start commit: {error}")),
         }
     }
 
-    fn execute_git_reset_start_commit() -> AppEffectResult {
-        match crate::git_helpers::reset_start_commit() {
+    fn execute_git_reset_start_commit(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot reset start commit: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::reset_start_commit(workspace_root) {
             Ok(result) => AppEffectResult::String(result.oid),
             Err(error) => AppEffectResult::Error(format!("Failed to reset start commit: {error}")),
         }
@@ -199,8 +303,18 @@ impl RealAppEffectHandler {
         )
     }
 
-    fn execute_git_get_conflicted_files() -> AppEffectResult {
-        match crate::git_helpers::get_conflicted_files() {
+    fn execute_git_get_conflicted_files(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get conflicted files: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::get_conflicted_files_at(workspace_root) {
             Ok(files) => AppEffectResult::StringList(files),
             Err(error) => {
                 AppEffectResult::Error(format!("Failed to get conflicted files: {error}"))
@@ -220,15 +334,35 @@ impl RealAppEffectHandler {
         )
     }
 
-    fn execute_git_get_default_branch() -> AppEffectResult {
-        match crate::git_helpers::get_default_branch() {
+    fn execute_git_get_default_branch(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot get default branch: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::get_default_branch_at(workspace_root) {
             Ok(branch) => AppEffectResult::String(branch),
             Err(error) => AppEffectResult::Error(format!("Failed to get default branch: {error}")),
         }
     }
 
-    fn execute_git_is_main_branch() -> AppEffectResult {
-        match crate::git_helpers::is_main_or_master_branch() {
+    fn execute_git_is_main_branch(&self) -> AppEffectResult {
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot check if main branch: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)`."
+                        .to_string(),
+                );
+            }
+        };
+        match crate::git_helpers::is_main_or_master_branch_at(workspace_root) {
             Ok(is_main) => AppEffectResult::Bool(is_main),
             Err(error) => AppEffectResult::Error(format!("Failed to check branch: {error}")),
         }
@@ -271,28 +405,28 @@ impl AppEffectHandler for RealAppEffectHandler {
                 self.execute_set_read_only(&path, readonly)
             }
             AppEffect::GitRequireRepo => Self::execute_git_require_repo(),
-            AppEffect::GitGetRepoRoot => Self::execute_git_get_repo_root(),
-            AppEffect::GitGetHeadOid => Self::execute_git_get_head_oid(),
-            AppEffect::GitDiff => Self::execute_git_diff(),
-            AppEffect::GitDiffFrom { start_oid } => Self::execute_git_diff_from(&start_oid),
-            AppEffect::GitDiffFromStart => Self::execute_git_diff_from_start(),
-            AppEffect::GitSnapshot => Self::execute_git_snapshot(),
-            AppEffect::GitAddAll => Self::execute_git_add_all(),
+            AppEffect::GitGetRepoRoot => self.execute_git_get_repo_root(),
+            AppEffect::GitGetHeadOid => self.execute_git_get_head_oid(),
+            AppEffect::GitDiff => self.execute_git_diff(),
+            AppEffect::GitDiffFrom { start_oid } => self.execute_git_diff_from(&start_oid),
+            AppEffect::GitDiffFromStart => self.execute_git_diff_from_start(),
+            AppEffect::GitSnapshot => self.execute_git_snapshot(),
+            AppEffect::GitAddAll => self.execute_git_add_all(),
             AppEffect::GitCommit {
                 message,
                 user_name,
                 user_email,
-            } => Self::execute_git_commit(&message, user_name.as_deref(), user_email.as_deref()),
-            AppEffect::GitSaveStartCommit => Self::execute_git_save_start_commit(),
-            AppEffect::GitResetStartCommit => Self::execute_git_reset_start_commit(),
+            } => self.execute_git_commit(&message, user_name.as_deref(), user_email.as_deref()),
+            AppEffect::GitSaveStartCommit => self.execute_git_save_start_commit(),
+            AppEffect::GitResetStartCommit => self.execute_git_reset_start_commit(),
             AppEffect::GitRebaseOnto { upstream_branch } => {
                 Self::execute_git_rebase_onto(upstream_branch)
             }
-            AppEffect::GitGetConflictedFiles => Self::execute_git_get_conflicted_files(),
+            AppEffect::GitGetConflictedFiles => self.execute_git_get_conflicted_files(),
             AppEffect::GitContinueRebase => Self::execute_git_continue_rebase(),
             AppEffect::GitAbortRebase => Self::execute_git_abort_rebase(),
-            AppEffect::GitGetDefaultBranch => Self::execute_git_get_default_branch(),
-            AppEffect::GitIsMainBranch => Self::execute_git_is_main_branch(),
+            AppEffect::GitGetDefaultBranch => self.execute_git_get_default_branch(),
+            AppEffect::GitIsMainBranch => self.execute_git_is_main_branch(),
             AppEffect::GetEnvVar { name } => Self::execute_get_env_var(&name),
             AppEffect::SetEnvVar { name, value } => Self::execute_set_env_var(&name, &value),
             AppEffect::LogInfo { message: _ }

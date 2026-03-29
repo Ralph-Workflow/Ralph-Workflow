@@ -151,103 +151,20 @@ fn finish_pipeline(
         config.isolation_mode,
     )?;
 
-    if !exit_after_cleanup_due_to_sigint {
-        crate::app::finalization::finalize_pipeline(
-            agent_phase_guard,
-            crate::app::finalization::FinalizeContext {
-                logger: &ctx.logger,
-                colors: ctx.colors,
-                config,
-                timer,
-                workspace: &*ctx.workspace,
-            },
-            &loop_result.final_state,
-            prompt_monitor.take(),
-        );
-    }
+    crate::app::finalization::finalize_pipeline(
+        agent_phase_guard,
+        crate::app::finalization::FinalizeContext {
+            logger: &ctx.logger,
+            colors: ctx.colors,
+            config,
+            timer,
+            workspace: &*ctx.workspace,
+        },
+        &loop_result.final_state,
+        prompt_monitor.take(),
+    );
 
     if exit_after_cleanup_due_to_sigint {
-        let repo_root = ctx.workspace.root();
-        crate::git_helpers::end_agent_phase_in_repo(repo_root);
-        crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-
-        let hook_uninstall_ok = match crate::git_helpers::uninstall_hooks_in_repo(
-            repo_root,
-            &ctx.logger,
-        ) {
-            Ok(()) => true,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                ctx.logger.warn(&format!(
-                    "Skipping hook uninstall during SIGINT cleanup (repo not present on filesystem): {err}"
-                ));
-                true
-            }
-            Err(err) => {
-                ctx.logger.warn(&format!(
-                    "Failed to uninstall Ralph hooks during SIGINT cleanup: {err}"
-                ));
-                false
-            }
-        };
-
-        let wrapper_remaining = crate::git_helpers::verify_wrapper_cleaned(repo_root);
-        let wrapper_ok = wrapper_remaining.is_empty();
-        if !wrapper_ok {
-            ctx.logger.warn(&format!(
-                "Wrapper artifacts still present after SIGINT cleanup: {}",
-                wrapper_remaining.join(", ")
-            ));
-        }
-
-        let hooks_ok = match crate::git_helpers::verify_hooks_removed(repo_root) {
-            Ok(remaining) => {
-                if !remaining.is_empty() {
-                    ctx.logger.warn(&format!(
-                        "Ralph hooks still present after SIGINT cleanup: {}",
-                        remaining.join(", ")
-                    ));
-                    false
-                } else {
-                    true
-                }
-            }
-            Err(err) => {
-                if err.kind() == std::io::ErrorKind::NotFound {
-                    ctx.logger.warn(&format!(
-                        "Skipping hook cleanup verification during SIGINT cleanup (repo not present on filesystem): {err}"
-                    ));
-                    true
-                } else {
-                    ctx.logger.warn(&format!(
-                        "Failed to verify hook cleanup during SIGINT cleanup: {err}"
-                    ));
-                    false
-                }
-            }
-        };
-
-        crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
-        let ralph_dir_ok = if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
-            let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
-            ctx.logger.warn(&format!(
-                "Ralph git dir still present after SIGINT cleanup: {}",
-                remaining.join(", ")
-            ));
-            false
-        } else {
-            true
-        };
-
-        let cleanup_ok = hook_uninstall_ok && wrapper_ok && hooks_ok && ralph_dir_ok;
-
-        if cleanup_ok {
-            crate::git_helpers::clear_agent_phase_global_state();
-            agent_phase_guard.disarm();
-        } else {
-            ctx.logger.warn(
-                "SIGINT cleanup incomplete; leaving AgentPhaseGuard armed for Drop best-effort",
-            );
-        }
         crate::interrupt::request_exit_130_after_run();
     }
 

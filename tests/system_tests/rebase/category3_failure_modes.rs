@@ -15,7 +15,10 @@
 //! - Tests are deterministic and isolated
 
 use tempfile::TempDir;
-use test_helpers::{commit_all, init_git_repo, with_temp_cwd, write_file};
+use test_helpers::{
+    assert_project_head_unchanged, capture_project_head_oid, commit_all, init_git_repo,
+    with_temp_cwd, write_file,
+};
 
 use crate::common::mock_executor_for_git_success;
 use crate::test_timeout::with_default_timeout;
@@ -188,6 +191,7 @@ fn rebase_validation_failure_not_recoverable() {
 #[serial]
 fn rebase_successful_rebase_has_no_validation_error() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
             let default_branch = get_default_branch_name(&repo);
@@ -213,6 +217,7 @@ fn rebase_successful_rebase_has_no_validation_error() {
 
             // Any outcome is acceptable here; this test verifies no validation error path.
             let _ = result;
+            assert_project_head_unchanged(&head_before);
         });
     });
 }

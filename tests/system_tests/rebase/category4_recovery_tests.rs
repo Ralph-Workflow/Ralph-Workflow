@@ -19,7 +19,10 @@
 
 use std::fs;
 use tempfile::TempDir;
-use test_helpers::{commit_all, init_git_repo, with_temp_cwd, write_file};
+use test_helpers::{
+    assert_project_head_unchanged, capture_project_head_oid, commit_all, init_git_repo,
+    with_temp_cwd, write_file,
+};
 
 use crate::common::mock_executor_for_git_success;
 use crate::test_timeout::with_default_timeout;
@@ -131,6 +134,7 @@ fn rebase_inconsistent_state_has_correct_category() {
 #[serial]
 fn rebase_checkpoint_survives_process_termination() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|_dir| {
             // Create a checkpoint
             let checkpoint = RebaseCheckpoint::new("main".to_string())
@@ -149,6 +153,7 @@ fn rebase_checkpoint_survives_process_termination() {
 
             assert_eq!(loaded.phase, RebasePhase::ConflictDetected);
             assert_eq!(loaded.conflicted_files, vec!["src/lib.rs".to_string()]);
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -161,6 +166,7 @@ fn rebase_checkpoint_survives_process_termination() {
 #[serial]
 fn rebase_detects_stale_lock_files() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
 
@@ -172,6 +178,7 @@ fn rebase_detects_stale_lock_files() {
             // Cleanup function should handle stale locks
             let result = ralph_workflow::git_helpers::cleanup_stale_rebase_state();
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -184,6 +191,7 @@ fn rebase_detects_stale_lock_files() {
 #[serial]
 fn rebase_detects_corrupted_reapplydirectory() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
 
@@ -197,6 +205,7 @@ fn rebase_detects_corrupted_reapplydirectory() {
             // Cleanup function should handle corrupted state
             let result = ralph_workflow::git_helpers::cleanup_stale_rebase_state();
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -209,6 +218,7 @@ fn rebase_detects_corrupted_reapplydirectory() {
 #[serial]
 fn rebase_detects_corrupted_rebase_mergedirectory() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
 
@@ -223,6 +233,7 @@ fn rebase_detects_corrupted_rebase_mergedirectory() {
             // Cleanup function should handle corrupted state
             let result = ralph_workflow::git_helpers::cleanup_stale_rebase_state();
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -235,6 +246,7 @@ fn rebase_detects_corrupted_rebase_mergedirectory() {
 #[serial]
 fn rebase_handles_missing_orig_head() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
             let default_branch = get_default_branch_name(&repo);
@@ -252,6 +264,7 @@ fn rebase_handles_missing_orig_head() {
 
             // Result should be Ok (either succeeds or reports error gracefully)
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -264,6 +277,7 @@ fn rebase_handles_missing_orig_head() {
 #[serial]
 fn rebase_handles_missing_head_ref() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
             let executor = mock_executor_for_git_success();
@@ -280,6 +294,7 @@ fn rebase_handles_missing_head_ref() {
             } else {
                 // May fail with clear error
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -292,6 +307,7 @@ fn rebase_handles_missing_head_ref() {
 #[serial]
 fn rebase_checkpoint_corruption_recovery() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|_dir| {
             // Create and save a valid checkpoint
             let checkpoint = RebaseCheckpoint::new("main".to_string())
@@ -312,6 +328,7 @@ fn rebase_checkpoint_corruption_recovery() {
                 // Should have loaded from backup
                 assert_eq!(loaded.upstream_branch, "main");
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -324,6 +341,7 @@ fn rebase_checkpoint_corruption_recovery() {
 #[serial]
 fn rebase_handles_orphaned_temp_files() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
 
@@ -336,6 +354,7 @@ fn rebase_handles_orphaned_temp_files() {
             // Cleanup should handle orphaned files
             let result = ralph_workflow::git_helpers::cleanup_stale_rebase_state();
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -355,6 +374,7 @@ fn rebase_handles_reflog_disabled() {
         // 2. Should fall back to checkpoint system
         // 3. May need manual intervention if checkpoint is also unavailable
 
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
             let executor = mock_executor_for_git_success();
@@ -366,6 +386,7 @@ fn rebase_handles_reflog_disabled() {
             // System should still work without reflog
             let result = rebase_onto("main", executor.as_ref());
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -378,6 +399,7 @@ fn rebase_handles_reflog_disabled() {
 #[serial]
 fn rebase_detects_sparse_checkout_conflicts() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
             let default_branch = get_default_branch_name(&repo);
@@ -398,6 +420,7 @@ fn rebase_detects_sparse_checkout_conflicts() {
             // System should handle sparse checkout gracefully
             let result = rebase_onto(&default_branch, executor.as_ref());
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -410,6 +433,7 @@ fn rebase_detects_sparse_checkout_conflicts() {
 #[serial]
 fn rebase_detects_detached_head_after_interruption() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
             let default_branch = get_default_branch_name(&repo);
@@ -440,6 +464,7 @@ fn rebase_detects_detached_head_after_interruption() {
 
             // Clean up
             let _ = ralph_workflow::git_helpers::abort_rebase(executor.as_ref());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }

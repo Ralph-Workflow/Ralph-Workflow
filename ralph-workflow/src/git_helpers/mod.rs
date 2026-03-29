@@ -93,9 +93,8 @@ pub(crate) fn get_hooks_dir_in_repo(
     repo::get_hooks_dir_from(repo_root)
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 pub use branch::get_default_branch_at;
-pub use branch::{get_default_branch, is_main_or_master_branch};
+pub use branch::{get_default_branch, is_main_or_master_branch, is_main_or_master_branch_at};
 #[cfg(any(test, feature = "test-utils"))]
 pub use hooks::{file_contains_marker_with_workspace, verify_hook_integrity_with_workspace};
 pub use hooks::{
@@ -104,8 +103,9 @@ pub use hooks::{
 };
 pub use hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
 pub use rebase::{
-    abort_rebase, continue_rebase, get_conflict_markers_for_file, get_conflicted_files,
-    rebase_in_progress, rebase_onto, RebaseResult,
+    abort_rebase, abort_rebase_at, continue_rebase, continue_rebase_at,
+    get_conflict_markers_for_file, get_conflicted_files, get_conflicted_files_at,
+    rebase_in_progress, rebase_in_progress_at, rebase_onto, rebase_onto_at, RebaseResult,
 };
 
 // Types that are part of the public API but not used in binary
@@ -114,9 +114,11 @@ pub use rebase::{CleanupResult, ConcurrentOperation};
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use rebase::{
-    attempt_automatic_recovery, cleanup_stale_rebase_state, detect_concurrent_git_operations,
-    is_dirty_tree_cli, rebase_in_progress_cli, validate_rebase_preconditions,
-    verify_rebase_completed,
+    attempt_automatic_recovery, attempt_automatic_recovery_at, cleanup_stale_rebase_state,
+    cleanup_stale_rebase_state_at, detect_concurrent_git_operations,
+    detect_concurrent_git_operations_at, is_dirty_tree_cli, rebase_in_progress_cli,
+    validate_git_state, validate_git_state_at, validate_rebase_preconditions,
+    validate_rebase_preconditions_at, verify_rebase_completed, verify_rebase_completed_at,
 };
 
 pub use rebase::RebaseErrorKind;
@@ -128,11 +130,12 @@ pub use rebase_checkpoint::RebasePhase;
 pub use rebase_state_machine::{RebaseLock, RebaseStateMachine};
 pub use repo::{
     ensure_local_excludes, get_git_diff_for_review_with_workspace, get_git_diff_from_start,
-    get_git_diff_from_start_with_workspace, get_repo_root, git_add_all, git_add_all_in_repo,
-    git_add_specific_in_repo, git_commit, git_commit_in_repo, git_diff, git_diff_from,
-    git_diff_in_repo, git_snapshot, git_snapshot_in_repo, parse_git_status_paths, require_git_repo,
-    resolve_protection_scope, resolve_protection_scope_from, CommitResultFallback,
-    DiffReviewContent, DiffTruncationLevel, ProtectionScope,
+    get_git_diff_from_start_with_workspace, get_repo_root, get_repo_root_at, get_repo_root_in_repo,
+    git_add_all_in_repo, git_add_specific_in_repo, git_commit_in_repo, git_diff, git_diff_from,
+    git_diff_from_in_repo, git_diff_in_repo, git_snapshot, git_snapshot_in_repo,
+    parse_git_status_paths, require_git_repo, require_git_repo_at, resolve_protection_scope,
+    resolve_protection_scope_from, CommitResultFallback, DiffReviewContent, DiffTruncationLevel,
+    ProtectionScope,
 };
 
 #[cfg(any(test, feature = "test-utils"))]

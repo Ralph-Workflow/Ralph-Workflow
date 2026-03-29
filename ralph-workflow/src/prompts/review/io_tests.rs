@@ -58,6 +58,6 @@ fn test_prompt_review_xsd_retry_with_context() {
         SessionCapabilities::new(&capabilities, &policy_flags),
     );
     assert!(result.contains("XSD error"));
-    assert!(result.contains(".agent/tmp/issues.xml"));
-    assert!(result.contains(".agent/tmp/issues.xsd"));
+    assert!(result.contains("ralph_submit_artifact"));
+    assert!(result.contains("VALIDATION FAILED"));
 }

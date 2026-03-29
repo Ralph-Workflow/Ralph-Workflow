@@ -196,3 +196,180 @@ fn end_to_end_recovery_loop_with_multiple_attempts() {
         );
     });
 }
+
+#[test]
+fn sequential_failures_escalate_deterministically_across_recovery_boundaries() {
+    use ralph_workflow::reducer::event::{ErrorEvent, PromptInputEvent};
+
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(5, 0));
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Planning);
+        state.iteration = 3;
+
+        for attempt in 1..=3 {
+            state = reduce(
+                state,
+                PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixTriggered {
+                    failed_phase: PipelinePhase::Planning,
+                    failed_role: AgentRole::Developer,
+                }),
+            );
+            state = reduce(
+                state,
+                PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixCompleted {
+                    success: false,
+                    summary: Some(format!("attempt {attempt}")),
+                }),
+            );
+
+            assert_eq!(state.dev_fix_attempt_count, attempt);
+            assert_eq!(state.recovery_escalation_level, 1);
+            assert_eq!(state.recovery_epoch, 0);
+        }
+
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 1,
+                attempt_count: 3,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+        assert_eq!(state.phase, PipelinePhase::Planning);
+        assert_eq!(state.recovery_epoch, 0);
+
+        state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::HandlerError {
+                phase: PipelinePhase::Planning,
+                error: ErrorEvent::AgentChainExhausted {
+                    role: AgentRole::Developer,
+                    phase: PipelinePhase::Planning,
+                    cycle: 1,
+                },
+            }),
+        );
+        assert_eq!(state.phase, PipelinePhase::AwaitingDevFix);
+        assert_eq!(state.dev_fix_attempt_count, 3);
+        assert_eq!(state.recovery_escalation_level, 1);
+        assert_eq!(state.recovery_epoch, 0);
+
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixTriggered {
+                failed_phase: PipelinePhase::Planning,
+                failed_role: AgentRole::Developer,
+            }),
+        );
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixCompleted {
+                success: false,
+                summary: Some("attempt 4".to_string()),
+            }),
+        );
+        assert_eq!(state.dev_fix_attempt_count, 4);
+        assert_eq!(state.recovery_escalation_level, 2);
+        assert_eq!(state.recovery_epoch, 0);
+    });
+}
+
+#[test]
+fn sequential_level_3_and_4_recovery_increments_epoch_without_counter_corruption() {
+    use ralph_workflow::reducer::event::{ErrorEvent, PromptInputEvent};
+
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(5, 0));
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Planning);
+        state.iteration = 3;
+        state.dev_fix_attempt_count = 6;
+        state.recovery_escalation_level = 2;
+        state.recovery_epoch = 10;
+
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixTriggered {
+                failed_phase: PipelinePhase::Planning,
+                failed_role: AgentRole::Developer,
+            }),
+        );
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixCompleted {
+                success: false,
+                summary: Some("attempt 7".to_string()),
+            }),
+        );
+        assert_eq!(state.dev_fix_attempt_count, 7);
+        assert_eq!(state.recovery_escalation_level, 3);
+        assert_eq!(state.recovery_epoch, 10);
+
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 3,
+                attempt_count: 7,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+        assert_eq!(state.phase, PipelinePhase::Planning);
+        assert_eq!(state.iteration, 2);
+        assert_eq!(state.dev_fix_attempt_count, 7);
+        assert_eq!(state.recovery_escalation_level, 3);
+        assert_eq!(state.recovery_epoch, 11);
+
+        state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::HandlerError {
+                phase: PipelinePhase::Planning,
+                error: ErrorEvent::AgentChainExhausted {
+                    role: AgentRole::Developer,
+                    phase: PipelinePhase::Planning,
+                    cycle: 2,
+                },
+            }),
+        );
+        assert_eq!(state.phase, PipelinePhase::AwaitingDevFix);
+        assert_eq!(state.dev_fix_attempt_count, 7);
+        assert_eq!(state.recovery_escalation_level, 3);
+        assert_eq!(state.recovery_epoch, 11);
+
+        for expected_attempt in 8..=10 {
+            state = reduce(
+                state,
+                PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixTriggered {
+                    failed_phase: PipelinePhase::Planning,
+                    failed_role: AgentRole::Developer,
+                }),
+            );
+            state = reduce(
+                state,
+                PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixCompleted {
+                    success: false,
+                    summary: Some(format!("attempt {expected_attempt}")),
+                }),
+            );
+            assert_eq!(state.dev_fix_attempt_count, expected_attempt);
+            let expected_level = if expected_attempt <= 9 { 3 } else { 4 };
+            assert_eq!(state.recovery_escalation_level, expected_level);
+            assert_eq!(state.recovery_epoch, 11);
+        }
+
+        state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 4,
+                attempt_count: 10,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+
+        assert_eq!(state.phase, PipelinePhase::Planning);
+        assert_eq!(state.iteration, 0);
+        assert_eq!(state.dev_fix_attempt_count, 10);
+        assert_eq!(state.recovery_escalation_level, 4);
+        assert_eq!(state.recovery_epoch, 12);
+    });
+}

@@ -114,6 +114,20 @@ Ralph uses a few structural patterns that are important when you add new behavio
 
 Category routing keeps each reducer module exhaustively matched within its own domain.
 
+#### Sanctioned cross-phase top-level lifecycle events
+
+`PipelineEvent` also contains a **small frozen set** of top-level lifecycle facts that are intentionally cross-phase and not owned by a single category enum:
+
+- `ContextCleaned`
+- `CheckpointSaved`
+- `FinalStateValidationCompleted`
+- `PromptPermissionsRestored`
+- `LoopRecoveryTriggered`
+
+These are policy exceptions, not a general extension point. They exist to preserve reducer-visible lifecycle boundaries (cleanup, checkpoint accounting, finalization handoff, prompt permission restoration, loop recovery) without hiding control flow in handlers.
+
+Do **not** add new top-level lifecycle events by default. Prefer category events unless the event is genuinely cross-phase and meets the same exception criteria.
+
 ### UIEvent is separate from PipelineEvent
 
 Effect handlers may emit UI-only events for rendering/logging. These do not affect state, do not go into checkpoints, and must not be required for correctness.
@@ -381,29 +395,62 @@ effect → Capability Gate → [denied: CapabilityDenied event] OR [approved: ex
 
 ### Ralph-Internal Effects
 
-Some effects are Ralph's own orchestration and bypass the capability gate entirely:
+Some effects are Ralph's own orchestration and bypass the capability gate entirely. These are classified by `is_ralph_internal_effect(effect) -> bool`:
+
+**Lifecycle and persistence:**
 - `InitializeAgentChain` — runs before session exists
 - `SaveCheckpoint` — Ralph's own persistence
 - `EmitCompletionMarkerAndTerminate` — Ralph's lifecycle
-- `CleanupContext`, `CleanupRequiredFiles` — Ralph's cleanup
-- `EnsureGitignoreEntries` — Ralph's setup
-- `BackoffWait` — Ralph's retry logic
+- `ValidateFinalState` — Ralph's final validation
+
+**Cleanup operations:**
+- `CleanupContext` — Ralph's cleanup
+- `CleanupContinuationContext` — continuation cleanup
+- `CleanupRequiredFiles` — required files cleanup
+
+**Prompt permissions:**
+- `RestorePromptPermissions` — restore prompt file permissions
+- `LockPromptPermissions` — lock prompt file permissions
+
+**Context writes:**
+- `WriteContinuationContext` — write continuation context
+- `WriteTimeoutContext` — write timeout context for session-less agent retries
+
+**Retry and backoff:**
+- `BackoffWait` — Ralph's retry backoff logic
+- `TriggerDevFixFlow` — trigger dev-fix recovery flow
+
+**Recovery effects:**
 - `TriggerLoopRecovery`, `AttemptRecovery`, `EmitRecoveryReset`, `EmitRecoverySuccess` — recovery effects
 
-These are classified by `is_ralph_internal_effect(effect) -> bool`.
+**Setup operations:**
+- `EnsureGitignoreEntries` — Ralph's setup
+
+**Git operations (internal):**
+- `ConfigureGitAuth` — configure git authentication
+- `PushToRemote` — push to remote
+- `CreatePullRequest` — create pull request
+
+**Archive operations:**
+- `ArchivePlanningXml`, `ArchiveDevelopmentXml`, `ArchiveReviewIssuesXml`, `ArchiveFixResultXml`, `ArchiveCommitXml` — archive artifacts to `.agent/` directory (Ralph's internal ephemeral storage)
+
+**Phase 4 parallel worker effects:**
+- `EvaluateParallelPlan`, `DispatchParallelWorkers` — parallel worker orchestration
 
 ### Drain Capability Profiles
 
-Each drain type has a specific capability profile:
+Each drain type has a specific capability profile per RFC-009 V1:
 
-| Drain | Capabilities | Notes |
-|-------|-------------|-------|
-| Planning | `WorkspaceRead`, `ArtifactSubmit`, `GitStatusRead`, `GitDiffRead` | Read-only, no exec |
-| Analysis | `WorkspaceRead`, `ArtifactSubmit`, `GitStatusRead`, `GitDiffRead` | Read-only, no exec |
-| Review | `WorkspaceRead`, `ArtifactSubmit`, `GitStatusRead`, `GitDiffRead` | Read-only, no exec |
-| Development | All except restricted ones | Full dev capabilities |
-| Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `ArtifactSubmit`, `ProcessExecBounded` | No ephemeral writes |
-| Commit | `WorkspaceRead`, `GitStatusRead`, `GitDiffRead`, `GitWrite` | Git-write only |
+| Drain | Capabilities | Policy Flags |
+|-------|-------------|--------------|
+| Planning | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Analysis | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Review | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Development | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
+| Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
+| Commit | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `GitWrite`, `ArtifactSubmit`, `RunReportProgress` | `AllowGitWrite` |
+
+**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, XML archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
 
 ### Audit Trail Integration
 

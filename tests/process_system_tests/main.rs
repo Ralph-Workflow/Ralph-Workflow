@@ -24,7 +24,7 @@
 //!
 //! These tests require real OS processes, real file permissions, or real PATH
 //! discovery, but do NOT use libgit2. They are intentionally separated from the
-//! `git2-system-tests` binary so that the libgit2 global
+//! `system_tests` binary so that the libgit2 global
 //! reference-counter constraint does not force serialization here.
 //!
 //! # Parallelism

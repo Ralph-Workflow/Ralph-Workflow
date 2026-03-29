@@ -21,7 +21,7 @@
     clippy::manual_flatten,
     clippy::needless_collect
 )]
-//! git2-system-tests: real git repository operations.
+//! system_tests: real git repository operations.
 //!
 //! ALL tests in this binary use `git2::Repository` or `init_git_repo()`, which
 //! wraps libgit2 — a C library with a global reference counter. Concurrent drops
@@ -51,7 +51,7 @@
 //! # Running System Tests
 //!
 //! ```bash
-//! cargo test -p ralph-workflow-tests --test git2-system-tests
+//! cargo test -p ralph-workflow-tests --test system_tests
 //! ```
 //!
 //! # When to Use System Tests

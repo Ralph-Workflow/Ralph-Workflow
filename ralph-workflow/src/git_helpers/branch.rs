@@ -14,6 +14,9 @@ use std::path::Path;
 
 use super::git2_to_io_error;
 
+// Boundary module for environment access.
+include!("branch/io.rs");
+
 /// Check if the current branch is "main" or "master".
 ///
 /// This is used to determine if we're on a protected branch where
@@ -28,7 +31,29 @@ use super::git2_to_io_error;
 ///
 /// Returns error if the operation fails.
 pub fn is_main_or_master_branch() -> std::io::Result<bool> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = get_current_dir()?;
+    is_main_or_master_branch_at(&repo_root)
+}
+
+/// Check if the current branch is "main" or "master" using an explicit repository path.
+///
+/// This is used to determine if we're on a protected branch where
+/// rebasing should be skipped.
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if on main/master, `Ok(false)` if on another branch,
+/// or an error if the branch cannot be determined.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn is_main_or_master_branch_at(repo_root: &Path) -> std::io::Result<bool> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     is_main_or_master_branch_impl(&repo)
 }
 
@@ -67,8 +92,8 @@ fn is_main_or_master_branch_impl(repo: &git2::Repository) -> std::io::Result<boo
 ///
 /// Returns error if the operation fails.
 pub fn get_default_branch() -> std::io::Result<String> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    Ok(get_default_branch_impl(&repo))
+    let repo_root = get_current_dir()?;
+    get_default_branch_at(&repo_root)
 }
 
 /// Get the default branch name from a specific repository path.

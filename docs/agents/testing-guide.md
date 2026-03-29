@@ -8,7 +8,7 @@ Read before writing or modifying any test.
 ## Test Pyramid
 
 ```
-         ▲ git2-system-tests (tests/system_tests/)
+         ▲ system_tests (tests/system_tests/)
          │ Real git, real filesystem, libgit2 — serial (#[serial] required)
          │ NOT in CI — run manually only
          │
@@ -32,7 +32,7 @@ Read before writing or modifying any test.
 | Unit | `ralph-workflow --lib` | parallel | yes | `cargo test -p ralph-workflow --lib --all-features` |
 | Integration | `integration_tests` | parallel | yes | `cargo test -p ralph-workflow-tests --test integration_tests` |
 | Process system | `process-system-tests` | parallel | **no** | `cargo test -p ralph-workflow-tests --test process-system-tests` |
-| git2 system | `git2-system-tests` | serial (libgit2) | **no** | `cargo test -p ralph-workflow-tests --test git2-system-tests` |
+| git2 system | `system_tests` | serial (libgit2) | **no** | `cargo test -p ralph-workflow-tests --test system_tests` |
 
 ---
 
@@ -82,7 +82,7 @@ When documenting or reviewing frontend tests, describe the repository as using A
 ## Parallelism Rules
 
 **All tests are parallel by default.**
-The only justified exception is the `git2-system-tests` binary, where `#[serial]` is required on every test because concurrent `git2::Repository` drops from multiple threads trigger thread-unsafe libgit2 global shutdown (SIGABRT).
+The only justified exception is the `system_tests` binary, where `#[serial]` is required on every test because concurrent `git2::Repository` drops from multiple threads trigger thread-unsafe libgit2 global shutdown (SIGABRT).
 
 | Location | `#[serial]` | Reason |
 |----------|-------------|--------|
@@ -496,7 +496,7 @@ A change is complete only when **all** of the following hold:
 
 - [ ] New behavior is covered by a test that was **red before** the production change.
 - [ ] Existing behavior regressions are prevented by focused, targeted tests.
-- [ ] All tests pass in **parallel mode** (no new `#[serial]` outside `git2-system-tests`).
+- [ ] All tests pass in **parallel mode** (no new `#[serial]` outside `system_tests`).
 - [ ] No new flaky tests introduced; quarantined tests include issue URLs.
 - [ ] Test names describe observable behavior, not implementation details.
 - [ ] AAA structure is clear; setup does not exceed ~10 lines without a named helper.

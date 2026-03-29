@@ -2,6 +2,11 @@
 // File stem is `io` — recognized as boundary module by forbid_mut_binding and
 // forbid_mutating_receiver_methods lints.
 
+/// Get the current working directory (boundary function for environment access).
+pub(super) fn get_current_dir() -> std::io::Result<std::path::PathBuf> {
+    std::env::current_dir()
+}
+
 /// Count commits reachable from `head_commit_id` but not from `start_commit_id`,
 /// up to a maximum of `limit`.
 ///

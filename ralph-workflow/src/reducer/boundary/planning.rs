@@ -43,6 +43,24 @@ use std::path::Path;
 
 const PLANNING_PROMPT_PATH: &str = ".agent/tmp/planning_prompt.txt";
 
+fn planning_json_artifact_present(ctx: &PhaseContext<'_>) -> bool {
+    !matches!(ctx.workspace.read_artifact_json("plan"), Ok(None))
+}
+
+fn extract_planning_xml_from_disk(
+    ctx: &PhaseContext<'_>,
+    iteration: u32,
+    invalid_output_attempts: u32,
+) -> EffectResult {
+    match ctx.workspace.read(Path::new(xml_paths::PLAN_XML)) {
+        Ok(_) => EffectResult::event(PipelineEvent::planning_xml_extracted(iteration)),
+        Err(_) => EffectResult::event(PipelineEvent::planning_xml_missing(
+            iteration,
+            invalid_output_attempts,
+        )),
+    }
+}
+
 /// Convert `ParallelPlanElements` (from XSD parsing) to `AgentParallelPlan` (for state).
 fn convert_parallel_plan_elements(
     elements: &crate::files::llm_output_extraction::xsd_validation_plan::ParallelPlanElements,
@@ -374,16 +392,14 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
-        let plan_xml = Path::new(xml_paths::PLAN_XML);
-        let content = ctx.workspace.read(plan_xml);
-
-        match content {
-            Ok(_) => EffectResult::event(PipelineEvent::planning_xml_extracted(iteration)),
-            Err(_) => EffectResult::event(PipelineEvent::planning_xml_missing(
-                iteration,
-                self.state.continuation.invalid_output_attempts,
-            )),
+        if planning_json_artifact_present(ctx) {
+            return EffectResult::event(PipelineEvent::planning_xml_extracted(iteration));
         }
+        extract_planning_xml_from_disk(
+            ctx,
+            iteration,
+            self.state.continuation.invalid_output_attempts,
+        )
     }
 
     pub(in crate::reducer::boundary) fn validate_planning_xml(
@@ -391,37 +407,82 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> Result<EffectResult> {
-        let Ok(plan_xml) = ctx.workspace.read(Path::new(xml_paths::PLAN_XML)) else {
-            return Ok(EffectResult::event(
-                PipelineEvent::planning_output_validation_failed(
-                    iteration,
-                    self.state.continuation.invalid_output_attempts,
-                ),
-            ));
-        };
+        let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
+        if let Some(result) =
+            self.try_validate_planning_from_json(ctx, iteration, invalid_output_attempts)
+        {
+            return Ok(result);
+        }
+        Ok(self.validate_planning_from_xml(ctx, iteration, invalid_output_attempts))
+    }
 
-        // Validate the XML and get structured elements
-        let elements = match validate_plan_xml(&plan_xml) {
-            Ok(elements) => elements,
-            Err(_) => {
-                return Ok(EffectResult::event(
-                    PipelineEvent::planning_output_validation_failed(
-                        iteration,
-                        self.state.continuation.invalid_output_attempts,
-                    ),
-                ));
+    fn validate_planning_json_envelope(
+        &self,
+        envelope: &crate::workspace::ArtifactEnvelope,
+        iteration: u32,
+        planning_failed: EffectResult,
+    ) -> EffectResult {
+        match super::json_artifact::plan_elements_from_envelope(envelope) {
+            Ok(elements) => {
+                let display = serde_json::to_string_pretty(&envelope.content)
+                    .unwrap_or_else(|_| "{}".to_string());
+                self.build_planning_validation_result(&elements, iteration, display)
             }
+            Err(_) => planning_failed,
+        }
+    }
+
+    fn try_validate_planning_from_json(
+        &self,
+        ctx: &PhaseContext<'_>,
+        iteration: u32,
+        invalid_output_attempts: u32,
+    ) -> Option<EffectResult> {
+        let planning_failed = EffectResult::event(
+            PipelineEvent::planning_output_validation_failed(iteration, invalid_output_attempts),
+        );
+        match ctx.workspace.read_artifact_json("plan") {
+            Ok(Some(envelope)) => {
+                Some(self.validate_planning_json_envelope(&envelope, iteration, planning_failed))
+            }
+            Ok(None) => None,
+            Err(_) => Some(planning_failed),
+        }
+    }
+
+    fn validate_planning_from_xml(
+        &self,
+        ctx: &PhaseContext<'_>,
+        iteration: u32,
+        invalid_output_attempts: u32,
+    ) -> EffectResult {
+        let planning_failed = EffectResult::event(
+            PipelineEvent::planning_output_validation_failed(iteration, invalid_output_attempts),
+        );
+        let Ok(plan_xml) = ctx.workspace.read(Path::new(xml_paths::PLAN_XML)) else {
+            return planning_failed;
         };
+        match validate_plan_xml(&plan_xml) {
+            Ok(elements) => self.build_planning_validation_result(&elements, iteration, plan_xml),
+            Err(_) => planning_failed,
+        }
+    }
 
-        // Convert PlanElements to markdown
-        let markdown = format_plan_as_markdown(&elements);
+    /// Build the `EffectResult` for a successfully validated plan, regardless of whether
+    /// it originated from JSON or XML.
+    fn build_planning_validation_result(
+        &self,
+        elements: &crate::files::llm_output_extraction::xsd_validation_plan::PlanElements,
+        iteration: u32,
+        display_content: String,
+    ) -> EffectResult {
+        let markdown = format_plan_as_markdown(elements);
 
-        // Start with the planning_xml_validated event
         let mut result = EffectResult::with_ui(
             PipelineEvent::planning_xml_validated(iteration, true, Some(markdown)),
             vec![UIEvent::XmlOutput {
                 xml_type: XmlOutputType::DevelopmentPlan,
-                content: plan_xml,
+                content: display_content,
                 context: Some(XmlOutputContext {
                     iteration: Some(iteration),
                     pass: None,
@@ -430,7 +491,6 @@ impl MainEffectHandler {
             }],
         );
 
-        // If parallel plan is present, emit ParallelPlanProduced event as additional event
         if let Some(parallel_elements) = &elements.parallel_plan {
             let parallel_plan = convert_parallel_plan_elements(parallel_elements);
             result = result.with_additional_event(PipelineEvent::Agent(
@@ -440,7 +500,7 @@ impl MainEffectHandler {
             ));
         }
 
-        Ok(result)
+        result
     }
 
     pub(in crate::reducer::boundary) fn write_planning_markdown(
@@ -473,6 +533,10 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> EffectResult {
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::PLAN_XML));
+        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+            ctx.workspace,
+            "plan",
+        );
         EffectResult::event(PipelineEvent::planning_xml_archived(iteration))
     }
 

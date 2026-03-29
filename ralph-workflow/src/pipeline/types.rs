@@ -81,6 +81,9 @@ impl Drop for AgentPhaseGuard<'_> {
             return;
         }
 
+        // Kill any remaining agent processes. This is the panic/early-return safety net.
+        crate::executor::process_registry::kill_all_registered_raw();
+
         // Restore PROMPT.md write permissions FIRST (most important for user recovery).
         // This is best-effort - we don't want to panic in drop().
         // Even if this run didn't lock PROMPT.md, a prior crashed run may have left it

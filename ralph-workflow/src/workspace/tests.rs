@@ -307,3 +307,109 @@ fn test_memory_workspace_write_atomic_overwrites() {
 
     assert_eq!(ws.read(Path::new("existing.txt")).unwrap(), "new content");
 }
+
+// =========================================================================
+// JSON artifact persistence tests
+// =========================================================================
+
+#[test]
+fn test_json_artifact_path() {
+    let ws = WorkspaceFs::new(PathBuf::from("/test/repo"));
+    assert_eq!(
+        ws.json_artifact_path("plan"),
+        PathBuf::from("/test/repo/.agent/tmp/plan.json")
+    );
+    assert_eq!(
+        ws.json_artifact_path("development_result"),
+        PathBuf::from("/test/repo/.agent/tmp/development_result.json")
+    );
+}
+
+#[test]
+fn test_partial_json_artifact_path() {
+    let ws = WorkspaceFs::new(PathBuf::from("/test/repo"));
+    assert_eq!(
+        ws.partial_json_artifact_path("plan"),
+        PathBuf::from("/test/repo/.agent/tmp/plan.partial.json")
+    );
+}
+
+#[test]
+fn artifact_envelope_round_trip() {
+    let ws = MemoryWorkspace::new_test();
+
+    let envelope = ArtifactEnvelope::new(
+        "plan",
+        serde_json::json!({"steps": [{"title": "Step 1"}]}),
+        "2026-03-25T10:00:00Z",
+    );
+
+    ws.write_artifact_json(&envelope).unwrap();
+
+    let read_back = ws.read_artifact_json("plan").unwrap();
+    assert!(read_back.is_some());
+    let read_back = read_back.unwrap();
+    assert_eq!(read_back.artifact_type, "plan");
+    assert_eq!(read_back.version, "1.0");
+    assert_eq!(read_back.validated_at, "2026-03-25T10:00:00Z");
+    assert!(!read_back.partial);
+    assert!(read_back.errors.is_empty());
+    assert_eq!(read_back.content, serde_json::json!({"steps": [{"title": "Step 1"}]}));
+}
+
+#[test]
+fn partial_artifact_persists_with_errors() {
+    use crate::mcp_server::types::ValidationError;
+
+    let ws = MemoryWorkspace::new_test();
+
+    let envelope = ArtifactEnvelope::new_partial(
+        "plan",
+        serde_json::json!({"steps": []}),
+        "2026-03-25T10:00:00Z",
+        vec![ValidationError::constraint_violation(
+            "steps",
+            "minItems: 1",
+            "0 items",
+            vec!["Add at least 1 step to the steps array".to_string()],
+        )],
+    );
+
+    ws.write_partial_artifact_json(&envelope).unwrap();
+
+    // Verify partial file was written
+    let path = Path::new(".agent/tmp/plan.partial.json");
+    assert!(ws.exists(path));
+
+    let content = ws.read(path).unwrap();
+    let parsed: ArtifactEnvelope = serde_json::from_str(&content).unwrap();
+    assert!(parsed.partial);
+    assert_eq!(parsed.errors.len(), 1);
+    assert_eq!(
+        parsed.errors[0].code,
+        crate::mcp_server::types::ErrorCode::ConstraintViolation
+    );
+}
+
+#[test]
+fn read_artifact_json_returns_none_when_missing() {
+    let ws = MemoryWorkspace::new_test();
+    let result = ws.read_artifact_json("plan").unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn artifact_envelope_serializes_correctly() {
+    let envelope = ArtifactEnvelope::new(
+        "development_result",
+        serde_json::json!({"status": "completed", "summary": "Done"}),
+        "2026-03-25T11:00:00Z",
+    );
+
+    let json = serde_json::to_value(&envelope).unwrap();
+    assert_eq!(json["artifact_type"], "development_result");
+    assert_eq!(json["version"], "1.0");
+    assert_eq!(json["partial"], false);
+    // errors should be omitted when empty (skip_serializing_if)
+    assert!(json.get("errors").is_none());
+}

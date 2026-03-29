@@ -21,7 +21,7 @@ use ralph_workflow::agents::{AgentDrain, AgentRole};
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase};
 use ralph_workflow::reducer::orchestration::determine_next_effect;
-use ralph_workflow::reducer::state::{AgentChainState, PipelineState};
+use ralph_workflow::reducer::state::{AgentChainState, CommitState, PipelineState};
 use ralph_workflow::reducer::state_reduction::reduce;
 
 /// Composes reducer and orchestrator: processes event through reducer, then derives effect.
@@ -459,6 +459,78 @@ fn review_state_with_fix_multi_agent_chain() -> PipelineState {
     }
 }
 
+fn planning_state_after_agent_success_without_invoked_flag() -> PipelineState {
+    let mut planning_chain = AgentChainState::initial().with_agents(
+        vec![
+            "primary-planner".to_string(),
+            "fallback-planner".to_string(),
+        ],
+        vec![vec![], vec![]],
+        AgentRole::Developer,
+    );
+    planning_chain.current_drain = AgentDrain::Planning;
+
+    PipelineState {
+        phase: PipelinePhase::Planning,
+        iteration: 1,
+        total_iterations: 3,
+        context_cleaned: true,
+        gitignore_entries_ensured: true,
+        planning_prompt_prepared_iteration: Some(1),
+        planning_required_files_cleaned_iteration: Some(1),
+        agent_chain: planning_chain,
+        continuation: ralph_workflow::reducer::state::ContinuationState::default()
+            .update_loop_detection_counters("InvokePlanningAgent".to_string()),
+        ..with_locked_prompt_permissions(PipelineState::initial(3, 2))
+    }
+}
+
+fn review_state_after_agent_success_without_invoked_flag() -> PipelineState {
+    PipelineState {
+        phase: PipelinePhase::Review,
+        iteration: 1,
+        total_iterations: 3,
+        reviewer_pass: 1,
+        total_reviewer_passes: 2,
+        review_context_prepared_pass: Some(1),
+        review_prompt_prepared_pass: Some(1),
+        review_required_files_cleaned_pass: Some(1),
+        agent_chain: AgentChainState::initial().with_agents(
+            vec![
+                "primary-reviewer".to_string(),
+                "fallback-reviewer".to_string(),
+            ],
+            vec![vec![], vec![]],
+            AgentRole::Reviewer,
+        ),
+        continuation: ralph_workflow::reducer::state::ContinuationState::default()
+            .update_loop_detection_counters("InvokeReviewAgent".to_string()),
+        ..with_locked_prompt_permissions(PipelineState::initial(3, 2))
+    }
+}
+
+fn commit_state_after_agent_success_without_invoked_flag() -> PipelineState {
+    PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        iteration: 1,
+        total_iterations: 3,
+        commit: CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_prompt_prepared: true,
+        commit_required_files_cleaned: true,
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["primary-commit".to_string(), "fallback-commit".to_string()],
+            vec![vec![], vec![]],
+            AgentRole::Commit,
+        ),
+        continuation: ralph_workflow::reducer::state::ContinuationState::default()
+            .update_loop_detection_counters("InvokeCommitAgent".to_string()),
+        ..with_locked_prompt_permissions(PipelineState::initial(3, 2))
+    }
+}
+
 /// Test 7: Fix analysis - successful fix agent transitions to Analysis drain.
 ///
 /// After a fix agent succeeds, the pipeline should transition to Analysis drain
@@ -683,5 +755,95 @@ fn test_fix_analysis_continuation_budget_exhaustion() {
                 );
             }
         }
+    });
+}
+
+#[test]
+fn test_fix_continuation_after_analysis_prepares_continuation_prompt() {
+    with_default_timeout(|| {
+        let analysis_chain = AgentChainState::initial().with_agents(
+            vec![
+                "analysis-primary".to_string(),
+                "analysis-fallback".to_string(),
+            ],
+            vec![vec![], vec![]],
+            AgentRole::Analysis,
+        );
+
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 1,
+            total_reviewer_passes: 2,
+            agent_chain: analysis_chain,
+            fix_validated_outcome: Some(ralph_workflow::reducer::state::FixValidatedOutcome {
+                pass: 1,
+                status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
+                summary: Some("analysis found remaining issues".to_string()),
+            }),
+            ..with_locked_prompt_permissions(PipelineState::initial(3, 2))
+        };
+
+        let (new_state, effect) =
+            compose_reduce_orchestrate(state, PipelineEvent::fix_outcome_applied(1));
+
+        assert!(
+            new_state.agent_chain.agents.is_empty(),
+            "Fix continuation should clear currently loaded analysis chain before orchestration"
+        );
+
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: ralph_workflow::reducer::state::PromptMode::Continuation,
+                }
+            ),
+            "Fix continuation after analysis must prepare continuation prompt, got {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_successful_invocation_is_treated_as_complete_across_planning_review_and_commit() {
+    with_default_timeout(|| {
+        let planning_state = planning_state_after_agent_success_without_invoked_flag();
+        let (_, planning_effect) = compose_reduce_orchestrate(
+            planning_state,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
+                role: AgentRole::Developer,
+                agent: "primary-planner".into(),
+            }),
+        );
+        assert!(
+            matches!(planning_effect, Effect::ExtractPlanningXml { iteration: 1 }),
+            "Planning success should continue to XML extraction, got {planning_effect:?}"
+        );
+
+        let review_state = review_state_after_agent_success_without_invoked_flag();
+        let (_, review_effect) = compose_reduce_orchestrate(
+            review_state,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
+                role: AgentRole::Reviewer,
+                agent: "primary-reviewer".into(),
+            }),
+        );
+        assert!(
+            matches!(review_effect, Effect::ExtractReviewIssuesXml { pass: 1 }),
+            "Review success should continue to XML extraction, got {review_effect:?}"
+        );
+
+        let commit_state = commit_state_after_agent_success_without_invoked_flag();
+        let (_, commit_effect) = compose_reduce_orchestrate(
+            commit_state,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
+                role: AgentRole::Commit,
+                agent: "primary-commit".into(),
+            }),
+        );
+        assert!(
+            matches!(commit_effect, Effect::ExtractCommitXml),
+            "Commit success should continue to XML extraction, got {commit_effect:?}"
+        );
     });
 }

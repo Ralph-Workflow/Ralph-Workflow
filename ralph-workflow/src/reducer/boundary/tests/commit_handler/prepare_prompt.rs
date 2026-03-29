@@ -142,7 +142,7 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
         .read(std::path::Path::new(".agent/tmp/commit_prompt.txt"))
         .expect("commit_prompt.txt should be written");
     assert!(
-        prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"),
+        prompt.contains("VALIDATION FAILED - FIX JSON SUBMISSION ONLY"),
         "Expected commit_xsd_retry prompt template, got: {prompt}"
     );
     assert!(
@@ -226,7 +226,7 @@ fn test_prepare_commit_prompt_xsd_retry_does_not_replay_stale_prompt_when_diff_c
         .read(std::path::Path::new(".agent/tmp/commit_prompt.txt"))
         .expect("commit_prompt.txt should be written");
     assert_ne!(prompt, "OLD PROMPT");
-    assert!(prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"));
+    assert!(prompt.contains("VALIDATION FAILED - FIX JSON SUBMISSION ONLY"));
 }
 
 #[test]

@@ -57,11 +57,11 @@ fn test_prompt_plan() {
     // Agents receive content directly without knowing the source file
     assert!(!result.contains("PROMPT.md"));
     assert!(!result.contains("NEVER read, write, or delete this file"));
-    // Plan is now returned as XML output format
+    // Plan is now returned as JSON via MCP
     assert!(result.contains("PLANNING MODE"));
-    assert!(result.contains("<ralph-implementation-steps>"));
-    assert!(result.contains("<ralph-critical-files>"));
-    assert!(result.contains("<ralph-verification-strategy>"));
+    assert!(result.contains("ralph_submit_artifact"));
+    assert!(result.contains("critical_files"));
+    assert!(result.contains("verification_strategy"));
 
     // Ensure strict read-only constraints are present (Claude Code alignment)
     assert!(result.contains("READ-ONLY"));
@@ -72,11 +72,11 @@ fn test_prompt_plan() {
     assert!(result.contains("PHASE 2: EXPLORATION"));
     assert!(result.contains("PHASE 3: DESIGN"));
     assert!(result.contains("PHASE 4: REVIEW"));
-    assert!(result.contains("PHASE 5: WRITE STRUCTURED PLAN"));
+    assert!(result.contains("PHASE 5: SUBMIT STRUCTURED PLAN"));
 
-    // Ensure XML output format is specified
-    assert!(result.contains("<ralph-plan>"));
-    assert!(result.contains("<ralph-summary>"));
+    // Ensure JSON output format is specified
+    assert!(result.contains("artifact_type"));
+    assert!(result.contains("\"summary\""));
 }
 
 #[test]
@@ -91,8 +91,8 @@ fn test_prompt_plan_with_content() {
     // Should still have the planning structure
     assert!(result.contains("PLANNING MODE"));
     assert!(result.contains("PHASE 1: UNDERSTANDING"));
-    // Should have XML output format
-    assert!(result.contains("<ralph-plan>"));
+    // Should have JSON output format via MCP
+    assert!(result.contains("ralph_submit_artifact"));
 }
 
 #[test]
@@ -177,17 +177,17 @@ fn test_prompt_plan_with_context() {
     let workspace = MemoryWorkspace::new_test();
     let result = prompt_plan_with_context(&context, None, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
     assert!(result.contains("PLANNING MODE"));
-    assert!(result.contains("<ralph-implementation-steps>"));
-    assert!(result.contains("<ralph-critical-files>"));
-    assert!(result.contains("<ralph-verification-strategy>"));
+    assert!(result.contains("ralph_submit_artifact"));
+    assert!(result.contains("critical_files"));
+    assert!(result.contains("verification_strategy"));
     assert!(result.contains("READ-ONLY"));
     assert!(result.contains("STRICTLY PROHIBITED"));
     assert!(result.contains("PHASE 1: UNDERSTANDING"));
     assert!(result.contains("PHASE 2: EXPLORATION"));
     assert!(result.contains("PHASE 3: DESIGN"));
     assert!(result.contains("PHASE 4: REVIEW"));
-    assert!(result.contains("PHASE 5: WRITE STRUCTURED PLAN"));
-    assert!(result.contains("<ralph-plan>"));
+    assert!(result.contains("PHASE 5: SUBMIT STRUCTURED PLAN"));
+    assert!(result.contains("artifact_type"));
     assert!(
         result.contains(
             "Choose a complete solution that fixes the problem at the root cause. Do not plan surface-level fixes or partial implementations."
@@ -380,12 +380,12 @@ fn test_context_based_uses_workspace_rooted_paths() {
         ),
     );
     assert!(
-        continuation_xsd_retry.contains("development_continuation_result.xsd"),
-        "Continuation-mode XSD retry should point at the continuation schema"
+        continuation_xsd_retry.contains("CONTINUATION VALIDATION FAILED"),
+        "Continuation-mode XSD retry should use the continuation-specific template"
     );
     assert!(
-        !continuation_xsd_retry.contains("Read .agent/tmp/development_result.xsd"),
-        "Continuation-mode XSD retry should not point at the generic development schema"
+        continuation_xsd_retry.contains("ralph_submit_artifact"),
+        "Continuation-mode XSD retry should instruct MCP submission"
     );
 
     // Both should contain the core content (PROMPT and PLAN)
@@ -415,22 +415,17 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
     );
 
     assert!(
-        prompt.contains("development_continuation_result.xsd"),
-        "Continuation-mode XSD retry should point at the continuation schema"
+        prompt.contains("CONTINUATION VALIDATION FAILED"),
+        "Continuation-mode XSD retry should use the continuation-specific template"
     );
     assert!(
-        prompt.contains("continuation output")
-            || prompt.contains("continuation XML")
-            || prompt.contains("recovery-critical information"),
+        prompt.contains("continuation")
+            || prompt.contains("recovery"),
         "Continuation-mode XSD retry should explicitly describe continuation output requirements"
     );
     assert!(
-        !prompt.contains("Fix ONLY the XML structure/format issues"),
-        "Continuation-mode XSD retry must not instruct the agent to only fix generic XML formatting"
-    );
-    assert!(
-        !prompt.contains("Change the content/meaning of your response - ONLY fix the XML format"),
-        "Continuation-mode XSD retry must allow semantic contract fixes required by continuation validation"
+        prompt.contains("ralph_submit_artifact"),
+        "Continuation-mode XSD retry should instruct MCP submission"
     );
 }
 
@@ -680,30 +675,18 @@ fn test_prompt_planning_xml_with_references_small_content() {
     assert!(result.contains("Small requirements"));
     assert!(result.contains("PLANNING MODE"));
 
-    // Read-only modes: planner must still write exactly one XML file.
+    // Read-only modes: planner must submit via MCP tool.
     assert!(
-        result.contains("explicitly authorized") && result.contains("EXACTLY ONE file"),
-        "planning_xml should explicitly authorize writing exactly one XML file"
+        result.contains("ralph_submit_artifact"),
+        "planning_xml should instruct submission via ralph_submit_artifact"
     );
     assert!(
-        result.contains("MANDATORY"),
-        "planning_xml should mark XML file write mandatory"
+        result.contains("MANDATORY") || result.contains("Not submitting") && result.contains("FAILURE"),
+        "planning_xml should mark submission as mandatory"
     );
     assert!(
-        result.contains("Not writing") && result.contains("FAILURE"),
-        "planning_xml should say not writing XML is a failure"
-    );
-    assert!(
-        result.contains("does not conform") && result.contains("XSD") && result.contains("FAILURE"),
-        "planning_xml should say non-XSD XML is a failure"
-    );
-    assert!(
-        result.contains("READ-ONLY")
-            && (result.contains("EXCEPT FOR writing")
-                || result.contains("except for writing")
-                || result.contains("Except for writing"))
-            && result.contains("plan.xml"),
-        "planning_xml should be read-only except for writing plan.xml"
+        result.contains("READ-ONLY"),
+        "planning_xml should be read-only"
     );
 
     assert!(
@@ -774,32 +757,15 @@ fn test_prompt_planning_xsd_retry_with_context_has_read_only_overrides() {
     );
 
     assert!(result.contains("XSD error"));
-    assert!(result.contains(".agent/tmp/plan.xsd"));
-    assert!(result.contains(".agent/tmp/last_output.xml"));
 
+    // The planning XSD retry template now uses MCP JSON submission
     assert!(
-        result.contains("explicitly authorized") && result.contains("EXACTLY ONE file"),
-        "planning_xsd_retry should explicitly authorize writing exactly one XML file"
+        result.contains("ralph_submit_artifact"),
+        "planning_xsd_retry should instruct submission via ralph_submit_artifact"
     );
     assert!(
-        result.contains("MANDATORY"),
-        "planning_xsd_retry should mark XML file write mandatory"
-    );
-    assert!(
-        result.contains("Not writing") && result.contains("FAILURE"),
-        "planning_xsd_retry should say not writing XML is a failure"
-    );
-    assert!(
-        result.contains("does not conform") && result.contains("XSD") && result.contains("FAILURE"),
-        "planning_xsd_retry should say non-XSD XML is a failure"
-    );
-    assert!(
-        result.contains("READ-ONLY")
-            && (result.contains("EXCEPT FOR writing")
-                || result.contains("except for writing")
-                || result.contains("Except for writing"))
-            && result.contains("plan.xml"),
-        "planning_xsd_retry should be read-only except for writing plan.xml"
+        result.contains("VALIDATION FAILED"),
+        "planning_xsd_retry should indicate validation failure"
     );
 
     assert!(
@@ -809,10 +775,6 @@ fn test_prompt_planning_xsd_retry_with_context_has_read_only_overrides() {
             && !result.contains("The ONLY acceptable output"),
         "planning_xsd_retry should not include stdout suppression wording"
     );
-
-    // Verify files were written to workspace
-    assert!(workspace.was_written(".agent/tmp/plan.xsd"));
-    assert!(workspace.was_written(".agent/tmp/last_output.xml"));
 }
 
 #[test]

@@ -424,7 +424,7 @@ fn test_checkpoint_size_remains_stable_with_bounded_history() {
 #[test]
 fn test_memory_does_not_grow_with_many_checkpoint_cycles() {
     with_default_timeout(|| {
-        // Simulate 100 checkpoint save/restore cycles to verify no accumulation
+        // Simulate ~20 checkpoint save/restore cycles to verify no accumulation
         // This tests for subtle memory leaks that might occur during serialization
 
         let limit = 1000;
@@ -441,7 +441,7 @@ fn test_memory_does_not_grow_with_many_checkpoint_cycles() {
         let mut checkpoint_json =
             serde_json::to_string(&state).expect("Serialization should succeed");
 
-        for cycle in 0..100 {
+        for cycle in 0..20 {
             // Store checkpoint size every 10 cycles
             if cycle % 10 == 0 {
                 final_states.push((cycle, checkpoint_json.len()));

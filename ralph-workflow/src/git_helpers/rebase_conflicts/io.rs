@@ -3,6 +3,23 @@
 
 // Core rebase operations: conflicts.
 
+/// Get a list of files that have merge conflicts using explicit repo root.
+///
+/// This function queries libgit2's index to find all files that are
+/// currently in a conflicted state.
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn get_conflicted_files_at(repo_root: &std::path::Path) -> io::Result<Vec<String>> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    get_conflicted_files_impl(&repo)
+}
+
 /// Get a list of files that have merge conflicts.
 ///
 /// This function queries libgit2's index to find all files that are
@@ -12,12 +29,12 @@
 ///
 /// Returns error if the operation fails.
 pub fn get_conflicted_files() -> io::Result<Vec<String>> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    get_conflicted_files_impl(&repo)
+    let repo_root = std::env::current_dir()?;
+    get_conflicted_files_at(&repo_root)
 }
 
 /// Implementation of `get_conflicted_files`.
-fn get_conflicted_files_impl(repo: &git2::Repository) -> io::Result<Vec<String>> {
+pub(crate) fn get_conflicted_files_impl(repo: &git2::Repository) -> io::Result<Vec<String>> {
     let index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
     // Check if there are any conflicts

@@ -47,8 +47,8 @@ pub use cleaning::preprocess_raw_content;
 // Note: Non-workspace variants are deprecated for pipeline layer code.
 // Use the _with_workspace variants instead.
 pub use file_based_extraction::{
-    archive_xml_file_with_workspace, has_valid_xml_output, paths as xml_paths,
-    try_extract_from_file_with_workspace,
+    archive_json_artifact_with_workspace, archive_xml_file_with_workspace, has_valid_xml_output,
+    paths as xml_paths, try_extract_from_file_with_workspace,
 };
 
 // NOTE: The deprecated std::fs functions (archive_xml_file, extract_xml_with_file_fallback,
@@ -83,6 +83,7 @@ pub use xsd_validation_fix_result::FixResultElements;
 
 // Public exports for development result XML extraction and validation
 pub use xml_extraction_development_result::extract_development_result_xml;
+pub use xsd_validation_development_result::apply_continuation_development_result_contract;
 pub use xsd_validation_development_result::validate_continuation_development_result_xml;
 pub use xsd_validation_development_result::validate_development_result_xml;
 pub use xsd_validation_development_result::DevelopmentResultElements;

@@ -52,6 +52,7 @@ mod executor_trait;
 pub mod macos;
 #[cfg(any(test, feature = "test-utils"))]
 mod mock;
+pub mod process_registry;
 pub mod ps;
 mod real;
 mod types;

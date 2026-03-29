@@ -143,10 +143,22 @@ fn check_monitor_for_timeout(
 fn try_poll_child(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
 ) -> std::io::Result<Option<WaitOutcome>> {
+    let pid = {
+        let child = child_arc
+            .lock()
+            .expect("child process mutex poisoned - indicates panic in another thread");
+        child.id()
+    };
     let mut child = child_arc
         .lock()
         .expect("child process mutex poisoned - indicates panic in another thread");
-    child.try_wait().map(|opt| opt.map(WaitOutcome::Completed))
+    child.try_wait().map(|opt| {
+        opt.map(|status| {
+            // Process has exited - unregister the PID
+            crate::executor::process_registry::unregister(pid);
+            WaitOutcome::Completed(status)
+        })
+    })
 }
 
 /// One poll iteration: check monitor, interrupt, child. Returns `Some` if done.

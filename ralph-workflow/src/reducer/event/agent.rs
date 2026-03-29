@@ -1,6 +1,8 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
-use crate::agents::session::{ParallelPlan, WorkerIdentity, WorkerReconciliationMetadata};
+use crate::agents::session::{
+    ParallelPlan, ReconciliationDecision, WorkerIdentity, WorkerReconciliationMetadata,
+};
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
 use crate::ChildProcessInfo;
@@ -286,6 +288,36 @@ pub enum AgentEvent {
         /// The rejected parallel plan.
         plan: ParallelPlan,
         /// Reason for rejection.
+        reason: String,
+    },
+
+    /// Verifier agent completed review of parallel worker outputs.
+    ///
+    /// Emitted after the verifier agent reviews all worker outputs and produces
+    /// a reconciliation decision.
+    VerifierCompleted {
+        /// The reconciliation decision from the verifier.
+        decision: ReconciliationDecision,
+    },
+
+    /// Parallel work was sent back to workers for rework.
+    ///
+    /// Emitted when the verifier decides that specific work units need revision.
+    ParallelWorkReworked {
+        /// IDs of work units that need rework.
+        unit_ids: Vec<String>,
+        /// Feedback from the verifier for the workers.
+        feedback: String,
+    },
+
+    /// Parallel work collapsed to single-agent execution.
+    ///
+    /// Emitted when the verifier decides remaining work is interdependent
+    /// and cannot be parallelized.
+    ParallelWorkCollapsed {
+        /// IDs of work units that were collapsed.
+        remaining_units: Vec<String>,
+        /// Reason for collapsing to single-agent.
         reason: String,
     },
 }

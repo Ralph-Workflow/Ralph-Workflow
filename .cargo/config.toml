@@ -3,6 +3,8 @@
 [alias]
 xtask = "run -p xtask --"
 
+[env]
+
 [build]
 # Use default build settings.
 #

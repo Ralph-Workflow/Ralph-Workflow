@@ -1,8 +1,7 @@
 use super::types::InitialRebaseOutcome;
 use crate::checkpoint::RunContext;
-use crate::git_helpers::{get_default_branch, rebase_onto, RebaseResult};
+use crate::git_helpers::{get_default_branch_at, rebase_onto_at, RebaseResult};
 use crate::logger::{Colors, Logger};
-use crate::phases::PhaseContext;
 use crate::ProcessExecutor;
 
 pub(crate) struct InitialRebaseRunResult {
@@ -22,16 +21,17 @@ pub(crate) struct InitialRebaseRunResult {
 pub(crate) fn run_rebase_to_default(
     logger: &Logger,
     colors: Colors,
+    repo_root: &std::path::Path,
     executor: &dyn ProcessExecutor,
 ) -> std::io::Result<RebaseResult> {
-    let default_branch = get_default_branch()?;
+    let default_branch = get_default_branch_at(repo_root)?;
     logger.info(&format!(
         "Rebasing onto {}{}{}",
         colors.cyan(),
         default_branch,
         colors.reset()
     ));
-    rebase_onto(&default_branch, executor)
+    rebase_onto_at(repo_root, &default_branch, executor)
 }
 
 /// Run initial rebase before development phase.
@@ -44,19 +44,19 @@ pub(crate) fn run_rebase_to_default(
 pub(crate) fn run_initial_rebase(
     logger: &Logger,
     colors: Colors,
-    _phase_ctx: &mut PhaseContext<'_>,
+    repo_root: &std::path::Path,
     _run_context: &RunContext,
     executor: &dyn ProcessExecutor,
     _prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 ) -> anyhow::Result<InitialRebaseRunResult> {
-    let default_branch = get_default_branch()?;
+    let default_branch = get_default_branch_at(repo_root)?;
     logger.info(&format!(
         "Rebasing onto {}{}{}",
         colors.cyan(),
         default_branch,
         colors.reset()
     ));
-    rebase_onto(&default_branch, executor)
+    rebase_onto_at(repo_root, &default_branch, executor)
         .map_err(Into::into)
         .map(|result| {
             let outcome = match result {

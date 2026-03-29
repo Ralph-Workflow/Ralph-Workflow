@@ -270,15 +270,25 @@ fn reaper_step(args: &ReaperArgs, last_kill_sent_at: &mut Option<std::time::Inst
     false
 }
 
-fn run_reaper_loop(args: &ReaperArgs, deadline: std::time::Instant) {
+/// Result of a reaper loop run.
+enum ReaperLoopResult {
+    /// The process exited normally (reaper_step returned true).
+    ProcessExited,
+    /// The hard cap deadline was reached while the process was still alive.
+    HardCapReached,
+}
+
+fn run_reaper_loop(args: &ReaperArgs, deadline: std::time::Instant) -> ReaperLoopResult {
     let mut last_kill_sent_at = None;
     while std::time::Instant::now() < deadline {
         if reaper_step(args, &mut last_kill_sent_at) {
-            return;
+            return ReaperLoopResult::ProcessExited;
         }
     }
+    ReaperLoopResult::HardCapReached
 }
 
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
 fn run_reaper_thread(
     pid: u32,
     child: Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
@@ -293,10 +303,24 @@ fn run_reaper_thread(
         should_stop,
         kill_config,
     };
-    run_reaper_loop(
+    match run_reaper_loop(
         &args,
         std::time::Instant::now() + args.kill_config.post_sigkill_hard_cap(),
-    );
+    ) {
+        ReaperLoopResult::ProcessExited => {
+            // Process exited during reaper loop - unregister from registry
+            crate::executor::process_registry::unregister(pid);
+        }
+        ReaperLoopResult::HardCapReached => {
+            // Process did not exit after SIGKILL hard cap.
+            // Leave it registered so finalization/guard cleanup will attempt to kill it again.
+            // Log a warning for observability.
+            eprintln!(
+                "Agent process {pid} did not exit after SIGKILL hard cap; \
+                 will be cleaned up by process registry on pipeline exit"
+            );
+        }
+    }
 }
 
 enum TimeoutEnforcementContinuation {
@@ -470,6 +494,18 @@ fn check_child_progress(
         );
         return true;
     }
+    apply_grace_or_idle(child_pid, info, s)
+}
+
+/// Apply startup-grace if conditions are met, otherwise record as idle.
+/// Returns `true` if the child is still considered active.
+fn apply_grace_or_idle(child_pid: u32, info: ChildProcessInfo, s: &mut MonitorLoopState) -> bool {
+    if info.has_currently_active_children() && s.child_startup_grace_available {
+        s.child_startup_grace_available = false;
+        s.consecutive_idle_count = 0;
+        s.last_child_observation = Some(info);
+        return true;
+    }
     log_idle_child_state(child_pid, info);
     s.last_child_observation = Some(info);
     false
@@ -620,7 +656,6 @@ fn apply_file_activity_scan_result(
     }
 }
 
-#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
 fn check_file_activity(
     fac: &FileActivityConfig,
     activity_timestamp: &SharedActivityTimestamp,
@@ -630,9 +665,6 @@ fn check_file_activity(
 ) -> bool {
     if s.last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
         s.reset_idle();
-        eprintln!(
-            "Continuing monitoring: file activity was confirmed within the last timeout window"
-        );
         return true;
     }
 
@@ -810,16 +842,19 @@ fn handle_timeout_exceeded(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
+    if let Some(action) = check_timeout_suppressors(params, s) {
+        return action;
+    }
     eprintln!(
         "Idle timeout exceeded: no output activity for {} seconds",
         time_since_activity(params.activity_timestamp).as_secs()
     );
-    check_timeout_suppressors(params, s).unwrap_or_else(|| handle_idle_confirmed(params, s))
+    handle_idle_confirmed(params, s)
 }
 
-fn should_stop_before_timeout(params: &MonitorParams<'_>, s: &MonitorLoopState) -> bool {
+fn should_stop_before_timeout(params: &MonitorParams<'_>, _s: &MonitorLoopState) -> bool {
     use std::sync::atomic::Ordering;
-    s.timeout_triggered.is_none() && params.should_stop.load(Ordering::Acquire)
+    params.should_stop.load(Ordering::Acquire)
 }
 
 fn sleep_check_stops_early(params: &MonitorParams<'_>, s: &MonitorLoopState) -> bool {

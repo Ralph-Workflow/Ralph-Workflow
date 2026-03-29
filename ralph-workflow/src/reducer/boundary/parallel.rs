@@ -22,69 +22,39 @@ use crate::reducer::event::AgentEvent;
 use crate::reducer::event::PipelineEvent;
 use anyhow::Result;
 
-/// Evaluate a parallel plan for validity.
-///
-/// This function validates that:
-/// 1. No two work units have overlapping edit areas
-/// 2. No circular dependencies exist
-/// 3. All work units have at least one allowed path or directory
-///
-/// Returns `Ok(EffectResult::event(ParallelPlanValidated))` if valid,
-/// or `Ok(EffectResult::event(ParallelPlanRejected))` if invalid.
+fn run_plan_validations(plan: &crate::agents::session::ParallelPlan) -> Result<(), String> {
+    validate_work_units(plan)?;
+    validate_edit_area_non_overlap(plan)?;
+    validate_dependency_graph(plan)
+}
+
 pub(super) fn evaluate_parallel_plan(
     ctx: &mut PhaseContext<'_>,
     plan: &crate::agents::session::ParallelPlan,
 ) -> Result<EffectResult> {
-    // Validate work units
-    if let Err(reason) = validate_work_units(plan) {
-        ctx.logger.info(&format!(
-            "RFC-009 parallel plan evaluation: plan rejected - {}",
-            reason
-        ));
-        return Ok(EffectResult::event(PipelineEvent::Agent(
-            AgentEvent::ParallelPlanRejected {
-                plan: plan.clone(),
-                reason,
-            },
-        )));
+    match run_plan_validations(plan) {
+        Err(reason) => {
+            ctx.logger.info(&format!(
+                "RFC-009 parallel plan evaluation: plan rejected - {}",
+                reason
+            ));
+            Ok(EffectResult::event(PipelineEvent::Agent(
+                AgentEvent::ParallelPlanRejected {
+                    plan: plan.clone(),
+                    reason,
+                },
+            )))
+        }
+        Ok(()) => {
+            ctx.logger.info(&format!(
+                "RFC-009 parallel plan evaluation: plan validated with {} work units",
+                plan.work_units.len()
+            ));
+            Ok(EffectResult::event(PipelineEvent::Agent(
+                AgentEvent::ParallelPlanValidated { plan: plan.clone() },
+            )))
+        }
     }
-
-    // Validate edit area non-overlap
-    if let Err(reason) = validate_edit_area_non_overlap(plan) {
-        ctx.logger.info(&format!(
-            "RFC-009 parallel plan evaluation: plan rejected - {}",
-            reason
-        ));
-        return Ok(EffectResult::event(PipelineEvent::Agent(
-            AgentEvent::ParallelPlanRejected {
-                plan: plan.clone(),
-                reason,
-            },
-        )));
-    }
-
-    // Validate dependency graph (no cycles)
-    if let Err(reason) = validate_dependency_graph(plan) {
-        ctx.logger.info(&format!(
-            "RFC-009 parallel plan evaluation: plan rejected - {}",
-            reason
-        ));
-        return Ok(EffectResult::event(PipelineEvent::Agent(
-            AgentEvent::ParallelPlanRejected {
-                plan: plan.clone(),
-                reason,
-            },
-        )));
-    }
-
-    ctx.logger.info(&format!(
-        "RFC-009 parallel plan evaluation: plan validated with {} work units",
-        plan.work_units.len()
-    ));
-
-    Ok(EffectResult::event(PipelineEvent::Agent(
-        AgentEvent::ParallelPlanValidated { plan: plan.clone() },
-    )))
 }
 
 /// Validate that all work units have valid edit areas.
@@ -101,51 +71,57 @@ fn validate_work_units(plan: &crate::agents::session::ParallelPlan) -> Result<()
     Ok(())
 }
 
+fn check_unit_pair_overlap(work_units: &[WorkUnit], i: usize) -> Result<(), String> {
+    for j in (i + 1)..work_units.len() {
+        if edit_areas_overlap(&work_units[i].edit_area, &work_units[j].edit_area) {
+            return Err(format!(
+                "Edit areas overlap between work unit '{}' and work unit '{}'",
+                work_units[i].unit_id, work_units[j].unit_id
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Validate that no two work units have overlapping edit areas.
 fn validate_edit_area_non_overlap(
     plan: &crate::agents::session::ParallelPlan,
 ) -> Result<(), String> {
     let work_units = &plan.work_units;
-
     for i in 0..work_units.len() {
-        for j in (i + 1)..work_units.len() {
-            let area_i = &work_units[i].edit_area;
-            let area_j = &work_units[j].edit_area;
-
-            if edit_areas_overlap(area_i, area_j) {
-                return Err(format!(
-                    "Edit areas overlap between work unit '{}' and work unit '{}'",
-                    work_units[i].unit_id, work_units[j].unit_id
-                ));
-            }
-        }
+        check_unit_pair_overlap(work_units, i)?;
     }
-
     Ok(())
 }
 
-/// Validate that the dependency graph has no cycles.
-fn validate_dependency_graph(plan: &crate::agents::session::ParallelPlan) -> Result<(), String> {
-    let work_units = &plan.work_units;
-    let unit_ids: std::collections::HashSet<_> =
-        work_units.iter().map(|u| u.unit_id.clone()).collect();
-
-    // Check that all dependencies reference valid unit IDs
-    for unit in work_units {
-        for dep in &unit.dependencies {
-            if !unit_ids.contains(dep) {
-                return Err(format!(
-                    "Work unit '{}' depends on non-existent unit '{}'",
-                    unit.unit_id, dep
-                ));
-            }
+fn check_unit_dep_references(
+    unit: &WorkUnit,
+    unit_ids: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    for dep in &unit.dependencies {
+        if !unit_ids.contains(dep) {
+            return Err(format!(
+                "Work unit '{}' depends on non-existent unit '{}'",
+                unit.unit_id, dep
+            ));
         }
     }
+    Ok(())
+}
 
-    // Check for cycles using DFS
+fn check_dependency_references(
+    work_units: &[WorkUnit],
+    unit_ids: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    for unit in work_units {
+        check_unit_dep_references(unit, unit_ids)?;
+    }
+    Ok(())
+}
+
+fn check_for_cycles(work_units: &[WorkUnit]) -> Result<(), String> {
     let mut visited = std::collections::HashSet::new();
     let mut rec_stack = std::collections::HashSet::new();
-
     for unit in work_units {
         if has_cycle_dfs(unit, work_units, &mut visited, &mut rec_stack) {
             return Err(format!(
@@ -154,8 +130,56 @@ fn validate_dependency_graph(plan: &crate::agents::session::ParallelPlan) -> Res
             ));
         }
     }
-
     Ok(())
+}
+
+/// Validate that the dependency graph has no cycles.
+fn validate_dependency_graph(plan: &crate::agents::session::ParallelPlan) -> Result<(), String> {
+    let work_units = &plan.work_units;
+    let unit_ids: std::collections::HashSet<_> =
+        work_units.iter().map(|u| u.unit_id.clone()).collect();
+    check_dependency_references(work_units, &unit_ids)?;
+    check_for_cycles(work_units)
+}
+
+fn dfs_check_dep(
+    dep_id: &str,
+    all_units: &[WorkUnit],
+    visited: &mut std::collections::HashSet<String>,
+    rec_stack: &mut std::collections::HashSet<String>,
+) -> bool {
+    if let Some(dep_unit) = all_units.iter().find(|u| u.unit_id == dep_id) {
+        return has_cycle_dfs(dep_unit, all_units, visited, rec_stack);
+    }
+    false
+}
+
+fn any_dep_has_cycle(
+    unit: &WorkUnit,
+    all_units: &[WorkUnit],
+    visited: &mut std::collections::HashSet<String>,
+    rec_stack: &mut std::collections::HashSet<String>,
+) -> bool {
+    for dep_id in &unit.dependencies {
+        if dfs_check_dep(dep_id, all_units, visited, rec_stack) {
+            return true;
+        }
+    }
+    false
+}
+
+fn dfs_unit_already_seen(
+    unit_id: &str,
+    visited: &std::collections::HashSet<String>,
+    rec_stack: &std::collections::HashSet<String>,
+) -> Option<bool> {
+    if rec_stack.contains(unit_id) {
+        return Some(true);
+    }
+    if visited.contains(unit_id) {
+        return Some(false);
+    }
+    None
 }
 
 /// DFS helper to detect cycles in the dependency graph.
@@ -165,27 +189,14 @@ fn has_cycle_dfs(
     visited: &mut std::collections::HashSet<String>,
     rec_stack: &mut std::collections::HashSet<String>,
 ) -> bool {
-    if rec_stack.contains(&unit.unit_id) {
-        return true;
+    if let Some(result) = dfs_unit_already_seen(&unit.unit_id, visited, rec_stack) {
+        return result;
     }
-
-    if visited.contains(&unit.unit_id) {
-        return false;
-    }
-
     visited.insert(unit.unit_id.clone());
     rec_stack.insert(unit.unit_id.clone());
-
-    for dep_id in &unit.dependencies {
-        if let Some(dep_unit) = all_units.iter().find(|u| u.unit_id == *dep_id) {
-            if has_cycle_dfs(dep_unit, all_units, visited, rec_stack) {
-                return true;
-            }
-        }
-    }
-
+    let cycle = any_dep_has_cycle(unit, all_units, visited, rec_stack);
     rec_stack.remove(&unit.unit_id);
-    false
+    cycle
 }
 
 /// Dispatch parallel workers for the given plan.
@@ -234,6 +245,86 @@ pub(super) fn dispatch_parallel_workers(
         AgentEvent::ParallelWorkersDispatched {
             worker_count,
             workers,
+        },
+    )))
+}
+
+/// Maximum number of verification iterations before falling back to single-agent.
+///
+/// This prevents infinite verification loops when workers keep producing inadequate results.
+const MAX_VERIFICATION_ITERATIONS: u32 = 3;
+
+/// Invoke the verifier agent to review parallel worker outputs.
+///
+/// The verifier reviews all worker results and produces a `ReconciliationDecision`:
+/// - `Accept`: Work is complete, proceed to next phase
+/// - `Rework`: Send specific units back to workers
+/// - `SpawnNew`: Create new work units for additional work
+/// - `CollapseToSingle`: Remaining work is interdependent, fall back to single agent
+///
+/// If max iterations is reached, automatically emits `ParallelWorkCollapsed`.
+fn collapse_to_single_agent(
+    ctx: &mut PhaseContext<'_>,
+    plan: &crate::agents::session::ParallelPlan,
+) -> Result<EffectResult> {
+    ctx.logger.info(&format!(
+        "RFC-009 parallel verifier: max iterations ({}) reached, collapsing to single-agent",
+        MAX_VERIFICATION_ITERATIONS
+    ));
+    let remaining_units: Vec<String> = plan.work_units.iter().map(|u| u.unit_id.clone()).collect();
+    Ok(EffectResult::event(PipelineEvent::Agent(
+        AgentEvent::ParallelWorkCollapsed {
+            remaining_units,
+            reason: format!(
+                "Max verification iterations ({}) reached without convergence",
+                MAX_VERIFICATION_ITERATIONS
+            ),
+        },
+    )))
+}
+
+fn build_verification_summary(
+    worker_results: &[crate::agents::session::WorkerReconciliationMetadata],
+    iteration: u32,
+) -> String {
+    let mut summary = format!(
+        "Parallel Verification Review (iteration {}/{}):\n\n",
+        iteration + 1,
+        MAX_VERIFICATION_ITERATIONS
+    );
+    for result in worker_results {
+        summary.push_str(&format!(
+            "Worker: {} (work unit: {})\n  Files modified: {:?}\n  Decision: {:?}\n\n",
+            result.worker_identity.worker_id,
+            result.worker_identity.work_unit_id,
+            result.files_modified,
+            result.decision,
+        ));
+    }
+    summary
+}
+
+pub(super) fn invoke_parallel_verifier(
+    ctx: &mut PhaseContext<'_>,
+    plan: &crate::agents::session::ParallelPlan,
+    worker_results: &[crate::agents::session::WorkerReconciliationMetadata],
+    iteration: u32,
+) -> Result<EffectResult> {
+    if iteration >= MAX_VERIFICATION_ITERATIONS {
+        return collapse_to_single_agent(ctx, plan);
+    }
+    let _verification_summary = build_verification_summary(worker_results, iteration);
+    ctx.logger.info(&format!(
+        "RFC-009 parallel verifier: reviewing {} worker results",
+        worker_results.len()
+    ));
+    // TODO: Wire in verifier prompt generation and agent execution
+    // For now, auto-accept all workers to unblock the pipeline
+    Ok(EffectResult::event(PipelineEvent::Agent(
+        AgentEvent::VerifierCompleted {
+            decision: crate::agents::session::parallel::ReconciliationDecision::Accept {
+                unit_id: "all".to_string(),
+            },
         },
     )))
 }

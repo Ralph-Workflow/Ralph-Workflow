@@ -147,3 +147,6 @@ mod io_tests;
 
 #[cfg(test)]
 mod snapshot_tests;
+
+#[cfg(test)]
+mod schema_contract_tests;

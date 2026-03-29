@@ -38,8 +38,100 @@ use git2::build::CheckoutBuilder;
 use git2::{IndexAddOption, Oid, Repository, Signature, Status, StatusOptions};
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::OnceLock;
 use tempfile::TempDir;
+
+static PROJECT_REPO_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+fn project_repo_root() -> Option<&'static Path> {
+    PROJECT_REPO_ROOT
+        .get_or_init(|| {
+            let exe = std::env::current_exe().ok()?;
+            let start = exe.parent()?.to_path_buf();
+            std::iter::successors(Some(start), |p| {
+                p.parent().map(|parent| parent.to_path_buf())
+            })
+            .find(|p| p.join(".git").exists())
+        })
+        .as_deref()
+}
+
+/// Enforce that no test operates on the project's real git repository.
+///
+/// # Panics
+///
+/// Panics with a policy-violation message if `repo_root` is inside or equal to
+/// the project's own repository root. All test git operations must use isolated temporary
+/// repositories created with `TempDir::new()`.
+pub fn assert_not_project_repo(repo_root: &Path) {
+    let Some(project) = project_repo_root() else {
+        return;
+    };
+    let repo_abs = std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let project_abs = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    let is_project_repo = repo_abs == project_abs || repo_abs.starts_with(&project_abs);
+
+    if is_project_repo {
+        panic!(
+            "POLICY VIOLATION: test attempted to operate on the project's real git \
+             repository at '{}'. Tests must use isolated temporary repositories created \
+             with TempDir::new(). This check exists because previous test runs modified \
+             the real repository, corrupted git hooks, and reverted developer changes. \
+             Use init_git_repo(&TempDir::new().unwrap()) to get an isolated repo. \
+             If TMPDIR is set to a subdirectory of the project, check your environment.",
+            repo_abs.display()
+        );
+    }
+}
+
+/// Enforce that a `Repository` is not the project's real git repository.
+///
+/// # Panics
+///
+/// See [`assert_not_project_repo`].
+pub fn assert_repo_is_isolated(repo: &Repository) {
+    if let Some(workdir) = repo.workdir() {
+        assert_not_project_repo(workdir);
+    }
+}
+
+/// Capture the HEAD OID of the project repository.
+///
+/// Returns `None` if the project root cannot be determined or if reading fails.
+/// Uses git2 directly (no subprocess) for fast, reliable reading.
+pub fn capture_project_head_oid() -> Option<String> {
+    let project = project_repo_root()?;
+    let repo = Repository::open(project).ok()?;
+    let head = repo.head().ok()?;
+    let oid = head.target()?;
+    Some(oid.to_string())
+}
+
+/// Assert that the project repository's HEAD has not changed since `before` was captured.
+///
+/// This guards against tests creating commits in the real project repository.
+/// Used before and after spawning Ralph processes to ensure no commits were injected.
+///
+/// # Panics
+///
+/// Panics with a clear POLICY VIOLATION message if HEAD differs from `before`.
+pub fn assert_project_head_unchanged(before: &Option<String>) {
+    let after = match capture_project_head_oid() {
+        Some(oid) => oid,
+        None => return, // Cannot read HEAD — skip check gracefully
+    };
+    if before.as_ref() != Some(&after) {
+        panic!(
+            "POLICY VIOLATION: a test created a commit in the project repository. \
+             HEAD moved from {} to {}. \
+             Tests must never modify the real project repo.",
+            before.as_ref().map(|s| s.as_str()).unwrap_or("(none)"),
+            after
+        );
+    }
+}
 
 /// Create an isolated config file in the test directory.
 /// This prevents user config from interfering with tests.
@@ -79,6 +171,7 @@ reviewer = ["codex"]
 /// - If directory creation fails
 #[must_use]
 pub fn init_git_repo(dir: &TempDir) -> Repository {
+    assert_not_project_repo(dir.path());
     let repo = Repository::init(dir.path()).expect("init git repo");
 
     // Configure user for libgit2's repo.signature() and Ralph's git_commit().
@@ -132,6 +225,7 @@ pub fn write_file<P: AsRef<Path>>(path: P, contents: &str) {
 /// - If commit creation fails
 #[must_use]
 pub fn commit_all(repo: &Repository, message: &str) -> Oid {
+    assert_repo_is_isolated(repo);
     stage_all(repo);
 
     let mut index = repo.index().expect("open index");
@@ -173,6 +267,7 @@ pub fn head_oid(repo: &Repository) -> String {
 /// - If index operations fail
 /// - If status retrieval fails
 pub fn stage_all(repo: &Repository) {
+    assert_repo_is_isolated(repo);
     let mut index = repo.index().expect("open index");
 
     // Stage deletions explicitly.
@@ -218,6 +313,7 @@ pub fn stage_all(repo: &Repository) {
 /// - If git operations fail (index write, commit creation, etc.)
 #[must_use]
 pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
+    assert_repo_is_isolated(repo);
     // Stage all changes using git2 (same as commit_all, but for git CLI migration)
     stage_all(repo);
 
@@ -260,6 +356,7 @@ pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
 /// - If branch cannot be found
 /// - If checkout operations fail
 pub fn git_switch(repo: &Repository, branch_name: &str) {
+    assert_repo_is_isolated(repo);
     let branch_ref = format!("refs/heads/{branch_name}");
     let obj = repo
         .revparse_single(&branch_ref)
@@ -294,6 +391,7 @@ pub fn git_switch(repo: &Repository, branch_name: &str) {
 ///
 /// - If git operations fail
 pub fn git_switch_force(repo: &Repository, branch_name: &str) {
+    assert_repo_is_isolated(repo);
     // Use git2 checkout with force option (built-in, no separate commands)
     let branch_ref = format!("refs/heads/{branch_name}");
     let obj = repo

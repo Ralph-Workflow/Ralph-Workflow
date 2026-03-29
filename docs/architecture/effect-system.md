@@ -554,6 +554,16 @@ State is **immutable** - reducers return new state instances.
 
 Pipeline events are category-based: the top-level `PipelineEvent` wraps phase/category enums (Planning, Development, Review, Commit, Agent, Rebase, PromptInput, AwaitingDevFix, etc.).
 
+There is also a **frozen set of sanctioned cross-phase lifecycle facts** kept at top level for reducer-visible global boundaries:
+
+- `ContextCleaned`
+- `CheckpointSaved`
+- `FinalStateValidationCompleted`
+- `PromptPermissionsRestored`
+- `LoopRecoveryTriggered`
+
+Treat these as explicit exceptions for lifecycle orchestration; do not add new top-level lifecycle variants unless the event is genuinely cross-phase and cannot be owned by a single category.
+
 Events are **facts**: they describe what happened, not what the system should do next.
 
 #### Effect
@@ -609,7 +619,7 @@ The same pattern is mirrored in `MockEffectHandler` for test coverage.
 
 1. Check if effect is Ralph-internal (bypass if true)
 2. Get active session from `ctx.active_session`
-3. Compute required capabilities for the effect (`effect_required_capabilities()`)
+3. Compute required capabilities for the effect (`required_capabilities()`)
 4. Check session against required capabilities (`check_effect_capability()`)
 5. Record check in `ctx.audit_trail`
 6. Return `CapabilityDenied` event if denied, otherwise proceed with execution

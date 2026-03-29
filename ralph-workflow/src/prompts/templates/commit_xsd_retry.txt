@@ -1,20 +1,17 @@
 {# ============================================================================ #}
 {# Template: commit_xsd_retry.txt                                              #}
-{# Version: 4.0 - STRICT XML-only fix mode                                     #}
+{# Version: 5.0 - MCP JSON resubmission only                                  #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Retry prompt for commit message generation when XSD validation fails.     #}
-{#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
+{#   Retry prompt for commit message generation when validation fails.          #}
+{#   This is STRICTLY for fixing the JSON submission - NO other actions allowed.#}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   {{XSD_ERROR}} - The XSD validation error message (required)               #}
-{#                                                                             #}
-{# FILES TO READ:                                                               #}
-{#   .agent/tmp/commit_message.xsd - The XSD schema your output must conform to #}
+{#   {{XSD_ERROR}} - The validation error message (required)                    #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
-{#   Valid <ralph-commit> XML conforming to the XSD schema                     #}
+{#   Corrected JSON submitted via ralph_submit_artifact                        #}
 {# ============================================================================ #}
 {% if POLICY_NO_EDIT %}{{> shared/_safety_no_execute}}{% endif %}
 
@@ -25,10 +22,10 @@
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-XSD VALIDATION FAILED - FIX XML ONLY
+VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your XML output at `{{COMMIT_MESSAGE_XML_PATH}}` failed XSD validation.
+Your previous commit message submission failed validation.
 
 ERROR: {{XSD_ERROR}}
 
@@ -36,35 +33,30 @@ ERROR: {{XSD_ERROR}}
 CRITICAL INSTRUCTIONS - READ CAREFULLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{COMMIT_MESSAGE_XSD_PATH}}`
-2. Read your previous invalid output at `{{COMMIT_MESSAGE_XML_PATH}}` before overwriting it
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{COMMIT_MESSAGE_XML_PATH}}`
+The validation error is in JSON directive format:
+{"code": "MISSING_FIELD", "field_path": "subject", "next_actions": ["add subject field in conventional commit format"]}
 
-This is a READ-ONLY task EXCEPT FOR writing `{{COMMIT_MESSAGE_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
+You MUST call `ralph_submit_artifact` with artifact_type="commit_message" and
+corrected JSON content. Follow every instruction in the `next_actions` array
+exactly.
 
 You MUST NOT:
 - Analyze any code or diffs
 - Run any commands
-- Do ANY work other than fixing XML
-- Change the content/meaning of your commit message - ONLY fix the XML format
+- Do ANY work other than fixing the submission
+- Change the content/meaning of your commit message - ONLY fix the validation errors
 
-This is a PURE XML SYNTAX FIX. Your commit message content is fine. The only
-problem is that your XML output doesn't conform to the schema. Fix the XML
-structure, nothing else.
+This is a PURE SUBMISSION FIX. Your commit message content is fine. The only
+problem is that your submitted JSON doesn't conform to the schema. Fix the
+JSON structure, nothing else.
 
 ═══════════════════════════════════════════════════════════════════════════════
-COMMON XML MISTAKES TO FIX
+COMMON MISTAKES TO FIX
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Missing required elements (check XSD)
-2. Wrong element order (check XSD for correct sequence)
-3. Unescaped special characters (use &lt; &gt; &amp; or CDATA)
-4. Missing closing tags
-5. Text before/after root element
-6. Markdown code fences around XML (remove ```)
+1. Missing required fields (subject is required)
+2. Subject not in conventional commit format
+3. Malformed JSON structure
 
-After reading the XSD schema, fix ONLY the XML validation error.
+Resubmit your corrected JSON via `ralph_submit_artifact`.
 DO NOT do any other work.

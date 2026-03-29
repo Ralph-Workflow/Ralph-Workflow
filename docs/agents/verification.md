@@ -21,9 +21,11 @@ If verification exposes a pre-existing failure, or if you discover any other pre
   - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
   - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
   - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
-  - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify)
-  - Lane 6: Frontend (bun install, lint, test — independent of cargo)
-  - Lane 7: Release (release build, dylint — target/release-parallel-verify)
+  - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify) **`--gui` only**
+  - Lane 6: Frontend (bun install, lint, test — independent of cargo) **`--gui` only**
+  - Lane 7: Dylint (custom FP/boundary lints — target/release-parallel-verify) **always runs**
+
+`--gui` also runs a second `verify_fast` pass with Lane 5, Lane 6, and a release build lane.
 
 Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
 

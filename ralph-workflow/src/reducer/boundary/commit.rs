@@ -432,14 +432,19 @@ impl crate::reducer::boundary::MainEffectHandler {
     // XML extraction
     // =====================================================================
 
-    /// Check whether commit XML output exists.
+    /// Check whether commit output exists (JSON artifact or XML file).
     pub(in crate::reducer::boundary) fn extract_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
         let attempt = current_commit_attempt(&self.state.commit);
-        let commit_xml = Path::new(xml_paths::COMMIT_MESSAGE_XML);
 
+        // Check JSON artifact first, then XML
+        if crate::phases::commit::has_json_commit_artifact(ctx.workspace) {
+            return EffectResult::event(PipelineEvent::commit_xml_extracted(attempt));
+        }
+
+        let commit_xml = Path::new(xml_paths::COMMIT_MESSAGE_XML);
         match ctx.workspace.read(commit_xml) {
             Ok(_) => EffectResult::event(PipelineEvent::commit_xml_extracted(attempt)),
             Err(_) => EffectResult::event(PipelineEvent::commit_xml_missing(attempt)),
@@ -460,64 +465,28 @@ impl crate::reducer::boundary::MainEffectHandler {
     // XML validation
     // =====================================================================
 
-    /// Validate commit message XML and map parsed outcome into pipeline events.
+    /// Validate commit message output (JSON artifact first, XML fallback) and
+    /// map parsed outcome into pipeline events.
     pub(in crate::reducer::boundary) fn validate_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
         use crate::reducer::ui_event::XmlOutputType;
-
         let attempt = current_commit_attempt(&self.state.commit);
-        let commit_xml = Path::new(xml_paths::COMMIT_MESSAGE_XML);
-
-        let Ok(xml_content) = ctx.workspace.read(commit_xml) else {
-            let reason =
-                "XML output missing or invalid; agent must write .agent/tmp/commit_message.xml";
-            let event = PipelineEvent::commit_xml_validation_failed(reason.to_string(), attempt);
+        if let Some(parsed) =
+            crate::phases::commit::try_parse_commit_from_json_artifact(ctx.workspace)
+        {
+            let event = commit_event_from_parsed_outcome(ctx, parsed, attempt);
             return EffectResult::with_ui(
                 event,
                 vec![UIEvent::XmlOutput {
                     xml_type: XmlOutputType::CommitMessage,
-                    content: reason.to_string(),
+                    content: "(from JSON artifact)".to_string(),
                     context: None,
                 }],
             );
-        };
-
-        let event = match crate::phases::commit::parse_commit_xml_document(&xml_content) {
-            crate::phases::commit::ParsedCommitXmlOutcome::Skipped(reason) => {
-                ctx.logger.info(&format!("Commit skipped by AI: {reason}"));
-                let _ = ctx
-                    .workspace
-                    .remove_if_exists(Path::new(COMMIT_XSD_ERROR_PATH));
-                PipelineEvent::commit_skipped(reason)
-            }
-            crate::phases::commit::ParsedCommitXmlOutcome::Invalid(detail) => {
-                let _ = ctx
-                    .workspace
-                    .write(Path::new(COMMIT_XSD_ERROR_PATH), &detail);
-                PipelineEvent::commit_xml_validation_failed(detail, attempt)
-            }
-            crate::phases::commit::ParsedCommitXmlOutcome::Valid {
-                message,
-                files,
-                excluded_files,
-            } => {
-                let _ = ctx
-                    .workspace
-                    .remove_if_exists(Path::new(COMMIT_XSD_ERROR_PATH));
-                PipelineEvent::commit_xml_validated(message, files, excluded_files, attempt)
-            }
-        };
-
-        EffectResult::with_ui(
-            event,
-            vec![UIEvent::XmlOutput {
-                xml_type: XmlOutputType::CommitMessage,
-                content: xml_content,
-                context: None,
-            }],
-        )
+        }
+        validate_commit_from_xml_file(ctx, attempt)
     }
 
     /// Emit a commit outcome event from validated state.
@@ -671,4 +640,68 @@ impl crate::reducer::boundary::MainEffectHandler {
             }
         }
     }
+}
+
+fn commit_event_from_parsed_outcome(
+    ctx: &PhaseContext<'_>,
+    parsed: crate::phases::commit::ParsedCommitXmlOutcome,
+    attempt: u32,
+) -> PipelineEvent {
+    match parsed {
+        crate::phases::commit::ParsedCommitXmlOutcome::Skipped(reason) => {
+            ctx.logger.info(&format!("Commit skipped by AI: {reason}"));
+            let _ = ctx
+                .workspace
+                .remove_if_exists(Path::new(COMMIT_XSD_ERROR_PATH));
+            PipelineEvent::commit_skipped(reason)
+        }
+        crate::phases::commit::ParsedCommitXmlOutcome::Invalid(detail) => {
+            let _ = ctx
+                .workspace
+                .write(Path::new(COMMIT_XSD_ERROR_PATH), &detail);
+            PipelineEvent::commit_xml_validation_failed(detail, attempt)
+        }
+        crate::phases::commit::ParsedCommitXmlOutcome::Valid {
+            message,
+            files,
+            excluded_files,
+        } => {
+            let _ = ctx
+                .workspace
+                .remove_if_exists(Path::new(COMMIT_XSD_ERROR_PATH));
+            PipelineEvent::commit_xml_validated(message, files, excluded_files, attempt)
+        }
+    }
+}
+
+fn validate_commit_from_xml_file(ctx: &PhaseContext<'_>, attempt: u32) -> EffectResult {
+    use crate::reducer::ui_event::XmlOutputType;
+    let commit_xml = Path::new(xml_paths::COMMIT_MESSAGE_XML);
+    let Ok(xml_content) = ctx.workspace.read(commit_xml) else {
+        let reason =
+            "No commit message found: neither JSON artifact (.agent/tmp/commit_message.json) \
+                 nor XML file (.agent/tmp/commit_message.xml) present";
+        let event = PipelineEvent::commit_xml_validation_failed(reason.to_string(), attempt);
+        return EffectResult::with_ui(
+            event,
+            vec![UIEvent::XmlOutput {
+                xml_type: XmlOutputType::CommitMessage,
+                content: reason.to_string(),
+                context: None,
+            }],
+        );
+    };
+    let event = commit_event_from_parsed_outcome(
+        ctx,
+        crate::phases::commit::parse_commit_xml_document(&xml_content),
+        attempt,
+    );
+    EffectResult::with_ui(
+        event,
+        vec![UIEvent::XmlOutput {
+            xml_type: XmlOutputType::CommitMessage,
+            content: xml_content,
+            context: None,
+        }],
+    )
 }

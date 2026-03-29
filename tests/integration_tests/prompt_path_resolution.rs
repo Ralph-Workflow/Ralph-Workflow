@@ -41,11 +41,10 @@ fn test_planning_prompts_use_workspace_root() {
             ),
         );
 
-        // Verify: prompt contains workspace root paths, not current_dir paths
-        let expected_path = workspace.absolute_str(".agent/tmp/plan.xml");
+        // Verify: prompt instructs agent to submit via MCP
         assert!(
-            prompt.contains(&expected_path),
-            "Planning prompt should contain workspace-rooted path: {expected_path}"
+            prompt.contains("ralph_submit_artifact"),
+            "Planning prompt should instruct agent to use ralph_submit_artifact"
         );
     });
 }
@@ -84,11 +83,10 @@ fn test_review_prompts_use_workspace_root() {
             ),
         );
 
-        // Verify: prompt contains workspace root paths
-        let expected_path = workspace.absolute_str(".agent/tmp/issues.xml");
+        // Verify: prompt instructs agent to submit via MCP
         assert!(
-            prompt.contains(&expected_path),
-            "Review prompt should contain workspace-rooted path: {expected_path}"
+            prompt.contains("ralph_submit_artifact"),
+            "Review prompt should instruct agent to use ralph_submit_artifact"
         );
     });
 }
@@ -121,7 +119,7 @@ fn test_xsd_retry_missing_schema_includes_workspace_root() {
     });
 }
 
-/// Test that commit prompts use workspace-rooted paths.
+/// Test that commit prompts use MCP artifact submission.
 #[test]
 fn test_commit_prompts_use_workspace_root() {
     with_default_timeout(|| {
@@ -139,11 +137,10 @@ fn test_commit_prompts_use_workspace_root() {
             session_caps,
         );
 
-        // Verify: prompt contains workspace root paths
-        let expected_path = workspace.absolute_str(".agent/tmp/commit_message.xml");
+        // Verify: prompt instructs agent to submit via MCP
         assert!(
-            prompt.contains(&expected_path),
-            "Commit prompt should contain workspace-rooted path: {expected_path}"
+            prompt.contains("ralph_submit_artifact"),
+            "Commit prompt should instruct agent to use ralph_submit_artifact"
         );
     });
 }

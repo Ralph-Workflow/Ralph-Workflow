@@ -157,23 +157,16 @@ fn parse_parallel_plan(
     reader: &mut Reader<&[u8]>,
     _parent_tag: &[u8],
 ) -> Result<ParallelPlanElements, XsdValidationError> {
-    let mut work_units = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut Vec::new()) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"work-unit" => {
-                let work_unit = parse_work_unit(reader, &e)?;
-                work_units.push(work_unit);
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-parallel-plan" => {
-                break;
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => return Err(plan_malformed_xml_error(&e)),
+    let work_units = std::iter::from_fn(|| match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"work-unit" => {
+            Some(Some(parse_work_unit(reader, &e)))
         }
-    }
-
+        Ok(Event::End(_)) | Ok(Event::Eof) => None,
+        Ok(_) => Some(None),
+        Err(e) => Some(Some(Err(plan_malformed_xml_error(&e)))),
+    })
+    .flatten()
+    .collect::<Result<Vec<_>, _>>()?;
     Ok(ParallelPlanElements { work_units })
 }
 
@@ -183,54 +176,65 @@ fn parse_work_unit(
     start_event: &BytesStart,
 ) -> Result<WorkUnitElements, XsdValidationError> {
     // Extract unit_id from the work-unit element's id attribute
-    let mut unit_id = String::new();
-    for attr in start_event.attributes().flatten() {
-        if attr.key.as_ref() == b"id" {
-            unit_id = String::from_utf8_lossy(&attr.value).to_string();
-        }
+    let unit_id = start_event
+        .attributes()
+        .flatten()
+        .find(|attr| attr.key.as_ref() == b"id")
+        .map(|attr| String::from_utf8_lossy(&attr.value).to_string())
+        .unwrap_or_default();
+
+    enum WuField {
+        Description(String),
+        EditArea(EditAreaElements),
+        Dependencies(Vec<String>),
     }
 
-    let mut description = String::new();
-    let mut edit_area: Option<EditAreaElements> = None;
-    let mut dependencies: Vec<String> = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut Vec::new()) {
-            Ok(Event::Start(e)) => {
-                let name = e.name();
-                let tag_name = name.as_ref();
-                match tag_name {
-                    b"description" => {
-                        // Read the text content
-                        if let Ok(Event::Text(e)) = reader.read_event_into(&mut Vec::new()) {
-                            description = e.unescape().unwrap_or_default().to_string();
-                        }
-                    }
-                    b"edit-area" => {
-                        edit_area = Some(parse_edit_area(reader, tag_name)?);
-                    }
-                    b"dependencies" => {
-                        dependencies = parse_dependencies(reader)?;
-                    }
-                    _ => {
-                        let _ = skip_to_end(reader, tag_name);
-                    }
+    let fields = std::iter::from_fn(|| match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) => {
+            let tag = e.name().as_ref().to_vec();
+            match tag.as_slice() {
+                b"description" => {
+                    let desc = match reader.read_event_into(&mut Vec::new()) {
+                        Ok(Event::Text(t)) => t.unescape().unwrap_or_default().to_string(),
+                        _ => String::new(),
+                    };
+                    Some(Some(Ok(WuField::Description(desc))))
+                }
+                b"edit-area" => Some(Some(
+                    parse_edit_area(reader, &tag).map(WuField::EditArea),
+                )),
+                b"dependencies" => Some(Some(
+                    parse_dependencies(reader).map(WuField::Dependencies),
+                )),
+                other => {
+                    let _ = skip_to_end(reader, other);
+                    Some(None)
                 }
             }
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"edit-area" => {
-                edit_area = Some(parse_edit_area_empty(&e));
-            }
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"dependencies" => {
-                // Empty dependencies - no dependencies
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"work-unit" => {
-                break;
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => return Err(plan_malformed_xml_error(&e)),
         }
-    }
+        Ok(Event::Empty(e)) if e.name().as_ref() == b"edit-area" => {
+            Some(Some(Ok(WuField::EditArea(parse_edit_area_empty(&e)))))
+        }
+        Ok(Event::Empty(e)) if e.name().as_ref() == b"dependencies" => {
+            let _ = e;
+            Some(None)
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == b"work-unit" => None,
+        Ok(Event::Eof) => None,
+        Ok(_) => Some(None),
+        Err(e) => Some(Some(Err(plan_malformed_xml_error(&e)))),
+    })
+    .flatten()
+    .collect::<Result<Vec<_>, _>>()?;
+
+    let (description, edit_area, dependencies) = fields.into_iter().fold(
+        (String::new(), None::<EditAreaElements>, Vec::<String>::new()),
+        |(desc, ea, deps), field| match field {
+            WuField::Description(d) => (d, ea, deps),
+            WuField::EditArea(e) => (desc, Some(e), deps),
+            WuField::Dependencies(d) => (desc, ea, d),
+        },
+    );
 
     Ok(WorkUnitElements {
         unit_id,
@@ -248,35 +252,40 @@ fn parse_edit_area(
     reader: &mut Reader<&[u8]>,
     _tag: &[u8],
 ) -> Result<EditAreaElements, XsdValidationError> {
-    let mut paths = Vec::new();
-    let mut directories = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut Vec::new()) {
-            Ok(Event::Start(e)) => {
-                let name = e.name();
-                let tag_name = name.as_ref();
-                match tag_name {
-                    b"paths" => {
-                        paths = parse_path_list(reader)?;
-                    }
-                    b"directories" => {
-                        directories = parse_directory_list(reader)?;
-                    }
-                    _ => {
-                        let _ = skip_to_end(reader, tag_name);
-                    }
-                }
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"edit-area" => {
-                break;
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => return Err(plan_malformed_xml_error(&e)),
-        }
+    enum EaField {
+        Paths(Vec<String>),
+        Directories(Vec<String>),
     }
 
+    let fields = std::iter::from_fn(|| match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) => {
+            let tag = e.name().as_ref().to_vec();
+            match tag.as_slice() {
+                b"paths" => Some(Some(parse_path_list(reader).map(EaField::Paths))),
+                b"directories" => {
+                    Some(Some(parse_directory_list(reader).map(EaField::Directories)))
+                }
+                other => {
+                    let _ = skip_to_end(reader, other);
+                    Some(None)
+                }
+            }
+        }
+        Ok(Event::End(e)) if e.name().as_ref() == b"edit-area" => None,
+        Ok(Event::Eof) => None,
+        Ok(_) => Some(None),
+        Err(e) => Some(Some(Err(plan_malformed_xml_error(&e)))),
+    })
+    .flatten()
+    .collect::<Result<Vec<_>, _>>()?;
+
+    let (paths, directories) = fields.into_iter().fold(
+        (Vec::<String>::new(), Vec::<String>::new()),
+        |(paths, dirs), field| match field {
+            EaField::Paths(p) => (p, dirs),
+            EaField::Directories(d) => (paths, d),
+        },
+    );
     Ok(EditAreaElements { paths, directories })
 }
 
@@ -290,80 +299,60 @@ fn parse_edit_area_empty(_e: &BytesStart) -> EditAreaElements {
 
 /// Parse a `<paths>` element containing multiple `<path>` elements.
 fn parse_path_list(reader: &mut Reader<&[u8]>) -> Result<Vec<String>, XsdValidationError> {
-    let mut paths = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut Vec::new()) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"path" => {
-                if let Ok(Event::Text(e)) = reader.read_event_into(&mut Vec::new()) {
-                    paths.push(e.unescape().unwrap_or_default().to_string());
-                }
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"paths" => {
-                break;
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => return Err(plan_malformed_xml_error(&e)),
+    std::iter::from_fn(|| match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"path" => {
+            Some(Some(Ok(match reader.read_event_into(&mut Vec::new()) {
+                Ok(Event::Text(t)) => t.unescape().unwrap_or_default().to_string(),
+                _ => String::new(),
+            })))
         }
-    }
-
-    Ok(paths)
+        Ok(Event::End(e)) if e.name().as_ref() == b"paths" => None,
+        Ok(Event::Eof) => None,
+        Ok(_) => Some(None),
+        Err(e) => Some(Some(Err(plan_malformed_xml_error(&e)))),
+    })
+    .flatten()
+    .collect()
 }
 
 /// Parse a `<directories>` element containing multiple `<directory>` elements.
 fn parse_directory_list(reader: &mut Reader<&[u8]>) -> Result<Vec<String>, XsdValidationError> {
-    let mut directories = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut Vec::new()) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"directory" => {
-                if let Ok(Event::Text(e)) = reader.read_event_into(&mut Vec::new()) {
-                    directories.push(e.unescape().unwrap_or_default().to_string());
-                }
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"directories" => {
-                break;
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => return Err(plan_malformed_xml_error(&e)),
+    std::iter::from_fn(|| match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"directory" => {
+            Some(Some(Ok(match reader.read_event_into(&mut Vec::new()) {
+                Ok(Event::Text(t)) => t.unescape().unwrap_or_default().to_string(),
+                _ => String::new(),
+            })))
         }
-    }
-
-    Ok(directories)
+        Ok(Event::End(e)) if e.name().as_ref() == b"directories" => None,
+        Ok(Event::Eof) => None,
+        Ok(_) => Some(None),
+        Err(e) => Some(Some(Err(plan_malformed_xml_error(&e)))),
+    })
+    .flatten()
+    .collect()
 }
 
 /// Parse a `<dependencies>` element containing `<depends-on>` elements.
 fn parse_dependencies(reader: &mut Reader<&[u8]>) -> Result<Vec<String>, XsdValidationError> {
-    let mut dependencies = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut Vec::new()) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"depends-on" => {
-                // Get the unit-id attribute
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"unit-id" {
-                        dependencies.push(
-                            String::from_utf8_lossy(&attr.value).to_string()
-                        );
-                    }
-                }
-                // Consume the end event for depends-on
-                if let Ok(Event::End(e)) = reader.read_event_into(&mut Vec::new()) {
-                    let _ = e;
-                }
-            }
-            Ok(Event::End(e)) if e.name().as_ref() == b"dependencies" => {
-                break;
-            }
-            Ok(Event::Eof) => break,
-            Ok(_) => {}
-            Err(e) => return Err(plan_malformed_xml_error(&e)),
+    std::iter::from_fn(|| match reader.read_event_into(&mut Vec::new()) {
+        Ok(Event::Start(e)) if e.name().as_ref() == b"depends-on" => {
+            let unit_id = e
+                .attributes()
+                .flatten()
+                .find(|attr| attr.key.as_ref() == b"unit-id")
+                .map(|attr| String::from_utf8_lossy(&attr.value).to_string());
+            // consume </depends-on>
+            let _ = reader.read_event_into(&mut Vec::new());
+            Some(unit_id.map(Ok))
         }
-    }
-
-    Ok(dependencies)
+        Ok(Event::End(e)) if e.name().as_ref() == b"dependencies" => None,
+        Ok(Event::Eof) => None,
+        Ok(_) => Some(None),
+        Err(e) => Some(Some(Err(plan_malformed_xml_error(&e)))),
+    })
+    .flatten()
+    .collect()
 }
 
 /// Validate plan XML content against the structured XSD schema.

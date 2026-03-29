@@ -1,39 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Development Result XSD Schema
-  
-  Allows <code> elements within text content for escaping special characters
-  like <, >, and & (e.g., comparisons, generics, logical operators).
+  Development Result XSD Schema (revised for JSON Schema alignment)
+
+  Covers both normal and continuation submissions.
+  All text fields are plain xs:string (no mixed content).
+  No ralph- prefixes on child elements.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  
-  <!-- Text with optional inline code elements -->
-  <xs:complexType name="TextWithCodeType" mixed="true">
-    <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="code" type="xs:string"/>
-    </xs:choice>
-  </xs:complexType>
 
-  <!-- Skills and MCP recommendations container -->
-  <xs:complexType name="SkillsMcpType" mixed="true">
-    <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="skill">
-        <xs:complexType mixed="true">
-          <xs:attribute name="reason" type="xs:string"/>
-        </xs:complexType>
-      </xs:element>
-      <xs:element name="mcp">
-        <xs:complexType mixed="true">
-          <xs:attribute name="reason" type="xs:string"/>
-        </xs:complexType>
-      </xs:element>
-    </xs:choice>
-  </xs:complexType>
-  
-  <xs:element name="ralph-development-result">
+  <xs:element name="development-result">
     <xs:complexType>
       <xs:sequence>
-        <xs:element name="ralph-status">
+        <xs:element name="status">
           <xs:simpleType>
             <xs:restriction base="xs:string">
               <xs:enumeration value="completed"/>
@@ -42,11 +20,26 @@
             </xs:restriction>
           </xs:simpleType>
         </xs:element>
-        <xs:element name="ralph-summary" type="TextWithCodeType"/>
-        <xs:element name="skills-mcp" type="SkillsMcpType" minOccurs="0"/>
-        <xs:element name="ralph-files-changed" type="TextWithCodeType" minOccurs="0"/>
-        <xs:element name="ralph-next-steps" type="TextWithCodeType" minOccurs="0"/>
+        <xs:element name="summary" type="xs:string"/>
+        <xs:element name="files-changed" type="xs:string" minOccurs="0"/>
+        <xs:element name="next-steps" type="xs:string" minOccurs="0"/>
+        <xs:element name="skills-mcp" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="skill" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+              <xs:element name="mcp" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="continuation" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="prior-session-id" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
+
 </xs:schema>

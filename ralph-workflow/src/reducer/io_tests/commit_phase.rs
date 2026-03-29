@@ -441,15 +441,15 @@ fn test_commit_skipped_goes_to_review_after_last_development_iteration() {
 }
 
 #[test]
-fn test_commit_created_skips_review_when_no_reviewer_passes_configured() {
-    // When the last development iteration is committed and reviewer passes are disabled,
-    // the pipeline should skip Review entirely.
+fn test_commit_created_skips_review_when_no_reviewer_passes_and_issues_not_found() {
     let state = PipelineState {
         phase: PipelinePhase::CommitMessage,
         previous_phase: Some(PipelinePhase::Development),
         iteration: 0,
         total_iterations: 1,
+        reviewer_pass: 3,
         total_reviewer_passes: 0,
+        review_issues_found: false,
         ..create_test_state()
     };
 
@@ -461,7 +461,64 @@ fn test_commit_created_skips_review_when_no_reviewer_passes_configured() {
     assert_eq!(
         new_state.phase,
         PipelinePhase::FinalValidation,
-        "With total_reviewer_passes=0, pipeline should skip Review after last dev commit"
+        "With total_reviewer_passes=0, pipeline must skip Review after last dev commit"
+    );
+    assert_eq!(
+        new_state.iteration, 1,
+        "Commit from Development must advance iteration before transition"
+    );
+    assert_eq!(
+        new_state.reviewer_pass, 3,
+        "Skipping review due to zero configured passes must preserve reviewer_pass"
+    );
+    assert!(
+        new_state.previous_phase.is_none(),
+        "Post-commit transition must clear previous_phase"
+    );
+    assert!(
+        !new_state.review_issues_found,
+        "issues_found=false input must remain false across zero-review-pass transition"
+    );
+}
+
+#[test]
+fn test_commit_created_skips_review_when_no_reviewer_passes_and_issues_found() {
+    let state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        previous_phase: Some(PipelinePhase::Development),
+        iteration: 0,
+        total_iterations: 1,
+        reviewer_pass: 3,
+        total_reviewer_passes: 0,
+        review_issues_found: true,
+        ..create_test_state()
+    };
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "test".to_string()),
+    );
+
+    assert_eq!(
+        new_state.phase,
+        PipelinePhase::FinalValidation,
+        "With total_reviewer_passes=0, review_issues_found=true must not route to Review"
+    );
+    assert_eq!(
+        new_state.iteration, 1,
+        "Commit from Development must advance iteration before transition"
+    );
+    assert_eq!(
+        new_state.reviewer_pass, 3,
+        "Skipping review due to zero configured passes must preserve reviewer_pass"
+    );
+    assert!(
+        new_state.previous_phase.is_none(),
+        "Post-commit transition must clear previous_phase"
+    );
+    assert!(
+        !new_state.review_issues_found,
+        "issues_found must be cleared when review phase is bypassed (total_reviewer_passes=0)"
     );
 }
 

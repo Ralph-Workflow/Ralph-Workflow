@@ -26,7 +26,11 @@ use crate::reducer::state::{PipelineState, PromptMode, RebaseState};
 ///
 /// These files are cleaned up before each planning agent invocation to ensure
 /// fresh output. The planning agent writes to `.agent/tmp/plan.xml`.
-pub(super) const REQUIRED_FILES: &[&str] = &[".agent/tmp/plan.xml"];
+pub(super) const REQUIRED_FILES: &[&str] = &[
+    ".agent/tmp/plan.xml",
+    ".agent/tmp/plan.json",
+    ".agent/tmp/plan.partial.json",
+];
 
 pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
     if state.iteration == 0
@@ -86,7 +90,20 @@ pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
         };
     }
 
-    if state.planning_agent_invoked_iteration != Some(state.iteration) {
+    let last_effect_was_planning_agent = state
+        .continuation
+        .last_effect_kind
+        .as_deref()
+        .is_some_and(|k| k.contains("InvokePlanningAgent"));
+
+    let effective_planning_agent_invoked = state.planning_agent_invoked_iteration
+        == Some(state.iteration)
+        || (last_effect_was_planning_agent
+            && state.planning_prompt_prepared_iteration == Some(state.iteration)
+            && state.planning_required_files_cleaned_iteration == Some(state.iteration)
+            && state.agent_chain.current_drain == AgentDrain::Planning);
+
+    if !effective_planning_agent_invoked {
         return Effect::InvokePlanningAgent {
             iteration: state.iteration,
         };

@@ -1,0 +1,65 @@
+{# ============================================================================ #}
+{# Partial: _mcp_tools.txt                                                        #}
+{# Version: 1.0                                                                #}
+{# ============================================================================ #}
+{#                                                                             #}
+{# PURPOSE:                                                                    #}
+{#   Instructs the agent to use Ralph's MCP tools instead of native tools.     #}
+{#   This is part of RFC-009 Phase 3 MCP-style agent-orchestrator communication. #}
+{#                                                                             #}
+{# USAGE:                                                                      #}
+{#   Include shared/_mcp_tools after _session_capabilities in drain templates.   #}
+{#                                                                             #}
+{# VARIABLES:                                                                  #}
+{#   MCP_TOOLS_LIST - Comma-separated list of available MCP tool names         #}
+{#   HAS_MCP_WRITE - Boolean indicating if write tools are available            #}
+{#   HAS_MCP_EXEC - Boolean indicating if exec tool is available               #}
+{#   HAS_MCP_GIT - Boolean indicating if git tools are available               #}
+{#                                                                             #}
+{# NOTES:                                                                      #}
+{#   - Native tools (Edit, Write, Bash, Git, etc.) are DISABLED              #}
+{#   - All operations MUST go through Ralph's MCP brokered tools               #}
+{#   - This ensures all actions are audited and policy-enforced               #}
+{# ============================================================================ #}
+
+{% if MCP_TOOLS_LIST %}
+═══════════════════════════════════════════════════════════════════════════════════════
+MCP TOOLS (Ralph Brokered)
+═══════════════════════════════════════════════════════════════════════════════════════
+
+You MUST use Ralph's MCP tools for all operations. Native agent tools are DISABLED.
+
+AVAILABLE TOOLS:
+{{MCP_TOOLS_LIST}}
+
+{% if HAS_MCP_WRITE %}
+WRITE OPERATIONS:
+- Use `ralph_write_file` to create or modify files
+- Use `ralph_list_directory` to explore directories
+- Use `ralph_search_files` to search file contents
+{% endif %}
+
+{% if HAS_MCP_EXEC %}
+EXECUTION:
+- Use `ralph_exec_command` to run shell commands
+- Commands are filtered against a blacklist for safety
+- Use `ralph_report_progress` to report status
+{% endif %}
+
+{% if HAS_MCP_GIT %}
+GIT OPERATIONS:
+- Use `ralph_git_status` to check repository status
+- Use `ralph_git_diff` to see changes
+- Use `ralph_git_log` to view history
+- Use `ralph_git_show` to inspect commits
+
+NOTE: Git write operations (commit, merge, etc.) are NOT available in this session.
+{% endif %}
+
+ARTIFACT SUBMISSION:
+- Use `ralph_submit_artifact` to submit structured results
+- Use `ralph_declare_complete` when finished
+
+IMPORTANT: Do NOT use native Edit, Write, Bash, or Git tools.
+They are blocked and will fail. Use the MCP tools listed above.
+{% endif %}

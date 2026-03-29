@@ -20,7 +20,10 @@
 
 use std::fs;
 use tempfile::TempDir;
-use test_helpers::{commit_all, init_git_repo, with_temp_cwd, write_file};
+use test_helpers::{
+    assert_project_head_unchanged, capture_project_head_oid, commit_all, init_git_repo,
+    with_temp_cwd, write_file,
+};
 
 use crate::common::mock_executor_for_git_success;
 use crate::test_timeout::with_default_timeout;
@@ -50,6 +53,7 @@ fn get_default_branch_name(repo: &git2::Repository) -> String {
 #[serial]
 fn rebase_with_invalid_revision_returns_error() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_onto;
 
         with_temp_cwd(|dir| {
@@ -72,6 +76,7 @@ fn rebase_with_invalid_revision_returns_error() {
                 }
                 _ => panic!("Expected Failed result for invalid revision"),
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -85,6 +90,7 @@ fn rebase_with_invalid_revision_returns_error() {
 #[serial]
 fn rebase_with_dirty_working_tree_fails() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::{rebase_onto, RebaseResult};
 
         with_temp_cwd(|dir| {
@@ -125,6 +131,7 @@ fn rebase_with_dirty_working_tree_fails() {
                     // All outcomes acceptable - git may autostash, conflict, or error
                 }
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -138,6 +145,7 @@ fn rebase_with_dirty_working_tree_fails() {
 #[serial]
 fn rebase_with_staged_changes_fails() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::{rebase_onto, RebaseResult};
 
         with_temp_cwd(|dir| {
@@ -182,6 +190,7 @@ fn rebase_with_staged_changes_fails() {
                     // All outcomes acceptable - git may autostash, conflict, or error
                 }
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -194,6 +203,7 @@ fn rebase_with_staged_changes_fails() {
 #[serial]
 fn rebase_detects_existing_rebase_in_progress() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
 
@@ -213,6 +223,7 @@ fn rebase_detects_existing_rebase_in_progress() {
                     .unwrap_or(false);
             // Git status may or may not detect this depending on the state
             // We're just ensuring the function doesn't error
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -225,6 +236,7 @@ fn rebase_detects_existing_rebase_in_progress() {
 #[serial]
 fn rebase_detects_merge_in_progress() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_onto;
 
         with_temp_cwd(|dir| {
@@ -244,6 +256,7 @@ fn rebase_detects_merge_in_progress() {
             {
                 // All outcomes acceptable - can't reliably rebase during merge
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -256,6 +269,7 @@ fn rebase_detects_merge_in_progress() {
 #[serial]
 fn rebase_handles_missing_git_config() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
             let executor = mock_executor_for_git_success();
@@ -269,6 +283,7 @@ fn rebase_handles_missing_git_config() {
             // we just verify the rebase doesn't crash
             let result = ralph_workflow::git_helpers::rebase_onto("main", executor.as_ref());
             assert!(result.is_ok()); // Should not crash
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -311,6 +326,7 @@ fn rebase_handles_corrupt_object_database() {
 #[serial]
 fn rebase_detects_cherry_pick_in_progress() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_onto;
 
         with_temp_cwd(|dir| {
@@ -327,6 +343,7 @@ fn rebase_detects_cherry_pick_in_progress() {
 
             // Any outcome is acceptable here; this test verifies graceful handling only.
             let _ = result;
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -339,6 +356,7 @@ fn rebase_detects_cherry_pick_in_progress() {
 #[serial]
 fn rebase_handles_locked_index() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::{cleanup_stale_rebase_state, rebase_onto};
 
         with_temp_cwd(|dir| {
@@ -366,6 +384,7 @@ fn rebase_handles_locked_index() {
             // Rebase should now work without lock issues
             let result = rebase_onto(&default_branch, executor.as_ref());
             assert!(result.is_ok(), "Rebase should succeed after cleanup");
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -378,6 +397,7 @@ fn rebase_handles_locked_index() {
 #[serial]
 fn rebase_detects_revert_in_progress() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_onto;
 
         with_temp_cwd(|dir| {
@@ -394,6 +414,7 @@ fn rebase_detects_revert_in_progress() {
 
             // Any outcome is acceptable here; this test verifies graceful handling only.
             let _ = result;
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -406,6 +427,7 @@ fn rebase_detects_revert_in_progress() {
 #[serial]
 fn rebase_detects_bisect_in_progress() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_onto;
 
         with_temp_cwd(|dir| {
@@ -422,6 +444,7 @@ fn rebase_detects_bisect_in_progress() {
 
             // Any outcome is acceptable here; this test verifies graceful handling only.
             let _ = result;
+            assert_project_head_unchanged(&head_before);
         });
     });
 }

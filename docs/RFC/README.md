@@ -54,6 +54,7 @@ An RFC is a design document that describes a proposed change to Ralph. RFCs are 
 | [RFC-007](./RFC-007-stale-prompt-replay-postmortem.md) | Post-Mortem: Stale Prompt Replay Across Iterations | Implemented |
 | [RFC-008](./RFC-008-external-parallel-worker-orchestration.md) | External Parallel Worker Orchestration for Ralph | Draft |
 | [RFC-009](./RFC-009-mcp-agent-orchestrator-communication.md) | MCP-Style Agent-Orchestrator Communication | Draft |
+| [RFC-010](./RFC-010-agent-success-ordering-postmortem.md) | Post-Mortem: Agent Success Ordering Regression Across Phases | Implemented |
 
 ## Creating a New RFC
 

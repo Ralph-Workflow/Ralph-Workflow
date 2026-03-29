@@ -10,10 +10,20 @@ use std::sync::Arc;
 fn poll_child_exited(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
 ) -> bool {
+    let pid = {
+        let locked_child = child_arc
+            .lock()
+            .expect("child process mutex poisoned - indicates panic in another thread");
+        locked_child.id()
+    };
     let mut locked_child = child_arc
         .lock()
         .expect("child process mutex poisoned - indicates panic in another thread");
-    matches!(locked_child.try_wait(), Ok(Some(_)))
+    let exited = matches!(locked_child.try_wait(), Ok(Some(_)));
+    if exited {
+        crate::executor::process_registry::unregister(pid);
+    }
+    exited
 }
 
 fn resend_kill_if_due(

@@ -49,6 +49,13 @@ fn main() -> anyhow::Result<()> {
 
     // Create real process executor for production use
     let args = Args::parse();
+
+    // Handle MCP proxy mode before anything else - this is a lightweight
+    // stdio-to-socket bridge that doesn't need the full pipeline.
+    if args.commit_plumbing.mcp_proxy {
+        return ralph_workflow::mcp_server::proxy::run_mcp_proxy();
+    }
+
     let pause_mode = args.pause_on_exit;
     let executor = std::sync::Arc::new(RealProcessExecutor::new());
     let result = app::run(args, executor);

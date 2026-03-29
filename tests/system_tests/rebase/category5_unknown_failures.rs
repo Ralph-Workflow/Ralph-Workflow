@@ -20,7 +20,10 @@
 
 use std::fs;
 use tempfile::TempDir;
-use test_helpers::{commit_all, git_switch, init_git_repo, with_temp_cwd, write_file};
+use test_helpers::{
+    assert_project_head_unchanged, capture_project_head_oid, commit_all, git_switch, init_git_repo,
+    with_temp_cwd, write_file,
+};
 
 use crate::common::mock_executor_for_git_success;
 use crate::test_timeout::with_default_timeout;
@@ -75,6 +78,7 @@ fn unknown_error_kind_exists_with_description() {
 #[serial]
 fn rebase_handles_unexpected_exit_code() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test behavior when git returns an unexpected exit code
         // This is hard to simulate directly, but we verify the system
         // can classify unknown errors
@@ -102,6 +106,7 @@ fn rebase_handles_unexpected_exit_code() {
                     // Other results are also acceptable
                 }
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -114,6 +119,7 @@ fn rebase_handles_unexpected_exit_code() {
 #[serial]
 fn rebase_handles_unexpected_stderr_format() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test that rebase handles unexpected stderr formats from git
         // This verifies the error classification is resilient
         with_temp_cwd(|dir| {
@@ -147,6 +153,7 @@ fn rebase_handles_unexpected_stderr_format() {
             } else {
                 // Other results are acceptable
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -159,6 +166,7 @@ fn rebase_handles_unexpected_stderr_format() {
 #[serial]
 fn rebase_handles_case_sensitivity_collision() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test platform-specific case sensitivity issues
         // On case-insensitive filesystems, this could cause issues
         with_temp_cwd(|dir| {
@@ -187,6 +195,7 @@ fn rebase_handles_case_sensitivity_collision() {
 
             // Should not crash
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -199,6 +208,7 @@ fn rebase_handles_case_sensitivity_collision() {
 #[serial]
 fn rebase_handles_long_path_names() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test that rebase handles very long path names
         // This could be an issue on some platforms (Windows MAX_PATH)
         with_temp_cwd(|dir| {
@@ -241,6 +251,7 @@ fn rebase_handles_long_path_names() {
 
             // Should not crash or fail due to path length
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -253,6 +264,7 @@ fn rebase_handles_long_path_names() {
 #[serial]
 fn rebase_handles_special_characters_in_filenames() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test that rebase handles special characters in filenames
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
@@ -287,6 +299,7 @@ fn rebase_handles_special_characters_in_filenames() {
 
             // Should not crash
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -328,6 +341,7 @@ fn unknown_error_classification_for_unexpected_output() {
 #[serial]
 fn rebase_handles_simultaneous_git_operations() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test race conditions from concurrent git operations
         // This documents expected behavior for such scenarios
 
@@ -348,6 +362,7 @@ fn rebase_handles_simultaneous_git_operations() {
 
             // Clean up for test continuity
             let _ = fs::remove_dir_all(rebase_merge_dir);
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -360,6 +375,7 @@ fn rebase_handles_simultaneous_git_operations() {
 #[serial]
 fn rebase_handles_zero_length_ref_updates() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test handling of zero-length or empty ref updates
         // This could happen with corrupted refs
 
@@ -386,6 +402,7 @@ fn rebase_handles_zero_length_ref_updates() {
 
             // Restore HEAD for cleanup
             let _ = fs::write(&head_path, original_head);
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -398,6 +415,7 @@ fn rebase_handles_zero_length_ref_updates() {
 #[serial]
 fn rebase_handles_unicode_in_filenames_and_content() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         // Test handling of Unicode characters in filenames and content
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
@@ -427,6 +445,7 @@ fn rebase_handles_unicode_in_filenames_and_content() {
 
             // Should not crash
             assert!(result.is_ok());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }

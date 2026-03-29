@@ -274,12 +274,26 @@ pub(super) fn reduce_fix_continuation_triggered(
     status: FixStatus,
     summary: Option<String>,
 ) -> PipelineState {
-    // Fix output is valid but indicates work is incomplete (issues_remain)
-    PipelineState {
-        agent_chain: state
+    let agent_chain = if state.agent_chain.current_drain == AgentDrain::Analysis {
+        AgentChainState::initial()
+            .with_max_cycles(state.agent_chain.max_cycles)
+            .with_backoff_policy(
+                state.agent_chain.retry_delay_ms,
+                state.agent_chain.backoff_multiplier,
+                state.agent_chain.max_backoff_ms,
+            )
+            .reset_for_drain(AgentDrain::Review)
+            .with_mode(DrainMode::Continuation)
+    } else {
+        state
             .agent_chain
             .with_drain(AgentDrain::Fix)
-            .with_mode(DrainMode::Continuation),
+            .with_mode(DrainMode::Continuation)
+    };
+
+    // Fix output is valid but indicates work is incomplete (issues_remain)
+    PipelineState {
+        agent_chain,
         reviewer_pass: pass,
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,

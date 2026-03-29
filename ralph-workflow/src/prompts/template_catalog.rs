@@ -376,17 +376,13 @@ mod tests {
         let content = get_embedded_template("commit_xsd_retry").expect("commit_xsd_retry exists");
 
         assert!(
-            content.contains("XSD") && content.contains("FIX XML"),
-            "commit_xsd_retry should clearly be an XML-only retry prompt"
+            content.contains("VALIDATION FAILED") && content.contains("FIX JSON"),
+            "commit_xsd_retry should clearly be a JSON-only retry prompt"
         );
 
         assert!(
-            content.contains("READ-ONLY")
-                && (content.contains("EXCEPT FOR writing")
-                    || content.contains("except for writing")
-                    || content.contains("Except for writing"))
-                && content.contains("{{COMMIT_MESSAGE_XML_PATH}}"),
-            "commit_xsd_retry should be read-only except for writing commit_message.xml"
+            content.contains("ralph_submit_artifact"),
+            "commit_xsd_retry should instruct submission via ralph_submit_artifact"
         );
 
         assert!(

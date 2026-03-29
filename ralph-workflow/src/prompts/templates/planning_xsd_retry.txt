@@ -1,21 +1,17 @@
 {# ============================================================================ #}
 {# Template: planning_xsd_retry.txt                                             #}
-{# Version: 5.0 - STRICT XML-only fix mode                                      #}
+{# Version: 6.0 - MCP JSON resubmission only                                   #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Retry prompt when XML validation fails during planning phase.              #}
-{#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
+{#   Retry prompt when JSON validation fails during planning phase.             #}
+{#   This is STRICTLY for fixing the JSON submission - NO other actions allowed.#}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   {{XSD_ERROR}} - XSD validation error message (required)                    #}
-{#                                                                             #}
-{# FILES TO READ:                                                               #}
-{#   .agent/tmp/plan.xsd       - The XSD schema your output must conform to     #}
-{#   .agent/tmp/last_output.xml - Your previous invalid output                  #}
+{#   {{XSD_ERROR}} - Validation error message (required)                        #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
-{#   Valid <ralph-plan> XML conforming to the XSD schema                       #}
+{#   Corrected JSON submitted via ralph_submit_artifact                        #}
 {# ============================================================================ #}
 
 {{> shared/_unattended_mode}}
@@ -25,10 +21,10 @@
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-XSD VALIDATION FAILED - FIX XML ONLY
+VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your XML output at `{{PLAN_XML_PATH}}` failed XSD validation.
+Your previous plan submission failed validation.
 
 ERROR: {{XSD_ERROR}}
 
@@ -36,58 +32,34 @@ ERROR: {{XSD_ERROR}}
 CRITICAL INSTRUCTIONS - READ CAREFULLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{PLAN_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{PLAN_XML_PATH}}`
+The validation error is in JSON directive format:
+{"code": "MISSING_FIELD", "field_path": "summary.scope_items", "next_actions": ["add at least 3 scope_items to summary"]}
 
-## AUTHORIZATION OVERRIDE (CRITICAL)
-
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{PLAN_XML_PATH}}`
-
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still fix the XML to match the XSD).
-
-This is a READ-ONLY task EXCEPT FOR writing `{{PLAN_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
-
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
+You MUST call `ralph_submit_artifact` with artifact_type="plan" and corrected
+JSON content. Follow every instruction in the `next_actions` array exactly.
 
 You MUST NOT:
 - Read any code files
 - Analyze the codebase
 - Run any commands
 - Do ANY planning work
-- Change the content/meaning of your plan - ONLY fix the XML format
+- Change the content/meaning of your plan - ONLY fix the validation errors
 
-This is a PURE XML SYNTAX FIX. Your planning work is done. The only problem
-is that your XML output doesn't conform to the schema. Fix the XML structure,
-nothing else.
+This is a PURE SUBMISSION FIX. Your planning work is done. The only problem
+is that your submitted JSON doesn't conform to the schema. Fix the JSON
+structure, nothing else.
 
 ═══════════════════════════════════════════════════════════════════════════════
-COMMON XML MISTAKES TO FIX
+COMMON MISTAKES TO FIX
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Start IMMEDIATELY with <ralph-plan> - NO text before it
-2. End with </ralph-plan> - NO text after it
-3. NO markdown code fences (```) around the XML
-4. ALL 5 sections are REQUIRED: ralph-summary, ralph-implementation-steps,
-   ralph-critical-files, ralph-risks-mitigations, ralph-verification-strategy
-5. <ralph-summary> MUST have <context> (non-empty) AND <scope-items> (minimum 3 items)
-6. Each <step> MUST have number attribute, <title>, and <content>
-7. file-change steps MUST have <target-files> with at least one <file path="..." action="..."/>
-8. <content> MUST have at least one element (<paragraph>, <code-block>, <list>, etc.)
-9. <primary-files> MUST have at least one <file path="..." action="..."/>
-10. Each <risk-pair> MUST have both <risk> and <mitigation>
-11. Each <verification> MUST have both <method> and <expected-outcome>
-12. For inline code: <code>a &lt; b</code>
-13. For code blocks, ALWAYS use CDATA:
-    <code-block language="rust"><![CDATA[if a < b { ... }]]></code-block>
-    CDATA preserves content exactly - no escaping needed inside.
+1. Missing required fields (summary, steps, critical_files, risks_mitigations, verification_strategy)
+2. summary MUST have "context" (non-empty) AND "scope_items" (minimum 3 items)
+3. Each step MUST have "number", "title", and "content"
+4. file-change steps MUST have "target_files" with at least one entry
+5. primary_files MUST have at least one entry
+6. Each risks_mitigations entry MUST have both "risk" and "mitigation"
+7. Each verification_strategy entry MUST have both "method" and "expected_outcome"
 
-After reading the XSD schema, fix ONLY the XML validation error.
+Resubmit your corrected JSON via `ralph_submit_artifact`.
 DO NOT do any other work.

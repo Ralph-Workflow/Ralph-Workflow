@@ -60,7 +60,7 @@ impl GitHelpers {
 
     fn init_real_git(&mut self) {
         if self.real_git.is_none() {
-            self.real_git = which("git").ok();
+            self.real_git = find_real_git();
         }
     }
 }
@@ -113,7 +113,39 @@ fn cleanup_wrapper_track_file(track_file: &Path, removed_wrapper_dir: &Option<Pa
 
 pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
     let repo_root = get_repo_root()?;
+    assert_start_agent_phase_not_in_project_repo(&repo_root)?;
     start_agent_phase_in_repo(&repo_root, helpers)
+}
+
+fn assert_start_agent_phase_not_in_project_repo(repo_root: &std::path::Path) -> io::Result<()> {
+    // Detect project root from the test binary's executable path.
+    // Walk up until we find a directory containing .git.
+    let project_root = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            let start = exe.parent()?.to_path_buf();
+            std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
+                .find(|p| p.join(".git").exists())
+        });
+    let Some(project) = project_root else {
+        return Ok(());
+    };
+    let repo_abs =
+        std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let project_abs =
+        std::fs::canonicalize(&project).unwrap_or_else(|_| project.clone());
+    if repo_abs == project_abs || repo_abs.starts_with(&project_abs) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "POLICY VIOLATION: start_agent_phase attempted to run on the project's real git \
+                 repository at '{}'. Tests must use isolated temporary repositories. This guard \
+                 prevents tests from installing git hooks or wrappers into the development repo.",
+                repo_abs.display()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn store_hooks_dir_if_resolvable(repo_root: &Path) {
@@ -140,11 +172,29 @@ pub fn start_agent_phase_in_repo(repo_root: &Path, helpers: &mut GitHelpers) -> 
     let ralph_dir = ralph_git_dir(repo_root);
     store_agent_phase_paths(repo_root, &ralph_dir);
 
-    repair_marker_if_tampered(repo_root)?;
+    repair_marker_if_tampered(repo_root).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("failed to repair marker in {}: {e}", repo_root.display()),
+        )
+    })?;
     #[cfg(unix)]
     set_readonly_mode_if_not_symlink(&marker_path_from_ralph_dir(&ralph_dir), 0o444);
-    crate::git_helpers::install::install_hooks_in_repo(repo_root)?;
-    enable_git_wrapper_at(repo_root, helpers)?;
+    crate::git_helpers::install::install_hooks_in_repo(repo_root).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("failed to install hooks in {}: {e}", repo_root.display()),
+        )
+    })?;
+    enable_git_wrapper_at(repo_root, helpers).map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!(
+                "failed to enable git wrapper in {}: {e}",
+                repo_root.display()
+            ),
+        )
+    })?;
 
     phase::capture_head_oid(repo_root);
     Ok(())
@@ -216,7 +266,9 @@ fn do_restore_wrapper_tracking_file(
 ) {
     logger.warn("Git wrapper tracking file missing or invalid — restoring");
     result.tampering_detected = true;
-    result.details.push("Git wrapper tracking file missing or invalid — restored".to_string());
+    result
+        .details
+        .push("Git wrapper tracking file missing or invalid — restored".to_string());
     if let Err(e) = path_wrapper::write_track_file_atomic(repo_root, dir) {
         logger.warn(&format!("Failed to restore wrapper tracking file: {e}"));
     }
@@ -237,18 +289,16 @@ fn restore_wrapper_tracking_file_if_missing(
 }
 
 fn check_hooks_present(repo_root: &Path) -> bool {
-    get_hooks_dir_from(repo_root)
-        .ok()
-        .is_some_and(|hooks_dir| {
-            RALPH_HOOK_NAMES.iter().any(|name| {
-                let path = hooks_dir.join(name);
-                path.exists()
-                    && matches!(
-                        crate::files::file_contains_marker(&path, HOOK_MARKER),
-                        Ok(true)
-                    )
-            })
+    get_hooks_dir_from(repo_root).ok().is_some_and(|hooks_dir| {
+        RALPH_HOOK_NAMES.iter().any(|name| {
+            let path = hooks_dir.join(name);
+            path.exists()
+                && matches!(
+                    crate::files::file_contains_marker(&path, HOOK_MARKER),
+                    Ok(true)
+                )
         })
+    })
 }
 
 fn check_marker_present(marker_path: &Path) -> bool {
@@ -291,7 +341,11 @@ fn handle_reinstall_result(
     }
 }
 
-fn check_unauthorized_commit(repo_root: &Path, result: &mut ProtectionCheckResult, logger: &Logger) {
+fn check_unauthorized_commit(
+    repo_root: &Path,
+    result: &mut ProtectionCheckResult,
+    logger: &Logger,
+) {
     if phase::detect_unauthorized_commit(repo_root) {
         logger.warn("CRITICAL: HEAD OID changed — unauthorized commit detected!");
         result.tampering_detected = true;
@@ -320,7 +374,13 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     if let Some(ref dir) = wrapper_dir {
         path_wrapper::prepend_wrapper_dir_to_path(dir);
     }
-    restore_wrapper_tracking_file_if_missing(&ralph_dir, &repo_root, &wrapper_dir, &mut result, logger);
+    restore_wrapper_tracking_file_if_missing(
+        &ralph_dir,
+        &repo_root,
+        &wrapper_dir,
+        &mut result,
+        logger,
+    );
 
     check_and_install_wrapper(
         &repo_root,
@@ -528,6 +588,38 @@ fn validate_git_binary_unix(real_git: &Path, git_path_str: &str) -> io::Result<(
     }
 }
 
+/// Check if a path points to a valid git binary (a file, not a directory).
+///
+/// Uses `fs::metadata` consistently with `validate_git_binary_unix`.
+fn is_valid_git_binary(path: &Path) -> bool {
+    match fs::metadata(path) {
+        Ok(meta) => !meta.file_type().is_dir(),
+        Err(_) => false,
+    }
+}
+
+/// Search well-known system git binary locations as a fallback.
+fn find_git_in_system_paths() -> Option<PathBuf> {
+    ["/usr/bin/git", "/usr/local/bin/git"]
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| is_valid_git_binary(p))
+}
+
+/// Find the real git binary, handling stale Ralph wrappers gracefully.
+///
+/// When a previous Ralph process is interrupted, its wrapper script may be removed
+/// from /tmp but stale entries can still appear first in PATH. This function
+/// uses fs::metadata (like validate_git_binary does) to ensure the found path
+/// is a valid file, and falls back to system paths if validation fails.
+fn find_real_git() -> Option<PathBuf> {
+    match which("git") {
+        Ok(git_path) if is_valid_git_binary(&git_path) => Some(git_path),
+        Ok(_) => find_git_in_system_paths(),
+        Err(_) => find_git_in_system_paths(),
+    }
+}
+
 fn path_to_escaped_str(path: &Path, label: &str) -> io::Result<String> {
     let s = path.to_str().ok_or_else(|| {
         io::Error::new(
@@ -553,7 +645,12 @@ fn build_wrapper_escaped_args(
     let track_escaped = path_to_escaped_str(&track_file_path, "track file path")?;
     let repo_root_escaped = path_to_escaped_str(&normalized_repo_root, "repo root")?;
     let git_dir_escaped = path_to_escaped_str(&normalized_git_dir, "git dir")?;
-    Ok((marker_escaped, track_escaped, repo_root_escaped, git_dir_escaped))
+    Ok((
+        marker_escaped,
+        track_escaped,
+        repo_root_escaped,
+        git_dir_escaped,
+    ))
 }
 
 fn write_wrapper_script(wrapper_path: &Path, content: &str) -> io::Result<()> {
@@ -580,12 +677,13 @@ fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Resu
         return Ok(());
     };
 
-    let git_path_str = real_git.to_str().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "git binary path contains invalid UTF-8 characters; cannot create wrapper script",
-        )
-    })?;
+    let Some(git_path_str) = real_git.to_str() else {
+        // Invalid UTF-8 in path - wrapper won't work, fail closed
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "git binary path contains invalid UTF-8 characters",
+        ));
+    };
     validate_git_binary(real_git, git_path_str)?;
 
     let git_path_escaped = escape_shell_single_quoted(git_path_str)?;

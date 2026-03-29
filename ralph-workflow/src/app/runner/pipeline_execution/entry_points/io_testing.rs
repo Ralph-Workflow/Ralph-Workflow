@@ -270,6 +270,7 @@ pub fn run_with_config_and_resolver<P: crate::config::ConfigEnvironment, H: AppE
             executor: &executor,
             repo_root: &repo_root,
             workspace: &workspace,
+            app_handler: Some(handler),
         })?
     {
         return Ok(());
@@ -536,6 +537,7 @@ where
             executor: &executor,
             repo_root: &repo_root,
             workspace: &workspace,
+            app_handler: Some(app_handler),
         })?
     {
         return Ok(());

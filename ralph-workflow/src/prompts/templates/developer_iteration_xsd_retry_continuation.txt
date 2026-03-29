@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: developer_iteration_xsd_retry_continuation.txt                      #}
-{# Version: 1.0                                                                  #}
+{# Version: 2.0 - MCP JSON resubmission only                                    #}
 {# ============================================================================ #}
 
 {{> shared/_unattended_mode}}
@@ -10,23 +10,32 @@
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTINUATION XML VALIDATION FAILED
+CONTINUATION VALIDATION FAILED
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your continuation XML at `{{DEVELOPMENT_RESULT_XML_PATH}}` failed validation.
+Your previous continuation submission failed validation.
 
 ERROR: {{XSD_ERROR}}
 
-Read:
-1. `{{DEVELOPMENT_RESULT_XSD_PATH}}`
-2. `{{LAST_OUTPUT_XML_PATH}}`
+The validation error is in JSON directive format:
+{"code": "INVALID_VALUE", "field_path": "status", "next_actions": ["set status to partial or failed"]}
 
-Then rewrite the XML so it satisfies the continuation contract:
-- Keep the output focused on why the full plan was not completed.
-- Use `<ralph-status>partial</ralph-status>` or `<ralph-status>failed</ralph-status>`.
-- Include an ordered, actionable recovery checklist that finishes the remaining plan.
-- Omit bookkeeping such as `<ralph-files-changed>`.
+You MUST call `ralph_submit_artifact` with artifact_type="development_result"
+and corrected JSON content. Follow every instruction in the `next_actions`
+array exactly.
 
-You may change the XML content as needed to satisfy the continuation contract.
+The continuation JSON must include:
+{
+  "status": "partial",
+  "summary": "What was completed and what remains",
+  "continuation": {
+    "prior_session_id": "...",
+    "remaining_steps": ["ordered", "actionable", "recovery", "checklist"]
+  }
+}
+
+Keep the output focused on why the full plan was not completed.
+Include an ordered, actionable recovery checklist that finishes the remaining plan.
+
 Do not modify repository files or do new implementation work in this retry.
-Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`.
+Resubmit your corrected JSON via `ralph_submit_artifact`.

@@ -1,45 +1,18 @@
 {# ============================================================================ #}
 {# Template: commit_message_xml.txt                                            #}
-{# Version: 2.0                                                                #}
+{# Version: 3.0 - MCP JSON submission only                                    #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
 {#   Generate high-quality Conventional Commits messages from git diffs.       #}
-{#   Uses XML output format for reliable parsing (no escape sequence issues).  #}
+{#   Submits structured JSON via ralph_submit_artifact MCP tool.               #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   {{DIFF}} - The git diff to analyze (required)                             #}
 {#                                                                             #}
-{# OUTPUT FORMAT (three supported formats):                                    #}
-{#                                                                             #}
-{#   Simple format (for small changes):                                        #}
-{#     <ralph-commit>                                                          #}
-{#       <ralph-subject>type(scope): description</ralph-subject>               #}
-{#       <ralph-body>Optional multi-line body</ralph-body>                     #}
-{#     </ralph-commit>                                                         #}
-{#                                                                             #}
-{#   Detailed format (for larger changes):                                     #}
-{#     <ralph-commit>                                                          #}
-{#       <ralph-subject>type(scope): description</ralph-subject>               #}
-{#       <ralph-body-summary>Brief 1-2 line summary</ralph-body-summary>       #}
-{#       <ralph-body-details>Detailed bullet points</ralph-body-details>       #}
-{#       <ralph-body-footer>BREAKING CHANGE or Fixes #123</ralph-body-footer>  #}
-{#     </ralph-commit>                                                         #}
-{#                                                                             #}
-{#   Skip format (when no commit needed):                                      #}
-{#     <ralph-commit>                                                          #}
-{#       <ralph-skip>Reason why no commit is needed</ralph-skip>               #}
-{#     </ralph-commit>                                                         #}
-{#                                                                             #}
-{#   Use skip format when:                                                     #}
-{#   - git diff failed and investigation shows no actual changes               #}
-{#   - All changes were already committed                                      #}
-{#   - Only whitespace/formatting that should not be committed                 #}
-{#                                                                             #}
-{# EXTRACTION:                                                                 #}
-{#   Parsed by try_extract_xml_commit() in llm_output_extraction/commit.rs     #}
-{#   Falls back to JSON parsing if XML tags not found.                         #}
-{#   Detailed body tags are combined into a single body string.                #}
+{# OUTPUT FORMAT:                                                              #}
+{#   JSON submitted via ralph_submit_artifact with                             #}
+{#   artifact_type="commit_message"                                            #}
 {#                                                                             #}
 {# VALIDATION:                                                                 #}
 {#   - Subject must follow conventional commit format (type: description)      #}
@@ -52,6 +25,8 @@
 {{> shared/_unattended_mode}}
 
 {{> shared/_session_capabilities}}
+
+{{> shared/_mcp_tools}}
 
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
@@ -156,58 +131,56 @@ Fixes #42
 
 ## OUTPUT FORMAT
 
-Write your XML to: `{{COMMIT_MESSAGE_XML_PATH}}`
-XSD schema at: `{{COMMIT_MESSAGE_XSD_PATH}}`
+Call `ralph_submit_artifact` with artifact_type="commit_message" and content
+as a JSON string:
 
-## AUTHORIZATION OVERRIDE (CRITICAL)
+Simple format:
+{
+  "type": "commit",
+  "subject": "type(scope): description",
+  "body": "Optional multi-line body"
+}
 
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{COMMIT_MESSAGE_XML_PATH}}`
+Detailed format:
+{
+  "type": "commit",
+  "subject": "type(scope): description",
+  "body_summary": "Brief 1-2 line summary",
+  "body_details": "- Detailed bullet points\n- Of what changed",
+  "body_footer": "BREAKING CHANGE: or Fixes #123"
+}
 
-This authorization OVERRIDES the safety mode "read-only" / "do not write files" guidance.
-Do NOT write any other files.
+Skip format (when no commit needed):
+{
+  "type": "skip",
+  "reason": "Reason why no commit is needed"
+}
 
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still analyze the DIFF and follow the XSD).
+With file selection:
+{
+  "type": "commit",
+  "subject": "fix(auth): prevent token expiry race condition",
+  "body": "Only the auth module files contain this fix.",
+  "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]
+}
 
-This is a READ-ONLY task EXCEPT FOR writing `{{COMMIT_MESSAGE_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
+Submitting the commit message is MANDATORY. Not submitting is a FAILURE.
+This is a READ-ONLY task. You MUST NOT create, modify, or delete any files.
 
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
-
-For special characters, use CDATA: <![CDATA[a < b]]>
-
-<ralph-commit>
-<ralph-subject>type(scope): description</ralph-subject>
-<ralph-body>Optional body explaining the change.
-Can span multiple lines.</ralph-body>
-</ralph-commit>
-
-For complex changes, use detailed body tags instead of <ralph-body>:
-<ralph-commit>
-<ralph-subject>type(scope): description</ralph-subject>
-<ralph-body-summary>Brief summary of the change.</ralph-body-summary>
-<ralph-body-details>- Detailed bullet points
-- Of what changed</ralph-body-details>
-<ralph-body-footer>BREAKING CHANGE: or Fixes #123</ralph-body-footer>
-</ralph-commit>
-
-Only <ralph-subject> is required. Body tags are optional.
-Use EITHER <ralph-body> OR the detailed tags, not both.
+Only "subject" is required. Body fields are optional.
+Use EITHER "body" OR the detailed fields (body_summary, body_details, body_footer), not both.
 
 ## FILE SELECTION (OPTIONAL)
 
-By default, ALL staged/unstaged changes are committed. Use `<ralph-files>` ONLY when the diff
+By default, ALL staged/unstaged changes are committed. Use "files" ONLY when the diff
 contains logically unrelated changes and you want to commit a coherent subset.
 
 **Precedence policy:**
-- `<ralph-files>` absent → commit everything (default)
-- `<ralph-files>` present with files → commit ONLY those files (selective staging)
+- "files" absent -> commit everything (default)
+- "files" present with entries -> commit ONLY those files (selective staging)
 
-**Important:** An empty `<ralph-files>` block is INVALID. If you want to commit everything,
-omit `<ralph-files>` entirely.
+**Important:** An empty "files" array is INVALID. If you want to commit everything,
+omit "files" entirely.
 
 **When to use file selection:**
 - The diff mixes unrelated work (e.g., bug fix + unrelated refactor)
@@ -216,25 +189,21 @@ omit `<ralph-files>` entirely.
 
 **When NOT to use file selection:**
 - All changes belong to the same logical unit (the common case)
-- You are unsure — omit `<ralph-files>` to commit everything safely
+- You are unsure -- omit "files" to commit everything safely
 
-**Example — commit only specific files:**
-```xml
-<ralph-commit>
-<ralph-subject>fix(auth): prevent token expiry race condition</ralph-subject>
-<ralph-body>Only the auth module files contain this fix; other changes are unrelated.</ralph-body>
-<ralph-files>
-  <ralph-file>src/auth/token.rs</ralph-file>
-  <ralph-file>tests/auth/token_expiry_test.rs</ralph-file>
-</ralph-files>
-</ralph-commit>
-```
+**Example -- commit only specific files:**
+{
+  "type": "commit",
+  "subject": "fix(auth): prevent token expiry race condition",
+  "body": "Only the auth module files contain this fix; other changes are unrelated.",
+  "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]
+}
 
-Rules for `<ralph-files>`:
-- Each `<ralph-file>` is a repo-relative path (no leading slash)
-- List every file needed for the commit to make sense — missing a file = broken commit
-- `<ralph-files>` cannot be combined with `<ralph-skip>`
-- At least one `<ralph-file>` is required when `<ralph-files>` is present
+Rules for "files":
+- Each entry is a repo-relative path (no leading slash)
+- List every file needed for the commit to make sense -- missing a file = broken commit
+- "files" cannot be combined with "skip"
+- At least one file path is required when "files" is present
 
 ### FILE-SELECTION PRECEDENCE (when deciding what to include)
 
@@ -252,12 +221,12 @@ This tool operates across many projects. Apply this precedence order:
    If yes → leave it out. If no → include it.
 
 4. **Conservative fallback** — When uncertain, prefer a smaller, focused selection.
-   If you use a conservative selection, explain your rationale in `<ralph-body>`.
+   If you use a conservative selection, explain your rationale in the "body" field.
 
 **Sensitivity rule:** Exclude files that may contain secrets, credentials, or personal
 data (e.g., `.env`, `*.pem`, `credentials.*`, `secrets.*`) unless the user has
 explicitly requested they be included. When in doubt, omit the file.
 
-**Rationale requirement:** If you use `<ralph-files>` with a subset of the diff,
-include a sentence in `<ralph-body>` or `<ralph-body-summary>` explaining which files
+**Rationale requirement:** If you use "files" with a subset of the diff,
+include a sentence in "body" or "body_summary" explaining which files
 were omitted and why, so the commit history is self-explanatory.

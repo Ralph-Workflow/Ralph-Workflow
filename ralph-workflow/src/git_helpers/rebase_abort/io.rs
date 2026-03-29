@@ -3,17 +3,42 @@
 
 // Core rebase operations: abort.
 
+/// Abort the current rebase operation using explicit repo root.
+///
+/// This cleans up the rebase state and returns the repository to its
+/// pre-rebase condition.
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+/// * `executor` - Process executor for dependency injection
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn abort_rebase_at(
+    repo_root: &std::path::Path,
+    executor: &dyn crate::executor::ProcessExecutor,
+) -> io::Result<()> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    abort_rebase_impl(&repo, executor)
+}
+
 /// Abort the current rebase operation.
 ///
 /// This cleans up the rebase state and returns the repository to its
 /// pre-rebase condition.
 ///
+/// # Arguments
+///
+/// * `executor` - Process executor for dependency injection
+///
 /// # Errors
 ///
 /// Returns error if the operation fails.
 pub fn abort_rebase(executor: &dyn crate::executor::ProcessExecutor) -> io::Result<()> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    abort_rebase_impl(&repo, executor)
+    let repo_root = std::env::current_dir()?;
+    abort_rebase_at(&repo_root, executor)
 }
 
 /// Implementation of `abort_rebase`.

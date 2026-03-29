@@ -1,0 +1,95 @@
+//! Claude Code harness configuration.
+//!
+//! Generates settings.json with deny-all permissions and MCP server configuration.
+
+use std::collections::HashMap;
+
+use crate::agents::harness::{AgentHarness, ClaudeCodeSettings, HarnessConfig};
+use crate::agents::session::AgentSession;
+
+/// Harness for Claude Code agent.
+pub struct ClaudeHarness;
+
+impl AgentHarness for ClaudeHarness {
+    fn generate(&self, session: &AgentSession, mcp_endpoint: &str) -> HarnessConfig {
+        // Build MCP env vars in a single functional pass.
+        let mcp_env = HashMap::from([
+            ("RALPH_MCP_ENDPOINT".to_string(), mcp_endpoint.to_string()),
+            (
+                "RALPH_SESSION_ID".to_string(),
+                session.session_id.as_str().to_string(),
+            ),
+        ]);
+
+        let settings = ClaudeCodeSettings {
+            mcp_servers: HashMap::from([(
+                "ralph".to_string(),
+                crate::agents::harness::MCPServerConfig {
+                    command: "ralph".to_string(),
+                    args: vec!["--mcp-proxy".to_string()],
+                    env: mcp_env,
+                },
+            )]),
+            permissions: ClaudePermissions {
+                allow: vec![
+                    "mcp__ralph__ralph_submit_artifact".to_string(),
+                    "mcp__ralph__ralph_read_file".to_string(),
+                    "mcp__ralph__ralph_write_file".to_string(),
+                    "mcp__ralph__ralph_list_directory".to_string(),
+                    "mcp__ralph__ralph_search_files".to_string(),
+                    "mcp__ralph__ralph_git_status".to_string(),
+                    "mcp__ralph__ralph_git_diff".to_string(),
+                    "mcp__ralph__ralph_git_log".to_string(),
+                    "mcp__ralph__ralph_git_show".to_string(),
+                    "mcp__ralph__ralph_exec_command".to_string(),
+                    "mcp__ralph__ralph_report_progress".to_string(),
+                    "mcp__ralph__ralph_read_env".to_string(),
+                    "mcp__ralph__ralph_declare_complete".to_string(),
+                ],
+                deny: vec![
+                    "Edit".to_string(),
+                    "Write".to_string(),
+                    "Bash".to_string(),
+                    "Read".to_string(),
+                    "Glob".to_string(),
+                    "Grep".to_string(),
+                    "NotebookEdit".to_string(),
+                    "WebFetch".to_string(),
+                    "TodoWrite".to_string(),
+                ],
+            },
+        };
+
+        let json = serde_json::to_string_pretty(&settings)
+            .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
+        HarnessConfig::ClaudeCode(json)
+    }
+}
+
+use crate::agents::harness::ClaudePermissions;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_claude_settings() {
+        let session = crate::agents::session::AgentSession::for_drain(
+            "test-run".to_string(),
+            crate::agents::session::SessionDrain::Development,
+            1,
+        );
+        let harness = ClaudeHarness;
+        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        match config {
+            HarnessConfig::ClaudeCode(json) => {
+                assert!(json.contains("mcpServers"));
+                assert!(json.contains("permissions"));
+                assert!(json.contains("\"ralph\""));
+                assert!(json.contains("--mcp-proxy"));
+                assert!(json.contains("RALPH_MCP_ENDPOINT"));
+            }
+            _ => panic!("Expected ClaudeCode variant"),
+        }
+    }
+}

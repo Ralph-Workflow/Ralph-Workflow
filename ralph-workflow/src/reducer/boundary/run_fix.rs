@@ -351,14 +351,21 @@ impl MainEffectHandler {
 
     pub(super) fn extract_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
         let is_analysis = self.state.fix_analysis_agent_invoked_pass == Some(pass);
-        match read_xml_for_pass(ctx, is_analysis) {
-            Ok(_) => EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass)),
-            Err(err) => EffectResult::event(PipelineEvent::fix_result_xml_missing(
-                pass,
-                self.state.continuation.invalid_output_attempts,
-                xml_io_error_detail(&err),
-            )),
+        if fix_json_artifact_present(ctx, is_analysis) {
+            return EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass));
         }
+        extract_fix_result_xml_from_disk(
+            ctx,
+            pass,
+            is_analysis,
+            self.state.continuation.invalid_output_attempts,
+        )
+    }
+
+    fn fix_analysis_continuation_active(&self, is_analysis: bool) -> bool {
+        is_analysis
+            && (self.state.continuation.fix_continuation_attempt > 0
+                || self.state.continuation.fix_continue_pending)
     }
 
     pub(super) fn validate_fix_result_xml(
@@ -367,21 +374,25 @@ impl MainEffectHandler {
         pass: u32,
     ) -> EffectResult {
         let is_analysis = self.state.fix_analysis_agent_invoked_pass == Some(pass);
+        let fix_analysis_continuation = self.fix_analysis_continuation_active(is_analysis);
         let invalid_attempts = self.state.continuation.invalid_output_attempts;
-        let xml_content = match read_xml_for_pass(ctx, is_analysis) {
-            Ok(s) => s,
-            Err(err) => {
-                return EffectResult::event(PipelineEvent::fix_output_validation_failed(
-                    pass,
-                    invalid_attempts,
-                    xml_io_error_detail(&err),
-                ))
-            }
-        };
-        if is_analysis {
-            validate_fix_analysis_xml(pass, xml_content, invalid_attempts)
-        } else {
-            validate_fix_normal_xml(pass, xml_content, invalid_attempts)
+        let json_type = fix_json_artifact_type(is_analysis);
+        match try_validate_fix_from_json(
+            ctx,
+            pass,
+            is_analysis,
+            fix_analysis_continuation,
+            invalid_attempts,
+            json_type,
+        ) {
+            Some(result) => result,
+            None => validate_fix_from_xml(
+                ctx,
+                pass,
+                is_analysis,
+                fix_analysis_continuation,
+                invalid_attempts,
+            ),
         }
     }
 
@@ -405,11 +416,19 @@ impl MainEffectHandler {
         use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
+        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+            ctx.workspace,
+            "fix_result",
+        );
 
         if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
             archive_xml_file_with_workspace(
                 ctx.workspace,
                 Path::new(".agent/tmp/development_result.xml"),
+            );
+            crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+                ctx.workspace,
+                "development_result",
             );
         }
 
@@ -784,84 +803,4 @@ fn xml_io_error_detail(err: &std::io::Error) -> Option<String> {
     }
 }
 
-fn maybe_append_fix_invoked_event(
-    result: crate::reducer::effect::EffectResult,
-    pass: u32,
-) -> crate::reducer::effect::EffectResult {
-    let succeeded = result.additional_events.iter().any(|e| {
-        matches!(
-            e,
-            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-        )
-    });
-    if succeeded {
-        result.with_additional_event(PipelineEvent::fix_agent_invoked(pass))
-    } else {
-        result
-    }
-}
-
-fn validate_fix_analysis_xml(
-    pass: u32,
-    xml_content: String,
-    invalid_attempts: u32,
-) -> crate::reducer::effect::EffectResult {
-    use crate::files::llm_output_extraction::validate_development_result_xml;
-    match validate_development_result_xml(&xml_content) {
-        Ok(elements) => {
-            let status = parse_development_result_status(&elements.status);
-            crate::reducer::effect::EffectResult::with_ui(
-                PipelineEvent::fix_result_xml_validated(pass, status, Some(elements.summary)),
-                vec![UIEvent::XmlOutput {
-                    xml_type: XmlOutputType::DevelopmentResult,
-                    content: xml_content,
-                    context: Some(XmlOutputContext {
-                        iteration: None,
-                        pass: Some(pass),
-                        snippets: Vec::new(),
-                    }),
-                }],
-            )
-        }
-        Err(err) => crate::reducer::effect::EffectResult::event(
-            PipelineEvent::fix_output_validation_failed(
-                pass,
-                invalid_attempts,
-                Some(err.format_for_ai_retry()),
-            ),
-        ),
-    }
-}
-
-fn validate_fix_normal_xml(
-    pass: u32,
-    xml_content: String,
-    invalid_attempts: u32,
-) -> crate::reducer::effect::EffectResult {
-    use crate::files::llm_output_extraction::validate_fix_result_xml;
-    match validate_fix_result_xml(&xml_content) {
-        Ok(elements) => {
-            let status = crate::reducer::state::FixStatus::parse(&elements.status)
-                .unwrap_or(crate::reducer::state::FixStatus::Failed);
-            crate::reducer::effect::EffectResult::with_ui(
-                PipelineEvent::fix_result_xml_validated(pass, status, elements.summary),
-                vec![UIEvent::XmlOutput {
-                    xml_type: XmlOutputType::FixResult,
-                    content: xml_content,
-                    context: Some(XmlOutputContext {
-                        iteration: None,
-                        pass: Some(pass),
-                        snippets: Vec::new(),
-                    }),
-                }],
-            )
-        }
-        Err(err) => crate::reducer::effect::EffectResult::event(
-            PipelineEvent::fix_output_validation_failed(
-                pass,
-                invalid_attempts,
-                Some(err.format_for_ai_retry()),
-            ),
-        ),
-    }
-}
+include!("run_fix_validate.rs");

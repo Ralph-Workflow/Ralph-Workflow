@@ -2,6 +2,7 @@
 //! `AgentPhaseGuard` RAII cleanup behaviour.
 
 use crate::test_timeout::with_default_timeout;
+use ralph_workflow::executor::process_registry;
 use ralph_workflow::git_helpers::GitHelpers;
 use ralph_workflow::logger::{Colors, Logger};
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -148,6 +149,33 @@ fn test_agent_phase_guard_disarm_prevents_cleanup() {
     });
 }
 
+#[test]
+#[serial]
+fn test_agent_phase_guard_disarm_preserves_prompt_md_permissions() {
+    with_temp_cwd(|dir| {
+        let _repo = init_git_repo(dir);
+
+        let workspace = WorkspaceFs::new(dir.path().to_path_buf());
+        let prompt_rel = Path::new("PROMPT.md");
+        let prompt_abs = dir.path().join(prompt_rel);
+
+        workspace
+            .set_readonly(prompt_rel)
+            .expect("set PROMPT.md read-only");
+        assert_prompt_readonly(&prompt_abs);
+
+        let logger = Logger::new(Colors::new());
+        let mut git_helpers = GitHelpers::default();
+
+        {
+            let mut guard = AgentPhaseGuard::new(&mut git_helpers, &logger, &workspace);
+            guard.disarm();
+        }
+
+        assert_prompt_readonly(&prompt_abs);
+    });
+}
+
 /// Test that guard cleanup handles missing PROMPT.md gracefully.
 ///
 /// `make_prompt_writable_with_workspace` should not panic if PROMPT.md
@@ -166,5 +194,89 @@ fn test_agent_phase_guard_drop_handles_missing_prompt_md() {
             let _guard = AgentPhaseGuard::new(&mut git_helpers, &logger, &workspace);
         }
         // Test passes if no panic occurs
+    });
+}
+
+/// Test that `AgentPhaseGuard::drop()` calls `kill_all_registered_raw()`
+/// to clean up any registered agent processes.
+///
+/// When the guard is dropped without calling `disarm()`, it should:
+/// 1. Call `kill_all_registered_raw()` to kill any registered processes
+/// 2. Clear the registry
+#[test]
+#[serial]
+#[cfg(unix)]
+fn test_agent_phase_guard_drop_kills_registered_processes() {
+    with_temp_cwd(|dir| {
+        let _repo = init_git_repo(dir);
+
+        let workspace = MemoryWorkspace::new_test();
+        let logger = Logger::new(Colors::new());
+        let mut git_helpers = GitHelpers::default();
+
+        // Spawn a real sleep process and register it
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn sleep process");
+
+        let pid = child.id();
+        process_registry::register(pid);
+
+        // Verify the process is running
+        assert!(
+            child.try_wait().expect("try_wait").is_none(),
+            "sleep process should be running before guard drop"
+        );
+
+        // Drop the guard WITHOUT disarming - this should call kill_all_registered_raw()
+        {
+            let _guard = AgentPhaseGuard::new(&mut git_helpers, &logger, &workspace);
+            // guard is dropped here without calling disarm()
+        }
+
+        // Verify the registry was cleared
+        assert!(
+            process_registry::registered_pids().is_empty(),
+            "registry should be empty after guard drop"
+        );
+
+        // Verify the process is dead within a bounded time
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut killed = false;
+        while std::time::Instant::now() < deadline {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    use std::os::unix::process::ExitStatusExt;
+                    let was_killed = status.signal().is_some();
+                    assert!(
+                        was_killed,
+                        "sleep process should have been killed by signal, got: {status}"
+                    );
+                    killed = true;
+                    break;
+                }
+                Ok(None) => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(e) => {
+                    panic!("try_wait failed: {e}");
+                }
+            }
+        }
+
+        assert!(
+            killed,
+            "sleep process should have been killed within 5 seconds"
+        );
+
+        // Ensure process is reaped
+        let _ = child.wait();
+
+        // Final cleanup - use kill_all_registered_raw to clear any leftover state
+        process_registry::kill_all_registered_raw();
     });
 }

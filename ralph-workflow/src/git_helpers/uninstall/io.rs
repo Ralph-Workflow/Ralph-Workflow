@@ -47,15 +47,25 @@ fn make_hook_file_writable(hook_path: &Path) {
 
 pub fn uninstall_hook(hook_path: &Path, _logger: &Logger) -> io::Result<bool> {
     let hook_path_abs = resolve_absolute_hook_path(hook_path)?;
-    let _orig_path = PathBuf::from(format!("{}.ralph.orig", hook_path_abs.display()));
+    let orig_path = PathBuf::from(format!("{}.ralph.orig", hook_path_abs.display()));
 
     if hook_path.exists() && file_contains_marker(hook_path, HOOK_MARKER)? {
         #[cfg(unix)]
         make_hook_file_writable(hook_path);
-
+        restore_or_remove_hook(hook_path, &orig_path)?;
         Ok(true)
     } else {
         Ok(false)
+    }
+}
+
+/// Restore the original hook from backup if it exists, otherwise remove the Ralph hook.
+fn restore_or_remove_hook(hook_path: &Path, orig_path: &Path) -> io::Result<()> {
+    if orig_path.exists() {
+        fs::copy(orig_path, hook_path)?;
+        fs::remove_file(orig_path)
+    } else {
+        fs::remove_file(hook_path)
     }
 }
 

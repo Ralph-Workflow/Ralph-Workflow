@@ -87,6 +87,7 @@ mod ccs_env;
 pub mod config;
 mod error;
 pub mod fallback;
+pub mod harness;
 pub mod invoke;
 pub mod opencode_api;
 mod opencode_resolver;

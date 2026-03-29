@@ -1,21 +1,17 @@
 {# ============================================================================ #}
 {# Template: fix_mode_xsd_retry.txt                                              #}
-{# Version: 4.0 - STRICT XML-only fix mode                                      #}
+{# Version: 5.0 - MCP JSON resubmission only                                   #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Retry prompt when XML validation fails during fix mode.                    #}
-{#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
+{#   Retry prompt when JSON validation fails during fix mode.                   #}
+{#   This is STRICTLY for fixing the JSON submission - NO other actions allowed.#}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   {{XSD_ERROR}} - XSD validation error message (required)                    #}
-{#                                                                             #}
-{# FILES TO READ:                                                               #}
-{#   .agent/tmp/fix_result.xsd   - The XSD schema your output must conform to   #}
-{#   .agent/tmp/last_output.xml  - Your previous invalid output                 #}
+{#   {{XSD_ERROR}} - Validation error message (required)                        #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
-{#   Valid <ralph-fix-result> XML conforming to the XSD schema                 #}
+{#   Corrected JSON submitted via ralph_submit_artifact                        #}
 {# ============================================================================ #}
 
 {{> shared/_unattended_mode}}
@@ -25,26 +21,10 @@
 {% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-XSD VALIDATION FAILED - FIX XML ONLY
+VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your XML output at `{{FIX_RESULT_XML_PATH}}` failed XSD validation.
-
-═══════════════════════════════════════════════════════════════════════════════
-XML CHARACTER RESTRICTIONS (CRITICAL)
-═══════════════════════════════════════════════════════════════════════════════
-
-XML 1.0 only allows specific characters:
-- Tab (0x09), Line Feed (0x0A), Carriage Return (0x0D)
-- Printable characters from 0x20 onwards
-- Most Unicode characters
-
-*** FORBIDDEN in XML: ***
-- NUL byte (0x00, \u0000) - COMMON MISTAKE: Using \u0000 instead of \u00A0 (NBSP)
-- Control characters 0x01-0x08, 0x0B, 0x0C, 0x0E-0x1F
-- Any binary or non-printable characters
-
-If you need to reference code with special characters, use <code> elements or CDATA sections.
+Your previous fix result submission failed validation.
 
 ERROR: {{XSD_ERROR}}
 
@@ -52,35 +32,31 @@ ERROR: {{XSD_ERROR}}
 CRITICAL INSTRUCTIONS - READ CAREFULLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{FIX_RESULT_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{FIX_RESULT_XML_PATH}}`
+The validation error is in JSON directive format:
+{"code": "INVALID_VALUE", "field_path": "status", "next_actions": ["set status to all_issues_addressed, issues_remain, or no_issues_found"]}
+
+You MUST call `ralph_submit_artifact` with artifact_type="fix_result" and
+corrected JSON content. Follow every instruction in the `next_actions` array
+exactly.
 
 You MUST NOT:
 - Write any new code
 - Modify any source files
 - Run any commands
 - Do ANY fix/development work
-- Change the content/meaning of your response - ONLY fix the XML format
+- Change the content/meaning of your response - ONLY fix the validation errors
 
-This is a PURE XML SYNTAX FIX. Your fix work is done. The only problem
-is that your XML output doesn't conform to the schema. Fix the XML structure,
-nothing else.
+This is a PURE SUBMISSION FIX. Your fix work is done. The only problem
+is that your submitted JSON doesn't conform to the schema. Fix the JSON
+structure, nothing else.
 
 ═══════════════════════════════════════════════════════════════════════════════
-COMMON XML MISTAKES TO FIX
+COMMON MISTAKES TO FIX
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Missing required elements (status, summary, etc.)
-2. Wrong element order (check XSD for correct sequence)
-3. Invalid status value (must be: all_issues_addressed, issues_remain, or no_issues_found)
-4. Unescaped special characters (use &lt; &gt; &amp; or CDATA)
-5. Illegal control characters (NUL byte, etc.) - common: \u0000 instead of \u00A0
-6. Missing closing tags
-7. Text before/after root element
-8. Markdown code fences around XML (remove ```)
+1. Missing required fields (status is required)
+2. Invalid status value (must be: all_issues_addressed, issues_remain, or no_issues_found)
+3. Malformed JSON structure
 
-After reading the XSD schema, fix ONLY the XML validation error.
+Resubmit your corrected JSON via `ralph_submit_artifact`.
 DO NOT do any other work.

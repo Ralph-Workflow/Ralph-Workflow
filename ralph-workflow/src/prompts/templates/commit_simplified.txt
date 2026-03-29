@@ -1,27 +1,25 @@
 {# ============================================================================ #}
 {# Template: commit_simplified.txt                                             #}
-{# Version: 1.0                                                                #}
+{# Version: 2.0 - MCP JSON submission only                                    #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
 {#   Simplified commit prompt with direct instructions.                        #}
-{#   Second-stage prompt when the normal XML prompt fails.                     #}
+{#   Second-stage prompt when the normal prompt fails.                         #}
 {#                                                                             #}
 {# WHEN USED:                                                                  #}
-{#   After the normal XML prompt has failed with all agents.                   #}
-{#                                                                             #}
-{# TRIGGER:                                                                    #}
-{#   All agents failed to produce valid XML with the normal prompt.            #}
+{#   After the normal prompt has failed with all agents.                       #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   DIFF - Git diff to analyze (required)                                     #}
 {#                                                                             #}
 {# OUTPUT:                                                                     #}
-{#   <ralph-commit><ralph-subject>type: description</ralph-subject></ralph-commit> #}
+{#   JSON submitted via ralph_submit_artifact with                             #}
+{#   artifact_type="commit_message"                                            #}
 {#                                                                             #}
 {# NOTES:                                                                      #}
 {#   - More direct and concise than the normal prompt                          #}
-{#   - Still requires the same XML format for consistency                      #}
+{#   - Still requires the same JSON format for consistency                     #}
 {#   - Focuses on the essential requirements                                   #}
 {# ============================================================================ #}
 {% if POLICY_NO_EDIT %}{{> shared/_safety_no_execute}}{% endif %}
@@ -38,7 +36,7 @@ Generate a commit message for the following diff.
 
 1. Analyze the diff below
 2. Write a clear, specific commit message following conventional commit format
-3. Output ONLY the XML format shown below - no explanation, no preamble
+3. Submit via `ralph_submit_artifact` with artifact_type="commit_message"
 
 ## Commit Format
 
@@ -48,14 +46,13 @@ Body: Optional - only if needed for context
 
 ## Required Output Format
 
-<ralph-commit>
-<ralph-subject>type(scope): description</ralph-subject>
-<ralph-body>Optional body text here.</ralph-body>
-</ralph-commit>
+Call `ralph_submit_artifact` with artifact_type="commit_message" and content:
+{
+  "subject": "type(scope): description",
+  "body": "Optional body text here."
+}
 
 IMPORTANT:
-- Start immediately with `<ralph-commit>`
-- No text before or after the XML
 - Subject is REQUIRED
 - Body is OPTIONAL - omit entirely if not needed
 
@@ -76,6 +73,4 @@ IMPORTANT:
 
 {{DIFF}}
 
-## Output ONLY the XML:
-
-(Start with <ralph-commit> and end with </ralph-commit>)
+## Submit your commit message via `ralph_submit_artifact` now.

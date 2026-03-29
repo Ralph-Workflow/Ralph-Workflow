@@ -1,5 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::config::should_use_yolo_mode;
+use crate::agents::harness::applicator::{apply_harness_config, detect_agent_type};
 use crate::agents::session::{
     audit::{
         persist_audit_trail, persist_session_handshake, record_command_check,
@@ -11,6 +12,7 @@ use crate::agents::session::{
 };
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
+use crate::mcp_server::session_bridge::{SessionBridge, MCP_ENDPOINT_ENV};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -24,6 +26,7 @@ use crate::reducer::fault_tolerant_executor::{
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 impl MainEffectHandler {
@@ -46,172 +49,10 @@ impl MainEffectHandler {
         let (logfile, attempt) =
             prepare_agent_logfile(ctx, in_dev_fix, &self.state, role, &effective_agent)?;
 
-        // RFC-009: Create AgentSession and SessionHandshake for this invocation
-        // IMPORTANT: Session is created BEFORE prompt generation so that prompt generators
-        // can use the actual session capabilities instead of drain defaults.
-        let run_id = self
-            .state
-            .cloud
-            .run_id
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string());
-        let session_drain = SessionDrain::from(drain);
-        let session = AgentSession::for_drain_with_created_at(
-            run_id,
-            session_drain,
-            attempt,
-            SystemTime::now(),
-        );
-        let handshake = SessionHandshake::from_session(&session);
+        let session = create_and_store_agent_session(ctx, drain, attempt, &self.state);
+        persist_session_handshake_to_workspace(ctx, &session);
+        build_and_merge_audit_trail(ctx, &session);
 
-        // Store session in PhaseContext for capability gate access during effect handling.
-        // This allows subsequent orchestrator effects to check session capabilities.
-        ctx.active_session = Some(session.clone());
-
-        // Log the session handshake for RFC-009 audit trail
-        ctx.logger.info(&format!(
-            "RFC-009 session handshake: session_id={}, drain={}, protocol={}, capabilities={:?}, policy_flags={:?}",
-            handshake.session_id,
-            handshake.drain,
-            handshake.protocol_version,
-            handshake.capabilities.to_vec(),
-            handshake.policy_flags.to_vec(),
-        ));
-
-        // Persist the session handshake to `.agent/audit/{session_id}.jsonl` as the first record.
-        // This happens at session start so the handshake is recorded even if the pipeline crashes.
-        // Errors are logged but don't fail the pipeline (audit is best-effort).
-        let handshake_timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let capabilities_str = session
-            .capabilities
-            .iter()
-            .map(|c| c.identifier())
-            .collect::<Vec<_>>()
-            .join(",");
-        let policy_flags_str = session
-            .policy_flags
-            .iter()
-            .map(|f| f.identifier())
-            .collect::<Vec<_>>()
-            .join(",");
-        if let Err(e) = persist_session_handshake(
-            ctx.workspace,
-            &session.session_id,
-            handshake_timestamp,
-            session.drain.as_str(),
-            &session.protocol_version,
-            &capabilities_str,
-            &policy_flags_str,
-        ) {
-            ctx.logger.warn(&format!(
-                "Failed to persist session handshake for session {}: {}",
-                session.session_id, e
-            ));
-        }
-
-        // Build AuditTrail with PolicyOutcome records for each granted capability.
-        // RFC-009 Step 8: call check_capability to capture PolicyOutcome values
-        // so denied capabilities are auditable (V1: all granted capabilities return Approved).
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let audit_records: Vec<_> = session
-            .capabilities
-            .iter()
-            .map(|cap| {
-                let outcome = session.check_capability(cap);
-                let description = match outcome {
-                    PolicyOutcome::Approved => {
-                        format!(
-                            "Capability {} granted for {} drain via session handshake",
-                            cap.identifier(),
-                            session.drain
-                        )
-                    }
-                    PolicyOutcome::Denied { ref reason } => reason.clone(),
-                    PolicyOutcome::ApprovedWithRestriction { ref restriction } => {
-                        format!(
-                            "Capability {} approved with restriction: {}",
-                            cap.identifier(),
-                            restriction
-                        )
-                    }
-                };
-                AuditRecord::new(
-                    session.session_id.clone(),
-                    timestamp,
-                    cap,
-                    outcome,
-                    description,
-                )
-            })
-            .collect();
-        let mut audit_trail = AuditTrail::from_records(audit_records);
-
-        // Record that capabilities were injected into prompt template variables.
-        // This creates audit records documenting that the session's capabilities
-        // were used to generate template variables for prompt rendering.
-        audit_trail = audit_trail.record_capability_injection(
-            &session.session_id,
-            timestamp,
-            &session.capabilities,
-        );
-
-        // Log the audit trail for RFC-009 audit record
-        ctx.logger.info(&format!(
-            "RFC-009 audit trail: {} records for session {}",
-            audit_trail.len(),
-            session.session_id,
-        ));
-
-        // Build the session handshake description for audit trail.
-        // This records the session's declared capabilities and policy flags at invocation start.
-        let capabilities_str = session
-            .capabilities
-            .iter()
-            .map(|c| c.identifier())
-            .collect::<Vec<_>>()
-            .join(",");
-        let policy_flags_str = session
-            .policy_flags
-            .iter()
-            .map(|f| f.identifier())
-            .collect::<Vec<_>>()
-            .join(",");
-        let handshake_description = format!(
-            "Session handshake: drain={}, protocol={}, capabilities=[{}], policy_flags=[{}]",
-            session.drain.as_str(),
-            session.protocol_version,
-            capabilities_str,
-            policy_flags_str
-        );
-
-        // Create the session handshake record and add it to the beginning of the audit trail.
-        // This uses EnvRead as a placeholder capability since AuditRecord requires a Capability.
-        // The handshake information is preserved in the description field.
-        let handshake_record = AuditRecord::new(
-            session.session_id.clone(),
-            timestamp,
-            Capability::EnvRead, // Placeholder - handshake is encoded in description
-            PolicyOutcome::Approved,
-            handshake_description,
-        );
-
-        // Merge audit trail into PhaseContext for persistence at end of invocation.
-        // Handshake record is added first so it appears as the first record in the audit trail.
-        // This accumulates audit records across all agent invocations in a run.
-        let combined_records: Vec<_> = std::iter::once(handshake_record)
-            .chain(ctx.audit_trail.records().iter().cloned())
-            .chain(audit_trail.records().iter().cloned())
-            .collect();
-        ctx.audit_trail = AuditTrail::from_records(combined_records);
-
-        // Determine effective prompt: use continuation prompt if applicable,
-        // otherwise generate prompt via closure.
         let effective_prompt = resolve_effective_prompt_for_invocation(
             &self.state,
             drain,
@@ -219,11 +60,9 @@ impl MainEffectHandler {
             &session,
             prompt_generator,
         );
-
         let session_id = resolve_session_id(&self.state, in_dev_fix);
-
-        // RFC-009 Phase 3: Capture execution timing for telemetry
         let execution_start = SystemTime::now();
+        let (mut session_bridge, mcp_endpoint) = start_mcp_bridge_for_session(ctx, &session)?;
 
         let event = run_agent_execution(
             ctx,
@@ -238,59 +77,15 @@ impl MainEffectHandler {
                 attempt,
                 logfile: &logfile,
                 session: &session,
+                mcp_endpoint: mcp_endpoint.as_deref(),
             },
         );
 
-        // Calculate execution duration for telemetry
-        let execution_duration_ms = execution_start
-            .elapsed()
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        drain_and_merge_mcp_audit_records(ctx, &mut session_bridge);
+        record_execution_telemetry_if_needed(ctx, &session, &event, execution_start, role);
+        persist_audit_trail_to_workspace(ctx, &session);
 
-        // Determine result status based on execution outcome
-        let result_status = match &event {
-            Ok(evt) => match evt {
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. }) => "success",
-                PipelineEvent::Agent(AgentEvent::InvocationFailed { .. }) => "failure",
-                PipelineEvent::Agent(AgentEvent::CapabilityDenied { .. }) => "denied",
-                _ => "success",
-            }
-            .to_string(),
-            Err(_) => "failure".to_string(),
-        };
-
-        // Record execution telemetry if we have a successful or failed execution
-        if execution_duration_ms > 0 {
-            let effect_name = format!("{:?}", role);
-            let timestamp = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-
-            ctx.audit_trail = record_execution_telemetry(
-                &ctx.audit_trail,
-                &session.session_id,
-                timestamp,
-                &effect_name,
-                execution_duration_ms,
-                &result_status,
-            );
-        }
-
-        // Persist the audit trail to workspace at `.agent/audit/{session_id}.jsonl`.
-        // Errors are logged but don't fail the pipeline (audit is best-effort).
-        // This is called BEFORE error propagation to ensure audit trail is persisted
-        // on both success and failure paths.
-        if let Err(e) = persist_audit_trail(ctx.workspace, &session.session_id, &ctx.audit_trail) {
-            ctx.logger.warn(&format!(
-                "Failed to persist audit trail for session {}: {}",
-                session.session_id, e
-            ));
-        }
-
-        // Propagate error if execution failed
         let event = event?;
-
         Ok(build_agent_invocation_result(
             &self.state,
             event,
@@ -326,6 +121,8 @@ impl MainEffectHandler {
         clear_session_for_same_agent_retry(&mut self.state);
     }
 }
+
+include!("agent_audit.rs");
 
 // ---------------------------------------------------------------------------
 // Free helpers extracted from invoke_agent (execution path)
@@ -373,6 +170,9 @@ struct AgentRunInputs<'a> {
     attempt: u32,
     logfile: &'a str,
     session: &'a AgentSession,
+    /// MCP endpoint URI for RFC-009 agent-MCP communication.
+    /// When Some, passed to agent via RALPH_MCP_ENDPOINT env var.
+    mcp_endpoint: Option<&'a str>,
 }
 
 fn run_agent_execution(
@@ -380,6 +180,20 @@ fn run_agent_execution(
     state: &crate::reducer::state::PipelineState,
     inputs: AgentRunInputs<'_>,
 ) -> Result<crate::reducer::event::PipelineEvent> {
+    let (agent_config, base_cmd) = resolve_agent_config_and_cmd(ctx, state, &inputs)?;
+    let (cmd_str, merged_env) = apply_mcp_harness_to_cmd(ctx, &inputs, &agent_config, base_cmd)?;
+    if let Some(denied) = check_command_policy(ctx, &cmd_str, &inputs) {
+        return Ok(denied);
+    }
+    let model_index = resolve_model_index(state, inputs.in_dev_fix);
+    execute_with_config(ctx, &inputs, &cmd_str, &merged_env, model_index)
+}
+
+fn resolve_agent_config_and_cmd(
+    ctx: &PhaseContext<'_>,
+    state: &crate::reducer::state::PipelineState,
+    inputs: &AgentRunInputs<'_>,
+) -> Result<(crate::agents::config::AgentConfig, String)> {
     let agent_config = ctx
         .registry
         .resolve_config(inputs.effective_agent)
@@ -392,62 +206,130 @@ fn run_agent_execution(
         .or(inputs.model);
     let session_id = resolve_session_id(state, inputs.in_dev_fix);
     let use_yolo = should_use_yolo_mode(inputs.session);
-    let cmd_str =
+    let base_cmd =
         agent_config.build_cmd_with_session(true, use_yolo, true, model_override, session_id);
+    Ok((agent_config, base_cmd))
+}
 
-    // RFC-009 Phase 2: Advisory command policy check
-    // In Phase 2, this is advisory only - it records what would be denied but does not block
-    // execution for drains with ProcessExecBounded capability. Phase 3 will implement actual blocking.
-    let cmd_tokens = parse_command(&cmd_str);
-    if let Some((cmd, args)) = cmd_tokens.split_first() {
-        // Convert String slices to &str for check_command
-        let cmd_str_ref: &str = cmd;
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        let policy_outcome = check_command(cmd_str_ref, &args_refs);
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        // Record the command check in the audit trail (advisory - doesn't block)
-        ctx.audit_trail = record_command_check(
-            &ctx.audit_trail,
-            &inputs.session.session_id,
-            timestamp,
-            &cmd_str,
-            &policy_outcome,
-        );
-
-        // RFC-009 Phase 2: Command policy check - blocking enforcement
-        // If the command is denied by policy, do not execute the agent
-        if let PolicyOutcome::Denied { ref reason } = policy_outcome {
-            ctx.logger.info(&format!(
-                "RFC-009 command policy: '{}' denied: {}",
-                cmd_str, reason
-            ));
-            let role = inputs.session.drain.into_role();
-            return Ok(PipelineEvent::Agent(AgentEvent::CapabilityDenied {
-                role,
-                capability: "process.exec_bounded".into(),
-                reason: reason.clone(),
-            }));
-        }
-
-        ctx.logger
-            .info(&format!("RFC-009 command policy: '{}' approved", cmd_str));
-    }
-
-    let model_index = if inputs.in_dev_fix {
+fn resolve_model_index(state: &crate::reducer::state::PipelineState, in_dev_fix: bool) -> usize {
+    if in_dev_fix {
         0
     } else {
         state.agent_chain.current_model_index
+    }
+}
+
+fn apply_mcp_harness_to_cmd(
+    ctx: &mut PhaseContext<'_>,
+    inputs: &AgentRunInputs<'_>,
+    agent_config: &crate::agents::config::AgentConfig,
+    base_cmd: String,
+) -> Result<(String, std::collections::HashMap<String, String>)> {
+    let mut mcp_env_vars = build_mcp_base_env(inputs.mcp_endpoint);
+    let extra_cmd_args = apply_harness_if_needed(ctx, inputs, agent_config, &mut mcp_env_vars)?;
+    let cmd_str = append_extra_args(ctx, base_cmd, extra_cmd_args);
+    let mut merged_env = agent_config.env_vars.clone();
+    merged_env.extend(mcp_env_vars);
+    Ok((cmd_str, merged_env))
+}
+
+fn apply_harness_if_needed(
+    ctx: &mut PhaseContext<'_>,
+    inputs: &AgentRunInputs<'_>,
+    agent_config: &crate::agents::config::AgentConfig,
+    mcp_env_vars: &mut std::collections::HashMap<String, String>,
+) -> Result<Vec<String>> {
+    let Some(endpoint) = inputs.mcp_endpoint else {
+        return Ok(Vec::new());
     };
+    let agent_type = detect_agent_type(&agent_config.cmd);
+    match apply_harness_config(agent_type, inputs.session, endpoint, ctx.workspace) {
+        Ok(harness_result) => {
+            ctx.logger.info(&format!(
+                "RFC-009 harness applied for {:?}: {} extra env var(s){}",
+                agent_type,
+                harness_result.extra_env_vars.len(),
+                harness_result.config_path.as_ref().map_or_else(String::new, |p| format!(", config={p}")),
+            ));
+            mcp_env_vars.extend(harness_result.extra_env_vars);
+            Ok(harness_result.extra_cmd_args)
+        }
+        Err(e) => Err(anyhow::anyhow!(
+            "MCP harness setup failed for agent {:?} (session {}): {}. MCP is mandatory and execution was aborted.",
+            agent_type, inputs.session.session_id, e
+        )),
+    }
+}
+
+fn build_mcp_base_env(mcp_endpoint: Option<&str>) -> std::collections::HashMap<String, String> {
+    mcp_endpoint.map_or_else(std::collections::HashMap::new, |endpoint| {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert(MCP_ENDPOINT_ENV.to_string(), endpoint.to_string());
+        vars
+    })
+}
+
+fn append_extra_args(
+    ctx: &mut PhaseContext<'_>,
+    base_cmd: String,
+    extra_cmd_args: Vec<String>,
+) -> String {
+    if extra_cmd_args.is_empty() {
+        return base_cmd;
+    }
+    let joined_args = extra_cmd_args.join(" ");
+    ctx.logger.info(&format!(
+        "RFC-009 harness extra args appended: {joined_args}"
+    ));
+    format!("{base_cmd} {joined_args}")
+}
+
+fn check_command_policy(
+    ctx: &mut PhaseContext<'_>,
+    cmd_str: &str,
+    inputs: &AgentRunInputs<'_>,
+) -> Option<crate::reducer::event::PipelineEvent> {
+    let cmd_tokens = parse_command(cmd_str);
+    let (cmd, args) = cmd_tokens.split_first()?;
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let policy_outcome = check_command(cmd.as_str(), &args_refs);
+    let timestamp = current_unix_timestamp();
+    ctx.audit_trail = record_command_check(
+        &ctx.audit_trail,
+        &inputs.session.session_id,
+        timestamp,
+        cmd_str,
+        &policy_outcome,
+    );
+    if let PolicyOutcome::Denied { ref reason } = policy_outcome {
+        ctx.logger.info(&format!(
+            "RFC-009 command policy: '{cmd_str}' denied: {reason}"
+        ));
+        let role = inputs.session.drain.into_role();
+        return Some(PipelineEvent::Agent(AgentEvent::CapabilityDenied {
+            role,
+            capability: "process.exec_bounded".into(),
+            reason: reason.clone(),
+        }));
+    }
+    ctx.logger
+        .info(&format!("RFC-009 command policy: '{cmd_str}' approved"));
+    None
+}
+
+fn execute_with_config(
+    ctx: &mut PhaseContext<'_>,
+    inputs: &AgentRunInputs<'_>,
+    cmd_str: &str,
+    merged_env: &std::collections::HashMap<String, String>,
+    model_index: usize,
+) -> Result<crate::reducer::event::PipelineEvent> {
     let config = AgentExecutionConfig {
         role: inputs.role,
         agent_name: inputs.effective_agent,
-        cmd_str: &cmd_str,
+        cmd_str,
         parser_type: crate::agents::JsonParserType::default(),
-        env_vars: &std::collections::HashMap::new(),
+        env_vars: merged_env,
         prompt: inputs.effective_prompt,
         display_name: inputs.effective_agent,
         log_prefix: "agent",
@@ -458,8 +340,9 @@ fn run_agent_execution(
     let AgentExecutionResult {
         event,
         session_id: _,
-    } = execute_agent_fault_tolerantly(config, &mut {
-        PipelineRuntime {
+    } = execute_agent_fault_tolerantly(
+        config,
+        &mut PipelineRuntime {
             timer: ctx.timer,
             logger: ctx.logger,
             colors: ctx.colors,
@@ -468,8 +351,8 @@ fn run_agent_execution(
             executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
             workspace: ctx.workspace,
             workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-        }
-    })?;
+        },
+    )?;
     Ok(event)
 }
 

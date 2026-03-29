@@ -29,7 +29,7 @@ mod iot {
 // Boundary module for libgit2 revwalk operations.
 include!("review_baseline/io.rs");
 
-use super::start_commit::get_current_head_oid;
+use crate::git_helpers::get_current_head_oid_at;
 
 // =============================================================================
 // Baseline Persistence (from review_baseline/baseline_persistence.rs)
@@ -45,7 +45,8 @@ pub enum ReviewBaseline {
 }
 
 pub fn load_review_baseline() -> iot::Result<ReviewBaseline> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
+    let repo_root = get_current_dir()?;
+    let repo = git2::Repository::open(&repo_root).map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
         .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
@@ -79,7 +80,8 @@ pub(super) fn load_review_baseline_with_workspace(
 }
 
 pub fn update_review_baseline() -> iot::Result<()> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
+    let repo_root = get_current_dir()?;
+    let repo = git2::Repository::open(&repo_root).map_err(|e| to_io_error(&e))?;
     let repo_root = repo
         .workdir()
         .ok_or_else(|| iot::Error::new(iot::ErrorKind::NotFound, "No workdir for repository"))?;
@@ -89,7 +91,7 @@ pub fn update_review_baseline() -> iot::Result<()> {
 
 pub fn update_review_baseline_with_workspace(workspace: &dyn Workspace) -> iot::Result<()> {
     let path = Path::new(REVIEW_BASELINE_FILE);
-    match get_current_head_oid() {
+    match get_current_head_oid_at(workspace.root()) {
         Ok(oid) => workspace.write(path, oid.trim()),
         Err(e) if e.kind() == iot::ErrorKind::NotFound => workspace.write(path, BASELINE_NOT_SET),
         Err(e) => Err(e),
@@ -97,7 +99,8 @@ pub fn update_review_baseline_with_workspace(workspace: &dyn Workspace) -> iot::
 }
 
 pub fn get_review_baseline_info() -> iot::Result<(Option<String>, usize, bool)> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
+    let repo_root = get_current_dir()?;
+    let repo = git2::Repository::open(&repo_root).map_err(|e| to_io_error(&e))?;
     match load_review_baseline()? {
         ReviewBaseline::Commit(oid) => {
             let oid_str = oid.to_string();
@@ -262,7 +265,8 @@ impl BaselineSummary {
 }
 
 pub fn get_baseline_summary() -> iot::Result<BaselineSummary> {
-    let repo = git2::Repository::discover(".").map_err(|e| to_io_error(&e))?;
+    let repo_root = get_current_dir()?;
+    let repo = git2::Repository::open(&repo_root).map_err(|e| to_io_error(&e))?;
     get_baseline_summary_impl(&repo, load_review_baseline()?)
 }
 

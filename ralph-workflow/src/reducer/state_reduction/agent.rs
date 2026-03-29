@@ -413,12 +413,56 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         } => {
             // Worker completed - track completion status.
             // When all workers complete, orchestration will trigger verification.
-            let mut completed = state.parallel_workers_completed.clone();
-            if !completed.contains(&worker_id) {
-                completed.push(worker_id);
-            }
             PipelineState {
-                parallel_workers_completed: completed,
+                parallel_workers_completed: if !state
+                    .parallel_workers_completed
+                    .contains(&worker_id)
+                {
+                    state
+                        .parallel_workers_completed
+                        .iter()
+                        .chain(std::iter::once(&worker_id))
+                        .cloned()
+                        .collect()
+                } else {
+                    state.parallel_workers_completed.clone()
+                },
+                ..state
+            }
+        }
+        AgentEvent::VerifierCompleted { decision: _ } => {
+            // Verifier completed - the orchestration layer handles the decision
+            // and derives the next effect (rework, spawn new, collapse, or accept).
+            // Just track that verification happened.
+            PipelineState {
+                parallel_verification_completed: true,
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkReworked {
+            unit_ids: _,
+            feedback: _,
+        } => {
+            // Work sent back for rework - increment verification iteration counter.
+            // The orchestration layer will re-dispatch workers with feedback.
+            PipelineState {
+                parallel_verification_iteration: state.parallel_verification_iteration + 1,
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkCollapsed {
+            remaining_units: _,
+            reason: _,
+        } => {
+            // Work collapsed to single-agent - clear parallel state.
+            // The orchestration layer will continue with single-agent execution.
+            PipelineState {
+                parallel_plan: None,
+                parallel_plan_validated: false,
+                parallel_workers: Vec::new(),
+                parallel_workers_completed: Vec::new(),
+                parallel_verification_completed: false,
+                parallel_verification_iteration: 0,
                 ..state
             }
         }
