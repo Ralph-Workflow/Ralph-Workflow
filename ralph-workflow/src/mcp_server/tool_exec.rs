@@ -5,9 +5,9 @@
 
 use crate::agents::session::command_policy::check_command;
 use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
-use crate::mcp_server::tool_registry::ToolError;
-use crate::mcp_server::types::{ToolContent, ToolResult};
 use crate::workspace::Workspace;
+use mcp_server::dispatch::registry::ToolError;
+use mcp_server::protocol::types::{ToolContent, ToolResult};
 use std::process::Command;
 
 /// Parsed exec command parameters.

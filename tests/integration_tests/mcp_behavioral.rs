@@ -127,8 +127,8 @@ fn consumer_can_initialize() {
         );
         let result = &response["result"];
         assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
+            result["serverInfo"]["name"], "ralph-mcp",
+            "serverInfo.name must be 'ralph-mcp'"
         );
         assert_eq!(
             result["protocolVersion"], "2024-11-05",
@@ -544,8 +544,8 @@ fn proxy_bridges_consumer_to_server() {
             result
         );
         assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
+            result["serverInfo"]["name"], "ralph-mcp",
+            "serverInfo.name must be 'ralph-mcp'"
         );
 
         // Clean shutdown

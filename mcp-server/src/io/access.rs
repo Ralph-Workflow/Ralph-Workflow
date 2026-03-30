@@ -7,49 +7,17 @@ use crate::dispatch::access::{
     evaluate_enforcement_pure, policy_path_within_root, AccessDecision, AuditSink,
     EnforcementCheck, McpCapability, ToolFilter,
 };
+use crate::dispatch::audit::AuditRecord as PureAuditRecord;
 use std::path::{Path, PathBuf};
 
-// ---------------------------------------------------------------------------
-// Audit record types
-// ---------------------------------------------------------------------------
-
-/// Audit record for tracking access decisions and operations.
-#[derive(Debug, Clone)]
-pub struct AuditRecord {
-    pub timestamp: std::time::SystemTime,
-    pub session_id: String,
-    pub tool_name: String,
-    pub decision: AccessDecision,
-    pub path: Option<PathBuf>,
-    pub capability: Option<McpCapability>,
-}
-
-impl AuditRecord {
-    pub fn new(session_id: String, tool_name: String, decision: AccessDecision) -> Self {
-        Self {
-            timestamp: std::time::SystemTime::now(),
-            session_id,
-            tool_name,
-            decision,
-            path: None,
-            capability: None,
-        }
-    }
-
-    pub fn with_path(mut self, path: PathBuf) -> Self {
-        self.path = Some(path);
-        self
-    }
-
-    pub fn with_capability(mut self, capability: McpCapability) -> Self {
-        self.capability = Some(capability);
-        self
-    }
-}
+// Re-export AuditRecord from dispatch::audit for convenience.
+// The io layer is responsible for stamping timestamp_nanos on emit.
+pub use crate::dispatch::audit::AuditRecord;
 
 /// Thread-safe in-memory audit sink for testing.
+/// Stores records from the dispatch layer and stamps timestamps on emit.
 pub struct InMemoryAuditSink {
-    records: std::sync::Mutex<Vec<AuditRecord>>,
+    records: std::sync::Mutex<Vec<PureAuditRecord>>,
     max_records: usize,
 }
 
@@ -61,7 +29,7 @@ impl InMemoryAuditSink {
         }
     }
 
-    pub fn records(&self) -> Vec<AuditRecord> {
+    pub fn records(&self) -> Vec<PureAuditRecord> {
         self.records.lock().unwrap().clone()
     }
 
@@ -81,7 +49,14 @@ impl Default for InMemoryAuditSink {
 }
 
 impl AuditSink for InMemoryAuditSink {
-    fn emit(&self, record: AuditRecord) {
+    fn emit(&self, mut record: PureAuditRecord) {
+        // Stamp the timestamp with real time (io layer responsibility)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        record.timestamp_nanos = now;
+
         let mut records = self.records.lock().unwrap();
         if records.len() >= self.max_records {
             records.remove(0);
@@ -97,11 +72,40 @@ impl AuditSink for InMemoryAuditSink {
 // ---------------------------------------------------------------------------
 
 /// Server configuration for MCP server.
+///
+/// `McpServerConfig` establishes the server's initialization contract. It is set once at
+/// construction and cannot be changed during server operation.
+///
+/// # Fields
+///
+/// * `root_dir` — The authorized directory boundary. All file operations must resolve
+///   within this directory. The server rejects any read or write request whose path
+///   resolves outside `root_dir`, regardless of host adapter permissions.
+/// * `access_mode` — Operations permitted by the server. `ReadOnly` rejects mutations;
+///   `ReadWrite` allows all operations subject to `tool_filter` and capability checks.
+/// * `tool_filter` — Tool dispatch filter. `Unrestricted` allows all registered tools;
+///   `Allowlist` restricts to only named tools; `Blocklist` excludes named tools.
+/// * `session_id` — Optional session identifier used for audit record correlation.
+///   If `None`, audit records use "unknown" as the session identifier.
 #[derive(Debug, Clone)]
 pub struct McpServerConfig {
+    /// The authorized directory boundary. All file operations must resolve within this
+    /// directory. The server rejects any read or write request whose path resolves outside
+    /// `root_dir`, regardless of what the host adapter would allow.
     pub root_dir: PathBuf,
+
+    /// Operations permitted by the server. Enforced at dispatch time before capability
+    /// checks. `ReadOnly` rejects all mutations; `ReadWrite` allows all operations
+    /// subject to `tool_filter` and capability checks.
     pub access_mode: crate::dispatch::access::AccessMode,
+
+    /// Tool dispatch filter. `Unrestricted` allows all registered tools;
+    /// `Allowlist(names)` restricts dispatch to only the named tools;
+    /// `Blocklist(names)` excludes only the named tools.
     pub tool_filter: ToolFilter,
+
+    /// Optional session identifier for audit record correlation.
+    /// If `None`, audit records use "unknown" as the session identifier.
     pub session_id: Option<String>,
 }
 
@@ -188,6 +192,25 @@ fn canonicalize_root(root_dir: &Path) -> Option<PathBuf> {
 // ---------------------------------------------------------------------------
 
 /// Pre-dispatch enforcement context.
+///
+/// This type gathers all inputs needed for an enforcement decision and delegates
+/// to pure policy evaluation.
+///
+/// # Check Ordering
+///
+/// When [`check()`][EnforcementContext::check] is called, enforcement is evaluated
+/// in the following strict order. The first denial short-circuits; subsequent checks
+/// are not evaluated.
+///
+/// 1. **Tool filter check** — Is the tool in the allowlist, or blocked by blocklist?
+///    If not allowed, returns `ToolNotAllowed`. The host is not consulted.
+/// 2. **Access mode check** — Does the access mode permit this operation?
+///    If `ReadOnly`/`Locked` and the tool is mutating, returns `ReadOnlyMode`.
+///    The host is not consulted.
+/// 3. **Path boundary check** — Does the path resolve within `root_dir`?
+///    If outside, returns `OutsideRootDir`. The host is not consulted.
+/// 4. **Capability check** — Does the session have the required capability?
+///    This is the only check that delegates to the host via `HostSession`.
 #[derive(Clone)]
 pub struct EnforcementContext<'a> {
     pub config: &'a McpServerConfig,
@@ -264,7 +287,8 @@ impl<'a> EnforcementContext<'a> {
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
 
-        let mut record = AuditRecord::new(session_id, self.tool_name.to_string(), decision.clone());
+        let mut record =
+            PureAuditRecord::new(session_id, self.tool_name.to_string(), decision.clone());
         record.capability = self.required_capability;
         if let Some(path) = self.path {
             record.path = Some(path.to_path_buf());

@@ -17,9 +17,10 @@
 //! The MCP server runs in a background thread and listens on the Unix socket for
 //! agent connections.
 
+use crate::dispatch::access::AuditSink;
 use crate::dispatch::{HostSession, ToolRegistry, WorkspaceAdapter};
 use crate::io::access::McpServerConfig;
-use crate::io::transport::{McpStream, TransportError, UnixSocketTransport};
+use crate::io::transport::{McpStream, McpStreamImpl, TransportError, UnixSocketTransport};
 use crate::io::{McpServer, ServerState};
 use crate::protocol::JsonRpcRequest;
 use std::path::PathBuf;
@@ -70,6 +71,8 @@ pub struct SessionBridge {
     started: bool,
     /// Shared shutdown flag. Set to true to signal the MCP server to shutdown.
     shutdown_flag: Arc<AtomicBool>,
+    /// Optional audit sink for recording MCP access decisions.
+    audit_sink: Option<Arc<dyn AuditSink>>,
 }
 
 impl SessionBridge {
@@ -95,6 +98,7 @@ impl SessionBridge {
             socket_path,
             started: false,
             shutdown_flag,
+            audit_sink: None,
         }
     }
 
@@ -126,11 +130,18 @@ impl SessionBridge {
         self.started
     }
 
+    /// Check if the bridge has been shutdown.
+    pub fn is_shutdown(&self) -> bool {
+        is_shutdown(&self.shutdown_flag)
+    }
+
     /// Start the session bridge and MCP server.
     ///
     /// This spawns a background thread that binds the Unix socket and runs the MCP server.
     /// The thread signals readiness after the socket is bound, so callers can connect
     /// immediately after start() returns without timing races.
+    ///
+    /// Uses the audit sink set via `start_with_audit_sink()`, or none if not set.
     pub fn start(&mut self) -> Result<(), SessionBridgeError> {
         if self.started {
             return Err(SessionBridgeError::AlreadyStarted);
@@ -144,9 +155,10 @@ impl SessionBridge {
         let registry = self.registry.clone();
         let config = self.config.clone();
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        let audit_sink = self.audit_sink.clone();
 
         std::thread::spawn(move || {
-            let server = McpServer::new(session, config, workspace, registry);
+            let server = McpServer::new(session, config, workspace, registry, audit_sink);
             if let Err(e) = run_server(server, socket_path, shutdown_flag, ready_tx) {
                 eprintln!("MCP server error: {}", e);
             }
@@ -165,6 +177,18 @@ impl SessionBridge {
         Ok(())
     }
 
+    /// Start the session bridge with an audit sink.
+    ///
+    /// This is equivalent to calling `start()` but allows passing an audit sink
+    /// that will be used for recording MCP access decisions.
+    pub fn start_with_audit_sink(
+        &mut self,
+        audit_sink: Arc<dyn AuditSink>,
+    ) -> Result<(), SessionBridgeError> {
+        self.audit_sink = Some(audit_sink);
+        self.start()
+    }
+
     /// Signal the session bridge to shutdown.
     pub fn shutdown(&self) {
         self.shutdown_flag.store(true, Ordering::Release);
@@ -181,6 +205,7 @@ impl Clone for SessionBridge {
             socket_path: self.socket_path.clone(),
             started: false, // Cloned bridges start in unstarted state
             shutdown_flag: Arc::clone(&self.shutdown_flag),
+            audit_sink: self.audit_sink.clone(),
         }
     }
 }
@@ -217,6 +242,59 @@ enum ReadClass {
     Error,
 }
 
+/// Accept classification.
+enum AcceptClass {
+    /// A client connection is ready.
+    Connection(McpStreamImpl),
+    /// No connection ready (non-blocking mode).
+    NoConnection,
+    /// Server is shutting down.
+    Shutdown,
+    /// Transport error occurred.
+    Error(String),
+}
+
+/// Pure: classify accept result.
+fn classify_accept(result: Result<Option<McpStreamImpl>, TransportError>) -> AcceptClass {
+    match result {
+        Ok(Some(stream)) => AcceptClass::Connection(stream),
+        Ok(None) => AcceptClass::NoConnection,
+        Err(TransportError::Shutdown) => AcceptClass::Shutdown,
+        Err(e) => AcceptClass::Error(e.to_string()),
+    }
+}
+
+/// Result of executing an accept action - controls loop continuation.
+enum AcceptOutcome {
+    Continue,
+    Exit,
+}
+
+/// Execute accept action. Returns outcome to signal loop continuation.
+fn execute_accept_action(
+    cls: AcceptClass,
+    server: &McpServer,
+    shutdown_flag: &Arc<AtomicBool>,
+    state: ServerState,
+) -> AcceptOutcome {
+    match cls {
+        AcceptClass::Connection(mut stream) => {
+            handle_connection(server, &mut stream, shutdown_flag, state);
+            AcceptOutcome::Continue
+        }
+        AcceptClass::NoConnection => {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            AcceptOutcome::Continue
+        }
+        AcceptClass::Shutdown => AcceptOutcome::Exit,
+        AcceptClass::Error(e) => {
+            eprintln!("MCP transport error in accept: {}", e);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            AcceptOutcome::Continue
+        }
+    }
+}
+
 /// Handle one request, return break flag and new state.
 fn handle_one(
     server: &McpServer,
@@ -228,8 +306,13 @@ fn handle_one(
     match cls {
         ReadClass::Request(req) => {
             let (resp, ns) = server.handle_request(req, st);
-            let broke = stream.write_response(&resp).is_err();
-            (broke, ns)
+            // For notifications (id is None), no response should be sent
+            if let Some(response) = resp {
+                let broke = stream.write_response(&response).is_err();
+                (broke, ns)
+            } else {
+                (false, ns)
+            }
         }
         ReadClass::Eof | ReadClass::Error => (true, st),
     }
@@ -276,17 +359,16 @@ fn run_server_loop(
     state: ServerState,
 ) -> Result<(), SessionBridgeError> {
     loop {
-        match listener.accept() {
-            Ok(Some(mut stream)) => {
-                handle_connection(server, &mut stream, shutdown_flag, state);
-                break;
-            }
-            Ok(None) | Err(_) => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
+        // 1. Gather input
+        let accept_result = listener.accept();
+        // 2. Pure classification
+        let cls = classify_accept(accept_result);
+        // 3. Execute and decide continuation
+        match execute_accept_action(cls, server, shutdown_flag, state) {
+            AcceptOutcome::Continue => {}
+            AcceptOutcome::Exit => return Ok(()),
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

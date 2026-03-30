@@ -4,9 +4,9 @@
 //! All git read operations are allowed for sessions with appropriate capabilities.
 
 use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
-use crate::mcp_server::tool_registry::ToolError;
-use crate::mcp_server::types::{ToolContent, ToolResult};
 use crate::workspace::Workspace;
+use mcp_server::dispatch::registry::ToolError;
+use mcp_server::protocol::types::{ToolContent, ToolResult};
 use std::process::Command;
 
 fn require_git_capability(

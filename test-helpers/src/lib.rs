@@ -507,3 +507,165 @@ pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
 
     CWD_LOCK.store(0, Ordering::Release);
 }
+
+/// Check whether any ancestor of `path` (including `path` itself) is inside a real git
+/// repository (identified by the presence of a `.git` directory).
+///
+/// This is a fail-fast guardrail: any test that attempts to use real git state must
+/// panic immediately with a clear policy error rather than silently succeeding or
+/// corrupting the project's git state.
+///
+/// # Panics
+///
+/// Panics with a POLICY VIOLATION message if a `.git` directory is found in any
+/// ancestor of `path`.
+pub fn assert_no_real_git_state(path: &std::path::Path) {
+    let path = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return, // Cannot canonicalize - skip check
+    };
+
+    // Check the path and all its ancestors for .git
+    let mut current: &std::path::Path = &path;
+    loop {
+        if current.join(".git").exists() {
+            panic!(
+                "POLICY VIOLATION: test is using real git state at '{}'. \
+                 All tests must use MemoryWorkspace. See docs/agents/testing-guide.md.",
+                path.display()
+            );
+        }
+        match current.parent() {
+            Some(parent) => {
+                if parent == current {
+                    break;
+                }
+                current = parent;
+            }
+            None => break,
+        }
+    }
+}
+
+/// RAII guard that prevents tests from using real git state with a workspace.
+///
+/// Constructing a `TestWorkspaceGuard` with a workspace that has a root inside
+/// a real git repository will panic immediately with a POLICY VIOLATION error.
+/// This ensures tests cannot accidentally mutate the project's real git state.
+///
+/// # Example
+///
+/// ```ignore
+/// let guard = TestWorkspaceGuard::new(workspace, workspace.root().to_path_buf());
+/// // Use workspace safely - any git state access will panic
+/// ```
+pub struct TestWorkspaceGuard<W> {
+    workspace: W,
+}
+
+impl<W> TestWorkspaceGuard<W> {
+    /// Create a new guard for the given workspace.
+    ///
+    /// The `root_hint` parameter specifies the root path to check for real git state.
+    /// This allows guards to be created for workspaces that may not expose their root
+    /// directly, or to explicitly validate the intended root path.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `root_hint` is inside a real git repository.
+    pub fn new(workspace: W, root_hint: std::path::PathBuf) -> Self {
+        assert_no_real_git_state(&root_hint);
+        Self { workspace }
+    }
+
+    /// Get a reference to the wrapped workspace.
+    pub fn workspace(&self) -> &W {
+        &self.workspace
+    }
+}
+
+/// Trait for workspace types that have a root directory.
+///
+/// This allows `TestWorkspaceGuard` to work with any workspace-like type
+/// without requiring a dependency on ralph-workflow.
+pub trait HasRoot {
+    fn root(&self) -> &std::path::Path;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "POLICY VIOLATION: test is using real git state")]
+    fn assert_no_real_git_state_panics_on_real_repo_path() {
+        // Use the project repo root as a test case - it contains .git
+        // This test verifies the policy guard works correctly by checking
+        // that it panics with the expected message when given a real git repo path.
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent() // test-helpers/
+            .and_then(|p| p.parent()); // workspace root
+
+        if let Some(root) = project_root {
+            // Only run if we found a valid project root
+            // The test will panic with POLICY VIOLATION if the path is inside a git repo
+            assert_no_real_git_state(root);
+            // If we get here without panicking, the path was not inside a git repo
+            // which is fine for the test - we've verified the function doesn't panic unexpectedly
+        }
+    }
+
+    #[test]
+    fn assert_no_real_git_state_does_not_panic_on_temp_path() {
+        // Temp directories are not inside a git repo (unless TMPDIR is misconfigured)
+        let temp_path = std::env::temp_dir();
+        // This should not panic
+        assert_no_real_git_state(&temp_path);
+    }
+
+    #[test]
+    fn test_workspace_guard_accepts_non_git_workspace() {
+        // TestWorkspaceGuard should accept a workspace with a temp root
+        struct FakeWorkspace {
+            root: PathBuf,
+        }
+        impl HasRoot for FakeWorkspace {
+            fn root(&self) -> &Path {
+                &self.root
+            }
+        }
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let fake_ws = FakeWorkspace {
+            root: temp_dir.path().to_path_buf(),
+        };
+        // This should not panic
+        let _guard = TestWorkspaceGuard::new(fake_ws, temp_dir.path().to_path_buf());
+    }
+
+    #[test]
+    #[should_panic(expected = "POLICY VIOLATION: test is using real git state")]
+    fn test_workspace_guard_rejects_real_git_workspace() {
+        // Use the project repo root to verify the guard rejects it
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent() // test-helpers/
+            .and_then(|p| p.parent()); // workspace root
+
+        if let Some(root) = project_root {
+            struct FakeWorkspace {
+                root: PathBuf,
+            }
+            impl HasRoot for FakeWorkspace {
+                fn root(&self) -> &Path {
+                    &self.root
+                }
+            }
+
+            let fake_ws = FakeWorkspace {
+                root: root.to_path_buf(),
+            };
+            // This should panic because root is inside a real git repo
+            let _guard = TestWorkspaceGuard::new(fake_ws, root.to_path_buf());
+        }
+    }
+}

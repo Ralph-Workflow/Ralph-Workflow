@@ -55,7 +55,7 @@ fn make_server() -> McpServer {
     let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
     let config = McpServerConfig::new(Path::new("/tmp").to_path_buf());
     let registry = ToolRegistry::new(vec![]);
-    McpServer::new(session, config, workspace, registry)
+    McpServer::new(session, config, workspace, registry, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ fn test_initialize_handshake() {
             "protocolVersion": "2024-11-05",
             "clientInfo": { "name": "test-client", "version": "1.0" }
         })),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
 
     // Inject request and process
@@ -83,6 +83,7 @@ fn test_initialize_handshake() {
     let request = transport.read_request().unwrap().unwrap();
 
     let (response, state) = server.handle_request(request, ServerState::Uninitialized);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     // Verify response
     assert!(response.result.is_some(), "Expected success result");
@@ -112,13 +113,14 @@ fn test_initialize_with_different_protocol_version() {
         params: Some(serde_json::json!({
             "protocolVersion": "2024-10-01"
         })),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
 
     transport.inject_request(init_request);
     let request = transport.read_request().unwrap().unwrap();
 
     let (response, state) = server.handle_request(request, ServerState::Uninitialized);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     // Server should still transition to Ready
     assert!(response.result.is_some());
@@ -135,13 +137,14 @@ fn test_initialize_missing_params() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({})), // Empty params - missing protocolVersion
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
 
     transport.inject_request(init_request);
     let request = transport.read_request().unwrap().unwrap();
 
     let (response, _state) = server.handle_request(request, ServerState::Uninitialized);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     // Should return error for missing required params
     assert!(
@@ -159,10 +162,11 @@ fn test_methods_require_initialization() {
         jsonrpc: "2.0".to_string(),
         method: "tools/list".to_string(),
         params: None,
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
 
     let (response, state) = server.handle_request(request, ServerState::Uninitialized);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     // Should get error about not being initialized
     assert!(response.error.is_some(), "Expected error response");
@@ -180,7 +184,7 @@ fn test_unknown_method_returns_method_not_found() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -189,10 +193,11 @@ fn test_unknown_method_returns_method_not_found() {
         jsonrpc: "2.0".to_string(),
         method: "unknown/method".to_string(),
         params: None,
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert!(response.error.is_some());
     let error = response.error.unwrap();
@@ -208,7 +213,7 @@ fn test_ping_after_initialization() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -217,10 +222,11 @@ fn test_ping_after_initialization() {
         jsonrpc: "2.0".to_string(),
         method: "ping".to_string(),
         params: None,
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, new_state) = server.handle_request(ping_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert!(response.result.is_some());
     assert_eq!(new_state, ServerState::Ready);
@@ -234,10 +240,11 @@ fn test_response_has_correct_jsonrpc_version() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(42),
+        id: Some(serde_json::json!(42)),
     };
 
     let (response, _) = server.handle_request(request, ServerState::Uninitialized);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert_eq!(response.jsonrpc, "2.0");
     assert_eq!(response.id, serde_json::json!(42));

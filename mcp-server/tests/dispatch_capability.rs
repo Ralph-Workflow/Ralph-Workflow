@@ -125,7 +125,7 @@ fn make_test_server(
     registry: ToolRegistry,
 ) -> McpServer {
     let config = McpServerConfig::new(Path::new("/tmp").to_path_buf());
-    McpServer::new(session, config, workspace, registry)
+    McpServer::new(session, config, workspace, registry, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ fn test_tool_dispatch_success() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -156,10 +156,11 @@ fn test_tool_dispatch_success() {
             "name": "test_read",
             "arguments": { "path": "test.txt" }
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert!(response.result.is_some(), "Expected success result");
     assert!(response.error.is_none(), "Expected no error");
@@ -177,7 +178,7 @@ fn test_tool_not_found() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -189,10 +190,11 @@ fn test_tool_not_found() {
             "name": "nonexistent_tool",
             "arguments": {}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert!(response.error.is_some(), "Expected error for unknown tool");
     let error = response.error.unwrap();
@@ -237,7 +239,7 @@ fn test_capability_denied_returns_error() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -249,10 +251,11 @@ fn test_capability_denied_returns_error() {
             "name": "git_status",
             "arguments": {}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert!(
         response.error.is_some(),
@@ -272,7 +275,7 @@ fn test_tools_list_shows_available_tools() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -281,10 +284,11 @@ fn test_tools_list_shows_available_tools() {
         jsonrpc: "2.0".to_string(),
         method: "tools/list".to_string(),
         params: None,
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(list_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
 
     assert!(response.result.is_some());
     let result = response.result.unwrap();
@@ -305,7 +309,7 @@ fn test_tool_call_invalidates_state_on_error() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -318,7 +322,7 @@ fn test_tool_call_invalidates_state_on_error() {
             "name": "nonexistent",
             "arguments": {}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (_, new_state) = server.handle_request(tool_request, state);

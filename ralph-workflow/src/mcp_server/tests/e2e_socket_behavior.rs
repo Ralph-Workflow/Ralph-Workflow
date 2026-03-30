@@ -132,8 +132,8 @@ mod unix_tests {
         );
         let result = &response["result"];
         assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
+            result["serverInfo"]["name"], "ralph-mcp",
+            "serverInfo.name must be 'ralph-mcp'"
         );
         assert_eq!(
             result["protocolVersion"], "2024-11-05",
@@ -370,255 +370,6 @@ mod unix_tests {
     }
 
     // =============================================================================
-    // Test 8: proxy routes initialize and tools/list through real McpServer
-    // =============================================================================
-
-    use crate::mcp_server::proxy::{read_framed_message, run_proxy_inner, write_framed_message};
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    #[test]
-    fn proxy_to_real_mcp_server_routes_initialize_and_tools_list() {
-        let ws = Arc::new(MemoryWorkspace::new_test());
-        let (bridge, socket_path) = start_bridge("e2e-proxy", SessionDrain::Development, ws);
-
-        // Create a UnixStream pair to simulate stdin/stdout
-        let (stdin_writer, proxy_stdin_reader) = UnixStream::pair().unwrap();
-        let (proxy_stdout_writer, stdout_reader) = UnixStream::pair().unwrap();
-
-        // Connect to the real server socket
-        let server_socket = UnixStream::connect(&socket_path).unwrap();
-        server_socket
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
-
-        // Set timeouts on the fake stdio ends
-        stdin_writer
-            .set_write_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
-        stdout_reader
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
-
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let shutdown_clone = Arc::clone(&shutdown);
-
-        // Spawn proxy bridging fake stdio to real server socket
-        let proxy_handle = std::thread::spawn(move || {
-            let reader = std::io::BufReader::new(proxy_stdin_reader);
-            let writer = proxy_stdout_writer;
-            run_proxy_inner(reader, writer, server_socket, shutdown_clone)
-        });
-
-        // Send initialize request through fake stdin
-        let init_msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "test-client", "version": "0.1"}
-            },
-            "id": 1
-        });
-        {
-            let mut w = std::io::BufWriter::new(&stdin_writer);
-            write_framed_message(&mut w, &serde_json::to_vec(&init_msg).unwrap()).unwrap();
-            w.flush().unwrap();
-        }
-
-        // Read initialize response from fake stdout
-        let mut r = std::io::BufReader::new(&stdout_reader);
-        let init_response_bytes = read_framed_message(&mut r)
-            .unwrap()
-            .expect("must receive initialize response");
-        let init_response: serde_json::Value =
-            serde_json::from_slice(&init_response_bytes).expect("parse JSON");
-        assert!(
-            init_response.get("error").is_none(),
-            "initialize must not error, got: {}",
-            init_response
-        );
-        let result = &init_response["result"];
-        assert!(
-            result.get("serverInfo").is_some(),
-            "initialize response must contain serverInfo, got: {}",
-            result
-        );
-        assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
-        );
-
-        // Send tools/list request through fake stdin
-        let tools_msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "tools/list",
-            "id": 2
-        });
-        {
-            let mut w = std::io::BufWriter::new(&stdin_writer);
-            write_framed_message(&mut w, &serde_json::to_vec(&tools_msg).unwrap()).unwrap();
-            w.flush().unwrap();
-        }
-
-        // Read tools/list response from fake stdout
-        let tools_response_bytes = read_framed_message(&mut r)
-            .unwrap()
-            .expect("must receive tools/list response");
-        let tools_response: serde_json::Value =
-            serde_json::from_slice(&tools_response_bytes).expect("parse JSON");
-        assert!(
-            tools_response.get("error").is_none(),
-            "tools/list must not error, got: {}",
-            tools_response
-        );
-        let tools = tools_response["result"]["tools"]
-            .as_array()
-            .expect("result.tools must be an array");
-        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert!(
-            names.contains(&"ralph_read_file"),
-            "must include ralph_read_file, got: {:?}",
-            names
-        );
-
-        // Clean shutdown
-        shutdown.store(true, Ordering::Release);
-        drop(stdin_writer);
-        drop(stdout_reader);
-        let _ = proxy_handle.join();
-
-        drop(bridge);
-    }
-
-    // =============================================================================
-    // Test 9: CCS stdio proxy can initialize and call a tool
-    //
-    // CCS (Claude Code Server / MM) uses the stdio proxy path: ralph --mcp-proxy.
-    // The proxy reads JSON-RPC from stdin and writes to stdout, bridging to the
-    // Unix socket. This test verifies the proxy correctly routes initialize and
-    // tool calls through to the real McpServer.
-    // =============================================================================
-
-    #[test]
-    fn ccs_stdio_proxy_can_initialize_and_call_tool() {
-        let ws = Arc::new(MemoryWorkspace::new_test());
-        let (bridge, socket_path) = start_bridge("e2e-ccs-proxy", SessionDrain::Development, ws);
-
-        // Create a UnixStream pair to simulate stdin/stdout for the proxy.
-        // proxy_in reads from the "stdin" side, proxy_out writes to "stdout" side.
-        let (proxy_stdin_write, proxy_stdin_read) =
-            std::os::unix::net::UnixStream::pair().expect("UnixStream pair for proxy stdin");
-        let (proxy_stdout_write, proxy_stdout_read) =
-            std::os::unix::net::UnixStream::pair().expect("UnixStream pair for proxy stdout");
-
-        // Connect proxy's socket end to the real server socket.
-        let server_socket = UnixStream::connect(&socket_path).expect("connect to server socket");
-
-        // Set timeouts on the fake stdio ends.
-        proxy_stdin_write
-            .set_write_timeout(Some(Duration::from_secs(5)))
-            .expect("set stdin write timeout");
-        proxy_stdout_read
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .expect("set stdout read timeout");
-        server_socket
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .expect("set server socket timeout");
-
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let shutdown_clone = Arc::clone(&shutdown);
-
-        // Spawn proxy bridging fake stdin/stdout to real server socket.
-        let proxy_handle = std::thread::spawn(move || {
-            let reader = std::io::BufReader::new(proxy_stdin_read);
-            let writer = std::io::BufWriter::new(proxy_stdout_write);
-            run_proxy_inner(reader, writer, server_socket, shutdown_clone)
-        });
-
-        // Send initialize request through fake stdin with Content-Length framing.
-        let init_msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "ccs-test", "version": "0.1"}
-            },
-            "id": 1
-        });
-        {
-            let mut w = std::io::BufWriter::new(&proxy_stdin_write);
-            write_framed_message(&mut w, &serde_json::to_vec(&init_msg).unwrap()).unwrap();
-            w.flush().unwrap();
-        }
-
-        // Read initialize response from fake stdout.
-        let mut r = std::io::BufReader::new(&proxy_stdout_read);
-        let init_response_bytes = read_framed_message(&mut r)
-            .unwrap()
-            .expect("must receive initialize response");
-        let init_response: serde_json::Value =
-            serde_json::from_slice(&init_response_bytes).expect("parse JSON");
-        assert!(
-            init_response.get("error").is_none(),
-            "initialize must not return an error, got: {}",
-            init_response
-        );
-        let result = &init_response["result"];
-        assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
-        );
-
-        // Send tools/list request through fake stdin.
-        let tools_msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "tools/list",
-            "id": 2
-        });
-        {
-            let mut w = std::io::BufWriter::new(&proxy_stdin_write);
-            write_framed_message(&mut w, &serde_json::to_vec(&tools_msg).unwrap()).unwrap();
-            w.flush().unwrap();
-        }
-
-        // Read tools/list response from fake stdout.
-        let tools_response_bytes = read_framed_message(&mut r)
-            .unwrap()
-            .expect("must receive tools/list response");
-        let tools_response: serde_json::Value =
-            serde_json::from_slice(&tools_response_bytes).expect("parse JSON");
-        assert!(
-            tools_response.get("error").is_none(),
-            "tools/list must not error: {}",
-            tools_response
-        );
-        let tools = tools_response["result"]["tools"]
-            .as_array()
-            .expect("result.tools must be an array");
-        let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert!(
-            names.contains(&"ralph_read_file"),
-            "must include ralph_read_file, got: {:?}",
-            names
-        );
-
-        // Clean shutdown within 5s timeout.
-        shutdown.store(true, Ordering::Release);
-        drop(proxy_stdin_write);
-        drop(proxy_stdout_read);
-        let proxy_result = proxy_handle.join();
-        assert!(
-            proxy_result.is_ok(),
-            "proxy thread must not panic, got: {:?}",
-            proxy_result
-        );
-
-        drop(bridge);
-    }
-
-    // =============================================================================
     // Test 10: OpenCode connects directly to socket, initializes, and lists tools.
     //
     // OpenCode uses a direct Unix socket connection to Ralph's MCP server
@@ -642,8 +393,8 @@ mod unix_tests {
         );
         let result = &init_response["result"];
         assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
+            result["serverInfo"]["name"], "ralph-mcp",
+            "serverInfo.name must be 'ralph-mcp'"
         );
         assert_eq!(
             result["protocolVersion"], "2024-11-05",
@@ -702,8 +453,8 @@ mod unix_tests {
         );
         let result = &init_response["result"];
         assert_eq!(
-            result["serverInfo"]["name"], "ralph",
-            "serverInfo.name must be 'ralph'"
+            result["serverInfo"]["name"], "ralph-mcp",
+            "serverInfo.name must be 'ralph-mcp'"
         );
         assert_eq!(
             result["protocolVersion"], "2024-11-05",

@@ -42,6 +42,11 @@ impl AgentSessionId {
     pub fn as_str(&self) -> &str {
         &self.id
     }
+
+    /// Construct a session ID directly from a raw string.
+    pub fn from_string(id: String) -> Self {
+        Self { id }
+    }
 }
 
 impl fmt::Display for AgentSessionId {

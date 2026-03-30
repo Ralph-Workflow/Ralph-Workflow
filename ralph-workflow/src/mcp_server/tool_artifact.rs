@@ -5,11 +5,11 @@
 //! JSON Schema with structured, directive-style error responses.
 
 use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
-use crate::mcp_server::tool_registry::ToolError;
-use crate::mcp_server::types::{
+use crate::workspace::{ArtifactEnvelope, Workspace};
+use mcp_server::dispatch::registry::ToolError;
+use mcp_server::protocol::types::{
     ErrorCode, ErrorResponse, ToolContent, ToolResult, ValidationError,
 };
-use crate::workspace::{ArtifactEnvelope, Workspace};
 
 /// Known artifact types and their schema file names.
 const ARTIFACT_TYPES: &[&str] = &[
@@ -57,7 +57,9 @@ fn convert_schema_errors(
                 code,
                 field_path,
                 expected,
-                got,
+                got: got
+                    .map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
                 next_actions: vec![next_action],
                 prohibition: None,
             }
@@ -234,7 +236,7 @@ fn run_schema_validation(
         return Ok(Vec::new());
     };
     let validator = jsonschema::validator_for(&schema_value).map_err(|e| {
-        ToolError::InternalError(format!(
+        ToolError::ExecutionError(format!(
             "Failed to compile schema for '{}': {}",
             artifact_type, e
         ))
@@ -304,7 +306,10 @@ fn build_rejection_result(
     artifact_type: &str,
     validation_errors: Vec<ValidationError>,
 ) -> ToolResult {
-    let error_response = ErrorResponse::new(artifact_type, validation_errors);
+    let error_response = ErrorResponse {
+        errors: validation_errors,
+        artifact_type: artifact_type.to_string(),
+    };
     ToolResult {
         content: vec![ToolContent::text(
             serde_json::to_string_pretty(&error_response).unwrap_or_default(),

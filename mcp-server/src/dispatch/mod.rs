@@ -7,24 +7,31 @@
 //!
 //! - [`host`] - Host abstraction traits (Session, Workspace)
 //! - [`registry`] - Tool registry and dispatch logic
+//! - [`audit`] - Pure audit record types
 //!
 //! # Design Principles
 //!
-//! 1. **No side effects in handlers** - Tool handlers should be pure functions
-//!    that transform inputs to outputs. Actual I/O happens in the tool implementations
-//!    which live in ralph-workflow.
+//! 1. **Framework-provided handlers** - `handle_read_file` and `handle_write_file` are
+//!    provided by the framework and use `WorkspaceAdapter` directly. These are the only
+//!    built-in handlers.
 //!
-//! 2. **Capability gating at registry level** - The registry checks capabilities
+//! 2. **Host-registered tools** - All other tool semantics (git, exec, artifacts,
+//!    coordination) are registered by the host application via `ToolRegistry`.
+//!    The framework does not provide stub implementations for these.
+//!
+//! 3. **Capability gating at registry level** - The registry checks capabilities
 //!    before invoking handlers, ensuring consistent policy enforcement.
 //!
-//! 3. **Typed errors** - Use `ToolError` for tool-specific failures rather than
+//! 4. **Typed errors** - Use `ToolError` for tool-specific failures rather than
 //!    generic string errors.
 
 pub mod access;
+pub mod audit;
 pub mod host;
 pub mod registry;
 
 pub use access::{AuditSink, McpCapability, NoOpAuditSink};
+pub use audit::AuditRecord;
 pub use host::{DirEntry, HostSession, WorkspaceAdapter};
 pub use registry::{ToolError, ToolHandler, ToolMetadata, ToolRegistry};
 
@@ -136,112 +143,5 @@ pub fn handle_write_file(
         "Successfully wrote {} bytes to {}",
         content.len(),
         path
-    ))]))
-}
-
-/// Handle environment variable read.
-///
-/// Requires: `EnvRead` capability
-pub fn handle_read_env(
-    session: &dyn HostSession,
-    _workspace: &dyn WorkspaceAdapter,
-    params: Value,
-) -> Result<ToolResult, ToolError> {
-    let outcome = session.check_capability(McpCapability::EnvRead);
-    if !outcome.is_allowed() {
-        return Err(ToolError::CapabilityDenied(format!(
-            "Environment read requires EnvRead capability: {:?}",
-            outcome
-        )));
-    }
-
-    let name = params
-        .get("name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::InvalidParams("Missing 'name' parameter".to_string()))?;
-
-    // Environment access is a boundary concern - actual implementation would use
-    // a HostEnv trait passed from the io layer. For now, return placeholder.
-    let value = "[environment access requires HostEnv implementation]";
-    Ok(ToolResult::success(vec![ToolContent::text(format!(
-        "{}={}",
-        name, value
-    ))]))
-}
-
-/// Handle git status read.
-///
-/// Requires: `GitStatusRead` capability
-pub fn handle_git_status(
-    session: &dyn HostSession,
-    _workspace: &dyn WorkspaceAdapter,
-    _params: Value,
-) -> Result<ToolResult, ToolError> {
-    let outcome = session.check_capability(McpCapability::GitStatusRead);
-    if !outcome.is_allowed() {
-        return Err(ToolError::CapabilityDenied(format!(
-            "Git status requires GitStatusRead capability: {:?}",
-            outcome
-        )));
-    }
-
-    // Git status is informational - actual implementation would call git
-    Ok(ToolResult::success(vec![ToolContent::text(
-        "[Git status placeholder - actual git status from ralph-workflow]".to_string(),
-    )]))
-}
-
-/// Handle process execution.
-///
-/// Requires: `ProcessExecBounded` capability
-pub fn handle_exec(
-    session: &dyn HostSession,
-    _workspace: &dyn WorkspaceAdapter,
-    params: Value,
-) -> Result<ToolResult, ToolError> {
-    let outcome = session.check_capability(McpCapability::ProcessExecBounded);
-    if !outcome.is_allowed() {
-        return Err(ToolError::CapabilityDenied(format!(
-            "Process execution requires ProcessExecBounded capability: {:?}",
-            outcome
-        )));
-    }
-
-    let command = params
-        .get("command")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::InvalidParams("Missing 'command' parameter".to_string()))?;
-
-    // Actual execution happens in ralph-workflow via Effect system
-    Ok(ToolResult::success(vec![ToolContent::text(format!(
-        "[Process execution placeholder: {} - actual execution from ralph-workflow]",
-        command
-    ))]))
-}
-
-/// Handle artifact submission.
-///
-/// Requires: `ArtifactSubmit` capability
-pub fn handle_artifact_submit(
-    session: &dyn HostSession,
-    _workspace: &dyn WorkspaceAdapter,
-    params: Value,
-) -> Result<ToolResult, ToolError> {
-    let outcome = session.check_capability(McpCapability::ArtifactSubmit);
-    if !outcome.is_allowed() {
-        return Err(ToolError::CapabilityDenied(format!(
-            "Artifact submission requires ArtifactSubmit capability: {:?}",
-            outcome
-        )));
-    }
-
-    let artifact_type = params
-        .get("artifact_type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-
-    Ok(ToolResult::success(vec![ToolContent::text(format!(
-        "[Artifact submission placeholder: type={} - actual submission from ralph-workflow]",
-        artifact_type
     ))]))
 }

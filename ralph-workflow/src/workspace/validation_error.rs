@@ -125,58 +125,57 @@ impl ValidationError {
     }
 }
 
-// Conversion from mcp_server::types::ValidationError to workspace::validation_error::ValidationError.
-impl From<crate::mcp_server::types::ValidationError> for ValidationError {
-    fn from(err: crate::mcp_server::types::ValidationError) -> Self {
+// Conversion from mcp_server::ValidationError to workspace::validation_error::ValidationError.
+impl From<mcp_server::ValidationError> for ValidationError {
+    fn from(err: mcp_server::ValidationError) -> Self {
         ValidationError {
             code: err.code.into(),
             field_path: err.field_path,
             expected: err.expected,
-            got: err.got,
+            got: err.got.as_str().map(String::from).filter(|s| !s.is_empty()),
             next_actions: err.next_actions,
             prohibition: err.prohibition,
         }
     }
 }
 
-// Conversion from workspace::validation_error::ValidationError to mcp_server::types::ValidationError.
-impl From<ValidationError> for crate::mcp_server::types::ValidationError {
+// Conversion from workspace::validation_error::ValidationError to mcp_server::ValidationError.
+impl From<ValidationError> for mcp_server::ValidationError {
     fn from(err: ValidationError) -> Self {
-        crate::mcp_server::types::ValidationError {
+        mcp_server::ValidationError {
             code: err.code.into(),
             field_path: err.field_path,
             expected: err.expected,
-            got: err.got,
+            got: err
+                .got
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
             next_actions: err.next_actions,
             prohibition: err.prohibition,
         }
     }
 }
 
-// Conversion from mcp_server::types::ErrorCode to workspace::validation_error::ErrorCode.
-impl From<crate::mcp_server::types::ErrorCode> for ErrorCode {
-    fn from(code: crate::mcp_server::types::ErrorCode) -> Self {
+// Conversion from mcp_server::ErrorCode to workspace::validation_error::ErrorCode.
+impl From<mcp_server::ErrorCode> for ErrorCode {
+    fn from(code: mcp_server::ErrorCode) -> Self {
         match code {
-            crate::mcp_server::types::ErrorCode::MissingField => ErrorCode::MissingField,
-            crate::mcp_server::types::ErrorCode::InvalidEnum => ErrorCode::InvalidEnum,
-            crate::mcp_server::types::ErrorCode::TypeMismatch => ErrorCode::TypeMismatch,
-            crate::mcp_server::types::ErrorCode::ConstraintViolation => {
-                ErrorCode::ConstraintViolation
-            }
+            mcp_server::ErrorCode::MissingField => ErrorCode::MissingField,
+            mcp_server::ErrorCode::InvalidEnum => ErrorCode::InvalidEnum,
+            mcp_server::ErrorCode::TypeMismatch => ErrorCode::TypeMismatch,
+            mcp_server::ErrorCode::ConstraintViolation => ErrorCode::ConstraintViolation,
         }
     }
 }
 
-// Conversion from workspace::validation_error::ErrorCode to mcp_server::types::ErrorCode.
-impl From<ErrorCode> for crate::mcp_server::types::ErrorCode {
+// Conversion from workspace::validation_error::ErrorCode to mcp_server::ErrorCode.
+impl From<ErrorCode> for mcp_server::ErrorCode {
     fn from(code: ErrorCode) -> Self {
         match code {
-            ErrorCode::MissingField => crate::mcp_server::types::ErrorCode::MissingField,
-            ErrorCode::InvalidEnum => crate::mcp_server::types::ErrorCode::InvalidEnum,
-            ErrorCode::TypeMismatch => crate::mcp_server::types::ErrorCode::TypeMismatch,
-            ErrorCode::ConstraintViolation => {
-                crate::mcp_server::types::ErrorCode::ConstraintViolation
-            }
+            ErrorCode::MissingField => mcp_server::ErrorCode::MissingField,
+            ErrorCode::InvalidEnum => mcp_server::ErrorCode::InvalidEnum,
+            ErrorCode::TypeMismatch => mcp_server::ErrorCode::TypeMismatch,
+            ErrorCode::ConstraintViolation => mcp_server::ErrorCode::ConstraintViolation,
         }
     }
 }

@@ -3,9 +3,9 @@
 //! Provides handlers for progress reporting and task completion declaration.
 
 use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
-use crate::mcp_server::tool_registry::ToolError;
-use crate::mcp_server::types::{ToolContent, ToolResult};
 use crate::workspace::Workspace;
+use mcp_server::dispatch::registry::ToolError;
+use mcp_server::protocol::types::{ToolContent, ToolResult};
 
 /// Build the progress report response text.
 fn format_progress_text(status: &str, note: &str, timestamp: u64) -> String {

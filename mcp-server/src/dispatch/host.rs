@@ -15,7 +15,7 @@
 //!
 //! - [`HostSession`] - Session capabilities and identity
 //! - [`WorkspaceAdapter`] - Workspace file operations
-//! - [`AuditSink`] - Audit event sink
+//! - [`crate::dispatch::AuditSink`] - Audit event sink
 //!
 //! # Capability Model
 //!
@@ -25,7 +25,7 @@
 //!
 //! Only [`AccessDecision::Deny`] with code [`CapabilityDenied`][crate::dispatch::access::AccessDeniedCode::CapabilityDenied]
 //! is returned by the host session. All other denial codes are generated internally
-//! by the MCP server's [`EnforcementContext`][crate::dispatch::access::EnforcementContext].
+//! by the MCP server's [`EnforcementContext`][crate::io::access::EnforcementContext].
 
 use crate::dispatch::access::{AccessDecision, McpCapability};
 use std::path::Path;
@@ -35,7 +35,7 @@ use std::path::Path;
 /// This trait abstracts the AgentSession type from ralph-workflow.
 ///
 /// The only [`AccessDecision`] variant that should be returned by implementations
-/// is [`AccessDecision::Deny`][AccessDecision::Deny] with code
+/// is [`AccessDecision::Deny`] with code
 /// [`CapabilityDenied`][crate::dispatch::access::AccessDeniedCode::CapabilityDenied].
 /// All other denial codes are generated internally by the MCP server.
 pub trait HostSession: Send + Sync {

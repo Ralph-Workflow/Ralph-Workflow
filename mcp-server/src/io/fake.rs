@@ -175,7 +175,7 @@ mod tests {
             jsonrpc: "2.0".to_string(),
             method: "tools/list".to_string(),
             params: None,
-            id: json!(1),
+            id: Some(json!(1)),
         };
 
         transport.inject_request(request.clone());
@@ -226,13 +226,13 @@ mod tests {
             jsonrpc: "2.0".to_string(),
             method: "ping".to_string(),
             params: None,
-            id: json!(1),
+            id: Some(json!(1)),
         };
         let req2 = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             method: "tools/list".to_string(),
             params: None,
-            id: json!(2),
+            id: Some(json!(2)),
         };
 
         transport.inject_request(req1);

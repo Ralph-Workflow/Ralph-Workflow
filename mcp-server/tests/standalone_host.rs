@@ -220,7 +220,7 @@ fn create_test_server(session: InMemorySession, workspace: InMemoryWorkspace) ->
     let config = McpServerConfig::new(PathBuf::from("/tmp/test-workspace"));
     let registry = ToolRegistry::new(vec![]);
 
-    McpServer::new(session, config, workspace, registry)
+    McpServer::new(session, config, workspace, registry, None)
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ fn test_standalone_session_check_capability() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -261,7 +261,7 @@ fn test_standalone_workspace_read_write() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -271,9 +271,10 @@ fn test_standalone_workspace_read_write() {
         jsonrpc: "2.0".to_string(),
         method: "tools/list".to_string(),
         params: None,
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
     let (response, _) = server.handle_request(list, state);
+    let response = response.expect("handle_request should return a response for non-notification");
     assert!(response.result.is_some());
 }
 
@@ -291,7 +292,7 @@ fn test_capability_denial_from_session() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, _state) = server.handle_request(init, ServerState::Uninitialized);
 
@@ -325,13 +326,13 @@ fn test_capability_denial_from_session() {
     let workspace_arc = Arc::new(workspace_with_git) as Arc<dyn mcp_server::WorkspaceAdapter>;
     let config = McpServerConfig::new(PathBuf::from("/tmp"));
     let registry = ToolRegistry::new(vec![(metadata, handler)]);
-    let server_with_git = McpServer::new(session_arc, config, workspace_arc, registry);
+    let server_with_git = McpServer::new(session_arc, config, workspace_arc, registry, None);
 
     let init_request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state_with_git) =
         server_with_git.handle_request(init_request, ServerState::Uninitialized);
@@ -344,10 +345,11 @@ fn test_capability_denial_from_session() {
             "name": "git_status",
             "arguments": {}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server_with_git.handle_request(tool_request, state_with_git);
+    let response = response.expect("handle_request should return a response for non-notification");
     assert!(
         response.result.is_some(),
         "Should succeed with GitStatusRead capability"
@@ -373,7 +375,7 @@ fn test_parallel_worker_edit_area() {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -402,14 +404,14 @@ fn test_read_only_mode_denies_write_tool() {
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
     let registry = ToolRegistry::new(vec![]);
 
-    let server = McpServer::new(session_arc, config, workspace_arc, registry);
+    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
 
     // Initialize
     let init = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -422,10 +424,11 @@ fn test_read_only_mode_denies_write_tool() {
             "name": "write_file",
             "arguments": {"path": "test.txt", "content": "new content"}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
     // ReadOnly mode should result in an error response
     assert!(
         response.error.is_some() || response.result.is_none(),
@@ -449,14 +452,14 @@ fn test_allowlist_blocks_unlisted_tool() {
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
     let registry = ToolRegistry::new(vec![]);
 
-    let server = McpServer::new(session_arc, config, workspace_arc, registry);
+    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
 
     // Initialize
     let init = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -469,10 +472,11 @@ fn test_allowlist_blocks_unlisted_tool() {
             "name": "git_status",
             "arguments": {}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
     // Tool not in allowlist should be blocked
     assert!(
         response.error.is_some() || response.result.is_none(),
@@ -495,14 +499,14 @@ fn test_blocklist_blocks_listed_tool() {
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
     let registry = ToolRegistry::new(vec![]);
 
-    let server = McpServer::new(session_arc, config, workspace_arc, registry);
+    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
 
     // Initialize
     let init = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
         params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: serde_json::json!(1),
+        id: Some(serde_json::json!(1)),
     };
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
@@ -515,10 +519,11 @@ fn test_blocklist_blocks_listed_tool() {
             "name": "git_status",
             "arguments": {}
         })),
-        id: serde_json::json!(2),
+        id: Some(serde_json::json!(2)),
     };
 
     let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
     // Tool in blocklist should be blocked
     assert!(
         response.error.is_some() || response.result.is_none(),
@@ -529,6 +534,8 @@ fn test_blocklist_blocks_listed_tool() {
 /// Test full protocol flow through SessionBridge over Unix socket.
 #[test]
 fn test_session_bridge_full_protocol_flow() {
+    use std::time::Duration;
+
     // Create fake implementations
     let session = InMemorySession::new("bridge-test-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]);
@@ -550,6 +557,48 @@ fn test_session_bridge_full_protocol_flow() {
     // Connect via Unix socket
     let socket_path = bridge.socket_path().clone();
     let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect to bridge");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Helper to read a framed response (Content-Length based)
+    fn read_framed_response(stream: &mut UnixStream) -> String {
+        // Read headers until blank line
+        let mut header = Vec::new();
+        loop {
+            let mut buf = [0u8; 1];
+            match stream.read_exact(&mut buf) {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                    panic!(
+                        "Read timed out waiting for header, header so far: {:?}",
+                        String::from_utf8_lossy(&header)
+                    );
+                }
+                Err(e) => panic!("Read error: {}", e),
+            }
+            header.push(buf[0]);
+            if header.ends_with(b"\r\n\r\n") {
+                break;
+            }
+        }
+        // Parse Content-Length
+        let header_str = String::from_utf8_lossy(&header);
+        let content_length = header_str
+            .lines()
+            .find(|l| l.starts_with("Content-Length:"))
+            .and_then(|l| {
+                l.strip_prefix("Content-Length:")
+                    .unwrap()
+                    .trim()
+                    .parse::<usize>()
+                    .ok()
+            })
+            .expect("Missing Content-Length header");
+        // Read body
+        let mut body = vec![0u8; content_length];
+        stream.read_exact(&mut body).unwrap();
+        String::from_utf8(body).unwrap()
+    }
 
     // Send initialize request
     let init_request = serde_json::json!({
@@ -559,23 +608,18 @@ fn test_session_bridge_full_protocol_flow() {
         "id": 1
     });
     let init_bytes = serde_json::to_vec(&init_request).unwrap();
-    writeln!(stream, "Content-Length: {}", init_bytes.len()).unwrap();
+    write!(stream, "Content-Length: {}\r\n\r\n", init_bytes.len()).unwrap();
     stream.write_all(&init_bytes).unwrap();
     stream.flush().unwrap();
 
-    // Read response
-    let mut buf = vec![];
-    stream.read_to_end(&mut buf).unwrap();
-    let response_str = String::from_utf8(buf).unwrap();
+    // Give server time to process
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // Response should contain Content-Length header and JSON-RPC response
+    // Read response
+    let response_str = read_framed_response(&mut stream);
     assert!(
-        response_str.contains("Content-Length:"),
-        "Response should have Content-Length header"
-    );
-    assert!(
-        response_str.contains("\"result\"") || response_str.contains("\"error\""),
-        "Response should be JSON-RPC result or error"
+        response_str.contains("\"result\""),
+        "Response should be JSON-RPC result"
     );
 
     // Send ping request
@@ -585,16 +629,17 @@ fn test_session_bridge_full_protocol_flow() {
         "id": 2
     });
     let ping_bytes = serde_json::to_vec(&ping_request).unwrap();
-    writeln!(stream, "Content-Length: {}", ping_bytes.len()).unwrap();
+    write!(stream, "Content-Length: {}\r\n\r\n", ping_bytes.len()).unwrap();
     stream.write_all(&ping_bytes).unwrap();
     stream.flush().unwrap();
 
+    // Give server time to process
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
     // Read ping response
-    let mut ping_buf = vec![];
-    stream.read_to_end(&mut ping_buf).unwrap();
-    let ping_response_str = String::from_utf8(ping_buf).unwrap();
+    let ping_response_str = read_framed_response(&mut stream);
     assert!(
-        ping_response_str.contains("Content-Length:"),
-        "Ping response should have Content-Length header"
+        ping_response_str.contains("\"result\""),
+        "Ping response should be JSON-RPC result"
     );
 }

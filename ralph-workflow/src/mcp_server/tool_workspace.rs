@@ -4,9 +4,9 @@
 //! with proper capability checking and edit area enforcement for parallel workers.
 
 use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
-use crate::mcp_server::tool_registry::ToolError;
-use crate::mcp_server::types::{ToolContent, ToolResult};
 use crate::workspace::{DirEntry, Workspace};
+use mcp_server::dispatch::registry::ToolError;
+use mcp_server::protocol::types::{ToolContent, ToolResult};
 use std::path::Path;
 
 fn required_string_param<'a>(

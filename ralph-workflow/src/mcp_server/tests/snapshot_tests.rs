@@ -3,14 +3,26 @@
 //! These tests verify that protocol messages and audit records
 //! maintain consistent format across changes.
 
-use crate::mcp_server::tool_registry::ToolRegistry;
-use crate::mcp_server::types::InitializeResult;
+use crate::agents::session::{AgentSession, SessionDrain};
+use crate::mcp_server::tool_bridge::{
+    build_ralph_tool_registry, RalphHostSessionAdapter, RalphWorkspaceAdapter,
+};
+use crate::workspace::memory_workspace::MemoryWorkspace;
+use mcp_server::protocol::types::{InitializeResult, ServerCapabilities, ServerInfo};
+use std::sync::Arc;
 
 // Initialize response snapshot
 
 #[test]
 fn test_initialize_response_format() {
-    let result = InitializeResult::new();
+    let result = InitializeResult {
+        protocol_version: "2024-11-05".to_string(),
+        capabilities: ServerCapabilities::default(),
+        server_info: ServerInfo {
+            name: "ralph-mcp".to_string(),
+            version: "1.0.0".to_string(),
+        },
+    };
     let json = serde_json::to_string(&result).expect("serialize");
 
     // Verify it serializes to valid JSON
@@ -20,30 +32,60 @@ fn test_initialize_response_format() {
 
 #[test]
 fn test_initialize_response_protocol_version() {
-    let result = InitializeResult::new();
+    let result = InitializeResult {
+        protocol_version: "2024-11-05".to_string(),
+        capabilities: ServerCapabilities::default(),
+        server_info: ServerInfo {
+            name: "ralph-mcp".to_string(),
+            version: "1.0.0".to_string(),
+        },
+    };
     let json = serde_json::to_string(&result).expect("serialize");
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
 
-    // Should have protocol version (serde default converts snake_case to kebab-case)
-    // The field is protocol_version in Rust, serialized as "protocol_version"
-    assert!(parsed.get("protocol_version").is_some() || parsed.get("protocolVersion").is_some());
+    // Should have protocol version
+    assert!(parsed.get("protocolVersion").is_some());
 }
 
 #[test]
 fn test_initialize_response_server_info() {
-    let result = InitializeResult::new();
+    let result = InitializeResult {
+        protocol_version: "2024-11-05".to_string(),
+        capabilities: ServerCapabilities::default(),
+        server_info: ServerInfo {
+            name: "ralph-mcp".to_string(),
+            version: "1.0.0".to_string(),
+        },
+    };
     let json = serde_json::to_string(&result).expect("serialize");
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
 
     // Should have server info
-    assert!(parsed.get("server_info").is_some() || parsed.get("serverInfo").is_some());
+    assert!(parsed.get("serverInfo").is_some());
 }
 
 // Tools list snapshot
 
+fn setup_test_registry() -> (
+    mcp_server::ToolRegistry,
+    RalphHostSessionAdapter,
+    RalphWorkspaceAdapter,
+) {
+    let session = Arc::new(AgentSession::for_drain(
+        "test-run".to_string(),
+        SessionDrain::Development,
+        1,
+    ));
+    let workspace: Arc<dyn crate::workspace::Workspace> = Arc::new(MemoryWorkspace::new_test());
+    let registry = build_ralph_tool_registry(Arc::clone(&session), Arc::clone(&workspace));
+    let host = RalphHostSessionAdapter::new(Arc::clone(&session));
+    let ws = RalphWorkspaceAdapter::new(Arc::clone(&workspace));
+    (registry, host, ws)
+}
+
 #[test]
 fn test_tools_list_response_format() {
-    let registry = ToolRegistry::with_ralph_tools();
+    let (registry, _host, _ws) = setup_test_registry();
     let tools = registry.list_tools();
     let json = serde_json::to_string(&tools).expect("serialize");
 
@@ -54,7 +96,7 @@ fn test_tools_list_response_format() {
 
 #[test]
 fn test_tools_list_contains_required_tools() {
-    let registry = ToolRegistry::with_ralph_tools();
+    let (registry, _host, _ws) = setup_test_registry();
     let tools = registry.list_tools();
     let tool_names: Vec<_> = tools.iter().map(|t| t.name.clone()).collect();
 
@@ -76,7 +118,7 @@ fn test_tools_list_contains_required_tools() {
 
 #[test]
 fn test_tool_schema_format() {
-    let registry = ToolRegistry::with_ralph_tools();
+    let (registry, _host, _ws) = setup_test_registry();
     let tools = registry.list_tools();
 
     for tool in tools {

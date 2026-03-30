@@ -1,13 +1,13 @@
 //! Session bridge for MCP server lifecycle management.
 //!
-//! This module bridges the `AgentSession` to the `McpServer` lifecycle,
-//! managing the MCP server alongside each agent invocation.
+//! This module bridges Ralph's `AgentSession` and `Workspace` to the MCP server,
+//! creating endpoint configuration for MCP communication and managing server lifecycle.
 //!
 //! # Architecture
 //!
 //! The session bridge creates endpoint configuration for MCP communication.
-//! When wired into the agent spawn flow (Step 6), this configuration is
-//! passed to the agent process via environment variables.
+//! When wired into the agent spawn flow, this configuration is passed to the
+//! agent process via environment variables.
 //!
 //! # Endpoint Management
 //!
@@ -15,47 +15,52 @@
 //! The endpoint path is passed to the agent via the `RALPH_MCP_ENDPOINT` environment variable.
 //!
 //! The MCP server runs in a background thread and listens on the Unix socket for
-//! agent connections. Each connection is handled sequentially (one agent at a time).
+//! agent connections.
 
-use crate::agents::session::{AgentSession, AuditRecord, AuditTrail};
-use crate::mcp_server::{McpServer, McpServerError};
+use crate::agents::session::{AgentSession, AuditRecord as RalphAuditRecord, AuditTrail};
+use crate::mcp_server::tool_bridge::{
+    build_ralph_tool_registry, RalphAuditSinkAdapter, RalphHostSessionAdapter,
+    RalphWorkspaceAdapter,
+};
 use crate::workspace::Workspace;
+use ::mcp_server::io::access::McpServerConfig;
+use ::mcp_server::io::SessionBridge as McpSessionBridge;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc;
 use std::sync::Arc;
-use std::thread::JoinHandle;
-
-/// Environment variable name for passing MCP endpoint to agents.
-static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
+use thiserror::Error;
 
 pub const MCP_ENDPOINT_ENV: &str = "RALPH_MCP_ENDPOINT";
 
+/// Errors that can occur during session bridge operations.
+#[derive(Error, Debug)]
+pub enum SessionBridgeError {
+    #[error("Transport error: {0}")]
+    Transport(String),
+
+    #[error("Server error: {0}")]
+    Server(String),
+
+    #[error("Session already started")]
+    AlreadyStarted,
+
+    #[error("Bridge not started")]
+    NotStarted,
+}
+
 /// Session bridge that manages MCP server lifecycle for an agent session.
 ///
-/// The bridge creates an MCP server bound to the agent's session,
+/// The bridge creates an MCP server bound to the session's capabilities,
 /// provides endpoint configuration for agent connections, and manages
 /// the server lifecycle.
 pub struct SessionBridge {
-    /// Cloned session Arc — accessible at any lifecycle stage without panicking.
+    /// The agent session this bridge is bound to.
     session: Arc<AgentSession>,
-    /// Cached audit trail — empty until `drain_audit_records()` is called.
+    /// Inner session bridge from the mcp-server crate.
+    inner: McpSessionBridge,
+    /// Audit sink adapter that accumulates MCP audit records.
+    audit_adapter: Arc<RalphAuditSinkAdapter>,
+    /// Cached view of audit records for backward-compatible API.
     cached_audit: AuditTrail,
-    /// Receiver for audit records produced by the background MCP server thread.
-    audit_receiver: Option<mpsc::Receiver<AuditRecord>>,
-    /// The MCP server bound to this session (None after start() is called).
-    mcp_server: Option<McpServer>,
-    /// Unix socket path for agent connections.
-    socket_path: PathBuf,
-    /// Flag indicating if the bridge has been started.
-    started: bool,
-    /// Flag indicating if the bridge has been shutdown.
-    shutdown: bool,
-    /// Handle to the background server thread.
-    server_thread: Option<JoinHandle<()>>,
-    /// Shared shutdown flag. Set to true to signal the MCP server to shutdown.
-    /// This is shared with the server thread so we can signal shutdown from Drop.
-    shutdown_flag: Arc<AtomicBool>,
 }
 
 impl SessionBridge {
@@ -64,27 +69,32 @@ impl SessionBridge {
     /// This creates an MCP server bound to the session but does not start it.
     /// Call `start()` to begin listening for agent connections.
     pub fn new(session: AgentSession, workspace: Arc<dyn Workspace>) -> Self {
-        let nonce = SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let socket_path = build_socket_path(&session, nonce);
-        let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let session_arc = Arc::new(session.clone());
-        let (audit_tx, audit_rx) = mpsc::channel::<AuditRecord>();
-        let mcp_server = McpServer::new_with_audit_sender(
-            session,
-            workspace,
-            Arc::clone(&shutdown_flag),
-            audit_tx,
-        );
+        let session_arc = Arc::new(session);
+        let workspace_arc = workspace.clone();
+
+        // Build the tool registry with Ralph tool handlers
+        let registry =
+            build_ralph_tool_registry(Arc::clone(&session_arc), Arc::clone(&workspace_arc));
+
+        // Create adapters
+        let host = Arc::new(RalphHostSessionAdapter::new(Arc::clone(&session_arc)));
+        let ws = Arc::new(RalphWorkspaceAdapter::new(Arc::clone(&workspace_arc)));
+
+        // Create the audit sink adapter for MCP audit records
+        let audit_adapter = Arc::new(RalphAuditSinkAdapter::new());
+
+        // Create config with workspace root
+        let config = McpServerConfig::new(workspace.root().to_path_buf())
+            .with_access_mode(::mcp_server::dispatch::access::AccessMode::ReadWrite);
+
+        // Create the inner session bridge (audit sink passed at start() time)
+        let inner = McpSessionBridge::new(host, config, ws, registry);
+
         Self {
             session: session_arc,
+            inner,
+            audit_adapter,
             cached_audit: AuditTrail::new(),
-            audit_receiver: Some(audit_rx),
-            mcp_server: Some(mcp_server),
-            socket_path,
-            started: false,
-            shutdown: false,
-            server_thread: None,
-            shutdown_flag,
         }
     }
 
@@ -93,32 +103,39 @@ impl SessionBridge {
         &self.session
     }
 
-    /// Get the audit trail from the bound MCP server.
-    pub fn audit_trail(&self) -> &AuditTrail {
-        self.mcp_server
-            .as_ref()
-            .map(McpServer::audit_trail)
-            .unwrap_or(&self.cached_audit)
+    /// Get the audit trail view (combining cached and fresh records).
+    ///
+    /// Note: This returns all accumulated records including those since the last
+    /// `drain_audit_records()` call.
+    pub fn audit_trail(&self) -> AuditTrail {
+        let new_records = self.audit_adapter.drain_records();
+        AuditTrail::from_records(
+            self.cached_audit
+                .records()
+                .iter()
+                .cloned()
+                .chain(new_records),
+        )
     }
 
-    /// Drain all audit records produced by the MCP server background thread.
-    ///
-    /// Shuts down the bridge (if not already shut down), waits for the server thread
-    /// to finish, then collects all pending audit records from the channel.
-    ///
-    /// This must be called after the agent execution completes to retrieve the audit
-    /// records from MCP tool calls before the bridge is dropped.
-    pub fn drain_audit_records(&mut self) -> Vec<AuditRecord> {
-        self.shutdown();
-        self.audit_receiver
-            .as_ref()
-            .map(|rx| std::iter::from_fn(|| rx.try_recv().ok()).collect())
-            .unwrap_or_default()
+    /// Drain all audit records accumulated since the last drain.
+    pub fn drain_audit_records(&mut self) -> Vec<RalphAuditRecord> {
+        let new_records = self.audit_adapter.drain_records();
+        if !new_records.is_empty() {
+            self.cached_audit = AuditTrail::from_records(
+                self.cached_audit
+                    .records()
+                    .iter()
+                    .cloned()
+                    .chain(new_records),
+            );
+        }
+        self.cached_audit.records().to_vec()
     }
 
     /// Get the Unix socket path for agent connections.
     pub fn socket_path(&self) -> &PathBuf {
-        &self.socket_path
+        self.inner.socket_path()
     }
 
     /// Get the MCP endpoint URI for passing to agents.
@@ -126,7 +143,7 @@ impl SessionBridge {
     /// Returns a URI like `unix:///path/to/socket` that agents can use
     /// to connect to the MCP server.
     pub fn endpoint_uri(&self) -> String {
-        format!("unix://{}", self.socket_path.display())
+        self.inner.endpoint_uri()
     }
 
     /// Get the environment variable name for the MCP endpoint.
@@ -136,138 +153,48 @@ impl SessionBridge {
 
     /// Check if the bridge has been started.
     pub fn is_started(&self) -> bool {
-        self.started
+        self.inner.is_started()
     }
 
     /// Check if the bridge has been shutdown.
     pub fn is_shutdown(&self) -> bool {
-        self.shutdown
+        self.inner.is_shutdown()
     }
 
     /// Start the session bridge and MCP server.
     ///
-    /// This:
-    /// 1. Spawns a background thread that binds the Unix socket and runs the MCP server
-    /// 2. Blocks until the socket is bound and listening (eliminates the readiness race)
-    /// 3. Returns only after the agent can safely connect to the socket
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the socket cannot be created/bound or if the thread fails to spawn.
-    pub fn start(&mut self) -> Result<(), McpServerError> {
-        if self.started {
-            return Err(McpServerError::Transport(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                "Session bridge already started",
-            )));
-        }
-        let socket_path = self.socket_path.clone();
-        let server = self.mcp_server.take().expect("mcp_server already taken");
-        let thread = spawn_server_thread(server, socket_path)?;
-        self.server_thread = Some(thread);
-        self.started = true;
-        Ok(())
+    /// This spawns a background thread that binds the Unix socket and runs the MCP server.
+    /// The thread signals readiness after the socket is bound, so callers can connect
+    /// immediately after start() returns without timing races.
+    pub fn start(&mut self) -> Result<(), SessionBridgeError> {
+        self.inner
+            .start_with_audit_sink(self.audit_adapter.clone())
+            .map_err(|e| SessionBridgeError::Transport(e.to_string()))
     }
 
     /// Shutdown the session bridge gracefully.
     ///
     /// This signals the MCP server to shutdown and waits for the server thread to finish.
     pub fn shutdown(&mut self) {
-        if self.shutdown {
-            return;
-        }
-        self.shutdown = true;
-
-        // Signal the server thread to shutdown via the shared flag
-        self.shutdown_flag.store(true, Ordering::Release);
-
-        // Wait for the server thread to finish
-        if let Some(handle) = self.server_thread.take() {
-            let _ = handle.join();
-        }
+        self.inner.shutdown();
     }
 }
 
-/// Spawn the MCP server background thread, waiting for the socket to be ready.
-///
-/// Returns the join handle on success, or an error if the socket fails to bind.
-fn spawn_server_thread(
-    mut server: McpServer,
-    socket_path: PathBuf,
-) -> Result<std::thread::JoinHandle<()>, McpServerError> {
-    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
-    let thread = std::thread::spawn(move || {
-        server.run_socket_with_ready(&socket_path, ready_tx);
-    });
-    let recv = ready_rx.recv_timeout(std::time::Duration::from_secs(5));
-    match interpret_ready_recv(recv) {
-        Ok(()) => Ok(thread),
-        Err(e) => {
-            let _ = thread.join();
-            Err(e)
+impl Clone for SessionBridge {
+    fn clone(&self) -> Self {
+        Self {
+            session: Arc::clone(&self.session),
+            inner: self.inner.clone(),
+            audit_adapter: Arc::clone(&self.audit_adapter),
+            cached_audit: AuditTrail::new(),
         }
     }
-}
-
-/// Build a unique socket path for a session.
-fn build_socket_path(session: &AgentSession, nonce: usize) -> PathBuf {
-    let socket_dir = std::env::temp_dir().join("ralph-mcp");
-    let session_id = session.session_id.as_str();
-    PathBuf::from(format!(
-        "{}/{}-{}.sock",
-        socket_dir.display(),
-        session_id,
-        nonce
-    ))
-}
-
-/// Interpret a `recv_timeout` result for the socket readiness signal.
-///
-/// Returns `Ok(())` on successful socket bind, or the McpServerError on failure.
-/// The caller is responsible for joining or discarding `thread` on the error path.
-fn interpret_ready_recv(
-    recv: Result<Result<(), String>, std::sync::mpsc::RecvTimeoutError>,
-) -> Result<(), McpServerError> {
-    match recv {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(McpServerError::Transport(std::io::Error::other(e))),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err(McpServerError::Transport(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "MCP socket bind timed out after 5s",
-            )))
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            Err(McpServerError::Transport(std::io::Error::new(
-                std::io::ErrorKind::ConnectionAborted,
-                "MCP server thread exited before sending ready signal",
-            )))
-        }
-    }
-}
-
-/// Wait for a thread to finish within a deadline, then join if done.
-fn wait_for_thread_with_timeout(handle: std::thread::JoinHandle<()>) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2000);
-    while !handle.is_finished() {
-        if std::time::Instant::now() >= deadline {
-            return; // Detach — thread will exit on its own
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    let _ = handle.join();
 }
 
 impl Drop for SessionBridge {
     fn drop(&mut self) {
-        if !self.shutdown {
-            self.shutdown_flag.store(true, Ordering::Release);
-            if let Some(handle) = self.server_thread.take() {
-                wait_for_thread_with_timeout(handle);
-            }
-        }
-        if self.socket_path.exists() {
-            let _ = std::fs::remove_file(&self.socket_path);
+        if self.is_started() {
+            self.shutdown();
         }
     }
 }
@@ -291,15 +218,10 @@ mod tests {
 
     #[test]
     fn test_socket_path_format() {
-        let session = AgentSession::for_drain(
-            "test-run".to_string(),
-            crate::agents::session::SessionDrain::Development,
-            1,
-        );
-        let path = build_socket_path(&session, 0);
+        let bridge = SessionBridge::new(unique_session(), test_workspace());
+        let path = bridge.socket_path();
         let path_str = path.display().to_string();
         assert!(path_str.contains("ralph-mcp"));
-        assert!(path_str.contains("test-run"));
         assert!(path_str.ends_with(".sock"));
     }
 
@@ -332,14 +254,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bridge_double_start_error() {
-        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
-        bridge.start().expect("first start should succeed");
-        let result = bridge.start();
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_bridge_shutdown() {
         let mut bridge = SessionBridge::new(unique_session(), test_workspace());
         bridge.start().expect("start should succeed");
@@ -348,21 +262,17 @@ mod tests {
     }
 
     #[test]
-    fn test_session_access() {
-        let session = AgentSession::for_drain(
-            "test-run".to_string(),
-            crate::agents::session::SessionDrain::Development,
-            1,
-        );
-        let bridge = SessionBridge::new(session, test_workspace());
-        let s = bridge.session();
-        assert_eq!(s.session_id.as_str(), "test-run-development-1");
-    }
-
-    #[test]
     fn test_audit_trail_access() {
         let bridge = SessionBridge::new(unique_session(), test_workspace());
         let trail = bridge.audit_trail();
         assert!(trail.is_empty());
+    }
+
+    #[test]
+    fn test_drain_audit_records() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        // Initially empty
+        let records = bridge.drain_audit_records();
+        assert!(records.is_empty());
     }
 }

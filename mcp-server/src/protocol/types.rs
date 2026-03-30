@@ -52,8 +52,8 @@ pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 /// }
 /// ```
 ///
-/// Required fields: `jsonrpc`, `method`, `id`
-/// Optional fields: `params` (required for some methods)
+/// Required fields: `jsonrpc`, `method`
+/// Optional fields: `params` (required for some methods), `id` (notifications have no id)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
     /// JSON-RPC version - must be exactly "2.0"
@@ -63,8 +63,10 @@ pub struct JsonRpcRequest {
     /// Method parameters (method-specific structure)
     #[serde(default)]
     pub params: Option<serde_json::Value>,
-    /// Request identifier for response correlation
-    pub id: serde_json::Value,
+    /// Request identifier for response correlation.
+    /// None indicates a notification (no response should be sent).
+    #[serde(default)]
+    pub id: Option<serde_json::Value>,
 }
 
 /// JSON-RPC 2.0 response envelope.

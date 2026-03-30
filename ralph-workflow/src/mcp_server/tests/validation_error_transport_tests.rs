@@ -1,30 +1,51 @@
+//! Validation error transport tests.
+//!
+//! Tests that validation errors from tool handlers are properly formatted
+//! as machine-parseable JSON error responses through the JSON-RPC transport.
+
 use crate::agents::session::{AgentSession, SessionDrain};
-use crate::mcp_server::types::JsonRpcRequest;
-use crate::workspace::{memory_workspace::MemoryWorkspace, Workspace};
-use std::sync::atomic::AtomicBool;
+use crate::mcp_server::tool_bridge::{
+    build_ralph_tool_registry, RalphHostSessionAdapter, RalphWorkspaceAdapter,
+};
+use crate::workspace::memory_workspace::MemoryWorkspace;
+use mcp_server::io::access::McpServerConfig;
+use mcp_server::io::{McpServer, ServerState};
+use mcp_server::protocol::types::JsonRpcRequest;
 use std::sync::Arc;
 
 fn development_session() -> AgentSession {
     AgentSession::for_drain("test-run".to_string(), SessionDrain::Development, 1)
 }
 
-fn workspace() -> Arc<dyn Workspace> {
+fn test_workspace() -> Arc<dyn crate::workspace::Workspace> {
     Arc::new(MemoryWorkspace::new_test())
+}
+
+fn setup_server() -> McpServer {
+    let session = Arc::new(development_session());
+    let workspace: Arc<dyn crate::workspace::Workspace> = test_workspace();
+    let registry = build_ralph_tool_registry(Arc::clone(&session), Arc::clone(&workspace));
+    let config = McpServerConfig::new(std::env::temp_dir());
+    let host = RalphHostSessionAdapter::new(Arc::clone(&session));
+    let ws = RalphWorkspaceAdapter::new(Arc::clone(&workspace));
+
+    McpServer::new(Arc::new(host), config, Arc::new(ws), registry, None)
 }
 
 #[test]
 fn tools_call_returns_machine_parseable_validation_payload() {
-    let shutdown_flag = Arc::new(AtomicBool::new(false));
-    let mut server =
-        super::super::McpServer::new(development_session(), workspace(), shutdown_flag);
+    let server = setup_server();
 
     let init_request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         method: "initialize".to_string(),
-        params: Some(serde_json::json!({})),
+        params: Some(serde_json::json!({
+            "protocolVersion": "2024-11-05"
+        })),
         id: Some(serde_json::json!(1)),
     };
-    let _ = server.process_request(init_request);
+    let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
 
     let invalid_plan = serde_json::json!({
         "summary": {
@@ -67,10 +88,11 @@ fn tools_call_returns_machine_parseable_validation_payload() {
         id: Some(serde_json::json!(2)),
     };
 
-    let rpc_response = server
-        .process_request(call_request)
-        .expect("tools/call must return Some response");
-    let result = rpc_response
+    let (response, _state) = server.handle_request(call_request, ServerState::Ready);
+
+    // The response should indicate an error
+    let response = response.expect("tools/call should return a response for non-notification");
+    let result = response
         .result
         .expect("tools/call result should be present");
 
@@ -86,14 +108,14 @@ fn tools_call_returns_machine_parseable_validation_payload() {
     let payload: serde_json::Value =
         serde_json::from_str(content_text).expect("content text must be valid JSON");
 
-    assert_eq!(payload["artifact_type"], "plan");
+    assert_eq!(payload["artifactType"], "plan");
     assert!(payload["errors"].is_array());
     assert!(
         payload["errors"]
             .as_array()
             .expect("errors array")
             .iter()
-            .any(|err| err["field_path"] == "steps[0].title"),
+            .any(|err| err["fieldPath"] == "steps[0].title"),
         "expected steps[0].title path in payload errors: {}",
         payload
     );

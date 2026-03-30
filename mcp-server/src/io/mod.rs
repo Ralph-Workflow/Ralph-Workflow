@@ -94,6 +94,7 @@ pub struct McpServer {
     workspace: Arc<dyn WorkspaceAdapter>,
     registry: ToolRegistry,
     server_info: ServerInfo,
+    audit_sink: Arc<dyn AuditSink>,
 }
 
 // ---------------------------------------------------------------------------
@@ -176,11 +177,12 @@ fn check_enforcement(
     args: &serde_json::Value,
     request_id: serde_json::Value,
     state: ServerState,
+    audit_sink: &dyn AuditSink,
 ) -> Result<(), Box<(JsonRpcResponse, ServerState)>> {
     let path = args.get("path").and_then(|v| v.as_str());
     let mutating = is_mutating_tool(name);
     let path_for_check = path.map(Path::new);
-    match check_tool_enforcement(config, name, path_for_check, mutating, &NoOpAuditSink) {
+    match check_tool_enforcement(config, name, path_for_check, mutating, audit_sink) {
         AccessDecision::Allow => Ok(()),
         AccessDecision::Deny { reason, .. } => Err(Box::new((
             JsonRpcResponse::error(JsonRpcError::tool_error(reason), request_id),
@@ -216,13 +218,54 @@ fn dispatch_tool(
         })
 }
 
+// ---------------------------------------------------------------------------
+// Pure helpers for error responses
+// ---------------------------------------------------------------------------
+
+/// Pure: make not-ready error response.
+fn make_not_ready_error(
+    request_id: serde_json::Value,
+    state: ServerState,
+) -> (Option<JsonRpcResponse>, ServerState) {
+    (
+        Some(JsonRpcResponse::error(
+            JsonRpcError::not_initialized(),
+            request_id,
+        )),
+        state,
+    )
+}
+
+/// Pure: make method-not-found error response.
+fn make_method_not_found_error(
+    request_id: serde_json::Value,
+    state: ServerState,
+) -> (Option<JsonRpcResponse>, ServerState) {
+    (
+        Some(JsonRpcResponse::error(
+            JsonRpcError::method_not_found(),
+            request_id,
+        )),
+        state,
+    )
+}
+
 impl McpServer {
     /// Create a new MCP server.
+    ///
+    /// # Arguments
+    ///
+    /// * `session` - Host session for capability checking
+    /// * `config` - Server configuration (root_dir, access_mode, tool_filter)
+    /// * `workspace` - Workspace adapter for file operations
+    /// * `registry` - Tool registry with registered tools
+    /// * `audit_sink` - Audit sink for recording access decisions (defaults to NoOpAuditSink if None)
     pub fn new(
         session: Arc<dyn HostSession>,
         config: crate::io::access::McpServerConfig,
         workspace: Arc<dyn WorkspaceAdapter>,
         registry: ToolRegistry,
+        audit_sink: Option<Arc<dyn AuditSink>>,
     ) -> Self {
         Self {
             session,
@@ -233,65 +276,124 @@ impl McpServer {
                 name: "ralph-mcp".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
+            audit_sink: audit_sink.unwrap_or_else(|| Arc::new(NoOpAuditSink)),
         }
     }
 
     /// Handle an incoming JSON-RPC request (thin wiring).
+    ///
+    /// Returns `None` for notifications (requests without an id) since JSON-RPC 2.0
+    /// requires no response for notifications.
+    ///
+    /// # State Machine
+    ///
+    /// The server maintains a `ServerState` that governs which requests are accepted:
+    ///
+    /// - **`Uninitialized`** — Server created but not initialized. Only `initialize`
+    ///   is accepted. All other methods return `-32001 NotInitialized`.
+    /// - **`Ready`** — Normal operational state after successful `initialize` handshake.
+    ///   All methods are accepted.
+    /// - **`Shutdown`** — Server has shut down. No requests are accepted (currently
+    ///   treated same as `Ready` for routing purposes).
+    ///
+    /// # DispatchTarget Branches
+    ///
+    /// | Target | Condition | Response | New State |
+    /// |--------|-----------|----------|-----------|
+    /// | `Initialize` | `initialize` method, any state | `InitializeResult` JSON | `Ready` (if success) |
+    /// | `NotReady` | Any tool method, `state != Ready` | `NotInitialized` error `-32001` | unchanged |
+    /// | `Ping` | `ping` method, `state == Ready` | `null` | unchanged |
+    /// | `ToolsList` | `tools/list` method, `state == Ready` | `{tools: [...]}` | unchanged |
+    /// | `ToolsCall` | `tools/call` method, `state == Ready` | Tool result or error | unchanged |
+    /// | `Unknown` | Unknown method, any state | `MethodNotFound` error `-32601` | unchanged |
+    ///
+    /// # Response Contract
+    ///
+    /// - Returns `(Some(response), new_state)` for requests with an `id` field
+    /// - Returns `(None, state)` for notifications (no `id` field) — no response sent
+    /// - Error responses use `JsonRpcResponse::error()` with appropriate `JsonRpcError` code
+    /// - Success responses use `JsonRpcResponse::success()` with result value
     pub fn handle_request(
         &self,
         request: JsonRpcRequest,
         state: ServerState,
-    ) -> (JsonRpcResponse, ServerState) {
+    ) -> (Option<JsonRpcResponse>, ServerState) {
+        // Notifications (no id) don't get a response per JSON-RPC 2.0 spec
+        let request_id = match request.id.clone() {
+            Some(id) => id,
+            None => return (None, state),
+        };
+
         let target = route_dispatch(request.method.as_str(), state == ServerState::Ready);
+        self.route_to_target(target, request, request_id, state)
+    }
+
+    /// Route to the appropriate handler or error helper (pure policy).
+    fn route_to_target(
+        &self,
+        target: DispatchTarget,
+        request: JsonRpcRequest,
+        request_id: serde_json::Value,
+        state: ServerState,
+    ) -> (Option<JsonRpcResponse>, ServerState) {
         match target {
-            DispatchTarget::Initialize => self.handle_initialize(request),
-            DispatchTarget::NotReady => (
-                JsonRpcResponse::error(JsonRpcError::not_initialized(), request.id),
-                state,
-            ),
-            DispatchTarget::Ping => self.handle_ping(request, state),
-            DispatchTarget::ToolsList => self.handle_tools_list(request, state),
-            DispatchTarget::ToolsCall => self.handle_tools_call(request, state),
-            DispatchTarget::Unknown => (
-                JsonRpcResponse::error(JsonRpcError::method_not_found(), request.id),
-                state,
-            ),
+            DispatchTarget::Initialize => self.handle_initialize(request, request_id),
+            DispatchTarget::NotReady => make_not_ready_error(request_id, state),
+            DispatchTarget::Ping => self.handle_ping(request_id, state),
+            DispatchTarget::ToolsList => self.handle_tools_list(request_id, state),
+            DispatchTarget::ToolsCall => self.handle_tools_call(request, request_id, state),
+            DispatchTarget::Unknown => make_method_not_found_error(request_id, state),
         }
     }
 
-    fn handle_initialize(&self, request: JsonRpcRequest) -> (JsonRpcResponse, ServerState) {
-        let request_id = request.id.clone();
+    fn handle_initialize(
+        &self,
+        request: JsonRpcRequest,
+        request_id: serde_json::Value,
+    ) -> (Option<JsonRpcResponse>, ServerState) {
         let params = match parse_initialize_params(request.params, request_id.clone()) {
             Ok(p) => p,
-            Err(e) => return *e,
+            Err(e) => {
+                let (response, st) = *e;
+                return (Some(response), st);
+            }
         };
         let version = negotiate_protocol_version(params.protocol_version);
         let result = build_initialize_result(version, self.server_info.clone());
         (
-            JsonRpcResponse::success(serde_json::to_value(result).unwrap(), request_id),
+            Some(JsonRpcResponse::success(
+                serde_json::to_value(result).unwrap(),
+                request_id,
+            )),
             ServerState::Ready,
         )
     }
 
     fn handle_ping(
         &self,
-        request: JsonRpcRequest,
+        request_id: serde_json::Value,
         state: ServerState,
-    ) -> (JsonRpcResponse, ServerState) {
+    ) -> (Option<JsonRpcResponse>, ServerState) {
         (
-            JsonRpcResponse::success(serde_json::Value::Null, request.id),
+            Some(JsonRpcResponse::success(
+                serde_json::Value::Null,
+                request_id,
+            )),
             state,
         )
     }
 
     fn handle_tools_list(
         &self,
-        request: JsonRpcRequest,
+        request_id: serde_json::Value,
         state: ServerState,
-    ) -> (JsonRpcResponse, ServerState) {
+    ) -> (Option<JsonRpcResponse>, ServerState) {
         let tools = self.registry.list_tools();
         (
-            JsonRpcResponse::success(serde_json::json!({ "tools": tools }), request.id),
+            Some(JsonRpcResponse::success(
+                serde_json::json!({ "tools": tools }),
+                request_id,
+            )),
             state,
         )
     }
@@ -299,9 +401,9 @@ impl McpServer {
     fn handle_tools_call(
         &self,
         request: JsonRpcRequest,
+        request_id: serde_json::Value,
         state: ServerState,
-    ) -> (JsonRpcResponse, ServerState) {
-        let request_id = request.id.clone();
+    ) -> (Option<JsonRpcResponse>, ServerState) {
         // Chain: parse -> check enforcement -> dispatch
         let result =
             parse_tools_call_params(request.params, request_id.clone(), state).and_then(|params| {
@@ -311,6 +413,7 @@ impl McpServer {
                     &params.arguments,
                     request_id.clone(),
                     state,
+                    self.audit_sink.as_ref(),
                 )
                 .map(|_| params)
             });
@@ -325,8 +428,15 @@ impl McpServer {
                 request_id,
                 state,
             )
-            .unwrap_or_else(|e| *e),
-            Err(box_val) => *box_val,
+            .map(|(resp, st)| (Some(resp), st))
+            .unwrap_or_else(|e| {
+                let (response, st) = *e;
+                (Some(response), st)
+            }),
+            Err(box_val) => {
+                let (response, st) = *box_val;
+                (Some(response), st)
+            }
         }
     }
 }
@@ -384,7 +494,7 @@ mod tests {
         let workspace = Arc::new(MockWorkspace) as Arc<dyn WorkspaceAdapter>;
         let registry = ToolRegistry::new(vec![]);
         let config = crate::io::access::McpServerConfig::new(std::env::temp_dir());
-        let server = McpServer::new(session, config, workspace, registry);
+        let server = McpServer::new(session, config, workspace, registry, None);
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -393,10 +503,11 @@ mod tests {
                 "protocolVersion": "2024-11-05",
                 "clientInfo": { "name": "test", "version": "1.0" }
             })),
-            id: serde_json::json!(1),
+            id: Some(serde_json::json!(1)),
         };
 
         let (response, state) = server.handle_request(request, ServerState::Uninitialized);
+        let response = response.expect("initialize should return a response");
         assert!(response.result.is_some());
         assert!(response.error.is_none());
         assert_eq!(state, ServerState::Ready);
@@ -408,14 +519,14 @@ mod tests {
         let workspace = Arc::new(MockWorkspace) as Arc<dyn WorkspaceAdapter>;
         let registry = ToolRegistry::new(vec![]);
         let config = crate::io::access::McpServerConfig::new(std::env::temp_dir());
-        let server = McpServer::new(session, config, workspace, registry);
+        let server = McpServer::new(session, config, workspace, registry, None);
 
         // Initialize first
         let init_request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             method: "initialize".to_string(),
             params: Some(serde_json::json!({ "protocolVersion": "2024-11-05" })),
-            id: serde_json::json!(1),
+            id: Some(serde_json::json!(1)),
         };
         let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
 
@@ -424,10 +535,11 @@ mod tests {
             jsonrpc: "2.0".to_string(),
             method: "tools/list".to_string(),
             params: None,
-            id: serde_json::json!(2),
+            id: Some(serde_json::json!(2)),
         };
 
         let (response, _) = server.handle_request(request, state);
+        let response = response.expect("tools/list should return a response");
         assert!(response.result.is_some());
     }
 }
