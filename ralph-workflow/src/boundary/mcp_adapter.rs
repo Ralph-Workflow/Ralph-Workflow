@@ -75,10 +75,13 @@ fn parse_capability(cap: McpCapability) -> Option<Capability> {
         McpCapability::WorkspaceWriteEphemeral => Some(Capability::WorkspaceWriteEphemeral),
         McpCapability::WorkspaceWriteTracked => Some(Capability::WorkspaceWriteTracked),
         McpCapability::ProcessExecBounded => Some(Capability::ProcessExecBounded),
+        McpCapability::ProcessExecUnbounded => Some(Capability::ProcessExecUnbounded),
         McpCapability::ArtifactSubmit => Some(Capability::ArtifactSubmit),
+        McpCapability::RunReportProgress => Some(Capability::RunReportProgress),
         McpCapability::GitStatusRead => Some(Capability::GitStatusRead),
         McpCapability::GitWrite => Some(Capability::GitWrite),
         McpCapability::EnvRead => Some(Capability::EnvRead),
+        McpCapability::EnvWrite => Some(Capability::EnvWrite),
         // #[non_exhaustive] McpCapability — deny unknown variants explicitly
         _ => None,
     }

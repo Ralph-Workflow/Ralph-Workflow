@@ -1,17 +1,17 @@
 //! Application entrypoint and pipeline orchestration.
 //!
 //! This module is the CLI layer operating **before** the repository root is known.
-//! It uses [`AppEffect`][effect::AppEffect] for side effects, which is distinct from
-//! [`Effect`][crate::reducer::effect::Effect] used after repo root discovery.
+//! It uses `AppEffect` for side effects, which is distinct from
+//! `Effect` used after repo root discovery.
 //!
 //! # Two Effect Layers
 //!
-//! Ralph has two distinct effect types (see also [`crate`] documentation):
+//! Ralph has two distinct effect types (see also `crate` documentation):
 //!
 //! | Layer | When | Filesystem Access |
 //! |-------|------|-------------------|
 //! | `AppEffect` (this module) | Before repo root known | `std::fs` directly |
-//! | `Effect` ([`crate::reducer`]) | After repo root known | Via [`Workspace`][crate::workspace::Workspace] |
+//! | `Effect` (`crate::reducer`) | After repo root known | Via `Workspace` |
 //!
 //! These layers must never mix: `AppEffect` handlers cannot use `Workspace`.
 //!
@@ -22,17 +22,6 @@
 //! - Repo root discovery
 //! - Resume support and checkpoint management
 //! - Transition to pipeline execution via `crate::phases`
-//!
-//! # Module Structure
-//!
-//! - [`config_init`]: Configuration loading and agent registry initialization
-//! - [`effect`]: `AppEffect` definitions for pre-repo-root operations
-//! - [`effect_handler`]: Production handler for `AppEffect` execution
-//! - [`plumbing`]: Low-level git operations (show/apply commit messages)
-//! - [`validation`]: Agent validation and chain validation
-//! - [`resume`]: Checkpoint resume functionality
-//! - [`detection`]: Project stack detection
-//! - [`finalization`]: Pipeline cleanup and finalization
 
 // Include sub-modules
 pub mod command_handlers;

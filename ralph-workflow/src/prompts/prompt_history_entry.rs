@@ -2,7 +2,7 @@
 //!
 //! [`PromptHistoryEntry`] stores a generated prompt alongside an optional
 //! content-id that identifies the materialized inputs at the time of generation.
-//! The content-id is used by [`get_stored_or_generate_prompt`] to detect
+//! The content-id is used by `get_stored_or_generate_prompt` to detect
 //! stale-content replay: if the current materialization content-id differs from
 //! the stored one, the history entry is treated as a cache miss and a fresh
 //! prompt is generated.

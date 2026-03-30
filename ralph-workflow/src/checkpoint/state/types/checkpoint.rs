@@ -112,7 +112,7 @@ pub struct PipelineCheckpoint {
     /// Stored prompts used during this run
     /// Stored prompts used during this run.
     ///
-    /// Value type changed from `String` to [`PromptHistoryEntry`] in `replay_metadata_version` 1.
+    /// Value type changed from `String` to `PromptHistoryEntry` in `replay_metadata_version` 1.
     /// The [`crate::prompts::PromptHistoryEntry`] custom deserializer accepts both the legacy
     /// bare-string format (version 0) and the new object format (version 1) for backward compatibility.
     #[serde(skip_serializing_if = "Option::is_none")]

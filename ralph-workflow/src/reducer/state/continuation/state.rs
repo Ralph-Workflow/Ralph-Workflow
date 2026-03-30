@@ -32,8 +32,8 @@ pub struct ContinuationState {
     pub previous_status: Option<DevelopmentStatus>,
     /// Summary of what was accomplished in the previous attempt.
     pub previous_summary: Option<String>,
-    /// Files changed in the previous attempt. Box<[String]> saves 8 bytes per instance
-    /// vs Vec<String> (no capacity field) since this collection never grows after construction.
+    /// Files changed in the previous attempt. `Box<[String]>` saves 8 bytes per instance
+    /// vs `Vec<String>` (no capacity field) since this collection never grows after construction.
     pub previous_files_changed: Option<Box<[String]>>,
     /// Agent's recommended next steps from the previous attempt.
     pub previous_next_steps: Option<String>,

@@ -137,7 +137,7 @@ impl FixStatus {
     /// Parse a fix status string from XML.
     ///
     /// This is intentionally not implementing `std::str::FromStr` because it returns
-    /// Option<Self> for easier handling of unknown values without error types.
+    /// `Option<Self>` for easier handling of unknown values without error types.
     #[must_use] 
     pub fn parse(s: &str) -> Option<Self> {
         match s {

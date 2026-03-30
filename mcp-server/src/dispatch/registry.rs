@@ -44,6 +44,32 @@ pub struct ToolMetadata {
     pub definition: ToolDefinition,
     /// Capability required to invoke this tool.
     pub required_capability: McpCapability,
+    /// Whether this tool performs mutating operations (writes, deletes, exec).
+    /// If `None`, derived from `required_capability` at registration time.
+    pub is_mutating: Option<bool>,
+}
+
+impl ToolMetadata {
+    /// Returns whether this tool is mutating, computing from `required_capability`
+    /// if not explicitly set.
+    pub fn is_mutating(&self) -> bool {
+        self.is_mutating
+            .unwrap_or_else(|| capability_is_mutating(self.required_capability))
+    }
+}
+
+/// Returns true if the given capability implies a mutating operation.
+pub fn capability_is_mutating(cap: McpCapability) -> bool {
+    matches!(
+        cap,
+        McpCapability::WorkspaceWriteEphemeral
+            | McpCapability::WorkspaceWriteTracked
+            | McpCapability::WorkspaceWriteAny
+            | McpCapability::GitWrite
+            | McpCapability::ProcessExecBounded
+            | McpCapability::ProcessExecUnbounded
+            | McpCapability::EnvWrite
+    )
 }
 
 /// Tool handler function signature.
@@ -70,7 +96,16 @@ impl ToolRegistry {
     pub fn new(tools: Vec<(ToolMetadata, ToolHandler)>) -> Self {
         let tools: HashMap<String, (ToolMetadata, ToolHandler)> = tools
             .into_iter()
-            .map(|(metadata, handler)| (metadata.definition.name.clone(), (metadata, handler)))
+            .map(|(mut metadata, handler)| {
+                // Derive is_mutating from required_capability at registration time if not set.
+                // This replaces the hardcoded is_mutating_tool() approach which failed
+                // for tools with non-standard prefixes (e.g., "ralph_write_file" vs "write_file").
+                if metadata.is_mutating.is_none() {
+                    metadata.is_mutating =
+                        Some(capability_is_mutating(metadata.required_capability));
+                }
+                (metadata.definition.name.clone(), (metadata, handler))
+            })
             .collect();
         Self { tools }
     }
@@ -88,6 +123,11 @@ impl ToolRegistry {
         self.tools
             .get(tool_name)
             .map(|(meta, _)| meta.required_capability)
+    }
+
+    /// Get metadata for a registered tool.
+    pub fn get_metadata(&self, tool_name: &str) -> Option<&ToolMetadata> {
+        self.tools.get(tool_name).map(|(meta, _)| meta)
     }
 
     /// Dispatch a tool call.

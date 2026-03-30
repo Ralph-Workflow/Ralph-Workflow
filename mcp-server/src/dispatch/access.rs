@@ -432,39 +432,61 @@ pub fn denial_reason_path_outside_root(
     )
 }
 
+/// Parameters for [`evaluate_enforcement_pure`].
+///
+/// Bundles all inputs needed for enforcement evaluation into a single struct
+/// to avoid clippy's 7-parameter limit.
+pub struct EnforcementParams<'a> {
+    pub tool_name: &'a str,
+    pub tool_filter: &'a ToolFilter,
+    pub is_mutating: bool,
+    pub access_mode: &'a AccessMode,
+    pub path: Option<&'a std::path::Path>,
+    pub root_dir: &'a std::path::Path,
+    pub is_path_allowed: Box<dyn Fn(&std::path::Path) -> bool + 'a>,
+    pub capability_outcome: &'a Option<AccessDecision>,
+}
+
 /// Pure: evaluate all enforcement checks and return first denial if any.
 ///
 /// Returns the first denial found, or `Allow` if all checks pass.
-pub fn evaluate_enforcement_pure(
-    tool_name: &str,
-    tool_filter: &ToolFilter,
-    is_mutating: bool,
-    access_mode: &AccessMode,
-    path: Option<&std::path::Path>,
-    root_dir: &std::path::Path,
-    is_path_allowed: impl Fn(&std::path::Path) -> bool,
-) -> EnforcementCheck {
+///
+/// # Check Ordering
+///
+/// 1. Tool filter (tool not in allowlist, or in blocklist)
+/// 2. Access mode (ReadOnly/Locked blocks mutating operations)
+/// 3. Path boundary (path resolves outside root_dir)
+/// 4. Capability (host session denied the required capability)
+pub fn evaluate_enforcement_pure(params: &EnforcementParams) -> EnforcementCheck {
     // Check tool filter (priority 1)
-    if let Some(code) = policy_tool_allowed(tool_name, tool_filter) {
-        let reason = denial_reason_tool_not_allowed(tool_name);
+    if let Some(code) = policy_tool_allowed(params.tool_name, params.tool_filter) {
+        let reason = denial_reason_tool_not_allowed(params.tool_name);
         return EnforcementCheck::Deny { code, reason };
     }
 
     // Check access mode for mutating (priority 2)
-    if let Some(code) = policy_mutating_allowed(is_mutating, access_mode) {
-        let reason = denial_reason_read_only(access_mode);
+    if let Some(code) = policy_mutating_allowed(params.is_mutating, params.access_mode) {
+        let reason = denial_reason_read_only(params.access_mode);
         return EnforcementCheck::Deny { code, reason };
     }
 
     // Check path (priority 3)
-    if let Some(p) = path {
-        if !is_path_allowed(p) {
-            let reason = denial_reason_path_outside_root(p, root_dir);
+    if let Some(p) = params.path {
+        if !(params.is_path_allowed)(p) {
+            let reason = denial_reason_path_outside_root(p, params.root_dir);
             return EnforcementCheck::Deny {
                 code: AccessDeniedCode::OutsideRootDir,
                 reason,
             };
         }
+    }
+
+    // Check capability (priority 4) — host session decision
+    if let Some(AccessDecision::Deny { reason, code }) = params.capability_outcome {
+        return EnforcementCheck::Deny {
+            code: *code,
+            reason: reason.clone(),
+        };
     }
 
     EnforcementCheck::Allow

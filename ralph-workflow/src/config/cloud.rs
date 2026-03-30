@@ -352,7 +352,7 @@ impl CloudConfig {
     /// Returns error if the operation fails.
     /// # Errors
     ///
-    /// Returns [`CloudConfigValidationError`] if required fields are missing or invalid.
+    /// Returns a `CloudConfigValidationError` if required fields are missing or invalid.
     pub fn validate(&self) -> Result<(), CloudConfigValidationError> {
         if !self.enabled {
             return Ok(());
@@ -387,7 +387,7 @@ impl GitRemoteConfig {
     /// - Auth method configuration is invalid
     /// # Errors
     ///
-    /// Returns [`GitRemoteValidationError`] if:
+    /// Returns a `GitRemoteValidationError` if:
     /// - Remote name is empty
     /// - Push branch is invalid
     /// - Auth method configuration is invalid

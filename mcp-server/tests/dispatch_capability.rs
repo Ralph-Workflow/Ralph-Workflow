@@ -114,6 +114,7 @@ fn make_registry_with_read_tool() -> ToolRegistry {
             }),
         },
         required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
     };
 
     ToolRegistry::new(vec![(metadata, read_handler)])
@@ -229,6 +230,7 @@ fn test_capability_denied_returns_error() {
             }),
         },
         required_capability: McpCapability::GitStatusRead,
+        is_mutating: None,
     };
 
     let registry = ToolRegistry::new(vec![(metadata, git_status_handler)]);

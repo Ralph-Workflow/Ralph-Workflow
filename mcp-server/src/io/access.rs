@@ -216,6 +216,7 @@ pub struct EnforcementContext<'a> {
     pub config: &'a McpServerConfig,
     pub tool_name: &'a str,
     pub required_capability: Option<McpCapability>,
+    pub capability_outcome: Option<AccessDecision>,
     pub path: Option<&'a Path>,
     pub is_mutating: bool,
     pub audit_sink: &'a dyn AuditSink,
@@ -231,6 +232,7 @@ impl<'a> EnforcementContext<'a> {
             config,
             tool_name,
             required_capability: None,
+            capability_outcome: None,
             path: None,
             is_mutating: false,
             audit_sink,
@@ -252,17 +254,24 @@ impl<'a> EnforcementContext<'a> {
         self
     }
 
+    pub fn with_capability_outcome(mut self, outcome: AccessDecision) -> Self {
+        self.capability_outcome = Some(outcome);
+        self
+    }
+
     /// Evaluate enforcement - thin boundary: gather inputs, call pure helper, return result.
     fn evaluate_enforcement(&self) -> (AccessDecision, bool) {
-        let result = evaluate_enforcement_pure(
-            self.tool_name,
-            &self.config.tool_filter,
-            self.is_mutating,
-            &self.config.access_mode,
-            self.path,
-            &self.config.root_dir,
-            |p| self.config.is_path_allowed(p),
-        );
+        let params = crate::dispatch::access::EnforcementParams {
+            tool_name: self.tool_name,
+            tool_filter: &self.config.tool_filter,
+            is_mutating: self.is_mutating,
+            access_mode: &self.config.access_mode,
+            path: self.path,
+            root_dir: &self.config.root_dir,
+            is_path_allowed: Box::new(|p| self.config.is_path_allowed(p)),
+            capability_outcome: &self.capability_outcome,
+        };
+        let result = evaluate_enforcement_pure(&params);
         match result {
             EnforcementCheck::Allow => (AccessDecision::Allow, false),
             EnforcementCheck::Deny { code, reason } => {

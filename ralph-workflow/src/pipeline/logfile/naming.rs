@@ -14,7 +14,7 @@ pub fn sanitize_agent_name(agent_name: &str) -> String {
 /// Build a legacy-style log file path from components.
 ///
 /// This generates a log filename with the pattern:
-/// `{prefix}_{agent}_{model_index}.log`
+/// `\{prefix\}_\{agent\}_\{model_index\}.log`
 ///
 /// This is the **legacy naming convention** used before per-run logging was introduced.
 /// It is retained for special-purpose logs (e.g., commit generation, conflict resolution)

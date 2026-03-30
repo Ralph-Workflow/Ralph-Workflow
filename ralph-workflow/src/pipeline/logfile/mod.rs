@@ -20,10 +20,10 @@
 //!
 //! ## Module Organization
 //!
-//! - [`naming`] - Log file name construction utilities
-//! - [`attempt_discovery`] - Determine next attempt index for log files
-//! - [`extraction`] - Parse agent names from log file paths
-//! - [`lookup`] - Find and read the most recent log files
+//! - `naming` - Log file name construction utilities
+//! - `attempt_discovery` - Determine next attempt index for log files
+//! - `extraction` - Parse agent names from log file paths
+//! - `lookup` - Find and read the most recent log files
 
 mod attempt_discovery;
 mod extraction;

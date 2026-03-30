@@ -1153,6 +1153,21 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
+    CommandSpec {
+        name: "test-mcp-server",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    // Rustdoc check for mcp-server — verifies all public items have doc comments.
+    CommandSpec {
+        name: "rustdoc-mcp-server",
+        program: "cargo",
+        args: &["doc", "-p", "mcp-server", "--no-deps"],
+        success_exit_codes: &[0],
+        extra_env: &[("RUSTDOCFLAGS", "-D warnings")],
+    },
 ];
 
 /// Xtask cargo checks: lint and test for the xtask crate.
@@ -2074,6 +2089,8 @@ mod tests {
                 "clippy-core-lib-only",
                 "test-ralph-workflow-lib",
                 "test-integration",
+                "test-mcp-server",
+                "rustdoc-mcp-server",
             ]
         );
     }

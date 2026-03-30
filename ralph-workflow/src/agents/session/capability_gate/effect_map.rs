@@ -15,7 +15,7 @@ use std::fmt;
 
 /// Returns the set of capabilities required to execute the given effect.
 ///
-/// This is a pure mapping from Effect variant to Vec<Capability>.
+/// This is a pure mapping from Effect variant to `Vec<Capability>`.
 /// All Phase 2 effects should be covered exhaustively.
 ///
 /// # Effect-to-Capability Mapping

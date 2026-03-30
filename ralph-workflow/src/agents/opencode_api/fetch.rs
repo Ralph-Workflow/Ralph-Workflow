@@ -65,7 +65,7 @@ impl RealCatalogFetcher {
         Self { fetcher }
     }
 
-    /// Build a catalog fetcher from any type that implements [`HttpFetcher`].
+    /// Build a catalog fetcher from any type that implements the fetcher trait.
     #[must_use]
     pub fn with_http_fetcher<F>(fetcher: F) -> Self
     where

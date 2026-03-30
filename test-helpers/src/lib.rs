@@ -167,6 +167,72 @@ pub fn assert_project_head_unchanged(before: &Option<String>) {
     }
 }
 
+/// Policy: assert that a repository is allowed to receive git mutations.
+///
+/// This function is called by `commit_all()` and `git_commit_all()` before performing
+/// any mutation. It verifies the repository is isolated from the project repo.
+///
+/// # Panics
+///
+/// Panics with a POLICY VIOLATION message if the repository is the project repository
+/// or if it is not in a temporary directory.
+pub fn assert_git_mutation_allowed(repo: &Repository) {
+    assert_repo_is_isolated(repo);
+    assert_repo_is_temp_isolated(repo);
+}
+
+/// RAII guard that detects real git mutations in tests.
+///
+/// On construction, captures the HEAD OID of the project repository.
+/// On drop, asserts the HEAD has not changed.
+///
+/// This provides fail-fast detection of any test that creates commits
+/// in the real project repository without requiring per-test assertions.
+///
+/// # Example
+///
+/// ```ignore
+/// #[test]
+/// fn my_test() {
+///     let _guard = GitMutationGuard::new();
+///     // Any commit_all() or git_commit_all() that targets the real project repo
+///     // will now panic when the guard drops.
+/// }
+/// ```
+///
+/// # Panics
+///
+/// Panics on drop if HEAD changed between construction and destruction,
+/// indicating a test created a commit in the real project repository.
+pub struct GitMutationGuard {
+    before_head: Option<String>,
+}
+
+impl GitMutationGuard {
+    /// Create a new guard, capturing the current project HEAD.
+    ///
+    /// If the project root cannot be determined, the guard becomes a no-op
+    /// (returns None) since we cannot verify isolation anyway.
+    #[must_use]
+    pub fn new() -> Option<Self> {
+        Some(Self {
+            before_head: capture_project_head_oid(),
+        })
+    }
+}
+
+impl Default for GitMutationGuard {
+    fn default() -> Self {
+        Self::new().unwrap_or(Self { before_head: None })
+    }
+}
+
+impl Drop for GitMutationGuard {
+    fn drop(&mut self) {
+        assert_project_head_unchanged(&self.before_head);
+    }
+}
+
 /// Create an isolated config file in the test directory.
 /// This prevents user config from interfering with tests.
 ///
@@ -259,8 +325,9 @@ pub fn write_file<P: AsRef<Path>>(path: P, contents: &str) {
 /// - If commit creation fails
 #[must_use]
 pub fn commit_all(repo: &Repository, message: &str) -> Oid {
-    assert_repo_is_isolated(repo);
-    assert_repo_is_temp_isolated(repo);
+    // Policy: tests must never mutate real git state. This assertion fires immediately
+    // if the repo is the project repo or not in temp isolation.
+    assert_git_mutation_allowed(repo);
     stage_all(repo);
 
     let mut index = repo.index().expect("open index");
@@ -348,8 +415,9 @@ pub fn stage_all(repo: &Repository) {
 /// - If git operations fail (index write, commit creation, etc.)
 #[must_use]
 pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
-    assert_repo_is_isolated(repo);
-    assert_repo_is_temp_isolated(repo);
+    // Policy: tests must never mutate real git state. This assertion fires immediately
+    // if the repo is the project repo or not in temp isolation.
+    assert_git_mutation_allowed(repo);
     // Stage all changes using git2 (same as commit_all, but for git CLI migration)
     stage_all(repo);
 
@@ -667,5 +735,64 @@ mod tests {
             // This should panic because root is inside a real git repo
             let _guard = TestWorkspaceGuard::new(fake_ws, root.to_path_buf());
         }
+    }
+
+    #[test]
+    fn test_git_mutation_guard_detects_real_project_repo() {
+        // Regression test: verify that GitMutationGuard detects when a test
+        // attempts to create commits in the real project repository.
+        //
+        // This test opens the project repo and attempts to create a commit.
+        // The GitMutationGuard should panic when dropped if HEAD changed.
+        let project = project_repo_root();
+        if project.is_none() {
+            return; // Cannot test without project repo
+        }
+        let repo = Repository::open(project.unwrap()).expect("open project repo");
+
+        // Create guard - captures current HEAD
+        let guard = GitMutationGuard::new();
+        if guard.is_none() {
+            return; // Cannot test without HEAD access
+        }
+        let _guard = guard.unwrap();
+
+        // Attempting to call commit_all on the project repo would panic.
+        // We use catch_unwind to verify the policy fires correctly.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // This would panic with POLICY VIOLATION because the repo is the project repo
+            let _ = commit_all(&repo, "test commit");
+        }));
+
+        // The commit should have panicked, not succeeded
+        assert!(
+            result.is_err(),
+            "commit_all on project repo should panic with POLICY VIOLATION"
+        );
+    }
+
+    #[test]
+    fn test_git_mutation_guard_allows_temp_repo() {
+        // Verify that GitMutationGuard does NOT panic for an isolated temp repo.
+        let temp_dir = tempfile::TempDir::new().expect("create temp dir");
+        let repo = init_git_repo(&temp_dir);
+
+        // Create guard - captures current HEAD
+        let guard = GitMutationGuard::new();
+        if guard.is_none() {
+            return; // Cannot test without HEAD access
+        }
+        let _guard = guard.unwrap();
+
+        // This should NOT panic - repo is isolated
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = commit_all(&repo, "test commit in temp repo");
+        }));
+
+        // The commit should have succeeded (no panic)
+        assert!(
+            result.is_ok(),
+            "commit_all on temp repo should succeed without panic"
+        );
     }
 }

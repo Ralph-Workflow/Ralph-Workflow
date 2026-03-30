@@ -57,8 +57,8 @@ pub enum ConfigValidationError {
 }
 
 /// Result of config validation.
-/// On success: Ok(warnings) where warnings is a Vec<String> of deprecation warnings
-/// On failure: Err(errors) where errors is a Vec<ConfigValidationError>
+/// On success: Ok(warnings) where warnings is a `Vec<String>` of deprecation warnings
+/// On failure: Err(errors) where errors is a `Vec<ConfigValidationError>`
 pub type ValidationResult = Result<Vec<String>, Vec<ConfigValidationError>>;
 
 /// Validate a config file and collect errors and warnings.

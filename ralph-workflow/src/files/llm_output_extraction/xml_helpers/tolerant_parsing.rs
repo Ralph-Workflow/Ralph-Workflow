@@ -9,8 +9,8 @@
 //! The tolerant parsing helpers allow:
 //! - **Enum normalization**: Status values that clearly correspond to expected outcomes
 //!   are accepted even when using synonyms or different casing (e.g., "done" → "completed").
-//! - **Tag name fuzzy matching**: Minor typos in tag names (e.g., <ralph-sumary> instead of
-//!   <ralph-summary>) are accepted if they unambiguously resolve to a known tag.
+//! - **Tag name fuzzy matching**: Minor typos in tag names (e.g., `<ralph-sumary>` instead of
+//!   `<ralph-summary>`) are accepted if they unambiguously resolve to a known tag.
 //! - **Unknown element skipping**: Unknown child elements are skipped instead of causing
 //!   validation failure. Required elements are still enforced.
 //! - **Stray text tolerance**: Whitespace or non-semantic text between elements is ignored.

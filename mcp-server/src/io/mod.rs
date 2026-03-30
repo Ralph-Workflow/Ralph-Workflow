@@ -46,15 +46,21 @@ pub fn check_tool_enforcement(
     tool_name: &str,
     path: Option<&Path>,
     is_mutating: bool,
+    required_capability: Option<crate::dispatch::access::McpCapability>,
+    capability_outcome: Option<crate::dispatch::access::AccessDecision>,
     audit_sink: &dyn AuditSink,
 ) -> AccessDecision {
-    let mut ctx = crate::io::access::EnforcementContext::new(config, tool_name, audit_sink);
-    if let Some(p) = path {
-        ctx = ctx.with_path(p);
-    }
-    if is_mutating {
-        ctx = ctx.with_mutating(true);
-    }
+    // Thin wiring: directly construct EnforcementContext with all inputs.
+    // No branching here - all conditional logic is in the caller (check_enforcement).
+    let ctx = crate::io::access::EnforcementContext {
+        config,
+        tool_name,
+        path,
+        is_mutating,
+        required_capability,
+        capability_outcome,
+        audit_sink,
+    };
     ctx.check()
 }
 
@@ -165,28 +171,57 @@ fn parse_tools_call_params(
     })
 }
 
-/// Check if tool is mutating (pure).
-fn is_mutating_tool(name: &str) -> bool {
-    matches!(name, "write_file" | "delete_file" | "move_file")
+/// Parameters for [`check_enforcement`].
+///
+/// Bundles enforcement inputs to avoid clippy's 7-parameter limit.
+struct CheckEnforcementParams<'a> {
+    config: &'a crate::io::access::McpServerConfig,
+    registry: &'a ToolRegistry,
+    session: &'a dyn HostSession,
+    name: &'a str,
+    args: &'a serde_json::Value,
+    request_id: serde_json::Value,
+    state: ServerState,
+    audit_sink: &'a dyn AuditSink,
 }
 
 /// Check enforcement or return error response.
+///
+/// Looks up tool metadata from the registry to determine `is_mutating` and
+/// `required_capability` for enforcement checks. Also consults the host session
+/// for capability-based access decisions (priority 4 in the enforcement chain).
 fn check_enforcement(
-    config: &crate::io::access::McpServerConfig,
-    name: &str,
-    args: &serde_json::Value,
-    request_id: serde_json::Value,
-    state: ServerState,
-    audit_sink: &dyn AuditSink,
+    params: CheckEnforcementParams,
 ) -> Result<(), Box<(JsonRpcResponse, ServerState)>> {
-    let path = args.get("path").and_then(|v| v.as_str());
-    let mutating = is_mutating_tool(name);
+    let path = params.args.get("path").and_then(|v| v.as_str());
     let path_for_check = path.map(Path::new);
-    match check_tool_enforcement(config, name, path_for_check, mutating, audit_sink) {
+
+    // Look up metadata from registry - this replaces the hardcoded is_mutating_tool() check.
+    // The metadata's is_mutating field is derived from required_capability at registration time,
+    // which correctly handles all tool name prefixes (e.g., "ralph_write_file", "write_file").
+    let (is_mutating, required_capability) = params
+        .registry
+        .get_metadata(params.name)
+        .map(|m| (m.is_mutating(), Some(m.required_capability)))
+        .unwrap_or((false, None));
+
+    // Check capability with host session (priority 4 in enforcement chain).
+    // This is the only enforcement check that delegates to the host.
+    let capability_outcome = required_capability.map(|cap| params.session.check_capability(cap));
+
+    match check_tool_enforcement(
+        params.config,
+        params.name,
+        path_for_check,
+        is_mutating,
+        required_capability,
+        capability_outcome,
+        params.audit_sink,
+    ) {
         AccessDecision::Allow => Ok(()),
         AccessDecision::Deny { reason, .. } => Err(Box::new((
-            JsonRpcResponse::error(JsonRpcError::tool_error(reason), request_id),
-            state,
+            JsonRpcResponse::error(JsonRpcError::tool_error(reason), params.request_id),
+            params.state,
         ))),
     }
 }
@@ -404,17 +439,19 @@ impl McpServer {
         request_id: serde_json::Value,
         state: ServerState,
     ) -> (Option<JsonRpcResponse>, ServerState) {
-        // Chain: parse -> check enforcement -> dispatch
+        // Chain: parse -> check enforcement (with capability check) -> dispatch
         let result =
             parse_tools_call_params(request.params, request_id.clone(), state).and_then(|params| {
-                check_enforcement(
-                    &self.config,
-                    &params.name,
-                    &params.arguments,
-                    request_id.clone(),
+                check_enforcement(CheckEnforcementParams {
+                    config: &self.config,
+                    registry: &self.registry,
+                    session: self.session.as_ref(),
+                    name: &params.name,
+                    args: &params.arguments,
+                    request_id: request_id.clone(),
                     state,
-                    self.audit_sink.as_ref(),
-                )
+                    audit_sink: self.audit_sink.as_ref(),
+                })
                 .map(|_| params)
             });
 

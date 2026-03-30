@@ -43,8 +43,8 @@ pub fn secret_like_regex() -> Option<regex::Regex> {
 
 /// Redact a value that may contain secrets using the secret-like regex.
 ///
-/// If the key is sensitive, returns "<redacted>". Otherwise, replaces any
-/// secret-like patterns in the value with "<redacted>".
+/// If the key is sensitive, returns "`<redacted>`". Otherwise, replaces any
+/// secret-like patterns in the value with "`<redacted>`".
 pub fn redact_arg_value(key: &str, value: &str) -> String {
     if is_sensitive_key(key) {
         return "<redacted>".to_string();

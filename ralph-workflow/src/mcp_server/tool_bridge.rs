@@ -45,13 +45,18 @@ fn map_mcp_capability(cap: McpCapability) -> Option<Capability> {
         McpCapability::WorkspaceRead => Some(Capability::WorkspaceRead),
         McpCapability::WorkspaceWriteEphemeral => Some(Capability::WorkspaceWriteEphemeral),
         McpCapability::WorkspaceWriteTracked => Some(Capability::WorkspaceWriteTracked),
+        McpCapability::WorkspaceWriteAny => None, // handled by decide_workspace_write_any
         McpCapability::GitStatusRead => Some(Capability::GitStatusRead),
         McpCapability::GitWrite => Some(Capability::GitWrite),
         McpCapability::EnvRead => Some(Capability::EnvRead),
+        McpCapability::EnvWrite => Some(Capability::EnvWrite),
         McpCapability::ProcessExecBounded => Some(Capability::ProcessExecBounded),
+        McpCapability::ProcessExecUnbounded => Some(Capability::ProcessExecUnbounded),
         McpCapability::ArtifactSubmit => Some(Capability::ArtifactSubmit),
         McpCapability::RunReportProgress => Some(Capability::RunReportProgress),
-        _ => None, // GitDiffRead, etc. not in McpCapability
+        // #[non_exhaustive] McpCapability — fail-closed: deny unknown variants
+        // rather than panicking, which could mask the gap in production.
+        _ => None,
     }
 }
 
@@ -202,6 +207,27 @@ impl WorkspaceAdapter for RalphWorkspaceAdapter {
 // Tool handler factory functions
 // ---------------------------------------------------------------------------
 
+/// ## `ralph_read_file` — RPC Contract
+///
+/// Reads the complete contents of a file from the workspace.
+///
+/// ### Required Capability
+/// `WorkspaceRead` — Caller must have workspace read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `path` | `string` | Absolute or relative path to the file to read |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a single `text` block with the file contents.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `path` is missing or malformed
+/// - `ToolError::ExecutionError` if the file cannot be read (not found, permission denied, etc.)
+///
+/// ### Mutating
+/// No — this operation only reads data.
 fn make_read_file_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -219,6 +245,7 @@ fn make_read_file_tool(
             }),
         },
         required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_workspace::handle_read_file(&session, workspace.as_ref(), params)
@@ -226,6 +253,30 @@ fn make_read_file_tool(
     (meta, handler)
 }
 
+/// ## `ralph_write_file` — RPC Contract
+///
+/// Writes content to a file in the workspace, creating it if it does not exist
+/// or overwriting it if it does.
+///
+/// ### Required Capability
+/// `WorkspaceWriteAny` — Handler determines at runtime whether the target file
+/// is tracked (requires `WorkspaceWriteTracked`) or untracked (requires
+/// `WorkspaceWriteEphemeral`) and performs the appropriate capability check.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `path` | `string` | Absolute or relative path to the file to write |
+/// | `content` | `string` | Content to write to the file |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a single `text` block with `"ok"`.
+/// ### Errors
+/// - `ToolError::InvalidParams` if `path` or `content` is missing
+/// - `ToolError::ExecutionError` if the file cannot be written (permission denied, disk full, etc.)
+///
+/// ### Mutating
+/// Yes — creates or overwrites the target file.
 fn make_write_file_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -247,6 +298,7 @@ fn make_write_file_tool(
         // The handler itself determines whether the file is tracked or ephemeral
         // and performs the appropriate capability check.
         required_capability: McpCapability::WorkspaceWriteAny,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_workspace::handle_write_file(&session, workspace.as_ref(), params)
@@ -254,6 +306,28 @@ fn make_write_file_tool(
     (meta, handler)
 }
 
+/// ## `ralph_list_directory` — RPC Contract
+///
+/// Lists the contents of a directory, optionally recursing into subdirectories.
+///
+/// ### Required Capability
+/// `WorkspaceRead` — Caller must have workspace read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `path` | `string` | Directory path to list |
+/// | `recursive` | `boolean` | Whether to list subdirectories recursively (default: `false`) |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing directory entries.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `path` is missing
+/// - `ToolError::ExecutionError` if the directory cannot be read
+///
+/// ### Mutating
+/// No — this operation only reads directory metadata.
 fn make_list_directory_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -272,6 +346,7 @@ fn make_list_directory_tool(
             }),
         },
         required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_workspace::handle_list_directory(&session, workspace.as_ref(), params)
@@ -279,6 +354,28 @@ fn make_list_directory_tool(
     (meta, handler)
 }
 
+/// ## `ralph_search_files` — RPC Contract
+///
+/// Searches for files matching a glob pattern within a directory tree.
+///
+/// ### Required Capability
+/// `WorkspaceRead` — Caller must have workspace read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `pattern` | `string` | Glob pattern to match (e.g., `**/*.rs`) |
+/// | `path` | `string` | Directory path to search beneath |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing matching file paths.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `pattern` or `path` is missing
+/// - `ToolError::ExecutionError` if the search fails
+///
+/// ### Mutating
+/// No — this operation only searches for files.
 fn make_search_files_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -297,6 +394,7 @@ fn make_search_files_tool(
             }),
         },
         required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_workspace::handle_search_files(&session, workspace.as_ref(), params)
@@ -304,6 +402,24 @@ fn make_search_files_tool(
     (meta, handler)
 }
 
+/// ## `ralph_git_status` — RPC Contract
+///
+/// Returns the git status of the workspace, showing modified, staged, and untracked files.
+///
+/// ### Required Capability
+/// `GitStatusRead` — Caller must have git status read access.
+///
+/// ### Parameters
+/// None.
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with git status output.
+///
+/// ### Errors
+/// - `ToolError::ExecutionError` if git status fails (not a git repo, git not installed, etc.)
+///
+/// ### Mutating
+/// No — this operation only reads git state.
 fn make_git_status_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -318,6 +434,7 @@ fn make_git_status_tool(
             }),
         },
         required_capability: McpCapability::GitStatusRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_git_read::handle_git_status(&session, workspace.as_ref(), params)
@@ -325,6 +442,26 @@ fn make_git_status_tool(
     (meta, handler)
 }
 
+/// ## `ralph_git_diff` — RPC Contract
+///
+/// Returns the git diff of changes (unstaged, staged, or between commits).
+///
+/// ### Required Capability
+/// `GitStatusRead` — Caller must have git status read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `args` | `string[]` | Optional additional git diff arguments |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with diff output.
+///
+/// ### Errors
+/// - `ToolError::ExecutionError` if git diff fails
+///
+/// ### Mutating
+/// No — this operation only reads git state.
 fn make_git_diff_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -341,6 +478,7 @@ fn make_git_diff_tool(
             }),
         },
         required_capability: McpCapability::GitStatusRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_git_read::handle_git_diff(&session, workspace.as_ref(), params)
@@ -348,6 +486,27 @@ fn make_git_diff_tool(
     (meta, handler)
 }
 
+/// ## `ralph_git_log` — RPC Contract
+///
+/// Returns the git commit log, showing recent commits with their hashes, authors,
+/// dates, and messages.
+///
+/// ### Required Capability
+/// `GitStatusRead` — Caller must have git status read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `count` | `number` | Number of commits to show (default: 10) |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with commit log output.
+///
+/// ### Errors
+/// - `ToolError::ExecutionError` if git log fails
+///
+/// ### Mutating
+/// No — this operation only reads git history.
 fn make_git_log_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -364,6 +523,7 @@ fn make_git_log_tool(
             }),
         },
         required_capability: McpCapability::GitStatusRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_git_read::handle_git_log(&session, workspace.as_ref(), params)
@@ -371,6 +531,27 @@ fn make_git_log_tool(
     (meta, handler)
 }
 
+/// ## `ralph_git_show` — RPC Contract
+///
+/// Shows a git object (commit, tag, tree, blob) by reference.
+///
+/// ### Required Capability
+/// `GitStatusRead` — Caller must have git status read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `ref` | `string` | Git object reference (commit hash, tag name, etc.) |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with the object contents.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `ref` is missing
+/// - `ToolError::ExecutionError` if the git object cannot be shown
+///
+/// ### Mutating
+/// No — this operation only reads git data.
 fn make_git_show_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -388,6 +569,7 @@ fn make_git_show_tool(
             }),
         },
         required_capability: McpCapability::GitStatusRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_git_read::handle_git_show(&session, workspace.as_ref(), params)
@@ -395,6 +577,30 @@ fn make_git_show_tool(
     (meta, handler)
 }
 
+/// ## `ralph_exec_command` — RPC Contract
+///
+/// Executes a shell command with resource limits (bounded execution).
+///
+/// ### Required Capability
+/// `ProcessExecBounded` — Caller must have bounded process execution capability.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `command` | `string` | Command to execute |
+/// | `args` | `string[]` | Optional command arguments |
+/// | `timeout_ms` | `number` | Timeout in milliseconds (default: 30000) |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with stdout/stderr output.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `command` is missing
+/// - `ToolError::ExecutionError` if the command fails, times out, or exceeds resource limits
+///
+/// ### Mutating
+/// Depends on the command being executed — the tool itself is considered mutating
+/// because arbitrary command execution can have side effects.
 fn make_exec_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -414,6 +620,7 @@ fn make_exec_tool(
             }),
         },
         required_capability: McpCapability::ProcessExecBounded,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_exec::handle_exec_command(&session, workspace.as_ref(), params)
@@ -421,6 +628,34 @@ fn make_exec_tool(
     (meta, handler)
 }
 
+/// ## `ralph_submit_artifact` — RPC Contract
+///
+/// Submits a structured artifact to the workflow for processing.
+///
+/// ### Required Capability
+/// `ArtifactSubmit` — Caller must have artifact submission capability.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `artifact_type` | `string` | Type of artifact (plan, development_result, issues, fix_result, commit_message) |
+/// | `content` | `string` | Artifact content as a JSON string |
+/// | `partial` | `boolean` | Optional. If true, accepts artifact even with validation errors (default: false) |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with a JSON object:
+/// - `accepted`: `true` if the artifact was accepted
+/// - `partial`: `true` if accepted in partial mode (has validation errors)
+/// - `artifact_type`: The type of artifact accepted
+/// - `validated_at`: ISO 8601 timestamp
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `artifact_type` or `content` is missing, or if artifact_type is unknown
+/// - `ToolError::ExecutionError` if submission fails (e.g., JSON parsing error)
+/// - `ToolError::CapabilityDenied` if session lacks `ArtifactSubmit` capability
+///
+/// ### Mutating
+/// Yes — submits an artifact to the workflow for processing.
 fn make_submit_artifact_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -439,6 +674,7 @@ fn make_submit_artifact_tool(
             }),
         },
         required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_artifact::handle_submit_artifact(&session, workspace.as_ref(), params)
@@ -446,6 +682,28 @@ fn make_submit_artifact_tool(
     (meta, handler)
 }
 
+/// ## `ralph_report_progress` — RPC Contract
+///
+/// Reports progress status to the running workflow.
+///
+/// ### Required Capability
+/// `RunReportProgress` — Caller must have progress reporting capability.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `status` | `string` | Status message describing current progress |
+/// | `note` | `string` | Optional additional notes or context |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block confirming report.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `status` is missing
+/// - `ToolError::ExecutionError` if reporting fails
+///
+/// ### Mutating
+/// No — this operation only reports progress to the workflow.
 fn make_report_progress_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -464,6 +722,7 @@ fn make_report_progress_tool(
             }),
         },
         required_capability: McpCapability::RunReportProgress,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_coordination::handle_report_progress(&session, workspace.as_ref(), params)
@@ -471,6 +730,26 @@ fn make_report_progress_tool(
     (meta, handler)
 }
 
+/// ## `ralph_declare_complete` — RPC Contract
+///
+/// Declares that the agent has completed its task and provides a summary.
+///
+/// ### Required Capability
+/// `ArtifactSubmit` — Caller must have artifact submission capability.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `summary` | `string` | Summary of what was accomplished |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block confirming completion.
+///
+/// ### Errors
+/// - `ToolError::ExecutionError` if declaration fails
+///
+/// ### Mutating
+/// Yes — signals the workflow to transition to a completed state.
 fn make_declare_complete_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -487,6 +766,7 @@ fn make_declare_complete_tool(
             }),
         },
         required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_coordination::handle_declare_complete(&session, workspace.as_ref(), params)
@@ -494,6 +774,28 @@ fn make_declare_complete_tool(
     (meta, handler)
 }
 
+/// ## `ralph_read_env` — RPC Contract
+///
+/// Reads an environment variable from the agent's environment.
+///
+/// ### Required Capability
+/// `EnvRead` — Caller must have environment read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `name` | `string` | Environment variable name |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block with `name=value`.
+/// If the variable is not set, returns `name=[not found]` (not an error).
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `name` is missing
+/// - `ToolError::CapabilityDenied` if session lacks `EnvRead` capability
+///
+/// ### Mutating
+/// No — this operation only reads environment data.
 fn make_read_env_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -511,6 +813,7 @@ fn make_read_env_tool(
             }),
         },
         required_capability: McpCapability::EnvRead,
+        is_mutating: None, // derived from required_capability at registration
     };
     let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
         tool_coordination::handle_read_env(&session, workspace.as_ref(), params)
@@ -561,13 +864,19 @@ fn map_capability_to_ralph(cap: McpCapability) -> Capability {
         McpCapability::WorkspaceRead => Capability::WorkspaceRead,
         McpCapability::WorkspaceWriteEphemeral => Capability::WorkspaceWriteEphemeral,
         McpCapability::WorkspaceWriteTracked => Capability::WorkspaceWriteTracked,
+        McpCapability::WorkspaceWriteAny => Capability::WorkspaceWriteTracked,
         McpCapability::GitStatusRead => Capability::GitStatusRead,
         McpCapability::GitWrite => Capability::GitWrite,
         McpCapability::EnvRead => Capability::EnvRead,
+        McpCapability::EnvWrite => Capability::EnvWrite,
         McpCapability::ProcessExecBounded => Capability::ProcessExecBounded,
+        McpCapability::ProcessExecUnbounded => Capability::ProcessExecUnbounded,
         McpCapability::ArtifactSubmit => Capability::ArtifactSubmit,
         McpCapability::RunReportProgress => Capability::RunReportProgress,
-        _ => Capability::WorkspaceRead, // Sensible default for unmapped capabilities
+        // #[non_exhaustive] McpCapability — fail-closed for authorization (handled by
+        // map_mcp_capability above). For audit records, use WorkspaceRead as safe
+        // fallback to preserve audit functionality rather than crashing.
+        _ => Capability::WorkspaceRead,
     }
 }
 

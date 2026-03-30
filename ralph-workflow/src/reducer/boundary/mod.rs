@@ -99,14 +99,14 @@
 //!
 //! # Module Organization
 //!
-//! - [`agent`] - Agent invocation and chain management
-//! - [`planning`] - Planning phase effects (prompt, XML, validation)
-//! - [`development`] - Development phase effects (iteration, continuation)
-//! - [`review`] - Review phase effects (issue detection, fix application)
-//! - [`commit`] - Commit phase effects (message generation, commit creation)
-//! - [`rebase`] - Rebase effects (conflict resolution, validation)
-//! - [`checkpoint`] - Checkpoint save/restore
-//! - [`context`] - Context preparation and cleanup
+//! - `agent` - Agent invocation and chain management
+//! - `planning` - Planning phase effects (prompt, XML, validation)
+//! - `development` - Development phase effects (iteration, continuation)
+//! - `review` - Review phase effects (issue detection, fix application)
+//! - `commit` - Commit phase effects (message generation, commit creation)
+//! - `rebase` - Rebase effects (conflict resolution, validation)
+//! - `checkpoint` - Checkpoint save/restore
+//! - `context` - Context preparation and cleanup
 //!
 //! [`docs/agents/workspace-trait.md`]: https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/agents/workspace-trait.md
 

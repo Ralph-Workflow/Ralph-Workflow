@@ -30,18 +30,18 @@ mod transitions;
 ///
 /// # Memory Optimization
 ///
-/// Uses Arc<[T]> for `agents` and `models_per_agent` collections to enable
+/// Uses `Arc<[T]>` for `agents` and `models_per_agent` collections to enable
 /// cheap cloning during state transitions. Since these collections are immutable
 /// after construction, `Arc::clone` only increments a reference count instead of
 /// deep copying the entire collection.
 #[derive(Clone, Serialize, Debug)]
 pub struct AgentChainState {
-    /// Agent names in fallback order. Arc<[String]> enables cheap cloning
+    /// Agent names in fallback order. `Arc<[String]>` enables cheap cloning
     /// via reference counting instead of deep copying the collection.
     pub agents: Arc<[String]>,
     pub current_agent_index: usize,
     /// Models per agent. Arc for immutable outer collection with cheap cloning.
-    /// Inner Vec<String> is kept for runtime indexing during model selection.
+    /// Inner `Vec<String>` is kept for runtime indexing during model selection.
     pub models_per_agent: Arc<[Vec<String>]>,
     pub current_model_index: usize,
     pub retry_cycle: u32,

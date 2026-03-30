@@ -118,6 +118,8 @@ pub enum Capability {
     WorkspaceWriteTracked,
     /// Execute bounded shell commands with timeout and policy filters.
     ProcessExecBounded,
+    /// Execute unbounded shell commands without resource limits (dangerous).
+    ProcessExecUnbounded,
     /// Submit structured artifacts (plan, issues, development result, etc.).
     ArtifactSubmit,
     /// Report progress and emit structured notes.
@@ -130,6 +132,8 @@ pub enum Capability {
     GitWrite,
     /// Read environment variables and system information.
     EnvRead,
+    /// Write environment variables.
+    EnvWrite,
 }
 
 impl Capability {
@@ -140,12 +144,14 @@ impl Capability {
             Capability::WorkspaceWriteEphemeral => "workspace.write_ephemeral",
             Capability::WorkspaceWriteTracked => "workspace.write_tracked",
             Capability::ProcessExecBounded => "process.exec_bounded",
+            Capability::ProcessExecUnbounded => "process.exec_unbounded",
             Capability::ArtifactSubmit => "artifact.submit",
             Capability::RunReportProgress => "run.report_progress",
             Capability::GitStatusRead => "git.status_read",
             Capability::GitDiffRead => "git.diff_read",
             Capability::GitWrite => "git.write",
             Capability::EnvRead => "env.read",
+            Capability::EnvWrite => "env.write",
         }
     }
 }
@@ -177,18 +183,20 @@ impl CapabilitySet {
     /// Returns an iterator over all capabilities in this set.
     pub fn iter(&self) -> impl Iterator<Item = Capability> {
         let set = self.0;
-        (0..10).filter_map(move |idx| {
+        (0..12).filter_map(move |idx| {
             let cap = match idx {
                 0 => Capability::WorkspaceRead,
                 1 => Capability::WorkspaceWriteEphemeral,
                 2 => Capability::WorkspaceWriteTracked,
                 3 => Capability::ProcessExecBounded,
-                4 => Capability::ArtifactSubmit,
-                5 => Capability::RunReportProgress,
-                6 => Capability::GitStatusRead,
-                7 => Capability::GitDiffRead,
-                8 => Capability::GitWrite,
-                9 => Capability::EnvRead,
+                4 => Capability::ProcessExecUnbounded,
+                5 => Capability::ArtifactSubmit,
+                6 => Capability::RunReportProgress,
+                7 => Capability::GitStatusRead,
+                8 => Capability::GitDiffRead,
+                9 => Capability::GitWrite,
+                10 => Capability::EnvRead,
+                11 => Capability::EnvWrite,
                 _ => return None,
             };
             if (set & (1u128 << idx)) != 0 {
@@ -210,12 +218,14 @@ impl CapabilitySet {
             Capability::WorkspaceWriteEphemeral => 1,
             Capability::WorkspaceWriteTracked => 2,
             Capability::ProcessExecBounded => 3,
-            Capability::ArtifactSubmit => 4,
-            Capability::RunReportProgress => 5,
-            Capability::GitStatusRead => 6,
-            Capability::GitDiffRead => 7,
-            Capability::GitWrite => 8,
-            Capability::EnvRead => 9,
+            Capability::ProcessExecUnbounded => 4,
+            Capability::ArtifactSubmit => 5,
+            Capability::RunReportProgress => 6,
+            Capability::GitStatusRead => 7,
+            Capability::GitDiffRead => 8,
+            Capability::GitWrite => 9,
+            Capability::EnvRead => 10,
+            Capability::EnvWrite => 11,
         }
     }
 
@@ -287,12 +297,14 @@ impl From<Vec<Capability>> for CapabilitySet {
                 Capability::WorkspaceWriteEphemeral => 1,
                 Capability::WorkspaceWriteTracked => 2,
                 Capability::ProcessExecBounded => 3,
-                Capability::ArtifactSubmit => 4,
-                Capability::RunReportProgress => 5,
-                Capability::GitStatusRead => 6,
-                Capability::GitDiffRead => 7,
-                Capability::GitWrite => 8,
-                Capability::EnvRead => 9,
+                Capability::ProcessExecUnbounded => 4,
+                Capability::ArtifactSubmit => 5,
+                Capability::RunReportProgress => 6,
+                Capability::GitStatusRead => 7,
+                Capability::GitDiffRead => 8,
+                Capability::GitWrite => 9,
+                Capability::EnvRead => 10,
+                Capability::EnvWrite => 11,
             };
             acc | (1u128 << idx)
         });

@@ -37,7 +37,7 @@ pub enum ErrorCode {
 pub struct ValidationError {
     /// Which category of validation failure occurred.
     pub code: ErrorCode,
-    /// JSON-path-subset pointing to the offending field (e.g., "steps[0].title").
+    /// JSON-path-subset pointing to the offending field (e.g., "steps\[0\].title").
     pub field_path: String,
     /// What the schema expected (e.g., "non-empty string", "integer >= 1").
     pub expected: String,

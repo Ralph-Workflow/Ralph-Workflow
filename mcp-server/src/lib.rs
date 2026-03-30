@@ -52,6 +52,53 @@
 //! | -32000 | Tool error |
 //! | -32001 | Not initialized |
 //!
+//! ## Capability System
+//!
+//! Tools are gated by capabilities. The [`McpCapability`] enum defines all available
+//! capabilities, and [`ToolRegistry`] checks `session.check_capability()` before
+//! invoking any tool handler.
+//!
+//! ### Capability Mutating Flag
+//!
+//! Every capability has an implicit mutating flag that determines whether tools
+//! requiring that capability are allowed in read-only contexts:
+//!
+//! | Capability | Mutating |
+//! |------------|----------|
+//! | `WorkspaceRead` | No |
+//! | `WorkspaceWriteEphemeral` | Yes |
+//! | `WorkspaceWriteTracked` | Yes |
+//! | `WorkspaceWriteAny` | Yes |
+//! | `GitStatusRead` | No |
+//! | `GitWrite` | Yes |
+//! | `EnvRead` | No |
+//! | `EnvWrite` | Yes |
+//! | `ProcessExecBounded` | Yes |
+//! | `ProcessExecUnbounded` | Yes |
+//! | `ArtifactSubmit` | No |
+//! | `RunReportProgress` | No |
+//!
+//! See [`dispatch::registry::capability_is_mutating`] for the authoritative list.
+//!
+//! ## Tool Registry
+//!
+//! Consumers (like ralph-workflow) create a [`ToolRegistry`] by registering
+//! tool handlers with their required capabilities:
+//!
+//! ```ignore
+//! use mcp_server::dispatch::{ToolRegistry, McpCapability};
+//!
+//! let registry = ToolRegistry::new(vec![
+//!     (tool_metadata, handler),
+//!     // ...
+//! ]);
+//! ```
+//!
+//! Each tool's [`dispatch::ToolMetadata`] contains:
+//! - `definition`: [`ToolDefinition`] with name, description, input schema
+//! - `required_capability`: [`McpCapability`] required to invoke the tool
+//! - `is_mutating`: Override for mutating flag (None = derive from capability)
+//!
 //! ## Creating a Host Implementation
 //!
 //! To use mcp-server with Ralph workflow, implement the [`dispatch::HostSession`]

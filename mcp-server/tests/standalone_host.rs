@@ -314,6 +314,7 @@ fn test_capability_denial_from_session() {
             input_schema: serde_json::json!({"type": "object", "properties": {}}),
         },
         required_capability: McpCapability::GitStatusRead,
+        is_mutating: None,
     };
 
     // Note: This test demonstrates the capability check flow.
@@ -400,9 +401,37 @@ fn test_read_only_mode_denies_write_tool() {
     let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp/test-workspace"))
         .with_file("test.txt", "content");
 
+    // Create a Ralph-prefixed write tool that would be blocked by ReadOnly mode
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "written".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_workspace_write_file".to_string(),
+            description: "Write a file to workspace".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" },
+                    "content": { "type": "string" }
+                },
+                "required": ["path", "content"]
+            }),
+        },
+        required_capability: McpCapability::WorkspaceWriteEphemeral,
+        is_mutating: None,
+    };
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
+
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let registry = ToolRegistry::new(vec![]);
 
     let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
 
@@ -416,12 +445,12 @@ fn test_read_only_mode_denies_write_tool() {
     let (_, state) = server.handle_request(init, ServerState::Uninitialized);
     assert_eq!(state, ServerState::Ready);
 
-    // A write tool call should be denied due to ReadOnly mode
+    // A Ralph-prefixed write tool call should be denied due to ReadOnly mode
     let tool_request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         method: "tools/call".to_string(),
         params: Some(serde_json::json!({
-            "name": "write_file",
+            "name": "ralph_workspace_write_file",
             "arguments": {"path": "test.txt", "content": "new content"}
         })),
         id: Some(serde_json::json!(2)),
@@ -429,10 +458,16 @@ fn test_read_only_mode_denies_write_tool() {
 
     let (response, _) = server.handle_request(tool_request, state);
     let response = response.expect("handle_request should return a response for non-notification");
-    // ReadOnly mode should result in an error response
+    // ReadOnly mode should result in an error response with ReadOnly denial
     assert!(
-        response.error.is_some() || response.result.is_none(),
+        response.error.is_some(),
         "ReadOnly mode should deny write operations"
+    );
+    let error = response.error.unwrap();
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error should mention ReadOnly mode restriction, got: {}",
+        error.message
     );
 }
 

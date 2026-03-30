@@ -18,12 +18,12 @@
 /// - `iteration` is always `<= total_iterations`
 /// - `reviewer_pass` is always `<= total_reviewer_passes`
 /// - `agent_chain` maintains fallback order and retry counts
-/// - State transitions only occur through the [`reduce`](super::reduce) function
+/// - State transitions only occur through the `reduce` function
 ///
 /// # See Also
 ///
-/// - [`reduce`](super::reduce) for state transitions
-/// - [`determine_next_effect`](super::determine_next_effect) for effect derivation
+/// - `reduce` for state transitions
+/// - `determine_next_effect` for effect derivation
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PipelineState {
     pub phase: PipelinePhase,
@@ -514,7 +514,7 @@ pub struct PipelineState {
 
     /// Reducer-owned prompt history for deterministic resume replay (RFC-007).
     ///
-    /// Maps `PromptScopeKey::to_string()` keys to [`PromptHistoryEntry`] values
+    /// Maps `PromptScopeKey::to_string()` keys to `PromptHistoryEntry` values
     /// containing the generated prompt and optional content-id for stale-replay detection.
     ///
     /// # Ownership Contract
