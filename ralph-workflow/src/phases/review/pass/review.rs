@@ -155,6 +155,7 @@ pub fn run_review_pass(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
+        completion_output_path: None,
     };
 
     let attempt_start = capture_time();

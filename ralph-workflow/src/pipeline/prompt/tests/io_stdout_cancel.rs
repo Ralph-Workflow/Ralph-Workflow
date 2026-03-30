@@ -129,6 +129,7 @@ fn test_run_with_agent_spawn_cancels_stdout_pump_promptly_when_idle_timeout_enfo
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -363,6 +364,7 @@ fn test_run_with_agent_spawn_completes_when_child_exits_even_if_stdout_blocks() 
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {

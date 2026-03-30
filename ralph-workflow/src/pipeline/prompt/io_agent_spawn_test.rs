@@ -158,6 +158,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
                     kill_config,
                     required_idle_confirmations: 2,
                     check_child_processes: true,
+                    completion_check: None,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );
@@ -308,6 +309,13 @@ pub fn run_with_agent_spawn_with_monitor_config(
                 ));
             }
             (exit_code, None)
+        }
+        MonitorResult::CompleteButWaiting => {
+            runtime.logger.info(
+                "Agent output ready; process was idle-but-done and was forcibly terminated \
+                 (complete-but-waiting). Treating as success.",
+            );
+            (0, None)
         }
     };
 

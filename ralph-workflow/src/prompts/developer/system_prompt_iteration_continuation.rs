@@ -89,7 +89,7 @@ pub fn prompt_developer_iteration_continuation_xml(
     continuation_state: &crate::reducer::state::ContinuationState,
     workspace: &dyn Workspace,
 ) -> String {
-    write_dev_iteration_continuation_schema_file(workspace);
+    write_dev_iteration_xsd_retry_schema_files(workspace);
 
     let template_content = context
         .registry()
@@ -142,7 +142,7 @@ pub fn prompt_developer_iteration_continuation_xml(
         ),
         (
             "DEVELOPMENT_RESULT_XSD_PATH",
-            workspace.absolute_str(".agent/tmp/development_continuation_result.xsd"),
+            workspace.absolute_str(".agent/tmp/development_result.xsd"),
         ),
     ]);
 
@@ -202,7 +202,7 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
     };
 
-    write_dev_iteration_continuation_schema_file(workspace);
+    write_dev_iteration_xsd_retry_schema_files(workspace);
 
     let template_content = context
         .registry()
@@ -255,7 +255,7 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
         ),
         (
             "DEVELOPMENT_RESULT_XSD_PATH",
-            workspace.absolute_str(".agent/tmp/development_continuation_result.xsd"),
+            workspace.absolute_str(".agent/tmp/development_result.xsd"),
         ),
     ]);
 

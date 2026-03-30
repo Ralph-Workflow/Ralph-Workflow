@@ -163,6 +163,7 @@ fn try_agent_execution(
         logfile: config.logfile,
         parser_type: config.parser_type,
         env_vars: config.env_vars,
+        completion_output_path: None,
     };
 
     match run_with_prompt(&prompt_cmd, runtime) {

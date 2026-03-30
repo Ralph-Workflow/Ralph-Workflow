@@ -54,11 +54,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     // Ensure schema file exists; last_output.xml is expected to already be present.
     write_dev_iteration_xsd_retry_schema_files(workspace);
 
-    let schema_relative_path = if continuation_mode {
-        ".agent/tmp/development_continuation_result.xsd"
-    } else {
-        ".agent/tmp/development_result.xsd"
-    };
+    let schema_relative_path = ".agent/tmp/development_result.xsd";
 
     // Check that required files exist
     let schema_path = Path::new(schema_relative_path);
@@ -180,11 +176,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     // Ensure schema file exists; last_output.xml is expected to already be present.
     write_dev_iteration_xsd_retry_schema_files(workspace);
 
-    let schema_relative_path = if continuation_mode {
-        ".agent/tmp/development_continuation_result.xsd"
-    } else {
-        ".agent/tmp/development_result.xsd"
-    };
+    let schema_relative_path = ".agent/tmp/development_result.xsd";
 
     // Check that required files exist
     let schema_path = Path::new(schema_relative_path);
@@ -321,7 +313,7 @@ fn fallback_xsd_retry_prompt(
              Error: {xsd_error}\n\n\
              The schema and previous output files could not be found. \
              Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
-             Read {schema_relative_path} when it becomes available. Until then, resend continuation XML that keeps only recovery-critical information: <ralph-development-result><ralph-status>partial|failed</ralph-status><ralph-summary>Why the full plan was not completed</ralph-summary><ralph-next-steps>1. Ordered recovery step for finishing the remaining plan.</ralph-next-steps></ralph-development-result>\n"
+             Read {schema_relative_path} when it becomes available. Until then, resend continuation XML that keeps only recovery-critical information: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Why the full plan was not completed</ralph-summary><ralph-next-steps>1. Ordered recovery step for finishing the remaining plan.</ralph-next-steps></ralph-development-result>\n"
         )
     } else {
         format!(

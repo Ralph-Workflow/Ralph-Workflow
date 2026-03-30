@@ -86,6 +86,15 @@ fn classify_idle_timeout_cause(
     })
 }
 
+fn make_completion_check(
+    path: Option<&std::path::Path>,
+    workspace: &std::sync::Arc<dyn crate::workspace::Workspace>,
+) -> Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>> {
+    let path = path?.to_owned();
+    let workspace = std::sync::Arc::clone(workspace);
+    Some(std::sync::Arc::new(move || workspace.exists(&path)))
+}
+
 fn spawn_stdout_cancel_watcher(
     stdout_cancel: Arc<std::sync::atomic::AtomicBool>,
     monitor_should_stop: Arc<std::sync::atomic::AtomicBool>,
@@ -196,7 +205,10 @@ fn is_interrupt_cleanup_needed(monitor_result_early: &Option<MonitorResult>) -> 
 }
 
 fn is_timeout_cleanup_needed(monitor_result_early: &Option<MonitorResult>) -> bool {
-    matches!(monitor_result_early, Some(MonitorResult::TimedOut { .. }))
+    matches!(
+        monitor_result_early,
+        Some(MonitorResult::TimedOut { .. }) | Some(MonitorResult::CompleteButWaiting)
+    )
 }
 
 enum PostMonitorCleanupAction {
@@ -260,50 +272,112 @@ fn format_escalation_msg(escalated: bool) -> &'static str {
     }
 }
 
-fn resolve_timed_out_exit(
-    escalated: bool,
-    child_status_at_timeout: Option<crate::executor::ChildProcessInfo>,
-    exit_code: i32,
-    activity_timestamp: &crate::pipeline::idle_timeout::SharedActivityTimestamp,
-    runtime: &PipelineRuntime<'_>,
-) -> (i32, Option<crate::executor::ChildProcessInfo>) {
-    let idle_duration = time_since_activity(activity_timestamp);
-    let escalation_msg = format_escalation_msg(escalated);
-    let idle_timeout_cause = classify_idle_timeout_cause(child_status_at_timeout);
-    let child_msg = format_idle_cause_msg(&idle_timeout_cause);
-    runtime.logger.warn(&format!(
-        "Agent killed due to idle timeout (no stdout/stderr and no AI file updates for {} seconds, \
-         last activity {:.1}s ago, process exit code was {}{}{}, \
-         kill reason: IDLE_TIMEOUT_MONITOR)",
-        IDLE_TIMEOUT_SECS,
-        idle_duration.as_secs_f64(),
-        exit_code,
-        escalation_msg,
-        child_msg
-    ));
-    (SIGTERM_EXIT_CODE, child_status_at_timeout)
+/// Pure exit code resolution result.
+#[derive(Debug, Clone)]
+enum ExitCodeResolution {
+    TimedOut {
+        escalated: bool,
+        exit_code: i32,
+        child_status_at_timeout: Option<crate::executor::ChildProcessInfo>,
+    },
+    CompleteButWaiting,
+    ProcessCompleted {
+        exit_code: i32,
+        child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
+    },
 }
 
-fn log_child_activity_suppression(
-    info: crate::executor::ChildProcessInfo,
-    runtime: &PipelineRuntime<'_>,
-) {
-    runtime.logger.info(&format!(
-        "idle timeout suppression: child processes showed fresh progress and remained relevant \
-         ({} active of {} total, CPU at {}ms, signature {})",
-        info.active_child_count, info.child_count, info.cpu_time_ms, info.descendant_pid_signature
-    ));
-}
-
-fn resolve_process_completed_exit(
+/// Pure classification of monitor result to exit code resolution.
+fn classify_monitor_result(
+    monitor_result: MonitorResult,
     exit_code: i32,
     child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
-    runtime: &PipelineRuntime<'_>,
-) -> (i32, Option<crate::executor::ChildProcessInfo>) {
-    if let Some(info) = child_activity_suppression_info {
-        log_child_activity_suppression(info, runtime);
+) -> ExitCodeResolution {
+    match monitor_result {
+        MonitorResult::TimedOut {
+            escalated,
+            child_status_at_timeout,
+        } => ExitCodeResolution::TimedOut {
+            escalated,
+            exit_code,
+            child_status_at_timeout,
+        },
+        MonitorResult::CompleteButWaiting => ExitCodeResolution::CompleteButWaiting,
+        MonitorResult::ProcessCompleted => ExitCodeResolution::ProcessCompleted {
+            exit_code,
+            child_activity_suppression_info,
+        },
     }
-    (exit_code, None)
+}
+
+/// Pure: format exit diagnostic messages from resolution data.
+/// Returns a list of (level, message) pairs to be logged by the boundary.
+fn format_exit_diagnostics(
+    resolution: &ExitCodeResolution,
+    idle_duration_secs: f64,
+) -> Vec<(&'static str, String)> {
+    match resolution {
+        ExitCodeResolution::TimedOut {
+            escalated,
+            exit_code,
+            child_status_at_timeout,
+        } => {
+            let escalation_msg = format_escalation_msg(*escalated);
+            let idle_timeout_cause =
+                classify_idle_timeout_cause(child_status_at_timeout.as_ref().copied());
+            let child_msg = format_idle_cause_msg(&idle_timeout_cause);
+            vec![(
+                "warn",
+                format!(
+                    "Agent killed due to idle timeout (no stdout/stderr and no AI file updates for {} seconds, \
+                     last activity {:.1}s ago, process exit code was {}{}{}, \
+                     kill reason: IDLE_TIMEOUT_MONITOR)",
+                    IDLE_TIMEOUT_SECS,
+                    idle_duration_secs,
+                    exit_code,
+                    escalation_msg,
+                    child_msg
+                ),
+            )]
+        }
+        ExitCodeResolution::CompleteButWaiting => vec![(
+            "info",
+            "Agent output ready; process was idle-but-done and was forcibly terminated \
+             (complete-but-waiting). Treating as success."
+                .to_string(),
+        )],
+        ExitCodeResolution::ProcessCompleted {
+            child_activity_suppression_info: Some(info),
+            ..
+        } => vec![(
+            "info",
+            format!(
+                "idle timeout suppression: child processes showed fresh progress and remained relevant \
+                 ({} active of {} total, CPU at {}ms, signature {})",
+                info.active_child_count,
+                info.child_count,
+                info.cpu_time_ms,
+                info.descendant_pid_signature
+            ),
+        )],
+        ExitCodeResolution::ProcessCompleted { .. } => vec![],
+    }
+}
+
+/// Emit exit diagnostics at the boundary (logging effects).
+fn emit_exit_diagnostics(
+    resolution: &ExitCodeResolution,
+    activity_timestamp: &crate::pipeline::idle_timeout::SharedActivityTimestamp,
+    runtime: &PipelineRuntime<'_>,
+) {
+    let idle_duration = time_since_activity(activity_timestamp);
+    let diagnostics = format_exit_diagnostics(resolution, idle_duration.as_secs_f64());
+    for (level, msg) in diagnostics {
+        match level {
+            "warn" => runtime.logger.warn(&msg),
+            _ => runtime.logger.info(&msg),
+        }
+    }
 }
 
 fn resolve_final_exit_code(
@@ -313,20 +387,22 @@ fn resolve_final_exit_code(
     child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
     runtime: &PipelineRuntime<'_>,
 ) -> (i32, Option<crate::executor::ChildProcessInfo>) {
-    if let MonitorResult::TimedOut {
-        escalated,
-        child_status_at_timeout,
-    } = monitor_result
-    {
-        resolve_timed_out_exit(
-            escalated,
+    let resolution =
+        classify_monitor_result(monitor_result, exit_code, child_activity_suppression_info);
+
+    emit_exit_diagnostics(&resolution, activity_timestamp, runtime);
+
+    match resolution {
+        ExitCodeResolution::TimedOut {
+            escalated: _,
+            exit_code: _,
             child_status_at_timeout,
+        } => (SIGTERM_EXIT_CODE, child_status_at_timeout),
+        ExitCodeResolution::CompleteButWaiting => (0, None),
+        ExitCodeResolution::ProcessCompleted {
             exit_code,
-            activity_timestamp,
-            runtime,
-        )
-    } else {
-        resolve_process_completed_exit(exit_code, child_activity_suppression_info, runtime)
+            child_activity_suppression_info: _,
+        } => (exit_code, None),
     }
 }
 
@@ -467,7 +543,10 @@ fn create_shared_monitor_state(
     }
 }
 
-fn spawn_monitor_thread(state: SharedMonitorState) -> std::thread::JoinHandle<MonitorResult> {
+fn spawn_monitor_thread(
+    state: SharedMonitorState,
+    completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+) -> std::thread::JoinHandle<MonitorResult> {
     use std::sync::atomic::Ordering;
     let SharedMonitorState {
         child_for_monitor,
@@ -490,11 +569,15 @@ fn spawn_monitor_thread(state: SharedMonitorState) -> std::thread::JoinHandle<Mo
                 timeout: Duration::from_secs(IDLE_TIMEOUT_SECS),
                 check_interval: Duration::from_secs(30),
                 kill_config: DEFAULT_KILL_CONFIG,
+                completion_check,
                 ..MonitorConfig::default()
             },
             Some(&child_activity_suppressed_for_monitor),
         );
-        if matches!(result, MonitorResult::TimedOut { .. }) {
+        if matches!(
+            result,
+            MonitorResult::TimedOut { .. } | MonitorResult::CompleteButWaiting
+        ) {
             stdout_cancel_for_monitor.store(true, Ordering::Release);
         }
         result
@@ -522,13 +605,14 @@ fn build_spawned_agent_handles(
     state: SharedMonitorState,
     stderr_cancel: Arc<std::sync::atomic::AtomicBool>,
     stderr_join_handle: Option<std::thread::JoinHandle<Result<String, std::io::Error>>>,
+    completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> SpawnedAgentHandles {
     let child_shared = Arc::clone(&state.child_shared);
     let activity_timestamp = state.activity_timestamp.clone();
     let stdout_cancel = Arc::clone(&state.stdout_cancel);
     let monitor_should_stop = Arc::clone(&state.monitor_should_stop);
     let child_activity_suppressed = Arc::clone(&state.child_activity_suppressed);
-    let monitor_handle = Some(spawn_monitor_thread(state));
+    let monitor_handle = Some(spawn_monitor_thread(state, completion_check));
     SpawnedAgentHandles {
         child_shared,
         activity_timestamp,
@@ -546,6 +630,7 @@ fn spawn_agent_with_monitoring(
     spawn_config: crate::executor::AgentSpawnConfig,
     runtime: &PipelineRuntime<'_>,
     argv0: &str,
+    completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> SpawnAgentResult {
     use std::sync::atomic::AtomicBool;
     let agent_handle = match runtime.executor.spawn_agent(&spawn_config) {
@@ -570,7 +655,7 @@ fn spawn_agent_with_monitoring(
         state.activity_timestamp.clone(),
         Arc::clone(&stderr_cancel),
     ));
-    let handles = build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle);
+    let handles = build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle, completion_check);
     Ok(Ok((handles, agent_handle.stdout)))
 }
 
@@ -671,7 +756,8 @@ pub(crate) fn run_with_agent_spawn(
     let spawn_config =
         prepare_logfile_and_spawn_config(&parsed, cmd, runtime, anthropic_env_vars_to_sanitize)?;
     let argv0 = parsed.argv[0].clone();
-    let (mut handles, stdout) = match spawn_agent_with_monitoring(spawn_config, runtime, &argv0)? {
+    let completion_check = make_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
+    let (mut handles, stdout) = match spawn_agent_with_monitoring(spawn_config, runtime, &argv0, completion_check)? {
         Ok(pair) => pair,
         Err(result) => return Ok(result),
     };

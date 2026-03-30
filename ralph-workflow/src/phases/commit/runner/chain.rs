@@ -81,6 +81,7 @@ pub fn generate_commit_message(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
+        completion_output_path: None,
     };
 
     let result = run_with_prompt(&prompt_cmd, runtime)?;
@@ -164,6 +165,7 @@ fn try_single_commit_agent(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
+        completion_output_path: None,
     };
 
     let result = match run_with_prompt(&prompt_cmd, runtime) {

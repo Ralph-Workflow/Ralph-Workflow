@@ -136,7 +136,7 @@ fn monitor_prevents_timeout_with_file_activity() {
         workspace: Arc::clone(&workspace_arc),
     });
 
-    let mock_child = MockAgentChild::new(0);
+    let (mock_child, child_running) = MockAgentChild::new_running(0);
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
     let executor_impl = Arc::new(MockProcessExecutor::new());
@@ -148,6 +148,7 @@ fn monitor_prevents_timeout_with_file_activity() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -173,6 +174,8 @@ fn monitor_prevents_timeout_with_file_activity() {
         "monitor should scan .agent/ to evaluate file-activity gating"
     );
 
+    // Signal that the child should stop, and wait for it to actually stop
+    child_running.store(false, Ordering::Release);
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");
@@ -215,6 +218,7 @@ fn monitor_times_out_without_any_activity() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -255,6 +259,7 @@ fn monitor_respects_output_activity() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let timestamp_clone = timestamp.clone();
@@ -306,6 +311,7 @@ fn monitor_uses_configurable_check_interval() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -355,6 +361,7 @@ fn monitor_file_activity_with_old_files_times_out() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -404,6 +411,7 @@ fn monitor_times_out_when_file_activity_check_errors() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -462,6 +470,7 @@ fn monitor_without_file_activity_config_works() {
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {

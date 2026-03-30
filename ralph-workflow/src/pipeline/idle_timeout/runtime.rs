@@ -24,7 +24,7 @@ pub struct FileActivityConfig {
 }
 
 /// Configuration for the idle timeout monitor.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct MonitorConfig {
     /// Timeout duration.
     pub timeout: Duration,
@@ -50,6 +50,13 @@ pub struct MonitorConfig {
     ///
     /// Set to `false` in tests that deliberately do not want this check to run.
     pub check_child_processes: bool,
+    /// Optional callback to check if output is complete.
+    ///
+    /// When provided, this callback is invoked when the idle timeout is exceeded
+    /// AND the process has already exited. If it returns `true`, the monitor
+    /// returns `MonitorResult::CompleteButWaiting` instead of treating the exit
+    /// as a timeout, allowing the pipeline to advance as success.
+    pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl Default for MonitorConfig {
@@ -60,6 +67,7 @@ impl Default for MonitorConfig {
             kill_config: DEFAULT_KILL_CONFIG,
             required_idle_confirmations: 2,
             check_child_processes: true,
+            completion_check: None,
         }
     }
 }
@@ -92,6 +100,13 @@ pub enum MonitorResult {
         escalated: bool,
         child_status_at_timeout: Option<ChildProcessInfo>,
     },
+    /// Process exited during idle timeout window but output is ready.
+    ///
+    /// This occurs when the idle timeout is exceeded, the process has already
+    /// exited (via `try_wait`), and a `completion_check` callback confirms that
+    /// the output is ready. The monitor kills any remaining state and returns
+    /// success, allowing the pipeline to advance.
+    CompleteButWaiting,
 }
 
 /// Default check interval for the idle monitor (30 seconds).
@@ -118,6 +133,10 @@ fn sleep_step(
     deadline: std::time::Instant,
 ) -> SleepStepOutcome {
     use std::sync::atomic::Ordering;
+    // Check should_stop FIRST — if it is set, return Stop immediately,
+    // even when the deadline has also been reached. This ensures that a
+    // should_stop signal is never missed because we happened to hit the
+    // deadline on the same iteration.
     if should_stop.load(Ordering::Acquire) {
         return SleepStepOutcome::Stop;
     }
@@ -139,7 +158,15 @@ fn sleep_until_next_check_or_stop(
     loop {
         match sleep_step(should_stop, poll_interval, deadline) {
             SleepStepOutcome::Stop => return true,
-            SleepStepOutcome::DeadlineReached => return false,
+            SleepStepOutcome::DeadlineReached => {
+                // Re-check should_stop when deadline is reached: if it was set
+                // during the deadline window, honor it and return true (stop).
+                use std::sync::atomic::Ordering;
+                if should_stop.load(Ordering::Acquire) {
+                    return true;
+                }
+                return false;
+            }
             SleepStepOutcome::Slept => {}
         }
     }
@@ -708,6 +735,7 @@ struct MonitorParams<'a> {
     kill_config: KillConfig,
     required_idle_confirmations: u32,
     check_child_processes: bool,
+    completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 fn kill_child_and_apply(
@@ -715,6 +743,10 @@ fn kill_child_and_apply(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
+    // If the child already exited, don't bother sending signals — return success.
+    if try_wait_child(params.child) {
+        return MonitorLoopAction::Return(MonitorResult::ProcessCompleted);
+    }
     let kill_result = kill_process(
         child_id,
         params.executor.as_ref(),
@@ -740,21 +772,97 @@ fn log_idle_progress(consecutive: u32, required: u32) {
     );
 }
 
+/// Result of the idle-confirmed policy computation.
+enum IdleConfirmedAction {
+    /// Not enough idle confirmations yet; continue polling.
+    Continue,
+    /// Child already exited or completion check passed; return the given action.
+    Return(MonitorLoopAction),
+    /// Agent is stuck; kill and return.
+    KillAndReturn(u32),
+    /// Completion check passed; kill process and return success.
+    CompleteAndKill(u32),
+}
+
+/// Compute the idle-confirmed policy — pure function, no side effects.
+/// Encapsulates all branching so `handle_idle_confirmed` stays thin.
+fn compute_idle_confirmed_action(
+    params: &MonitorParams<'_>,
+    s: &MonitorLoopState,
+) -> IdleConfirmedAction {
+    let consecutive = s.consecutive_idle_count.saturating_add(1);
+    if consecutive < params.required_idle_confirmations {
+        return IdleConfirmedAction::Continue;
+    }
+
+    let Some(child_id) = try_get_child_id(params.child) else {
+        return IdleConfirmedAction::Return(determine_result_on_child_exit(
+            params.completion_check.as_ref(),
+        ));
+    };
+
+    // completion_check_passes is pure — just checks the callback
+    if completion_check_passes(params.completion_check.as_ref()) {
+        return IdleConfirmedAction::CompleteAndKill(child_id);
+    }
+
+    IdleConfirmedAction::KillAndReturn(child_id)
+}
+
 fn handle_idle_confirmed(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
-    s.consecutive_idle_count = s.consecutive_idle_count.saturating_add(1);
-    if s.consecutive_idle_count < params.required_idle_confirmations {
-        log_idle_progress(s.consecutive_idle_count, params.required_idle_confirmations);
-        return MonitorLoopAction::Continue;
+    let consecutive = s.consecutive_idle_count.saturating_add(1);
+    s.consecutive_idle_count = consecutive;
+
+    let idle_action = compute_idle_confirmed_action(params, s);
+    match idle_action {
+        IdleConfirmedAction::Continue => {
+            log_idle_progress(consecutive, params.required_idle_confirmations);
+            MonitorLoopAction::Continue
+        }
+        IdleConfirmedAction::Return(action) => action,
+        IdleConfirmedAction::KillAndReturn(child_id) => kill_child_and_apply(child_id, params, s),
+        IdleConfirmedAction::CompleteAndKill(child_id) => {
+            // Side effect: kill the process, then return success
+            try_complete_but_waiting_and_kill(child_id, params);
+            MonitorLoopAction::Return(MonitorResult::CompleteButWaiting)
+        }
     }
+}
 
-    let Some(child_id) = try_get_child_id(params.child) else {
-        return MonitorLoopAction::Return(MonitorResult::ProcessCompleted);
-    };
+/// Pure: check if the completion callback returns true.
+fn completion_check_passes(completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>) -> bool {
+    completion_check.is_some_and(|c| c())
+}
 
-    kill_child_and_apply(child_id, params, s)
+/// Execute the completion-check kill: log, kill the process (best-effort),
+/// and return CompleteButWaiting.
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn try_complete_but_waiting_and_kill(child_id: u32, params: &MonitorParams<'_>) {
+    eprintln!(
+        "Idle timeout: completion check passed (output file ready); \
+         killing process and treating as CompleteButWaiting"
+    );
+    let kill_result = kill_process(
+        child_id,
+        params.executor.as_ref(),
+        Some(params.child),
+        params.kill_config,
+    );
+    // best-effort kill; regardless of kill result return CompleteButWaiting
+    let _ = kill_result;
+}
+
+fn determine_result_on_child_exit(
+    completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>,
+) -> MonitorLoopAction {
+    if completion_check.is_some_and(|c| c()) {
+        MonitorLoopAction::Return(MonitorResult::CompleteButWaiting)
+    } else {
+        MonitorLoopAction::Return(MonitorResult::ProcessCompleted)
+    }
 }
 
 fn check_file_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
@@ -838,6 +946,12 @@ fn dispatch_enforcement_phase(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
+    // If should_stop is set while in enforcement, return ProcessCompleted
+    // instead of continuing enforcement (which could return TimedOut via HardCapReached).
+    use std::sync::atomic::Ordering;
+    if params.should_stop.load(Ordering::Acquire) {
+        return MonitorLoopAction::Return(MonitorResult::ProcessCompleted);
+    }
     let state = match s.timeout_triggered.take() {
         Some(st) => st,
         None => return MonitorLoopAction::Continue,
@@ -854,34 +968,69 @@ fn dispatch_enforcement_phase(
     enforcement_step_to_action(step)
 }
 
-fn check_stop_conditions(
+/// Policy decision for one enforcement tick — pure, no side effects.
+enum TickPolicy {
+    /// Child already exited; return immediately with ProcessCompleted.
+    ChildAlreadyExited,
+    /// Stop conditions met (user interrupt or external stop); return the given action.
+    StopConditionsMet,
+    /// Enforcement phase already active; dispatch to enforcement handler.
+    EnforcementPhase,
+    /// Not idle yet; reset idle tracking and continue polling.
+    NotIdle,
+    /// Idle timeout exceeded; handle escalation.
+    IdleTimeoutExceeded,
+}
+
+/// Compute the policy decision for this tick — pure function, no side effects.
+/// All branching lives here so the boundary function stays thin.
+fn compute_tick_policy(
+    timeout_triggered: bool,
+    child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    activity_timestamp: &SharedActivityTimestamp,
+    timeout: Duration,
     params: &MonitorParams<'_>,
     s: &MonitorLoopState,
-) -> Option<MonitorLoopAction> {
-    if should_stop_before_timeout(params, s) {
-        return Some(MonitorLoopAction::Return(MonitorResult::ProcessCompleted));
+) -> TickPolicy {
+    if !timeout_triggered && try_wait_child(child) {
+        return TickPolicy::ChildAlreadyExited;
     }
-    if sleep_check_stops_early(params, s) {
-        return Some(MonitorLoopAction::Return(MonitorResult::ProcessCompleted));
+    if should_stop_before_timeout(params, s) || sleep_check_stops_early(params, s) {
+        return TickPolicy::StopConditionsMet;
     }
-    None
+    if timeout_triggered {
+        return TickPolicy::EnforcementPhase;
+    }
+    if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
+        return TickPolicy::NotIdle;
+    }
+    TickPolicy::IdleTimeoutExceeded
 }
 
 fn handle_enforcement_tick(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
-    if let Some(action) = check_stop_conditions(params, s) {
-        return action;
+    let policy = compute_tick_policy(
+        s.timeout_triggered.is_some(),
+        params.child,
+        params.activity_timestamp,
+        params.timeout,
+        params,
+        s,
+    );
+    match policy {
+        TickPolicy::ChildAlreadyExited => {
+            MonitorLoopAction::Return(MonitorResult::ProcessCompleted)
+        }
+        TickPolicy::StopConditionsMet => MonitorLoopAction::Return(MonitorResult::ProcessCompleted),
+        TickPolicy::EnforcementPhase => dispatch_enforcement_phase(params, s),
+        TickPolicy::NotIdle => {
+            s.reset_idle();
+            MonitorLoopAction::Continue
+        }
+        TickPolicy::IdleTimeoutExceeded => handle_timeout_exceeded(params, s),
     }
-    if s.timeout_triggered.is_some() {
-        return dispatch_enforcement_phase(params, s);
-    }
-    if !is_idle_timeout_exceeded(params.activity_timestamp, params.timeout) {
-        s.reset_idle();
-        return MonitorLoopAction::Continue;
-    }
-    handle_timeout_exceeded(params, s)
 }
 
 fn run_monitor_loop(params: &MonitorParams<'_>) -> MonitorResult {
@@ -914,6 +1063,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         kill_config: config.kill_config,
         required_idle_confirmations: config.required_idle_confirmations,
         check_child_processes: config.check_child_processes,
+        completion_check: config.completion_check,
     };
     run_monitor_loop(&params)
 }

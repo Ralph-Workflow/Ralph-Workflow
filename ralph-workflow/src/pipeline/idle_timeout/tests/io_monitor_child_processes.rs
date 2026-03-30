@@ -74,6 +74,7 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -122,6 +123,7 @@ fn no_active_children_allows_idle_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -159,6 +161,7 @@ fn child_process_check_disabled_does_not_prevent_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: false,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -217,6 +220,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -283,6 +287,7 @@ fn stalled_children_allow_idle_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -339,6 +344,7 @@ fn children_transition_active_to_stalled_allows_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -398,6 +404,7 @@ fn repeated_active_snapshot_without_fresh_progress_allows_kill() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -444,6 +451,7 @@ fn first_child_observation_without_current_activity_times_out_immediately() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -501,6 +509,7 @@ fn active_children_after_child_free_gap_get_startup_grace_again() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 3,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -596,6 +605,7 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -677,6 +687,7 @@ fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_wor
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -744,6 +755,7 @@ fn timeout_with_stalled_children_reports_child_status() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -785,6 +797,7 @@ fn timeout_without_children_reports_none_child_status() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -825,6 +838,7 @@ fn timeout_with_check_disabled_reports_none_child_status() {
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: false,
+        completion_check: None,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(

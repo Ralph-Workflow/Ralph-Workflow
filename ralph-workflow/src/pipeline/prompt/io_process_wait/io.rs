@@ -194,7 +194,11 @@ pub fn wait_for_completion_and_collect_stderr(
     let outcome = poll_wait_loop(child_arc, monitor_handle, runtime)?;
 
     let status = match outcome {
-        WaitOutcome::Completed(status) => status,
+        WaitOutcome::Completed(status) => {
+            // Child exited cleanly — parent's wait() in poll_wait_loop has already
+            // reaped the child. No zombie reap needed.
+            status
+        }
         WaitOutcome::TimedOut(monitor_result) => {
             let stderr_output = try_take_stderr_output(stderr_join_handle, runtime);
             return Ok((crate::pipeline::prompt::SIGTERM_EXIT_CODE, stderr_output, Some(monitor_result)));

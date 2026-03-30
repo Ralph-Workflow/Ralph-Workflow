@@ -20,6 +20,12 @@ pub struct PromptCommand<'a> {
     pub logfile: &'a str,
     pub parser_type: JsonParserType,
     pub env_vars: &'a std::collections::HashMap<String, String>,
+    /// Path to the file this phase is expected to produce.
+    ///
+    /// When set, the idle timeout monitor uses its existence as a
+    /// "complete-but-waiting" signal: if the file exists and the process is
+    /// idle, the process is killed and the phase advances as success.
+    pub completion_output_path: Option<&'a std::path::Path>,
 }
 
 /// Runtime services required for running agent commands.

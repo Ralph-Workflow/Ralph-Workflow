@@ -88,11 +88,7 @@ pub fn generate_analysis_prompt(
         ),
         (
             "DEVELOPMENT_RESULT_XSD_PATH",
-            workspace.absolute_str(if is_continuation {
-                ".agent/tmp/development_continuation_result.xsd"
-            } else {
-                ".agent/tmp/development_result.xsd"
-            }),
+            workspace.absolute_str(".agent/tmp/development_result.xsd"),
         ),
         ("REQUIRED_OUTPUT_XML", required_output.to_string()),
     ]);
@@ -103,11 +99,7 @@ pub fn generate_analysis_prompt(
             let plan = plan_ref.render_for_template();
             let diff = diff_ref.render_for_template();
             let out = workspace.absolute_str(".agent/tmp/development_result.xml");
-            let xsd = workspace.absolute_str(if is_continuation {
-                ".agent/tmp/development_continuation_result.xsd"
-            } else {
-                ".agent/tmp/development_result.xsd"
-            });
+            let xsd = workspace.absolute_str(".agent/tmp/development_result.xsd");
             format!(
                 "You are an independent code analysis agent.\n\nPLAN:\n{plan}\n\nDIFF:\n{diff}\n\nWrite development_result.xml to: {out}\nXSD: {xsd}\n"
             )
@@ -209,7 +201,7 @@ mod tests {
         assert!(prompt.contains("<ralph-status>"));
         assert!(prompt.contains("<ralph-summary>"));
         assert!(prompt.contains("completed|partial|failed"));
-        assert!(continuation_prompt.contains("development_continuation_result.xsd"));
+        assert!(continuation_prompt.contains("development_result.xsd"));
         assert!(continuation_prompt.contains("partial|failed"));
         assert!(!continuation_prompt.contains("<ralph-files-changed>"));
         assert!(
