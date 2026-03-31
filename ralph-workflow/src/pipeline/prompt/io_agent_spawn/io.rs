@@ -7,6 +7,7 @@
 
 use crate::agents::{is_glm_like_agent, JsonParserType};
 use crate::common::{format_argv_for_log, split_command, truncate_text};
+use crate::files::llm_output_extraction::has_valid_xml_output;
 use crate::logger::argv_requests_json;
 use crate::pipeline::idle_timeout::KillConfig;
 use crate::pipeline::idle_timeout::{
@@ -92,7 +93,9 @@ fn make_completion_check(
 ) -> Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>> {
     let path = path?.to_owned();
     let workspace = std::sync::Arc::clone(workspace);
-    Some(std::sync::Arc::new(move || workspace.exists(&path)))
+    Some(std::sync::Arc::new(move || {
+        has_valid_xml_output(workspace.as_ref(), &path)
+    }))
 }
 
 fn spawn_stdout_cancel_watcher(
@@ -655,7 +658,8 @@ fn spawn_agent_with_monitoring(
         state.activity_timestamp.clone(),
         Arc::clone(&stderr_cancel),
     ));
-    let handles = build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle, completion_check);
+    let handles =
+        build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle, completion_check);
     Ok(Ok((handles, agent_handle.stdout)))
 }
 
@@ -756,11 +760,13 @@ pub(crate) fn run_with_agent_spawn(
     let spawn_config =
         prepare_logfile_and_spawn_config(&parsed, cmd, runtime, anthropic_env_vars_to_sanitize)?;
     let argv0 = parsed.argv[0].clone();
-    let completion_check = make_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
-    let (mut handles, stdout) = match spawn_agent_with_monitoring(spawn_config, runtime, &argv0, completion_check)? {
-        Ok(pair) => pair,
-        Err(result) => return Ok(result),
-    };
+    let completion_check =
+        make_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
+    let (mut handles, stdout) =
+        match spawn_agent_with_monitoring(spawn_config, runtime, &argv0, completion_check)? {
+            Ok(pair) => pair,
+            Err(result) => return Ok(result),
+        };
     let (exit_code, stderr_output, monitor_result_early) =
         stream_and_wait(stdout, &mut handles, cmd, runtime)?;
     Ok(finalize_result(

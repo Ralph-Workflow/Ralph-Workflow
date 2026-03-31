@@ -362,8 +362,8 @@ fn test_context_based_uses_workspace_rooted_paths() {
         true,
     );
     assert!(
-        continuation_xsd_retry.contains("development_result.xsd"),
-        "Continuation-mode XSD retry should point at development_result.xsd"
+        continuation_xsd_retry.contains("development_continuation_result.xsd"),
+        "Continuation-mode XSD retry should point at development_continuation_result.xsd"
     );
 
     // Both should contain the core content (PROMPT and PLAN)
@@ -389,8 +389,8 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
     );
 
     assert!(
-        prompt.contains("development_result.xsd"),
-        "Continuation-mode XSD retry should point at development_result.xsd"
+        prompt.contains("development_continuation_result.xsd"),
+        "Continuation-mode XSD retry should point at development_continuation_result.xsd"
     );
     assert!(
         prompt.contains("continuation output")

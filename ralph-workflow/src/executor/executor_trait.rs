@@ -170,6 +170,20 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             ChildProcessInfo::NONE
         }
     }
+
+    /// Kill an entire process group by sending SIGKILL to all members.
+    ///
+    /// Uses `kill(-pid, SIGKILL)` to send the signal to all processes in the
+    /// process group identified by `pgid`. This is a best-effort fire-and-forget
+    /// call; errors are ignored because the primary process has already exited.
+    ///
+    /// The default implementation is a no-op so existing mock implementations
+    /// continue to compile without change. The `RealProcessExecutor` override
+    /// issues the actual SIGKILL.
+    #[cfg(unix)]
+    fn kill_process_group(&self, _pgid: u32) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 const PS_ATTEMPTS: [&[&str]; 6] = [

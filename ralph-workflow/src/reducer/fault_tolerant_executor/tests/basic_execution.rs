@@ -60,6 +60,7 @@ fn test_extracted_stdout_error_debug_log_is_gated_by_verbosity() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let _ = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -111,6 +112,7 @@ fn test_timeout_error_from_run_with_prompt_err_arm_triggers_timeout_fallback() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -408,6 +410,7 @@ fn test_timeout_with_empty_logfile_emits_no_output() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -476,6 +479,7 @@ fn test_timeout_with_nonempty_logfile_emits_partial_output() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -543,6 +547,7 @@ fn test_timeout_with_missing_logfile_defaults_to_no_output() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -614,6 +619,7 @@ fn test_timeout_with_9_non_whitespace_chars_emits_no_output() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -681,6 +687,7 @@ fn test_timeout_with_10_non_whitespace_chars_emits_partial_output() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -748,6 +755,7 @@ fn test_timeout_with_whitespace_only_logfile_emits_no_output() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
@@ -815,6 +823,7 @@ fn test_timeout_with_meaningful_output_surrounded_by_whitespace() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)

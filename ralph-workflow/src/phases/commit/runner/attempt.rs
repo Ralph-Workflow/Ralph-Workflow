@@ -144,7 +144,7 @@ pub fn run_commit_attempt(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
-        completion_output_path: None,
+        completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
     };
 
     let result = run_with_prompt(

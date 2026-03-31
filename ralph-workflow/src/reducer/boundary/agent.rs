@@ -1,6 +1,7 @@
 use super::MainEffectHandler;
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
+use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -14,6 +15,21 @@ use crate::reducer::fault_tolerant_executor::{
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use std::path::Path;
+
+/// Map an AgentDrain to the expected output file path for completion detection.
+///
+/// Returns `None` if the drain does not produce a structured XML output file.
+fn completion_path_for_drain(drain: AgentDrain) -> Option<&'static Path> {
+    match drain {
+        AgentDrain::Planning => Some(Path::new(xml_paths::PLAN_XML)),
+        AgentDrain::Development => Some(Path::new(xml_paths::DEVELOPMENT_RESULT_XML)),
+        AgentDrain::Review => Some(Path::new(xml_paths::ISSUES_XML)),
+        AgentDrain::Fix => Some(Path::new(xml_paths::FIX_RESULT_XML)),
+        AgentDrain::Commit => Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+        AgentDrain::Analysis => None, // Analysis does not produce a structured output file
+    }
+}
 
 impl MainEffectHandler {
     pub(super) fn invoke_agent(
@@ -34,9 +50,11 @@ impl MainEffectHandler {
         let (logfile, attempt) =
             prepare_agent_logfile(ctx, in_dev_fix, &self.state, role, &effective_agent)?;
         let session_id = resolve_session_id(&self.state, in_dev_fix);
+        let completion_output_path = completion_path_for_drain(drain);
         let event = run_agent_execution(
             ctx,
             &self.state,
+            drain,
             AgentRunInputs {
                 in_dev_fix,
                 role,
@@ -46,6 +64,7 @@ impl MainEffectHandler {
                 effective_prompt: &effective_prompt,
                 attempt,
                 logfile: &logfile,
+                completion_output_path,
             },
         )?;
         Ok(build_agent_invocation_result(
@@ -129,11 +148,13 @@ struct AgentRunInputs<'a> {
     effective_prompt: &'a str,
     attempt: u32,
     logfile: &'a str,
+    completion_output_path: Option<&'a Path>,
 }
 
 fn run_agent_execution(
     ctx: &mut PhaseContext<'_>,
     state: &crate::reducer::state::PipelineState,
+    _drain: AgentDrain,
     inputs: AgentRunInputs<'_>,
 ) -> Result<crate::reducer::event::PipelineEvent> {
     let agent_config = ctx
@@ -165,6 +186,7 @@ fn run_agent_execution(
         model_index,
         attempt: inputs.attempt,
         logfile: inputs.logfile,
+        completion_output_path: inputs.completion_output_path,
     };
     let AgentExecutionResult {
         event,

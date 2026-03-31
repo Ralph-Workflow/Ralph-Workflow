@@ -62,6 +62,7 @@ pub struct MockProcessExecutor {
     default_agent_result: Mutex<MockResult<AgentCommandResult>>,
     active_children: Mutex<HashMap<u32, ChildProcessInfo>>,
     child_info_queries: Mutex<HashMap<u32, u32>>,
+    kill_group_calls: Mutex<Vec<u32>>,
 }
 
 impl Default for MockProcessExecutor {
@@ -89,6 +90,7 @@ impl Default for MockProcessExecutor {
             default_agent_result: Mutex::new(MockResult::Ok(AgentCommandResult::success())),
             active_children: Mutex::new(HashMap::new()),
             child_info_queries: Mutex::new(HashMap::new()),
+            kill_group_calls: Mutex::new(Vec::new()),
         }
     }
 }
@@ -117,6 +119,7 @@ impl MockProcessExecutor {
             default_agent_result: Mutex::new(err_result("mock agent error")),
             active_children: Mutex::new(HashMap::new()),
             child_info_queries: Mutex::new(HashMap::new()),
+            kill_group_calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -353,6 +356,10 @@ impl MockProcessExecutor {
             .unwrap_or(0)
     }
 
+    pub fn kill_process_group_calls(&self) -> Vec<u32> {
+        self.kill_group_calls.lock().unwrap().clone()
+    }
+
     fn find_agent_result(&self, command: &str) -> AgentCommandResult {
         if let Some(result) = self.agent_results.lock().unwrap().get(command) {
             return result
@@ -439,5 +446,11 @@ impl ProcessExecutor for MockProcessExecutor {
             || self.default_result.lock().unwrap().to_io_result(),
             MockResult::to_io_result,
         )
+    }
+
+    #[cfg(unix)]
+    fn kill_process_group(&self, pgid: u32) -> io::Result<()> {
+        self.kill_group_calls.lock().unwrap().push(pgid);
+        Ok(())
     }
 }

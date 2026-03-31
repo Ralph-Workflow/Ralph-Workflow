@@ -172,6 +172,27 @@ impl ProcessExecutor for RealProcessExecutor {
         let child = spawn_agent_child(&mut cmd)?;
         finalize_agent_child(child)
     }
+
+    #[cfg(unix)]
+    fn kill_process_group(&self, pgid: u32) -> io::Result<()> {
+        // Send SIGKILL to the entire process group using negative PID.
+        // This kills all processes in the group, which is what we want for zombie cleanup.
+        // Reject pgid == 0 since kill(0, SIGKILL) sends to the caller's process group,
+        // which is almost certainly not the intended target for zombie reaping.
+        let pgid_t = libc::pid_t::try_from(pgid)
+            .map_err(|_| io::Error::other(format!("pgid {pgid} does not fit in pid_t")))?;
+        if pgid_t == 0 {
+            return Err(io::Error::other(
+                "pgid must not be 0: kill(0, SIGKILL) sends to the caller's process group",
+            ));
+        }
+        let result = unsafe { libc::kill(-pgid_t, libc::SIGKILL) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
 }
 
 fn take_child_streams(

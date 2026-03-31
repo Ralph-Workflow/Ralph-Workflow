@@ -129,7 +129,7 @@ fn monitor_single_idle_check_does_not_kill_when_two_confirmations_required() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(50),
+        check_interval: Duration::from_millis(100),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
         check_child_processes: true,
