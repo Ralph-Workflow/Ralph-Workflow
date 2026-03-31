@@ -216,7 +216,7 @@ impl McpStream for McpStreamImpl {
 /// 2. Parse Content-Length header
 /// 3. Read exactly that many bytes
 /// 4. Parse JSON-RPC request
-fn read_framed_jsonrpc<R: BufRead>(
+pub fn read_framed_jsonrpc<R: BufRead>(
     reader: &mut R,
 ) -> Result<Option<JsonRpcRequest>, TransportError> {
     let content_length = match read_content_length_header(reader)? {

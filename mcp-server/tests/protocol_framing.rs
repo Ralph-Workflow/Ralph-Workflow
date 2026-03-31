@@ -249,3 +249,95 @@ fn test_response_has_correct_jsonrpc_version() {
     assert_eq!(response.jsonrpc, "2.0");
     assert_eq!(response.id, serde_json::json!(42));
 }
+
+#[test]
+fn test_notification_returns_no_response() {
+    let server = make_server();
+
+    // Send a notification (id is null) - should NOT get a response
+    let notification = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "ping".to_string(),
+        params: None,
+        id: None, // null id means notification per JSON-RPC 2.0 spec
+    };
+
+    let (response, state) = server.handle_request(notification, ServerState::Ready);
+
+    // Notifications should not get a response
+    assert!(
+        response.is_none(),
+        "Notifications (id: null) should not receive a response"
+    );
+    // State should remain unchanged
+    assert_eq!(state, ServerState::Ready);
+}
+
+#[test]
+fn test_notification_does_not_transition_state() {
+    let server = make_server();
+
+    // Send initialize as notification - should NOT transition state
+    let notification = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: None, // null id means notification
+    };
+
+    let (response, state) = server.handle_request(notification, ServerState::Uninitialized);
+
+    // No response for notification
+    assert!(
+        response.is_none(),
+        "Initialize notification should not receive a response"
+    );
+    // State should NOT change because initialize as notification doesn't process
+    assert_eq!(
+        state,
+        ServerState::Uninitialized,
+        "Notification should not transition server state"
+    );
+}
+
+#[test]
+fn test_large_payload_framing() {
+    use std::io::Cursor;
+
+    // Create a payload larger than 64KB by using a large string in params
+    let large_string = "x".repeat(70_000);
+    let request_payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "ralph_write_file",
+            "arguments": {
+                "path": "/tmp/large_file.txt",
+                "content": large_string
+            }
+        },
+        "id": 1
+    });
+
+    let body = serde_json::to_vec(&request_payload).unwrap();
+    assert!(
+        body.len() > 65_536,
+        "Test payload should be > 64KB, got {} bytes",
+        body.len()
+    );
+
+    // Format with Content-Length framing
+    let framed = format!("Content-Length: {}\r\n\r\n", body.len());
+    let mut input = framed.into_bytes();
+    input.extend_from_slice(&body);
+
+    let mut cursor = Cursor::new(input);
+    let result = mcp_server::io::transport::read_framed_jsonrpc(&mut cursor);
+    assert!(
+        result.is_ok(),
+        "Should handle large (>64KB) payloads correctly"
+    );
+    let request = result.unwrap().unwrap();
+    assert_eq!(request.method, "tools/call");
+    assert_eq!(request.id, Some(serde_json::json!(1)));
+}

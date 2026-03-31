@@ -75,12 +75,9 @@ pub fn assert_not_project_repo(repo_root: &Path) {
 
     if is_project_repo {
         panic!(
-            "POLICY VIOLATION: test attempted to operate on the project's real git \
-             repository at '{}'. Tests must use isolated temporary repositories created \
-             with TempDir::new(). This check exists because previous test runs modified \
-             the real repository, corrupted git hooks, and reverted developer changes. \
-             Use init_git_repo(&TempDir::new().unwrap()) to get an isolated repo. \
-             If TMPDIR is set to a subdirectory of the project, check your environment.",
+            "POLICY VIOLATION: test attempted to mutate real git repository at {}\n\
+             All tests MUST operate on isolated repositories under std::env::temp_dir().\n\
+             Use test_helpers::init_git_repo() to create an isolated test repository.",
             repo_abs.display()
         );
     }
@@ -158,11 +155,9 @@ pub fn assert_project_head_unchanged(before: &Option<String>) {
     };
     if before.as_ref() != Some(&after) {
         panic!(
-            "POLICY VIOLATION: a test created a commit in the project repository. \
-             HEAD moved from {} to {}. \
-             Tests must never modify the real project repo.",
-            before.as_ref().map(|s| s.as_str()).unwrap_or("(none)"),
-            after
+            "POLICY VIOLATION: test attempted to mutate real git repository at project repository\n\
+             All tests MUST operate on isolated repositories under std::env::temp_dir().\n\
+             Use test_helpers::init_git_repo() to create an isolated test repository.",
         );
     }
 }

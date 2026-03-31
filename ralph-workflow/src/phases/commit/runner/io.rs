@@ -24,68 +24,32 @@ pub(super) fn unique_commit_plumbing_run_id(label: &str) -> String {
 pub fn start_mcp_bridge(
     session: crate::agents::session::AgentSession,
     workspace_arc: std::sync::Arc<dyn crate::workspace::Workspace>,
-) -> Result<
-    mcp_server::io::SessionBridge,
-    mcp_server::io::SessionBridgeError,
-> {
+) -> Result<mcp_server::io::SessionBridge, mcp_server::io::SessionBridgeError> {
+    use crate::mcp_server::tool_bridge::{
+        build_ralph_tool_registry, RalphHostSessionAdapter, RalphWorkspaceAdapter,
+    };
     use mcp_server::io::access::McpServerConfig;
-    use mcp_server::dispatch::host::DirEntry as McpDirEntry;
-    use mcp_server::dispatch::ToolRegistry;
     use std::sync::Arc;
 
-    // Wrapper to adapt Arc<dyn Workspace> to Arc<dyn WorkspaceAdapter>
-    // since we cannot directly coerce between these Arc types.
-    struct WorkspaceAsWorkspaceAdapter {
-        inner: Arc<dyn crate::workspace::Workspace>,
-    }
+    // Wrap session and workspace in Arc for use by adapters and tool registry
+    let session_arc = Arc::new(session);
+    let workspace_for_registry = Arc::clone(&workspace_arc);
 
-    impl mcp_server::WorkspaceAdapter for WorkspaceAsWorkspaceAdapter {
-        fn read(&self, path: &std::path::Path) -> Result<String, String> {
-            self.inner.read(path).map_err(|e| e.to_string())
-        }
+    // Build the full tool registry with all Ralph tools registered
+    let registry = build_ralph_tool_registry(Arc::clone(&session_arc), workspace_for_registry);
 
-        fn write(&self, path: &std::path::Path, content: &str) -> Result<(), String> {
-            self.inner.write(path, content).map_err(|e| e.to_string())
-        }
-
-        fn exists(&self, path: &std::path::Path) -> bool {
-            self.inner.exists(path)
-        }
-
-        fn read_dir(&self, path: &std::path::Path) -> Result<Vec<McpDirEntry>, String> {
-            self.inner
-                .read_dir(path)
-                .map_err(|e| e.to_string())
-                .map(|entries: Vec<crate::workspace::DirEntry>| {
-                    entries
-                        .into_iter()
-                        .map(|e| McpDirEntry {
-                            path: e.path().display().to_string(),
-                            is_dir: e.is_dir(),
-                        })
-                        .collect()
-                })
-        }
-    }
-
-    // Create HostSession from AgentSession
-    // AgentSession implements HostSession via boundary/mcp_adapter.rs
-    let host_session: Arc<dyn mcp_server::HostSession> = Arc::new(session);
-
-    // Wrap workspace as WorkspaceAdapter
+    // Create typed adapters
+    let host_session: Arc<dyn mcp_server::HostSession> =
+        Arc::new(RalphHostSessionAdapter::new(Arc::clone(&session_arc)));
     let workspace_adapter: Arc<dyn mcp_server::WorkspaceAdapter> =
-        Arc::new(WorkspaceAsWorkspaceAdapter { inner: workspace_arc.clone() });
+        Arc::new(RalphWorkspaceAdapter::new(Arc::clone(&workspace_arc)));
 
-    // Create server config with workspace root
-    let config = McpServerConfig::new(workspace_arc.root().to_path_buf());
+    // Create server config with workspace root and ReadWrite access mode
+    let config = McpServerConfig::new(workspace_arc.root().to_path_buf())
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadWrite);
 
-    // Create bridge with empty tool registry (tools are registered elsewhere)
-    let mut bridge = mcp_server::io::SessionBridge::new(
-        host_session,
-        config,
-        workspace_adapter,
-        ToolRegistry::new(vec![]),
-    );
+    // Create and start the bridge — error propagates to caller (mandatory for MCP)
+    let mut bridge = mcp_server::io::SessionBridge::new(host_session, config, workspace_adapter, registry);
     bridge.start()?;
     Ok(bridge)
 }

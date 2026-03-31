@@ -18,98 +18,22 @@
 //! Ralph MCP tools registered. The handlers capture `Arc<AgentSession>` and
 //! `Arc<dyn Workspace>` at creation time and delegate to the real tool implementations.
 
-use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
+use crate::agents::session::{AgentSession, Capability};
+use crate::mcp_server::capability_mapping::{
+    capability_policy, lookup_ralph_capability, policy_from_outcome,
+};
 use crate::mcp_server::tool_artifact;
 use crate::mcp_server::tool_coordination;
 use crate::mcp_server::tool_exec;
 use crate::mcp_server::tool_git_read;
 use crate::mcp_server::tool_workspace;
 use crate::workspace::Workspace;
-use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, McpCapability};
+use mcp_server::dispatch::access::{AccessDecision, McpCapability};
 use mcp_server::dispatch::host::{DirEntry, HostSession, WorkspaceAdapter};
 use mcp_server::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
 use mcp_server::protocol::ToolDefinition;
 use std::path::Path;
 use std::sync::Arc;
-
-// ---------------------------------------------------------------------------
-// Capability mapping
-// ---------------------------------------------------------------------------
-
-/// Policy: map McpCapability to Ralph Capability.
-fn map_mcp_capability(cap: McpCapability) -> Option<Capability> {
-    match cap {
-        McpCapability::WorkspaceRead => Some(Capability::WorkspaceRead),
-        McpCapability::WorkspaceWriteEphemeral => Some(Capability::WorkspaceWriteEphemeral),
-        McpCapability::WorkspaceWriteTracked => Some(Capability::WorkspaceWriteTracked),
-        McpCapability::WorkspaceWriteAny => None, // handled by decide_workspace_write_any
-        McpCapability::GitStatusRead => Some(Capability::GitStatusRead),
-        McpCapability::GitWrite => Some(Capability::GitWrite),
-        McpCapability::EnvRead => Some(Capability::EnvRead),
-        McpCapability::EnvWrite => Some(Capability::EnvWrite),
-        McpCapability::ProcessExecBounded => Some(Capability::ProcessExecBounded),
-        McpCapability::ProcessExecUnbounded => Some(Capability::ProcessExecUnbounded),
-        McpCapability::ArtifactSubmit => Some(Capability::ArtifactSubmit),
-        McpCapability::RunReportProgress => Some(Capability::RunReportProgress),
-        // #[non_exhaustive] McpCapability — fail-closed: deny unknown variants
-        // rather than panicking, which could mask the gap in production.
-        _ => None,
-    }
-}
-
-/// Policy: convert Ralph PolicyOutcome to AccessDecision.
-fn policy_from_outcome(outcome: PolicyOutcome) -> AccessDecision {
-    match outcome {
-        PolicyOutcome::Approved => AccessDecision::Allow,
-        PolicyOutcome::ApprovedWithRestriction { .. } => AccessDecision::Allow,
-        PolicyOutcome::Denied { reason } => AccessDecision::Deny {
-            reason,
-            code: AccessDeniedCode::CapabilityDenied,
-        },
-    }
-}
-
-/// Policy: decide access for WorkspaceWriteAny capability.
-fn decide_workspace_write_any(
-    ephemeral_outcome: PolicyOutcome,
-    tracked_outcome: PolicyOutcome,
-) -> Option<AccessDecision> {
-    let allowed = matches!(
-        (ephemeral_outcome, tracked_outcome),
-        (PolicyOutcome::Approved, _)
-            | (_, PolicyOutcome::Approved)
-            | (PolicyOutcome::ApprovedWithRestriction { .. }, _)
-            | (_, PolicyOutcome::ApprovedWithRestriction { .. })
-    );
-    if allowed {
-        Some(AccessDecision::Allow)
-    } else {
-        Some(AccessDecision::Deny {
-            reason: "Workspace write capability not granted".to_string(),
-            code: AccessDeniedCode::CapabilityDenied,
-        })
-    }
-}
-
-/// Unified policy: decide access for any capability given all session outcomes.
-fn capability_policy(
-    cap: McpCapability,
-    ephemeral: PolicyOutcome,
-    tracked: PolicyOutcome,
-    mapped: Option<(Capability, PolicyOutcome)>,
-) -> AccessDecision {
-    if cap == McpCapability::WorkspaceWriteAny {
-        return decide_workspace_write_any(ephemeral, tracked)
-            .expect("WorkspaceWriteAny always returns Some");
-    }
-    match mapped {
-        Some((_, outcome)) => policy_from_outcome(outcome),
-        None => AccessDecision::Deny {
-            reason: format!("Unknown capability: {:?}", cap),
-            code: AccessDeniedCode::CapabilityDenied,
-        },
-    }
-}
 
 // ---------------------------------------------------------------------------
 // HostSession adapter
@@ -140,7 +64,7 @@ impl HostSession for RalphHostSessionAdapter {
         let tracked = self
             .session
             .check_capability(Capability::WorkspaceWriteTracked);
-        let mapped_cap = map_mcp_capability(cap);
+        let mapped_cap = lookup_ralph_capability(cap);
         let mapped_outcome = mapped_cap.map(|c| self.session.check_capability(c));
 
         // Delegate to pure policy

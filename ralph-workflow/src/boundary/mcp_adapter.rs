@@ -6,7 +6,7 @@
 
 use crate::agents::session::{AgentSession, Capability};
 use crate::workspace::{DirEntry, Workspace};
-use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, McpCapability};
+use mcp_server::dispatch::access::{AccessDecision, McpCapability};
 use mcp_server::dispatch::host::DirEntry as McpDirEntry;
 use std::path::Path;
 
@@ -27,17 +27,13 @@ impl mcp_server::HostSession for AgentSession {
     }
 
     fn check_capability(&self, capability: McpCapability) -> AccessDecision {
-        let cap = match parse_capability(capability) {
-            Some(cap) => cap,
-            None => {
-                // Unknown McpCapability variant — deny explicitly
-                return AccessDecision::Deny {
-                    reason: format!("Unknown capability variant: {:?}", capability),
-                    code: AccessDeniedCode::CapabilityDenied,
-                };
-            }
-        };
-        translate_policy_outcome(self.check_capability(cap))
+        let ephemeral = self.check_capability(Capability::WorkspaceWriteEphemeral);
+        let tracked = self.check_capability(Capability::WorkspaceWriteTracked);
+        let mapped = crate::mcp_server::capability_mapping::lookup_ralph_capability(capability)
+            .map(|cap| (cap, self.check_capability(cap)));
+        crate::mcp_server::capability_mapping::capability_policy(
+            capability, ephemeral, tracked, mapped,
+        )
     }
 
     fn is_parallel_worker(&self) -> bool {
@@ -45,45 +41,9 @@ impl mcp_server::HostSession for AgentSession {
     }
 
     fn check_edit_area(&self, path: &str) -> AccessDecision {
-        translate_policy_outcome(AgentSession::check_edit_area(self, path))
-    }
-}
-
-/// Translate our PolicyOutcome to mcp_server's AccessDecision.
-fn translate_policy_outcome(outcome: crate::agents::session::PolicyOutcome) -> AccessDecision {
-    match outcome {
-        crate::agents::session::PolicyOutcome::Approved => AccessDecision::Allow,
-        crate::agents::session::PolicyOutcome::Denied { reason } => AccessDecision::Deny {
-            reason,
-            code: AccessDeniedCode::CapabilityDenied,
-        },
-        crate::agents::session::PolicyOutcome::ApprovedWithRestriction { .. } => {
-            // ApprovedWithRestriction means approved but with internal tracking.
-            // For the MCP server, treat as Allow since the session tracks restrictions.
-            AccessDecision::Allow
-        }
-    }
-}
-
-/// Parse an McpCapability to the internal Capability enum.
-///
-/// Returns `None` if the capability is unknown (new variant not yet mapped),
-/// which signals that the check_capability call should deny.
-fn parse_capability(cap: McpCapability) -> Option<Capability> {
-    match cap {
-        McpCapability::WorkspaceRead => Some(Capability::WorkspaceRead),
-        McpCapability::WorkspaceWriteEphemeral => Some(Capability::WorkspaceWriteEphemeral),
-        McpCapability::WorkspaceWriteTracked => Some(Capability::WorkspaceWriteTracked),
-        McpCapability::ProcessExecBounded => Some(Capability::ProcessExecBounded),
-        McpCapability::ProcessExecUnbounded => Some(Capability::ProcessExecUnbounded),
-        McpCapability::ArtifactSubmit => Some(Capability::ArtifactSubmit),
-        McpCapability::RunReportProgress => Some(Capability::RunReportProgress),
-        McpCapability::GitStatusRead => Some(Capability::GitStatusRead),
-        McpCapability::GitWrite => Some(Capability::GitWrite),
-        McpCapability::EnvRead => Some(Capability::EnvRead),
-        McpCapability::EnvWrite => Some(Capability::EnvWrite),
-        // #[non_exhaustive] McpCapability — deny unknown variants explicitly
-        _ => None,
+        crate::mcp_server::capability_mapping::policy_from_outcome(AgentSession::check_edit_area(
+            self, path,
+        ))
     }
 }
 

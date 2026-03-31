@@ -25,7 +25,41 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum McpCapability {
-    /// Read access to workspace files.
+    // ---------------------------------------------------------------------------
+    // Minimum required variants per SPEC (Step 2)
+    // ---------------------------------------------------------------------------
+    /// Read access to workspace files (minimum variant).
+    /// Maps to WorkspaceRead in Ralph capability model.
+    /// Required by: read_file, list_directory, glob, etc.
+    FileRead,
+
+    /// Write access to workspace files (minimum variant).
+    /// Maps to WorkspaceWriteEphemeral or WorkspaceWriteTracked in Ralph.
+    /// Required by: write_file, edit_file, etc.
+    FileWrite,
+
+    /// Read-only access to git repository (minimum variant).
+    /// Maps to GitStatusRead in Ralph capability model.
+    /// Required by: git_status, git_log, git_diff
+    GitRead,
+
+    /// Execute external commands (minimum variant).
+    /// Maps to ProcessExecBounded in Ralph capability model.
+    /// Required by: exec_command, bash, etc.
+    ProcessExec,
+
+    /// Submit artifacts to the workflow for processing.
+    /// Required by: workspace_submit_result
+    ArtifactSubmit,
+
+    /// Coordinate workspace operations across parallel agents.
+    /// Required by: workspace_coordinate, ralph_coordinate
+    WorkspaceCoordination,
+
+    // ---------------------------------------------------------------------------
+    // Additional granular variants (Ralph-specific)
+    // ---------------------------------------------------------------------------
+    /// Read access to workspace files (Ralph-specific variant).
     /// Required by: read_file, list_directory, glob, etc.
     WorkspaceRead,
 
@@ -68,10 +102,6 @@ pub enum McpCapability {
     /// Required by: exec_command (when running without limits - dangerous)
     ProcessExecUnbounded,
 
-    /// Submit artifacts to the workflow for processing.
-    /// Required by: workspace_submit_result
-    ArtifactSubmit,
-
     /// Report progress to the running workflow.
     /// Required by: run_report_progress
     RunReportProgress,
@@ -81,6 +111,14 @@ impl McpCapability {
     /// Returns the string representation of this capability.
     pub fn as_str(&self) -> &'static str {
         match self {
+            // Minimum spec variants
+            McpCapability::FileRead => "FileRead",
+            McpCapability::FileWrite => "FileWrite",
+            McpCapability::GitRead => "GitRead",
+            McpCapability::ProcessExec => "ProcessExec",
+            McpCapability::ArtifactSubmit => "ArtifactSubmit",
+            McpCapability::WorkspaceCoordination => "WorkspaceCoordination",
+            // Ralph-specific variants
             McpCapability::WorkspaceRead => "WorkspaceRead",
             McpCapability::WorkspaceWriteEphemeral => "WorkspaceWriteEphemeral",
             McpCapability::WorkspaceWriteTracked => "WorkspaceWriteTracked",
@@ -91,7 +129,6 @@ impl McpCapability {
             McpCapability::EnvWrite => "EnvWrite",
             McpCapability::ProcessExecBounded => "ProcessExecBounded",
             McpCapability::ProcessExecUnbounded => "ProcessExecUnbounded",
-            McpCapability::ArtifactSubmit => "ArtifactSubmit",
             McpCapability::RunReportProgress => "RunReportProgress",
         }
     }
@@ -99,6 +136,14 @@ impl McpCapability {
     /// Attempts to parse a capability from a string.
     pub fn try_from_str(s: &str) -> Option<Self> {
         match s {
+            // Minimum spec variants
+            "FileRead" => Some(McpCapability::FileRead),
+            "FileWrite" => Some(McpCapability::FileWrite),
+            "GitRead" => Some(McpCapability::GitRead),
+            "ProcessExec" => Some(McpCapability::ProcessExec),
+            "ArtifactSubmit" => Some(McpCapability::ArtifactSubmit),
+            "WorkspaceCoordination" => Some(McpCapability::WorkspaceCoordination),
+            // Ralph-specific variants
             "WorkspaceRead" => Some(McpCapability::WorkspaceRead),
             "WorkspaceWriteEphemeral" => Some(McpCapability::WorkspaceWriteEphemeral),
             "WorkspaceWriteTracked" => Some(McpCapability::WorkspaceWriteTracked),
@@ -109,7 +154,6 @@ impl McpCapability {
             "EnvWrite" => Some(McpCapability::EnvWrite),
             "ProcessExecBounded" => Some(McpCapability::ProcessExecBounded),
             "ProcessExecUnbounded" => Some(McpCapability::ProcessExecUnbounded),
-            "ArtifactSubmit" => Some(McpCapability::ArtifactSubmit),
             "RunReportProgress" => Some(McpCapability::RunReportProgress),
             _ => None,
         }
@@ -119,7 +163,8 @@ impl McpCapability {
     pub fn is_write(&self) -> bool {
         matches!(
             self,
-            McpCapability::WorkspaceWriteEphemeral
+            McpCapability::FileWrite
+                | McpCapability::WorkspaceWriteEphemeral
                 | McpCapability::WorkspaceWriteTracked
                 | McpCapability::WorkspaceWriteAny
                 | McpCapability::GitWrite
@@ -131,20 +176,29 @@ impl McpCapability {
     pub fn is_read(&self) -> bool {
         matches!(
             self,
-            McpCapability::WorkspaceRead | McpCapability::GitStatusRead | McpCapability::EnvRead
+            McpCapability::FileRead
+                | McpCapability::WorkspaceRead
+                | McpCapability::GitRead
+                | McpCapability::GitStatusRead
+                | McpCapability::EnvRead
         )
     }
 
     /// Returns true if this capability involves git operations.
     pub fn is_git(&self) -> bool {
-        matches!(self, McpCapability::GitStatusRead | McpCapability::GitWrite)
+        matches!(
+            self,
+            McpCapability::GitRead | McpCapability::GitStatusRead | McpCapability::GitWrite
+        )
     }
 
     /// Returns true if this capability involves process execution.
     pub fn is_process(&self) -> bool {
         matches!(
             self,
-            McpCapability::ProcessExecBounded | McpCapability::ProcessExecUnbounded
+            McpCapability::ProcessExec
+                | McpCapability::ProcessExecBounded
+                | McpCapability::ProcessExecUnbounded
         )
     }
 }

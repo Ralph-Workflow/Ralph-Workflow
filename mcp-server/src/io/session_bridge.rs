@@ -215,6 +215,20 @@ impl Clone for SessionBridge {
     }
 }
 
+impl Drop for SessionBridge {
+    fn drop(&mut self) {
+        // Signal the server thread to shut down if it was started.
+        if self.started {
+            self.shutdown();
+        }
+        // Clean up the socket file. This is safe because:
+        // 1. If started, the shutdown signal will cause the listener to close
+        //    before the socket file is removed.
+        // 2. If not started, there's no listener using the socket.
+        let _ = std::fs::remove_file(&self.socket_path);
+    }
+}
+
 /// Build a unique socket path for a session.
 fn build_socket_path(nonce: usize) -> PathBuf {
     let socket_dir = std::env::temp_dir().join("ralph-mcp");
