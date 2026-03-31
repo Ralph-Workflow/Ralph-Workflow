@@ -25,14 +25,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 
+/// Errors that can occur during tool dispatch.
 #[derive(Error, Debug)]
 pub enum ToolError {
+    /// Tool name was not found in the registry.
     #[error("Tool not found: {0}")]
     NotFound(String),
+    /// Request parameters are missing or malformed.
     #[error("Invalid parameters: {0}")]
     InvalidParams(String),
+    /// Session lacks the capability required for this tool.
     #[error("Capability denied: {0}")]
     CapabilityDenied(String),
+    /// Tool handler encountered an error during execution.
     #[error("Execution error: {0}")]
     ExecutionError(String),
 }

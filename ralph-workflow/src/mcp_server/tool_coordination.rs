@@ -97,6 +97,75 @@ pub fn handle_declare_complete(
     })
 }
 
+/// Format the coordination response text.
+fn format_coordination_text(
+    action: &str,
+    session_id: &str,
+    timestamp: u64,
+    work_unit_id: Option<&str>,
+    payload: Option<&serde_json::Value>,
+) -> String {
+    let mut message = format!(
+        "Coordination action '{}' processed: session_id={}, timestamp={}",
+        action, session_id, timestamp
+    );
+    if let Some(id) = work_unit_id {
+        message.push_str(&format!(", work_unit_id={}", id));
+    }
+    if let Some(p) = payload {
+        message.push_str(&format!(", payload={}", p));
+    }
+    message.push_str("\n[Coordination event emitted to pipeline]");
+    message
+}
+
+/// Coordinate parallel worker activities.
+///
+/// This tool allows parallel workers to coordinate their activities, such as
+/// claiming work units, reporting status, or acknowledging task distribution.
+///
+/// Requires: `Capability::ArtifactSubmit` — coordinates artifact-based workflow.
+///
+/// Parameters:
+/// - `action`: The coordination action (e.g., "claim", "release", "status", "ack")
+/// - `work_unit_id`: Optional identifier for the work unit being coordinated
+/// - `payload`: Optional JSON payload for coordination data
+pub fn handle_coordinate(
+    session: &AgentSession,
+    _workspace: &dyn Workspace,
+    params: serde_json::Value,
+) -> Result<ToolResult, ToolError> {
+    require_capability(
+        session,
+        Capability::ArtifactSubmit,
+        "Workspace coordination",
+    )?;
+    let action = params
+        .get("action")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolError::InvalidParams("Missing 'action' parameter".to_string()))?;
+    let work_unit_id = params.get("work_unit_id").and_then(|v| v.as_str());
+    let payload = params.get("payload");
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let message = format_coordination_text(
+        action,
+        &session.session_id.to_string(),
+        timestamp,
+        work_unit_id,
+        payload,
+    );
+
+    Ok(ToolResult {
+        content: vec![ToolContent::text(message)],
+        is_error: Some(false),
+    })
+}
+
 /// Read an environment variable.
 ///
 /// Requires: `Capability::EnvRead`

@@ -18,22 +18,19 @@
 //! Ralph MCP tools registered. The handlers capture `Arc<AgentSession>` and
 //! `Arc<dyn Workspace>` at creation time and delegate to the real tool implementations.
 
-use crate::agents::session::{
-    AgentSession, AuditRecord as RalphAuditRecord, Capability, PolicyOutcome,
-};
+use crate::agents::session::{AgentSession, Capability, PolicyOutcome};
 use crate::mcp_server::tool_artifact;
 use crate::mcp_server::tool_coordination;
 use crate::mcp_server::tool_exec;
 use crate::mcp_server::tool_git_read;
 use crate::mcp_server::tool_workspace;
 use crate::workspace::Workspace;
-use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, AuditSink, McpCapability};
-use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
+use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, McpCapability};
 use mcp_server::dispatch::host::{DirEntry, HostSession, WorkspaceAdapter};
 use mcp_server::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
 use mcp_server::protocol::ToolDefinition;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Capability mapping
@@ -821,6 +818,103 @@ fn make_read_env_tool(
     (meta, handler)
 }
 
+/// ## `ralph_list_directory_recursive` — RPC Contract
+///
+/// Lists the contents of a directory and all subdirectories recursively.
+///
+/// ### Required Capability
+/// `WorkspaceRead` — Caller must have workspace read access.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `path` | `string` | Directory path to list recursively |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing all directory entries recursively.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `path` is missing
+/// - `ToolError::ExecutionError` if the directory cannot be read
+///
+/// ### Mutating
+/// No — this operation only reads directory metadata.
+fn make_list_directory_recursive_tool(
+    session: Arc<AgentSession>,
+    workspace: Arc<dyn Workspace>,
+) -> (ToolMetadata, ToolHandler) {
+    let meta = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_list_directory_recursive".to_string(),
+            description: "List directory contents recursively".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "Directory path to list recursively" }
+                },
+                "required": ["path"]
+            }),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None, // derived from required_capability at registration
+    };
+    let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
+        tool_workspace::handle_list_directory_recursive(&session, workspace.as_ref(), params)
+    });
+    (meta, handler)
+}
+
+/// ## `ralph_coordinate` — RPC Contract
+///
+/// Coordinates parallel worker activities such as claiming work units,
+/// reporting status, or acknowledging task distribution.
+///
+/// ### Required Capability
+/// `ArtifactSubmit` — Caller must have artifact submission capability.
+///
+/// ### Parameters
+/// | Name | Type | Description |
+/// |------|------|-------------|
+/// | `action` | `string` | Coordination action (e.g., "claim", "release", "status", "ack") |
+/// | `work_unit_id` | `string` | Optional identifier for the work unit being coordinated |
+/// | `payload` | `object` | Optional JSON payload for coordination data |
+///
+/// ### Returns
+/// `ToolResult` with `content` array containing a text block confirming coordination.
+///
+/// ### Errors
+/// - `ToolError::InvalidParams` if `action` is missing
+/// - `ToolError::CapabilityDenied` if session lacks `ArtifactSubmit` capability
+///
+/// ### Mutating
+/// No — this operation only coordinates workflow state.
+fn make_coordinate_tool(
+    session: Arc<AgentSession>,
+    workspace: Arc<dyn Workspace>,
+) -> (ToolMetadata, ToolHandler) {
+    let meta = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_coordinate".to_string(),
+            description: "Coordinate parallel worker activities".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string", "description": "Coordination action (claim, release, status, ack)" },
+                    "work_unit_id": { "type": "string", "description": "Optional work unit identifier" },
+                    "payload": { "type": "object", "description": "Optional coordination payload" }
+                },
+                "required": ["action"]
+            }),
+        },
+        required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None, // derived from required_capability at registration
+    };
+    let handler: ToolHandler = Arc::new(move |_host, _ws, params| {
+        tool_coordination::handle_coordinate(&session, workspace.as_ref(), params)
+    });
+    (meta, handler)
+}
+
 // ---------------------------------------------------------------------------
 // Registry builder
 // ---------------------------------------------------------------------------
@@ -848,116 +942,11 @@ pub(crate) fn build_ralph_tool_registry(
         make_report_progress_tool(Arc::clone(&session), Arc::clone(&workspace)),
         make_declare_complete_tool(Arc::clone(&session), Arc::clone(&workspace)),
         make_read_env_tool(Arc::clone(&session), Arc::clone(&workspace)),
+        make_list_directory_recursive_tool(Arc::clone(&session), Arc::clone(&workspace)),
+        make_coordinate_tool(Arc::clone(&session), Arc::clone(&workspace)),
     ];
     ToolRegistry::new(tools)
 }
 
-// ---------------------------------------------------------------------------
-// Audit sink adapter
-// ---------------------------------------------------------------------------
-
-/// Policy: map McpCapability back to Ralph Capability for audit record emission.
-///
-/// This is the inverse of `map_mcp_capability` used in `RalphHostSessionAdapter`.
-fn map_capability_to_ralph(cap: McpCapability) -> Capability {
-    match cap {
-        McpCapability::WorkspaceRead => Capability::WorkspaceRead,
-        McpCapability::WorkspaceWriteEphemeral => Capability::WorkspaceWriteEphemeral,
-        McpCapability::WorkspaceWriteTracked => Capability::WorkspaceWriteTracked,
-        McpCapability::WorkspaceWriteAny => Capability::WorkspaceWriteTracked,
-        McpCapability::GitStatusRead => Capability::GitStatusRead,
-        McpCapability::GitWrite => Capability::GitWrite,
-        McpCapability::EnvRead => Capability::EnvRead,
-        McpCapability::EnvWrite => Capability::EnvWrite,
-        McpCapability::ProcessExecBounded => Capability::ProcessExecBounded,
-        McpCapability::ProcessExecUnbounded => Capability::ProcessExecUnbounded,
-        McpCapability::ArtifactSubmit => Capability::ArtifactSubmit,
-        McpCapability::RunReportProgress => Capability::RunReportProgress,
-        // #[non_exhaustive] McpCapability — fail-closed for authorization (handled by
-        // map_mcp_capability above). For audit records, use WorkspaceRead as safe
-        // fallback to preserve audit functionality rather than crashing.
-        _ => Capability::WorkspaceRead,
-    }
-}
-
-/// Policy: convert McpAuditRecord decision to Ralph PolicyOutcome.
-fn outcome_from_decision(decision: &AccessDecision) -> PolicyOutcome {
-    match decision {
-        AccessDecision::Allow => PolicyOutcome::Approved,
-        AccessDecision::Deny { .. } => PolicyOutcome::Denied {
-            reason: decision.to_error_string(),
-        },
-    }
-}
-
-/// Adapter that implements `mcp_server::dispatch::access::AuditSink` to bridge
-/// MCP audit records into Ralph's `AuditTrail`.
-///
-/// This adapter translates `mcp_server::dispatch::audit::AuditRecord` (with
-/// `timestamp_nanos`, `session_id`, `tool_name`, `decision`, `path`, `capability`)
-/// into Ralph's `AuditRecord` format (with `session_id: AgentSessionId`,
-/// `timestamp: u64` in seconds, `capability: Capability`, `outcome: PolicyOutcome`,
-/// `description: String`).
-///
-/// Stores records in an internal buffer that can be drained via `drain_records()`.
-pub(crate) struct RalphAuditSinkAdapter {
-    records: Mutex<Vec<RalphAuditRecord>>,
-}
-
-impl RalphAuditSinkAdapter {
-    /// Create a new empty audit sink adapter.
-    pub(crate) fn new() -> Self {
-        Self {
-            records: Mutex::new(Vec::new()),
-        }
-    }
-
-    /// Drain all accumulated audit records, returning them and clearing the buffer.
-    pub(crate) fn drain_records(&self) -> Vec<RalphAuditRecord> {
-        let mut records = self.records.lock().unwrap();
-        std::mem::take(&mut records)
-    }
-}
-
-impl Default for RalphAuditSinkAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AuditSink for RalphAuditSinkAdapter {
-    fn emit(&self, record: McpAuditRecord) {
-        let capability = record
-            .capability
-            .map(map_capability_to_ralph)
-            .unwrap_or(Capability::WorkspaceRead);
-
-        // Convert nanoseconds timestamp to seconds
-        let timestamp_secs = record.timestamp_nanos / 1_000_000_000;
-
-        // Build description from tool name and decision
-        let description = if record.decision.is_allowed() {
-            format!("MCP tool '{}' executed successfully", record.tool_name)
-        } else {
-            format!(
-                "MCP tool '{}' access denied: {}",
-                record.tool_name,
-                record.decision.to_error_string()
-            )
-        };
-
-        let ralph_record = RalphAuditRecord::new(
-            crate::agents::session::AgentSessionId::from_string(record.session_id.clone()),
-            timestamp_secs,
-            capability,
-            outcome_from_decision(&record.decision),
-            description,
-        );
-
-        self.records.lock().unwrap().push(ralph_record);
-    }
-
-    fn flush(&self) {
-        // No-op: records are already stored in memory
-    }
-}
+// Re-export RalphAuditSinkAdapter from the audit_adapter submodule
+pub(crate) use super::audit_adapter::RalphAuditSinkAdapter;

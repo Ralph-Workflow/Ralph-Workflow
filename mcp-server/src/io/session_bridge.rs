@@ -33,20 +33,25 @@ use thiserror::Error;
 /// Environment variable name for passing MCP endpoint to agents.
 static SOCKET_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// Environment variable name used to pass the MCP server endpoint to agent processes.
 pub const MCP_ENDPOINT_ENV: &str = "RALPH_MCP_ENDPOINT";
 
 /// Errors that can occur during session bridge operations.
 #[derive(Error, Debug)]
 pub enum SessionBridgeError {
+    /// A transport-level error (I/O, framing, or connection failure).
     #[error("Transport error: {0}")]
     Transport(String),
 
+    /// An error from the underlying MCP server.
     #[error("Server error: {0}")]
     Server(String),
 
+    /// Attempted to start a bridge that is already running.
     #[error("Session already started")]
     AlreadyStarted,
 
+    /// Attempted an operation on a bridge that has not been started.
     #[error("Bridge not started")]
     NotStarted,
 }
@@ -270,27 +275,41 @@ enum AcceptOutcome {
     Exit,
 }
 
-/// Execute accept action. Returns outcome to signal loop continuation.
+/// Execute accept action. Returns outcome to signal loop continuation and updated state.
+///
+/// # Per-Connection State
+///
+/// Each new client connection MUST start from `ServerState::Uninitialized` so that
+/// the initialize handshake is enforced for every connection. The state is NOT
+/// carried across connections — accumulated state from previous connections is discarded.
 fn execute_accept_action(
     cls: AcceptClass,
     server: &McpServer,
     shutdown_flag: &Arc<AtomicBool>,
     state: ServerState,
-) -> AcceptOutcome {
+) -> (AcceptOutcome, ServerState) {
     match cls {
         AcceptClass::Connection(mut stream) => {
-            handle_connection(server, &mut stream, shutdown_flag, state);
-            AcceptOutcome::Continue
+            // Each new connection must complete the initialize handshake, regardless of
+            // what state the server was in after the previous connection.
+            // The `state` parameter is intentionally ignored — always use Uninitialized.
+            let new_state = handle_connection(
+                server,
+                &mut stream,
+                shutdown_flag,
+                ServerState::Uninitialized,
+            );
+            (AcceptOutcome::Continue, new_state)
         }
         AcceptClass::NoConnection => {
             std::thread::sleep(std::time::Duration::from_millis(50));
-            AcceptOutcome::Continue
+            (AcceptOutcome::Continue, state)
         }
-        AcceptClass::Shutdown => AcceptOutcome::Exit,
+        AcceptClass::Shutdown => (AcceptOutcome::Exit, state),
         AcceptClass::Error(e) => {
             eprintln!("MCP transport error in accept: {}", e);
             std::thread::sleep(std::time::Duration::from_millis(50));
-            AcceptOutcome::Continue
+            (AcceptOutcome::Continue, state)
         }
     }
 }
@@ -358,13 +377,16 @@ fn run_server_loop(
     shutdown_flag: &Arc<AtomicBool>,
     state: ServerState,
 ) -> Result<(), SessionBridgeError> {
+    let mut state = state;
     loop {
         // 1. Gather input
         let accept_result = listener.accept();
         // 2. Pure classification
         let cls = classify_accept(accept_result);
         // 3. Execute and decide continuation
-        match execute_accept_action(cls, server, shutdown_flag, state) {
+        let (outcome, new_state) = execute_accept_action(cls, server, shutdown_flag, state);
+        state = new_state;
+        match outcome {
             AcceptOutcome::Continue => {}
             AcceptOutcome::Exit => return Ok(()),
         }

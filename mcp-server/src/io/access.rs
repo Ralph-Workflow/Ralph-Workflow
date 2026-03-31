@@ -22,6 +22,7 @@ pub struct InMemoryAuditSink {
 }
 
 impl InMemoryAuditSink {
+    /// Creates a new InMemoryAuditSink with the specified maximum record capacity.
     pub fn new(max_records: usize) -> Self {
         Self {
             records: std::sync::Mutex::new(Vec::with_capacity(max_records)),
@@ -29,14 +30,17 @@ impl InMemoryAuditSink {
         }
     }
 
+    /// Returns a copy of all stored audit records.
     pub fn records(&self) -> Vec<PureAuditRecord> {
         self.records.lock().unwrap().clone()
     }
 
+    /// Clears all stored audit records.
     pub fn clear(&self) {
         self.records.lock().unwrap().clear();
     }
 
+    /// Returns true if this sink has stored any audit records.
     pub fn has_records(&self) -> bool {
         !self.records.lock().unwrap().is_empty()
     }
@@ -110,6 +114,9 @@ pub struct McpServerConfig {
 }
 
 impl McpServerConfig {
+    /// Create a new config with the given root directory and default settings.
+    ///
+    /// Default access mode is `ReadWrite`, tool filter is `Unrestricted`.
     pub fn new(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
@@ -119,6 +126,9 @@ impl McpServerConfig {
         }
     }
 
+    /// Create a config that blocks all operations.
+    ///
+    /// Access mode is `Locked`, tool filter is `Unrestricted`.
     pub fn locked(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
@@ -128,6 +138,9 @@ impl McpServerConfig {
         }
     }
 
+    /// Create a config that allows only read operations.
+    ///
+    /// Access mode is `ReadOnly`, tool filter is `Unrestricted`.
     pub fn read_only(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
@@ -137,16 +150,19 @@ impl McpServerConfig {
         }
     }
 
+    /// Set the access mode.
     pub fn with_access_mode(mut self, mode: crate::dispatch::access::AccessMode) -> Self {
         self.access_mode = mode;
         self
     }
 
+    /// Set the tool filter.
     pub fn with_tool_filter(mut self, filter: ToolFilter) -> Self {
         self.tool_filter = filter;
         self
     }
 
+    /// Set the session identifier for audit record correlation.
     pub fn with_session_id(mut self, id: String) -> Self {
         self.session_id = Some(id);
         self
@@ -213,16 +229,24 @@ fn canonicalize_root(root_dir: &Path) -> Option<PathBuf> {
 ///    This is the only check that delegates to the host via `HostSession`.
 #[derive(Clone)]
 pub struct EnforcementContext<'a> {
+    /// Server configuration for access control.
     pub config: &'a McpServerConfig,
+    /// Tool name being dispatched.
     pub tool_name: &'a str,
+    /// Capability required for the tool.
     pub required_capability: Option<McpCapability>,
+    /// Result of the capability check.
     pub capability_outcome: Option<AccessDecision>,
+    /// Path involved in the operation.
     pub path: Option<&'a Path>,
+    /// Whether the tool is a mutating operation.
     pub is_mutating: bool,
+    /// Audit sink for recording access decisions.
     pub audit_sink: &'a dyn AuditSink,
 }
 
 impl<'a> EnforcementContext<'a> {
+    /// Create a new enforcement context with the given config and tool name.
     pub fn new(
         config: &'a McpServerConfig,
         tool_name: &'a str,
@@ -239,21 +263,25 @@ impl<'a> EnforcementContext<'a> {
         }
     }
 
+    /// Set the capability required for this tool.
     pub fn with_capability(mut self, cap: McpCapability) -> Self {
         self.required_capability = Some(cap);
         self
     }
 
+    /// Set the path involved in the operation.
     pub fn with_path(mut self, path: &'a Path) -> Self {
         self.path = Some(path);
         self
     }
 
+    /// Set whether the tool is a mutating operation.
     pub fn with_mutating(mut self, is_mutating: bool) -> Self {
         self.is_mutating = is_mutating;
         self
     }
 
+    /// Set the result of the capability check.
     pub fn with_capability_outcome(mut self, outcome: AccessDecision) -> Self {
         self.capability_outcome = Some(outcome);
         self

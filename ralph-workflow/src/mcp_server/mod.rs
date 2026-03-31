@@ -26,6 +26,7 @@
 //! 5. Record audit entry
 //! 6. Return result or error
 
+pub(crate) mod audit_adapter;
 pub mod session_bridge;
 pub mod tool_artifact;
 pub(crate) mod tool_bridge;

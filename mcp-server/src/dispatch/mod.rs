@@ -42,11 +42,17 @@ use std::path::Path;
 /// Dispatch target for request routing.
 #[derive(Debug, Clone, Copy)]
 pub enum DispatchTarget {
+    /// Route to initialize handshake handler.
     Initialize,
+    /// Route to not-ready rejection (server state requires initialize before tools).
     NotReady,
+    /// Route to ping handler.
     Ping,
+    /// Route to tools/list handler.
     ToolsList,
+    /// Route to tools/call handler.
     ToolsCall,
+    /// Route to method-not-found error.
     Unknown,
 }
 

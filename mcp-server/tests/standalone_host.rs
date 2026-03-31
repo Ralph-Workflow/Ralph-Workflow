@@ -52,6 +52,11 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+/// Returns a safe temp root for MCP tests that is guaranteed not to be inside a git repo.
+fn temp_root() -> PathBuf {
+    std::env::temp_dir().join("ralph-mcp-test")
+}
+
 // ---------------------------------------------------------------------------
 // Standalone HostSession Implementation
 // ---------------------------------------------------------------------------
@@ -217,7 +222,7 @@ impl mcp_server::WorkspaceAdapter for InMemoryWorkspace {
 fn create_test_server(session: InMemorySession, workspace: InMemoryWorkspace) -> McpServer {
     let session = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let config = McpServerConfig::new(PathBuf::from("/tmp/test-workspace"));
+    let config = McpServerConfig::new(temp_root());
     let registry = ToolRegistry::new(vec![]);
 
     McpServer::new(session, config, workspace, registry, None)
@@ -229,8 +234,10 @@ fn create_test_server(session: InMemorySession, workspace: InMemoryWorkspace) ->
 
 #[test]
 fn test_standalone_session_check_capability() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     let session = InMemorySession::new("test-session");
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp"));
+    let workspace = InMemoryWorkspace::new(root);
 
     let server = create_test_server(session, workspace);
 
@@ -247,12 +254,13 @@ fn test_standalone_session_check_capability() {
 
 #[test]
 fn test_standalone_workspace_read_write() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     let session = InMemorySession::new("test-session").with_capabilities(&[
         McpCapability::WorkspaceRead,
         McpCapability::WorkspaceWriteTracked,
     ]);
-    let workspace =
-        InMemoryWorkspace::new(PathBuf::from("/tmp")).with_file("test.txt", "Hello, World!");
+    let workspace = InMemoryWorkspace::new(root).with_file("test.txt", "Hello, World!");
 
     let server = create_test_server(session, workspace);
 
@@ -280,10 +288,12 @@ fn test_standalone_workspace_read_write() {
 
 #[test]
 fn test_capability_denial_from_session() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     // Session without GitStatusRead capability
     let session = InMemorySession::new("restricted-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]); // No GitStatusRead
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp"));
+    let workspace = InMemoryWorkspace::new(root.clone());
 
     let server = create_test_server(session, workspace);
 
@@ -321,11 +331,11 @@ fn test_capability_denial_from_session() {
     // The actual denial happens in the registry when dispatch is called.
     let session_with_git = InMemorySession::new("test-session")
         .with_capabilities(&[McpCapability::WorkspaceRead, McpCapability::GitStatusRead]);
-    let workspace_with_git = InMemoryWorkspace::new(PathBuf::from("/tmp"));
+    let workspace_with_git = InMemoryWorkspace::new(root.clone());
 
     let session_arc = Arc::new(session_with_git) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace_with_git) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let config = McpServerConfig::new(PathBuf::from("/tmp"));
+    let config = McpServerConfig::new(root);
     let registry = ToolRegistry::new(vec![(metadata, handler)]);
     let server_with_git = McpServer::new(session_arc, config, workspace_arc, registry, None);
 
@@ -359,6 +369,8 @@ fn test_capability_denial_from_session() {
 
 #[test]
 fn test_parallel_worker_edit_area() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     // Session that is a parallel worker with restricted edit area
     let session = InMemorySession::new("parallel-worker")
         .with_capabilities(&[
@@ -366,7 +378,7 @@ fn test_parallel_worker_edit_area() {
             McpCapability::WorkspaceWriteTracked,
         ])
         .with_parallel_worker(true);
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/project"));
+    let workspace = InMemoryWorkspace::new(root);
 
     let server = create_test_server(session, workspace);
 
@@ -389,17 +401,17 @@ fn test_parallel_worker_edit_area() {
 /// Test that ReadOnly mode denies write operations.
 #[test]
 fn test_read_only_mode_denies_write_tool() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     // Create a read-only config
-    let config = McpServerConfig::new(PathBuf::from("/tmp/test-workspace"))
-        .with_access_mode(AccessMode::ReadOnly);
+    let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadOnly);
 
     // Session with write capability
     let session = InMemorySession::new("ro-session").with_capabilities(&[
         McpCapability::WorkspaceRead,
         McpCapability::WorkspaceWriteTracked,
     ]);
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp/test-workspace"))
-        .with_file("test.txt", "content");
+    let workspace = InMemoryWorkspace::new(root).with_file("test.txt", "content");
 
     // Create a Ralph-prefixed write tool that would be blocked by ReadOnly mode
     let handler: ToolHandler = Arc::new(
@@ -474,14 +486,15 @@ fn test_read_only_mode_denies_write_tool() {
 /// Test that Allowlist filter blocks tools not in the list.
 #[test]
 fn test_allowlist_blocks_unlisted_tool() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     // Create config with allowlist that only permits "read_file"
-    let config = McpServerConfig::new(PathBuf::from("/tmp/test-workspace"))
+    let config = McpServerConfig::new(root.clone())
         .with_tool_filter(ToolFilter::Allowlist(vec!["read_file".to_string()]));
 
     let session = InMemorySession::new("allowlist-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]);
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp/test-workspace"))
-        .with_file("test.txt", "content");
+    let workspace = InMemoryWorkspace::new(root).with_file("test.txt", "content");
 
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
@@ -522,13 +535,15 @@ fn test_allowlist_blocks_unlisted_tool() {
 /// Test that Blocklist filter blocks tools in the list.
 #[test]
 fn test_blocklist_blocks_listed_tool() {
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
     // Create config with blocklist that blocks "git_status"
-    let config = McpServerConfig::new(PathBuf::from("/tmp/test-workspace"))
+    let config = McpServerConfig::new(root.clone())
         .with_tool_filter(ToolFilter::Blocklist(vec!["git_status".to_string()]));
 
     let session = InMemorySession::new("blocklist-session")
         .with_capabilities(&[McpCapability::WorkspaceRead, McpCapability::GitStatusRead]);
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp/test-workspace"));
+    let workspace = InMemoryWorkspace::new(root);
 
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
@@ -571,14 +586,16 @@ fn test_blocklist_blocks_listed_tool() {
 fn test_session_bridge_full_protocol_flow() {
     use std::time::Duration;
 
+    let root = temp_root();
+    test_helpers::assert_mcp_test_no_real_git(&root);
+
     // Create fake implementations
     let session = InMemorySession::new("bridge-test-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]);
-    let workspace = InMemoryWorkspace::new(PathBuf::from("/tmp/test-workspace"))
-        .with_file("test.txt", "Hello from bridge!");
+    let workspace =
+        InMemoryWorkspace::new(root.clone()).with_file("test.txt", "Hello from bridge!");
 
-    let config = McpServerConfig::new(PathBuf::from("/tmp/test-workspace"))
-        .with_access_mode(AccessMode::ReadOnly);
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
 
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;

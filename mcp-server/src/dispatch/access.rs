@@ -78,6 +78,7 @@ pub enum McpCapability {
 }
 
 impl McpCapability {
+    /// Returns the string representation of this capability.
     pub fn as_str(&self) -> &'static str {
         match self {
             McpCapability::WorkspaceRead => "WorkspaceRead",
@@ -95,6 +96,7 @@ impl McpCapability {
         }
     }
 
+    /// Attempts to parse a capability from a string.
     pub fn try_from_str(s: &str) -> Option<Self> {
         match s {
             "WorkspaceRead" => Some(McpCapability::WorkspaceRead),
@@ -113,6 +115,7 @@ impl McpCapability {
         }
     }
 
+    /// Returns true if this capability represents a write operation.
     pub fn is_write(&self) -> bool {
         matches!(
             self,
@@ -124,6 +127,7 @@ impl McpCapability {
         )
     }
 
+    /// Returns true if this capability represents a read operation.
     pub fn is_read(&self) -> bool {
         matches!(
             self,
@@ -131,10 +135,12 @@ impl McpCapability {
         )
     }
 
+    /// Returns true if this capability involves git operations.
     pub fn is_git(&self) -> bool {
         matches!(self, McpCapability::GitStatusRead | McpCapability::GitWrite)
     }
 
+    /// Returns true if this capability involves process execution.
     pub fn is_process(&self) -> bool {
         matches!(
             self,
@@ -175,6 +181,7 @@ pub enum AccessMode {
 }
 
 impl AccessMode {
+    /// Returns true if this access mode permits the given capability.
     pub fn allows(&self, capability: McpCapability) -> bool {
         use McpCapability::*;
         match (self, capability) {
@@ -186,14 +193,17 @@ impl AccessMode {
         }
     }
 
+    /// Returns true if this access mode permits write operations.
     pub fn allows_write(&self) -> bool {
         matches!(self, AccessMode::ReadWrite | AccessMode::EphemeralOnly)
     }
 
+    /// Returns true if this access mode permits git operations.
     pub fn allows_git(&self) -> bool {
         matches!(self, AccessMode::ReadWrite)
     }
 
+    /// Returns true if this access mode permits process execution.
     pub fn allows_process(&self) -> bool {
         matches!(self, AccessMode::ReadWrite)
     }
@@ -232,6 +242,7 @@ pub enum ToolFilter {
 }
 
 impl ToolFilter {
+    /// Returns true if the tool name is permitted by this filter.
     pub fn allows(&self, tool_name: &str) -> bool {
         match self {
             ToolFilter::Unrestricted => true,
@@ -240,6 +251,7 @@ impl ToolFilter {
         }
     }
 
+    /// Returns an iterator over the blocked tool names in this filter.
     pub fn blocked_tools<'a>(&'a self) -> Box<dyn Iterator<Item = &'a str> + 'a> {
         match self {
             ToolFilter::Unrestricted => Box::new(std::iter::empty()),
@@ -248,6 +260,7 @@ impl ToolFilter {
         }
     }
 
+    /// Returns the number of tools in this filter.
     pub fn len(&self) -> usize {
         match self {
             ToolFilter::Unrestricted => 0,
@@ -256,10 +269,12 @@ impl ToolFilter {
         }
     }
 
+    /// Returns true if this filter has no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Returns true if this filter is Unrestricted (allows all tools).
     pub fn is_unrestricted(&self) -> bool {
         matches!(self, ToolFilter::Unrestricted)
     }
@@ -283,10 +298,12 @@ pub enum AccessDecision {
 }
 
 impl AccessDecision {
+    /// Returns true if this decision is Allow.
     pub fn is_allowed(&self) -> bool {
         matches!(self, AccessDecision::Allow)
     }
 
+    /// Returns the denial code if this decision is a denial.
     pub fn denial_code(&self) -> Option<AccessDeniedCode> {
         match self {
             AccessDecision::Deny { code, .. } => Some(*code),
@@ -294,6 +311,7 @@ impl AccessDecision {
         }
     }
 
+    /// Returns a human-readable string representation of this decision.
     pub fn to_error_string(&self) -> String {
         match self {
             AccessDecision::Allow => "Allowed".to_string(),
@@ -369,11 +387,13 @@ impl std::fmt::Display for AccessDeniedCode {
 /// Result of a single enforcement check.
 #[derive(Debug)]
 pub enum EnforcementCheck {
-    /// Access allowed.
+    /// Access allowed — the request passes this check.
     Allow,
-    /// Access denied.
+    /// Access denied — the request fails this check with the given code and reason.
     Deny {
+        /// Categorical denial code.
         code: AccessDeniedCode,
+        /// Human-readable explanation of the denial.
         reason: String,
     },
 }
@@ -437,13 +457,21 @@ pub fn denial_reason_path_outside_root(
 /// Bundles all inputs needed for enforcement evaluation into a single struct
 /// to avoid clippy's 7-parameter limit.
 pub struct EnforcementParams<'a> {
+    /// Tool name being dispatched.
     pub tool_name: &'a str,
+    /// Active tool filter (Allowlist, Blocklist, or Unrestricted).
     pub tool_filter: &'a ToolFilter,
+    /// Whether the tool is a mutating operation.
     pub is_mutating: bool,
+    /// Server access mode (ReadOnly, ReadWrite, etc.).
     pub access_mode: &'a AccessMode,
+    /// Path involved in the operation, if applicable.
     pub path: Option<&'a std::path::Path>,
+    /// Authorized root directory for file operations.
     pub root_dir: &'a std::path::Path,
+    /// Path canonicalization function.
     pub is_path_allowed: Box<dyn Fn(&std::path::Path) -> bool + 'a>,
+    /// Result of the capability check, if performed.
     pub capability_outcome: &'a Option<AccessDecision>,
 }
 
@@ -492,16 +520,21 @@ pub fn evaluate_enforcement_pure(params: &EnforcementParams) -> EnforcementCheck
     EnforcementCheck::Allow
 }
 
-/// Trait for audit sink implementations.
+/// Receives audit records from the MCP server dispatch layer.
 ///
 /// Implementations receive [`crate::dispatch::AuditRecord`] from the dispatch layer and are
 /// responsible for persisting or transmitting them. The io layer provides
 /// the concrete implementation with real timestamps.
 pub trait AuditSink: Send + Sync {
+    /// Emit an audit record for a tool invocation or access decision.
     fn emit(&self, record: crate::dispatch::audit::AuditRecord);
+    /// Flush any buffered records. Implementations may batch records for efficiency.
     fn flush(&self) {}
 }
 
+/// A no-op audit sink that discards all records.
+///
+/// Used when audit logging is disabled or not required.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoOpAuditSink;
 

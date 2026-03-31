@@ -12,12 +12,17 @@ use std::path::PathBuf;
 /// pure dispatch layer. The I/O layer sets the real timestamp on emit.
 #[derive(Debug, Clone)]
 pub struct AuditRecord {
-    /// Nanoseconds since UNIX_EPOCH (set by io layer on emit).
+    /// Nanoseconds since UNIX_EPOCH. Set by the io layer when the record is emitted.
     pub timestamp_nanos: u64,
+    /// Unique session identifier for the request.
     pub session_id: String,
+    /// Name of the tool or method invoked.
     pub tool_name: String,
+    /// The access decision made for this invocation.
     pub decision: AccessDecision,
+    /// Path involved in the operation, if applicable.
     pub path: Option<PathBuf>,
+    /// Capability required for the operation, if applicable.
     pub capability: Option<McpCapability>,
 }
 
@@ -34,11 +39,13 @@ impl AuditRecord {
         }
     }
 
+    /// Set the path for this audit record.
     pub fn with_path(mut self, path: PathBuf) -> Self {
         self.path = Some(path);
         self
     }
 
+    /// Set the capability for this audit record.
     pub fn with_capability(mut self, capability: McpCapability) -> Self {
         self.capability = Some(capability);
         self

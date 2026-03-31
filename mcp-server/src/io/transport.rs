@@ -31,18 +31,25 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
+/// Errors that can occur during MCP transport operations.
 #[derive(Error, Debug)]
 pub enum TransportError {
+    /// Underlying I/O error (read/write failure).
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// JSON serialization/deserialization failed.
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    /// Content-Length header was missing or malformed.
     #[error("Invalid Content-Length header: {0}")]
     InvalidContentLength(String),
+    /// The connection was closed by the peer.
     #[error("Connection closed")]
     ConnectionClosed,
+    /// Timed out while waiting for a connection.
     #[error("Timeout waiting for connection")]
     Timeout,
+    /// Socket was shut down gracefully.
     #[error("Socket shutdown requested")]
     Shutdown,
 }

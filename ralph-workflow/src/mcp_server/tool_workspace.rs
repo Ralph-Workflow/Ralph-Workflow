@@ -129,6 +129,29 @@ pub fn handle_list_directory(
     })
 }
 
+/// List directory contents recursively.
+///
+/// Requires: `Capability::WorkspaceRead`
+///
+/// Parameters:
+/// - `path`: Directory path to list recursively
+pub fn handle_list_directory_recursive(
+    _session: &AgentSession,
+    workspace: &dyn Workspace,
+    params: serde_json::Value,
+) -> Result<ToolResult, ToolError> {
+    let path = params
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolError::InvalidParams("Missing 'path' parameter".to_string()))?;
+    let mut output = format!("Directory (recursive): {}\n", path);
+    walk_directory_recursive(workspace, Path::new(path), &mut output, 0)?;
+    Ok(ToolResult {
+        content: vec![ToolContent::text(output)],
+        is_error: Some(false),
+    })
+}
+
 /// Check if a filename matches the given search pattern.
 fn filename_matches_pattern(path: &Path, pattern: &str) -> bool {
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");

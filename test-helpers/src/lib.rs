@@ -515,7 +515,18 @@ pub fn git_switch_force(repo: &Repository, branch_name: &str) {
     repo.set_head(&branch_ref).expect("set HEAD");
 }
 
-/// Atomic counter for CWD lock simulation.
+/// Fail fast if an MCP test session would allow real git mutation.
+///
+/// Call this at the start of any MCP test that uses a workspace adapter
+/// pointing to a real filesystem path. Panics if the path is inside a real git repo.
+///
+/// # Policy
+///
+/// MCP tool handlers must NEVER trigger real git mutations during tests.
+/// All workspace operations must go through MemoryWorkspace or InMemoryWorkspace.
+pub fn assert_mcp_test_no_real_git(workspace_root: &std::path::Path) {
+    assert_no_real_git_state(workspace_root);
+}
 /// We use atomic increment/decrement to serialize CWD changes in tests.
 /// A value of 0 means unlocked, >0 means locked.
 static CWD_LOCK: AtomicU32 = AtomicU32::new(0);

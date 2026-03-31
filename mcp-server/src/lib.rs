@@ -125,6 +125,7 @@
 
 #![deny(warnings)]
 #![deny(clippy::all)]
+#![deny(missing_docs)]
 #![deny(
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
