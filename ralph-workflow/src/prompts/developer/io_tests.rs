@@ -362,8 +362,13 @@ fn test_context_based_uses_workspace_rooted_paths() {
         true,
     );
     assert!(
-        continuation_xsd_retry.contains("development_continuation_result.xsd"),
-        "Continuation-mode XSD retry should point at development_continuation_result.xsd"
+        continuation_xsd_retry.contains("development_result.xsd"),
+        "Continuation-mode XSD retry should point at development_result.xsd"
+    );
+    let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+    assert!(
+        !continuation_xsd_retry.contains(forbidden_schema),
+        "Continuation-mode XSD retry must never reference continuation-specific schema files"
     );
 
     // Both should contain the core content (PROMPT and PLAN)
@@ -383,14 +388,19 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
 
     let prompt = prompt_developer_iteration_xsd_retry_with_context_files(
         &context,
-        "Continuation output must not use completed status",
+        "Continuation output validation error",
         &workspace,
         true,
     );
 
     assert!(
-        prompt.contains("development_continuation_result.xsd"),
-        "Continuation-mode XSD retry should point at development_continuation_result.xsd"
+        prompt.contains("development_result.xsd"),
+        "Continuation-mode XSD retry should point at development_result.xsd"
+    );
+    let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+    assert!(
+        !prompt.contains(forbidden_schema),
+        "Continuation-mode XSD retry must never reference continuation-specific schema files"
     );
     assert!(
         prompt.contains("continuation output")
@@ -405,6 +415,33 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
     assert!(
         !prompt.contains("Change the content/meaning of your response - ONLY fix the XML format"),
         "Continuation-mode XSD retry must allow semantic contract fixes required by continuation validation"
+    );
+}
+
+#[test]
+fn test_xsd_retry_source_has_canonical_status_and_schema_guards() {
+    let source = include_str!("system_prompt_iteration_xsd_retry.rs");
+    let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+
+    assert!(
+        source.contains("development_result.xsd"),
+        "Developer XSD retry source must reference the canonical development_result.xsd path"
+    );
+    assert!(
+        !source.contains(forbidden_schema),
+        "Developer XSD retry source must never reference continuation-specific schema paths"
+    );
+    assert!(
+        source.contains("<ralph-status>completed|partial|failed</ralph-status>"),
+        "Developer XSD retry source must keep completed|partial|failed status contract"
+    );
+    assert!(
+        !source.contains(concat!(
+            "<ralph-status>",
+            "partial|failed",
+            "</ralph-status>"
+        )),
+        "Developer XSD retry source must not regress to partial|failed-only status contract"
     );
 }
 

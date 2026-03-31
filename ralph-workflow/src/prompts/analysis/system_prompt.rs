@@ -202,7 +202,7 @@ mod tests {
         assert!(prompt.contains("<ralph-summary>"));
         assert!(prompt.contains("completed|partial|failed"));
         assert!(continuation_prompt.contains("development_result.xsd"));
-        assert!(continuation_prompt.contains("partial|failed"));
+        assert!(continuation_prompt.contains("completed|partial|failed"));
         assert!(!continuation_prompt.contains("<ralph-files-changed>"));
         assert!(
             continuation_prompt.contains("comprehensive, detailed, ordered checklist"),
