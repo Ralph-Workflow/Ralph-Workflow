@@ -422,12 +422,6 @@ mod tests {
         fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
             AccessDecision::Allow
         }
-        fn is_parallel_worker(&self) -> bool {
-            false
-        }
-        fn check_edit_area(&self, _path: &str) -> AccessDecision {
-            AccessDecision::Allow
-        }
     }
 
     struct TestWorkspace;

@@ -87,8 +87,8 @@ impl AuditSink for InMemoryAuditSink {
 ///   resolves outside `root_dir`, regardless of host adapter permissions.
 /// * `access_mode` — Operations permitted by the server. `ReadOnly` rejects mutations;
 ///   `ReadWrite` allows all operations subject to `tool_filter` and capability checks.
-/// * `tool_filter` — Tool dispatch filter. `Unrestricted` allows all registered tools;
-///   `Allowlist` restricts to only named tools; `Blocklist` excludes named tools.
+/// * `tool_filter` — Tool dispatch filter. `Blocklist(vec![])` allows all registered tools;
+///   `Allowlist(names)` restricts to only named tools; `Blocklist(names)` excludes named tools.
 /// * `session_id` — Optional session identifier used for audit record correlation.
 ///   If `None`, audit records use "unknown" as the session identifier.
 #[derive(Debug, Clone)]
@@ -103,7 +103,7 @@ pub struct McpServerConfig {
     /// subject to `tool_filter` and capability checks.
     pub access_mode: crate::dispatch::access::AccessMode,
 
-    /// Tool dispatch filter. `Unrestricted` allows all registered tools;
+    /// Tool dispatch filter. `Blocklist(vec![])` allows all registered tools;
     /// `Allowlist(names)` restricts dispatch to only the named tools;
     /// `Blocklist(names)` excludes only the named tools.
     pub tool_filter: ToolFilter,
@@ -116,36 +116,24 @@ pub struct McpServerConfig {
 impl McpServerConfig {
     /// Create a new config with the given root directory and default settings.
     ///
-    /// Default access mode is `ReadWrite`, tool filter is `Unrestricted`.
+    /// Default access mode is `ReadWrite`, tool filter is `Blocklist(vec![])` (allows all tools).
     pub fn new(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
             access_mode: crate::dispatch::access::AccessMode::ReadWrite,
-            tool_filter: ToolFilter::Unrestricted,
-            session_id: None,
-        }
-    }
-
-    /// Create a config that blocks all operations.
-    ///
-    /// Access mode is `Locked`, tool filter is `Unrestricted`.
-    pub fn locked(root_dir: PathBuf) -> Self {
-        Self {
-            root_dir,
-            access_mode: crate::dispatch::access::AccessMode::Locked,
-            tool_filter: ToolFilter::Unrestricted,
+            tool_filter: ToolFilter::Blocklist(vec![]),
             session_id: None,
         }
     }
 
     /// Create a config that allows only read operations.
     ///
-    /// Access mode is `ReadOnly`, tool filter is `Unrestricted`.
+    /// Access mode is `ReadOnly`, tool filter is `Blocklist(vec![])` (allows all tools).
     pub fn read_only(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
             access_mode: crate::dispatch::access::AccessMode::ReadOnly,
-            tool_filter: ToolFilter::Unrestricted,
+            tool_filter: ToolFilter::Blocklist(vec![]),
             session_id: None,
         }
     }
@@ -170,20 +158,72 @@ impl McpServerConfig {
 
     /// Check if path is allowed - boundary function.
     /// Complexity: gathers I/O (canonicalize) then delegates to pure policy.
+    ///
+    /// Security policy:
+    /// - For relative paths: allow if they join to a path under root_dir.
+    ///   The workspace adapter handles actual access control for non-existent paths.
+    /// - For absolute paths: deny unless they canonicalize to a location within root.
+    ///   This prevents path traversal attacks via symlinks.
     pub fn is_path_allowed(&self, path: &Path) -> bool {
-        let joined = if path.is_relative() {
-            self.root_dir.join(path)
-        } else {
-            path.to_path_buf()
-        };
+        // For relative paths, verify by joining and checking components
+        if path.is_relative() {
+            let joined = self.root_dir.join(path);
+            // Use components to check - this handles .. correctly by normalizing
+            return is_path_under_root(&joined, &self.root_dir);
+        }
 
-        let canonical = canonicalize_for_policy(&joined);
+        // For absolute paths, verify via canonicalization to prevent traversal
+        let canonical = canonicalize_for_policy(path);
         let root_canonical = canonicalize_root(&self.root_dir);
 
         match (canonical, root_canonical) {
             (Some(cp), Some(cr)) => policy_path_within_root(&cp, &cr),
-            _ => true, // If canonicalization fails, allow
+            // Absolute path that can't be canonicalized: deny
+            _ => false,
         }
+    }
+}
+
+/// Check if `path` is under `root` by comparing canonicalized forms.
+/// If canonicalization fails for `path` (file doesn't exist), check components.
+/// If canonicalization fails for `root`, allow for relative paths (workspace adapter handles access).
+fn is_path_under_root(path: &Path, root: &Path) -> bool {
+    // Try to canonicalize both
+    let path_canonical = std::fs::canonicalize(path).ok();
+    let root_canonical = std::fs::canonicalize(root).ok();
+
+    match (path_canonical, root_canonical) {
+        (Some(cp), Some(cr)) => policy_path_within_root(&cp, &cr),
+        // Both canonicalize failed (neither exists on disk): allow.
+        // This handles MemoryWorkspace where neither root nor path exist on disk.
+        (None, None) => true,
+        // Path doesn't exist on disk but root does - check if path would be under root
+        // by verifying the joined path doesn't escape via ".."
+        (None, Some(_)) => {
+            // Check for ".." in path that could escape root
+            let has_parent_dir = path
+                .components()
+                .any(|c| c == std::path::Component::ParentDir);
+            if has_parent_dir {
+                // Path contains ".." - verify by checking if canonicalized parent is under root
+                if let Some(parent) = path.parent() {
+                    let joined_parent = root.join(parent);
+                    if let (Ok(cp), Ok(cr)) = (
+                        std::fs::canonicalize(&joined_parent),
+                        std::fs::canonicalize(root),
+                    ) {
+                        return policy_path_within_root(&cp, &cr);
+                    }
+                }
+                // Can't verify - deny to be safe
+                false
+            } else {
+                // No ".." - path is under root since it was joined
+                true
+            }
+        }
+        // Root doesn't exist but path does: deny (root should exist if we're using real paths)
+        (Some(_), None) => false,
     }
 }
 
@@ -221,7 +261,7 @@ fn canonicalize_root(root_dir: &Path) -> Option<PathBuf> {
 /// 1. **Tool filter check** — Is the tool in the allowlist, or blocked by blocklist?
 ///    If not allowed, returns `ToolNotAllowed`. The host is not consulted.
 /// 2. **Access mode check** — Does the access mode permit this operation?
-///    If `ReadOnly`/`Locked` and the tool is mutating, returns `ReadOnlyMode`.
+///    If `ReadOnly` and the tool is mutating, returns `ReadOnlyMode`.
 ///    The host is not consulted.
 /// 3. **Path boundary check** — Does the path resolve within `root_dir`?
 ///    If outside, returns `OutsideRootDir`. The host is not consulted.

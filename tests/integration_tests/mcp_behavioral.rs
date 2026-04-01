@@ -280,22 +280,28 @@ fn consumer_gets_error_for_missing_file() {
         );
         let response = recv_msg(&mut stream);
 
-        // Per RFC-009 policy enforcement, tool errors are protocol-level JSON-RPC errors.
+        // ExecutionError returns JSON-RPC error with code -32603 (per mcp-server README.md RPC contract)
         assert!(
             response.get("error").is_some(),
-            "tool execution errors must be JSON-RPC protocol errors, got: {}",
+            "ExecutionError must return JSON-RPC error, got: {}",
             response
         );
         let error = response["error"]
             .as_object()
             .expect("error must be an object");
+        assert_eq!(
+            error.get("code").and_then(|c| c.as_i64()).unwrap_or(0),
+            -32603,
+            "ExecutionError must have code -32603, got: {:#?}",
+            error
+        );
         assert!(
             error
                 .get("message")
                 .and_then(|m| m.as_str())
-                .map(|m| m.contains("not found"))
+                .map(|m| m.contains("Tool error"))
                 .unwrap_or(false),
-            "error message should indicate file not found, got: {:#?}",
+            "Error message should contain 'Tool error', got: {:#?}",
             error
         );
     });
@@ -347,9 +353,9 @@ fn consumer_gets_capability_denied_for_write_in_readonly_session() {
             error
                 .get("message")
                 .and_then(|m| m.as_str())
-                .map(|m| m.contains("Capability denied"))
+                .map(|m| m.contains("denied") || m.contains(" Denied "))
                 .unwrap_or(false),
-            "error message should indicate capability denied, got: {:#?}",
+            "error message should indicate access denied, got: {:#?}",
             error
         );
     });

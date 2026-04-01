@@ -26,12 +26,6 @@ impl mcp_server::HostSession for MockSession {
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }
-    fn is_parallel_worker(&self) -> bool {
-        false
-    }
-    fn check_edit_area(&self, _path: &str) -> AccessDecision {
-        AccessDecision::Allow
-    }
 }
 
 struct MockWorkspace;
@@ -339,5 +333,90 @@ fn test_large_payload_framing() {
     );
     let request = result.unwrap().unwrap();
     assert_eq!(request.method, "tools/call");
+    assert_eq!(request.id, Some(serde_json::json!(1)));
+}
+
+/// Test that fragmented reads are handled correctly.
+///
+/// This verifies that when the body bytes arrive in multiple chunks (partial reads),
+/// the transport correctly reconstructs the full message before JSON parsing.
+#[test]
+fn test_content_length_partial_read() {
+    use std::io::{BufRead, Read};
+
+    // Create a simple request
+    let request_payload = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "ping",
+        "params": {},
+        "id": 1
+    });
+
+    let body = serde_json::to_vec(&request_payload).unwrap();
+    let content_length = body.len();
+
+    // Format with Content-Length framing
+    let header = format!("Content-Length: {}\r\n\r\n", content_length);
+    let mut framed_data = header.into_bytes();
+    framed_data.extend_from_slice(&body);
+
+    // Create a custom BufRead that yields bytes in small chunks
+    // to simulate partial reads / fragmented network packets
+    let framed_data = Arc::new(framed_data);
+    let chunk_size = 5; // Small chunks to force multiple reads
+
+    struct ChunkReader {
+        data: Arc<Vec<u8>>,
+        pos: usize,
+        chunk_size: usize,
+        fill_end: usize, // tracked end of fill_buf buffer
+    }
+
+    impl ChunkReader {
+        fn new(data: Arc<Vec<u8>>, chunk_size: usize) -> Self {
+            Self {
+                data: data.clone(),
+                pos: 0,
+                chunk_size,
+                fill_end: 0,
+            }
+        }
+    }
+
+    impl Read for ChunkReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.pos >= self.data.len() {
+                return Ok(0);
+            }
+            let remaining = self.data.len() - self.pos;
+            let to_read = std::cmp::min(self.chunk_size, remaining).min(buf.len());
+            buf[..to_read].copy_from_slice(&self.data[self.pos..self.pos + to_read]);
+            self.pos += to_read;
+            Ok(to_read)
+        }
+    }
+
+    impl BufRead for ChunkReader {
+        fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            let end = std::cmp::min(self.pos + self.chunk_size, self.data.len());
+            self.fill_end = end;
+            Ok(&self.data[self.pos..end])
+        }
+
+        fn consume(&mut self, n: usize) {
+            self.pos = std::cmp::min(self.pos + n, self.fill_end);
+        }
+    }
+
+    let mut chunk_reader = ChunkReader::new(framed_data, chunk_size);
+    let result = mcp_server::io::transport::read_framed_jsonrpc(&mut chunk_reader);
+
+    assert!(
+        result.is_ok(),
+        "Should handle partial reads correctly, got: {:?}",
+        result
+    );
+    let request = result.unwrap().unwrap();
+    assert_eq!(request.method, "ping");
     assert_eq!(request.id, Some(serde_json::json!(1)));
 }

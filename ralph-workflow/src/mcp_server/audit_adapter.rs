@@ -8,33 +8,10 @@
 use crate::agents::session::{
     AgentSessionId, AuditRecord as RalphAuditRecord, Capability, PolicyOutcome,
 };
-use mcp_server::dispatch::access::{AccessDecision, AuditSink, McpCapability};
+use crate::mcp_server::capability_mapping::lookup_ralph_capability;
+use mcp_server::dispatch::access::{AccessDecision, AuditSink};
 use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
 use std::sync::Mutex;
-
-/// Policy: map McpCapability back to Ralph Capability for audit record emission.
-///
-/// This is the inverse of `map_mcp_capability` used in `RalphHostSessionAdapter`.
-pub(crate) fn map_capability_to_ralph(cap: McpCapability) -> Capability {
-    match cap {
-        McpCapability::WorkspaceRead => Capability::WorkspaceRead,
-        McpCapability::WorkspaceWriteEphemeral => Capability::WorkspaceWriteEphemeral,
-        McpCapability::WorkspaceWriteTracked => Capability::WorkspaceWriteTracked,
-        McpCapability::WorkspaceWriteAny => Capability::WorkspaceWriteTracked,
-        McpCapability::GitStatusRead => Capability::GitStatusRead,
-        McpCapability::GitWrite => Capability::GitWrite,
-        McpCapability::EnvRead => Capability::EnvRead,
-        McpCapability::EnvWrite => Capability::EnvWrite,
-        McpCapability::ProcessExecBounded => Capability::ProcessExecBounded,
-        McpCapability::ProcessExecUnbounded => Capability::ProcessExecUnbounded,
-        McpCapability::ArtifactSubmit => Capability::ArtifactSubmit,
-        McpCapability::RunReportProgress => Capability::RunReportProgress,
-        // #[non_exhaustive] McpCapability — fail-closed for authorization (handled by
-        // map_mcp_capability above). For audit records, use WorkspaceRead as safe
-        // fallback to preserve audit functionality rather than crashing.
-        _ => Capability::WorkspaceRead,
-    }
-}
 
 /// Policy: convert McpAuditRecord decision to Ralph PolicyOutcome.
 pub(crate) fn outcome_from_decision(decision: &AccessDecision) -> PolicyOutcome {
@@ -79,7 +56,7 @@ impl AuditSink for RalphAuditSinkAdapter {
     fn emit(&self, record: McpAuditRecord) {
         let capability = record
             .capability
-            .map(map_capability_to_ralph)
+            .and_then(lookup_ralph_capability)
             .unwrap_or(Capability::WorkspaceRead);
 
         // Convert nanoseconds timestamp to seconds

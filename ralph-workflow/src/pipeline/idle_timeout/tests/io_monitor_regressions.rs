@@ -1,4 +1,5 @@
 use super::super::io::kill_process;
+use super::super::runtime::monitor_idle_timeout_with_interval_and_kill_config;
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Barrier, Mutex};

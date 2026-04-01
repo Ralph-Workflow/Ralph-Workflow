@@ -5,14 +5,14 @@
 //! - `sleep`: sleep utilities
 //! - `core`: enforcement and policy logic
 
-pub mod base;
-pub mod core;
-pub mod sleep;
+pub(crate) mod base;
+pub(crate) mod core;
+pub(crate) mod sleep;
 
 // Re-export public types from submodules for convenient access
-pub use base::FileActivityConfig;
-pub use base::MonitorConfig;
-pub use base::MonitorResult;
+pub(crate) use base::FileActivityConfig;
+pub(crate) use base::MonitorConfig;
+pub(crate) use base::MonitorResult;
 
 use crate::executor::AgentChild;
 use crate::pipeline::idle_timeout::SharedActivityTimestamp;
@@ -21,7 +21,7 @@ use crate::pipeline::idle_timeout::SharedActivityTimestamp;
 const DEFAULT_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Monitors activity and kills a process if idle timeout is exceeded.
-pub fn monitor_idle_timeout(
+pub(crate) fn monitor_idle_timeout(
     activity_timestamp: &SharedActivityTimestamp,
     child: &std::sync::Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     timeout: std::time::Duration,
@@ -44,7 +44,7 @@ pub fn monitor_idle_timeout(
 }
 
 /// Like [`monitor_idle_timeout`] but with a configurable check interval.
-pub fn monitor_idle_timeout_with_interval(
+pub(crate) fn monitor_idle_timeout_with_interval(
     activity_timestamp: &SharedActivityTimestamp,
     child: &std::sync::Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     timeout: std::time::Duration,
@@ -67,7 +67,7 @@ pub fn monitor_idle_timeout_with_interval(
     )
 }
 
-pub fn monitor_idle_timeout_with_interval_and_kill_config(
+pub(crate) fn monitor_idle_timeout_with_interval_and_kill_config(
     activity_timestamp: &SharedActivityTimestamp,
     file_activity_config: Option<&FileActivityConfig>,
     child: &std::sync::Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
@@ -86,7 +86,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     )
 }
 
-pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+pub(crate) fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     activity_timestamp: &SharedActivityTimestamp,
     file_activity_config: Option<&FileActivityConfig>,
     child: &std::sync::Arc<std::sync::Mutex<Box<dyn AgentChild>>>,

@@ -76,7 +76,7 @@ pub fn generate_commit_message(
             e
         ))?;
     let mcp_env: std::collections::HashMap<String, String> = std::collections::HashMap::from([(
-        mcp_server::io::MCP_ENDPOINT_ENV.to_string(),
+        bridge.endpoint_env_var().to_string(),
         bridge.endpoint_uri(),
     )]);
 
@@ -223,7 +223,7 @@ fn try_single_commit_agent(
         }
     };
     let mcp_env: std::collections::HashMap<String, String> = std::collections::HashMap::from([(
-        mcp_server::io::MCP_ENDPOINT_ENV.to_string(),
+        bridge.endpoint_env_var().to_string(),
         bridge.endpoint_uri(),
     )]);
 

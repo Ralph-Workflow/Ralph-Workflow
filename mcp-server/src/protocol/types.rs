@@ -191,6 +191,16 @@ impl JsonRpcError {
         }
     }
 
+    /// Internal error (-32603) with structured data: Internal JSON-RPC server error
+    /// with additional error details in the data field.
+    pub fn internal_error_with_data(msg: impl Into<String>, data: serde_json::Value) -> Self {
+        Self {
+            code: -32603,
+            message: msg.into(),
+            data: Some(data),
+        }
+    }
+
     /// Tool error (-32000): Tool execution failed.
     pub fn tool_error(msg: impl Into<String>) -> Self {
         Self {

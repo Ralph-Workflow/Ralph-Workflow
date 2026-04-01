@@ -2594,7 +2594,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "test-helpers",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

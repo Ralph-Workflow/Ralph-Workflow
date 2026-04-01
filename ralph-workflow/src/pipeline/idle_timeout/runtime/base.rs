@@ -106,10 +106,10 @@ pub enum MonitorResult {
 }
 
 /// Default check interval for the idle monitor (30 seconds).
-pub const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+pub(crate) const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy)]
-pub struct TimeoutEnforcementState {
+pub(crate) struct TimeoutEnforcementState {
     pub pid: u32,
     pub escalated: bool,
     pub last_sigkill_sent_at: Option<std::time::Instant>,
@@ -117,7 +117,7 @@ pub struct TimeoutEnforcementState {
 }
 
 impl TimeoutEnforcementState {
-    pub fn new(pid: u32, escalated: bool) -> Self {
+    pub(crate) fn new(pid: u32, escalated: bool) -> Self {
         Self {
             pid,
             escalated,
@@ -127,7 +127,7 @@ impl TimeoutEnforcementState {
     }
 }
 
-pub struct MonitorParams<'a> {
+pub(crate) struct MonitorParams<'a> {
     pub activity_timestamp: &'a SharedActivityTimestamp,
     pub file_activity_config: Option<&'a FileActivityConfig>,
     pub child: &'a Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
@@ -142,12 +142,12 @@ pub struct MonitorParams<'a> {
     pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
-pub enum EnforcementStep {
+pub(crate) enum EnforcementStep {
     ReturnResult(MonitorResult),
     Continue,
 }
 
-pub enum KillResultContinuation {
+pub(crate) enum KillResultContinuation {
     TimedOut { escalated: bool },
     AwaitingExit(TimeoutEnforcementState),
     ProcessCompleted,
@@ -155,12 +155,12 @@ pub enum KillResultContinuation {
 }
 
 #[derive(Debug)]
-pub enum MonitorLoopAction {
+pub(crate) enum MonitorLoopAction {
     Return(MonitorResult),
     Continue,
 }
 
-pub enum IdleConfirmedAction {
+pub(crate) enum IdleConfirmedAction {
     /// Not enough idle confirmations yet; continue polling.
     Continue,
     /// Child already exited or completion check passed; return the given action.
@@ -171,7 +171,7 @@ pub enum IdleConfirmedAction {
     CompleteAndKill(u32),
 }
 
-pub struct MonitorLoopState {
+pub(crate) struct MonitorLoopState {
     pub timeout_triggered: Option<TimeoutEnforcementState>,
     pub last_file_activity: Option<std::time::Instant>,
     pub consecutive_idle_count: u32,
@@ -181,7 +181,7 @@ pub struct MonitorLoopState {
 }
 
 impl MonitorLoopState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             timeout_triggered: None,
             last_file_activity: None,
@@ -192,7 +192,7 @@ impl MonitorLoopState {
         }
     }
 
-    pub fn reset_idle(&mut self) {
+    pub(crate) fn reset_idle(&mut self) {
         self.consecutive_idle_count = 0;
         self.last_child_observation = None;
         self.last_child_info = None;

@@ -28,7 +28,7 @@ pub use transport::{McpStream, StdioTransport, TransportError, UnixSocketTranspo
 
 use crate::dispatch::access::{AccessDecision, AuditSink, NoOpAuditSink};
 use crate::dispatch::{
-    route_dispatch, DispatchTarget, HostSession, ToolRegistry, WorkspaceAdapter,
+    route_dispatch, DispatchTarget, HostSession, ToolError, ToolRegistry, WorkspaceAdapter,
 };
 use crate::protocol::{
     JsonRpcError, JsonRpcRequest, JsonRpcResponse, ServerCapabilities, ServerInfo, ToolsCapability,
@@ -219,14 +219,26 @@ fn check_enforcement(
         params.audit_sink,
     ) {
         AccessDecision::Allow => Ok(()),
-        AccessDecision::Deny { reason, .. } => Err(Box::new((
-            JsonRpcResponse::error(JsonRpcError::tool_error(reason), params.request_id),
+        AccessDecision::Deny { reason, code } => Err(Box::new((
+            JsonRpcResponse::error(
+                JsonRpcError::internal_error_with_data(
+                    format!("Access denied: {}", reason),
+                    serde_json::json!({ "reason": reason, "code": code }),
+                ),
+                params.request_id,
+            ),
             params.state,
         ))),
     }
 }
 
 /// Dispatch tool call or return error response.
+///
+/// Tool errors are categorized as:
+/// - `NotFound` → JSON-RPC error - tool doesn't exist (method not found semantics)
+/// - `CapabilityDenied` → JSON-RPC error with -32603 (capability denied)
+/// - `InvalidParams` → JSON-RPC error with -32602 (invalid params)
+/// - `ExecutionError` → JSON-RPC error with -32603 (tool execution failure)
 fn dispatch_tool(
     registry: &ToolRegistry,
     name: &str,
@@ -245,11 +257,41 @@ fn dispatch_tool(
                 state,
             )
         })
-        .map_err(move |e| {
-            Box::new((
-                JsonRpcResponse::error(JsonRpcError::tool_error(e.to_string()), request_id_inner),
-                state,
-            ))
+        .map_err(move |e: ToolError| {
+            Box::new(match e {
+                // NotFound is a JSON-RPC error because the tool doesn't exist
+                ToolError::NotFound(_msg) => (
+                    JsonRpcResponse::error(JsonRpcError::method_not_found(), request_id_inner),
+                    state,
+                ),
+                // CapabilityDenied is an access policy error → JSON-RPC error
+                ToolError::CapabilityDenied(msg) => (
+                    JsonRpcResponse::error(
+                        JsonRpcError::internal_error_with_data(
+                            format!("Capability denied: {}", msg),
+                            serde_json::json!({ "reason": msg }),
+                        ),
+                        request_id_inner,
+                    ),
+                    state,
+                ),
+                // InvalidParams → JSON-RPC error -32602
+                ToolError::InvalidParams(msg) => (
+                    JsonRpcResponse::error(JsonRpcError::invalid_params(msg), request_id_inner),
+                    state,
+                ),
+                // ExecutionError → JSON-RPC error -32603 with structured data
+                ToolError::ExecutionError(msg) => (
+                    JsonRpcResponse::error(
+                        JsonRpcError::internal_error_with_data(
+                            format!("Tool error: {}", msg),
+                            serde_json::json!({ "error": msg }),
+                        ),
+                        request_id_inner,
+                    ),
+                    state,
+                ),
+            })
         })
 }
 
@@ -500,12 +542,6 @@ mod tests {
                     code: crate::dispatch::access::AccessDeniedCode::CapabilityDenied,
                 }
             }
-        }
-        fn is_parallel_worker(&self) -> bool {
-            false
-        }
-        fn check_edit_area(&self, _path: &str) -> AccessDecision {
-            AccessDecision::Allow
         }
     }
 

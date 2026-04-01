@@ -7,7 +7,7 @@ use mcp_server::dispatch::access::{AccessDecision, McpCapability};
 use mcp_server::dispatch::host::DirEntry;
 use mcp_server::dispatch::ToolRegistry;
 use mcp_server::io::access::McpServerConfig;
-use mcp_server::io::{McpServer, ServerState};
+use mcp_server::io::{session_bridge::SessionBridge, McpServer, ServerState};
 use mcp_server::protocol::JsonRpcRequest;
 use std::path::Path;
 use std::sync::Arc;
@@ -22,12 +22,6 @@ impl mcp_server::HostSession for MockSession {
         "test-session"
     }
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
-        AccessDecision::Allow
-    }
-    fn is_parallel_worker(&self) -> bool {
-        false
-    }
-    fn check_edit_area(&self, _path: &str) -> AccessDecision {
         AccessDecision::Allow
     }
 }
@@ -235,4 +229,45 @@ fn test_state_persists_across_requests() {
 
     // Should still be in error state (not re-initialized)
     assert!(response3.error.is_some());
+}
+
+#[test]
+fn test_socket_cleanup_on_shutdown() {
+    use std::time::Duration;
+
+    let root = std::env::temp_dir().join("ralph-mcp-test-socket-cleanup");
+    std::fs::create_dir_all(&root).ok();
+
+    let session = Arc::new(MockSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(root.clone());
+    let registry = ToolRegistry::new(vec![]);
+
+    let mut bridge = SessionBridge::new(session, config, workspace, registry);
+
+    // Start the bridge
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+
+    // Verify socket file exists before shutdown
+    assert!(
+        socket_path.exists(),
+        "Socket file should exist after start()"
+    );
+
+    // Signal shutdown
+    bridge.shutdown();
+
+    // Give the server thread time to process the shutdown signal
+    std::thread::sleep(Duration::from_millis(100));
+
+    // Drop the bridge (this triggers cleanup)
+    drop(bridge);
+
+    // Verify socket file is removed after shutdown and drop
+    assert!(
+        !socket_path.exists(),
+        "Socket file should be removed after shutdown and drop"
+    );
 }

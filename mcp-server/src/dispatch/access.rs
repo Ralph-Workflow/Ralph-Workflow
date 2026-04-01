@@ -213,43 +213,39 @@ impl std::fmt::Display for McpCapability {
 ///
 /// Access mode is enforced by `mcp-server` at dispatch time, before calling
 /// any tool handler. The host adapter is never called for rejected operations.
+///
+/// # Public Variants
+///
+/// Only `ReadOnly` and `ReadWrite` are part of the public API.
+/// Additional internal variants may exist for backwards compatibility
+/// but are not constructible outside the crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum AccessMode {
-    /// No operations permitted. Server rejects all tool calls with `ReadOnlyMode`.
-    #[default]
-    Locked,
-
     /// Only read operations permitted. File writes, git writes, and process exec
     /// are rejected with `ReadOnlyMode`. Reads (WorkspaceRead, GitStatusRead, EnvRead)
     /// are allowed.
     ReadOnly,
 
-    /// Only read and ephemeral writes permitted. Tracked file modifications and git
-    /// writes are rejected. Useful for sandboxed environments where temporary files
-    /// can be created but version control must not be modified.
-    EphemeralOnly,
-
     /// All permitted operations allowed. ReadWrite mode still respects `root_dir`
     /// path boundaries and `ToolFilter` restrictions.
+    #[default]
     ReadWrite,
 }
 
 impl AccessMode {
     /// Returns true if this access mode permits the given capability.
     pub fn allows(&self, capability: McpCapability) -> bool {
-        use McpCapability::*;
         match (self, capability) {
-            (AccessMode::Locked, _) => false,
             (AccessMode::ReadOnly, cap) if cap.is_read() => true,
             (AccessMode::ReadOnly, _) => false,
-            (AccessMode::EphemeralOnly, cap) => cap.is_read() || cap == WorkspaceWriteEphemeral,
             (AccessMode::ReadWrite, _) => true,
         }
     }
 
     /// Returns true if this access mode permits write operations.
     pub fn allows_write(&self) -> bool {
-        matches!(self, AccessMode::ReadWrite | AccessMode::EphemeralOnly)
+        matches!(self, AccessMode::ReadWrite)
     }
 
     /// Returns true if this access mode permits git operations.
@@ -266,9 +262,7 @@ impl AccessMode {
 impl std::fmt::Display for AccessMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AccessMode::Locked => write!(f, "Locked"),
             AccessMode::ReadOnly => write!(f, "ReadOnly"),
-            AccessMode::EphemeralOnly => write!(f, "EphemeralOnly"),
             AccessMode::ReadWrite => write!(f, "ReadWrite"),
         }
     }
@@ -278,12 +272,17 @@ impl std::fmt::Display for AccessMode {
 ///
 /// Tool filter is checked by `mcp-server` at dispatch time, before capability checks
 /// and before calling any tool handler. The host adapter never sees blocked tool calls.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// # Public Variants
+///
+/// Only `Allowlist` and `Blocklist` are part of the public API.
+/// `Unrestricted` is removed from the public API; use `Blocklist(vec![])` to allow all tools.
+///
+/// An empty `Allowlist` means no tools are accessible.
+/// An empty `Blocklist` means all tools are accessible.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ToolFilter {
-    /// All registered tools are accessible (subject to access_mode and capability checks).
-    #[default]
-    Unrestricted,
-
     /// Only the listed tool names can be dispatched. Any tool not in the list is
     /// rejected with `ToolNotAllowed` before capability checking.
     /// An empty allowlist means no tools are accessible.
@@ -295,20 +294,26 @@ pub enum ToolFilter {
     Blocklist(Vec<String>),
 }
 
+impl Default for ToolFilter {
+    fn default() -> Self {
+        ToolFilter::Blocklist(vec![])
+    }
+}
+
 impl ToolFilter {
     /// Returns true if the tool name is permitted by this filter.
     pub fn allows(&self, tool_name: &str) -> bool {
         match self {
-            ToolFilter::Unrestricted => true,
             ToolFilter::Allowlist(allowed) => allowed.iter().any(|t| t == tool_name),
             ToolFilter::Blocklist(blocked) => !blocked.iter().any(|t| t == tool_name),
         }
     }
 
     /// Returns an iterator over the blocked tool names in this filter.
+    /// For Allowlist, returns empty iterator (nothing is blocked by the filter itself).
+    /// For Blocklist, returns the blocked tool names.
     pub fn blocked_tools<'a>(&'a self) -> Box<dyn Iterator<Item = &'a str> + 'a> {
         match self {
-            ToolFilter::Unrestricted => Box::new(std::iter::empty()),
             ToolFilter::Allowlist(_) => Box::new(std::iter::empty()),
             ToolFilter::Blocklist(blocked) => Box::new(blocked.iter().map(|s| s.as_str())),
         }
@@ -317,7 +322,6 @@ impl ToolFilter {
     /// Returns the number of tools in this filter.
     pub fn len(&self) -> usize {
         match self {
-            ToolFilter::Unrestricted => 0,
             ToolFilter::Allowlist(v) => v.len(),
             ToolFilter::Blocklist(v) => v.len(),
         }
@@ -326,11 +330,6 @@ impl ToolFilter {
     /// Returns true if this filter has no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    /// Returns true if this filter is Unrestricted (allows all tools).
-    pub fn is_unrestricted(&self) -> bool {
-        matches!(self, ToolFilter::Unrestricted)
     }
 }
 
@@ -390,7 +389,7 @@ impl std::fmt::Display for AccessDecision {
 ///   internally by `mcp-server` and are NOT delegatable to the host.
 /// - `CapabilityDenied` is generated by the host via `HostSession::check_capability` and
 ///   is the only denial code that originates from the host.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub enum AccessDeniedCode {
     /// Server received a tool call before the `initialize` handshake completed.
     /// Client must call `initialize` first.
@@ -400,7 +399,7 @@ pub enum AccessDeniedCode {
     /// This is the only denial code that originates from the host.
     CapabilityDenied,
 
-    /// Server is in `ReadOnly` or `Locked` access mode and cannot perform the requested
+    /// Server is in `ReadOnly` access mode and cannot perform the requested
     /// mutation. Check `McpServerConfig::access_mode` to determine allowed operations.
     ReadOnlyMode,
 
@@ -513,7 +512,7 @@ pub fn denial_reason_path_outside_root(
 pub struct EnforcementParams<'a> {
     /// Tool name being dispatched.
     pub tool_name: &'a str,
-    /// Active tool filter (Allowlist, Blocklist, or Unrestricted).
+    /// Active tool filter (Allowlist or Blocklist).
     pub tool_filter: &'a ToolFilter,
     /// Whether the tool is a mutating operation.
     pub is_mutating: bool,
@@ -536,7 +535,7 @@ pub struct EnforcementParams<'a> {
 /// # Check Ordering
 ///
 /// 1. Tool filter (tool not in allowlist, or in blocklist)
-/// 2. Access mode (ReadOnly/Locked blocks mutating operations)
+/// 2. Access mode (ReadOnly blocks mutating operations)
 /// 3. Path boundary (path resolves outside root_dir)
 /// 4. Capability (host session denied the required capability)
 pub fn evaluate_enforcement_pure(params: &EnforcementParams) -> EnforcementCheck {

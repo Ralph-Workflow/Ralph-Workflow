@@ -229,13 +229,19 @@ pub fn read_framed_jsonrpc<R: BufRead>(
 }
 
 /// Read body bytes of exactly the specified length.
+///
+/// Uses `read_exact` semantics to ensure all `content_length` bytes are read.
+/// If fewer bytes are available, returns `ConnectionClosed`.
 fn read_body<R: Read>(reader: &mut R, content_length: usize) -> Result<Vec<u8>, TransportError> {
     let mut body = vec![0u8; content_length];
-    match reader.read(&mut body) {
-        Ok(n) if n == content_length => Ok(body),
-        Ok(_) => Err(TransportError::ConnectionClosed),
-        Err(e) => Err(e.into()),
-    }
+    reader.read_exact(&mut body).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            TransportError::ConnectionClosed
+        } else {
+            e.into()
+        }
+    })?;
+    Ok(body)
 }
 
 /// Read and parse Content-Length header from a buffered reader.
@@ -355,16 +361,22 @@ fn parse_content_length_from_bytes(header_bytes: &[u8]) -> Result<usize, Transpo
 }
 
 /// Read body from stream with exact byte count.
+///
+/// Uses `read_exact` semantics to ensure all `content_length` bytes are read.
+/// If fewer bytes are available, returns `ConnectionClosed`.
 fn read_body_from_stream(
     stream: &mut UnixStream,
     content_length: usize,
 ) -> Result<Vec<u8>, TransportError> {
     let mut body = vec![0u8; content_length];
-    match stream.read(&mut body) {
-        Ok(n) if n == content_length => Ok(body),
-        Ok(_) => Err(TransportError::ConnectionClosed),
-        Err(e) => Err(e.into()),
-    }
+    stream.read_exact(&mut body).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::UnexpectedEof {
+            TransportError::ConnectionClosed
+        } else {
+            e.into()
+        }
+    })?;
+    Ok(body)
 }
 
 /// Write a framed JSON-RPC response to a Unix stream.

@@ -24,12 +24,6 @@ impl mcp_server::HostSession for ApprovedSession {
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }
-    fn is_parallel_worker(&self) -> bool {
-        false
-    }
-    fn check_edit_area(&self, _path: &str) -> AccessDecision {
-        AccessDecision::Allow
-    }
 }
 
 struct DeniedSession;
@@ -46,12 +40,6 @@ impl mcp_server::HostSession for DeniedSession {
                 code: AccessDeniedCode::CapabilityDenied,
             }
         }
-    }
-    fn is_parallel_worker(&self) -> bool {
-        false
-    }
-    fn check_edit_area(&self, _path: &str) -> AccessDecision {
-        AccessDecision::Allow
     }
 }
 
@@ -199,7 +187,7 @@ fn test_tool_not_found() {
 
     assert!(response.error.is_some(), "Expected error for unknown tool");
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000, "Should be tool error");
+    assert_eq!(error.code, -32601, "Should be method not found error");
 }
 
 #[test]
@@ -436,7 +424,7 @@ fn test_file_read_capability_denied() {
         "FileRead should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
 }
 
 #[test]
@@ -473,7 +461,7 @@ fn test_file_write_capability_denied() {
         "FileWrite should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
 }
 
 #[test]
@@ -510,7 +498,7 @@ fn test_git_read_capability_denied() {
         "GitRead should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
 }
 
 #[test]
@@ -549,7 +537,7 @@ fn test_artifact_submit_capability_denied() {
         "ArtifactSubmit should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
 }
 
 #[test]
@@ -591,7 +579,7 @@ fn test_workspace_coordination_capability_denied_by_denied_session() {
         "WorkspaceCoordination should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
 }
 
 #[test]
@@ -628,7 +616,7 @@ fn test_process_exec_capability_denied() {
         "ProcessExec should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,7 +660,7 @@ fn test_tool_filter_fires_before_capability_check() {
 
     assert!(response.error.is_some(), "Expected error from tool filter");
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
     // The denial should be ToolNotAllowed, not CapabilityDenied
     assert!(
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),

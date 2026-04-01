@@ -32,12 +32,6 @@ impl mcp_server::HostSession for ApprovedSession {
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }
-    fn is_parallel_worker(&self) -> bool {
-        false
-    }
-    fn check_edit_area(&self, _path: &str) -> AccessDecision {
-        AccessDecision::Allow
-    }
 }
 
 /// Session that only has WorkspaceRead capability.
@@ -55,12 +49,6 @@ impl mcp_server::HostSession for ReadOnlySession {
                 code: AccessDeniedCode::CapabilityDenied,
             }
         }
-    }
-    fn is_parallel_worker(&self) -> bool {
-        false
-    }
-    fn check_edit_area(&self, _path: &str) -> AccessDecision {
-        AccessDecision::Allow
     }
 }
 
@@ -334,7 +322,7 @@ fn ralph_write_file_blocked_in_readonly() {
     );
     let error = response.error.unwrap();
     assert_eq!(
-        error.code, -32000,
+        error.code, -32603,
         "Should be tool error (ReadOnlyMode denial is wrapped as tool error)"
     );
     assert!(
@@ -445,7 +433,7 @@ fn ralph_write_file_blocked_by_allowlist() {
         "ralph_write_file should be blocked by allowlist"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
     assert!(
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),
         "Error should indicate tool is not allowed by filter"
@@ -521,7 +509,7 @@ fn ralph_read_file_blocked_outside_root() {
         "Reading outside root_dir should be blocked"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
     assert!(
         error.message.contains("outside") || error.message.contains("root"),
         "Error should indicate path is outside root directory"
@@ -560,7 +548,7 @@ fn ralph_read_file_blocked_by_capability() {
         "ralph_git_commit should be blocked when session lacks GitWrite capability"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
     assert!(
         error.message.contains("capability") || error.message.contains("denied"),
         "Error should indicate capability denial"
@@ -600,7 +588,7 @@ fn readonly_and_allowlist_both_checked_independently() {
     // Should be blocked by allowlist first (ToolNotAllowed), not by ReadOnly mode.
     assert!(response.error.is_some(), "Should be blocked by allowlist");
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32000);
+    assert_eq!(error.code, -32603);
     // The error message should indicate tool not allowed, not read-only
     assert!(
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),

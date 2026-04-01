@@ -5,7 +5,7 @@ use std::time::Duration;
 
 /// Compute the sleep duration for one poll interval.
 /// Returns `None` if the deadline has already passed.
-pub fn compute_sleep_slice(
+pub(crate) fn compute_sleep_slice(
     poll_interval: Duration,
     deadline: std::time::Instant,
 ) -> Option<Duration> {
@@ -18,7 +18,7 @@ pub fn compute_sleep_slice(
 }
 
 /// Outcome of one sleep step.
-pub enum SleepStepOutcome {
+pub(crate) enum SleepStepOutcome {
     /// should_stop was set; should stop polling.
     Stop,
     /// Deadline was reached; check should_stop before continuing.
@@ -28,7 +28,7 @@ pub enum SleepStepOutcome {
 }
 
 /// Pure: determine the outcome of one sleep step given current state.
-pub fn sleep_step_outcome(
+pub(crate) fn sleep_step_outcome(
     should_stop: &std::sync::atomic::AtomicBool,
     poll_interval: Duration,
     deadline: std::time::Instant,
@@ -48,7 +48,7 @@ pub fn sleep_step_outcome(
 
 /// Pure: determine whether to stop when deadline is reached.
 /// Encapsulates the policy decision for the DeadlineReached case.
-pub fn deadline_reached_should_stop(should_stop: &std::sync::atomic::AtomicBool) -> bool {
+pub(crate) fn deadline_reached_should_stop(should_stop: &std::sync::atomic::AtomicBool) -> bool {
     // Re-check should_stop when deadline is reached: if it was set
     // during the deadline window, honor it and return true (stop).
     should_stop.load(Ordering::Acquire)
@@ -71,7 +71,7 @@ fn process_sleep_iteration(
 
 /// Sleep until the next check interval or until should_stop is set.
 /// Returns `true` if should_stop was set, `false` if the check interval elapsed.
-pub fn sleep_until_next_check_or_stop(
+pub(crate) fn sleep_until_next_check_or_stop(
     should_stop: &std::sync::atomic::AtomicBool,
     check_interval: Duration,
 ) -> bool {

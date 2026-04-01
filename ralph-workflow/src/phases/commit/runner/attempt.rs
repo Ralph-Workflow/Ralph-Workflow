@@ -1,5 +1,9 @@
 // Legacy phase-based code - deprecated in favor of reducer/handler architecture
 
+use anyhow::Context;
+use crate::phases::context::PhaseContext;
+use crate::phases::commit_logging::{AttemptOutcome, CommitAttemptLog, ExtractionAttempt};
+
 /// Outcome of commit message generation.
 ///
 /// This is intentionally an enum so callers must handle skip explicitly.

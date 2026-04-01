@@ -145,10 +145,9 @@ pub(crate) struct RepoCommandParams<'a> {
     pub(crate) logger: &'a Logger,
     pub(crate) colors: Colors,
     pub(crate) executor: &'a std::sync::Arc<dyn ProcessExecutor>,
-    pub(crate) app_handler: &'a mut dyn crate::app::effect::AppEffectHandler,
+    pub(crate) app_handler: Option<&'a mut dyn crate::app::effect::AppEffectHandler>,
     pub(crate) repo_root: &'a std::path::Path,
     pub(crate) workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
-    pub(crate) app_handler: Option<&'a mut dyn crate::app::effect::AppEffectHandler>,
 }
 
 pub(crate) fn handle_repo_commands_without_prompt_setup(
@@ -166,7 +165,6 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         app_handler,
         repo_root,
         workspace,
-        app_handler,
     } = params;
 
     crate::app::pipeline_setup::handle_repo_commands_boundary(RepoCommandBoundaryParams {
@@ -181,7 +179,6 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         app_handler,
         repo_root,
         workspace,
-        app_handler,
     })
 }
 

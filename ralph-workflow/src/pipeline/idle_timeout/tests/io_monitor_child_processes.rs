@@ -12,10 +12,22 @@ use crate::executor::{AgentChild, ChildProcessInfo, MockAgentChild, MockProcessE
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 fn wait_until_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout: Duration) {
-    timestamp.store(0, Ordering::Release);
+    // Set timestamp to just barely exceed the timeout.
+    // With timestamp = now - (timeout + 1ms), time_since_activity = timeout + 1ms,
+    // which is > timeout, so is_idle_timeout_exceeded returns true.
+    // This is better than timestamp=0 which makes time_since_activity = 56 years,
+    // breaking activity_resumed_after_file_scan logic.
+    let offset = timeout + Duration::from_millis(1);
+    let now_ms = SystemTime::UNIX_EPOCH
+        .elapsed()
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let past_ms = now_ms.saturating_sub(offset.as_millis() as u64);
+    timestamp.store(past_ms, Ordering::Release);
+    // Verify idle is now exceeded
     while !is_idle_timeout_exceeded(timestamp, timeout) {
         std::thread::yield_now();
     }

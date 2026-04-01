@@ -68,8 +68,8 @@ construction and cannot be changed.
 | Field | Type | Meaning | Example |
 |-------|------|---------|---------|
 | `root_dir` | `PathBuf` | Authorized directory boundary. All file operations must resolve within this directory. | `"/home/user/project"` |
-| `access_mode` | `AccessMode` | Operations permitted. `ReadOnly`, `EphemeralOnly`, `ReadWrite`, or `Locked`. | `AccessMode::ReadWrite` |
-| `tool_filter` | `ToolFilter` | Tool dispatch filter. `Unrestricted`, `Allowlist(names)`, or `Blocklist(names)`. | `ToolFilter::Blocklist(vec!["exec_command"])` |
+| `access_mode` | `AccessMode` | Operations permitted. `ReadOnly` or `ReadWrite`. | `AccessMode::ReadWrite` |
+| `tool_filter` | `ToolFilter` | Tool dispatch filter. `Allowlist(names)` or `Blocklist(names)`. Use `Blocklist(vec![])` to allow all tools. | `ToolFilter::Blocklist(vec!["exec_command"])` |
 
 ### Configuration Examples
 
@@ -128,7 +128,7 @@ When a `tools/call` request arrives:
 
 **`mcp-server` owns:**
 - Tool filter enforcement (Allowlist/Blocklist)
-- Access mode enforcement (ReadOnly/Locked/etc.)
+- Access mode enforcement (ReadOnly/ReadWrite)
 - Path boundary enforcement (root_dir)
 - Protocol state machine (initialize before tools/call)
 - Error code assignment for its own denials
@@ -287,8 +287,7 @@ Content-Length: <byte-count>
 | -32600 | Invalid request — missing required fields | `mcp-server` |
 | -32601 | Method not found — unknown method | `mcp-server` |
 | -32602 | Invalid params — wrong parameter types | `mcp-server` |
-| -32603 | Internal error — server-side failure | `mcp-server` |
-| -32000 | Tool error — tool execution failed | `tool handler` |
+| -32603 | Internal error — server-side failure (including tool errors) | `mcp-server` |
 | -32001 | Server not initialized | `mcp-server` |
 
 ### Methods
@@ -368,6 +367,30 @@ Liveness check. No processing, returns null.
   "id": 2
 }
 ```
+
+| Property | Value |
+|----------|-------|
+| McpCapability required | None |
+| ReadOnly-safe | **Yes** |
+| Side effects | No |
+| Idempotent | **Yes** |
+
+---
+
+#### notifications/initialized
+
+Client notification that the initialize handshake is complete and the client is ready to send tool requests.
+
+**Notification (no response sent):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/initialized",
+  "params": {}
+}
+```
+
+This is a standard MCP protocol notification. The server does not send a response (per JSON-RPC 2.0 notification semantics).
 
 | Property | Value |
 |----------|-------|
@@ -463,8 +486,9 @@ Invoke a tool by name with parameters.
 {
   "jsonrpc": "2.0",
   "error": {
-    "code": -32000,
-    "message": "File not found: src/main.rs"
+    "code": -32603,
+    "message": "Tool error: File not found: src/main.rs",
+    "data": { "error": "File not found: src/main.rs" }
   },
   "id": 4
 }
@@ -475,8 +499,9 @@ Invoke a tool by name with parameters.
 {
   "jsonrpc": "2.0",
   "error": {
-    "code": -32000,
-    "message": "[CapabilityDenied] Missing GitStatusRead capability"
+    "code": -32603,
+    "message": "Access denied: [CapabilityDenied] Missing GitStatusRead capability",
+    "data": { "reason": "Missing GitStatusRead capability", "code": "CapabilityDenied" }
   },
   "id": 4
 }
@@ -497,8 +522,9 @@ Consolidated reference for all MCP JSON-RPC methods:
 |--------|---------------|---------------|--------|----------------------|---------------|--------------|------------|
 | `initialize` | `{protocolVersion: string, capabilities: object, clientInfo: {name: string, version: string}}` | `{protocolVersion: string, capabilities: {tools: {listChanged: boolean}}, serverInfo: {name: string, version: string}}` | `-32600` (invalid request), `-32602` (invalid params) | None | **Yes** | No | **Yes** |
 | `ping` | `{}` (or null) | `null` | None | None | **Yes** | No | **Yes** |
+| `notifications/initialized` | `{}` | None (notification) | N/A | None | **Yes** | No | **Yes** |
 | `tools/list` | `null` or `{}` | `{tools: [{name, description, inputSchema}]}` | `-32001` (not initialized) | None | **Yes** | No | **Yes** |
-| `tools/call` | `{name: string, arguments: object}` | `{content: [{type: "text", text: string}], isError: boolean}` | `-32000` (tool error), `-32001` (not initialized), `-32602` (invalid params) | **Tool-specific** | **No** | **Yes** | **No** |
+| `tools/call` | `{name: string, arguments: object}` | `{content: [{type: "text", text: string}], isError: boolean}` | `-32603` (internal error / tool error), `-32001` (not initialized), `-32602` (invalid params) | **Tool-specific** | **No** | **Yes** | **No** |
 
 ### Error Code Reference
 
@@ -508,8 +534,7 @@ Consolidated reference for all MCP JSON-RPC methods:
 | `-32600` | Invalid request — missing required fields | `mcp-server` |
 | `-32601` | Method not found — unknown method | `mcp-server` |
 | `-32602` | Invalid params — wrong parameter types | `mcp-server` |
-| `-32603` | Internal error — server-side failure | `mcp-server` |
-| `-32000` | Tool error — tool execution failed | `tool handler` |
+| `-32603` | Internal error — server-side failure (including tool errors with structured data) | `mcp-server` |
 | `-32001` | Server not initialized — call `initialize` first | `mcp-server` |
 
 ## Registered Tools

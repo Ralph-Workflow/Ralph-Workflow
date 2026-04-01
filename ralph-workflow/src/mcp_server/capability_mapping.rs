@@ -1,7 +1,10 @@
 //! Capability mapping between MCP capabilities and Ralph capabilities.
 //!
-//! This module provides the pure policy functions for mapping McpCapability
+//! This module provides pure translation functions for mapping McpCapability
 //! values from the MCP protocol to Ralph's internal Capability model.
+//!
+//! It also provides thin boundary functions that wire capability checking inputs
+//! to pure domain policy helpers.
 
 use crate::agents::session::{Capability, PolicyOutcome};
 use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, McpCapability};
@@ -50,10 +53,10 @@ const CAPABILITY_MAP: &[(McpCapability, Capability)] = &[
 ];
 
 // ---------------------------------------------------------------------------
-// Pure policy helpers
+// Pure translation functions
 // ---------------------------------------------------------------------------
 
-/// Pure policy: look up Ralph Capability for a McpCapability.
+/// Pure translation: look up Ralph Capability for a McpCapability.
 ///
 /// Returns `None` for capabilities that need special handling
 /// (FileWrite, WorkspaceWriteAny, WorkspaceCoordination).
@@ -64,7 +67,7 @@ pub(crate) fn lookup_ralph_capability(cap: McpCapability) -> Option<Capability> 
         .map(|(_, ralph)| *ralph)
 }
 
-/// Policy: convert Ralph PolicyOutcome to AccessDecision.
+/// Pure translation: convert Ralph PolicyOutcome to AccessDecision.
 pub(crate) fn policy_from_outcome(outcome: PolicyOutcome) -> AccessDecision {
     match outcome {
         PolicyOutcome::Approved => AccessDecision::Allow,
@@ -76,13 +79,15 @@ pub(crate) fn policy_from_outcome(outcome: PolicyOutcome) -> AccessDecision {
     }
 }
 
-/// Policy: decide access for WorkspaceWriteAny capability.
-pub(crate) fn decide_workspace_write_any(
-    ephemeral_outcome: PolicyOutcome,
-    tracked_outcome: PolicyOutcome,
-) -> AccessDecision {
+// ---------------------------------------------------------------------------
+// Pure domain policy helpers (no wiring, no side effects)
+// ---------------------------------------------------------------------------
+
+/// Pure domain policy: evaluate whether workspace write access is allowed
+/// based on ephemeral and tracked write outcomes.
+fn evaluate_workspace_write(ephemeral: PolicyOutcome, tracked: PolicyOutcome) -> AccessDecision {
     let allowed = matches!(
-        (ephemeral_outcome, tracked_outcome),
+        (ephemeral, tracked),
         (PolicyOutcome::Approved, _)
             | (_, PolicyOutcome::Approved)
             | (PolicyOutcome::ApprovedWithRestriction { .. }, _)
@@ -98,41 +103,43 @@ pub(crate) fn decide_workspace_write_any(
     }
 }
 
-/// Policy: decide access based on mapped capability outcome.
-pub(crate) fn decide_from_mapped_outcome(outcome: PolicyOutcome) -> AccessDecision {
-    policy_from_outcome(outcome)
-}
-
-/// Policy: deny unknown capabilities.
-pub(crate) fn deny_unknown_capability(cap: McpCapability) -> AccessDecision {
-    AccessDecision::Deny {
-        reason: format!("Unknown capability: {:?}", cap),
-        code: AccessDeniedCode::CapabilityDenied,
-    }
+/// Pure domain policy: evaluate access for a mapped Ralph capability.
+fn evaluate_mapped_capability(
+    cap: McpCapability,
+    mapped_outcome: Option<(Capability, PolicyOutcome)>,
+) -> AccessDecision {
+    mapped_outcome.map_or_else(
+        || AccessDecision::Deny {
+            reason: format!("Unknown capability: {:?}", cap),
+            code: AccessDeniedCode::CapabilityDenied,
+        },
+        |(_, outcome)| policy_from_outcome(outcome),
+    )
 }
 
 // ---------------------------------------------------------------------------
-// Thin capability policy (boundary function)
+// Thin boundary function (wiring only)
 // ---------------------------------------------------------------------------
 
-/// Boundary function: decide access for any capability given all session outcomes.
+/// Thin boundary: decide access for a McpCapability given session capability outcomes.
 ///
-/// This is a thin boundary that routes to pure policy helpers based on capability type.
-/// It gathers inputs and delegates all branching logic to pure functions.
-pub(crate) fn capability_policy(
+/// This function is the boundary seam — it only wires inputs together and delegates
+/// to pure domain policy helpers. All branching policy lives in the domain helpers.
+pub(crate) fn check_mcp_capability_policy(
     cap: McpCapability,
     ephemeral: PolicyOutcome,
     tracked: PolicyOutcome,
-    mapped: Option<(Capability, PolicyOutcome)>,
+    mapped_outcome: Option<(Capability, PolicyOutcome)>,
 ) -> AccessDecision {
     match cap {
+        // Workspace write capabilities use Ralph's special policy: either ephemeral OR
+        // tracked write approved means access is granted.
         McpCapability::WorkspaceWriteAny | McpCapability::FileWrite => {
-            decide_workspace_write_any(ephemeral, tracked)
+            evaluate_workspace_write(ephemeral, tracked)
         }
+        // Workspace coordination is always allowed.
         McpCapability::WorkspaceCoordination => AccessDecision::Allow,
-        _ => mapped.map_or_else(
-            || deny_unknown_capability(cap),
-            |(_c, o)| decide_from_mapped_outcome(o),
-        ),
+        // All other capabilities are evaluated based on their mapped Ralph capability.
+        _ => evaluate_mapped_capability(cap, mapped_outcome),
     }
 }

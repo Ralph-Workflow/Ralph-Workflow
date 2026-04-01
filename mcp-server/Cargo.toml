@@ -34,5 +34,4 @@ tracing = "0.1"
 bytes = "1"
 
 [dev-dependencies]
-test-helpers = { path = "../test-helpers" }
- tempfile = "3.10"
+tempfile = "3.10"

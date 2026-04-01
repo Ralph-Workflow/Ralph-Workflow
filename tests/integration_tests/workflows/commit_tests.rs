@@ -237,7 +237,7 @@ fn ralph_generate_commit_msg_succeeds_without_prompt_md() {
         let mut handler = MockAppEffectHandler::new()
             .with_head_oid("a".repeat(40))
             .with_cwd(PathBuf::from("/mock/repo"))
-            .with_file(".agent/tmp/commit_diff.txt", "diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
+            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
                 ".agent/tmp/commit_message.xml",
                 "<ralph-commit><ralph-subject>feat: generated without prompt</ralph-subject></ralph-commit>",
@@ -266,7 +266,7 @@ fn ralph_generate_commit_msg_keeps_generated_message_after_command_cleanup() {
         let mut handler = MockAppEffectHandler::new()
             .with_head_oid("a".repeat(40))
             .with_cwd(PathBuf::from("/mock/repo"))
-            .with_file(".agent/tmp/commit_diff.txt", "diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
+            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
                 ".agent/tmp/commit_message.xml",
                 "<ralph-commit><ralph-subject>feat: preserved message</ralph-subject></ralph-commit>",
@@ -293,10 +293,7 @@ fn ralph_generate_commit_generates_and_applies_commit() {
             .with_cwd(PathBuf::from("/mock/repo"))
             .with_file("PROMPT.md", STANDARD_PROMPT)
             .with_file("src/new_file.rs", "pub fn new_file() {}\n")
-            .with_file(
-                ".agent/tmp/commit_diff.txt",
-                "diff --git a/src/new_file.rs b/src/new_file.rs\n+pub fn new_file() {}\n",
-            )
+            .with_diff("diff --git a/src/new_file.rs b/src/new_file.rs\n+pub fn new_file() {}\n")
             .with_file(
                 ".agent/tmp/commit_message.xml",
                 "<ralph-commit><ralph-subject>feat: add new file flow</ralph-subject></ralph-commit>",
@@ -321,10 +318,7 @@ fn ralph_generate_commit_skips_apply_when_agent_requests_skip() {
         let mut handler = MockAppEffectHandler::new()
             .with_head_oid("a".repeat(40))
             .with_cwd(PathBuf::from("/mock/repo"))
-            .with_file(
-                ".agent/tmp/commit_diff.txt",
-                "diff --git a/src/lib.rs b/src/lib.rs\n+change\n",
-            )
+            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
                 ".agent/tmp/commit_message.json",
                 r#"{

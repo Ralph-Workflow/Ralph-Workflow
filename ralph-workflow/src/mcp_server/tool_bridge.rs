@@ -19,9 +19,7 @@
 //! `Arc<dyn Workspace>` at creation time and delegate to the real tool implementations.
 
 use crate::agents::session::{AgentSession, Capability};
-use crate::mcp_server::capability_mapping::{
-    capability_policy, lookup_ralph_capability, policy_from_outcome,
-};
+use crate::mcp_server::capability_mapping::{check_mcp_capability_policy, lookup_ralph_capability};
 use crate::mcp_server::tool_artifact;
 use crate::mcp_server::tool_coordination;
 use crate::mcp_server::tool_exec;
@@ -57,27 +55,18 @@ impl HostSession for RalphHostSessionAdapter {
     }
 
     fn check_capability(&self, cap: McpCapability) -> AccessDecision {
-        // Gather all session outcomes at the boundary
+        // Thin wiring: gather inputs and delegate to pure policy
         let ephemeral = self
             .session
             .check_capability(Capability::WorkspaceWriteEphemeral);
         let tracked = self
             .session
             .check_capability(Capability::WorkspaceWriteTracked);
-        let mapped_cap = lookup_ralph_capability(cap);
-        let mapped_outcome = mapped_cap.map(|c| self.session.check_capability(c));
-
-        // Delegate to pure policy
-        capability_policy(cap, ephemeral, tracked, mapped_cap.zip(mapped_outcome))
-    }
-
-    fn is_parallel_worker(&self) -> bool {
-        self.session.is_parallel_worker()
-    }
-
-    fn check_edit_area(&self, path: &str) -> AccessDecision {
-        let outcome = self.session.check_edit_area(path);
-        policy_from_outcome(outcome)
+        let mapped_outcome = lookup_ralph_capability(cap).map(|c| {
+            let outcome = self.session.check_capability(c);
+            (c, outcome)
+        });
+        check_mcp_capability_policy(cap, ephemeral, tracked, mapped_outcome)
     }
 }
 

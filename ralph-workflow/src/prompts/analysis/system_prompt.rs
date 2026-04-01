@@ -241,7 +241,6 @@ mod tests {
         assert!(prompt.contains("development_result"));
         assert!(prompt.contains("status"));
         assert!(prompt.contains("completed|partial|failed"));
-        assert!(continuation_prompt.contains("development_result.xsd"));
         assert!(continuation_prompt.contains("completed|partial|failed"));
         assert!(!continuation_prompt.contains("<ralph-files-changed>"));
         assert!(

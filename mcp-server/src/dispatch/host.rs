@@ -50,12 +50,6 @@ pub trait HostSession: Send + Sync {
     /// [`AccessDecision::Deny`] with code [`CapabilityDenied`][crate::dispatch::access::AccessDeniedCode::CapabilityDenied]
     /// if the capability is not granted.
     fn check_capability(&self, cap: McpCapability) -> AccessDecision;
-
-    /// Check if the session is a parallel worker.
-    fn is_parallel_worker(&self) -> bool;
-
-    /// Check if a path is within the session's edit area (for parallel workers).
-    fn check_edit_area(&self, path: &str) -> AccessDecision;
 }
 
 /// Workspace file operations.

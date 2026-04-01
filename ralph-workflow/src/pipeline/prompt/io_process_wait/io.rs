@@ -175,12 +175,6 @@ fn try_poll_child(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     executor: &dyn crate::executor::ProcessExecutor,
 ) -> std::io::Result<Option<WaitOutcome>> {
-    let pid = {
-        let child = child_arc
-            .lock()
-            .expect("child process mutex poisoned - indicates panic in another thread");
-        child.id()
-    };
     let mut child = child_arc
         .lock()
         .expect("child process mutex poisoned - indicates panic in another thread");

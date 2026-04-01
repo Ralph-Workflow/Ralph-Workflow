@@ -43,6 +43,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::OnceLock;
 use tempfile::TempDir;
 
+pub mod git_safety;
+pub use git_safety::no_real_git_mutation;
+
 static PROJECT_REPO_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 fn project_repo_root() -> Option<&'static Path> {
@@ -266,6 +269,8 @@ reviewer = ["codex"]
 /// - If directory creation fails
 #[must_use]
 pub fn init_git_repo(dir: &TempDir) -> Repository {
+    // Safety: verify the temp dir is actually isolated before any git operations.
+    // This is the policy enforcement point - it panics if the path is wrong.
     assert_not_project_repo(dir.path());
     let repo = Repository::init(dir.path()).expect("init git repo");
 
@@ -320,8 +325,7 @@ pub fn write_file<P: AsRef<Path>>(path: P, contents: &str) {
 /// - If commit creation fails
 #[must_use]
 pub fn commit_all(repo: &Repository, message: &str) -> Oid {
-    // Policy: tests must never mutate real git state. This assertion fires immediately
-    // if the repo is the project repo or not in temp isolation.
+    // Policy enforcement: verify repo is isolated before allowing mutation.
     assert_git_mutation_allowed(repo);
     stage_all(repo);
 
@@ -410,8 +414,7 @@ pub fn stage_all(repo: &Repository) {
 /// - If git operations fail (index write, commit creation, etc.)
 #[must_use]
 pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
-    // Policy: tests must never mutate real git state. This assertion fires immediately
-    // if the repo is the project repo or not in temp isolation.
+    // Policy enforcement: verify repo is isolated before allowing mutation.
     assert_git_mutation_allowed(repo);
     // Stage all changes using git2 (same as commit_all, but for git CLI migration)
     stage_all(repo);
@@ -455,6 +458,7 @@ pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
 /// - If branch cannot be found
 /// - If checkout operations fail
 pub fn git_switch(repo: &Repository, branch_name: &str) {
+    // Policy enforcement: verify repo is isolated before allowing branch switch.
     assert_repo_is_isolated(repo);
     let branch_ref = format!("refs/heads/{branch_name}");
     let obj = repo
@@ -490,6 +494,7 @@ pub fn git_switch(repo: &Repository, branch_name: &str) {
 ///
 /// - If git operations fail
 pub fn git_switch_force(repo: &Repository, branch_name: &str) {
+    // Policy enforcement: verify repo is isolated before allowing force branch switch.
     assert_repo_is_isolated(repo);
     // Use git2 checkout with force option (built-in, no separate commands)
     let branch_ref = format!("refs/heads/{branch_name}");

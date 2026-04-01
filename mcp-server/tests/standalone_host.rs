@@ -57,6 +57,35 @@ fn temp_root() -> PathBuf {
     std::env::temp_dir().join("ralph-mcp-test")
 }
 
+/// Fail-fast guardrail: panic if path is inside a real git repo.
+///
+/// This is a standalone implementation of the git safety check that mcp-server tests
+/// use to ensure they don't accidentally touch real git state. This replaces the
+/// assert_no_real_git_state function to keep mcp-server tests
+/// independent of the test-helpers crate.
+fn assert_no_real_git_state(path: &std::path::Path) {
+    let path = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(_) => return, // Cannot canonicalize - skip check
+    };
+
+    // Check the path and all its ancestors for .git
+    let mut current: &std::path::Path = &path;
+    loop {
+        if current.join(".git").exists() {
+            panic!(
+                "POLICY VIOLATION: test is using real git state at '{}'. \
+                 All tests must use MemoryWorkspace. See docs/agents/testing-guide.md.",
+                path.display()
+            );
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Standalone HostSession Implementation
 // ---------------------------------------------------------------------------
@@ -67,9 +96,6 @@ struct InMemorySession {
     session_id: String,
     /// Map of capability -> granted
     granted_capabilities: HashMap<McpCapability, bool>,
-    is_parallel_worker: bool,
-    /// Map of path -> allowed (for edit area checks)
-    edit_areas: Vec<PathBuf>,
 }
 
 impl InMemorySession {
@@ -88,8 +114,6 @@ impl InMemorySession {
         Self {
             session_id: session_id.to_string(),
             granted_capabilities: granted,
-            is_parallel_worker: false,
-            edit_areas: vec![],
         }
     }
 
@@ -97,11 +121,6 @@ impl InMemorySession {
         for cap in caps {
             self.granted_capabilities.insert(*cap, true);
         }
-        self
-    }
-
-    fn with_parallel_worker(mut self, is_worker: bool) -> Self {
-        self.is_parallel_worker = is_worker;
         self
     }
 }
@@ -118,26 +137,6 @@ impl mcp_server::HostSession for InMemorySession {
                 reason: format!("Capability {} not granted", cap),
                 code: AccessDeniedCode::CapabilityDenied,
             },
-        }
-    }
-
-    fn is_parallel_worker(&self) -> bool {
-        self.is_parallel_worker
-    }
-
-    fn check_edit_area(&self, path: &str) -> AccessDecision {
-        if self.edit_areas.is_empty() {
-            return AccessDecision::Allow;
-        }
-        let path = Path::new(path);
-        for area in &self.edit_areas {
-            if path.starts_with(area) {
-                return AccessDecision::Allow;
-            }
-        }
-        AccessDecision::Deny {
-            reason: format!("Path {} is outside edit areas", path.display()),
-            code: AccessDeniedCode::OutsideRootDir,
         }
     }
 }
@@ -235,7 +234,7 @@ fn create_test_server(session: InMemorySession, workspace: InMemoryWorkspace) ->
 #[test]
 fn test_standalone_session_check_capability() {
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
     let session = InMemorySession::new("test-session");
     let workspace = InMemoryWorkspace::new(root);
 
@@ -255,7 +254,7 @@ fn test_standalone_session_check_capability() {
 #[test]
 fn test_standalone_workspace_read_write() {
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
     let session = InMemorySession::new("test-session").with_capabilities(&[
         McpCapability::WorkspaceRead,
         McpCapability::WorkspaceWriteTracked,
@@ -289,7 +288,7 @@ fn test_standalone_workspace_read_write() {
 #[test]
 fn test_capability_denial_from_session() {
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
     // Session without GitStatusRead capability
     let session = InMemorySession::new("restricted-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]); // No GitStatusRead
@@ -367,33 +366,6 @@ fn test_capability_denial_from_session() {
     );
 }
 
-#[test]
-fn test_parallel_worker_edit_area() {
-    let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
-    // Session that is a parallel worker with restricted edit area
-    let session = InMemorySession::new("parallel-worker")
-        .with_capabilities(&[
-            McpCapability::WorkspaceRead,
-            McpCapability::WorkspaceWriteTracked,
-        ])
-        .with_parallel_worker(true);
-    let workspace = InMemoryWorkspace::new(root);
-
-    let server = create_test_server(session, workspace);
-
-    // The is_parallel_worker() and check_edit_area() methods are available
-    // but their enforcement depends on the tool handler implementation
-    let init = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        method: "initialize".to_string(),
-        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
-        id: Some(serde_json::json!(1)),
-    };
-    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
-    assert_eq!(state, ServerState::Ready);
-}
-
 // ---------------------------------------------------------------------------
 // Additional Standalone Tests: McpServerConfig Enforcement
 // ---------------------------------------------------------------------------
@@ -402,7 +374,7 @@ fn test_parallel_worker_edit_area() {
 #[test]
 fn test_read_only_mode_denies_write_tool() {
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
     // Create a read-only config
     let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadOnly);
 
@@ -487,7 +459,7 @@ fn test_read_only_mode_denies_write_tool() {
 #[test]
 fn test_allowlist_blocks_unlisted_tool() {
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
     // Create config with allowlist that only permits "read_file"
     let config = McpServerConfig::new(root.clone())
         .with_tool_filter(ToolFilter::Allowlist(vec!["read_file".to_string()]));
@@ -536,7 +508,7 @@ fn test_allowlist_blocks_unlisted_tool() {
 #[test]
 fn test_blocklist_blocks_listed_tool() {
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
     // Create config with blocklist that blocks "git_status"
     let config = McpServerConfig::new(root.clone())
         .with_tool_filter(ToolFilter::Blocklist(vec!["git_status".to_string()]));
@@ -587,7 +559,7 @@ fn test_session_bridge_full_protocol_flow() {
     use std::time::Duration;
 
     let root = temp_root();
-    test_helpers::assert_mcp_test_no_real_git(&root);
+    assert_no_real_git_state(&root);
 
     // Create fake implementations
     let session = InMemorySession::new("bridge-test-session")
@@ -693,5 +665,91 @@ fn test_session_bridge_full_protocol_flow() {
     assert!(
         ping_response_str.contains("\"result\""),
         "Ping response should be JSON-RPC result"
+    );
+}
+
+/// Test that a failed tool call returns a JSON-RPC error response.
+///
+/// Per the MCP RPC contract (see mcp-server/README.md), tool execution errors
+/// return JSON-RPC error responses with code -32603, not success responses
+/// with isError=true.
+#[test]
+fn test_tool_execution_error_returns_json_rpc_error() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create a tool handler that always returns an error
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Err(mcp_server::ToolError::ExecutionError(
+                "Intentional error for testing".to_string(),
+            ))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "failing_tool".to_string(),
+            description: "A tool that always fails".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
+    };
+
+    let session =
+        InMemorySession::new("test-session").with_capabilities(&[McpCapability::WorkspaceRead]);
+    let workspace = InMemoryWorkspace::new(root);
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(temp_root());
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
+
+    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    // Call the failing tool
+    let tool_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({
+            "name": "failing_tool",
+            "arguments": {}
+        })),
+        id: Some(serde_json::json!(2)),
+    };
+
+    let (response, _) = server.handle_request(tool_request, state);
+    let response = response.expect("handle_request should return a response for non-notification");
+
+    // Tool execution errors must be JSON-RPC protocol errors, not success with isError=true
+    assert!(
+        response.error.is_some(),
+        "Tool execution errors must be JSON-RPC protocol errors, got: {:#?}",
+        response
+    );
+
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32603,
+        "Tool execution errors should have code -32603, got: {}",
+        error.code
+    );
+    assert!(
+        error.message.contains("Tool error"),
+        "Error message should contain 'Tool error', got: {}",
+        error.message
     );
 }

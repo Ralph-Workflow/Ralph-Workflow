@@ -137,10 +137,9 @@ pub struct RepoCommandBoundaryParams<'a> {
     pub logger: &'a crate::logger::Logger,
     pub colors: Colors,
     pub executor: &'a std::sync::Arc<dyn crate::executor::ProcessExecutor>,
-    pub app_handler: &'a mut dyn crate::app::effect::AppEffectHandler,
+    pub app_handler: Option<&'a mut dyn crate::app::effect::AppEffectHandler>,
     pub repo_root: &'a std::path::Path,
     pub workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
-    pub app_handler: Option<&'a mut dyn crate::app::effect::AppEffectHandler>,
 }
 
 pub fn handle_repo_commands_boundary(
@@ -158,7 +157,6 @@ pub fn handle_repo_commands_boundary(
         app_handler,
         repo_root,
         workspace,
-        app_handler,
     } = params;
 
     if args.recovery.dry_run {
@@ -214,6 +212,14 @@ pub fn handle_repo_commands_boundary(
         let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
             config.user_templates_dir().cloned(),
         );
+
+        // Extract handler once to avoid borrow conflicts
+        let handler: &mut dyn crate::app::effect::AppEffectHandler = if let Some(h) = app_handler {
+            h
+        } else {
+            &mut crate::app::runtime_factory::create_effect_handler()
+        };
+
         let generation_outcome = crate::app::plumbing::handle_generate_commit_msg(
             &crate::app::plumbing::CommitGenerationConfig {
                 config,
@@ -227,7 +233,7 @@ pub fn handle_repo_commands_boundary(
                 reviewer_agent,
                 executor: std::sync::Arc::clone(executor),
             },
-            app_handler,
+            handler,
         )?;
 
         // If --generate-commit, also apply the commit immediately
@@ -237,13 +243,6 @@ pub fn handle_repo_commands_boundary(
                 crate::app::plumbing::CommitGenerationOutcome::Generated
             )
         {
-            // Use provided app_handler if available (for test isolation), otherwise create a production handler
-            let handler: &mut dyn crate::app::effect::AppEffectHandler =
-                if let Some(h) = app_handler {
-                    h
-                } else {
-                    &mut crate::app::runtime_factory::create_effect_handler()
-                };
             crate::app::plumbing::handle_apply_commit_with_handler(
                 workspace.as_ref(),
                 handler,
@@ -350,10 +349,9 @@ pub fn run_pipeline_with_handler_boundary(
             logger: &logger,
             colors,
             executor: &executor,
-            app_handler: handler,
+            app_handler: Some(handler),
             repo_root: workspace.root(),
             workspace: &workspace,
-            app_handler: Some(handler),
         })?
     {
         anyhow::bail!("repo commands should not return from run_pipeline");

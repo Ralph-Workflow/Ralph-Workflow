@@ -130,17 +130,6 @@ pub fn handle_write_file(
         )));
     }
 
-    // Check edit area for parallel workers
-    if session.is_parallel_worker() {
-        let edit_outcome = session.check_edit_area(path);
-        if !edit_outcome.is_allowed() {
-            return Err(ToolError::CapabilityDenied(format!(
-                "Write to '{}' denied: edit area restriction",
-                path
-            )));
-        }
-    }
-
     workspace.write(Path::new(path), content).map_err(|e| {
         ToolError::ExecutionError(format!("Failed to write file '{}': {}", path, e))
     })?;
