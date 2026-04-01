@@ -137,6 +137,7 @@ pub struct RepoCommandBoundaryParams<'a> {
     pub logger: &'a crate::logger::Logger,
     pub colors: Colors,
     pub executor: &'a std::sync::Arc<dyn crate::executor::ProcessExecutor>,
+    pub app_handler: &'a mut dyn crate::app::effect::AppEffectHandler,
     pub repo_root: &'a std::path::Path,
     pub workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
 }
@@ -153,6 +154,7 @@ pub fn handle_repo_commands_boundary(
         logger,
         colors,
         executor,
+        app_handler,
         repo_root,
         workspace,
     } = params;
@@ -223,6 +225,7 @@ pub fn handle_repo_commands_boundary(
                 reviewer_agent,
                 executor: std::sync::Arc::clone(executor),
             },
+            app_handler,
         )?;
         return Ok(true);
     }
@@ -320,6 +323,7 @@ pub fn run_pipeline_with_handler_boundary(
             logger: &logger,
             colors,
             executor: &executor,
+            app_handler: handler,
             repo_root: workspace.root(),
             workspace: &workspace,
         })?

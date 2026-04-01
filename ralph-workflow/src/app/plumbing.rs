@@ -21,10 +21,8 @@ use crate::files::{
     delete_commit_message_file_with_workspace, read_commit_message_file_with_workspace,
     write_commit_message_file_with_workspace,
 };
-use crate::git_helpers::git_diff;
 use crate::logger::Colors;
 use crate::logger::Logger;
-use crate::phases::generate_commit_message_with_chain;
 
 use crate::prompts::TemplateContext;
 use crate::workspace::Workspace;
@@ -199,11 +197,20 @@ pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow::Result<()> {
+pub fn handle_generate_commit_msg(
+    config: &CommitGenerationConfig<'_>,
+    app_handler: &mut dyn AppEffectHandler,
+) -> anyhow::Result<()> {
     config.logger.info("Generating commit message...");
 
     // Generate the commit message using standard pipeline
-    let diff = git_diff()?;
+    let diff = match app_handler.execute(AppEffect::GitDiff) {
+        AppEffectResult::String(diff) => diff,
+        AppEffectResult::Error(err) => {
+            anyhow::bail!("Failed to get git diff: {err}");
+        }
+        other => anyhow::bail!("Unexpected result from GitDiff: {other:?}"),
+    };
     if diff.trim().is_empty() {
         config
             .logger
@@ -214,18 +221,9 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
     let agents = resolve_commit_message_agents(config.registry, config.reviewer_agent);
 
     // Use the chain-aware commit message generation from phases/commit.rs.
-    let result = generate_commit_message_with_chain(
-        &diff,
-        config.registry,
-        &mut crate::app::plumbing_boundary::run_pipeline_for_commit_message(
-            &mut crate::app::runtime_factory::create_timer(),
-            config,
-        )?,
-        &agents,
-        config.template_context,
-        config.workspace,
-    )
-    .map_err(|e| anyhow::anyhow!("Failed to generate commit message: {e}"))?;
+    let result = crate::app::plumbing_boundary::generate_commit_message_for_plumbing(
+        config, &diff, &agents,
+    )?;
     let commit_message = match result.outcome {
         crate::phases::commit::CommitMessageOutcome::Message(message) => message,
         crate::phases::commit::CommitMessageOutcome::Skipped { reason } => {

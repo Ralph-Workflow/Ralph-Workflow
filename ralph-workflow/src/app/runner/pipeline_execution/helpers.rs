@@ -133,7 +133,6 @@ pub(crate) fn prepare_agent_phase_for_workspace(
     }
 }
 
-#[derive(Copy, Clone)]
 pub(crate) struct RepoCommandParams<'a> {
     pub(crate) args: &'a Args,
     pub(crate) config: &'a crate::config::Config,
@@ -143,6 +142,7 @@ pub(crate) struct RepoCommandParams<'a> {
     pub(crate) logger: &'a Logger,
     pub(crate) colors: Colors,
     pub(crate) executor: &'a std::sync::Arc<dyn ProcessExecutor>,
+    pub(crate) app_handler: &'a mut dyn crate::app::effect::AppEffectHandler,
     pub(crate) repo_root: &'a std::path::Path,
     pub(crate) workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
 }
@@ -159,6 +159,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         logger,
         colors,
         executor,
+        app_handler,
         repo_root,
         workspace,
     } = params;
@@ -172,6 +173,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         logger,
         colors,
         executor,
+        app_handler,
         repo_root,
         workspace,
     })

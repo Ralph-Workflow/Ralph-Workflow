@@ -365,10 +365,15 @@ fn test_context_based_uses_workspace_rooted_paths() {
         continuation_xsd_retry.contains("development_result.xsd"),
         "Continuation-mode XSD retry should point at development_result.xsd"
     );
-    let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+    let referenced_schemas: Vec<&str> = continuation_xsd_retry
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+        .filter(|token| token.ends_with(".xsd"))
+        .collect();
     assert!(
-        !continuation_xsd_retry.contains(forbidden_schema),
-        "Continuation-mode XSD retry must never reference continuation-specific schema files"
+        referenced_schemas
+            .iter()
+            .all(|schema| schema.ends_with("development_result.xsd")),
+        "Continuation-mode XSD retry must only reference the canonical development_result.xsd schema"
     );
 
     // Both should contain the core content (PROMPT and PLAN)
@@ -397,10 +402,15 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
         prompt.contains("development_result.xsd"),
         "Continuation-mode XSD retry should point at development_result.xsd"
     );
-    let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+    let referenced_schemas: Vec<&str> = prompt
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+        .filter(|token| token.ends_with(".xsd"))
+        .collect();
     assert!(
-        !prompt.contains(forbidden_schema),
-        "Continuation-mode XSD retry must never reference continuation-specific schema files"
+        referenced_schemas
+            .iter()
+            .all(|schema| schema.ends_with("development_result.xsd")),
+        "Continuation-mode XSD retry must only reference the canonical development_result.xsd schema"
     );
     assert!(
         prompt.contains("continuation output")
@@ -421,15 +431,21 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
 #[test]
 fn test_xsd_retry_source_has_canonical_status_and_schema_guards() {
     let source = include_str!("system_prompt_iteration_xsd_retry.rs");
-    let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+    let referenced_schemas: Vec<&str> = source
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+        .filter(|token| token.ends_with(".xsd"))
+        .collect();
 
     assert!(
         source.contains("development_result.xsd"),
         "Developer XSD retry source must reference the canonical development_result.xsd path"
     );
     assert!(
-        !source.contains(forbidden_schema),
-        "Developer XSD retry source must never reference continuation-specific schema paths"
+        referenced_schemas
+            .iter()
+            .all(|schema| schema.ends_with("development_result.xsd")
+                || schema.ends_with("fix_result.xsd")),
+        "Developer XSD retry source must only reference canonical XSD paths"
     );
     assert!(
         source.contains("<ralph-status>completed|partial|failed</ralph-status>"),

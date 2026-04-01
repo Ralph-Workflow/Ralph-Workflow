@@ -208,10 +208,15 @@ fn test_development_xsd_retry_fallback_uses_continuation_contract() {
             prompt.contains("development_result.xsd"),
             "Continuation fallback should mention the development schema path"
         );
-        let forbidden_schema = concat!("development_", "continuation_", "result.xsd");
+        let referenced_schemas: Vec<&str> = prompt
+            .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+            .filter(|token| token.ends_with(".xsd"))
+            .collect();
         assert!(
-            !prompt.contains(forbidden_schema),
-            "Continuation fallback must never mention continuation-specific schema files"
+            referenced_schemas
+                .iter()
+                .all(|schema| schema.ends_with("development_result.xsd")),
+            "Continuation fallback must only reference the canonical development_result.xsd schema"
         );
         assert!(
             prompt.contains("<ralph-next-steps>1."),

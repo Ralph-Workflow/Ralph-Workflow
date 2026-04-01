@@ -268,6 +268,7 @@ pub fn run_with_config_and_resolver<P: crate::config::ConfigEnvironment, H: AppE
             logger: &logger,
             colors,
             executor: &executor,
+            app_handler: handler,
             repo_root: &repo_root,
             workspace: &workspace,
         })?
@@ -534,6 +535,7 @@ where
             logger: &logger,
             colors,
             executor: &executor,
+            app_handler,
             repo_root: &repo_root,
             workspace: &workspace,
         })?
