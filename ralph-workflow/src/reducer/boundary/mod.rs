@@ -116,6 +116,7 @@ mod chain;
 mod checkpoint;
 mod cloud;
 mod commit;
+mod connectivity;
 mod context;
 mod development;
 mod development_prompt;
@@ -670,6 +671,13 @@ impl MainEffectHandler {
                 reset_type,
                 target_phase,
             } => Ok(self.emit_recovery_reset(ctx, &reset_type, target_phase)),
+            Effect::CheckNetworkConnectivity => Ok(connectivity::check_network_connectivity(
+                &self.state.connectivity,
+            )),
+            Effect::PollForConnectivity { interval_ms } => Ok(connectivity::poll_for_connectivity(
+                interval_ms,
+                &self.state.connectivity,
+            )),
             e => self.execute_lifecycle_effect_recovery_or_c(e, ctx),
         }
     }

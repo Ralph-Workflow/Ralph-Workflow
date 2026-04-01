@@ -21,6 +21,10 @@ include!("state/enums.rs");
 pub mod continuation;
 pub use continuation::ContinuationState;
 
+// Connectivity state for offline detection and freeze-and-resume
+pub mod connectivity;
+pub use connectivity::ConnectivityState;
+
 // Agent fallback chain state and backoff computation
 pub mod agent_chain;
 pub use agent_chain::{AgentChainState, AgentRole, RateLimitContinuationPrompt};

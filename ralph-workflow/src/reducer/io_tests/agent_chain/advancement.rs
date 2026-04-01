@@ -83,7 +83,7 @@ fn test_agent_invocation_succeeded_preserves_indices() {
 }
 
 #[test]
-fn test_agent_invocation_failed_with_retriable_network_advances_model() {
+fn test_agent_invocation_failed_with_retriable_network_sets_check_pending() {
     let base_state = create_test_state();
     let state = PipelineState {
         agent_chain: base_state.agent_chain.with_agents(
@@ -105,9 +105,16 @@ fn test_agent_invocation_failed_with_retriable_network_advances_model() {
         ),
     );
 
-    // Should advance to next model (0 -> 1)
+    // Network error should set check_pending instead of advancing model
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
-    assert_eq!(new_state.agent_chain.current_model_index, 1);
+    assert_eq!(
+        new_state.agent_chain.current_model_index, 0,
+        "Network error should NOT advance model (check_pending takes priority)"
+    );
+    assert!(
+        new_state.connectivity.check_pending,
+        "Network error should set check_pending for connectivity verification"
+    );
 }
 
 #[test]

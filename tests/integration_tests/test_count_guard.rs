@@ -313,6 +313,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("opencode_usage_limit_detection.rs"),
     },
     SourceFile {
+        path: "offline_detection.rs",
+        contents: include_str!("offline_detection.rs"),
+    },
+    SourceFile {
         path: "prompt_path_resolution.rs",
         contents: include_str!("prompt_path_resolution.rs"),
     },

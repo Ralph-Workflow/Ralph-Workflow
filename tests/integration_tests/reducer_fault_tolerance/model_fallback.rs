@@ -27,7 +27,7 @@ use ralph_workflow::reducer::state::{AgentChainState, PipelineState};
 use super::helpers::create_state_with_agent_chain_in_development;
 
 #[test]
-fn test_network_error_triggers_model_fallback() {
+fn test_network_error_triggers_connectivity_check_not_model_fallback() {
     with_default_timeout(|| {
         let state = create_state_with_agent_chain_in_development();
 
@@ -41,8 +41,16 @@ fn test_network_error_triggers_model_fallback() {
 
         let new_state = ralph_workflow::reducer::state_reduction::reduce(state, event);
 
+        // Network error should set check_pending for connectivity verification
         assert_eq!(new_state.agent_chain.current_agent_index, 0);
-        assert!(new_state.agent_chain.current_model_index > 0);
+        assert!(
+            new_state.connectivity.check_pending,
+            "Network error should set check_pending for connectivity verification"
+        );
+        assert_eq!(
+            new_state.agent_chain.current_model_index, 0,
+            "Network error should NOT advance model index (offline detection takes priority)"
+        );
         assert_eq!(new_state.phase, PipelinePhase::Development);
     });
 }
@@ -68,7 +76,7 @@ fn test_auth_error_triggers_agent_fallback() {
 }
 
 #[test]
-fn test_agent_fails_after_10_retries_fallback_to_next_agent() {
+fn test_network_error_preserves_model_and_triggers_connectivity_check() {
     with_default_timeout(|| {
         let state = create_state_with_agent_chain_in_development();
         let initial_model_index = state.agent_chain.current_model_index;
@@ -84,8 +92,16 @@ fn test_agent_fails_after_10_retries_fallback_to_next_agent() {
             ),
         );
 
+        // Network error should NOT advance model or switch agent
         assert_eq!(new_state.agent_chain.current_agent().unwrap(), "agent1");
-        assert!(new_state.agent_chain.current_model_index > initial_model_index);
+        assert_eq!(
+            new_state.agent_chain.current_model_index, initial_model_index,
+            "Network error should NOT advance model (offline detection takes priority)"
+        );
+        assert!(
+            new_state.connectivity.check_pending,
+            "Network error should set check_pending for connectivity verification"
+        );
         assert_eq!(new_state.phase, PipelinePhase::Development);
     });
 }
@@ -178,19 +194,19 @@ fn test_auth_failure_triggers_agent_fallback_not_model_fallback() {
     });
 }
 
-/// Test that network errors still trigger model fallback (same agent, different model).
+/// Test that network errors trigger connectivity check, not model fallback.
 ///
-/// This verifies that the change to rate limit handling doesn't affect other
-/// retriable errors like Network/Timeout which should still try different models
-/// within the same agent before falling back to the next agent.
+/// With offline detection, network errors set check_pending which blocks
+/// all budget-consuming effects (including model fallback) until connectivity
+/// is verified. This prevents consuming budget while offline.
 #[test]
-fn test_network_error_still_triggers_model_fallback() {
+fn test_network_error_does_not_advance_model() {
     with_default_timeout(|| {
         let state = create_state_with_agent_chain_in_development();
         let initial_agent_index = state.agent_chain.current_agent_index;
         let initial_model_index = state.agent_chain.current_model_index;
 
-        // Network error should still trigger model fallback (same agent)
+        // Network error should set check_pending (not advance model)
         let new_state = ralph_workflow::reducer::state_reduction::reduce(
             state,
             PipelineEvent::agent_invocation_failed(
@@ -205,13 +221,19 @@ fn test_network_error_still_triggers_model_fallback() {
         // Should stay on same agent
         assert_eq!(
             new_state.agent_chain.current_agent_index, initial_agent_index,
-            "Network error should trigger model fallback, not agent fallback"
+            "Network error should not switch agents"
         );
 
-        // Should advance to next model
+        // Model index should NOT advance - connectivity check takes priority
+        assert_eq!(
+            new_state.agent_chain.current_model_index, initial_model_index,
+            "Network error should NOT advance model (offline detection takes priority)"
+        );
+
+        // Connectivity check should be pending
         assert!(
-            new_state.agent_chain.current_model_index > initial_model_index,
-            "Network error should advance model index"
+            new_state.connectivity.check_pending,
+            "Network error should set check_pending for connectivity verification"
         );
 
         assert_eq!(new_state.phase, PipelinePhase::Development);

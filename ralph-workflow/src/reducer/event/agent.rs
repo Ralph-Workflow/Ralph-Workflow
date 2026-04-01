@@ -215,4 +215,18 @@ pub enum AgentEvent {
         /// Target temp file path where context was written.
         context_path: String,
     },
+
+    /// Connectivity probe succeeded (network is reachable).
+    ///
+    /// Emitted when a connectivity probe succeeds. The reducer processes this
+    /// to update ConnectivityState accordingly. If the pipeline was waiting
+    /// for connectivity verification, this clears that pending flag.
+    ConnectivityCheckSucceeded,
+
+    /// Connectivity probe failed (network is unreachable).
+    ///
+    /// Emitted when a connectivity probe fails. The reducer processes this
+    /// to update ConnectivityState. If the failure threshold is reached,
+    /// the pipeline enters offline mode.
+    ConnectivityCheckFailed,
 }

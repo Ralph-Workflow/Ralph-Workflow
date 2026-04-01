@@ -224,20 +224,21 @@ fn test_review_pass_complete_moves_to_commit_message() {
 fn test_agent_chain_resets_on_new_iteration() {
     with_default_timeout(|| {
         let mut state = create_state_with_agent_chain();
+        // Use ModelUnavailable (not Network) to trigger model fallback
         state = reduce(
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
                 "agent1".into(),
                 1,
-                AgentErrorKind::Network,
+                AgentErrorKind::ModelUnavailable,
                 true,
             ),
         );
         assert_eq!(
             state.agent_chain.current_model().unwrap(),
             "model2",
-            "Network error should fallback to model2"
+            "ModelUnavailable error should fallback to model2"
         );
         let new_state = reduce(state, PipelineEvent::development_iteration_started(2));
         assert_eq!(new_state.agent_chain.current_agent().unwrap(), "agent1");
@@ -253,13 +254,14 @@ fn test_agent_chain_resets_on_new_iteration() {
 fn test_agent_chain_advances_on_model_fallback() {
     with_default_timeout(|| {
         let state = create_state_with_agent_chain();
+        // Use ModelUnavailable to trigger model fallback (Network triggers connectivity check)
         let new_state = reduce(
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
                 "agent1".into(),
                 1,
-                AgentErrorKind::Network,
+                AgentErrorKind::ModelUnavailable,
                 true,
             ),
         );
@@ -267,7 +269,7 @@ fn test_agent_chain_advances_on_model_fallback() {
         assert_eq!(
             new_state.agent_chain.current_model().unwrap(),
             "model2",
-            "Network error should trigger model fallback"
+            "ModelUnavailable error should trigger model fallback"
         );
     });
 }
@@ -440,11 +442,11 @@ fn test_pipeline_continues_after_agent_failure() {
 }
 
 #[test]
-fn test_network_error_triggers_model_fallback() {
+fn test_network_error_triggers_connectivity_check_not_model_fallback() {
     with_default_timeout(|| {
         let state = create_state_with_agent_chain();
 
-        // Simulate network error (retriable) - should trigger model fallback event
+        // Simulate network error (retriable) - should trigger connectivity check, not model fallback
         let new_state = reduce(
             state,
             PipelineEvent::agent_invocation_failed(
@@ -456,7 +458,7 @@ fn test_network_error_triggers_model_fallback() {
             ),
         );
 
-        // Should advance to next model, not agent
+        // Should stay on same agent and model (connectivity check takes priority)
         assert_eq!(
             new_state.agent_chain.current_agent().unwrap(),
             "agent1",
@@ -464,8 +466,12 @@ fn test_network_error_triggers_model_fallback() {
         );
         assert_eq!(
             new_state.agent_chain.current_model().unwrap(),
-            "model2",
-            "Network error should fallback to next model"
+            "model1",
+            "Network error should NOT fallback to next model (connectivity check takes priority)"
+        );
+        assert!(
+            new_state.connectivity.check_pending,
+            "Network error should set check_pending for connectivity verification"
         );
     });
 }

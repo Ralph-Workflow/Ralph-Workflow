@@ -226,6 +226,14 @@ pub struct PipelineState {
     #[serde(default)]
     pub continuation: ContinuationState,
 
+    /// Connectivity state for offline detection and freeze-and-resume workflow.
+    ///
+    /// Tracks network connectivity status to enable the pipeline to detect when
+    /// network connectivity is lost, freeze workflow state without consuming
+    /// continuation/retry budgets, and automatically resume when connectivity returns.
+    #[serde(default)]
+    pub connectivity: ConnectivityState,
+
     /// Run-level execution metrics.
     ///
     /// This is the single source of truth for all iteration/attempt/retry/fallback
