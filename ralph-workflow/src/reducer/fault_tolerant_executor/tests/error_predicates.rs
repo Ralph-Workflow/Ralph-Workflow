@@ -80,6 +80,7 @@ fn test_usage_limit_triggers_rate_limited_event_not_timeout() {
         model_index: 0,
         attempt: 0,
         logfile: ".agent/logs/test.log",
+        completion_output_path: None,
     };
 
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)

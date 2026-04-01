@@ -5,8 +5,6 @@
 
 /// The XSD schema for development result validation - included at compile time
 const DEVELOPMENT_RESULT_XSD_SCHEMA: &str = include_str!("../xsd/development_result.xsd");
-const DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA: &str =
-    include_str!("../xsd/development_continuation_result.xsd");
 
 /// The XSD schema for plan validation - included at compile time
 const PLAN_XSD_SCHEMA: &str = include_str!("../xsd/plan.xsd");
@@ -58,22 +56,6 @@ fn write_dev_iteration_xsd_retry_schema_files(workspace: &dyn Workspace) {
     let _ = workspace.write(
         &tmp_dir.join("development_result.xsd"),
         DEVELOPMENT_RESULT_XSD_SCHEMA,
-    );
-    let _ = workspace.write(
-        &tmp_dir.join("development_continuation_result.xsd"),
-        DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA,
-    );
-}
-
-fn write_dev_iteration_continuation_schema_file(workspace: &dyn Workspace) {
-    let tmp_dir = Path::new(XSD_RETRY_TMP_DIR);
-    if workspace.create_dir_all(tmp_dir).is_err() {
-        return;
-    }
-
-    let _ = workspace.write(
-        &tmp_dir.join("development_continuation_result.xsd"),
-        DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA,
     );
 }
 

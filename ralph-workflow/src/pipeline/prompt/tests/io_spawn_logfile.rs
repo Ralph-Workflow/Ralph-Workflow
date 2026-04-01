@@ -138,6 +138,7 @@ fn test_run_with_agent_spawn_creates_parent_directory_for_logfile() {
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {

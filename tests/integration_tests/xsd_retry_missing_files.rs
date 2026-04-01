@@ -200,7 +200,7 @@ fn test_development_xsd_retry_detects_missing_files() {
         assert!(
             prompt.contains("WARNING: Required XSD retry files are missing")
                 && prompt.contains("workspace.root()")
-                && prompt.contains("development_continuation_result.xsd"),
+                && prompt.contains("development_result.xsd"),
             "Should detect missing schema AND include workspace root diagnostics. Got prompt: \n{prompt}"
         );
     });
@@ -225,20 +225,34 @@ fn test_development_xsd_retry_fallback_uses_continuation_contract() {
         );
 
         assert!(
-            prompt.contains("development_continuation_result.xsd"),
-            "Continuation fallback should mention the continuation schema path"
+            prompt.contains("development_result.xsd"),
+            "Continuation fallback should mention the development schema path"
         );
+        let referenced_schemas: Vec<&str> = prompt
+            .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+            .filter(|token| token.ends_with(".xsd"))
+            .collect();
         assert!(
-            prompt.contains("<ralph-status>partial|failed</ralph-status>"),
-            "Continuation fallback should restrict status to partial|failed"
+            referenced_schemas
+                .iter()
+                .all(|schema| schema.ends_with("development_result.xsd")),
+            "Continuation fallback must only reference the canonical development_result.xsd schema"
         );
         assert!(
             prompt.contains("<ralph-next-steps>1."),
             "Continuation fallback should require ordered next steps"
         );
         assert!(
-            !prompt.contains("<ralph-status>completed|partial|failed</ralph-status>"),
-            "Continuation fallback should not fall back to the generic development XML contract"
+            prompt.contains("<ralph-status>completed|partial|failed</ralph-status>"),
+            "Continuation fallback should allow completed|partial|failed status"
+        );
+        assert!(
+            !prompt.contains(concat!(
+                "<ralph-status>",
+                "partial|failed",
+                "</ralph-status>"
+            )),
+            "Continuation fallback must not regress to partial|failed-only status contract"
         );
         assert!(
             !prompt.contains("<ralph-files-changed>"),

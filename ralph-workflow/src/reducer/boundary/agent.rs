@@ -12,6 +12,7 @@ use crate::agents::session::{
 };
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
+use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -26,8 +27,23 @@ use crate::reducer::fault_tolerant_executor::{
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use mcp_server::io::{SessionBridge, MCP_ENDPOINT_ENV};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
+
+/// Map an AgentDrain to the expected output file path for completion detection.
+///
+/// Returns `None` if the drain does not produce a structured XML output file.
+fn completion_path_for_drain(drain: AgentDrain) -> Option<&'static Path> {
+    match drain {
+        AgentDrain::Planning => Some(Path::new(xml_paths::PLAN_XML)),
+        AgentDrain::Development => Some(Path::new(xml_paths::DEVELOPMENT_RESULT_XML)),
+        AgentDrain::Review => Some(Path::new(xml_paths::ISSUES_XML)),
+        AgentDrain::Fix => Some(Path::new(xml_paths::FIX_RESULT_XML)),
+        AgentDrain::Commit => Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+        AgentDrain::Analysis => None, // Analysis does not produce a structured output file
+    }
+}
 
 impl MainEffectHandler {
     pub(super) fn invoke_agent<F>(
@@ -63,10 +79,11 @@ impl MainEffectHandler {
         let session_id = resolve_session_id(&self.state, in_dev_fix);
         let execution_start = SystemTime::now();
         let (mut session_bridge, mcp_endpoint) = start_mcp_bridge_for_session(ctx, &session)?;
-
+        let completion_output_path = completion_path_for_drain(drain);
         let event = run_agent_execution(
             ctx,
             &self.state,
+            drain,
             AgentRunInputs {
                 in_dev_fix,
                 role,
@@ -78,6 +95,7 @@ impl MainEffectHandler {
                 logfile: &logfile,
                 session: &session,
                 mcp_endpoint: mcp_endpoint.as_deref(),
+                completion_output_path,
             },
         );
 
@@ -173,11 +191,13 @@ struct AgentRunInputs<'a> {
     /// MCP endpoint URI for RFC-009 agent-MCP communication.
     /// When Some, passed to agent via RALPH_MCP_ENDPOINT env var.
     mcp_endpoint: Option<&'a str>,
+    completion_output_path: Option<&'a Path>,
 }
 
 fn run_agent_execution(
     ctx: &mut PhaseContext<'_>,
     state: &crate::reducer::state::PipelineState,
+    _drain: AgentDrain,
     inputs: AgentRunInputs<'_>,
 ) -> Result<crate::reducer::event::PipelineEvent> {
     let (agent_config, base_cmd) = resolve_agent_config_and_cmd(ctx, state, &inputs)?;
@@ -336,6 +356,7 @@ fn execute_with_config(
         model_index,
         attempt: inputs.attempt,
         logfile: inputs.logfile,
+        completion_output_path: inputs.completion_output_path,
     };
     let AgentExecutionResult {
         event,

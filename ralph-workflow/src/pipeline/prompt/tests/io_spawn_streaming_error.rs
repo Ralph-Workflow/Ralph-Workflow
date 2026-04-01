@@ -135,6 +135,7 @@ fn test_run_with_agent_spawn_terminates_child_and_joins_threads_when_streaming_e
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {

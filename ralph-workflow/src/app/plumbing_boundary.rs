@@ -25,3 +25,23 @@ pub fn run_pipeline_for_commit_message<'a>(
     );
     Ok(runtime)
 }
+
+pub fn generate_commit_message_for_plumbing(
+    config: &crate::app::plumbing::CommitGenerationConfig<'_>,
+    diff: &str,
+    agents: &[String],
+) -> anyhow::Result<crate::phases::commit::CommitMessageResult> {
+    let result = crate::phases::generate_commit_message_with_chain(
+        diff,
+        config.registry,
+        &mut run_pipeline_for_commit_message(
+            &mut crate::app::runtime_factory::create_timer(),
+            config,
+        )?,
+        agents,
+        config.template_context,
+        config.workspace,
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to generate commit message: {e}"))?;
+    Ok(result)
+}

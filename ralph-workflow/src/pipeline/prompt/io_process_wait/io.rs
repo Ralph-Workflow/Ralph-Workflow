@@ -17,9 +17,10 @@ enum WaitOutcome {
 fn downcast_panic_message(panic_payload: Box<dyn std::any::Any + Send>) -> String {
     panic_payload.downcast_ref::<String>().map_or_else(
         || {
-            panic_payload
-                .downcast_ref::<&str>()
-                .map_or_else(|| "<unknown panic>".to_string(), std::string::ToString::to_string)
+            panic_payload.downcast_ref::<&str>().map_or_else(
+                || "<unknown panic>".to_string(),
+                std::string::ToString::to_string,
+            )
         },
         std::clone::Clone::clone,
     )
@@ -56,7 +57,9 @@ fn try_take_stderr_output(
     stderr_join_handle.take().map_or(String::new(), |handle| {
         handle.join().map_or(String::new(), |result| {
             result.unwrap_or_else(|e| {
-                runtime.logger.warn(&format!("Stderr collection failed after timeout: {e}"));
+                runtime
+                    .logger
+                    .warn(&format!("Stderr collection failed after timeout: {e}"));
                 String::new()
             })
         })
@@ -95,9 +98,10 @@ fn log_stderr_preview_lines(stderr_output: &str, runtime: &PipelineRuntime<'_>) 
     }
     let total = stderr_output.lines().count();
     if total > 5 {
-        runtime
-            .logger
-            .info(&format!("  ... ({} more lines, see log file for full output)", total - 5));
+        runtime.logger.info(&format!(
+            "  ... ({} more lines, see log file for full output)",
+            total - 5
+        ));
     }
 }
 
@@ -122,14 +126,41 @@ fn monitor_panic_timeout_outcome(panic_msg: &str, runtime: &PipelineRuntime<'_>)
     })
 }
 
+/// Pure classification of monitor take result.
+fn classify_take_result(r: &Option<MonitorResult>) -> ClassifiedTakeResult {
+    match r {
+        Some(MonitorResult::TimedOut { .. } | MonitorResult::CompleteButWaiting) => {
+            ClassifiedTakeResult::TimeoutRelevant
+        }
+        Some(_) | None => ClassifiedTakeResult::NotTimeoutRelevant,
+    }
+}
+
+enum ClassifiedTakeResult {
+    TimeoutRelevant,
+    NotTimeoutRelevant,
+}
+
+/// Domain helper: decide the wait outcome based on monitor result (pure).
+fn decide_wait_outcome(r: &Option<MonitorResult>) -> Option<WaitOutcome> {
+    match classify_take_result(r) {
+        ClassifiedTakeResult::TimeoutRelevant => {
+            r.as_ref().map(|result| WaitOutcome::TimedOut(*result))
+        }
+        ClassifiedTakeResult::NotTimeoutRelevant => None,
+    }
+}
+
 fn interpret_monitor_take_result(
     take_result: Result<Option<MonitorResult>, String>,
     runtime: &PipelineRuntime<'_>,
 ) -> Option<WaitOutcome> {
+    // Boundary: gather input, execute effects, translate result, return
     match take_result {
-        Ok(Some(r)) if matches!(r, MonitorResult::TimedOut { .. }) => Some(WaitOutcome::TimedOut(r)),
-        Ok(Some(_)) | Ok(None) => None,
+        // Effect: handle panic case with logging
         Err(panic_msg) => Some(monitor_panic_timeout_outcome(&panic_msg, runtime)),
+        // Pure: use domain helper to decide
+        Ok(r) => decide_wait_outcome(&r),
     }
 }
 
@@ -142,6 +173,7 @@ fn check_monitor_for_timeout(
 
 fn try_poll_child(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
+    executor: &dyn crate::executor::ProcessExecutor,
 ) -> std::io::Result<Option<WaitOutcome>> {
     let pid = {
         let child = child_arc
@@ -152,13 +184,15 @@ fn try_poll_child(
     let mut child = child_arc
         .lock()
         .expect("child process mutex poisoned - indicates panic in another thread");
-    child.try_wait().map(|opt| {
-        opt.map(|status| {
-            // Process has exited - unregister the PID
-            crate::executor::process_registry::unregister(pid);
-            WaitOutcome::Completed(status)
-        })
-    })
+    let result = child.try_wait().map(|opt| opt.map(WaitOutcome::Completed));
+    // If the child has exited, kill its process group to clean up any zombies.
+    // This is best-effort: we ignore the result because the parent has already
+    // exited successfully and the kill is just cleanup.
+    if result.as_ref().is_ok_and(|opt| opt.is_some()) {
+        let child_id = child.id();
+        let _ = executor.kill_process_group(child_id);
+    }
+    result
 }
 
 /// One poll iteration: check monitor, interrupt, child. Returns `Some` if done.
@@ -173,7 +207,7 @@ fn poll_wait_step(
     if crate::interrupt::is_user_interrupt_requested() {
         return Ok(Some(WaitOutcome::UserInterrupted));
     }
-    try_poll_child(child_arc)
+    try_poll_child(child_arc, runtime.executor)
 }
 
 fn poll_wait_loop(
@@ -192,7 +226,9 @@ fn poll_wait_loop(
 
 fn resolve_exit_code(status: std::process::ExitStatus, runtime: &PipelineRuntime<'_>) -> i32 {
     if status.code().is_none() && runtime.config.verbosity.is_debug() {
-        runtime.logger.warn("Process terminated by signal (no exit code), treating as failure");
+        runtime
+            .logger
+            .warn("Process terminated by signal (no exit code), treating as failure");
     }
     status.code().unwrap_or(1)
 }
@@ -206,14 +242,26 @@ pub(super) fn wait_for_completion_and_collect_stderr(
     let outcome = poll_wait_loop(child_arc, monitor_handle, runtime)?;
 
     let status = match outcome {
-        WaitOutcome::Completed(status) => status,
+        WaitOutcome::Completed(status) => {
+            // Child exited cleanly — parent's wait() in poll_wait_loop has already
+            // reaped the child. No zombie reap needed.
+            status
+        }
         WaitOutcome::TimedOut(monitor_result) => {
             let stderr_output = try_take_stderr_output(stderr_join_handle, runtime);
-            return Ok((crate::pipeline::prompt::SIGTERM_EXIT_CODE, stderr_output, Some(monitor_result)));
+            return Ok((
+                crate::pipeline::prompt::SIGTERM_EXIT_CODE,
+                stderr_output,
+                Some(monitor_result),
+            ));
         }
         WaitOutcome::UserInterrupted => {
             let stderr_output = try_take_stderr_output(stderr_join_handle, runtime);
-            return Ok((crate::pipeline::prompt::SIGTERM_EXIT_CODE, stderr_output, None));
+            return Ok((
+                crate::pipeline::prompt::SIGTERM_EXIT_CODE,
+                stderr_output,
+                None,
+            ));
         }
     };
 
@@ -227,6 +275,7 @@ pub(super) fn wait_for_completion_and_collect_stderr(
 mod tests {
     use super::*;
     use crate::executor::MockAgentChild;
+    use crate::executor::MockProcessExecutor;
     use crate::logger::{Colors, Logger};
     use crate::pipeline::Timer;
     use crate::workspace::MemoryWorkspace;
@@ -383,5 +432,20 @@ mod tests {
                 Some(MonitorResult::TimedOut { .. })
             ));
         });
+    }
+
+    #[test]
+    fn try_poll_child_kills_process_group_after_exit() {
+        let child = MockAgentChild::new(0);
+        let child_arc: Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>> =
+            Arc::new(std::sync::Mutex::new(Box::new(child)));
+
+        let executor = Arc::new(MockProcessExecutor::new());
+
+        let outcome = try_poll_child(&child_arc, executor.as_ref());
+        assert!(outcome.is_ok());
+        assert!(outcome.unwrap().is_some());
+
+        assert_eq!(executor.kill_process_group_calls(), vec![12345]);
     }
 }

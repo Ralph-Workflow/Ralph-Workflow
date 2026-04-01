@@ -84,6 +84,12 @@ pub struct AgentExecutionConfig<'a> {
     pub attempt: u32,
     /// Log file path
     pub logfile: &'a str,
+    /// Path to the file this phase is expected to produce.
+    ///
+    /// When set, the idle timeout monitor uses its existence as a
+    /// "complete-but-waiting" signal: if the file exists and the process is
+    /// idle, the process is killed and the phase advances as success.
+    pub completion_output_path: Option<&'a std::path::Path>,
 }
 
 /// Execute an agent with bulletproof error handling.
@@ -163,6 +169,7 @@ fn try_agent_execution(
         logfile: config.logfile,
         parser_type: config.parser_type,
         env_vars: config.env_vars,
+        completion_output_path: config.completion_output_path,
     };
 
     match run_with_prompt(&prompt_cmd, runtime) {

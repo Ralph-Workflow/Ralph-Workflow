@@ -167,6 +167,7 @@ pub fn run_fix_pass(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
+        completion_output_path: Some(Path::new(xml_paths::FIX_RESULT_XML)),
     };
 
     let result = run_with_prompt(

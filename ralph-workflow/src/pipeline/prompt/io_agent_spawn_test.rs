@@ -101,11 +101,45 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
     let activity_timestamp = new_activity_timestamp();
     let stdout_cancel = Arc::new(AtomicBool::new(false));
     let stdout_cancel_for_monitor = Arc::clone(&stdout_cancel);
+    let stdout_cancel_for_watcher = Arc::clone(&stdout_cancel);
     let monitor_should_stop = Arc::new(AtomicBool::new(false));
     let monitor_should_stop_clone = Arc::clone(&monitor_should_stop);
+    let monitor_should_stop_for_watcher = Arc::clone(&monitor_should_stop);
     let activity_timestamp_clone = activity_timestamp.clone();
+    let activity_timestamp_for_watcher = activity_timestamp.clone();
     let child_activity_suppressed = Arc::new(std::sync::Mutex::new(None));
     let child_activity_suppressed_for_monitor = Arc::clone(&child_activity_suppressed);
+    let child_for_watcher = Arc::clone(&child_shared);
+
+    std::thread::spawn(move || {
+        const CHILD_EXIT_STDOUT_DRAIN_GRACE: std::time::Duration =
+            std::time::Duration::from_millis(200);
+        let poll = std::time::Duration::from_millis(50);
+        loop {
+            if monitor_should_stop_for_watcher.load(Ordering::Acquire) {
+                return;
+            }
+
+            let child_exited = {
+                let mut child = child_for_watcher
+                    .lock()
+                    .expect("child process mutex poisoned - indicates panic in another thread");
+                matches!(child.try_wait(), Ok(Some(_)))
+            };
+
+            let may_cancel_for_child_exit = child_exited
+                && crate::pipeline::idle_timeout::time_since_activity(
+                    &activity_timestamp_for_watcher,
+                ) >= CHILD_EXIT_STDOUT_DRAIN_GRACE;
+
+            if crate::interrupt::is_user_interrupt_requested() || may_cancel_for_child_exit {
+                stdout_cancel_for_watcher.store(true, Ordering::Release);
+                return;
+            }
+
+            std::thread::sleep(poll);
+        }
+    });
 
     let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
         std::sync::Arc::clone(&runtime.executor_arc);
@@ -124,6 +158,7 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
                     kill_config,
                     required_idle_confirmations: 2,
                     check_child_processes: true,
+                    completion_check: None,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );
@@ -274,6 +309,13 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
                 ));
             }
             (exit_code, None)
+        }
+        MonitorResult::CompleteButWaiting => {
+            runtime.logger.info(
+                "Agent output ready; process was idle-but-done and was forcibly terminated \
+                 (complete-but-waiting). Treating as success.",
+            );
+            (0, None)
         }
     };
 

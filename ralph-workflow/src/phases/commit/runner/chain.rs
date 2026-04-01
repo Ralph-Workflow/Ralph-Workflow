@@ -130,6 +130,7 @@ pub fn generate_commit_message(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &merged_env,
+        completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
     };
 
     let result = run_with_prompt(&prompt_cmd, runtime)?;
@@ -279,6 +280,7 @@ fn try_single_commit_agent(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &merged_env,
+        completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
     };
 
     let result = match run_with_prompt(&prompt_cmd, runtime) {

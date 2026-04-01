@@ -102,6 +102,7 @@ fn test_run_with_agent_spawn_does_not_hang_when_stdout_closes_early_and_idle_tim
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -271,6 +272,7 @@ fn test_run_with_agent_spawn_cancels_stderr_collector_on_idle_timeout() {
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -416,6 +418,7 @@ fn test_run_with_agent_spawn_regains_control_when_child_never_exits_after_sigkil
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -579,6 +582,7 @@ fn test_run_with_agent_spawn_regains_control_when_stdout_read_blocks_and_idle_ti
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -763,6 +767,7 @@ fn test_run_with_agent_spawn_logs_child_activity_timeout_suppression() {
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -930,6 +935,7 @@ fn test_run_with_agent_spawn_logs_stalled_child_timeout_reason() {
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {
@@ -1095,6 +1101,7 @@ fn test_run_with_agent_spawn_logs_stale_active_child_timeout_reason() {
         logfile: ".agent/logs/test.log",
         parser_type: JsonParserType::Generic,
         env_vars: &env_vars,
+        completion_output_path: None,
     };
 
     let runtime = PipelineRuntime {

@@ -380,12 +380,18 @@ fn test_context_based_uses_workspace_rooted_paths() {
         ),
     );
     assert!(
-        continuation_xsd_retry.contains("CONTINUATION VALIDATION FAILED"),
-        "Continuation-mode XSD retry should use the continuation-specific template"
+        continuation_xsd_retry.contains("development_result.xsd"),
+        "Continuation-mode XSD retry should point at development_result.xsd"
     );
+    let referenced_schemas: Vec<&str> = continuation_xsd_retry
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+        .filter(|token| token.ends_with(".xsd"))
+        .collect();
     assert!(
-        continuation_xsd_retry.contains("ralph_submit_artifact"),
-        "Continuation-mode XSD retry should instruct MCP submission"
+        referenced_schemas
+            .iter()
+            .all(|schema| schema.ends_with("development_result.xsd")),
+        "Continuation-mode XSD retry must only reference the canonical development_result.xsd schema"
     );
 
     // Both should contain the core content (PROMPT and PLAN)
@@ -405,7 +411,7 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
 
     let prompt = prompt_developer_iteration_xsd_retry_with_context_files(
         &context,
-        "Continuation output must not use completed status",
+        "Continuation output validation error",
         &workspace,
         true,
         SessionCapabilities::new(
@@ -415,8 +421,18 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
     );
 
     assert!(
-        prompt.contains("CONTINUATION VALIDATION FAILED"),
-        "Continuation-mode XSD retry should use the continuation-specific template"
+        prompt.contains("development_result.xsd"),
+        "Continuation-mode XSD retry should point at development_result.xsd"
+    );
+    let referenced_schemas: Vec<&str> = prompt
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+        .filter(|token| token.ends_with(".xsd"))
+        .collect();
+    assert!(
+        referenced_schemas
+            .iter()
+            .all(|schema| schema.ends_with("development_result.xsd")),
+        "Continuation-mode XSD retry must only reference the canonical development_result.xsd schema"
     );
     assert!(
         prompt.contains("continuation")
@@ -426,6 +442,39 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
     assert!(
         prompt.contains("ralph_submit_artifact"),
         "Continuation-mode XSD retry should instruct MCP submission"
+    );
+}
+
+#[test]
+fn test_xsd_retry_source_has_canonical_status_and_schema_guards() {
+    let source = include_str!("system_prompt_iteration_xsd_retry.rs");
+    let referenced_schemas: Vec<&str> = source
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
+        .filter(|token| token.ends_with(".xsd"))
+        .collect();
+
+    assert!(
+        source.contains("development_result.xsd"),
+        "Developer XSD retry source must reference the canonical development_result.xsd path"
+    );
+    assert!(
+        referenced_schemas
+            .iter()
+            .all(|schema| schema.ends_with("development_result.xsd")
+                || schema.ends_with("fix_result.xsd")),
+        "Developer XSD retry source must only reference canonical XSD paths"
+    );
+    assert!(
+        source.contains("<ralph-status>completed|partial|failed</ralph-status>"),
+        "Developer XSD retry source must keep completed|partial|failed status contract"
+    );
+    assert!(
+        !source.contains(concat!(
+            "<ralph-status>",
+            "partial|failed",
+            "</ralph-status>"
+        )),
+        "Developer XSD retry source must not regress to partial|failed-only status contract"
     );
 }
 

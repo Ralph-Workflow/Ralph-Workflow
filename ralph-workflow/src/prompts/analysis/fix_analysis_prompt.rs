@@ -36,11 +36,7 @@ fn build_template_variables(
     .render_for_template();
 
     let path_xml = workspace.absolute_str(".agent/tmp/development_result.xml");
-    let path_xsd = workspace.absolute_str(if is_continuation {
-        ".agent/tmp/development_continuation_result.xsd"
-    } else {
-        ".agent/tmp/development_result.xsd"
-    });
+    let path_xsd = workspace.absolute_str(".agent/tmp/development_result.xsd");
 
     let required_output = if is_continuation {
         r"<ralph-development-result>
@@ -139,11 +135,7 @@ pub fn generate_fix_analysis_prompt(
             )
             .render_for_template();
             let out = workspace.absolute_str(".agent/tmp/development_result.xml");
-            let xsd = workspace.absolute_str(if is_continuation {
-                ".agent/tmp/development_continuation_result.xsd"
-            } else {
-                ".agent/tmp/development_result.xsd"
-            });
+            let xsd = workspace.absolute_str(".agent/tmp/development_result.xsd");
             let required_output = if is_continuation {
                 r"<ralph-development-result>
   <ralph-status>completed|partial|failed</ralph-status>
