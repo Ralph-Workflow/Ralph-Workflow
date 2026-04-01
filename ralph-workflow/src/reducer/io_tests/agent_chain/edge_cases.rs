@@ -9,7 +9,7 @@ use crate::reducer::event::{AgentErrorKind, PipelinePhase, TimeoutOutputKind};
 use crate::reducer::io_tests::{create_test_state, reduce, PipelineEvent, PipelineState};
 
 #[test]
-fn test_agent_invocation_failed_retriable_network_on_last_model_wraps_to_first_model() {
+fn test_agent_invocation_failed_retriable_network_does_not_wrap_model() {
     let base_state = create_test_state();
     let state = PipelineState {
         agent_chain: base_state
@@ -37,9 +37,16 @@ fn test_agent_invocation_failed_retriable_network_on_last_model_wraps_to_first_m
         ),
     );
 
-    // Should wrap back to first model (1 -> 0)
+    // Network error should NOT wrap model - it sets check_pending instead
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
-    assert_eq!(new_state.agent_chain.current_model_index, 0);
+    assert_eq!(
+        new_state.agent_chain.current_model_index, 1,
+        "Network error should NOT change model (check_pending takes priority)"
+    );
+    assert!(
+        new_state.connectivity.check_pending,
+        "Network error should set check_pending for connectivity verification"
+    );
 }
 
 #[test]

@@ -189,6 +189,7 @@ impl PipelineState {
             execution_history,
             checkpoint_saved_count: 0,
             continuation: ContinuationState::new(),
+            connectivity: ConnectivityState::default(),
             dev_fix_triggered: false,
             dev_fix_attempt_count: checkpoint.dev_fix_attempt_count,
             recovery_epoch: checkpoint.recovery_epoch,

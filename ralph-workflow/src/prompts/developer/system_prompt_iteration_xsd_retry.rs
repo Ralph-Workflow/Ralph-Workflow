@@ -305,19 +305,17 @@ fn fallback_xsd_retry_prompt(
 ) -> String {
     if continuation_mode {
         format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - CONTINUE IMPLEMENTATION\n\n\
+            "{diagnostic_prefix}XSD VALIDATION FAILED - FIX XML ONLY\n\n\
              Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
-             Read {schema_relative_path} when it becomes available. Until then, resend continuation XML that keeps only recovery-critical information: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Why the full plan was not completed</ralph-summary><ralph-next-steps>1. Ordered recovery step for finishing the remaining plan.</ralph-next-steps></ralph-development-result>\n"
+             This is an XML formatting/schema issue. Stay in the same session. Do not redo analysis or implementation work.\n\n\
+             The schema and previous output files could not be found right now. Read {schema_relative_path} when available, then resend corrected continuation XML: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Why the full plan was not completed</ralph-summary><ralph-next-steps>1. Ordered recovery step for finishing the remaining plan.</ralph-next-steps></ralph-development-result>\n"
         )
     } else {
         format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - CONTINUE IMPLEMENTATION\n\n\
+            "{diagnostic_prefix}XSD VALIDATION FAILED - FIX XML ONLY\n\n\
              Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
-             Read {schema_relative_path} when it becomes available. Until then, resend development XML in this format: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-development-result>\n"
+             This is an XML formatting/schema issue. Stay in the same session. Do not redo analysis or implementation work.\n\n\
+             The schema and previous output files could not be found right now. Read {schema_relative_path} when available, then resend corrected XML in this format: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-development-result>\n"
         )
     }
 }
@@ -329,13 +327,15 @@ fn fallback_xsd_retry_render_error_prompt(
 ) -> String {
     if continuation_mode {
         format!(
-            "Your continuation XML failed validation.\n\nError: {xsd_error}\n\n\
-             Read {schema_relative_path} and .agent/tmp/last_output.xml, then resend valid continuation XML that explains why the full plan was not completed and provides ordered recovery steps for finishing the remaining plan.\n"
+            "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
+             This is an XML formatting/schema issue. Stay in the same session. Do not redo analysis or implementation work.\n\n\
+             Read {schema_relative_path} and .agent/tmp/last_output.xml, then resend corrected continuation XML that explains why the full plan was not completed and provides ordered recovery steps for finishing the remaining plan.\n"
         )
     } else {
         format!(
-            "Your previous development status failed XSD validation.\n\nError: {xsd_error}\n\n\
-             Read {schema_relative_path} and .agent/tmp/last_output.xml, then resend valid development XML conforming to the XSD schema.\n"
+            "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
+             This is an XML formatting/schema issue. Stay in the same session. Do not redo analysis or implementation work.\n\n\
+             Read {schema_relative_path} and .agent/tmp/last_output.xml, then resend corrected development XML conforming to the XSD schema.\n"
         )
     }
 }

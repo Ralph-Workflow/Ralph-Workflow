@@ -14,7 +14,7 @@ use crate::reducer::state::{
 use crate::reducer::state_reduction::reduce;
 
 #[test]
-fn test_reduce_agent_fallback_to_next_model() {
+fn test_network_error_sets_check_pending_preserves_model() {
     let state = create_test_state();
     let initial_agent = AgentName::from(state.agent_chain.current_agent().unwrap().clone());
     let initial_model_index = state.agent_chain.current_model_index;
@@ -30,9 +30,15 @@ fn test_reduce_agent_fallback_to_next_model() {
         ),
     );
 
-    assert_ne!(
-        new_state.agent_chain.current_model_index,
-        initial_model_index
+    // Network error should set check_pending (for connectivity verification)
+    assert!(
+        new_state.connectivity.check_pending,
+        "Network error should set check_pending for connectivity verification"
+    );
+    // Model index should NOT change (budget preserved)
+    assert_eq!(
+        new_state.agent_chain.current_model_index, initial_model_index,
+        "Network error should NOT advance model index (budget preserved)"
     );
 }
 
@@ -57,7 +63,15 @@ fn test_reduce_all_agent_failure_scenarios() {
         network_error_state.agent_chain.current_agent_index,
         initial_agent_index
     );
-    assert!(network_error_state.agent_chain.current_model_index > initial_model_index);
+    // Network error should NOT advance model - it sets check_pending instead
+    assert_eq!(
+        network_error_state.agent_chain.current_model_index, initial_model_index,
+        "Network error should NOT advance model index"
+    );
+    assert!(
+        network_error_state.connectivity.check_pending,
+        "Network error should set check_pending"
+    );
 
     let auth_error_state = reduce(
         state.clone(),
@@ -119,7 +133,7 @@ fn test_reduce_agent_fallback_triggers_fallback_event() {
 }
 
 #[test]
-fn test_reduce_model_fallback_triggers_for_network_error() {
+fn test_network_error_does_not_trigger_model_fallback() {
     let state = create_test_state();
     let initial_model_index = state.agent_chain.current_model_index;
     let agent_name = AgentName::from(state.agent_chain.current_agent().unwrap().clone());
@@ -135,7 +149,15 @@ fn test_reduce_model_fallback_triggers_for_network_error() {
         ),
     );
 
-    assert!(new_state.agent_chain.current_model_index > initial_model_index);
+    // Network error should NOT advance model - connectivity check takes priority
+    assert_eq!(
+        new_state.agent_chain.current_model_index, initial_model_index,
+        "Network error should NOT trigger model fallback (check_pending takes priority)"
+    );
+    assert!(
+        new_state.connectivity.check_pending,
+        "Network error should set check_pending for connectivity verification"
+    );
 }
 
 #[test]

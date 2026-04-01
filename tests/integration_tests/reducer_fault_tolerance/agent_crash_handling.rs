@@ -547,19 +547,20 @@ fn test_xsd_retry_state_independent_of_invocation_failures() {
         assert_eq!(state.continuation.invalid_output_attempts, 1);
         assert_eq!(state.agent_chain.current_agent_index, 0, "Same agent");
 
-        // Then get a network error (retriable) - should advance model, not agent
+        // Then get a model unavailable error (retriable) - should advance model, not agent
+        // Note: Network errors now trigger connectivity check, not model fallback
         state = reduce(
             state,
             PipelineEvent::agent_invocation_failed(
                 AgentRole::Developer,
                 "agent-1".into(),
                 1,
-                AgentErrorKind::Network,
+                AgentErrorKind::ModelUnavailable,
                 true,
             ),
         );
 
-        // Network error should advance model, but XSD counter remains
+        // Model unavailable error should advance model, but XSD counter remains
         assert_eq!(state.agent_chain.current_agent_index, 0, "Same agent");
         assert!(
             state.agent_chain.current_model_index > 0,

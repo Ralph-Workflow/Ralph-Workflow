@@ -194,6 +194,8 @@ fn test_effects_are_single_task() {
             },
             Effect::CheckUncommittedChangesBeforeTermination,
             Effect::CheckResidualFiles { pass: 1 },
+            Effect::CheckNetworkConnectivity,
+            Effect::PollForConnectivity { interval_ms: 5000 },
         ];
 
         // Exhaustive match guard: forces compile error when new variants are added.
@@ -274,14 +276,16 @@ fn test_effects_are_single_task() {
                 Effect::EmitCompletionMarkerAndTerminate { .. } => "emit-completion",
                 Effect::CheckUncommittedChangesBeforeTermination => "check-uncommitted",
                 Effect::CheckResidualFiles { .. } => "check-residual-files",
+                Effect::CheckNetworkConnectivity => "check-connectivity",
+                Effect::PollForConnectivity { .. } => "poll-connectivity",
             };
         }
 
         // Variant count guard: catches additions/removals even if the match is updated.
         assert_eq!(
             effects.len(),
-            73,
-            "Expected 73 Effect instances; update this test if variants were added or removed"
+            75,
+            "Expected 75 Effect instances; update this test if variants were added or removed"
         );
     });
 }

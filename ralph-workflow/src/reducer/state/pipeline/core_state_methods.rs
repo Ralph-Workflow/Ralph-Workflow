@@ -117,6 +117,7 @@ impl PipelineState {
             execution_history: BoundedExecutionHistory::new(),
             checkpoint_saved_count: 0,
             continuation: continuation.clone(),
+            connectivity: ConnectivityState::default(),
             dev_fix_triggered: false,
             dev_fix_attempt_count: 0,
             recovery_epoch: 0,

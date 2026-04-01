@@ -396,6 +396,35 @@ pub enum Effect {
     },
 
     // ========================================================================
+    // Connectivity Effects
+    // ========================================================================
+    //
+    // Effects for offline detection and freeze-and-resume workflow.
+    /// One-time connectivity probe triggered immediately after a Network-class agent failure.
+    ///
+    /// Probes network connectivity using TCP connections to known-good hosts.
+    /// - If online: emits `AgentEvent::ConnectivityCheckSucceeded`
+    /// - If offline: emits `AgentEvent::ConnectivityCheckFailed`
+    ///
+    /// The reducer processes these events to update ConnectivityState.
+    CheckNetworkConnectivity,
+
+    /// Polling effect emitted repeatedly while offline to wait for connectivity restoration.
+    ///
+    /// Each execution:
+    /// 1. Sleeps for `interval_ms` (default 5000ms)
+    /// 2. Probes network connectivity
+    /// 3. If still offline: emits `AgentEvent::ConnectivityCheckFailed`
+    /// 4. If back online: emits `AgentEvent::ConnectivityCheckSucceeded`
+    ///
+    /// The orchestrator re-derives this effect each cycle while `is_offline=true`,
+    /// providing debounced polling without handler-side loops.
+    PollForConnectivity {
+        /// Milliseconds to wait between polls (default: 5000).
+        interval_ms: u64,
+    },
+
+    // ========================================================================
     // Cloud Mode Effects (INTERNAL USE ONLY)
     // ========================================================================
     //

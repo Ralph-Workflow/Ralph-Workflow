@@ -59,6 +59,23 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
         };
     }
 
+    // Priority 2: Connectivity verification check.
+    // Triggered by Network error to verify connectivity before consuming retry budget.
+    // This check runs BEFORE same-agent retry to ensure we don't burn retry budget
+    // while offline.
+    if state.connectivity.check_pending {
+        return Effect::CheckNetworkConnectivity;
+    }
+
+    // Priority 3: Offline polling — pipeline is frozen while offline.
+    // While offline, we poll for connectivity instead of any budget-consuming effect.
+    // This blocks same-agent retry, XSD retry, and continuation while offline.
+    if state.connectivity.is_offline && state.connectivity.poll_pending {
+        return Effect::PollForConnectivity {
+            interval_ms: state.connectivity.offline_poll_interval_ms,
+        };
+    }
+
     if state.continuation.context_cleanup_pending {
         return Effect::CleanupContinuationContext;
     }

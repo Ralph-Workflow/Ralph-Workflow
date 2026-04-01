@@ -71,8 +71,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use super::{
-    AgentChainState, CommitState, ContinuationState, DevelopmentStatus, FixStatus,
-    MaterializedPromptInput, RebaseState, RunMetrics,
+    AgentChainState, CommitState, ConnectivityState, ContinuationState, DevelopmentStatus,
+    FixStatus, MaterializedPromptInput, RebaseState, RunMetrics,
 };
 
 mod prompt_permissions;
