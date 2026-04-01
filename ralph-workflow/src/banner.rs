@@ -39,6 +39,9 @@ pub struct PipelineSummary {
     pub verbose: bool,
     /// Optional review metrics summary
     pub review_summary: Option<ReviewSummary>,
+    /// Number of connectivity interruptions (offline windows) during the run.
+    /// None means no connectivity interruptions occurred.
+    pub connectivity_interruptions: Option<usize>,
 }
 
 /// Review metrics summary for display.
@@ -182,6 +185,17 @@ pub fn print_final_summary_to<L: Loggable, W: std::io::Write>(
             logger.error(&format!(
                 "{} blocking issue(s) unresolved",
                 review.blocking_count
+            ));
+        }
+    }
+
+    // Log connectivity interruptions if any occurred
+    if let Some(interruptions) = summary.connectivity_interruptions {
+        if interruptions > 0 {
+            logger.info(&format!(
+                "Connectivity interruptions: {} (workflow paused {} times due to offline detection; \
+                 no continuation or retry budget was consumed during offline windows)",
+                interruptions, interruptions
             ));
         }
     }

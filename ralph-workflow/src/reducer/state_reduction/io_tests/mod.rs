@@ -25,7 +25,7 @@ pub use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase};
 pub use crate::reducer::io_tests::create_test_state;
 pub use crate::reducer::orchestration::determine_next_effect;
 pub use crate::reducer::state::{
-    AgentChainState, CommitState, ConnectivityState, ContinuationState, PipelineState,
+    AgentChainState, CommitState, ConnectivityState, ContinuationState, PipelineState, RunMetrics,
     SameAgentRetryReason,
 };
 pub use crate::reducer::state_reduction::reduce;

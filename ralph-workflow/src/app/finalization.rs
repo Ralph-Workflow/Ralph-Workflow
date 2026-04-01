@@ -43,6 +43,11 @@ pub const fn build_pipeline_summary(
     config: &Config,
     final_state: &PipelineState,
 ) -> PipelineSummary {
+    let connectivity_interruptions = if final_state.metrics.connectivity_interruptions_total > 0 {
+        Some(final_state.metrics.connectivity_interruptions_total as usize)
+    } else {
+        None
+    };
     PipelineSummary {
         total_time,
         dev_runs_completed: final_state.metrics.dev_iterations_completed as usize,
@@ -54,6 +59,7 @@ pub const fn build_pipeline_summary(
         isolation_mode: config.isolation_mode,
         verbose: config.verbosity.is_verbose(),
         review_summary: None,
+        connectivity_interruptions,
     }
 }
 

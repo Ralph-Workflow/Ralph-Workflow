@@ -740,3 +740,257 @@ fn test_continuation_attempt_unchanged_across_offline_window() {
         );
     });
 }
+
+/// Test that connectivity_interruptions_total increments on first offline entry.
+#[test]
+fn test_connectivity_interruptions_metric_increments_on_offline_entry() {
+    with_default_timeout(|| {
+        // Start with check_pending and 0 failures (threshold=2)
+        let mut state = PipelineState {
+            phase: PipelinePhase::Development,
+            connectivity: ConnectivityState {
+                check_pending: true,
+                consecutive_failures: 0,
+                required_failures_to_go_offline: 2,
+                ..ConnectivityState::default()
+            },
+            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
+        };
+
+        // Initially no interruptions
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 0,
+            "Should start with 0 interruptions"
+        );
+
+        // First probe failure - still online (1 failure, threshold=2)
+        state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert!(
+            !state.connectivity.is_offline,
+            "Should not be offline after 1 failure"
+        );
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 0,
+            "Should still be 0 interruptions"
+        );
+
+        // Second probe failure - now offline, should increment metric
+        state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert!(
+            state.connectivity.is_offline,
+            "Should be offline after 2 failures"
+        );
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 1,
+            "Should increment to 1 on offline entry"
+        );
+    });
+}
+
+/// Test that connectivity_interruptions_total increments again on second offline window.
+#[test]
+fn test_second_offline_window_increments_metric_again() {
+    with_default_timeout(|| {
+        // Start offline with 1 prior interruption
+        let mut state = PipelineState {
+            phase: PipelinePhase::Development,
+            connectivity: ConnectivityState {
+                is_offline: true,
+                poll_pending: true,
+                consecutive_failures: 2,
+                ..ConnectivityState::default()
+            },
+            metrics: ralph_workflow::reducer::state::RunMetrics {
+                connectivity_interruptions_total: 1,
+                ..ralph_workflow::reducer::state::RunMetrics::default()
+            },
+            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
+        };
+
+        // Go back online
+        state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckSucceeded,
+            ),
+        );
+        assert!(!state.connectivity.is_offline, "Should be back online");
+
+        // Network error again - set check_pending
+        state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::InvocationFailed {
+                    role: AgentRole::Developer,
+                    agent: "agent1".into(),
+                    exit_code: 1,
+                    error_kind: AgentErrorKind::Network,
+                    retriable: true,
+                },
+            ),
+        );
+        assert!(
+            state.connectivity.check_pending,
+            "Should set check_pending on network error"
+        );
+
+        // First probe failure
+        state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+
+        // Second probe failure - second offline entry
+        state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 2,
+            "Should increment to 2 on second offline entry"
+        );
+    });
+}
+
+/// Test that process starting offline does not consume budget and enters offline state.
+#[test]
+fn test_process_starts_offline_enters_offline_immediately() {
+    with_default_timeout(|| {
+        // Simulate: first agent invocation fails with Network error as if started with no internet
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            continuation: ContinuationState {
+                same_agent_retry_count: 1,
+                same_agent_retry_pending: true,
+                xsd_retry_count: 2,
+                xsd_retry_pending: true,
+                ..ContinuationState::new()
+            },
+            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
+        };
+
+        // Simulate: Network error on first invocation (as if started offline)
+        let state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::InvocationFailed {
+                    role: AgentRole::Developer,
+                    agent: "agent1".into(),
+                    exit_code: 1,
+                    error_kind: AgentErrorKind::Network,
+                    retriable: true,
+                },
+            ),
+        );
+
+        // Should set check_pending but not consume retry budget
+        assert!(
+            state.connectivity.check_pending,
+            "Network error should set check_pending"
+        );
+        assert_eq!(
+            state.continuation.same_agent_retry_count, 1,
+            "same_agent_retry_count should be preserved"
+        );
+        assert_eq!(
+            state.continuation.xsd_retry_count, 2,
+            "xsd_retry_count should be preserved"
+        );
+
+        // Now simulate 2 probe failures to enter offline mode
+        let state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert!(
+            !state.connectivity.is_offline,
+            "Should not be offline after 1 failure"
+        );
+
+        let state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert!(
+            state.connectivity.is_offline,
+            "Should be offline after 2 failures"
+        );
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 1,
+            "Should record 1 connectivity interruption"
+        );
+
+        // Budget still preserved
+        assert_eq!(
+            state.continuation.same_agent_retry_count, 1,
+            "same_agent_retry_count should still be preserved"
+        );
+        assert_eq!(
+            state.continuation.xsd_retry_count, 2,
+            "xsd_retry_count should still be preserved"
+        );
+    });
+}
+
+/// Test that metric does not increment during polling (subsequent probe failures while offline).
+#[test]
+fn test_metric_does_not_increment_during_offline_polling() {
+    with_default_timeout(|| {
+        // Start offline with 1 prior interruption
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            connectivity: ConnectivityState {
+                is_offline: true,
+                poll_pending: true,
+                consecutive_failures: 2,
+                ..ConnectivityState::default()
+            },
+            metrics: ralph_workflow::reducer::state::RunMetrics {
+                connectivity_interruptions_total: 1,
+                ..ralph_workflow::reducer::state::RunMetrics::default()
+            },
+            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
+        };
+
+        // Additional probe failures while already offline should NOT increment
+        let state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 1,
+            "Should NOT increment during polling"
+        );
+
+        let state = reduce(
+            state,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
+            ),
+        );
+        assert_eq!(
+            state.metrics.connectivity_interruptions_total, 1,
+            "Should still be 1 after multiple poll failures"
+        );
+    });
+}

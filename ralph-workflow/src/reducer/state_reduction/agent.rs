@@ -2,7 +2,7 @@
 
 use crate::agents::DrainMode;
 use crate::reducer::event::{AgentErrorKind, AgentEvent, PipelinePhase, TimeoutOutputKind};
-use crate::reducer::state::{ContinuationState, PipelineState, SameAgentRetryReason};
+use crate::reducer::state::{ContinuationState, PipelineState, RunMetrics, SameAgentRetryReason};
 
 pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> PipelineState {
     match event {
@@ -356,10 +356,28 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         // Connectivity probe failed: update ConnectivityState by incrementing failure count.
         // The reducer maintains the failure counter via on_probe_failed().
         // If the failure threshold is reached, enters offline mode.
-        AgentEvent::ConnectivityCheckFailed => PipelineState {
-            connectivity: state.connectivity.on_probe_failed(),
-            ..state
-        },
+        // Increment connectivity_interruptions_total only on the false→true transition.
+        // This is the exact moment the pipeline enters offline mode (debounce threshold met).
+        AgentEvent::ConnectivityCheckFailed => {
+            let new_connectivity = state.connectivity.clone().on_probe_failed();
+            let connectivity_interruptions_total =
+                if new_connectivity.is_offline && !state.connectivity.is_offline {
+                    state
+                        .metrics
+                        .connectivity_interruptions_total
+                        .saturating_add(1)
+                } else {
+                    state.metrics.connectivity_interruptions_total
+                };
+            PipelineState {
+                connectivity: new_connectivity,
+                metrics: RunMetrics {
+                    connectivity_interruptions_total,
+                    ..state.metrics.clone()
+                },
+                ..state
+            }
+        }
     }
 }
 

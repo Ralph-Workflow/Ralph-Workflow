@@ -5,6 +5,7 @@
 // - Connectivity state transitions (online -> offline -> online)
 // - Orchestrator priority blocking during offline windows
 // - Budget preservation during offline periods
+// - connectivity_interruptions_total metric tracking
 
 use super::*;
 
@@ -460,5 +461,64 @@ fn test_single_success_exits_offline_mode() {
     assert!(
         !new_state.connectivity.poll_pending,
         "poll_pending should be cleared"
+    );
+}
+
+// =============================================================================
+// connectivity_interruptions_total Metric Tests
+// =============================================================================
+
+#[test]
+fn test_connectivity_interruption_metric_increments_on_offline_entry() {
+    // Given: fully online state with 1 prior failed probe (check_pending, not yet offline)
+    let state = PipelineState {
+        connectivity: ConnectivityState {
+            check_pending: true,
+            consecutive_failures: 1,
+            required_failures_to_go_offline: 2,
+            ..ConnectivityState::default()
+        },
+        ..create_test_state()
+    };
+
+    // When: second probe fails — crossing the threshold into offline mode
+    let new_state = reduce(
+        state,
+        PipelineEvent::Agent(AgentEvent::ConnectivityCheckFailed),
+    );
+
+    assert!(new_state.connectivity.is_offline, "Should be offline now");
+    assert_eq!(
+        new_state.metrics.connectivity_interruptions_total, 1,
+        "Should record exactly one connectivity interruption on offline entry"
+    );
+}
+
+#[test]
+fn test_connectivity_interruption_metric_does_not_increment_during_polling() {
+    // Given: already-offline state (is_offline=true)
+    let state = PipelineState {
+        connectivity: ConnectivityState {
+            is_offline: true,
+            poll_pending: true,
+            consecutive_failures: 2,
+            ..ConnectivityState::default()
+        },
+        metrics: RunMetrics {
+            connectivity_interruptions_total: 1,
+            ..RunMetrics::default()
+        },
+        ..create_test_state()
+    };
+
+    // When: poll fails again (still offline)
+    let new_state = reduce(
+        state,
+        PipelineEvent::Agent(AgentEvent::ConnectivityCheckFailed),
+    );
+
+    assert_eq!(
+        new_state.metrics.connectivity_interruptions_total, 1,
+        "Should NOT increment again while already offline"
     );
 }
