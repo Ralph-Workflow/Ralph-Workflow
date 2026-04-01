@@ -405,9 +405,4 @@ impl RunMetrics {
         Self { commits_created_total: self.commits_created_total.saturating_add(1), ..self }
     }
 
-    // Connectivity interruption metrics
-    #[must_use]
-    pub const fn increment_connectivity_interruptions_total(self) -> Self {
-        Self { connectivity_interruptions_total: self.connectivity_interruptions_total.saturating_add(1), ..self }
-    }
 }
