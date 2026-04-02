@@ -308,6 +308,10 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
         run: crate::boundary::compliance::check_no_shell_scripts,
     },
     NativeCheck {
+        name: "audit-no-real-git-in-tests",
+        run: crate::boundary::compliance::check_no_real_git_in_tests,
+    },
+    NativeCheck {
         name: "tailwind4-removed-angular-classes",
         run: crate::boundary::compliance::check_tailwind4_removed_angular_classes,
     },

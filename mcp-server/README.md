@@ -287,7 +287,7 @@ Content-Length: <byte-count>
 | -32600 | Invalid request — missing required fields | `mcp-server` |
 | -32601 | Method not found — unknown method | `mcp-server` |
 | -32602 | Invalid params — wrong parameter types | `mcp-server` |
-| -32603 | Internal error — server-side failure (including tool errors) | `mcp-server` |
+| -32603 | Internal error — server-side failure (not a tool error) | `mcp-server` |
 | -32001 | Server not initialized | `mcp-server` |
 
 ### Methods
@@ -486,7 +486,7 @@ Invoke a tool by name with parameters.
 {
   "jsonrpc": "2.0",
   "error": {
-    "code": -32603,
+    "code": -32000,
     "message": "Tool error: File not found: src/main.rs",
     "data": { "error": "File not found: src/main.rs" }
   },
@@ -499,7 +499,7 @@ Invoke a tool by name with parameters.
 {
   "jsonrpc": "2.0",
   "error": {
-    "code": -32603,
+    "code": -32000,
     "message": "Access denied: [CapabilityDenied] Missing GitStatusRead capability",
     "data": { "reason": "Missing GitStatusRead capability", "code": "CapabilityDenied" }
   },
@@ -524,7 +524,7 @@ Consolidated reference for all MCP JSON-RPC methods:
 | `ping` | `{}` (or null) | `null` | None | None | **Yes** | No | **Yes** |
 | `notifications/initialized` | `{}` | None (notification) | N/A | None | **Yes** | No | **Yes** |
 | `tools/list` | `null` or `{}` | `{tools: [{name, description, inputSchema}]}` | `-32001` (not initialized) | None | **Yes** | No | **Yes** |
-| `tools/call` | `{name: string, arguments: object}` | `{content: [{type: "text", text: string}], isError: boolean}` | `-32603` (internal error / tool error), `-32001` (not initialized), `-32602` (invalid params) | **Tool-specific** | **No** | **Yes** | **No** |
+| `tools/call` | `{name: string, arguments: object}` | `{content: [{type: "text", text: string}], isError: boolean}` | `-32000` (tool error / access denied), `-32001` (not initialized), `-32602` (invalid params) | **Tool-specific** | **No** | **Yes** | **No** |
 
 ### Error Code Reference
 
@@ -534,8 +534,9 @@ Consolidated reference for all MCP JSON-RPC methods:
 | `-32600` | Invalid request — missing required fields | `mcp-server` |
 | `-32601` | Method not found — unknown method | `mcp-server` |
 | `-32602` | Invalid params — wrong parameter types | `mcp-server` |
-| `-32603` | Internal error — server-side failure (including tool errors with structured data) | `mcp-server` |
+| `-32603` | Internal error — server-side failure (not a tool error) | `mcp-server` |
 | `-32001` | Server not initialized — call `initialize` first | `mcp-server` |
+| `-32000` | Tool error — tool execution failed or access denied | `mcp-server` |
 
 ## Registered Tools
 

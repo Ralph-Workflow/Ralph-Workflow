@@ -410,13 +410,6 @@ pub enum AccessDeniedCode {
     /// The tool is blocked by the active `ToolFilter` (Allowlist or Blocklist).
     /// Check which filter mode is active and whether the tool name is in the list.
     ToolNotAllowed,
-
-    /// Request was rate-limited. The server has exceeded allowed request frequency.
-    RateLimitExceeded,
-
-    /// Audit log recording failed. The server could not record the access decision.
-    /// This may indicate a storage or connectivity issue with the audit sink.
-    AuditFailure,
 }
 
 impl std::fmt::Display for AccessDeniedCode {
@@ -427,8 +420,6 @@ impl std::fmt::Display for AccessDeniedCode {
             AccessDeniedCode::ReadOnlyMode => write!(f, "ReadOnlyMode"),
             AccessDeniedCode::OutsideRootDir => write!(f, "OutsideRootDir"),
             AccessDeniedCode::ToolNotAllowed => write!(f, "ToolNotAllowed"),
-            AccessDeniedCode::RateLimitExceeded => write!(f, "RateLimitExceeded"),
-            AccessDeniedCode::AuditFailure => write!(f, "AuditFailure"),
         }
     }
 }
@@ -577,8 +568,10 @@ pub struct EnforcementParams<'a> {
     pub root_dir: &'a std::path::Path,
     /// Path canonicalization function.
     pub is_path_allowed: Box<dyn Fn(&std::path::Path) -> bool + 'a>,
-    /// Result of the capability check, if performed.
-    pub capability_outcome: &'a Option<AccessDecision>,
+    /// Optional function to check capability. If None, no capability check is performed.
+    /// If Some, the function is called at step 4 (after earlier checks pass) to
+    /// determine the capability check result.
+    pub capability_fn: Option<Box<dyn Fn() -> AccessDecision + 'a>>,
 }
 
 /// Pure: evaluate all enforcement checks and return first denial if any.
@@ -590,7 +583,7 @@ pub struct EnforcementParams<'a> {
 /// 1. Tool filter (tool not in allowlist, or in blocklist)
 /// 2. Access mode (ReadOnly blocks mutating operations)
 /// 3. Path boundary (path resolves outside root_dir)
-/// 4. Capability (host session denied the required capability)
+/// 4. Capability (host session denied the required capability) — only called if earlier checks pass
 pub fn evaluate_enforcement_pure(params: &EnforcementParams) -> EnforcementCheck {
     // Check tool filter (priority 1)
     if let Some(code) = policy_tool_allowed(params.tool_name, params.tool_filter) {
@@ -616,11 +609,13 @@ pub fn evaluate_enforcement_pure(params: &EnforcementParams) -> EnforcementCheck
     }
 
     // Check capability (priority 4) — host session decision
-    if let Some(AccessDecision::Deny { reason, code }) = params.capability_outcome {
-        return EnforcementCheck::Deny {
-            code: *code,
-            reason: reason.clone(),
-        };
+    // The capability function is ONLY called if we reach this point (earlier checks passed).
+    // This ensures the host is never consulted when earlier checks deny.
+    if let Some(check_cap) = &params.capability_fn {
+        let outcome = check_cap();
+        if let AccessDecision::Deny { reason, code } = outcome {
+            return EnforcementCheck::Deny { code, reason };
+        }
     }
 
     EnforcementCheck::Allow

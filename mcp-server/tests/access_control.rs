@@ -704,3 +704,81 @@ fn blocklist_permits_unlisted_tool() {
     );
     assert!(response.error.is_none(), "Should have no error");
 }
+
+#[test]
+fn empty_allowlist_rejects_all_tools() {
+    // An empty Allowlist means NO tools are accessible.
+    // This tests the semantics: Allowlist(vec![]) rejects every tool.
+    let counter = Arc::new(AtomicU32::new(0));
+    let counter_ref = Arc::clone(&counter);
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_read_tool(Some(&counter_ref));
+
+    // Empty allowlist - no tools should be accessible
+    let config =
+        McpServerConfig::new(PathBuf::from("/tmp")).with_tool_filter(ToolFilter::Allowlist(vec![]));
+
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_workspace_read_file",
+        serde_json::json!({ "path": "test.txt" }),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "Handler must NOT be called when allowlist is empty"
+    );
+    assert!(
+        response.error.is_some(),
+        "Empty allowlist should reject all tools"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert!(
+        error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),
+        "Error should indicate tool is not allowed, got: {}",
+        error.message
+    );
+}
+
+#[test]
+fn empty_blocklist_allows_all_tools() {
+    // An empty Blocklist means ALL tools are accessible.
+    // This tests the semantics: Blocklist(vec![]) allows every tool.
+    let counter = Arc::new(AtomicU32::new(0));
+    let counter_ref = Arc::clone(&counter);
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_read_tool(Some(&counter_ref));
+
+    // Empty blocklist - all tools should be accessible (this is the default)
+    let config =
+        McpServerConfig::new(PathBuf::from("/tmp")).with_tool_filter(ToolFilter::Blocklist(vec![]));
+
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_workspace_read_file",
+        serde_json::json!({ "path": "test.txt" }),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "Handler MUST be called when blocklist is empty"
+    );
+    assert!(
+        response.result.is_some(),
+        "Empty blocklist should allow all tools (ralph_workspace_read_file should succeed)"
+    );
+    assert!(response.error.is_none(), "Should have no error");
+}

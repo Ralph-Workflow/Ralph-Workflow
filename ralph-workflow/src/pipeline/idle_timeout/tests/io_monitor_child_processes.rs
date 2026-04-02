@@ -482,10 +482,15 @@ fn first_child_observation_without_current_activity_times_out_immediately() {
         !executor_impl.execute_calls_for("kill").is_empty(),
         "timeout enforcement should start on the first idle check when descendants are not currently active"
     );
-    controller.store(false, Ordering::Release);
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("monitor thread panicked");
+
+    // Mark child as exited AFTER monitor has completed its enforcement action.
+    // This ensures try_wait_child sees the child's state at the time of enforcement,
+    // not a subsequent state change that would incorrectly produce ProcessCompleted.
+    controller.store(false, Ordering::Release);
+
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
         "non-active descendants should not delay timeout on their first observation"

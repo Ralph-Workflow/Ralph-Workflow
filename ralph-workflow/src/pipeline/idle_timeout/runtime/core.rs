@@ -747,14 +747,6 @@ fn compute_enforcement_phase_result(
     state: TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
 ) -> (EnforcementStep, Option<TimeoutEnforcementState>) {
-    // If should_stop is set while in enforcement, return ProcessCompleted
-    // instead of continuing enforcement (which could return TimedOut via HardCapReached).
-    if should_stop_during_enforcement(params) {
-        return (
-            EnforcementStep::ReturnResult(MonitorResult::ProcessCompleted),
-            None,
-        );
-    }
     handle_enforcement_phase(
         state,
         last_child_info,
@@ -764,12 +756,6 @@ fn compute_enforcement_phase_result(
         params.kill_config,
         params.completion_check.as_ref(),
     )
-}
-
-/// Pure: check if should_stop is set during enforcement.
-fn should_stop_during_enforcement(params: &MonitorParams<'_>) -> bool {
-    use std::sync::atomic::Ordering;
-    params.should_stop.load(Ordering::Acquire)
 }
 
 fn enforcement_step_to_action(step: EnforcementStep) -> MonitorLoopAction {
@@ -800,9 +786,14 @@ pub(crate) enum TickPolicy {
     IdleTimeoutExceeded,
 }
 
-fn should_stop_before_timeout(params: &MonitorParams<'_>, _s: &MonitorLoopState) -> bool {
-    use std::sync::atomic::Ordering;
-    params.should_stop.load(Ordering::Acquire)
+fn should_stop_before_timeout(params: &MonitorParams<'_>, s: &MonitorLoopState) -> bool {
+    // Only short-circuit if timeout hasn't been triggered yet.
+    // Once timeout enforcement starts (timeout_triggered is set), we must let it
+    // complete rather than short-circuiting to ProcessCompleted.
+    s.timeout_triggered.is_none() && {
+        use std::sync::atomic::Ordering;
+        params.should_stop.load(Ordering::Acquire)
+    }
 }
 
 fn sleep_check_stops_early(params: &MonitorParams<'_>, s: &MonitorLoopState) -> bool {

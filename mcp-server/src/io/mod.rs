@@ -41,24 +41,29 @@ use std::sync::Arc;
 ///
 /// This function exists to keep enforcement logic in the boundary module while allowing
 /// lib.rs (non-boundary) to invoke it without importing I/O types directly.
+///
+/// The host session capability check is deferred until step 4 of the enforcement chain
+/// (after tool filter, access mode, and path checks), ensuring the host is never
+/// consulted when earlier checks deny.
 pub fn check_tool_enforcement(
     config: &crate::io::access::McpServerConfig,
     tool_name: &str,
     path: Option<&Path>,
     is_mutating: bool,
     required_capability: Option<crate::dispatch::access::McpCapability>,
-    capability_outcome: Option<crate::dispatch::access::AccessDecision>,
+    session: &dyn HostSession,
     audit_sink: &dyn AuditSink,
 ) -> AccessDecision {
     // Thin wiring: directly construct EnforcementContext with all inputs.
-    // No branching here - all conditional logic is in the caller (check_enforcement).
+    // The capability check is deferred until EnforcementContext::check() evaluates
+    // the enforcement chain - the host is only consulted after earlier checks pass.
     let ctx = crate::io::access::EnforcementContext {
         config,
         tool_name,
         path,
         is_mutating,
         required_capability,
-        capability_outcome,
+        session,
         audit_sink,
     };
     ctx.check()
@@ -188,8 +193,10 @@ struct CheckEnforcementParams<'a> {
 /// Check enforcement or return error response.
 ///
 /// Looks up tool metadata from the registry to determine `is_mutating` and
-/// `required_capability` for enforcement checks. Also consults the host session
-/// for capability-based access decisions (priority 4 in the enforcement chain).
+/// `required_capability` for enforcement checks. The host session capability
+/// check is deferred until step 4 of the enforcement chain (after tool filter,
+/// access mode, and path checks have all passed), ensuring the host is never
+/// consulted when earlier checks deny.
 fn check_enforcement(
     params: CheckEnforcementParams,
 ) -> Result<(), Box<(JsonRpcResponse, ServerState)>> {
@@ -205,17 +212,17 @@ fn check_enforcement(
         .map(|m| (m.is_mutating(), Some(m.required_capability)))
         .unwrap_or((false, None));
 
-    // Check capability with host session (priority 4 in enforcement chain).
-    // This is the only enforcement check that delegates to the host.
-    let capability_outcome = required_capability.map(|cap| params.session.check_capability(cap));
-
+    // NOTE: Host capability check is deferred! We pass session and required_capability
+    // to check_tool_enforcement, which passes them to EnforcementContext. The capability
+    // check (step 4) only calls the host AFTER tool filter, access mode, and path checks
+    // have all passed. This ensures the host is never consulted when earlier checks deny.
     match check_tool_enforcement(
         params.config,
         params.name,
         path_for_check,
         is_mutating,
         required_capability,
-        capability_outcome,
+        params.session,
         params.audit_sink,
     ) {
         AccessDecision::Allow => Ok(()),

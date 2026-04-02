@@ -299,6 +299,140 @@ pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckR
     }
 }
 
+/// Scans test files (excluding system_tests) for direct git2 commit operations.
+///
+/// This enforces the policy that integration tests must NOT use real git mutations.
+/// System tests in `tests/system_tests/` are allowed to use real git for testing
+/// git functionality itself.
+///
+/// Uses Aho-Corasick O(n+m+z) scan for these patterns:
+/// - `Repository::commit` — direct call to Repository::commit
+/// - `.commit(` — method call on any object
+/// - `CommitEffect` — type reference in effect handlers
+///
+/// Returns `Pass` when no violations are found or when the test directory does not exist.
+pub fn check_no_real_git_in_tests(repo_root: &Path) -> NativeCheckResult {
+    // Scan integration_tests and process_system_tests but NOT system_tests (those are allowed real git)
+    let test_dirs = [
+        repo_root.join("tests/integration_tests"),
+        repo_root.join("tests/process_system_tests"),
+    ];
+
+    // Collect files to scan
+    let mut files = Vec::new();
+    for test_dir in &test_dirs {
+        if test_dir.exists() {
+            if let Err(e) = collect_rs_files_from(test_dir, &mut files) {
+                return NativeCheckResult {
+                    status: CheckStatus::Error,
+                    message: format!("Failed to walk test directory {}: {e}", test_dir.display()),
+                };
+            }
+        }
+    }
+
+    if files.is_empty() {
+        return NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        };
+    }
+
+    // Patterns that indicate real git usage in tests
+    const GIT_VIOLATION_PATTERNS: &[&str] = &["Repository::commit", ".commit(", "CommitEffect"];
+
+    let ac = AhoCorasick::new(GIT_VIOLATION_PATTERNS).expect("valid git violation patterns");
+    let mut violations: Vec<String> = Vec::new();
+    let mut read_errors: Vec<String> = Vec::new();
+
+    for file_path in &files {
+        let content = match std::fs::read(file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                read_errors.push(format!("{}: read error: {e}", file_path.display()));
+                continue;
+            }
+        };
+
+        scan_file_for_git_violations(file_path, &content, &ac, &mut violations);
+    }
+
+    if !read_errors.is_empty() {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Failed to read {} test file(s) during git-violation scan:\n{}",
+                read_errors.len(),
+                read_errors.join("\n")
+            ),
+        };
+    }
+
+    if violations.is_empty() {
+        NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        }
+    } else {
+        NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Found {} test file(s) with real git operations (real git mutations are forbidden in integration tests):\n{}",
+                violations.len(),
+                violations.join("\n")
+            ),
+        }
+    }
+}
+
+fn collect_rs_files_from(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Skip system_tests - those are allowed to use real git
+        if path.components().any(|c| c.as_os_str() == "system_tests") {
+            continue;
+        }
+
+        if path.is_dir() {
+            collect_rs_files_from(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
+            && !should_skip_file(&path)
+        {
+            out.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn scan_file_for_git_violations(
+    file_path: &Path,
+    content: &[u8],
+    ac: &AhoCorasick,
+    violations: &mut Vec<String>,
+) {
+    let line_idx = LineIndex::new(content);
+
+    for mat in ac.find_iter(content) {
+        let line_number = line_idx.line_number(mat.start()) + 1;
+        let line_bytes = line_idx.extract_line(content, mat.start());
+        let line_str = String::from_utf8_lossy(line_bytes);
+
+        violations.push(format!(
+            "{}:{}: found git operation '{}' — tests must use MemoryWorkspace or MockAppEffectHandler",
+            file_path.display(),
+            line_number,
+            line_str.trim()
+        ));
+    }
+}
+
 fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut files)?;
@@ -607,8 +741,8 @@ fn extract_test_name(line: &str) -> Option<&str> {
 /// transitive). This enforces the standalone principle: mcp-server must be usable
 /// without ralph-workflow in the dependency graph.
 ///
-/// Uses `cargo tree -p mcp-server --prefix none` to enumerate all transitive
-/// dependencies and checks that "ralph-workflow" does not appear.
+/// Uses `cargo metadata --format-version 1` to get the full dependency graph and
+/// traverses all dependencies of mcp-server to verify ralph-workflow is not present.
 pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
     // Skip if the repo root doesn't exist (e.g., fake path in tests)
     if !repo_root.exists() {
@@ -620,13 +754,11 @@ pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
 
     let output = std::process::Command::new("cargo")
         .args([
-            "tree",
-            "-p",
-            "mcp-server",
-            "--prefix",
-            "none",
-            "--format",
-            "{p}",
+            "metadata",
+            "--format-version",
+            "1",
+            "--manifest-path",
+            "mcp-server/Cargo.toml",
         ])
         .current_dir(repo_root)
         .output();
@@ -658,21 +790,67 @@ pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
         }
         return NativeCheckResult {
             status: CheckStatus::Error,
-            message: format!("DEPENDENCY ISOLATION VIOLATION: cargo tree failed: {stderr}"),
+            message: format!("DEPENDENCY ISOLATION VIOLATION: cargo metadata failed: {stderr}"),
         };
     }
 
-    let tree_output = String::from_utf8_lossy(&output.stdout);
-
-    // Check each line for ralph-workflow dependency
-    for line in tree_output.lines() {
-        if line.contains("ralph-workflow") {
+    // Parse cargo metadata JSON manually using serde_json
+    let metadata_str = String::from_utf8_lossy(&output.stdout);
+    let metadata: serde_json::Value = match serde_json::from_str(&metadata_str) {
+        Ok(v) => v,
+        Err(e) => {
             return NativeCheckResult {
                 status: CheckStatus::Error,
                 message: format!(
-                    "DEPENDENCY ISOLATION VIOLATION: mcp-server must not depend on ralph-workflow (direct or transitive). Found dependency: {line}. Remove the dependency and use adapter traits instead."
+                    "DEPENDENCY ISOLATION VIOLATION: failed to parse cargo metadata: {e}"
                 ),
             };
+        }
+    };
+
+    // Build a map of package name -> package dependencies
+    // cargo metadata structure: { "packages": [{ "name": "...", "dependencies": [{ "name": "..." }, ...] }, ...] }
+    let mut deps_map: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+
+    if let Some(packages) = metadata.get("packages").and_then(|p| p.as_array()) {
+        for pkg in packages {
+            let name = pkg.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let deps = pkg
+                .get("dependencies")
+                .and_then(|d| d.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|d| d.get("name").and_then(|n| n.as_str()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            deps_map.insert(name, deps);
+        }
+    }
+
+    // BFS traversal from mcp-server to find all transitive dependencies
+    let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
+    queue.push_back("mcp-server");
+    visited.insert("mcp-server");
+
+    while let Some(current) = queue.pop_front() {
+        if let Some(deps) = deps_map.get(current) {
+            for dep in deps {
+                if *dep == "ralph-workflow" {
+                    return NativeCheckResult {
+                        status: CheckStatus::Error,
+                        message: format!(
+                            "DEPENDENCY ISOLATION VIOLATION: mcp-server must not depend on ralph-workflow (direct or transitive). Found dependency path: mcp-server -> {}. Remove the dependency and use adapter traits instead.",
+                            dep
+                        ),
+                    };
+                }
+                if !visited.contains(dep) {
+                    visited.insert(dep);
+                    queue.push_back(dep);
+                }
+            }
         }
     }
 

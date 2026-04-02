@@ -587,6 +587,57 @@ pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
     CWD_LOCK.store(0, Ordering::Release);
 }
 
+/// Fail fast with a policy error if `path` is inside a real (non-temp) git repository.
+///
+/// This function checks that a given path is either not a git repo, or is a git repo
+/// inside a system temp directory (per `std::env::temp_dir()`). Call this at the start
+/// of any test that touches the filesystem to enforce the no-real-git-mutation policy.
+///
+/// # Algorithm
+///
+/// Walks up from `path` checking for a `.git` directory. If found, verifies the
+/// containing directory is inside `std::env::temp_dir()`. If the repo is outside
+/// temp (e.g., the user's project repo), panics with a clear policy violation.
+///
+/// # Panics
+///
+/// Panics with a POLICY VIOLATION message if a `.git` directory is found outside
+/// of `std::env::temp_dir()`.
+///
+/// # Example
+///
+/// ```ignore
+/// // At the start of a test:
+/// assert_no_real_git_repo!(workspace.root());
+/// ```
+pub fn assert_no_real_git_repo(path: &std::path::Path) {
+    let mut current = path.to_path_buf();
+
+    loop {
+        if current.join(".git").exists() {
+            let tmp = std::env::temp_dir();
+            assert!(
+                current.starts_with(&tmp),
+                "POLICY VIOLATION: Test attempted to operate on a real git repository at {:?}. \
+                 All tests must use MemoryWorkspace or a git repo inside a temp directory. \
+                 Do NOT use environment variables or feature flags to bypass this requirement.",
+                current
+            );
+            return;
+        }
+
+        let next = std::fs::canonicalize(&current)
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .or_else(|| current.parent().map(|p| p.to_path_buf()));
+
+        match next {
+            Some(parent) if parent != current => current = parent,
+            _ => break,
+        }
+    }
+}
+
 /// Check whether any ancestor of `path` (including `path` itself) is inside a real git
 /// repository (identified by the presence of a `.git` directory).
 ///

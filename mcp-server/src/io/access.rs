@@ -14,6 +14,9 @@ use std::path::{Path, PathBuf};
 // The io layer is responsible for stamping timestamp_nanos on emit.
 pub use crate::dispatch::audit::AuditRecord;
 
+// Re-export HostSession for EnforcementContext.
+pub use crate::dispatch::host::HostSession;
+
 /// Thread-safe in-memory audit sink for testing.
 /// Stores records from the dispatch layer and stamps timestamps on emit.
 pub struct InMemoryAuditSink {
@@ -225,6 +228,7 @@ fn decide_path_allowed(
 ///    If outside, returns `OutsideRootDir`. The host is not consulted.
 /// 4. **Capability check** — Does the session have the required capability?
 ///    This is the only check that delegates to the host via `HostSession`.
+///    The host is only consulted at this step, AFTER earlier checks have passed.
 #[derive(Clone)]
 pub struct EnforcementContext<'a> {
     /// Server configuration for access control.
@@ -233,8 +237,8 @@ pub struct EnforcementContext<'a> {
     pub tool_name: &'a str,
     /// Capability required for the tool.
     pub required_capability: Option<McpCapability>,
-    /// Result of the capability check.
-    pub capability_outcome: Option<AccessDecision>,
+    /// Session for capability checks (called only at step 4, after earlier checks pass).
+    pub session: &'a dyn HostSession,
     /// Path involved in the operation.
     pub path: Option<&'a Path>,
     /// Whether the tool is a mutating operation.
@@ -254,7 +258,7 @@ impl<'a> EnforcementContext<'a> {
             config,
             tool_name,
             required_capability: None,
-            capability_outcome: None,
+            session: &NoOpHostSession,
             path: None,
             is_mutating: false,
             audit_sink,
@@ -279,14 +283,25 @@ impl<'a> EnforcementContext<'a> {
         self
     }
 
-    /// Set the result of the capability check.
-    pub fn with_capability_outcome(mut self, outcome: AccessDecision) -> Self {
-        self.capability_outcome = Some(outcome);
+    /// Set the session for capability checks.
+    pub fn with_session(mut self, session: &'a dyn HostSession) -> Self {
+        self.session = session;
         self
     }
 
     /// Evaluate enforcement - thin boundary: gather inputs, call pure helper, return result.
+    ///
+    /// The capability check is deferred until step 4. If required_capability is Some,
+    /// the host session's check_capability is called at step 4, AFTER tool filter,
+    /// access mode, and path checks have all passed.
     fn evaluate_enforcement(&self) -> (AccessDecision, bool) {
+        // Build a closure that performs the capability check lazily at step 4.
+        // This ensures the host is only consulted after earlier checks have passed.
+        let capability_fn = self.required_capability.map::<Box<dyn Fn() -> AccessDecision>, _>(|cap| {
+            let session: &dyn HostSession = self.session;
+            Box::new(move || session.check_capability(cap))
+        });
+
         let params = crate::dispatch::access::EnforcementParams {
             tool_name: self.tool_name,
             tool_filter: &self.config.tool_filter,
@@ -295,7 +310,7 @@ impl<'a> EnforcementContext<'a> {
             path: self.path,
             root_dir: &self.config.root_dir,
             is_path_allowed: Box::new(|p| self.config.is_path_allowed(p)),
-            capability_outcome: &self.capability_outcome,
+            capability_fn,
         };
         let result = evaluate_enforcement_pure(&params);
         match result {
@@ -330,6 +345,22 @@ impl<'a> EnforcementContext<'a> {
         }
 
         self.audit_sink.emit(record);
+    }
+}
+
+/// A no-op host session used as default in EnforcementContext::new.
+///
+/// This is only used when no session is needed (e.g., tool filter checks).
+/// In practice, all real uses of EnforcementContext set a proper session via
+/// `with_session()`.
+struct NoOpHostSession;
+
+impl HostSession for NoOpHostSession {
+    fn session_id(&self) -> &str {
+        "noop"
+    }
+    fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
+        AccessDecision::Allow
     }
 }
 
