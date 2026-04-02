@@ -160,16 +160,16 @@ cargo build --release
 # Custom lints (dylint) - all lints consolidated in ralph_lints
 #
 # IMPORTANT:
-# - Running dylint against the `ralph` binary target can fail the build because the binary uses
-#   `#![deny(warnings)]` (warnings become hard errors).
-# - Run the lint against the `ralph-workflow` *library* target instead.
+# - The xtask dylint runner lints every workspace package except lint crates (e.g. *_lints).
+# - It keeps `ralph-workflow` on `--lib` only to avoid known binary-target warning escalation
+#   (`#![deny(warnings)]` in `ralph` binary).
 # - The Makefile automatically ensures nightly toolchain's cargo is used for driver builds,
 #   even when system cargo (Homebrew/apt) is stable.
 #
-# Recommended (library target only):
+# Recommended:
 make dylint
 # or:
-cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
+cargo xtask dylint
 ```
 
 **If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.

@@ -6,6 +6,22 @@
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Output};
 
+use serde::Deserialize;
+
+const LINT_CRATE_SUFFIX: &str = "_lints";
+
+#[derive(Debug, Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoPackage>,
+    workspace_members: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoPackage {
+    id: String,
+    name: String,
+}
+
 /// Environment configuration for dylint execution.
 #[derive(Debug, Clone)]
 pub struct DylintEnv {
@@ -300,6 +316,56 @@ pub fn install_cargo_dylint(
         .map(|s| s.success())
 }
 
+fn read_workspace_package_names(cargo_bin: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let metadata_output = Command::new(cargo_bin)
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .output()?;
+
+    if !metadata_output.status.success() {
+        return Err(std::io::Error::other(format!(
+            "cargo metadata failed: {}",
+            String::from_utf8_lossy(&metadata_output.stderr)
+        )));
+    }
+
+    let metadata: CargoMetadata = serde_json::from_slice(&metadata_output.stdout)
+        .map_err(|error| std::io::Error::other(format!("invalid cargo metadata JSON: {error}")))?;
+
+    let name_by_id = metadata
+        .packages
+        .into_iter()
+        .map(|package| (package.id, package.name))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    metadata
+        .workspace_members
+        .into_iter()
+        .map(|member_id| {
+            name_by_id.get(&member_id).cloned().ok_or_else(|| {
+                std::io::Error::other(format!(
+                    "workspace member '{member_id}' missing from cargo metadata package list"
+                ))
+            })
+        })
+        .collect()
+}
+
+fn build_dylint_package_args(package_names: &[String]) -> Vec<String> {
+    let mut filtered_names = package_names
+        .iter()
+        .filter(|name| !name.ends_with(LINT_CRATE_SUFFIX))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    filtered_names.sort();
+    filtered_names.dedup();
+
+    filtered_names
+        .into_iter()
+        .flat_map(|name| ["-p".to_string(), name])
+        .collect()
+}
+
 /// Execute dylint with the configured environment.
 pub fn execute_dylint(
     wrapper_path: &std::path::Path,
@@ -308,47 +374,62 @@ pub fn execute_dylint(
     path_env: &str,
     verbose: bool,
 ) -> std::io::Result<ExitCode> {
-    let mut cmd = Command::new(wrapper_path);
-    cmd.arg("dylint");
+    let workspace_packages = read_workspace_package_names(wrapper_path)?;
+    let package_args = build_dylint_package_args(&workspace_packages);
 
-    if !verbose {
-        cmd.arg("-q");
+    if package_args.is_empty() {
+        return Err(std::io::Error::other(
+            "no workspace packages available for dylint after lint-crate exclusion",
+        ));
     }
 
-    cmd.arg("--lib")
-        .arg("ralph_lints")
-        .arg("-p")
-        .arg("ralph-workflow")
-        .arg("--")
-        .arg("--lib");
+    for package_arg in package_args.chunks_exact(2) {
+        let package_name = &package_arg[1];
+        let mut cmd = Command::new(wrapper_path);
+        cmd.arg("dylint");
 
-    if !verbose {
-        cmd.arg("--quiet");
+        if !verbose {
+            cmd.arg("-q");
+        }
+
+        cmd.arg("--lib")
+            .arg("ralph_lints")
+            .arg("-p")
+            .arg(package_name);
+
+        if package_name == "ralph-workflow" {
+            cmd.arg("--").arg("--lib");
+
+            if !verbose {
+                cmd.arg("--quiet");
+            }
+        }
+
+        cmd.env("RUSTFLAGS", "--cap-lints=deny -D warnings")
+            .env("PATH", path_env)
+            .env("CARGO_HOME", &dylint_env.cargo_home)
+            .env("RUSTUP_HOME", &dylint_env.rustup_home)
+            .env("DYLINT_DRIVER_PATH", &dylint_env.dylint_driver)
+            .env("RUSTUP_TOOLCHAIN", &toolchain.nightly_toolchain)
+            .env("RUSTC", &toolchain.nightly_rustc)
+            .env("CARGO_TERM_QUIET", if verbose { "false" } else { "true" });
+
+        if dylint_env.force_offline {
+            cmd.env("CARGO_NET_OFFLINE", "true");
+        }
+
+        let status = cmd.status()?;
+        if !status.success() {
+            return Ok(ExitCode::from(1));
+        }
     }
 
-    cmd.env("RUSTFLAGS", "--cap-lints=deny -D warnings")
-        .env("PATH", path_env)
-        .env("CARGO_HOME", &dylint_env.cargo_home)
-        .env("RUSTUP_HOME", &dylint_env.rustup_home)
-        .env("DYLINT_DRIVER_PATH", &dylint_env.dylint_driver)
-        .env("RUSTUP_TOOLCHAIN", &toolchain.nightly_toolchain)
-        .env("RUSTC", &toolchain.nightly_rustc)
-        .env("CARGO_TERM_QUIET", if verbose { "false" } else { "true" });
-
-    if dylint_env.force_offline {
-        cmd.env("CARGO_NET_OFFLINE", "true");
-    }
-
-    let status = cmd.status()?;
-    Ok(if status.success() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
-    })
+    Ok(ExitCode::SUCCESS)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::build_dylint_package_args;
     use std::process::Output;
 
     #[cfg(unix)]
@@ -379,5 +460,48 @@ mod tests {
         };
 
         assert_eq!(successful_output_path(output), None);
+    }
+
+    #[test]
+    fn build_dylint_package_args_targets_each_workspace_package_except_lint_crate() {
+        let package_names = vec![
+            "ralph-workflow".to_string(),
+            "test-helpers".to_string(),
+            "xtask".to_string(),
+            "tests".to_string(),
+            "ralph-gui".to_string(),
+            "ralph_lints".to_string(),
+        ];
+
+        let args = build_dylint_package_args(&package_names);
+
+        assert_eq!(
+            args,
+            vec![
+                "-p",
+                "ralph-gui",
+                "-p",
+                "ralph-workflow",
+                "-p",
+                "test-helpers",
+                "-p",
+                "tests",
+                "-p",
+                "xtask",
+            ],
+            "dylint should target all workspace packages except lint crates"
+        );
+    }
+
+    #[test]
+    fn build_dylint_package_args_omits_lint_crates_when_only_lints_are_present() {
+        let package_names = vec!["ralph_lints".to_string(), "foo_lints".to_string()];
+
+        let args = build_dylint_package_args(&package_names);
+
+        assert!(
+            args.is_empty(),
+            "lint crates should never be linted directly"
+        );
     }
 }

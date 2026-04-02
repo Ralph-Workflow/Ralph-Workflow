@@ -146,9 +146,13 @@ near the top of the file. When `cargo xtask verify` sees that marker, it prints
 # Run all custom lints (via make - recommended)
 make dylint
 
-# Run using cargo dylint directly with ralph_lints
-cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
+# Equivalent runner entrypoint
+cargo xtask dylint
 ```
+
+`cargo xtask dylint` resolves workspace packages from `cargo metadata`, lints each package with
+`ralph_lints`, excludes lint crates themselves (for example `*_lints`), and keeps
+`ralph-workflow` scoped to `--lib` to avoid known binary-target warning escalation.
 
 ## Local Crate Verification
 
