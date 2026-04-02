@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: fix_mode_xsd_retry.txt                                              #}
-{# Version: 4.0 - STRICT XML-only fix mode                                      #}
+{# Version: 5.0 - Dumb-agent-proof XML-only fix mode                           #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -10,9 +10,9 @@
 {# VARIABLES:                                                                  #}
 {#   {{XSD_ERROR}} - XSD validation error message (required)                    #}
 {#                                                                             #}
-{# FILES TO READ:                                                               #}
-{#   .agent/tmp/fix_result.xsd   - The XSD schema your output must conform to   #}
-{#   .agent/tmp/last_output.xml  - Your previous invalid output                 #}
+{# FILES TO READ (REFERENCE ONLY):                                              #}
+{#   .agent/tmp/fix_result.xsd   - The XSD schema (for structure reference)    #}
+{#   .agent/tmp/last_output.xml  - Your previous invalid output (for format)   #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
 {#   Valid <ralph-fix-result> XML conforming to the XSD schema                 #}
@@ -27,6 +27,30 @@ XSD VALIDATION FAILED - FIX XML ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
 Your XML output at `{{FIX_RESULT_XML_PATH}}` failed XSD validation.
+
+**THIS IS A SUBMISSION-FIX-ONLY RETRY**
+
+═══════════════════════════════════════════════════════════════════════════════
+REFERENCE ONLY (Do not redo task logic)
+═══════════════════════════════════════════════════════════════════════════════
+
+Read these files ONLY to understand expected structure:
+- `{{FIX_RESULT_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
+
+These files are for structure reference only. Do NOT redo fix work from them.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIMARY OBJECTIVE: Fix Malformed XML Structure
+═══════════════════════════════════════════════════════════════════════════════
+
+Your main task is to fix the malformed XML structure. The most common issue
+is malformed XML/root parse errors - fix those FIRST.
+
+Focus on:
+1. Fix malformed XML/root structure first
+2. Fix any remaining XML format issues
+3. Ensure all required elements are present
 
 ═══════════════════════════════════════════════════════════════════════════════
 XML CHARACTER RESTRICTIONS (CRITICAL)
@@ -47,21 +71,14 @@ If you need to reference code with special characters, use <code> elements or CD
 ERROR: {{XSD_ERROR}}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CRITICAL INSTRUCTIONS - READ CAREFULLY
+DO NOT DO
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{FIX_RESULT_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{FIX_RESULT_XML_PATH}}`
-
-You MUST NOT:
-- Write any new code
-- Modify any source files
-- Run any commands
-- Do ANY fix/development work
-- Change the content/meaning of your response - ONLY fix the XML format
+- Do NOT write any new code
+- Do NOT modify any source files
+- Do NOT run any commands
+- Do NOT do ANY fix/development work
+- Do NOT change the content/meaning of your response
 
 This is a PURE XML SYNTAX FIX. Your fix work is done. The only problem
 is that your XML output doesn't conform to the schema. Fix the XML structure,

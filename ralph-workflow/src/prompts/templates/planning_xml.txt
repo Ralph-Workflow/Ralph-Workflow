@@ -1,11 +1,12 @@
 {# ============================================================================ #}
 {# Template: planning_xml.txt                                                  #}
-{# Version: 2.0 - Structured XML with rich content elements                    #}
+{# Version: 3.0 - Dumb-agent-proof planning with rich guidance               #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
 {#   Prompt for planning phase to create detailed implementation plans.        #}
 {#   Uses structured XML with rich content elements for comprehensive plans.   #}
+{#   Provides explicit guidance to make plans executable by weak agents.        #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   {{PROMPT}} - User requirements from the request (required)                #}
@@ -27,20 +28,20 @@
 {#       </step>                                                               #}
 {#     </ralph-implementation-steps>                                           #}
 {#     <ralph-critical-files>                                                  #}
-{#       <primary-files><file path="..." action="modify"/></primary-files>     #}
+{#       <primary-files><file path="..." action="modify"/></primary-files>      #}
 {#       <reference-files><file path="..." purpose="..."/></reference-files>   #}
 {#     </ralph-critical-files>                                                 #}
-{#     <ralph-risks-mitigations>                                               #}
+{#     <ralph-risks-mitigations>                                              #}
 {#       <risk-pair severity="medium">                                         #}
 {#         <risk>Risk description</risk>                                       #}
-{#         <mitigation>How to mitigate</mitigation>                            #}
+{#         <mitigation>How to mitigate</mitigation>                           #}
 {#       </risk-pair>                                                          #}
-{#     </ralph-risks-mitigations>                                              #}
+{#     </ralph-risks-mitigations>                                             #}
 {#     <ralph-verification-strategy>                                           #}
 {#       <verification>                                                        #}
 {#         <method>How to verify</method>                                      #}
-{#         <expected-outcome>What success looks like</expected-outcome>        #}
-{#       </verification>                                                       #}
+{#         <expected-outcome>What success looks like</expected-outcome>         #}
+{#       </verification>                                                        #}
 {#     </ralph-verification-strategy>                                          #}
 {#   </ralph-plan>                                                             #}
 {# ============================================================================ #}
@@ -154,14 +155,61 @@ PHASE 5: WRITE STRUCTURED PLAN
 Write XML to: `{{PLAN_XML_PATH}}`
 XSD schema: `{{PLAN_XSD_PATH}}`
 
-Required sections:
-- ralph-summary (with context and at least 3 scope-items)
-- ralph-implementation-steps (numbered)
-- ralph-critical-files (with primary-files)
-- ralph-risks-mitigations (at least 1 risk-pair)
-- ralph-verification-strategy (at least 1 verification)
+═══════════════════════════════════════════════════════════════════════════════
+REQUIRED SECTIONS (All sections are REQUIRED unless marked optional)
+═══════════════════════════════════════════════════════════════════════════════
 
-Skills and MCP guidance:
+1. **ralph-summary** (REQUIRED)
+   - MUST have <context> (non-empty) explaining what and why
+   - MUST have <scope-items> with minimum 3 items
+   - Each scope-item describes work category with count and description
+
+2. **ralph-implementation-steps** (REQUIRED)
+   - Each <step> MUST have: number attribute, <title>, <content>
+   - file-change steps MUST have <target-files> with at least one <file path="..." action="..."/>
+   - <content> MUST have at least one element: <paragraph>, <code-block>, <list>, etc.
+
+3. **ralph-critical-files** (REQUIRED)
+   - MUST have <primary-files> with at least one <file path="..." action="..."/>
+   - <reference-files> section is optional but recommended
+
+4. **ralph-risks-mitigations** (REQUIRED - minimum 1 risk-pair)
+   - Each <risk-pair> MUST have both <risk> and <mitigation>
+
+5. **ralph-verification-strategy** (REQUIRED - minimum 1 verification)
+   - Each <verification> MUST have both <method> and <expected-outcome>
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPLEMENTATION CONTEXT REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+For each implementation step, provide:
+- **Concrete target files/areas**: Specific file paths and locations
+- **Ordered steps with dependencies**: Numbered steps in execution order
+- **Risk + mitigation pairs**: For each significant decision
+- **Verification strategy**: How to verify the step succeeded
+- **Clear boundaries**: What is in-scope vs out-of-scope
+
+The plan must be detailed enough that a developer agent with zero prior context
+can execute it without guessing.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRE-SUBMISSION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+Before writing the XML, verify:
+[ ] All required sections are present
+[ ] All minimum counts are met (3 scope-items, 1 risk-pair, 1 verification)
+[ ] All steps have required attributes and elements
+[ ] All file paths are specific and correct
+[ ] All element content is non-empty
+[ ] XML is well-formed (proper closing tags, valid structure)
+[ ] No markdown fences around XML
+
+═══════════════════════════════════════════════════════════════════════════════
+SKILLS AND MCP GUIDANCE
+═══════════════════════════════════════════════════════════════════════════════
+
 Add all relevant skills and MCP suggestions to `<skills-mcp>`. Look through
 available skills before writing the XML. Consider whether any MCP or
 MCP-backed system should also be suggested. Use `<skill>` and `<mcp>` entries,

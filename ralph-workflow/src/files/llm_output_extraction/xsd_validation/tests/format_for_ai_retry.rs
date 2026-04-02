@@ -1,5 +1,11 @@
 // ============================================================================
 // Tests for format_for_ai_retry()
+//
+// Tests verify the four-section dumb-agent-proof format:
+// - What failed: one sentence plain language
+// - Where it failed: exact element/path/tag
+// - How to fix: ordered checklist
+// - Do not do: anti-actions list
 // ============================================================================
 
 #[test]
@@ -14,9 +20,14 @@ fn test_format_for_ai_retry_missing_required_element() {
     };
 
     let formatted = error.format_for_ai_retry();
-    assert!(formatted.contains("MISSING REQUIRED ELEMENT"));
-    assert!(formatted.contains("'ralph-subject' is required"));
-    assert!(formatted.contains("Add <ralph-subject>"));
+    // New format uses "What failed:" style
+    assert!(formatted.contains("What failed"));
+    assert!(formatted.contains("ralph-subject"));
+    assert!(formatted.contains("Add the missing"));
+    // Should have all four sections
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
 }
 
 #[test]
@@ -35,6 +46,11 @@ fn test_format_for_ai_retry_with_example() {
     let formatted = error.format_for_ai_retry();
     assert!(formatted.contains("Example of correct format:"));
     assert!(formatted.contains("feat: example"));
+    // Should have all four sections
+    assert!(formatted.contains("What failed"));
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
 }
 
 #[test]
@@ -49,9 +65,13 @@ fn test_format_for_ai_retry_unexpected_element() {
     };
 
     let formatted = error.format_for_ai_retry();
-    assert!(formatted.contains("UNEXPECTED ELEMENT"));
+    // New format uses "What failed:" style
+    assert!(formatted.contains("What failed"));
     assert!(formatted.contains("<unknown-tag>"));
-    assert!(formatted.contains("not allowed"));
+    // Should have all four sections
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
 }
 
 #[test]
@@ -66,9 +86,13 @@ fn test_format_for_ai_retry_invalid_content() {
     };
 
     let formatted = error.format_for_ai_retry();
-    assert!(formatted.contains("INVALID CONTENT"));
+    // New format uses "What failed:" style
+    assert!(formatted.contains("What failed"));
     assert!(formatted.contains("ralph-subject"));
-    assert!(formatted.contains("conventional commit format"));
+    // Should have all four sections
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
 }
 
 #[test]
@@ -83,9 +107,14 @@ fn test_format_for_ai_retry_malformed_xml() {
     };
 
     let formatted = error.format_for_ai_retry();
-    assert!(formatted.contains("MALFORMED XML"));
-    assert!(formatted.contains("XML structure is invalid"));
-    assert!(formatted.contains("properly closed"));
+    // New format emphasizes malformed XML as primary issue
+    assert!(formatted.contains("What failed"));
+    assert!(formatted.contains("malformed"));
+    assert!(formatted.contains("XML"));
+    // Should have all four sections
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
 }
 
 #[test]
@@ -107,12 +136,8 @@ fn test_format_for_ai_retry_illegal_character_emphasis() {
 
     // Verify the formatted output emphasizes illegal character issue
     assert!(
-        formatted.contains("ILLEGAL CHARACTER"),
-        "Should emphasize illegal character in heading"
-    );
-    assert!(
-        formatted.contains("CRITICAL") || formatted.contains("FIX REQUIRED"),
-        "Should indicate critical fix required"
+        formatted.contains("illegal character"),
+        "Should emphasize illegal character issue"
     );
     assert!(
         formatted.contains("NUL"),
@@ -122,6 +147,11 @@ fn test_format_for_ai_retry_illegal_character_emphasis() {
         formatted.contains("\\u00A0") || formatted.contains("non-breaking space"),
         "Should mention common NBSP typo"
     );
+    // Should have all four sections
+    assert!(formatted.contains("What failed"));
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
 }
 
 #[test]
@@ -141,8 +171,8 @@ fn test_format_for_ai_retry_illegal_character_includes_fix_marker() {
     let formatted = error.format_for_ai_retry();
 
     assert!(
-        formatted.contains("How to fix") || formatted.contains("Fix:"),
-        "Illegal character errors should include a fix marker, got:\n{formatted}"
+        formatted.contains("How to fix"),
+        "Illegal character errors should include a fix section, got:\n{formatted}"
     );
 }
 
@@ -160,13 +190,106 @@ fn test_format_for_ai_retry_generic_malformed_xml() {
 
     let formatted = error.format_for_ai_retry();
 
-    // Verify this uses standard formatting (not the enhanced illegal character formatting)
+    // Verify this uses standard formatting with malformed XML emphasis
     assert!(
-        formatted.contains("MALFORMED XML"),
-        "Should use standard malformed XML heading"
+        formatted.contains("malformed"),
+        "Should emphasize malformed XML"
     );
     assert!(
-        !formatted.contains("ILLEGAL CHARACTER"),
+        !formatted.contains("illegal character"),
         "Should NOT use illegal character emphasis for generic errors"
     );
+    // Should have all four sections
+    assert!(formatted.contains("What failed"));
+    assert!(formatted.contains("Where it failed"));
+    assert!(formatted.contains("How to fix"));
+    assert!(formatted.contains("Do not do"));
+}
+
+// ============================================================================
+// Regression Tests for Dumb-Agent-Proof Contract
+// ============================================================================
+
+/// Regression test: format_for_ai_retry MUST produce four-section structure.
+/// This ensures retry prompts can guide weak agents deterministically.
+#[test]
+fn test_format_for_ai_retry_has_four_sections() {
+    let error = XsdValidationError {
+        error_type: XsdErrorType::MissingRequiredElement,
+        element_path: "ralph-subject".to_string(),
+        expected: "<ralph-subject> element (required)".to_string(),
+        found: "no <ralph-subject> found".to_string(),
+        suggestion: "Add <ralph-subject>type: description</ralph-subject>".to_string(),
+        example: None,
+    };
+
+    let formatted = error.format_for_ai_retry();
+
+    // Must have What failed section
+    assert!(
+        formatted.contains("What failed"),
+        "Should have 'What failed' section. Got:\n{formatted}"
+    );
+
+    // Must have Where it failed section
+    assert!(
+        formatted.contains("Where it failed"),
+        "Should have 'Where it failed' section. Got:\n{formatted}"
+    );
+
+    // Must have How to fix section
+    assert!(
+        formatted.contains("How to fix"),
+        "Should have 'How to fix' section. Got:\n{formatted}"
+    );
+
+    // Must have Do not do section (anti-actions)
+    assert!(
+        formatted.contains("Do not do"),
+        "Should have 'Do not do' anti-actions section. Got:\n{formatted}"
+    );
+}
+
+/// Regression test: malformed XML MUST be prioritized as primary correction target.
+#[test]
+fn test_format_for_ai_retry_malformed_xml_is_primary_target() {
+    let error = XsdValidationError {
+        error_type: XsdErrorType::MalformedXml,
+        element_path: "xml".to_string(),
+        expected: "valid XML".to_string(),
+        found: "XML parse error".to_string(),
+        suggestion: "Fix XML structure first".to_string(),
+        example: None,
+    };
+
+    let formatted = error.format_for_ai_retry();
+
+    // Malformed XML should be mentioned prominently as primary issue
+    assert!(
+        formatted.contains("malformed"),
+        "Malformed XML should be primary emphasis. Got:\n{formatted}"
+    );
+}
+
+/// Regression test: format_for_ai_retry MUST NOT embed prior prompt dumps.
+#[test]
+fn test_format_for_ai_retry_no_prior_prompt_dump() {
+    let error = XsdValidationError {
+        error_type: XsdErrorType::MissingRequiredElement,
+        element_path: "ralph-subject".to_string(),
+        expected: "<ralph-subject> element".to_string(),
+        found: "not found".to_string(),
+        suggestion: "Add the element".to_string(),
+        example: Some("<ralph-commit><ralph-subject>fix: bug</ralph-subject></ralph-commit>".into()),
+    };
+
+    let formatted = error.format_for_ai_retry();
+
+    // The example should appear but not as a large embedded dump
+    assert!(
+        !formatted.contains("PRIOR PROMPT"),
+        "Should not contain prior PROMPT content. Got:\n{formatted}"
+    );
+    // Note: The word "plan" in the example is fine - the test checks that we don't
+    // embed large prior prompt blocks, not that we avoid all mention of planning
 }

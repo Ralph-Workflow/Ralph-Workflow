@@ -9,14 +9,53 @@
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
 use ralph_workflow::agents::AgentRole;
+use ralph_workflow::prompts::analysis::{generate_analysis_prompt, generate_fix_analysis_prompt};
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase, PlanningEvent};
 use ralph_workflow::reducer::state::{AgentChainState, PipelineState};
 use ralph_workflow::reducer::state_reduction::reduce;
+use ralph_workflow::workspace::MemoryWorkspace;
 
 use crate::common::with_locked_prompt_permissions;
 use crate::test_timeout::with_default_timeout;
+
+#[test]
+fn test_planning_template_includes_guidance_and_checklist() {
+    with_default_timeout(|| {
+        let template = include_str!("../../ralph-workflow/src/prompts/templates/planning_xml.txt");
+
+        assert!(
+            template.contains("REQUIRED SECTIONS"),
+            "Planning template must list required sections."
+        );
+        assert!(
+            template.contains("PRE-SUBMISSION CHECKLIST"),
+            "Planning template must include the checklist guidance."
+        );
+        assert!(
+            template.contains("PHASE"),
+            "Planning template should document the multi-phase approach."
+        );
+    });
+}
+
+#[test]
+fn test_analysis_prompts_include_status_contract() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let analysis_prompt = generate_analysis_prompt("plan", "diff", false, &workspace);
+        assert!(analysis_prompt.contains("completed"));
+        assert!(analysis_prompt.contains("partial"));
+        assert!(analysis_prompt.contains("failed"));
+
+        let fix_prompt =
+            generate_fix_analysis_prompt("issues", "diff", "fix_result", false, &workspace);
+        assert!(fix_prompt.contains("completed"));
+        assert!(fix_prompt.contains("partial"));
+        assert!(fix_prompt.contains("failed"));
+    });
+}
 
 /// Test that pipeline advances even when prompt preparation might fail.
 ///

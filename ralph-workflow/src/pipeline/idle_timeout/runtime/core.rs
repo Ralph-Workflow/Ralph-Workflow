@@ -259,9 +259,12 @@ fn result_on_enforcement_exit(
     state: &TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
     completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>,
+    _child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
 ) -> MonitorResult {
-    // If we already escalated to SIGKILL (state.escalated = true), any subsequent
-    // exit is a timeout, not a clean completion.
+    // If we escalated to SIGKILL (state.escalated = true), any subsequent exit
+    // is a timeout - we decided to kill the process and it is now dead.
+    // The escalated flag means we DECIDED to use SIGKILL, so the outcome
+    // (process no longer running) is a timeout, not clean completion.
     if state.escalated {
         return MonitorResult::TimedOut {
             escalated: true,
@@ -666,7 +669,8 @@ pub fn handle_enforcement_phase(
 ) -> (EnforcementStep, Option<TimeoutEnforcementState>) {
     match advance_timeout_enforcement(state, child, executor, kill_config) {
         TimeoutEnforcementContinuation::Exited => {
-            let result = result_on_enforcement_exit(&state, last_child_info, completion_check);
+            let result =
+                result_on_enforcement_exit(&state, last_child_info, completion_check, child);
             (EnforcementStep::ReturnResult(result), None)
         }
         TimeoutEnforcementContinuation::HardCapReached => {

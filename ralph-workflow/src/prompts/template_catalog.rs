@@ -352,13 +352,11 @@ mod tests {
             "commit_xsd_retry should clearly be an XML-only retry prompt"
         );
 
+        // New dumb-agent-proof format uses REFERENCE ONLY instead of READ-ONLY
         assert!(
-            content.contains("READ-ONLY")
-                && (content.contains("EXCEPT FOR writing")
-                    || content.contains("except for writing")
-                    || content.contains("Except for writing"))
+            (content.contains("REFERENCE ONLY") || content.contains("REFERENCE ONLY"))
                 && content.contains("{{COMMIT_MESSAGE_XML_PATH}}"),
-            "commit_xsd_retry should be read-only except for writing commit_message.xml"
+            "commit_xsd_retry should be reference-only and point to commit_message.xml"
         );
 
         assert!(

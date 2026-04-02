@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: review_xsd_retry.txt                                               #}
-{# Version: 4.0 - STRICT XML-only fix mode                                      #}
+{# Version: 5.0 - Dumb-agent-proof XML-only fix mode                            #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -10,9 +10,9 @@
 {# VARIABLES:                                                                  #}
 {#   {{XSD_ERROR}} - XSD validation error message (required)                    #}
 {#                                                                             #}
-{# FILES TO READ:                                                               #}
-{#   .agent/tmp/issues.xsd       - The XSD schema your output must conform to   #}
-{#   .agent/tmp/last_output.xml  - Your previous invalid output                 #}
+{# FILES TO READ (REFERENCE ONLY):                                              #}
+{#   .agent/tmp/issues.xsd       - The XSD schema (for structure reference)      #}
+{#   .agent/tmp/last_output.xml  - Your previous invalid output (for format)    #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
 {#   Valid <ralph-issues> XML conforming to the XSD schema                     #}
@@ -27,6 +27,30 @@ XSD VALIDATION FAILED - FIX XML ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
 Your XML output at `{{ISSUES_XML_PATH}}` failed XSD validation.
+
+**THIS IS A SUBMISSION-FIX-ONLY RETRY**
+
+═══════════════════════════════════════════════════════════════════════════════
+REFERENCE ONLY (Do not redo task logic)
+═══════════════════════════════════════════════════════════════════════════════
+
+Read these files ONLY to understand expected structure:
+- `{{ISSUES_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
+
+These files are for structure reference only. Do NOT redo review work from them.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIMARY OBJECTIVE: Fix Malformed XML Structure
+═══════════════════════════════════════════════════════════════════════════════
+
+Your main task is to fix the malformed XML structure. The most common issue
+is malformed XML/root parse errors - fix those FIRST.
+
+Focus on:
+1. Fix malformed XML/root structure first
+2. Fix any remaining XML format issues
+3. Ensure all required elements are present
 
 ═══════════════════════════════════════════════════════════════════════════════
 XML CHARACTER RESTRICTIONS (CRITICAL)
@@ -47,36 +71,14 @@ If you need to reference code with special characters, use <code> elements or CD
 ERROR: {{XSD_ERROR}}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CRITICAL INSTRUCTIONS - READ CAREFULLY
+DO NOT DO
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{ISSUES_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{ISSUES_XML_PATH}}`
-
-## AUTHORIZATION OVERRIDE (CRITICAL)
-
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{ISSUES_XML_PATH}}`
-
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still fix the XML to match the XSD).
-
-This is a READ-ONLY task EXCEPT FOR writing `{{ISSUES_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
-
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
-
-You MUST NOT:
-- Review any code
-- Analyze any files
-- Run any commands
-- Do ANY review work
-- Change the content/meaning of your response - ONLY fix the XML format
+- Do NOT review any code
+- Do NOT analyze any files
+- Do NOT run any commands
+- Do NOT do ANY review work
+- Do NOT change the content/meaning of your response
 
 This is a PURE XML SYNTAX FIX. Your review work is done. The only problem
 is that your XML output doesn't conform to the schema. Fix the XML structure,
