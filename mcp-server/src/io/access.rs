@@ -4,7 +4,7 @@
 //! As a boundary module, it is exempt from functional purity restrictions.
 
 use crate::dispatch::access::{
-    evaluate_enforcement_pure, policy_path_within_root, AccessDecision, AuditSink,
+    evaluate_enforcement_pure, policy_path_under_root_check, AccessDecision, AuditSink,
     EnforcementCheck, McpCapability, ToolFilter,
 };
 use crate::dispatch::audit::AuditRecord as PureAuditRecord;
@@ -156,78 +156,19 @@ impl McpServerConfig {
         self
     }
 
-    /// Check if path is allowed - boundary function.
-    /// Complexity: gathers I/O (canonicalize) then delegates to pure policy.
+    /// Check if path is allowed - thin boundary wrapper.
     ///
-    /// Security policy:
-    /// - For relative paths: allow if they join to a path under root_dir.
-    ///   The workspace adapter handles actual access control for non-existent paths.
-    /// - For absolute paths: deny unless they canonicalize to a location within root.
-    ///   This prevents path traversal attacks via symlinks.
+    /// Gathers I/O (canonicalization) then delegates to pure policy.
+    /// Policy decisions are made by `decide_path_allowed`.
     pub fn is_path_allowed(&self, path: &Path) -> bool {
-        // For relative paths, verify by joining and checking components
-        if path.is_relative() {
-            let joined = self.root_dir.join(path);
-            // Use components to check - this handles .. correctly by normalizing
-            return is_path_under_root(&joined, &self.root_dir);
-        }
-
-        // For absolute paths, verify via canonicalization to prevent traversal
-        let canonical = canonicalize_for_policy(path);
-        let root_canonical = canonicalize_root(&self.root_dir);
-
-        match (canonical, root_canonical) {
-            (Some(cp), Some(cr)) => policy_path_within_root(&cp, &cr),
-            // Absolute path that can't be canonicalized: deny
-            _ => false,
-        }
-    }
-}
-
-/// Check if `path` is under `root` by comparing canonicalized forms.
-/// If canonicalization fails for `path` (file doesn't exist), check components.
-/// If canonicalization fails for `root`, allow for relative paths (workspace adapter handles access).
-fn is_path_under_root(path: &Path, root: &Path) -> bool {
-    // Try to canonicalize both
-    let path_canonical = std::fs::canonicalize(path).ok();
-    let root_canonical = std::fs::canonicalize(root).ok();
-
-    match (path_canonical, root_canonical) {
-        (Some(cp), Some(cr)) => policy_path_within_root(&cp, &cr),
-        // Both canonicalize failed (neither exists on disk): allow.
-        // This handles MemoryWorkspace where neither root nor path exist on disk.
-        (None, None) => true,
-        // Path doesn't exist on disk but root does - check if path would be under root
-        // by verifying the joined path doesn't escape via ".."
-        (None, Some(_)) => {
-            // Check for ".." in path that could escape root
-            let has_parent_dir = path
-                .components()
-                .any(|c| c == std::path::Component::ParentDir);
-            if has_parent_dir {
-                // Path contains ".." - verify by checking if canonicalized parent is under root
-                if let Some(parent) = path.parent() {
-                    let joined_parent = root.join(parent);
-                    if let (Ok(cp), Ok(cr)) = (
-                        std::fs::canonicalize(&joined_parent),
-                        std::fs::canonicalize(root),
-                    ) {
-                        return policy_path_within_root(&cp, &cr);
-                    }
-                }
-                // Can't verify - deny to be safe
-                false
-            } else {
-                // No ".." - path is under root since it was joined
-                true
-            }
-        }
-        // Root doesn't exist but path does: deny (root should exist if we're using real paths)
-        (Some(_), None) => false,
+        let boundary_result = boundary_gather_path_info(path, &self.root_dir);
+        decide_path_allowed(boundary_result)
     }
 }
 
 /// Boundary helper: canonicalize path for policy check.
+///
+/// Uses parent directory canonicalization as fallback for non-existent paths.
 fn canonicalize_for_policy(path: &Path) -> Option<PathBuf> {
     if path.exists() {
         std::fs::canonicalize(path).ok()
@@ -238,9 +179,26 @@ fn canonicalize_for_policy(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Boundary helper: canonicalize root directory.
-fn canonicalize_root(root_dir: &Path) -> Option<PathBuf> {
-    std::fs::canonicalize(root_dir).ok()
+/// Boundary: gather canonicalized paths for policy evaluation.
+fn boundary_gather_path_info(
+    path: &Path,
+    root: &Path,
+) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    let joined = root.join(path);
+    let cp = canonicalize_for_policy(&joined);
+    let cr = std::fs::canonicalize(root).ok();
+    (cp, cr, Some(root.to_path_buf()))
+}
+
+/// Pure: decide if path is allowed based on gathered boundary info.
+fn decide_path_allowed(
+    boundary_result: (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>),
+) -> bool {
+    policy_path_under_root_check(
+        boundary_result.0.as_ref(),
+        boundary_result.1.as_ref(),
+        boundary_result.2.as_deref(),
+    )
 }
 
 // ---------------------------------------------------------------------------

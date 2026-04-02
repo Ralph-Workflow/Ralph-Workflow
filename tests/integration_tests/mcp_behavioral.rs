@@ -280,7 +280,7 @@ fn consumer_gets_error_for_missing_file() {
         );
         let response = recv_msg(&mut stream);
 
-        // ExecutionError returns JSON-RPC error with code -32603 (per mcp-server README.md RPC contract)
+        // ExecutionError returns JSON-RPC error with code -32000 (per mcp-server protocol)
         assert!(
             response.get("error").is_some(),
             "ExecutionError must return JSON-RPC error, got: {}",
@@ -291,8 +291,8 @@ fn consumer_gets_error_for_missing_file() {
             .expect("error must be an object");
         assert_eq!(
             error.get("code").and_then(|c| c.as_i64()).unwrap_or(0),
-            -32603,
-            "ExecutionError must have code -32603, got: {:#?}",
+            -32000,
+            "ExecutionError must have code -32000, got: {:#?}",
             error
         );
         assert!(

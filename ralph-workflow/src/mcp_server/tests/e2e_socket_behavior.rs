@@ -190,14 +190,14 @@ mod unix_tests {
     }
 
     // =========================================================================
-    // Test 4: tool execution error returns JSON-RPC error (not isError:true)
+    // Test 4: tool execution error returns JSON-RPC error with code -32000
     // =========================================================================
 
     #[test]
     fn tool_execution_error_returns_json_rpc_error() {
         // Planning session reading a non-existent file triggers ExecutionError.
-        // The response must be a JSON-RPC protocol error, NOT isError:true in a
-        // success response.
+        // Per mcp-server protocol, tool execution failures are returned as
+        // JSON-RPC error responses with code -32000 (Tool error).
         let ws = Arc::new(MemoryWorkspace::new_test());
         let (_bridge, socket_path) = start_bridge("e2e-exec-err", SessionDrain::Planning, ws);
         let mut stream = connect(&socket_path);
@@ -217,23 +217,41 @@ mod unix_tests {
         );
         let response = recv(&mut stream);
 
-        // Tool execution errors must be JSON-RPC protocol errors
+        // Per mcp-server protocol, tool execution errors are JSON-RPC error responses with code -32000
         assert!(
             response.get("error").is_some(),
-            "tool execution errors must be JSON-RPC protocol errors, got: {}",
+            "tool execution errors must be JSON-RPC protocol errors with code -32000, got: {:#?}",
             response
+        );
+        let error = response["error"]
+            .as_object()
+            .expect("error must be an object");
+        assert_eq!(
+            error.get("code").and_then(|c| c.as_i64()).unwrap_or(0),
+            -32000,
+            "tool execution errors must have code -32000, got: {:#?}",
+            error
+        );
+        assert!(
+            error
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|m| m.contains("Tool error"))
+                .unwrap_or(false),
+            "error message should contain 'Tool error', got: {:#?}",
+            error
         );
     }
 
     // =========================================================================
-    // Test 5: capability-denied returns JSON-RPC error (not tool-level isError)
+    // Test 5: capability-denied returns JSON-RPC error with code -32000
     // =========================================================================
 
     #[test]
     fn capability_denied_returns_json_rpc_error() {
         // Planning session writing an existing tracked file is denied (needs WriteTracked).
-        // Per RFC-009 policy enforcement, capability denials are protocol-level JSON-RPC
-        // errors, not tool-level isError responses.
+        // Per mcp-server protocol, capability denials are returned as
+        // JSON-RPC error responses with code -32000 (Tool error).
         let ws = Arc::new(MemoryWorkspace::new_test());
         // Pre-seed a file so it's treated as tracked (exists + not in .agent/)
         ws.write(Path::new("src/lib.rs"), "pub fn foo() {}")
@@ -258,22 +276,28 @@ mod unix_tests {
         );
         let response = recv(&mut stream);
 
-        // Capability denial must be a JSON-RPC protocol error
+        // Per mcp-server protocol, capability denials are JSON-RPC error responses with code -32000
         assert!(
             response.get("error").is_some(),
-            "capability denied must be a JSON-RPC protocol error, got: {}",
+            "capability denial must be a JSON-RPC protocol error with code -32000, got: {:#?}",
             response
         );
         let error = response["error"]
             .as_object()
             .expect("error must be an object");
+        assert_eq!(
+            error.get("code").and_then(|c| c.as_i64()).unwrap_or(0),
+            -32000,
+            "capability denial must have code -32000, got: {:#?}",
+            error
+        );
         assert!(
             error
                 .get("message")
                 .and_then(|m| m.as_str())
-                .map(|m| m.contains("Capability denied"))
+                .map(|m| m.contains("denied") || m.contains("Denied"))
                 .unwrap_or(false),
-            "error message should indicate capability denied, got: {:#?}",
+            "error message should indicate access denied, got: {:#?}",
             error
         );
     }

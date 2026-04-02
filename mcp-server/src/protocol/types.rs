@@ -210,6 +210,16 @@ impl JsonRpcError {
         }
     }
 
+    /// Tool error (-32000) with structured data: Tool execution failed
+    /// with additional error details in the data field.
+    pub fn tool_error_with_data(msg: impl Into<String>, data: serde_json::Value) -> Self {
+        Self {
+            code: -32000,
+            message: msg.into(),
+            data: Some(data),
+        }
+    }
+
     /// Server not initialized: Server not ready to accept requests.
     pub fn not_initialized() -> Self {
         Self {

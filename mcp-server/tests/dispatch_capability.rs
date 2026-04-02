@@ -424,7 +424,7 @@ fn test_file_read_capability_denied() {
         "FileRead should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
 }
 
 #[test]
@@ -461,7 +461,7 @@ fn test_file_write_capability_denied() {
         "FileWrite should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
 }
 
 #[test]
@@ -498,7 +498,7 @@ fn test_git_read_capability_denied() {
         "GitRead should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
 }
 
 #[test]
@@ -537,7 +537,7 @@ fn test_artifact_submit_capability_denied() {
         "ArtifactSubmit should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
 }
 
 #[test]
@@ -579,7 +579,7 @@ fn test_workspace_coordination_capability_denied_by_denied_session() {
         "WorkspaceCoordination should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
 }
 
 #[test]
@@ -616,7 +616,7 @@ fn test_process_exec_capability_denied() {
         "ProcessExec should be denied by DeniedSession"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
 }
 
 // ---------------------------------------------------------------------------
@@ -660,7 +660,7 @@ fn test_tool_filter_fires_before_capability_check() {
 
     assert!(response.error.is_some(), "Expected error from tool filter");
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
     // The denial should be ToolNotAllowed, not CapabilityDenied
     assert!(
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),

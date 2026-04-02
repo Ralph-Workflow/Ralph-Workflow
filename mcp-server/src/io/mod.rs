@@ -221,7 +221,7 @@ fn check_enforcement(
         AccessDecision::Allow => Ok(()),
         AccessDecision::Deny { reason, code } => Err(Box::new((
             JsonRpcResponse::error(
-                JsonRpcError::internal_error_with_data(
+                JsonRpcError::tool_error_with_data(
                     format!("Access denied: {}", reason),
                     serde_json::json!({ "reason": reason, "code": code }),
                 ),
@@ -235,10 +235,14 @@ fn check_enforcement(
 /// Dispatch tool call or return error response.
 ///
 /// Tool errors are categorized as:
-/// - `NotFound` → JSON-RPC error - tool doesn't exist (method not found semantics)
-/// - `CapabilityDenied` → JSON-RPC error with -32603 (capability denied)
-/// - `InvalidParams` → JSON-RPC error with -32602 (invalid params)
-/// - `ExecutionError` → JSON-RPC error with -32603 (tool execution failure)
+/// - `NotFound` → JSON-RPC error -32601 (method not found semantics - tool doesn't exist)
+/// - `CapabilityDenied` → JSON-RPC error -32000 (tool error - access denied)
+/// - `InvalidParams` → JSON-RPC error -32000 (tool error - invalid tool parameters)
+/// - `ExecutionError` → JSON-RPC error -32000 (tool error - tool execution failure)
+///
+/// Per mcp-server protocol, tool errors are returned as JSON-RPC error responses with
+/// code -32000 (Tool error). This includes capability denials, invalid parameters,
+/// and execution failures.
 fn dispatch_tool(
     registry: &ToolRegistry,
     name: &str,
@@ -259,31 +263,36 @@ fn dispatch_tool(
         })
         .map_err(move |e: ToolError| {
             Box::new(match e {
-                // NotFound is a JSON-RPC error because the tool doesn't exist
+                // NotFound is a JSON-RPC error because the tool literally doesn't exist
                 ToolError::NotFound(_msg) => (
                     JsonRpcResponse::error(JsonRpcError::method_not_found(), request_id_inner),
                     state,
                 ),
-                // CapabilityDenied is an access policy error → JSON-RPC error
+                // Tool errors (capability denied, invalid params, execution failure) are
+                // returned as JSON-RPC error responses with code -32000 (Tool error).
                 ToolError::CapabilityDenied(msg) => (
                     JsonRpcResponse::error(
-                        JsonRpcError::internal_error_with_data(
-                            format!("Capability denied: {}", msg),
-                            serde_json::json!({ "reason": msg }),
+                        JsonRpcError::tool_error_with_data(
+                            format!("Access denied: {}", msg),
+                            serde_json::json!({ "reason": msg, "code": "CapabilityDenied" }),
                         ),
                         request_id_inner,
                     ),
                     state,
                 ),
-                // InvalidParams → JSON-RPC error -32602
                 ToolError::InvalidParams(msg) => (
-                    JsonRpcResponse::error(JsonRpcError::invalid_params(msg), request_id_inner),
+                    JsonRpcResponse::error(
+                        JsonRpcError::tool_error_with_data(
+                            format!("Invalid params: {}", msg),
+                            serde_json::json!({ "error": msg }),
+                        ),
+                        request_id_inner,
+                    ),
                     state,
                 ),
-                // ExecutionError → JSON-RPC error -32603 with structured data
                 ToolError::ExecutionError(msg) => (
                     JsonRpcResponse::error(
-                        JsonRpcError::internal_error_with_data(
+                        JsonRpcError::tool_error_with_data(
                             format!("Tool error: {}", msg),
                             serde_json::json!({ "error": msg }),
                         ),

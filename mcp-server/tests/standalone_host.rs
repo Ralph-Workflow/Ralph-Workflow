@@ -45,9 +45,10 @@ use mcp_server::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
 use mcp_server::io::access::McpServerConfig;
 use mcp_server::io::session_bridge::SessionBridge;
 use mcp_server::io::{McpServer, ServerState};
-use mcp_server::protocol::{JsonRpcRequest, ToolContent, ToolDefinition, ToolResult};
+use mcp_server::protocol::{
+    JsonRpcRequest, JsonRpcResponse, ToolContent, ToolDefinition, ToolResult,
+};
 use std::collections::HashMap;
-use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -553,7 +554,56 @@ fn test_blocklist_blocks_listed_tool() {
     );
 }
 
+/// Helper: send framed request and read framed response over Unix socket.
+fn send_framed_request(stream: &mut UnixStream, request: serde_json::Value) -> String {
+    use std::io::{Read, Write};
+    let bytes = serde_json::to_vec(&request).unwrap();
+    write!(stream, "Content-Length: {}\r\n\r\n", bytes.len()).unwrap();
+    stream.write_all(&bytes).unwrap();
+    stream.flush().unwrap();
+
+    // Read headers until blank line
+    let mut header = Vec::new();
+    loop {
+        let mut buf = [0u8; 1];
+        stream.read_exact(&mut buf).expect("Read error");
+        header.push(buf[0]);
+        if header.ends_with(b"\r\n\r\n") {
+            break;
+        }
+    }
+    // Parse Content-Length
+    let header_str = String::from_utf8_lossy(&header);
+    let content_length = header_str
+        .lines()
+        .find(|l| l.starts_with("Content-Length:"))
+        .and_then(|l| {
+            l.strip_prefix("Content-Length:")
+                .unwrap()
+                .trim()
+                .parse::<usize>()
+                .ok()
+        })
+        .expect("Missing Content-Length header");
+    // Read body
+    let mut body = vec![0u8; content_length];
+    stream.read_exact(&mut body).unwrap();
+    String::from_utf8(body).unwrap()
+}
+
 /// Test full protocol flow through SessionBridge over Unix socket.
+///
+/// This test exercises ALL 9 required assertions from the standalone E2E test plan:
+///
+/// 1. Start McpServer with ReadWrite, Blocklist([]) and register an echo tool
+/// 2. Connect via UnixSocketTransport using SessionBridge
+/// 3. Verify initialize returns successful response with protocol version
+/// 4. Verify tools/list shows the echo tool in the list
+/// 5. Verify tools/call for the echo tool returns expected content
+/// 6. Verify that calling a tool BEFORE initialize returns NotInitialized (-32001)
+/// 7. Verify that ReadOnly mode rejects a mutating tool with ReadOnlyMode denial
+/// 8. Verify that Allowlist rejects a tool not in the list with ToolNotAllowed
+/// 9. Verify that path outside root_dir is rejected with OutsideRootDir
 #[test]
 fn test_session_bridge_full_protocol_flow() {
     use std::time::Duration;
@@ -561,17 +611,76 @@ fn test_session_bridge_full_protocol_flow() {
     let root = temp_root();
     assert_no_real_git_state(&root);
 
-    // Create fake implementations
-    let session = InMemorySession::new("bridge-test-session")
-        .with_capabilities(&[McpCapability::WorkspaceRead]);
-    let workspace =
-        InMemoryWorkspace::new(root.clone()).with_file("test.txt", "Hello from bridge!");
+    // Create an echo tool handler for testing
+    let echo_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            let msg = params
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("default");
+            Ok(ToolResult::success(vec![ToolContent::text(format!(
+                "echo: {}",
+                msg
+            ))]))
+        },
+    );
+    let echo_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "test_echo".to_string(),
+            description: "Echo a message".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "message": { "type": "string" }
+                }
+            }),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
+    };
 
-    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
+    // Create a mutating tool (requires ReadWrite)
+    let mutating_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "mutated".to_string(),
+            )]))
+        },
+    );
+    let mutating_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "test_mutate".to_string(),
+            description: "A mutating tool".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+        required_capability: McpCapability::WorkspaceWriteEphemeral,
+        is_mutating: None,
+    };
+
+    // Create session with required capabilities
+    let session = InMemorySession::new("bridge-test-session").with_capabilities(&[
+        McpCapability::WorkspaceRead,
+        McpCapability::WorkspaceWriteEphemeral,
+    ]);
+    let workspace = InMemoryWorkspace::new(root.clone());
 
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let registry = ToolRegistry::new(vec![]);
+    // Registry with ReadWrite config, blocklist allowing all tools
+    let registry = ToolRegistry::new(vec![
+        (echo_metadata, echo_handler),
+        (mutating_metadata, mutating_handler),
+    ]);
+    let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadWrite);
 
     let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
 
@@ -584,95 +693,402 @@ fn test_session_bridge_full_protocol_flow() {
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
     stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
 
-    // Helper to read a framed response (Content-Length based)
-    fn read_framed_response(stream: &mut UnixStream) -> String {
-        // Read headers until blank line
-        let mut header = Vec::new();
-        loop {
-            let mut buf = [0u8; 1];
-            match stream.read_exact(&mut buf) {
-                Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                    panic!(
-                        "Read timed out waiting for header, header so far: {:?}",
-                        String::from_utf8_lossy(&header)
-                    );
-                }
-                Err(e) => panic!("Read error: {}", e),
-            }
-            header.push(buf[0]);
-            if header.ends_with(b"\r\n\r\n") {
-                break;
-            }
-        }
-        // Parse Content-Length
-        let header_str = String::from_utf8_lossy(&header);
-        let content_length = header_str
-            .lines()
-            .find(|l| l.starts_with("Content-Length:"))
-            .and_then(|l| {
-                l.strip_prefix("Content-Length:")
-                    .unwrap()
-                    .trim()
-                    .parse::<usize>()
-                    .ok()
-            })
-            .expect("Missing Content-Length header");
-        // Read body
-        let mut body = vec![0u8; content_length];
-        stream.read_exact(&mut body).unwrap();
-        String::from_utf8(body).unwrap()
-    }
-
-    // Send initialize request
+    // ============================================================
+    // ASSERTION 3: initialize returns successful response with protocol version
+    // ============================================================
     let init_request = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "initialize",
         "params": {"protocolVersion": "2024-11-05"},
         "id": 1
     });
-    let init_bytes = serde_json::to_vec(&init_request).unwrap();
-    write!(stream, "Content-Length: {}\r\n\r\n", init_bytes.len()).unwrap();
-    stream.write_all(&init_bytes).unwrap();
-    stream.flush().unwrap();
-
-    // Give server time to process
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    // Read response
-    let response_str = read_framed_response(&mut stream);
+    let response_str = send_framed_request(&mut stream, init_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
     assert!(
-        response_str.contains("\"result\""),
-        "Response should be JSON-RPC result"
+        response.result.is_some(),
+        "Assertion 3 failed: initialize should return success result"
+    );
+    let result = response.result.unwrap();
+    assert_eq!(
+        result["protocolVersion"], "2024-11-05",
+        "Protocol version should be echoed back"
     );
 
-    // Send ping request
-    let ping_request = serde_json::json!({
+    // Give server time to process
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // ============================================================
+    // ASSERTION 4: tools/list shows the echo tool
+    // ============================================================
+    let list_request = serde_json::json!({
         "jsonrpc": "2.0",
-        "method": "ping",
+        "method": "tools/list",
         "id": 2
     });
-    let ping_bytes = serde_json::to_vec(&ping_request).unwrap();
-    write!(stream, "Content-Length: {}\r\n\r\n", ping_bytes.len()).unwrap();
-    stream.write_all(&ping_bytes).unwrap();
-    stream.flush().unwrap();
-
-    // Give server time to process
-    std::thread::sleep(std::time::Duration::from_millis(200));
-
-    // Read ping response
-    let ping_response_str = read_framed_response(&mut stream);
+    let list_response_str = send_framed_request(&mut stream, list_request);
+    let list_response: JsonRpcResponse =
+        serde_json::from_str(&list_response_str).expect("Response should be valid JSON");
     assert!(
-        ping_response_str.contains("\"result\""),
-        "Ping response should be JSON-RPC result"
+        list_response.result.is_some(),
+        "Assertion 4 failed: tools/list should return success"
+    );
+    let list_result = list_response.result.unwrap();
+    let tools = list_result["tools"]
+        .as_array()
+        .expect("tools should be an array");
+    let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(
+        tool_names.contains(&"test_echo"),
+        "Assertion 4 failed: tools/list should contain test_echo, got: {:?}",
+        tool_names
+    );
+
+    // ============================================================
+    // ASSERTION 5: tools/call for echo tool returns expected content
+    // ============================================================
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "test_echo",
+            "arguments": {"message": "hello socket"}
+        },
+        "id": 3
+    });
+    let call_response_str = send_framed_request(&mut stream, call_request);
+    let call_response: JsonRpcResponse =
+        serde_json::from_str(&call_response_str).expect("Response should be valid JSON");
+    assert!(
+        call_response.result.is_some(),
+        "Assertion 5 failed: tools/call should return success"
+    );
+    let call_result = call_response.result.unwrap();
+    let content = call_result["content"]
+        .as_array()
+        .expect("content should be an array");
+    let text = content[0]["text"]
+        .as_str()
+        .expect("text should be a string");
+    assert!(
+        text.contains("echo: hello socket"),
+        "Assertion 5 failed: echo should return 'echo: hello socket', got: {}",
+        text
+    );
+
+    // Close this connection - we'll test other scenarios with fresh connections
+    drop(stream);
+}
+
+/// Test that NotInitialized error is returned when calling tool before initialize.
+///
+/// Per the MCP protocol, any tool call before initialize should return
+/// error code -32001 (NotInitialized).
+#[test]
+fn test_not_initialized_error_before_initialize() {
+    use std::time::Duration;
+
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    let session =
+        InMemorySession::new("not-init-test").with_capabilities(&[McpCapability::WorkspaceRead]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = ToolRegistry::new(vec![]);
+    let config = McpServerConfig::new(root);
+
+    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Try to call tools/list WITHOUT initialize - should get NotInitialized error
+    let list_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/list",
+        "id": 1
+    });
+    let response_str = send_framed_request(&mut stream, list_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
+
+    // Per the MCP protocol, NotInitialized error code is -32001
+    assert!(
+        response.error.is_some(),
+        "Assertion 6 failed: calling tools before initialize should return error"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32001,
+        "Assertion 6 failed: error code should be -32001 (NotInitialized), got: {}",
+        error.code
     );
 }
 
-/// Test that a failed tool call returns a JSON-RPC error response.
+/// Test that ReadOnly mode rejects mutating tool calls.
 ///
-/// Per the MCP RPC contract (see mcp-server/README.md), tool execution errors
-/// return JSON-RPC error responses with code -32603, not success responses
-/// with isError=true.
+/// Per McpServerConfig enforcement, ReadOnly mode should reject any tool
+/// with is_mutating=true, returning ReadOnlyMode denial.
+#[test]
+fn test_readonly_rejects_mutating_tool_via_socket() {
+    use std::time::Duration;
+
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create a mutating tool
+    let mutating_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "mutated".to_string(),
+            )]))
+        },
+    );
+    let mutating_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "test_mutate".to_string(),
+            description: "A mutating tool".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: McpCapability::WorkspaceWriteEphemeral,
+        is_mutating: None,
+    };
+
+    let session = InMemorySession::new("readonly-test")
+        .with_capabilities(&[McpCapability::WorkspaceWriteEphemeral]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = ToolRegistry::new(vec![(mutating_metadata, mutating_handler)]);
+    // ReadOnly mode should block mutating tools
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
+
+    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Initialize first
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05"},
+        "id": 1
+    });
+    send_framed_request(&mut stream, init_request);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Try to call mutating tool - should be rejected by ReadOnly mode
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "test_mutate", "arguments": {}},
+        "id": 2
+    });
+    let response_str = send_framed_request(&mut stream, call_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
+
+    assert!(
+        response.error.is_some(),
+        "Assertion 7 failed: ReadOnly mode should reject mutating tool"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32000,
+        "Assertion 7 failed: should be -32000 (tool error), got: {}",
+        error.code
+    );
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Assertion 7 failed: error should mention ReadOnly, got: {}",
+        error.message
+    );
+}
+
+/// Test that Allowlist rejects tools not in the list.
+#[test]
+fn test_allowlist_rejects_unlisted_tool_via_socket() {
+    use std::time::Duration;
+
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create a tool
+    let tool_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "ok".to_string(),
+            )]))
+        },
+    );
+    let tool_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
+    };
+
+    let session =
+        InMemorySession::new("allowlist-test").with_capabilities(&[McpCapability::WorkspaceRead]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = ToolRegistry::new(vec![(tool_metadata, tool_handler)]);
+    // Allowlist only permits "other_tool", not "test_tool"
+    let config = McpServerConfig::new(root)
+        .with_tool_filter(ToolFilter::Allowlist(vec!["other_tool".to_string()]));
+
+    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Initialize first
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05"},
+        "id": 1
+    });
+    send_framed_request(&mut stream, init_request);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Try to call tool not in allowlist - should be rejected
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "test_tool", "arguments": {}},
+        "id": 2
+    });
+    let response_str = send_framed_request(&mut stream, call_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
+
+    assert!(
+        response.error.is_some(),
+        "Assertion 8 failed: Allowlist should reject unlisted tool"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert!(
+        error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),
+        "Assertion 8 failed: error should indicate ToolNotAllowed, got: {}",
+        error.message
+    );
+}
+
+/// Test that path outside root_dir is rejected with OutsideRootDir denial.
+#[test]
+fn test_outside_root_dir_rejected_via_socket() {
+    use std::time::Duration;
+
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create a read tool
+    let read_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "content".to_string(),
+            )]))
+        },
+    );
+    let read_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "test_read".to_string(),
+            description: "A read tool".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"path": {"type": "string"}}
+            }),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
+    };
+
+    let session =
+        InMemorySession::new("root-dir-test").with_capabilities(&[McpCapability::WorkspaceRead]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = ToolRegistry::new(vec![(read_metadata, read_handler)]);
+    let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadWrite);
+
+    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Initialize first
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05"},
+        "id": 1
+    });
+    send_framed_request(&mut stream, init_request);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Try to access path outside root - should be rejected
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "test_read", "arguments": {"path": "/etc/passwd"}},
+        "id": 2
+    });
+    let response_str = send_framed_request(&mut stream, call_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
+
+    assert!(
+        response.error.is_some(),
+        "Assertion 9 failed: path outside root_dir should be rejected"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert!(
+        error.message.contains("outside") || error.message.contains("root"),
+        "Assertion 9 failed: error should indicate OutsideRootDir, got: {}",
+        error.message
+    );
+}
+
+/// Test that a failed tool call returns a JSON-RPC error response with code -32000.
+///
+/// Per mcp-server protocol, tool execution failures are returned as
+/// JSON-RPC error responses with code -32000 (Tool error). This includes
+/// ExecutionError, CapabilityDenied, and InvalidParams variants.
 #[test]
 fn test_tool_execution_error_returns_json_rpc_error() {
     let root = temp_root();
@@ -734,22 +1150,27 @@ fn test_tool_execution_error_returns_json_rpc_error() {
     let (response, _) = server.handle_request(tool_request, state);
     let response = response.expect("handle_request should return a response for non-notification");
 
-    // Tool execution errors must be JSON-RPC protocol errors, not success with isError=true
+    // Per mcp-server protocol, tool execution errors are JSON-RPC error responses with code -32000
     assert!(
         response.error.is_some(),
-        "Tool execution errors must be JSON-RPC protocol errors, got: {:#?}",
+        "Tool execution errors must be JSON-RPC protocol errors with code -32000, got: {:#?}",
         response
     );
 
-    let error = response.error.unwrap();
+    let error = response.error.expect("error must be present");
     assert_eq!(
-        error.code, -32603,
-        "Tool execution errors should have code -32603, got: {}",
+        error.code, -32000,
+        "Tool execution errors must have code -32000, got: {}",
         error.code
     );
     assert!(
         error.message.contains("Tool error"),
         "Error message should contain 'Tool error', got: {}",
         error.message
+    );
+    assert!(
+        error.data.as_ref().and_then(|d| d.get("error")).is_some(),
+        "Error data should contain 'error' field with the tool error message, got: {:#?}",
+        error
     );
 }

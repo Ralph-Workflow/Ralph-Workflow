@@ -322,8 +322,8 @@ fn ralph_write_file_blocked_in_readonly() {
     );
     let error = response.error.unwrap();
     assert_eq!(
-        error.code, -32603,
-        "Should be tool error (ReadOnlyMode denial is wrapped as tool error)"
+        error.code, -32000,
+        "Should be tool error (ReadOnlyMode denial uses -32000)"
     );
     assert!(
         error.message.contains("ReadOnly") || error.message.contains("read only"),
@@ -433,7 +433,7 @@ fn ralph_write_file_blocked_by_allowlist() {
         "ralph_write_file should be blocked by allowlist"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
     assert!(
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),
         "Error should indicate tool is not allowed by filter"
@@ -509,7 +509,7 @@ fn ralph_read_file_blocked_outside_root() {
         "Reading outside root_dir should be blocked"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
     assert!(
         error.message.contains("outside") || error.message.contains("root"),
         "Error should indicate path is outside root directory"
@@ -548,7 +548,7 @@ fn ralph_read_file_blocked_by_capability() {
         "ralph_git_commit should be blocked when session lacks GitWrite capability"
     );
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
     assert!(
         error.message.contains("capability") || error.message.contains("denied"),
         "Error should indicate capability denial"
@@ -588,7 +588,7 @@ fn readonly_and_allowlist_both_checked_independently() {
     // Should be blocked by allowlist first (ToolNotAllowed), not by ReadOnly mode.
     assert!(response.error.is_some(), "Should be blocked by allowlist");
     let error = response.error.unwrap();
-    assert_eq!(error.code, -32603);
+    assert_eq!(error.code, -32000);
     // The error message should indicate tool not allowed, not read-only
     assert!(
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),
@@ -627,4 +627,80 @@ fn ralph_git_commit_blocked_in_readonly() {
         response.error.is_some(),
         "ralph_git_commit should be blocked in ReadOnly mode"
     );
+}
+
+#[test]
+fn allowlist_permits_listed_tool() {
+    // Allowlist containing the tool should permit it.
+    // This is the inverse of ralph_write_file_blocked_by_allowlist.
+    let counter = Arc::new(AtomicU32::new(0));
+    let counter_ref = Arc::clone(&counter);
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_read_tool(Some(&counter_ref));
+
+    // Allowlist contains the read tool - should be permitted
+    let config =
+        McpServerConfig::new(PathBuf::from("/tmp")).with_tool_filter(ToolFilter::Allowlist(vec![
+            "ralph_workspace_read_file".to_string(),
+        ]));
+
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_workspace_read_file",
+        serde_json::json!({ "path": "test.txt" }),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "Handler MUST be called when access is allowed"
+    );
+    assert!(
+        response.result.is_some(),
+        "Allowlist should permit listed tool (ralph_workspace_read_file)"
+    );
+    assert!(response.error.is_none(), "Should have no error");
+}
+
+#[test]
+fn blocklist_permits_unlisted_tool() {
+    // Blocklist that does NOT contain the tool should permit it.
+    // This is the inverse of ralph_write_file_blocked_by_blocklist.
+    let counter = Arc::new(AtomicU32::new(0));
+    let counter_ref = Arc::clone(&counter);
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_read_tool(Some(&counter_ref));
+
+    // Blocklist contains only "ralph_exec_command" - read tool should NOT be blocked
+    let config =
+        McpServerConfig::new(PathBuf::from("/tmp")).with_tool_filter(ToolFilter::Blocklist(vec![
+            "ralph_exec_command".to_string(),
+        ]));
+
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_workspace_read_file",
+        serde_json::json!({ "path": "test.txt" }),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "Handler MUST be called when access is allowed"
+    );
+    assert!(
+        response.result.is_some(),
+        "Blocklist should permit unlisted tool (ralph_workspace_read_file is not blocked)"
+    );
+    assert!(response.error.is_none(), "Should have no error");
 }

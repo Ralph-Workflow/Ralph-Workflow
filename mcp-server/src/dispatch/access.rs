@@ -480,6 +480,59 @@ pub fn policy_path_within_root(
     canonical_path.starts_with(canonical_root)
 }
 
+/// Pure policy: evaluate path-under-root check given canonicalized forms.
+///
+/// This is the decision logic extracted from the boundary function `is_path_under_root`.
+/// The io boundary layer is responsible for canonicalization; this function only compares.
+///
+/// Returns true if:
+/// - Both paths canonicalize: path starts with root
+/// - Neither exists (MemoryWorkspace case): allow
+/// - Root exists but path doesn't: allow if no ".." components escape
+/// - Path canonicalizes but root doesn't (MemoryWorkspace): allow if path starts with root string
+pub fn policy_path_under_root_check(
+    canonical_path: Option<&std::path::PathBuf>,
+    canonical_root: Option<&std::path::PathBuf>,
+    original_root: Option<&std::path::Path>,
+) -> bool {
+    match (canonical_path, canonical_root) {
+        // Both canonicalize: use simple starts_with check
+        (Some(cp), Some(cr)) => policy_path_within_root(cp, cr),
+        // Both fail to canonicalize (neither exists on disk): allow.
+        // This handles MemoryWorkspace where neither root nor path exist on disk.
+        (None, None) => true,
+        // Root doesn't exist but path does (MemoryWorkspace case):
+        // Check if the path string starts with the root string.
+        // This handles MemoryWorkspace where root=/test/repo doesn't exist on disk
+        // but the joined path=/test/repo/src/lib.rs is conceptually valid.
+        (Some(cp), None) => {
+            // If the path has ".." components, deny for safety.
+            if cp.components().any(|c| c.as_os_str() == "..") {
+                return false;
+            }
+            // If the canonical path is absolute and doesn't start with the original root,
+            // it has escaped. Deny. This catches absolute paths like /etc/passwd
+            // when root is a non-existent temp dir.
+            if let Some(root) = original_root {
+                if cp.is_absolute() && !cp.starts_with(root) {
+                    return false;
+                }
+            }
+            // Allow - MemoryWorkspace case where root doesn't exist but path is safe
+            true
+        }
+        // Path doesn't exist on disk but root does: check if path would be under root
+        // by verifying the joined path doesn't escape via ".."
+        (None, Some(_)) => {
+            // This case is handled by the boundary layer calling this function
+            // with the parent directory canonicalization. If we reach here with
+            // path=None and root=Some, it means the path's parent couldn't be
+            // canonicalized either, so we deny to be safe.
+            false
+        }
+    }
+}
+
 /// Pure policy: compute denial reason for tool filter.
 pub fn denial_reason_tool_not_allowed(tool_name: &str) -> String {
     format!("Tool '{}' is not allowed by current filter", tool_name)
