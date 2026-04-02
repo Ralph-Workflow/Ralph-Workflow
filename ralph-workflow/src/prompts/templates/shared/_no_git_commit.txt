@@ -1,72 +1,11 @@
-CRITICAL: Do NOT run ANY git command except read-only lookup commands (for example: `git status`, `git diff`, `git log`, `git show`).
+CRITICAL: Do NOT run ANY git command except read-only lookup commands (e.g. `git status`, `git diff`, `git log`, `git show`).
 
-CRITICAL: Do NOT run ANY git command that writes, modifies history, or changes repository state.
+Ralph is the only actor that may commit, push, or perform staging operations. Accidental writes break the deterministic pipeline and cannot be auto-undone.
 
-Ralph is the ONLY entity allowed to commit. Accidental commits break the deterministic pipeline and cannot be automatically undone.
+**Allowed:** `git status`, `git log`, `git diff`, `git show`, `git branch` (list only; no `-D`/`-d`), `git remote -v`, `git stash list` (never pop/apply/drop), `git rev-parse`, `git ls-files`, `git describe`.
 
-NEVER run these commands (not exhaustive — when in doubt, do NOT run it):
-- commit — Ralph orchestrates ALL commits
-- push — Ralph orchestrates ALL pushes
-- tag — Ralph orchestrates ALL tagging
-- merge — Ralph controls branching strategy
-- history rewriting commands — Ralph controls history (apply history-rewriting effects only through Ralph)
-- reset --hard — Destroys uncommitted work irreversibly
-- reset --soft / --mixed — Modifies history
-- checkout -- . / restore . — Destroys uncommitted changes
-- stash drop / stash pop / stash apply — Can overwrite or destroy work
-- branch -D / branch -d — Destroys branches
-- clean -f / -fd / -fx — Destroys untracked files
-- cherry-pick — Modifies history
-- revert — Modifies history
-- am / apply — Modifies repository in uncontrolled way
-- add — Ralph orchestrates ALL staging
-- init — Creating git repositories during agent phase is forbidden
+**Forbidden:** `commit`, `add`, `push`, `merge`, `rebase`, `tag`, `reset`, `cherry-pick`, `revert`, `am`/`apply`, destructive `checkout`/`restore`, mutating `stash`, `clean`, `branch -D`/`-d`, `init` — and anything else that mutates repo state or history.
 
-ONLY these git commands are allowed (read-only, non-destructive):
-- `git status` — check repository state
-- `git log` — view commit history
-- `git diff` — view changes (unstaged/staged)
-- `git show` — inspect a commit or object
-- `git branch` (list only, no `-D`/`-d`) — list branches
-- `git remote -v` — view remote URLs
-- `git stash list` — list stashes (do NOT pop/apply/drop)
-- `git rev-parse` — resolve refs and paths
-- `git ls-files` — list tracked files
-- `git describe` — describe a commit
+**MCP / tools:** Same prohibition — `mcp__git__git_commit`, `mcp__git__git_add`, `mcp__git__git_push`, `mcp__git__git_reset`, `mcp__git__git_checkout` (with `--`), `mcp__git__git_stash` (except list), `mcp__git__git_merge`, `mcp__git__git_init`, `mcp__git__git_create_branch`. Applies to CLI, MCP, libraries, subprocesses.
 
-FORBIDDEN MCP/TOOL USAGE — THESE ARE EQUIVALENT TO CLI COMMANDS:
-- mcp__git__git_commit — commits are orchestrated ONLY by Ralph
-- mcp__git__git_add — staging is orchestrated ONLY by Ralph
-- mcp__git__git_push — pushes are orchestrated ONLY by Ralph
-- mcp__git__git_reset — destroys history or uncommitted work
-- mcp__git__git_checkout (with -- flag) — destroys uncommitted changes
-- mcp__git__git_stash (except list) — can overwrite or destroy work
-- mcp__git__git_merge — Ralph controls branching strategy
-- mcp__git__git_init — creating git repositories is forbidden
-- mcp__git__git_create_branch — Ralph controls branching strategy
-The prohibition applies to ALL mechanisms: CLI commands, MCP tools, direct library calls, subprocess spawning.
-
-FORBIDDEN BYPASS ATTEMPTS — NEVER DO ANY OF THESE:
-- Delete or modify active protection files under `.git/hooks/` or `.git/ralph/` — Ralph recreates them before EVERY agent run in the current repo/worktree context
-- Use absolute paths like `/usr/bin/git` to bypass the PATH wrapper
-- Use `--no-verify` flag — the PATH wrapper blocks commands before hooks run
-- Modify the PATH environment variable to remove or reorder Ralph's git wrapper directory
-- Use `chmod` on any active protection file under `.git/hooks/` or `.git/ralph/`
-- Use `rm`, `unlink`, or any file deletion command on active protection files under `.git/hooks/` or `.git/ralph/`
-- Invoke `git init` to reinitialize the repository or create a new git structure
-- Write directly to an active Ralph-managed hook path to replace hook content
-- Use `exec`, `env`, `command`, or other shell builtins to invoke git bypassing the PATH wrapper
-- Set GIT_DIR, GIT_WORK_TREE, or GIT_EXEC_PATH environment variables — the wrapper unsets these automatically
-
-WHY BYPASS IS FUTILE — DO NOT WASTE YOUR EXECUTION BUDGET:
-1. The `.git/ralph/no_agent_commit` marker is recreated before EVERY agent invocation. Deleting it is pointless.
-   `.git/ralph/` is git metadata, not repo code, so it will not appear in `git status` or normal working-tree scans.
-2. All git hooks (pre-commit, pre-push, pre-merge-commit) are reinstalled before EVERY agent invocation. Deleting or modifying them is pointless.
-3. Hook and marker permissions are verified and restored before EVERY agent invocation. Using chmod is pointless.
-4. The PATH wrapper unsets GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH when the marker exists. Setting env vars is pointless.
-5. The PATH wrapper script is read-only (0o555). Overwriting it requires chmod first, which wastes time and is logged.
-6. ALL tampering is detected, logged as a security violation, and reported. The agent run will be flagged as compromised.
-7. Even if a commit somehow succeeds via MCP tools or absolute paths, Ralph detects the unauthorized commit by comparing HEAD OID before and after each agent run. The pipeline FAILS and the agent run is flagged as compromised.
-8. Every bypass attempt wastes tokens from your execution budget with ZERO chance of success. The correct action is always: write your file changes and let Ralph commit them.
-
-Git hooks and a PATH wrapper ACTIVELY BLOCK forbidden commands. ALL bypass attempts are logged and reported to the user as security violations. The agent's task will be considered FAILED. Hooks are reinstalled before EVERY agent run, so deletion is pointless and wastes your execution budget. Write your file changes and let Ralph commit them.
+**Bypass (never):** Do not edit `.git/hooks/` (pre-commit, pre-push, pre-merge-commit) or `.git/ralph/` (including `.git/ralph/no_agent_commit`); do not use `/usr/bin/git` or other absolute paths; `--no-verify`; PATH tricks; `chmod`; `rm`/`unlink` on hooks; `exec`/`env`/`command` to skip the wrapper; `GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`. Hooks are **reinstalled** before every agent run. Unauthorized commits are detected via **HEAD OID** comparison. Bypass is **futile** — it wastes **execution budget** with no upside. Change files only; Ralph commits.

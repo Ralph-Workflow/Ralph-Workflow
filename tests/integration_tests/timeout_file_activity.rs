@@ -1023,11 +1023,13 @@ fn active_subprocess_prevents_idle_kill() {
             Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
         let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
+        executor_impl.set_child_cpu_time(child_pid, 100);
+
         // Simulate CPU time advancing so the monitor treats children as active.
         let cpu_advancer_executor = executor_impl.clone();
         let cpu_advancer_stop = Arc::clone(&should_stop);
         let cpu_advancer = thread::spawn(move || {
-            let mut cpu_ms = 0u64;
+            let mut cpu_ms = 100u64;
             while !cpu_advancer_stop.load(Ordering::Acquire) {
                 cpu_ms += 100;
                 cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
@@ -1046,7 +1048,7 @@ fn active_subprocess_prevents_idle_kill() {
                     timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(5),
                     kill_config: fast_kill_config(),
-                    required_idle_confirmations: 1,
+                    required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
                 },
