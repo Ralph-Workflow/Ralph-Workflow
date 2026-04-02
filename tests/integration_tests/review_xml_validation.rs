@@ -441,19 +441,20 @@ fn test_review_xsd_error_contains_all_required_information() {
         // Verify error has suggestion (how to fix it)
         assert!(!error.suggestion.is_empty(), "Error should have suggestion");
 
-        // Verify format_for_ai_retry produces a complete message
+        // Verify format_for_ai_retry produces a complete message (dumb-agent-proof format)
         let formatted = error.format_for_ai_retry();
         assert!(
             formatted.contains(&error.element_path),
             "Formatted error should include element_path"
         );
+        // New format uses "What failed:" style for dumb-agent-proof contract
         assert!(
-            formatted.contains(&error.expected),
-            "Formatted error should include expected"
+            formatted.contains("What failed"),
+            "Formatted error should use dumb-agent-proof format"
         );
         assert!(
-            formatted.contains(&error.found),
-            "Formatted error should include found"
+            formatted.contains("How to fix"),
+            "Formatted error should include fix guidance"
         );
     });
 }

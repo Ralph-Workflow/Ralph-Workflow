@@ -1,11 +1,12 @@
 {# ============================================================================ #}
 {# Template: planning_xml.txt                                                  #}
-{# Version: 2.0 - Structured XML with rich content elements                    #}
+{# Version: 3.0 - Dumb-agent-proof planning with rich guidance               #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
 {#   Prompt for planning phase to create detailed implementation plans.        #}
 {#   Uses structured XML with rich content elements for comprehensive plans.   #}
+{#   Provides explicit guidance to make plans executable by weak agents.        #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   {{PROMPT}} - User requirements from the request (required)                #}
@@ -27,20 +28,20 @@
 {#       </step>                                                               #}
 {#     </ralph-implementation-steps>                                           #}
 {#     <ralph-critical-files>                                                  #}
-{#       <primary-files><file path="..." action="modify"/></primary-files>     #}
+{#       <primary-files><file path="..." action="modify"/></primary-files>      #}
 {#       <reference-files><file path="..." purpose="..."/></reference-files>   #}
 {#     </ralph-critical-files>                                                 #}
-{#     <ralph-risks-mitigations>                                               #}
+{#     <ralph-risks-mitigations>                                              #}
 {#       <risk-pair severity="medium">                                         #}
 {#         <risk>Risk description</risk>                                       #}
-{#         <mitigation>How to mitigate</mitigation>                            #}
+{#         <mitigation>How to mitigate</mitigation>                           #}
 {#       </risk-pair>                                                          #}
-{#     </ralph-risks-mitigations>                                              #}
+{#     </ralph-risks-mitigations>                                             #}
 {#     <ralph-verification-strategy>                                           #}
 {#       <verification>                                                        #}
 {#         <method>How to verify</method>                                      #}
-{#         <expected-outcome>What success looks like</expected-outcome>        #}
-{#       </verification>                                                       #}
+{#         <expected-outcome>What success looks like</expected-outcome>         #}
+{#       </verification>                                                        #}
 {#     </ralph-verification-strategy>                                          #}
 {#   </ralph-plan>                                                             #}
 {# ============================================================================ #}
@@ -154,21 +155,141 @@ PHASE 5: WRITE STRUCTURED PLAN
 Write XML to: `{{PLAN_XML_PATH}}`
 XSD schema: `{{PLAN_XSD_PATH}}`
 
-Required sections:
-- ralph-summary (with context and at least 3 scope-items)
-- ralph-implementation-steps (numbered)
-- ralph-critical-files (with primary-files)
-- ralph-risks-mitigations (at least 1 risk-pair)
-- ralph-verification-strategy (at least 1 verification)
+═══════════════════════════════════════════════════════════════════════════════
+REQUIRED SECTIONS (All sections are REQUIRED unless marked optional)
+═══════════════════════════════════════════════════════════════════════════════
 
-Skills and MCP guidance:
+1. **ralph-summary** (REQUIRED)
+   - MUST have <context> (non-empty) explaining what and why
+   - MUST have <scope-items> with minimum 3 items
+   - Each scope-item describes work category with count and description
+
+2. **ralph-implementation-steps** (REQUIRED)
+   - Each <step> MUST have: number attribute, <title>, <content>
+   - file-change steps MUST have <target-files> with at least one <file path="..." action="..."/>
+   - <content> MUST have at least one element: <paragraph>, <code-block>, <list>, etc.
+
+3. **ralph-critical-files** (REQUIRED)
+   - MUST have <primary-files> with at least one <file path="..." action="..."/>
+   - <reference-files> section is optional but recommended
+
+4. **ralph-risks-mitigations** (REQUIRED - minimum 1 risk-pair)
+   - Each <risk-pair> MUST have both <risk> and <mitigation>
+
+5. **ralph-verification-strategy** (REQUIRED - minimum 1 verification)
+   - Each <verification> MUST have both <method> and <expected-outcome>
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPLEMENTATION CONTEXT REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+For each implementation step, provide:
+- **Concrete target files/areas**: Specific file paths and locations
+- **Ordered steps with dependencies**: Numbered steps in execution order
+- **Risk + mitigation pairs**: For each significant decision
+- **Verification strategy**: How to verify the step succeeded
+- **Clear boundaries**: What is in-scope vs out-of-scope
+
+The plan must be detailed enough that a developer agent with zero prior context
+can execute it without guessing.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRE-SUBMISSION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════════
+
+Before writing the XML, verify:
+[ ] All required sections are present
+[ ] All minimum counts are met (3 scope-items, 1 risk-pair, 1 verification)
+[ ] All steps have required attributes and elements
+[ ] All file paths are specific and correct
+[ ] All element content is non-empty
+[ ] XML is well-formed (proper closing tags, valid structure)
+[ ] No markdown fences around XML
+
+═══════════════════════════════════════════════════════════════════════════════
+SKILLS AND MCP GUIDANCE
+═══════════════════════════════════════════════════════════════════════════════
+
 Add all relevant skills and MCP suggestions to `<skills-mcp>`. Look through
 available skills before writing the XML. Consider whether any MCP or
 MCP-backed system should also be suggested. Use `<skill>` and `<mcp>` entries,
 and add `reason=""` when helpful. Keep recommendations grounded in the actual
 task. Do not assume the consumer is a developer or fixer.
 
-Minimum XML skeleton (must be valid per XSD):
+═══════════════════════════════════════════════════════════════════════════════
+ANNOTATED EXAMPLE (Replace all content with your actual plan values)
+═══════════════════════════════════════════════════════════════════════════════
+
+<!-- This example shows what "good" looks like for each field type -->
+<ralph-plan>
+  <ralph-summary>
+    <!-- context: one paragraph explaining what and why; be specific -->
+    <context>Adding AUTHORIZATION OVERRIDE blocks to XSD retry templates so weak agents
+know they are permitted to write the output file during a format-only fix pass.</context>
+    <!-- scope-items: minimum 3; use count= for quantity, category= for type -->
+    <scope-items>
+      <scope-item count="4" category="template-modifications">Modify four XSD retry templates to add AUTHORIZATION OVERRIDE section</scope-item>
+      <scope-item count="1" category="regression-test">Add status contract regression test to prevent "completed" from being dropped</scope-item>
+      <scope-item count="1" category="documentation">Update template version headers to v6.0</scope-item>
+    </scope-items>
+  </ralph-summary>
+  <skills-mcp>
+    <!-- Add relevant skills/MCPs; remove this block if none apply -->
+    <skill reason="Write failing test first per TDD mandate">test-driven-development</skill>
+  </skills-mcp>
+  <ralph-implementation-steps>
+    <!-- Each step needs: number, type, priority, title, target-files (if file-change), content -->
+    <step number="1" type="file-change" priority="high">
+      <title>Add AUTHORIZATION OVERRIDE to developer_iteration_xsd_retry.txt</title>
+      <target-files>
+        <!-- action must be create, modify, or delete -->
+        <file path="ralph-workflow/src/prompts/templates/developer_iteration_xsd_retry.txt" action="modify"/>
+      </target-files>
+      <!-- location: WHERE in the file to make the change -->
+      <location>After the CRITICAL INSTRUCTIONS section, before the DO NOT DO section</location>
+      <!-- rationale: WHY this step is needed -->
+      <rationale>v5.0 lacks AUTHORIZATION OVERRIDE so agent scope is ambiguous</rationale>
+      <!-- content: WHAT to do; use paragraph/list/code-block elements -->
+      <content>
+        <paragraph>Insert the AUTHORIZATION OVERRIDE block from planning_xsd_retry.txt v6.0, adapting the file path variable to the correct template variable for this phase.</paragraph>
+        <list type="ordered">
+          <item>Copy AUTHORIZATION OVERRIDE block verbatim from planning_xsd_retry.txt</item>
+          <item>Replace PLAN_XML_PATH with the correct variable for this phase (e.g., DEVELOPMENT_RESULT_XML_PATH, ISSUES_XML_PATH, etc.)</item>
+          <item>Update version header comment to v6.0</item>
+        </list>
+      </content>
+    </step>
+    <!-- Additional steps follow same pattern -->
+  </ralph-implementation-steps>
+  <ralph-critical-files>
+    <primary-files>
+      <!-- estimated-changes: rough change size hint -->
+      <file path="ralph-workflow/src/prompts/templates/developer_iteration_xsd_retry.txt" action="modify" estimated-changes="add ~15 lines AUTHORIZATION OVERRIDE block"/>
+    </primary-files>
+    <reference-files>
+      <!-- purpose: why this file is referenced, not changed -->
+      <file path="ralph-workflow/src/prompts/templates/planning_xsd_retry.txt" purpose="Source of v6.0 AUTHORIZATION OVERRIDE block to copy"/>
+    </reference-files>
+  </ralph-critical-files>
+  <ralph-risks-mitigations>
+    <!-- severity: low, medium, high, or critical -->
+    <risk-pair severity="medium">
+      <risk>Template variable names differ between phases, causing copy-paste errors when copying AUTHORIZATION OVERRIDE blocks</risk>
+      <mitigation>Verify each template's variable names against the template header comment before copying blocks; run cargo build to catch any Tera template errors</mitigation>
+    </risk-pair>
+  </ralph-risks-mitigations>
+  <ralph-verification-strategy>
+    <verification>
+      <method>Run cargo test -p ralph-workflow to ensure no template rendering regressions</method>
+      <expected-outcome>All tests pass; no ERROR/WARNING in output</expected-outcome>
+    </verification>
+  </ralph-verification-strategy>
+</ralph-plan>
+
+═══════════════════════════════════════════════════════════════════════════════
+MINIMUM XML SKELETON (must be valid per XSD)
+═══════════════════════════════════════════════════════════════════════════════
+
 <ralph-plan>
   <ralph-summary>...</ralph-summary>
   <skills-mcp>

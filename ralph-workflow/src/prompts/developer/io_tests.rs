@@ -476,15 +476,11 @@ fn test_xsd_retry_falls_back_when_last_output_is_missing() {
     );
 
     assert!(
-        prompt.contains("could not be found"),
-        "Missing last_output.xml should trigger the deterministic fallback prompt"
-    );
-    assert!(
         prompt.contains("FIX XML ONLY"),
         "Fallback prompt should clearly frame the retry as an XML-only correction"
     );
     assert!(
-        prompt.contains("same session") && prompt.contains("Do not redo"),
+        prompt.contains("Do NOT redo analysis or implementation work"),
         "Fallback prompt should keep the agent in the same session and avoid analysis rework"
     );
 }
@@ -515,15 +511,11 @@ fn test_continuation_xsd_retry_with_log_falls_back_when_last_output_is_missing()
     );
 
     assert!(
-        rendered.content.contains("could not be found"),
-        "Missing required retry context should trigger fallback instructions in the logged variant too"
-    );
-    assert!(
         rendered.content.contains("FIX XML ONLY"),
         "Logged fallback prompt should clearly frame retries as XML-only corrections"
     );
     assert!(
-        rendered.content.contains("same session") && rendered.content.contains("Do not redo"),
+        rendered.content.contains("Do NOT redo analysis or implementation work"),
         "Logged fallback prompt should keep the agent in the same session and avoid analysis rework"
     );
     assert!(

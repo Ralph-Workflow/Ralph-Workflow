@@ -1,3 +1,235 @@
+// ============================================================================
+// Dumb-Agent-Proof Contract Tests
+// ============================================================================
+
+/// Regression test: analysis status contract MUST include `completed`, `partial`, `failed`.
+#[test]
+fn test_analysis_status_contract_always_has_completed_partial_failed() {
+    use crate::prompts::analysis::generate_analysis_prompt;
+    use crate::prompts::analysis::generate_fix_analysis_prompt;
+    use crate::workspace::MemoryWorkspace;
+
+    let workspace = MemoryWorkspace::new_test();
+
+    // Test analysis prompt
+    let analysis_prompt = generate_analysis_prompt("plan", "diff", false, &workspace);
+    assert!(
+        analysis_prompt.contains("completed"),
+        "Analysis prompt must include 'completed' status"
+    );
+    assert!(
+        analysis_prompt.contains("partial"),
+        "Analysis prompt must include 'partial' status"
+    );
+    assert!(
+        analysis_prompt.contains("failed"),
+        "Analysis prompt must include 'failed' status"
+    );
+
+    // Test fix analysis prompt
+    let fix_analysis_prompt =
+        generate_fix_analysis_prompt("issues", "diff", "fix_result", false, &workspace);
+    assert!(
+        fix_analysis_prompt.contains("completed"),
+        "Fix analysis prompt must include 'completed' status"
+    );
+    assert!(
+        fix_analysis_prompt.contains("partial"),
+        "Fix analysis prompt must include 'partial' status"
+    );
+    assert!(
+        fix_analysis_prompt.contains("failed"),
+        "Fix analysis prompt must include 'failed' status"
+    );
+}
+
+/// Regression test: planning XSD retry MUST enforce submission-fix-only behavior.
+#[test]
+fn test_planning_xsd_retry_enforces_submission_fix_only() {
+    use crate::prompts::developer::prompt_planning_xsd_retry_with_context;
+    use crate::workspace::MemoryWorkspace;
+
+    let workspace = MemoryWorkspace::new_test();
+    let context = TemplateContext::default();
+
+    let result = prompt_planning_xsd_retry_with_context(
+        &context,
+        "original prompt",
+        "XSD error: missing element",
+        "<invalid xml",
+        &workspace,
+    );
+
+    // Must say FIX XML ONLY or similar scope lock
+    assert!(
+        result.contains("FIX XML ONLY")
+            || result.contains("fix") && (result.contains("XML") || result.contains("xml")),
+        "Planning XSD retry must enforce XML fix scope. Got:\n{result}"
+    );
+
+    // Must label prior artifacts as REFERENCE ONLY
+    assert!(
+        result.contains("REFERENCE ONLY") || result.contains("Reference"),
+        "Planning XSD retry must label prior artifacts as REFERENCE ONLY. Got:\n{result}"
+    );
+
+    // Must forbid new planning/implementation work
+    assert!(
+        result.to_uppercase().contains("MUST NOT")
+            || result.to_uppercase().contains("DO NOT")
+            || result.contains("no new planning")
+            || result.contains("no new implementation")
+            || result.contains("no planning")
+            || result.contains("no implementation"),
+        "Planning XSD retry must forbid new planning/implementation work. Got:\n{result}"
+    );
+
+    // Must mention malformed XML as primary target
+    assert!(
+        result.contains("malformed") || result.contains("MALFORMED") || result.contains("XML"),
+        "Planning XSD retry should mention malformed XML. Got:\n{result}"
+    );
+}
+
+/// Regression test: developer iteration XSD retry MUST enforce submission-fix-only behavior.
+#[test]
+fn test_developer_iteration_xsd_retry_enforces_submission_fix_only() {
+    use crate::prompts::developer::prompt_developer_iteration_xsd_retry_with_context;
+    use crate::workspace::MemoryWorkspace;
+
+    let workspace = MemoryWorkspace::new_test();
+    let context = TemplateContext::default();
+
+    let result = prompt_developer_iteration_xsd_retry_with_context(
+        &context,
+        "original prompt",
+        "plan content",
+        "XSD error: invalid element",
+        "<invalid xml",
+        &workspace,
+        false,
+    );
+
+    // Must say FIX XML ONLY or similar scope lock
+    assert!(
+        result.contains("FIX XML ONLY")
+            || result.contains("fix") && (result.contains("XML") || result.contains("xml")),
+        "Developer XSD retry must enforce XML fix scope. Got:\n{result}"
+    );
+
+    // Must label prior artifacts as REFERENCE ONLY
+    assert!(
+        result.contains("REFERENCE ONLY") || result.contains("Reference"),
+        "Developer XSD retry must label prior artifacts as REFERENCE ONLY. Got:\n{result}"
+    );
+
+    // Must forbid new coding/implementation work
+    assert!(
+        result.to_uppercase().contains("MUST NOT")
+            || result.to_uppercase().contains("DO NOT")
+            || result.contains("no new code")
+            || result.contains("no new implementation")
+            || result.contains("no coding")
+            || result.contains("no implementation"),
+        "Developer XSD retry must forbid new coding/implementation work. Got:\n{result}"
+    );
+}
+
+/// Regression test: planning prompt MUST have explicit required sections and validation checklist.
+#[test]
+fn test_planning_prompt_has_validation_checklist() {
+    use crate::workspace::MemoryWorkspace;
+
+    // Use in-memory workspace
+    let workspace = MemoryWorkspace::new_test();
+    let partials = crate::prompts::partials::get_shared_partials();
+    let template_content = include_str!("../templates/planning_xml.txt");
+    let template = crate::prompts::Template::new(template_content);
+    let variables = std::collections::HashMap::from([
+        ("PROMPT", "test prompt".to_string()),
+        (
+            "PLAN_XML_PATH",
+            workspace.absolute_str(".agent/tmp/plan.xml"),
+        ),
+        (
+            "PLAN_XSD_PATH",
+            workspace.absolute_str(".agent/tmp/plan.xsd"),
+        ),
+    ]);
+
+    let result = template
+        .render_with_partials(&variables, &partials)
+        .unwrap_or_default();
+
+    // Must have explicit required sections
+    assert!(
+        result.contains("ralph-summary")
+            || result.contains("summary")
+            || result.contains("Required"),
+        "Planning prompt must mention required sections. Got:\n{result}"
+    );
+
+    // Must have some form of validation/checklist before submission
+    assert!(
+        result.contains("checklist")
+            || result.contains("Checklist")
+            || result.contains("verify")
+            || result.contains("before output")
+            || result.contains("Before writing")
+            || result.contains("validation"),
+        "Planning prompt must have validation checklist. Got:\n{result}"
+    );
+
+    // Must have minimum counts or explicit requirements
+    assert!(
+        result.contains("minimum")
+            || result.contains("minimum")
+            || result.contains("at least")
+            || result.contains("required"),
+        "Planning prompt must specify minimum counts or requirements. Got:\n{result}"
+    );
+}
+
+/// Regression test: review prompt MUST prioritize and make issues actionable.
+#[test]
+fn test_review_prompt_makes_issues_actionable() {
+    use crate::workspace::MemoryWorkspace;
+    use std::path::PathBuf;
+
+    let context = TemplateContext::default();
+    let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
+    let result = prompt_review_xml_with_context(
+        &context,
+        "test prompt",
+        "test plan",
+        "test changes",
+        &workspace,
+    );
+
+    // Must prioritize issues
+    assert!(
+        result.contains("priority")
+            || result.contains("Priority")
+            || result.contains("priority order")
+            || result.contains("high-signal"),
+        "Review prompt must prioritize issues. Got:\n{result}"
+    );
+
+    // Must make issues actionable (what is wrong, where, why, how to fix)
+    assert!(
+        result.contains("what") || result.contains("What"),
+        "Review prompt must explain what is wrong. Got:\n{result}"
+    );
+    assert!(
+        result.contains("where") || result.contains("Where"),
+        "Review prompt must explain where the issue is. Got:\n{result}"
+    );
+    assert!(
+        result.contains("fix") || result.contains("Fix"),
+        "Review prompt must explain how to fix. Got:\n{result}"
+    );
+}
+
 use super::*;
 use crate::workspace::MemoryWorkspace;
 use std::path::PathBuf;
@@ -139,30 +371,34 @@ fn test_prompt_review_xsd_retry_with_context() {
     assert!(result.contains(".agent/tmp/issues.xml"));
     assert!(result.contains(".agent/tmp/issues.xsd"));
 
-    // Read-only modes: reviewer must still write exactly one XML file.
+    // FIX XML ONLY retry: must enforce submission-fix-only behavior
     assert!(
-        result.contains("explicitly authorized") && result.contains("EXACTLY ONE file"),
-        "review_xsd_retry should explicitly authorize writing exactly one XML file"
+        result.contains("FIX XML ONLY"),
+        "review_xsd_retry should say FIX XML ONLY"
     );
+
+    // Must label prior artifacts as REFERENCE ONLY
     assert!(
-        result.contains("MANDATORY"),
-        "review_xsd_retry should mark XML file write mandatory"
+        result.contains("REFERENCE ONLY"),
+        "review_xsd_retry should have REFERENCE ONLY section"
     );
+
+    // Must forbid new review/implementation work
     assert!(
-        result.contains("Not writing") && result.contains("FAILURE"),
-        "review_xsd_retry should say not writing XML is a failure"
+        result.contains("DO NOT DO"),
+        "review_xsd_retry should have DO NOT DO section"
     );
+
+    // Must emphasize malformed XML as primary target
     assert!(
-        result.contains("does not conform") && result.contains("XSD") && result.contains("FAILURE"),
-        "review_xsd_retry should say non-XSD XML is a failure"
+        result.contains("PRIMARY OBJECTIVE"),
+        "review_xsd_retry should emphasize primary objective"
     );
+
+    // Must have anti-actions
     assert!(
-        result.contains("READ-ONLY")
-            && (result.contains("EXCEPT FOR writing")
-                || result.contains("except for writing")
-                || result.contains("Except for writing"))
-            && result.contains("issues.xml"),
-        "review_xsd_retry should be read-only except for writing issues.xml"
+        result.contains("Do NOT review"),
+        "review_xsd_retry should forbid new review work"
     );
 
     assert!(

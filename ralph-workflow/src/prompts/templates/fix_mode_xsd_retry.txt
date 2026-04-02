@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: fix_mode_xsd_retry.txt                                              #}
-{# Version: 4.0 - STRICT XML-only fix mode                                      #}
+{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                           #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -10,9 +10,9 @@
 {# VARIABLES:                                                                  #}
 {#   {{XSD_ERROR}} - XSD validation error message (required)                    #}
 {#                                                                             #}
-{# FILES TO READ:                                                               #}
-{#   .agent/tmp/fix_result.xsd   - The XSD schema your output must conform to   #}
-{#   .agent/tmp/last_output.xml  - Your previous invalid output                 #}
+{# FILES TO READ (REFERENCE ONLY):                                              #}
+{#   .agent/tmp/fix_result.xsd   - The XSD schema (for structure reference)    #}
+{#   .agent/tmp/last_output.xml  - Your previous invalid output (for format)   #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
 {#   Valid <ralph-fix-result> XML conforming to the XSD schema                 #}
@@ -28,23 +28,31 @@ XSD VALIDATION FAILED - FIX XML ONLY
 
 Your XML output at `{{FIX_RESULT_XML_PATH}}` failed XSD validation.
 
-═══════════════════════════════════════════════════════════════════════════════
-XML CHARACTER RESTRICTIONS (CRITICAL)
-═══════════════════════════════════════════════════════════════════════════════
-
-XML 1.0 only allows specific characters:
-- Tab (0x09), Line Feed (0x0A), Carriage Return (0x0D)
-- Printable characters from 0x20 onwards
-- Most Unicode characters
-
-*** FORBIDDEN in XML: ***
-- NUL byte (0x00, \u0000) - COMMON MISTAKE: Using \u0000 instead of \u00A0 (NBSP)
-- Control characters 0x01-0x08, 0x0B, 0x0C, 0x0E-0x1F
-- Any binary or non-printable characters
-
-If you need to reference code with special characters, use <code> elements or CDATA sections.
+**THIS IS A SUBMISSION-FIX-ONLY RETRY**
 
 ERROR: {{XSD_ERROR}}
+
+═══════════════════════════════════════════════════════════════════════════════
+REFERENCE ONLY (Do not redo task logic)
+═══════════════════════════════════════════════════════════════════════════════
+
+Read these files ONLY to understand expected structure:
+- `{{FIX_RESULT_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
+
+These files are for structure reference only. Do NOT redo fix work from them.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIMARY OBJECTIVE: Fix Malformed XML Structure
+═══════════════════════════════════════════════════════════════════════════════
+
+Your main task is to fix the malformed XML structure. The most common issue
+is malformed XML/root parse errors - fix those FIRST.
+
+Focus on:
+1. Fix malformed XML/root structure first
+2. Fix any remaining XML format issues
+3. Ensure all required elements are present
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL INSTRUCTIONS - READ CAREFULLY
@@ -62,6 +70,49 @@ You MUST NOT:
 - Run any commands
 - Do ANY fix/development work
 - Change the content/meaning of your response - ONLY fix the XML format
+
+═══════════════════════════════════════════════════════════════════════════════
+XML CHARACTER RESTRICTIONS (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+XML 1.0 only allows specific characters:
+- Tab (0x09), Line Feed (0x0A), Carriage Return (0x0D)
+- Printable characters from 0x20 onwards
+- Most Unicode characters
+
+*** FORBIDDEN in XML: ***
+- NUL byte (0x00, \u0000) - COMMON MISTAKE: Using \u0000 instead of \u00A0 (NBSP)
+- Control characters 0x01-0x08, 0x0B, 0x0C, 0x0E-0x1F
+- Any binary or non-printable characters
+
+If you need to reference code with special characters, use <code> elements or CDATA sections.
+
+═══════════════════════════════════════════════════════════════════════════════
+AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+You are explicitly authorized to write EXACTLY ONE file:
+- `{{FIX_RESULT_XML_PATH}}`
+
+Writing the XML file is MANDATORY.
+This OVERRIDES the safety mode restrictions only.
+It does NOT override the task requirements (you must still fix the XML to match the XSD).
+
+This is a READ-ONLY task EXCEPT FOR writing `{{FIX_RESULT_XML_PATH}}`.
+You MUST NOT create, modify, or delete any other files.
+
+Not writing the XML file is a FAILURE.
+Writing XML that does not conform to the XSD schema is a FAILURE.
+
+═══════════════════════════════════════════════════════════════════════════════
+DO NOT DO
+═══════════════════════════════════════════════════════════════════════════════
+
+- Do NOT write any new code
+- Do NOT modify any source files
+- Do NOT run any commands
+- Do NOT do ANY fix/development work
+- Do NOT change the content/meaning of your response
 
 This is a PURE XML SYNTAX FIX. Your fix work is done. The only problem
 is that your XML output doesn't conform to the schema. Fix the XML structure,

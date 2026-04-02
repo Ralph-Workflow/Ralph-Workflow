@@ -96,10 +96,17 @@ pub fn prompt_commit_xsd_retry_with_log(
     // If both files are missing, return fallback with manual log
     if !schema_exists && !last_output_exists {
         let prompt_content = format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - GENERATE COMMIT MESSAGE\n\n\
+            "{diagnostic_prefix}XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+             **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
              Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please generate a conventional commit message for the current changes.\n\n\
+             REFERENCE ONLY: Read .agent/tmp/commit_message.xsd when available.\n\
+             Do NOT redo commit message work.\n\n\
+             PRIMARY OBJECTIVE: Fix malformed XML structure first.\n\n\
+             DO NOT DO:\n\
+             - Do NOT generate new commit message content\n\
+             - Do NOT analyze the codebase\n\
+             - Do NOT change the content/meaning of your response\n\n\
+             This is a PURE XML SYNTAX FIX. Fix the XML structure to conform to the schema.\n\n\
              Output format: <ralph-commit><ralph-subject>type: description</ralph-subject></ralph-commit>\n"
         );
         return RenderedTemplate {
@@ -149,9 +156,18 @@ pub fn prompt_commit_xsd_retry_with_log(
         .unwrap_or_else(|_| {
             // Fallback with manual log
             let prompt_content = format!(
-                "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
-                 Read .agent/tmp/commit_message.xsd for the schema and .agent/tmp/commit_message.xml for your previous output.\n\
-                 Rewrite .agent/tmp/commit_message.xml with valid XML.\n"
+                "XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+                 **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
+                 Error: {xsd_error}\n\n\
+                 REFERENCE ONLY: Read .agent/tmp/commit_message.xsd and .agent/tmp/commit_message.xml.\n\
+                 Do NOT redo commit message work.\n\n\
+                 PRIMARY OBJECTIVE: Fix malformed XML structure first.\n\n\
+                 DO NOT DO:\n\
+                 - Do NOT generate new commit message content\n\
+                 - Do NOT analyze the codebase\n\
+                 - Do NOT change the content/meaning of your response\n\n\
+                 This is a PURE XML SYNTAX FIX. Fix the XML structure to conform to the schema.\n\n\
+                 Output format: <ralph-commit><ralph-subject>type: description</ralph-subject></ralph-commit>\n"
             );
             RenderedTemplate {
                 content: prompt_content,
@@ -273,10 +289,17 @@ pub fn prompt_commit_xsd_retry_with_context(
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {
         return format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - GENERATE COMMIT MESSAGE\n\n\
+            "{diagnostic_prefix}XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+             **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
              Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please generate a conventional commit message for the current changes.\n\n\
+             REFERENCE ONLY: Read .agent/tmp/commit_message.xsd when available.\n\
+             Do NOT redo commit message work.\n\n\
+             PRIMARY OBJECTIVE: Fix malformed XML structure first.\n\n\
+             DO NOT DO:\n\
+             - Do NOT generate new commit message content\n\
+             - Do NOT analyze the codebase\n\
+             - Do NOT change the content/meaning of your response\n\n\
+             This is a PURE XML SYNTAX FIX. Fix the XML structure to conform to the schema.\n\n\
              Output format: <ralph-commit><ralph-subject>type: description</ralph-subject></ralph-commit>\n"
         );
     }
@@ -308,9 +331,18 @@ pub fn prompt_commit_xsd_retry_with_context(
         .render_with_partials(&variables, &partials)
         .unwrap_or_else(|_| {
             format!(
-                "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
-                 Read .agent/tmp/commit_message.xsd for the schema and .agent/tmp/commit_message.xml for your previous output.\n\
-                 Rewrite .agent/tmp/commit_message.xml with valid XML.\n"
+                "XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+                 **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
+                 Error: {xsd_error}\n\n\
+                 REFERENCE ONLY: Read .agent/tmp/commit_message.xsd and .agent/tmp/commit_message.xml.\n\
+                 Do NOT redo commit message work.\n\n\
+                 PRIMARY OBJECTIVE: Fix malformed XML structure first.\n\n\
+                 DO NOT DO:\n\
+                 - Do NOT generate new commit message content\n\
+                 - Do NOT analyze the codebase\n\
+                 - Do NOT change the content/meaning of your response\n\n\
+                 This is a PURE XML SYNTAX FIX. Fix the XML structure to conform to the schema.\n\n\
+                 Output format: <ralph-commit><ralph-subject>type: description</ralph-subject></ralph-commit>\n"
             )
         });
 
