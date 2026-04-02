@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: review_xsd_retry.txt                                               #}
-{# Version: 5.0 - Dumb-agent-proof XML-only fix mode                            #}
+{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                            #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -30,6 +30,8 @@ Your XML output at `{{ISSUES_XML_PATH}}` failed XSD validation.
 
 **THIS IS A SUBMISSION-FIX-ONLY RETRY**
 
+ERROR: {{XSD_ERROR}}
+
 ═══════════════════════════════════════════════════════════════════════════════
 REFERENCE ONLY (Do not redo task logic)
 ═══════════════════════════════════════════════════════════════════════════════
@@ -53,6 +55,23 @@ Focus on:
 3. Ensure all required elements are present
 
 ═══════════════════════════════════════════════════════════════════════════════
+CRITICAL INSTRUCTIONS - READ CAREFULLY
+═══════════════════════════════════════════════════════════════════════════════
+
+You MUST:
+1. Read the XSD schema at `{{ISSUES_XSD_PATH}}`
+2. Read your previous invalid output at `.agent/tmp/last_output.xml`
+3. Fix ONLY the XML structure/format issues
+4. Write the corrected XML to `{{ISSUES_XML_PATH}}`
+
+You MUST NOT:
+- Review any code
+- Analyze any files
+- Run any commands
+- Do ANY review work
+- Change the content/meaning of your response - ONLY fix the XML format
+
+═══════════════════════════════════════════════════════════════════════════════
 XML CHARACTER RESTRICTIONS (CRITICAL)
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -68,7 +87,22 @@ XML 1.0 only allows specific characters:
 
 If you need to reference code with special characters, use <code> elements or CDATA sections.
 
-ERROR: {{XSD_ERROR}}
+═══════════════════════════════════════════════════════════════════════════════
+AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+You are explicitly authorized to write EXACTLY ONE file:
+- `{{ISSUES_XML_PATH}}`
+
+Writing the XML file is MANDATORY.
+This OVERRIDES the safety mode restrictions only.
+It does NOT override the task requirements (you must still fix the XML to match the XSD).
+
+This is a READ-ONLY task EXCEPT FOR writing `{{ISSUES_XML_PATH}}`.
+You MUST NOT create, modify, or delete any other files.
+
+Not writing the XML file is a FAILURE.
+Writing XML that does not conform to the XSD schema is a FAILURE.
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT DO

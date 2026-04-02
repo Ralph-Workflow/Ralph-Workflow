@@ -1,10 +1,10 @@
 {# ============================================================================ #}
 {# Template: developer_iteration_xsd_retry_continuation.txt                      #}
-{# Version: 2.0 - Dumb-agent-proof XML-only fix mode                           #}
+{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                           #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Retry prompt when continuation XML validation fails during development.    #}
+{#   Retry prompt when continuation XML validation fails during development.      #}
 {#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
@@ -13,8 +13,12 @@
 {# FILES TO READ (REFERENCE ONLY):                                              #}
 {#   .agent/tmp/development_result.xsd - The XSD schema (for structure)       #}
 {#   .agent/tmp/last_output.xml        - Your previous invalid output (for format) #}
-{# ============================================================================ #}
-
+{#                                                                             #}
+{# OUTPUT FORMAT:                                                               #}
+{#   Valid <ralph-development-result> XML conforming to the XSD schema         #}
+{#                                                                             #}
+{# IMPORTANT: All three status values (completed/partial/failed) are valid.    #}
+{# Do NOT omit completed. FR#7 contract requires all three.                   #}
 {{> shared/_unattended_mode}}
 
 {{> shared/_no_git_commit}}
@@ -49,9 +53,46 @@ is malformed XML/root parse errors - fix those FIRST.
 
 Then rewrite the XML so it satisfies the continuation contract:
 - Keep the output focused on why the full plan was not completed.
-- Use `<ralph-status>partial</ralph-status>` or `<ralph-status>failed</ralph-status>`.
+- Use the correct status:
+  - `<ralph-status>completed</ralph-status>` — ALL plan steps are done and verified
+  - `<ralph-status>partial</ralph-status>` — Meaningful progress made but work remains (most common for continuations)
+  - `<ralph-status>failed</ralph-status>` — No meaningful progress or fundamentally blocked
 - Include an ordered, actionable recovery checklist that finishes the remaining plan.
 - Omit bookkeeping such as `<ralph-files-changed>`.
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL INSTRUCTIONS - READ CAREFULLY
+═══════════════════════════════════════════════════════════════════════════════
+
+You MUST:
+1. Read the XSD schema at `{{DEVELOPMENT_RESULT_XSD_PATH}}`
+2. Read your previous invalid output at `.agent/tmp/last_output.xml`
+3. Fix the XML structure/format issues AND satisfy the continuation contract
+4. Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`
+
+You MUST NOT:
+- Write any new code
+- Modify any source files
+- Run any commands
+- Do ANY development work
+- Change the substantive content/meaning of your continuation response beyond XML format and contract fixes
+
+═══════════════════════════════════════════════════════════════════════════════
+AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+You are explicitly authorized to write EXACTLY ONE file:
+- `{{DEVELOPMENT_RESULT_XML_PATH}}`
+
+Writing the XML file is MANDATORY.
+This OVERRIDES the safety mode restrictions only.
+It does NOT override the task requirements (you must still fix the XML to match the XSD).
+
+This is a READ-ONLY task EXCEPT FOR writing `{{DEVELOPMENT_RESULT_XML_PATH}}`.
+You MUST NOT create, modify, or delete any other files.
+
+Not writing the XML file is a FAILURE.
+Writing XML that does not conform to the XSD schema is a FAILURE.
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT DO
@@ -64,3 +105,18 @@ DO NOT DO
 
 You may change the XML content as needed to satisfy the continuation contract.
 Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`.
+
+═══════════════════════════════════════════════════════════════════════════════
+COMMON XML MISTAKES TO FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Missing required elements (status, summary, etc.)
+2. Wrong element order (check XSD for correct sequence)
+3. Invalid status value (must be: completed, partial, or failed)
+4. Unescaped special characters (use &lt; &gt; &amp; or CDATA)
+5. Missing closing tags
+6. Text before/after root element
+7. Markdown code fences around XML (remove ```)
+
+After reading the XSD schema, fix ONLY the XML validation error.
+DO NOT do any other work.

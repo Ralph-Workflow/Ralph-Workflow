@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: commit_xsd_retry.txt                                              #}
-{# Version: 5.0 - Dumb-agent-proof XML-only fix mode                           #}
+{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                           #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -55,6 +55,39 @@ Focus on:
 1. Fix malformed XML/root structure first
 2. Fix any remaining XML format issues
 3. Ensure all required elements are present
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL INSTRUCTIONS - READ CAREFULLY
+═══════════════════════════════════════════════════════════════════════════════
+
+You MUST:
+1. Read the XSD schema at `{{COMMIT_MESSAGE_XSD_PATH}}`
+2. Read your previous invalid output at `{{COMMIT_MESSAGE_XML_PATH}}`
+3. Fix ONLY the XML structure/format issues
+4. Write the corrected XML to `{{COMMIT_MESSAGE_XML_PATH}}`
+
+You MUST NOT:
+- Analyze any code or diffs
+- Run any commands
+- Do ANY work other than fixing XML
+- Change the content/meaning of your commit message - ONLY fix the XML format
+
+═══════════════════════════════════════════════════════════════════════════════
+AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+You are explicitly authorized to write EXACTLY ONE file:
+- `{{COMMIT_MESSAGE_XML_PATH}}`
+
+Writing the XML file is MANDATORY.
+This OVERRIDES the safety mode restrictions only.
+It does NOT override the task requirements (you must still fix the XML to match the XSD).
+
+This is a READ-ONLY task EXCEPT FOR writing `{{COMMIT_MESSAGE_XML_PATH}}`.
+You MUST NOT create, modify, or delete any other files.
+
+Not writing the XML file is a FAILURE.
+Writing XML that does not conform to the XSD schema is a FAILURE.
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT DO

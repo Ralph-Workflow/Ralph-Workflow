@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: developer_iteration_xsd_retry.txt                                   #}
-{# Version: 5.0 - Dumb-agent-proof XML-only fix mode                           #}
+{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                           #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -71,6 +71,23 @@ You MUST NOT:
 - Run any commands
 - Do ANY development work
 - Change the content/meaning of your response - ONLY fix the XML format
+
+═══════════════════════════════════════════════════════════════════════════════
+AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+You are explicitly authorized to write EXACTLY ONE file:
+- `{{DEVELOPMENT_RESULT_XML_PATH}}`
+
+Writing the XML file is MANDATORY.
+This OVERRIDES the safety mode restrictions only.
+It does NOT override the task requirements (you must still fix the XML to match the XSD).
+
+This is a READ-ONLY task EXCEPT FOR writing `{{DEVELOPMENT_RESULT_XML_PATH}}`.
+You MUST NOT create, modify, or delete any other files.
+
+Not writing the XML file is a FAILURE.
+Writing XML that does not conform to the XSD schema is a FAILURE.
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT DO

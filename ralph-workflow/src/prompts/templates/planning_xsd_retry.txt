@@ -65,7 +65,9 @@ You MUST:
 3. Fix ONLY the XML structure/format issues
 4. Write the corrected XML to `{{PLAN_XML_PATH}}`
 
-## AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+AUTHORIZATION OVERRIDE (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
 
 You are explicitly authorized to write EXACTLY ONE file:
 - `{{PLAN_XML_PATH}}`
