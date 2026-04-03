@@ -23,8 +23,8 @@ use crate::mcp_server::tool_bridge::{
     RalphWorkspaceAdapter,
 };
 use crate::workspace::Workspace;
-use ::mcp_server::io::access::McpServerConfig;
-use ::mcp_server::io::SessionBridge as McpSessionBridge;
+use mcp_server::io::access::McpServerConfig;
+use mcp_server::io::SessionBridge as McpSessionBridge;
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -128,10 +128,10 @@ impl SessionBridge {
                     .records()
                     .iter()
                     .cloned()
-                    .chain(new_records),
+                    .chain(new_records.iter().cloned()),
             );
         }
-        self.cached_audit.records().to_vec()
+        new_records
     }
 
     /// Get the Unix socket path for agent connections.
@@ -204,6 +204,9 @@ impl Drop for SessionBridge {
 mod tests {
     use super::*;
     use crate::workspace::memory_workspace::MemoryWorkspace;
+    use mcp_server::dispatch::access::AuditSink;
+    use mcp_server::dispatch::access::{AccessDecision, McpCapability};
+    use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
 
     fn unique_session() -> AgentSession {
         AgentSession::for_drain(
@@ -275,5 +278,28 @@ mod tests {
         // Initially empty
         let records = bridge.drain_audit_records();
         assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_drain_audit_records_returns_only_new_records() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+
+        bridge.audit_adapter.emit(
+            McpAuditRecord::new(
+                "test-session".to_string(),
+                "ralph_read_file".to_string(),
+                AccessDecision::Allow,
+            )
+            .with_capability(McpCapability::WorkspaceRead),
+        );
+
+        let first_drain = bridge.drain_audit_records();
+        assert_eq!(first_drain.len(), 1);
+
+        let second_drain = bridge.drain_audit_records();
+        assert!(
+            second_drain.is_empty(),
+            "second drain should only return new records"
+        );
     }
 }

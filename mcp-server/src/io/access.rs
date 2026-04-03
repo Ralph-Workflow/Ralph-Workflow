@@ -177,75 +177,46 @@ fn canonicalize_for_policy(
     root: &Path,
     canonical_root: Option<&Path>,
 ) -> Option<PathBuf> {
-    if path.exists() {
-        std::fs::canonicalize(path).ok()
-    } else if path
+    let path_exists = path.exists();
+    let canonical_if_exists = path_exists
+        .then(|| std::fs::canonicalize(path).ok())
+        .flatten();
+    let has_parent_segments = path
         .components()
-        .any(|component| matches!(component, std::path::Component::ParentDir))
-    {
-        None
-    } else if let Some(canonical_root) = canonical_root {
-        let relative = path.strip_prefix(root).ok()?;
-        normalize_path_under_root(canonical_root, relative)
-    } else if path.parent().map(|p| p.exists()).unwrap_or(false) {
-        let parent = std::fs::canonicalize(path.parent()?).ok()?;
-        match path.file_name() {
-            Some(name) => Some(parent.join(name)),
-            None => Some(parent),
-        }
-    } else {
-        normalize_nonexistent_path(path)
-    }
+        .any(|component| matches!(component, std::path::Component::ParentDir));
+    let under_root = canonical_root.and_then(|root_path| {
+        path.strip_prefix(root)
+            .ok()
+            .and_then(|relative| normalize_path_under_root(root_path, relative))
+    });
+
+    let from_existing_parent = path
+        .parent()
+        .filter(|parent| parent.exists())
+        .and_then(|parent| std::fs::canonicalize(parent).ok())
+        .map(|canonical_parent| {
+            path.file_name()
+                .map_or(canonical_parent.clone(), |name| canonical_parent.join(name))
+        });
+    let normalized_nonexistent = normalize_nonexistent_path(path);
+
+    crate::dispatch::access::select_canonicalized_path(
+        path_exists,
+        canonical_if_exists,
+        has_parent_segments,
+        under_root,
+        from_existing_parent,
+        normalized_nonexistent,
+    )
 }
 
 fn normalize_path_under_root(canonical_root: &Path, relative: &Path) -> Option<PathBuf> {
-    let mut normalized = canonical_root.to_path_buf();
-    let base_depth = normalized.components().count();
-
-    for component in relative.components() {
-        match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::Normal(segment) => normalized.push(segment),
-            std::path::Component::ParentDir => {
-                if normalized.components().count() <= base_depth {
-                    return None;
-                }
-                let _ = normalized.pop();
-            }
-            std::path::Component::RootDir | std::path::Component::Prefix(_) => return None,
-        }
-    }
-
-    Some(normalized)
+    crate::dispatch::access::normalize_path_for_policy(relative)
+        .and_then(|normalized| (!normalized.is_absolute()).then(|| canonical_root.join(normalized)))
 }
 
 fn normalize_nonexistent_path(path: &Path) -> Option<PathBuf> {
-    let mut segments = Vec::new();
-    let is_absolute = path.is_absolute();
-
-    for component in path.components() {
-        match component {
-            std::path::Component::CurDir
-            | std::path::Component::RootDir
-            | std::path::Component::Prefix(_) => {}
-            std::path::Component::Normal(segment) => segments.push(segment.to_os_string()),
-            std::path::Component::ParentDir => {
-                segments.pop()?;
-            }
-        }
-    }
-
-    let mut normalized = if is_absolute {
-        PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
-    } else {
-        PathBuf::new()
-    };
-
-    for segment in segments {
-        normalized.push(segment);
-    }
-
-    Some(normalized)
+    crate::dispatch::access::normalize_path_for_policy(path)
 }
 
 /// Boundary: gather canonicalized paths for policy evaluation.

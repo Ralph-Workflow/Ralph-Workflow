@@ -479,33 +479,41 @@ pub fn policy_path_within_root(
     }
 }
 
-fn normalize_path_for_policy(path: &std::path::Path) -> Option<std::path::PathBuf> {
+/// Normalize a path by collapsing `.` and `..` components for policy checks.
+///
+/// Returns `None` when a parent traversal would escape above the starting root.
+pub fn normalize_path_for_policy(path: &std::path::Path) -> Option<std::path::PathBuf> {
     use std::path::Component;
 
-    let mut segments = Vec::new();
     let is_absolute = path.is_absolute();
-
-    for component in path.components() {
-        match component {
-            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
-            Component::Normal(segment) => segments.push(segment.to_os_string()),
+    let segments = path.components().try_fold(
+        Vec::new(),
+        |segments: Vec<std::ffi::OsString>, component| match component {
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => Some(segments),
+            Component::Normal(segment) => Some(
+                segments
+                    .into_iter()
+                    .chain(std::iter::once(segment.to_os_string()))
+                    .collect(),
+            ),
             Component::ParentDir => {
-                segments.pop()?;
+                let len = segments.len();
+                (len > 0).then(|| segments.into_iter().take(len - 1).collect())
             }
-        }
-    }
+        },
+    )?;
 
-    let mut normalized = if is_absolute {
+    let base = if is_absolute {
         std::path::PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
     } else {
         std::path::PathBuf::new()
     };
 
-    for segment in segments {
-        normalized.push(segment);
-    }
-
-    Some(normalized)
+    Some(
+        segments
+            .into_iter()
+            .fold(base, |acc, segment| acc.join(segment)),
+    )
 }
 
 /// Pure policy: evaluate path-under-root check given canonicalized forms.
@@ -558,6 +566,26 @@ pub fn policy_path_under_root_check(
             // canonicalized either, so we deny to be safe.
             false
         }
+    }
+}
+
+/// Select the canonicalized path outcome from boundary-gathered candidates.
+pub fn select_canonicalized_path(
+    path_exists: bool,
+    canonical_if_exists: Option<std::path::PathBuf>,
+    has_parent_segments: bool,
+    under_root: Option<std::path::PathBuf>,
+    from_existing_parent: Option<std::path::PathBuf>,
+    normalized_nonexistent: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    if path_exists {
+        canonical_if_exists
+    } else if has_parent_segments {
+        None
+    } else {
+        under_root
+            .or(from_existing_parent)
+            .or(normalized_nonexistent)
     }
 }
 

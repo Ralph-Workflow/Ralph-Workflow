@@ -346,42 +346,45 @@ fn read_one_byte(stream: &mut UnixStream) -> Result<Option<u8>, TransportError> 
     }
 }
 
-fn read_headers_until_blank_line_from_reader<R: Read>(
+fn read_headers_until_blank_line_from_reader<R: BufRead>(
     reader: &mut R,
 ) -> Result<Vec<u8>, TransportError> {
     let mut header = Vec::new();
-    let mut buf = [0u8; 1];
+    let mut line = Vec::new();
 
     loop {
-        match reader.read(&mut buf) {
-            Ok(0) => {
-                if header.is_empty() {
-                    return Ok(header);
-                }
-                return Err(TransportError::ConnectionClosed);
-            }
-            Ok(_) => {
-                header.push(buf[0]);
-                if header.len() > MAX_HEADER_BYTES {
-                    return Err(TransportError::HeaderTooLarge {
-                        actual: header.len(),
-                        max: MAX_HEADER_BYTES,
-                    });
-                }
-
-                if header.ends_with(b"\r\n\r\n") {
-                    return Ok(header);
-                }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                if header.is_empty() {
-                    return Ok(header);
-                }
-                return Err(TransportError::ConnectionClosed);
-            }
-            Err(e) => return Err(e.into()),
+        line.clear();
+        let bytes = reader.read_until(b'\n', &mut line)?;
+        if let Some(done) = advance_header_read(&mut header, &line, bytes)? {
+            return done;
         }
     }
+}
+
+fn advance_header_read(
+    header: &mut Vec<u8>,
+    line: &[u8],
+    bytes_read: usize,
+) -> Result<Option<Result<Vec<u8>, TransportError>>, TransportError> {
+    match (bytes_read, header.is_empty()) {
+        (0, true) => Ok(Some(Ok(header.clone()))),
+        (0, false) => Ok(Some(Err(TransportError::ConnectionClosed))),
+        _ => {
+            append_header_line(header, line)?;
+            Ok(header.ends_with(b"\r\n\r\n").then(|| Ok(header.clone())))
+        }
+    }
+}
+
+fn append_header_line(header: &mut Vec<u8>, line: &[u8]) -> Result<(), TransportError> {
+    header.extend_from_slice(line);
+    if header.len() > MAX_HEADER_BYTES {
+        return Err(TransportError::HeaderTooLarge {
+            actual: header.len(),
+            max: MAX_HEADER_BYTES,
+        });
+    }
+    Ok(())
 }
 
 /// Read headers until blank line by reading byte-by-byte.

@@ -12,8 +12,7 @@ use super::marker::{
     add_owner_write_if_not_symlink, marker_path_from_ralph_dir, remove_legacy_marker,
 };
 use super::path_wrapper::{
-    cleanup_stray_tmp_files, read_tracked_wrapper_dir, remove_wrapper_dir_and_entry,
-    track_file_path_for_ralph_dir,
+    cleanup_stray_tmp_files, remove_wrapper_dir_and_entry, track_file_path_for_ralph_dir,
 };
 use crate::git_helpers::repo::{ralph_git_dir, sanitize_ralph_git_dir_at};
 use crate::logger::Logger;
@@ -84,7 +83,8 @@ fn remove_head_oid_file(ralph_dir: &Path) {
 
 fn cleanup_git_wrapper_dir(ralph_dir: &Path) {
     let track_file = track_file_path_for_ralph_dir(ralph_dir);
-    if let Some(wrapper_dir) = read_tracked_wrapper_dir(ralph_dir) {
+    if let Ok(content) = fs::read_to_string(&track_file) {
+        let wrapper_dir = PathBuf::from(content.trim());
         remove_wrapper_dir_and_entry(&wrapper_dir);
     }
     add_owner_write_if_not_symlink(&track_file);
@@ -274,8 +274,7 @@ fn try_remove_ralph_dir_marker(repo_root: &Path) -> std::io::Result<bool> {
 
 pub(crate) fn cleanup_orphaned_marker(logger: &Logger) -> std::io::Result<()> {
     let repo_root = crate::git_helpers::get_repo_root()?;
-    let removed = try_remove_legacy_marker(&repo_root)?
-        || try_remove_ralph_dir_marker(&repo_root)?;
+    let removed = try_remove_legacy_marker(&repo_root)? || try_remove_ralph_dir_marker(&repo_root)?;
     if removed {
         logger.success("Removed orphaned enforcement marker");
     } else {

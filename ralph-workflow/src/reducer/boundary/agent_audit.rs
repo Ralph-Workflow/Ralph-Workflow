@@ -71,7 +71,13 @@ fn build_audit_records_for_session(session: &AgentSession, timestamp: u64) -> Ve
         .map(|cap| {
             let outcome = session.check_capability(cap);
             let description = describe_capability_outcome(cap, session, &outcome);
-            AuditRecord::new(session.session_id.clone(), timestamp, cap, outcome, description)
+            AuditRecord::new(
+                session.session_id.clone(),
+                timestamp,
+                cap,
+                outcome,
+                description,
+            )
         })
         .collect()
 }
@@ -119,8 +125,11 @@ fn build_and_merge_audit_trail(ctx: &mut PhaseContext<'_>, session: &AgentSessio
     let timestamp = current_unix_timestamp();
     let audit_records = build_audit_records_for_session(session, timestamp);
     let mut audit_trail = AuditTrail::from_records(audit_records);
-    audit_trail = audit_trail
-        .record_capability_injection(&session.session_id, timestamp, &session.capabilities);
+    audit_trail = audit_trail.record_capability_injection(
+        &session.session_id,
+        timestamp,
+        &session.capabilities,
+    );
     ctx.logger.info(&format!(
         "RFC-009 audit trail: {} records for session {}",
         audit_trail.len(),
@@ -161,6 +170,8 @@ fn drain_and_merge_mcp_audit_records(
     ctx: &mut PhaseContext<'_>,
     session_bridge: &mut SessionBridge,
 ) {
+    session_bridge.shutdown();
+
     // Drain MCP audit records accumulated during agent execution and merge into
     // the phase context's audit trail. This must be called after the MCP server
     // has finished serving (agent execution complete, bridge shut down) to ensure
