@@ -468,7 +468,44 @@ pub fn policy_path_within_root(
     canonical_path: &std::path::Path,
     canonical_root: &std::path::Path,
 ) -> bool {
-    canonical_path.starts_with(canonical_root)
+    match (
+        normalize_path_for_policy(canonical_path),
+        normalize_path_for_policy(canonical_root),
+    ) {
+        (Some(normalized_path), Some(normalized_root)) => {
+            normalized_path.starts_with(normalized_root)
+        }
+        _ => false,
+    }
+}
+
+fn normalize_path_for_policy(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    use std::path::Component;
+
+    let mut segments = Vec::new();
+    let is_absolute = path.is_absolute();
+
+    for component in path.components() {
+        match component {
+            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+            Component::Normal(segment) => segments.push(segment.to_os_string()),
+            Component::ParentDir => {
+                segments.pop()?;
+            }
+        }
+    }
+
+    let mut normalized = if is_absolute {
+        std::path::PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+    } else {
+        std::path::PathBuf::new()
+    };
+
+    for segment in segments {
+        normalized.push(segment);
+    }
+
+    Some(normalized)
 }
 
 /// Pure policy: evaluate path-under-root check given canonicalized forms.
@@ -642,4 +679,21 @@ pub struct NoOpAuditSink;
 impl AuditSink for NoOpAuditSink {
     fn emit(&self, _record: crate::dispatch::audit::AuditRecord) {}
     fn flush(&self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn policy_path_within_root_rejects_non_normalized_parent_traversal() {
+        let canonical_root = PathBuf::from("/safe/root");
+        let non_normalized = PathBuf::from("/safe/root/subdir/../../escape/new.txt");
+
+        assert!(
+            !policy_path_within_root(&non_normalized, &canonical_root),
+            "non-normalized traversal path must not pass root boundary checks"
+        );
+    }
 }

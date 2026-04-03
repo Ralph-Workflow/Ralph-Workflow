@@ -653,31 +653,7 @@ pub fn assert_no_real_git_repo(path: &std::path::Path) {
 /// Panics with a POLICY VIOLATION message if a `.git` directory is found in any
 /// ancestor of `path`.
 pub fn assert_no_real_git_state(path: &std::path::Path) {
-    let path = match std::fs::canonicalize(path) {
-        Ok(p) => p,
-        Err(_) => return, // Cannot canonicalize - skip check
-    };
-
-    // Check the path and all its ancestors for .git
-    let mut current: &std::path::Path = &path;
-    loop {
-        if current.join(".git").exists() {
-            panic!(
-                "POLICY VIOLATION: test is using real git state at '{}'. \
-                 All tests must use MemoryWorkspace. See docs/agents/testing-guide.md.",
-                path.display()
-            );
-        }
-        match current.parent() {
-            Some(parent) => {
-                if parent == current {
-                    break;
-                }
-                current = parent;
-            }
-            None => break,
-        }
-    }
+    git_safety::assert_not_real_git_repo(path);
 }
 
 /// RAII guard that prevents tests from using real git state with a workspace.
@@ -754,6 +730,19 @@ mod tests {
         let temp_path = std::env::temp_dir();
         // This should not panic
         assert_no_real_git_state(&temp_path);
+    }
+
+    #[test]
+    #[should_panic(expected = "POLICY VIOLATION: test path")]
+    fn assert_no_real_git_state_panics_for_nonexistent_path_inside_real_repo() {
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent());
+
+        if let Some(root) = project_root {
+            let missing_path = root.join("definitely-does-not-exist").join("nested");
+            assert_no_real_git_state(&missing_path);
+        }
     }
 
     #[test]

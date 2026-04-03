@@ -172,14 +172,80 @@ impl McpServerConfig {
 /// Boundary helper: canonicalize path for policy check.
 ///
 /// Uses parent directory canonicalization as fallback for non-existent paths.
-fn canonicalize_for_policy(path: &Path) -> Option<PathBuf> {
+fn canonicalize_for_policy(
+    path: &Path,
+    root: &Path,
+    canonical_root: Option<&Path>,
+) -> Option<PathBuf> {
     if path.exists() {
         std::fs::canonicalize(path).ok()
+    } else if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        None
+    } else if let Some(canonical_root) = canonical_root {
+        let relative = path.strip_prefix(root).ok()?;
+        normalize_path_under_root(canonical_root, relative)
     } else if path.parent().map(|p| p.exists()).unwrap_or(false) {
-        std::fs::canonicalize(path.parent()?).ok()
+        let parent = std::fs::canonicalize(path.parent()?).ok()?;
+        match path.file_name() {
+            Some(name) => Some(parent.join(name)),
+            None => Some(parent),
+        }
     } else {
-        Some(path.to_path_buf())
+        normalize_nonexistent_path(path)
     }
+}
+
+fn normalize_path_under_root(canonical_root: &Path, relative: &Path) -> Option<PathBuf> {
+    let mut normalized = canonical_root.to_path_buf();
+    let base_depth = normalized.components().count();
+
+    for component in relative.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(segment) => normalized.push(segment),
+            std::path::Component::ParentDir => {
+                if normalized.components().count() <= base_depth {
+                    return None;
+                }
+                let _ = normalized.pop();
+            }
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => return None,
+        }
+    }
+
+    Some(normalized)
+}
+
+fn normalize_nonexistent_path(path: &Path) -> Option<PathBuf> {
+    let mut segments = Vec::new();
+    let is_absolute = path.is_absolute();
+
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {}
+            std::path::Component::Normal(segment) => segments.push(segment.to_os_string()),
+            std::path::Component::ParentDir => {
+                segments.pop()?;
+            }
+        }
+    }
+
+    let mut normalized = if is_absolute {
+        PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+    } else {
+        PathBuf::new()
+    };
+
+    for segment in segments {
+        normalized.push(segment);
+    }
+
+    Some(normalized)
 }
 
 /// Boundary: gather canonicalized paths for policy evaluation.
@@ -188,8 +254,8 @@ fn boundary_gather_path_info(
     root: &Path,
 ) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
     let joined = root.join(path);
-    let cp = canonicalize_for_policy(&joined);
     let cr = std::fs::canonicalize(root).ok();
+    let cp = canonicalize_for_policy(&joined, root, cr.as_deref());
     (cp, cr, Some(root.to_path_buf()))
 }
 
@@ -370,6 +436,7 @@ impl HostSession for NoOpHostSession {
 mod tests {
     use super::*;
     use crate::dispatch::access::{AccessDeniedCode, NoOpAuditSink};
+    use tempfile::TempDir;
 
     #[test]
     fn test_in_memory_audit_sink() {
@@ -419,5 +486,29 @@ mod tests {
         let decision = ctx.check();
         assert!(!decision.is_allowed());
         assert_eq!(decision.denial_code(), Some(AccessDeniedCode::ReadOnlyMode));
+    }
+
+    #[test]
+    fn test_is_path_allowed_denies_non_canonicalizable_parent_traversal() {
+        let root = TempDir::new().expect("temp root");
+        let config = McpServerConfig::new(root.path().to_path_buf());
+
+        let bypass = Path::new("subdir/../../escape/new.txt");
+        assert!(
+            !config.is_path_allowed(bypass),
+            "parent traversal for non-existent path must be denied"
+        );
+    }
+
+    #[test]
+    fn test_is_path_allowed_allows_non_existent_path_under_root_without_traversal() {
+        let root = TempDir::new().expect("temp root");
+        let config = McpServerConfig::new(root.path().to_path_buf());
+
+        let safe = Path::new("nested/new-file.txt");
+        assert!(
+            config.is_path_allowed(safe),
+            "non-existent path under root should remain allowed"
+        );
     }
 }

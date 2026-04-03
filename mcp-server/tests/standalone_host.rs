@@ -66,13 +66,7 @@ fn temp_root() -> PathBuf {
 /// assert_no_real_git_state function to keep mcp-server tests
 /// independent of the test-helpers crate.
 fn assert_no_real_git_state(path: &std::path::Path) {
-    let path = match std::fs::canonicalize(path) {
-        Ok(p) => p,
-        Err(_) => return, // Cannot canonicalize - skip check
-    };
-
-    // Check the path and all its ancestors for .git
-    let mut current: &std::path::Path = &path;
+    let mut current = path.to_path_buf();
     loop {
         if current.join(".git").exists() {
             panic!(
@@ -81,10 +75,26 @@ fn assert_no_real_git_state(path: &std::path::Path) {
                 path.display()
             );
         }
-        match current.parent() {
-            Some(parent) => current = parent,
-            None => break,
+
+        let next = std::fs::canonicalize(&current)
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .or_else(|| current.parent().map(|p| p.to_path_buf()));
+
+        match next {
+            Some(parent) if parent != current => current = parent,
+            _ => break,
         }
+    }
+}
+
+#[test]
+#[should_panic(expected = "POLICY VIOLATION: test is using real git state")]
+fn assert_no_real_git_state_panics_for_nonexistent_path_inside_repo() {
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent();
+    if let Some(root) = project_root {
+        let missing_path = root.join("definitely-does-not-exist").join("nested");
+        assert_no_real_git_state(&missing_path);
     }
 }
 

@@ -52,7 +52,26 @@ pub enum TransportError {
     /// Socket was shut down gracefully.
     #[error("Socket shutdown requested")]
     Shutdown,
+    /// Header bytes exceeded the configured transport header limit.
+    #[error("Header too large: {actual} bytes (max {max})")]
+    HeaderTooLarge {
+        /// Observed header size in bytes.
+        actual: usize,
+        /// Maximum allowed header size in bytes.
+        max: usize,
+    },
+    /// Declared `Content-Length` exceeded the configured transport body limit.
+    #[error("Body too large: {actual} bytes (max {max})")]
+    BodyTooLarge {
+        /// Declared content length in bytes.
+        actual: usize,
+        /// Maximum allowed body size in bytes.
+        max: usize,
+    },
 }
+
+const MAX_HEADER_BYTES: usize = 16 * 1024;
+const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 /// Trait for MCP transport streams.
 ///
@@ -233,6 +252,13 @@ pub fn read_framed_jsonrpc<R: BufRead>(
 /// Uses `read_exact` semantics to ensure all `content_length` bytes are read.
 /// If fewer bytes are available, returns `ConnectionClosed`.
 fn read_body<R: Read>(reader: &mut R, content_length: usize) -> Result<Vec<u8>, TransportError> {
+    if content_length > MAX_BODY_BYTES {
+        return Err(TransportError::BodyTooLarge {
+            actual: content_length,
+            max: MAX_BODY_BYTES,
+        });
+    }
+
     let mut body = vec![0u8; content_length];
     reader.read_exact(&mut body).map_err(|e| {
         if e.kind() == std::io::ErrorKind::UnexpectedEof {
@@ -246,36 +272,12 @@ fn read_body<R: Read>(reader: &mut R, content_length: usize) -> Result<Vec<u8>, 
 
 /// Read and parse Content-Length header from a buffered reader.
 fn read_content_length_header<R: BufRead>(reader: &mut R) -> Result<Option<usize>, TransportError> {
-    let lines = read_lines_until_blank(reader)?;
-    parse_content_length_from_lines(&lines)
-}
-
-/// Read lines until blank line is encountered.
-fn read_lines_until_blank<R: BufRead>(reader: &mut R) -> Result<Vec<String>, TransportError> {
-    let mut lines = Vec::new();
-    for line in reader.lines() {
-        let line = line.map_err(|_| TransportError::ConnectionClosed)?;
-        if line.trim().is_empty() {
-            break;
-        }
-        lines.push(line);
+    let header_bytes = read_headers_until_blank_line_from_reader(reader)?;
+    if header_bytes.is_empty() {
+        return Ok(None);
     }
-    Ok(lines)
-}
 
-/// Parse Content-Length from lines, returning error if header is present but invalid.
-fn parse_content_length_from_lines(lines: &[String]) -> Result<Option<usize>, TransportError> {
-    let header = lines
-        .iter()
-        .find(|l| l.trim().starts_with("Content-Length:"));
-    match header {
-        Some(h) => parse_content_length_line(h.trim())
-            .map(Some)
-            .ok_or_else(|| {
-                TransportError::InvalidContentLength("Invalid Content-Length value".to_string())
-            }),
-        None => Ok(None),
-    }
+    parse_content_length_from_bytes(&header_bytes).map(Some)
 }
 
 /// Parse Content-Length value from a header line, if present.
@@ -283,6 +285,18 @@ fn parse_content_length_line(line: &str) -> Option<usize> {
     let trimmed = line.trim();
     let len_str = trimmed.strip_prefix("Content-Length:")?.trim();
     len_str.parse().ok()
+}
+
+fn enforce_content_length_limit(
+    content_length: Option<usize>,
+) -> Result<Option<usize>, TransportError> {
+    match content_length {
+        Some(length) if length > MAX_BODY_BYTES => Err(TransportError::BodyTooLarge {
+            actual: length,
+            max: MAX_BODY_BYTES,
+        }),
+        _ => Ok(content_length),
+    }
 }
 
 /// Write a JSON-RPC response to a writer with Content-Length framing.
@@ -332,6 +346,44 @@ fn read_one_byte(stream: &mut UnixStream) -> Result<Option<u8>, TransportError> 
     }
 }
 
+fn read_headers_until_blank_line_from_reader<R: Read>(
+    reader: &mut R,
+) -> Result<Vec<u8>, TransportError> {
+    let mut header = Vec::new();
+    let mut buf = [0u8; 1];
+
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => {
+                if header.is_empty() {
+                    return Ok(header);
+                }
+                return Err(TransportError::ConnectionClosed);
+            }
+            Ok(_) => {
+                header.push(buf[0]);
+                if header.len() > MAX_HEADER_BYTES {
+                    return Err(TransportError::HeaderTooLarge {
+                        actual: header.len(),
+                        max: MAX_HEADER_BYTES,
+                    });
+                }
+
+                if header.ends_with(b"\r\n\r\n") {
+                    return Ok(header);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                if header.is_empty() {
+                    return Ok(header);
+                }
+                return Err(TransportError::ConnectionClosed);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
 /// Read headers until blank line by reading byte-by-byte.
 ///
 /// This avoids BufReader which can have unexpected behavior with non-blocking
@@ -341,6 +393,12 @@ fn read_headers_until_blank_line(stream: &mut UnixStream) -> Result<Vec<u8>, Tra
     loop {
         let byte = read_one_byte(stream)?.ok_or(TransportError::ConnectionClosed)?;
         header.push(byte);
+        if header.len() > MAX_HEADER_BYTES {
+            return Err(TransportError::HeaderTooLarge {
+                actual: header.len(),
+                max: MAX_HEADER_BYTES,
+            });
+        }
         if header.ends_with(b"\r\n\r\n") {
             return Ok(header);
         }
@@ -352,7 +410,13 @@ fn parse_content_length_from_bytes(header_bytes: &[u8]) -> Result<usize, Transpo
     let headers = String::from_utf8_lossy(header_bytes);
     for line in headers.lines() {
         if let Some(len) = parse_content_length_line(line.trim()) {
-            return Ok(len);
+            return enforce_content_length_limit(Some(len)).and_then(|value| {
+                value.ok_or_else(|| {
+                    TransportError::InvalidContentLength(
+                        "Content-Length header not found".to_string(),
+                    )
+                })
+            });
         }
     }
     Err(TransportError::InvalidContentLength(
@@ -368,6 +432,13 @@ fn read_body_from_stream(
     stream: &mut UnixStream,
     content_length: usize,
 ) -> Result<Vec<u8>, TransportError> {
+    if content_length > MAX_BODY_BYTES {
+        return Err(TransportError::BodyTooLarge {
+            actual: content_length,
+            max: MAX_BODY_BYTES,
+        });
+    }
+
     let mut body = vec![0u8; content_length];
     stream.read_exact(&mut body).map_err(|e| {
         if e.kind() == std::io::ErrorKind::UnexpectedEof {
@@ -457,5 +528,61 @@ mod tests {
         assert!(path.to_string_lossy().contains("ralph-mcp"));
         assert!(path.to_string_lossy().contains("test-session"));
         assert!(path.to_string_lossy().ends_with(".sock"));
+    }
+
+    #[test]
+    fn test_read_framed_jsonrpc_rejects_oversized_content_length() {
+        let input = format!(
+            "Content-Length: {}\r\n\r\n",
+            MAX_BODY_BYTES.saturating_add(1)
+        );
+        let mut cursor = Cursor::new(input.into_bytes());
+
+        let result = read_framed_jsonrpc(&mut cursor);
+        assert!(matches!(
+            result,
+            Err(TransportError::BodyTooLarge {
+                actual: _,
+                max: MAX_BODY_BYTES
+            })
+        ));
+    }
+
+    #[test]
+    fn test_read_content_length_header_rejects_oversized_header() {
+        let long_header_value = "x".repeat(MAX_HEADER_BYTES.saturating_add(1));
+        let frame = format!("X-Long: {long_header_value}\r\nContent-Length: 2\r\n\r\n{{}}");
+        let mut cursor = Cursor::new(frame.into_bytes());
+
+        let result = read_content_length_header(&mut cursor);
+        assert!(matches!(
+            result,
+            Err(TransportError::HeaderTooLarge {
+                actual: _,
+                max: MAX_HEADER_BYTES
+            })
+        ));
+    }
+
+    #[test]
+    fn test_read_content_length_header_stops_reading_at_header_limit() {
+        let long_header_value = "x".repeat(MAX_HEADER_BYTES.saturating_add(8 * 1024));
+        let frame = format!("X-Long: {long_header_value}\r\nContent-Length: 2\r\n\r\n{{}}");
+        let mut cursor = Cursor::new(frame.into_bytes());
+
+        let result = read_content_length_header(&mut cursor);
+        assert!(matches!(
+            result,
+            Err(TransportError::HeaderTooLarge {
+                actual: _,
+                max: MAX_HEADER_BYTES
+            })
+        ));
+
+        assert!(
+            cursor.position() <= (MAX_HEADER_BYTES.saturating_add(1)) as u64,
+            "reader consumed too many bytes before limit check: {}",
+            cursor.position()
+        );
     }
 }
