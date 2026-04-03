@@ -41,6 +41,7 @@ pub(crate) mod continuation_budget;
 pub(crate) mod development_xml;
 pub(crate) mod fallback;
 pub(crate) mod iteration_counter;
+pub(crate) mod mcp_end_to_end;
 pub(crate) mod no_premature_exit;
 pub(crate) mod oversize_prompt;
 pub(crate) mod plan;

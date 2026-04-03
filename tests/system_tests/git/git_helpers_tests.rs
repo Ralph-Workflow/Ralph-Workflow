@@ -19,6 +19,7 @@ use ralph_workflow::workspace::WorkspaceFs;
 use serial_test::serial;
 use std::fs::{self, File};
 use std::process::Command;
+use test_helpers::git_safety::assert_in_isolated_temp_repo;
 
 fn program_exists(name: &str) -> bool {
     Command::new(name).arg("--version").output().is_ok()
@@ -58,6 +59,8 @@ fn assert_wrapper_blocks(output: &std::process::Output, context: &str) {
 }
 
 fn init_repo_with_commit(path: &std::path::Path) -> git2::Repository {
+    // Safety assertion: verify path is in an isolated temp directory, not inside project repo
+    assert_in_isolated_temp_repo(path);
     let repo = git2::Repository::init(path).unwrap();
     let sig = git2::Signature::now("test", "test@test.com").unwrap();
     fs::write(path.join("tracked.txt"), "tracked\n").unwrap();

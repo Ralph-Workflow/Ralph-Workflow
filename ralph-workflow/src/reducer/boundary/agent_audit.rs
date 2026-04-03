@@ -158,11 +158,21 @@ fn start_mcp_bridge_for_session(
 }
 
 fn drain_and_merge_mcp_audit_records(
-    _ctx: &mut PhaseContext<'_>,
-    _session_bridge: &mut SessionBridge,
+    ctx: &mut PhaseContext<'_>,
+    session_bridge: &mut SessionBridge,
 ) {
-    // The new SessionBridge doesn't have drain_audit_records() - MCP audit records
-    // are now handled through the logging/event system instead of a dedicated channel.
+    // Drain MCP audit records accumulated during agent execution and merge into
+    // the phase context's audit trail. This must be called after the MCP server
+    // has finished serving (agent execution complete, bridge shut down) to ensure
+    // all records have been captured.
+    let new_mcp_records = session_bridge.drain_audit_records();
+    if new_mcp_records.is_empty() {
+        return;
+    }
+
+    // Merge into ctx.audit_trail: chain existing records with new MCP records
+    let existing_records = ctx.audit_trail.records().iter().cloned();
+    ctx.audit_trail = AuditTrail::from_records(existing_records.chain(new_mcp_records));
 }
 
 fn execution_result_status(event: &Result<PipelineEvent>) -> &'static str {

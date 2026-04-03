@@ -307,6 +307,7 @@ pub fn execute_dylint(
     toolchain: &ToolchainInfo,
     path_env: &str,
     verbose: bool,
+    package: &str,
 ) -> std::io::Result<ExitCode> {
     let mut cmd = Command::new(wrapper_path);
     cmd.arg("dylint");
@@ -318,7 +319,7 @@ pub fn execute_dylint(
     cmd.arg("--lib")
         .arg("ralph_lints")
         .arg("-p")
-        .arg("ralph-workflow")
+        .arg(package)
         .arg("--")
         .arg("--lib");
 

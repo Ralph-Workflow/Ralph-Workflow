@@ -296,6 +296,10 @@ fn ralph_generate_commit_generates_and_applies_commit() {
             .with_diff("diff --git a/src/new_file.rs b/src/new_file.rs\n+pub fn new_file() {}\n")
             .with_file(
                 ".agent/tmp/commit_message.xml",
+                // NOTE: This is a mock commit-message string in MockAppEffectHandler,
+                // not a real git commit. The string "feat: add new file flow" is the
+                // XML-encoded subject line that the CLI parser extracts for the commit
+                // template, not an actual commit SHA or git object reference.
                 "<ralph-commit><ralph-subject>feat: add new file flow</ralph-subject></ralph-commit>",
             )
             .with_staged_changes(true);

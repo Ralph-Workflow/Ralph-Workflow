@@ -578,6 +578,9 @@ pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
     }
 
     let dir = TempDir::new().expect("Failed to create temp directory");
+    // Safety assertion: verify temp directory is isolated from project git repo
+    // This prevents accidental git operations on the project repository
+    git_safety::assert_in_isolated_temp_repo(dir.path());
     let old_dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
     std::env::set_current_dir(dir.path()).expect("Failed to change to temp directory");
     let _guard = DirGuard(old_dir);

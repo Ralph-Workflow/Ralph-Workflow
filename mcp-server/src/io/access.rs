@@ -297,10 +297,12 @@ impl<'a> EnforcementContext<'a> {
     fn evaluate_enforcement(&self) -> (AccessDecision, bool) {
         // Build a closure that performs the capability check lazily at step 4.
         // This ensures the host is only consulted after earlier checks have passed.
-        let capability_fn = self.required_capability.map::<Box<dyn Fn() -> AccessDecision>, _>(|cap| {
-            let session: &dyn HostSession = self.session;
-            Box::new(move || session.check_capability(cap))
-        });
+        let capability_fn = self
+            .required_capability
+            .map::<Box<dyn Fn() -> AccessDecision>, _>(|cap| {
+                let session: &dyn HostSession = self.session;
+                Box::new(move || session.check_capability(cap))
+            });
 
         let params = crate::dispatch::access::EnforcementParams {
             tool_name: self.tool_name,

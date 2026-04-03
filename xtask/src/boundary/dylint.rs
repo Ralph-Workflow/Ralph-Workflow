@@ -12,7 +12,12 @@ use crate::runtime::dylint;
 /// 2. Toolchain bootstrapping (installing rustup/nightly if needed)
 /// 3. Wrapper script creation
 /// 4. Delegation to runtime execution
-pub fn run_dylint(verbose: bool) -> ExitCode {
+///
+/// # Arguments
+///
+/// * `verbose` - Enable verbose output
+/// * `package` - The package to lint (e.g., "ralph-workflow", "mcp-server")
+pub fn run_dylint(verbose: bool, package: &str) -> ExitCode {
     let dylint_env = dylint::discover_env();
     let dylint_env = resolve_env_paths(dylint_env, verbose);
 
@@ -40,8 +45,15 @@ pub fn run_dylint(verbose: bool) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    let result = dylint::execute_dylint(&wrapper_path, &dylint_env, &toolchain, &path_env, verbose)
-        .unwrap_or_else(|_| ExitCode::from(1));
+    let result = dylint::execute_dylint(
+        &wrapper_path,
+        &dylint_env,
+        &toolchain,
+        &path_env,
+        verbose,
+        package,
+    )
+    .unwrap_or_else(|_| ExitCode::from(1));
 
     // Clean up wrapper directory
     if let Some(parent) = wrapper_path.parent() {

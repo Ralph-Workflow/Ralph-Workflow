@@ -38,8 +38,9 @@
 //! - SessionBridge full protocol flow over Unix socket
 
 use mcp_server::dispatch::access::{
-    AccessDecision, AccessDeniedCode, AccessMode, McpCapability, ToolFilter,
+    AccessDecision, AccessDeniedCode, AccessMode, AuditSink, McpCapability, ToolFilter,
 };
+use mcp_server::dispatch::audit::AuditRecord;
 use mcp_server::dispatch::host::DirEntry;
 use mcp_server::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
 use mcp_server::io::access::McpServerConfig;
@@ -84,6 +85,37 @@ fn assert_no_real_git_state(path: &std::path::Path) {
             Some(parent) => current = parent,
             None => break,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test Audit Sink
+// ---------------------------------------------------------------------------
+
+/// A test audit sink that records all emitted audit records for verification.
+///
+/// This allows tests to assert on the number and content of audit records
+/// generated during tool dispatch.
+struct TestAuditSink {
+    records: RwLock<Vec<AuditRecord>>,
+}
+
+impl TestAuditSink {
+    fn new() -> Self {
+        Self {
+            records: RwLock::new(Vec::new()),
+        }
+    }
+
+    /// Returns a copy of all stored audit records.
+    fn records(&self) -> Vec<AuditRecord> {
+        self.records.read().unwrap().clone()
+    }
+}
+
+impl AuditSink for TestAuditSink {
+    fn emit(&self, record: AuditRecord) {
+        self.records.write().unwrap().push(record);
     }
 }
 
@@ -418,7 +450,16 @@ fn test_read_only_mode_denies_write_tool() {
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
 
-    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
+    // Create audit sink to verify denial generates audit record
+    let audit_sink = Arc::new(TestAuditSink::new());
+
+    let server = McpServer::new(
+        session_arc,
+        config,
+        workspace_arc,
+        registry,
+        Some(audit_sink.clone()),
+    );
 
     // Initialize
     let init = JsonRpcRequest {
@@ -454,6 +495,30 @@ fn test_read_only_mode_denies_write_tool() {
         "Error should mention ReadOnly mode restriction, got: {}",
         error.message
     );
+
+    // Assert audit record was created for the ReadOnly denial
+    let records = audit_sink.records();
+    assert_eq!(
+        records.len(),
+        1,
+        "ReadOnly denial should generate exactly one audit record"
+    );
+    let record = &records[0];
+    assert_eq!(
+        record.tool_name, "ralph_workspace_write_file",
+        "Audit record should contain the denied tool name"
+    );
+    // Verify the denial is due to ReadOnlyMode (not CapabilityDenied)
+    match &record.decision {
+        AccessDecision::Deny { code, .. } => {
+            assert!(
+                matches!(code, AccessDeniedCode::ReadOnlyMode),
+                "Audit record should indicate ReadOnlyMode denial, got: {:?}",
+                code
+            );
+        }
+        other => panic!("Expected denial, got: {:?}", other),
+    }
 }
 
 /// Test that Allowlist filter blocks tools not in the list.
@@ -473,7 +538,16 @@ fn test_allowlist_blocks_unlisted_tool() {
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
     let registry = ToolRegistry::new(vec![]);
 
-    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
+    // Create audit sink to verify denial generates audit record
+    let audit_sink = Arc::new(TestAuditSink::new());
+
+    let server = McpServer::new(
+        session_arc,
+        config,
+        workspace_arc,
+        registry,
+        Some(audit_sink.clone()),
+    );
 
     // Initialize
     let init = JsonRpcRequest {
@@ -503,6 +577,30 @@ fn test_allowlist_blocks_unlisted_tool() {
         response.error.is_some() || response.result.is_none(),
         "Allowlist should block tools not in the list"
     );
+
+    // Assert audit record was created for the ToolNotAllowed denial
+    let records = audit_sink.records();
+    assert_eq!(
+        records.len(),
+        1,
+        "Allowlist denial should generate exactly one audit record"
+    );
+    let record = &records[0];
+    assert_eq!(
+        record.tool_name, "git_status",
+        "Audit record should contain the denied tool name"
+    );
+    // Verify the denial is due to ToolNotAllowed (not CapabilityDenied)
+    match &record.decision {
+        AccessDecision::Deny { code, .. } => {
+            assert!(
+                matches!(code, AccessDeniedCode::ToolNotAllowed),
+                "Audit record should indicate ToolNotAllowed denial, got: {:?}",
+                code
+            );
+        }
+        other => panic!("Expected denial, got: {:?}", other),
+    }
 }
 
 /// Test that Blocklist filter blocks tools in the list.

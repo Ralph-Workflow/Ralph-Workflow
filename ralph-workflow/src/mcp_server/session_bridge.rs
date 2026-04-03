@@ -83,8 +83,9 @@ impl SessionBridge {
         // Create the audit sink adapter for MCP audit records
         let audit_adapter = Arc::new(RalphAuditSinkAdapter::new());
 
-        // Create config with workspace root
+        // Create config with workspace root and session ID for audit correlation
         let config = McpServerConfig::new(workspace.root().to_path_buf())
+            .with_session_id(session_arc.session_id.as_str().to_string())
             .with_access_mode(::mcp_server::dispatch::access::AccessMode::ReadWrite);
 
         // Create the inner session bridge (audit sink passed at start() time)

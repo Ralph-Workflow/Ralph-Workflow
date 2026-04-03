@@ -212,14 +212,22 @@ fn main() -> ExitCode {
         Some("dylint") => {
             // Handle help flag
             if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-                eprintln!("Usage: cargo xtask dylint [--verbose]");
+                eprintln!("Usage: cargo xtask dylint [--verbose] [--package <pkg>]");
                 eprintln!("  --verbose, -v    Show detailed dylint output");
+                eprintln!("  --package <pkg>  Package to lint (default: ralph-workflow)");
                 return ExitCode::SUCCESS;
             }
             // Run custom dylint lints - delegates to boundary module
             let verbose =
                 args.contains(&"--verbose".to_string()) || args.contains(&"-v".to_string());
-            boundary::dylint::run_dylint(verbose)
+            // Parse --package argument
+            let package = args
+                .iter()
+                .skip_while(|s| *s != "--package")
+                .nth(1)
+                .map(|s| s.as_str())
+                .unwrap_or("ralph-workflow");
+            boundary::dylint::run_dylint(verbose, package)
         }
         Some("lsp-forbidden-allow-expect") => {
             if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {

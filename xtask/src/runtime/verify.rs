@@ -1291,14 +1291,28 @@ pub const FRONTEND_CHECKS: &[CommandSpec] = &[
 ///
 /// Runs in the default `cargo xtask verify` backend lane so every verify
 /// invocation enforces the FP and boundary lints, even without `--gui`.
+///
+/// Lints both ralph-workflow and mcp-server packages to ensure both crates
+/// meet the linting standards.
 pub const DYLINT_CHECKS: &[CommandSpec] = &[CommandSpec {
-    name: "dylint",
-    program: "make",
-    args: &["dylint"],
+    name: "dylint-ralph-workflow",
+    program: "cargo",
+    args: &[
+        "dylint",
+        "-q",
+        "--all",
+        "-p",
+        "ralph-workflow",
+        "-p",
+        "mcp-server",
+        "--",
+        "--lib",
+        "--quiet",
+    ],
     success_exit_codes: &[0],
     extra_env: &[
-        ("DYLINT_DRIVER_PATH", "target/dylint-driver"),
         ("CARGO_TARGET_DIR", "target/release-parallel-verify"),
+        ("RUSTFLAGS", "--cap-lints=deny -D warnings"),
     ],
 }];
 
@@ -1326,12 +1340,24 @@ pub const RELEASE_CHECKS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "dylint",
-        program: "make",
-        args: &["dylint"],
+        program: "cargo",
+        args: &[
+            "dylint",
+            "-q",
+            "--all",
+            "-p",
+            "ralph-workflow",
+            "-p",
+            "mcp-server",
+            "--",
+            "--lib",
+            "--quiet",
+        ],
         success_exit_codes: &[0],
         extra_env: &[
             ("DYLINT_DRIVER_PATH", "target/dylint-driver"),
             ("CARGO_TARGET_DIR", "target/release-parallel-verify"),
+            ("RUSTFLAGS", "--cap-lints=deny -D warnings"),
         ],
     },
 ];

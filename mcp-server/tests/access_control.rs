@@ -329,6 +329,16 @@ fn ralph_write_file_blocked_in_readonly() {
         error.message.contains("ReadOnly") || error.message.contains("read only"),
         "Error should mention ReadOnly mode restriction"
     );
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ReadOnlyMode"),
+        "Error data should contain ReadOnlyMode code"
+    );
 }
 
 #[test]
@@ -361,6 +371,18 @@ fn ralph_exec_command_blocked_in_readonly() {
     assert!(
         response.error.is_some(),
         "ralph_exec_command should be blocked in ReadOnly mode"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ReadOnlyMode"),
+        "Error data should contain ReadOnlyMode code"
     );
 }
 
@@ -514,6 +536,16 @@ fn ralph_read_file_blocked_outside_root() {
         error.message.contains("outside") || error.message.contains("root"),
         "Error should indicate path is outside root directory"
     );
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("OutsideRootDir"),
+        "Error data should contain OutsideRootDir code"
+    );
 }
 
 #[test]
@@ -552,6 +584,16 @@ fn ralph_read_file_blocked_by_capability() {
     assert!(
         error.message.contains("capability") || error.message.contains("denied"),
         "Error should indicate capability denial"
+    );
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("CapabilityDenied"),
+        "Error data should contain CapabilityDenied code"
     );
 }
 
@@ -594,6 +636,16 @@ fn readonly_and_allowlist_both_checked_independently() {
         error.message.contains("not allowed") || error.message.contains("ToolNotAllowed"),
         "Error should indicate tool is not allowed (allowlist check runs first)"
     );
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ToolNotAllowed"),
+        "Error data should contain ToolNotAllowed code (allowlist check runs before access mode)"
+    );
 }
 
 #[test]
@@ -626,6 +678,18 @@ fn ralph_git_commit_blocked_in_readonly() {
     assert!(
         response.error.is_some(),
         "ralph_git_commit should be blocked in ReadOnly mode"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ReadOnlyMode"),
+        "Error data should contain ReadOnlyMode code"
     );
 }
 
@@ -745,6 +809,16 @@ fn empty_allowlist_rejects_all_tools() {
         "Error should indicate tool is not allowed, got: {}",
         error.message
     );
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ToolNotAllowed"),
+        "Error data should contain ToolNotAllowed code"
+    );
 }
 
 #[test]
@@ -781,4 +855,115 @@ fn empty_blocklist_allows_all_tools() {
         "Empty blocklist should allow all tools (ralph_workspace_read_file should succeed)"
     );
     assert!(response.error.is_none(), "Should have no error");
+}
+
+#[test]
+fn readonly_mode_blocks_write_tool_even_if_in_allowlist() {
+    // ReadOnly mode and tool filter are independent checks. If a mutating tool IS in the
+    // allowlist, ReadOnly mode should still block it with ReadOnlyMode denial (not ToolNotAllowed).
+    // This verifies that both access_mode and tool_filter checks are truly independent.
+    let counter = Arc::new(AtomicU32::new(0));
+    let counter_ref = Arc::clone(&counter);
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_write_tool(Some(&counter_ref));
+
+    // Allowlist contains the write tool, but ReadOnly mode should still block it.
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly)
+        .with_tool_filter(ToolFilter::Allowlist(vec![
+            "ralph_workspace_write_file".to_string()
+        ]));
+
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_workspace_write_file",
+        serde_json::json!({ "path": "test.txt", "content": "hello" }),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "Handler must NOT be called when access is denied"
+    );
+    // Should be blocked by ReadOnly mode, not by allowlist (allowlist allows it).
+    assert!(
+        response.error.is_some(),
+        "Should be blocked by ReadOnly mode"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    // The error message should indicate ReadOnly mode, not tool not allowed
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error should indicate ReadOnly mode restriction, got: {}",
+        error.message
+    );
+    // Assert specific AccessDeniedCode in error data - ReadOnlyMode check runs after tool filter
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ReadOnlyMode"),
+        "Error data should contain ReadOnlyMode code (access mode check runs after tool filter)"
+    );
+}
+
+#[test]
+fn root_dir_blocks_escape_via_parent_path() {
+    // Path escaping via "../" should be blocked with OutsideRootDir denial.
+    // For example, if root_dir is /tmp/project, a request for
+    // "/tmp/../etc/passwd" should be rejected.
+    let counter = Arc::new(AtomicU32::new(0));
+    let counter_ref = Arc::clone(&counter);
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_read_tool(Some(&counter_ref));
+
+    // Root is /tmp, but path tries to escape via parent reference
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadWrite);
+
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+    // This path resolves to /etc/passwd via ../ escape
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_workspace_read_file",
+        serde_json::json!({ "path": "../etc/passwd" }),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "Handler must NOT be called when access is denied"
+    );
+    assert!(
+        response.error.is_some(),
+        "Path escape via ../ should be blocked"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert!(
+        error.message.contains("outside") || error.message.contains("root"),
+        "Error should indicate path is outside root directory, got: {}",
+        error.message
+    );
+    // Assert specific AccessDeniedCode in error data
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("OutsideRootDir"),
+        "Error data should contain OutsideRootDir code"
+    );
 }

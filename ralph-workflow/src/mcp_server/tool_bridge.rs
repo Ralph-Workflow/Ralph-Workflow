@@ -138,6 +138,12 @@ impl WorkspaceAdapter for RalphWorkspaceAdapter {
 ///
 /// ### Mutating
 /// No — this operation only reads data.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads data and does not modify any state.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_read_file_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -187,6 +193,12 @@ fn make_read_file_tool(
 ///
 /// ### Mutating
 /// Yes — creates or overwrites the target file.
+///
+/// ### Access Mode
+/// ReadOnly-safe: NO — this operation creates or overwrites files, which is a mutation.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_write_file_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -238,6 +250,12 @@ fn make_write_file_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads directory metadata.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads directory metadata.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_list_directory_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -286,6 +304,12 @@ fn make_list_directory_tool(
 ///
 /// ### Mutating
 /// No — this operation only searches for files.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only searches for files without modifying state.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_search_files_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -330,6 +354,12 @@ fn make_search_files_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads git state.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads git state without modifications.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_git_status_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -372,6 +402,12 @@ fn make_git_status_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads git state.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads git state without modifications.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_git_diff_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -417,6 +453,12 @@ fn make_git_diff_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads git history.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads git history without modifications.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_git_log_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -462,6 +504,12 @@ fn make_git_log_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads git data.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads git data without modifications.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_git_show_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -511,6 +559,12 @@ fn make_git_show_tool(
 /// ### Mutating
 /// Depends on the command being executed — the tool itself is considered mutating
 /// because arbitrary command execution can have side effects.
+///
+/// ### Access Mode
+/// ReadOnly-safe: NO — command execution can have arbitrary side effects depending on the command.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_exec_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -566,6 +620,12 @@ fn make_exec_tool(
 ///
 /// ### Mutating
 /// Yes — submits an artifact to the workflow for processing.
+///
+/// ### Access Mode
+/// ReadOnly-safe: NO — artifact submission modifies workflow state.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_submit_artifact_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -614,6 +674,12 @@ fn make_submit_artifact_tool(
 ///
 /// ### Mutating
 /// No — this operation only reports progress to the workflow.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — progress reporting does not modify workflow state.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_report_progress_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -660,6 +726,12 @@ fn make_report_progress_tool(
 ///
 /// ### Mutating
 /// Yes — signals the workflow to transition to a completed state.
+///
+/// ### Access Mode
+/// ReadOnly-safe: NO — signals workflow state transition.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_declare_complete_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -706,6 +778,12 @@ fn make_declare_complete_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads environment data.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads environment data without modifications.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_read_env_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -752,6 +830,12 @@ fn make_read_env_tool(
 ///
 /// ### Mutating
 /// No — this operation only reads directory metadata.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — this operation only reads directory metadata without modifications.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_list_directory_recursive_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -801,6 +885,12 @@ fn make_list_directory_recursive_tool(
 ///
 /// ### Mutating
 /// No — this operation only coordinates workflow state.
+///
+/// ### Access Mode
+/// ReadOnly-safe: YES — coordination actions do not directly modify workspace files.
+///
+/// ### Versioning
+/// Stable since protocol version `2024-11-05`. No breaking changes planned.
 fn make_coordinate_tool(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
