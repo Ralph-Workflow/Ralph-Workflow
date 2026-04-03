@@ -306,11 +306,10 @@ pub fn run_pipeline_with_handler_boundary(
         template_context: _,
     } = params;
 
-    let handler = &mut crate::app::runtime_factory::create_effect_handler();
-
     let early_repo_root = {
+        let mut discover_handler = crate::app::runtime_factory::create_effect_handler();
         if let Some(dir) = args.working_dir_override.as_deref() {
-            match handler.execute(AppEffect::SetCurrentDir {
+            match discover_handler.execute(AppEffect::SetCurrentDir {
                 path: dir.to_path_buf(),
             }) {
                 AppEffectResult::Ok => {}
@@ -319,18 +318,23 @@ pub fn run_pipeline_with_handler_boundary(
             }
         }
 
-        match handler.execute(AppEffect::GitRequireRepo) {
+        match discover_handler.execute(AppEffect::GitRequireRepo) {
             AppEffectResult::Ok => {}
             AppEffectResult::Error(e) => anyhow::bail!("Not in a git repository: {e}"),
             other => anyhow::bail!("unexpected result from GitRequireRepo: {other:?}"),
         }
 
-        match handler.execute(AppEffect::GitGetRepoRoot) {
+        match discover_handler.execute(AppEffect::GitGetRepoRoot) {
             AppEffectResult::Path(p) => p,
             AppEffectResult::Error(e) => anyhow::bail!("Failed to get repo root: {e}"),
             other => anyhow::bail!("unexpected result from GitGetRepoRoot: {other:?}"),
         }
     };
+
+    let handler =
+        &mut crate::app::runtime_factory::create_effect_handler_with_workspace(
+            early_repo_root.clone(),
+        );
 
     let workspace: Arc<dyn Workspace> =
         Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root.clone()));
