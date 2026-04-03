@@ -108,15 +108,19 @@ impl SessionBridge {
     ///
     /// Note: This returns all accumulated records including those since the last
     /// `drain_audit_records()` call.
-    pub fn audit_trail(&self) -> AuditTrail {
+    pub fn audit_trail(&mut self) -> AuditTrail {
         let new_records = self.audit_adapter.drain_records();
-        AuditTrail::from_records(
-            self.cached_audit
-                .records()
-                .iter()
-                .cloned()
-                .chain(new_records),
-        )
+        if !new_records.is_empty() {
+            self.cached_audit = AuditTrail::from_records(
+                self.cached_audit
+                    .records()
+                    .iter()
+                    .cloned()
+                    .chain(new_records.iter().cloned()),
+            );
+        }
+
+        self.cached_audit.clone()
     }
 
     /// Drain all audit records accumulated since the last drain.
@@ -187,7 +191,7 @@ impl Clone for SessionBridge {
             session: Arc::clone(&self.session),
             inner: self.inner.clone(),
             audit_adapter: Arc::clone(&self.audit_adapter),
-            cached_audit: AuditTrail::new(),
+            cached_audit: self.cached_audit.clone(),
         }
     }
 }
@@ -267,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_audit_trail_access() {
-        let bridge = SessionBridge::new(unique_session(), test_workspace());
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
         let trail = bridge.audit_trail();
         assert!(trail.is_empty());
     }
@@ -300,6 +304,55 @@ mod tests {
         assert!(
             second_drain.is_empty(),
             "second drain should only return new records"
+        );
+    }
+
+    #[test]
+    fn test_audit_trail_repeated_calls_keep_records() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+
+        bridge.audit_adapter.emit(
+            McpAuditRecord::new(
+                "test-session".to_string(),
+                "ralph_read_file".to_string(),
+                AccessDecision::Allow,
+            )
+            .with_capability(McpCapability::WorkspaceRead),
+        );
+
+        let first = bridge.audit_trail();
+        assert_eq!(first.len(), 1);
+
+        let second = bridge.audit_trail();
+        assert_eq!(
+            second.len(),
+            1,
+            "repeated audit_trail calls should not lose previously drained records"
+        );
+    }
+
+    #[test]
+    fn test_clone_preserves_cached_audit_snapshot() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+
+        bridge.audit_adapter.emit(
+            McpAuditRecord::new(
+                "test-session".to_string(),
+                "ralph_read_file".to_string(),
+                AccessDecision::Allow,
+            )
+            .with_capability(McpCapability::WorkspaceRead),
+        );
+
+        let initial = bridge.audit_trail();
+        assert_eq!(initial.len(), 1);
+
+        let mut cloned = bridge.clone();
+        let cloned_trail = cloned.audit_trail();
+        assert_eq!(
+            cloned_trail.len(),
+            1,
+            "clone should preserve cached audit records for repeated reads"
         );
     }
 }

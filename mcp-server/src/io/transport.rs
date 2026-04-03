@@ -354,7 +354,11 @@ fn read_headers_until_blank_line_from_reader<R: BufRead>(
 
     loop {
         line.clear();
-        let bytes = reader.read_until(b'\n', &mut line)?;
+        let read_limit = MAX_HEADER_BYTES
+            .saturating_sub(header.len())
+            .saturating_add(1);
+        let mut limited = reader.take(read_limit as u64);
+        let bytes = limited.read_until(b'\n', &mut line)?;
         if let Some(done) = advance_header_read(&mut header, &line, bytes)? {
             return done;
         }

@@ -353,7 +353,7 @@ impl<'a> EnforcementContext<'a> {
         };
         let result = evaluate_enforcement_pure(&params);
         match result {
-            EnforcementCheck::Allow => (AccessDecision::Allow, false),
+            EnforcementCheck::Allow => (AccessDecision::Allow, true),
             EnforcementCheck::Deny { code, reason } => {
                 (AccessDecision::Deny { code, reason }, true)
             }
@@ -457,6 +457,42 @@ mod tests {
         let decision = ctx.check();
         assert!(!decision.is_allowed());
         assert_eq!(decision.denial_code(), Some(AccessDeniedCode::ReadOnlyMode));
+    }
+
+    #[test]
+    fn test_enforcement_context_check_emits_audit_for_allow() {
+        let config = McpServerConfig::new(PathBuf::from("/workspace"));
+        let sink = InMemoryAuditSink::new(10);
+        let ctx = EnforcementContext::new(&config, "allowed_tool", &sink);
+
+        let decision = ctx.check();
+        assert_eq!(decision, AccessDecision::Allow);
+
+        let records = sink.records();
+        assert_eq!(records.len(), 1);
+        assert!(matches!(records[0].decision, AccessDecision::Allow));
+    }
+
+    #[test]
+    fn test_enforcement_context_check_emits_audit_for_deny_with_metadata_intact() {
+        let config = McpServerConfig::new(PathBuf::from("/workspace"))
+            .with_tool_filter(ToolFilter::Allowlist(vec!["allowed_tool".to_string()]));
+        let sink = InMemoryAuditSink::new(10);
+        let ctx = EnforcementContext::new(&config, "blocked_tool", &sink);
+
+        let decision = ctx.check();
+        assert!(!decision.is_allowed());
+
+        let records = sink.records();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].decision, decision);
+        match &records[0].decision {
+            AccessDecision::Deny { code, reason } => {
+                assert_eq!(*code, AccessDeniedCode::ToolNotAllowed);
+                assert!(!reason.is_empty());
+            }
+            AccessDecision::Allow => panic!("expected deny audit decision"),
+        }
     }
 
     #[test]

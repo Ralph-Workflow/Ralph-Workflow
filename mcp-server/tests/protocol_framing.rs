@@ -334,6 +334,24 @@ fn test_large_payload_framing() {
     let request = result.unwrap().unwrap();
     assert_eq!(request.method, "tools/call");
     assert_eq!(request.id, Some(serde_json::json!(1)));
+
+    let parsed_content = request
+        .params
+        .as_ref()
+        .and_then(|params| params.get("arguments"))
+        .and_then(|arguments| arguments.get("content"))
+        .and_then(serde_json::Value::as_str)
+        .expect("Expected params.arguments.content to be a string");
+
+    assert_eq!(
+        parsed_content.len(),
+        large_string.len(),
+        "Parsed payload content length must match original"
+    );
+    assert_eq!(
+        parsed_content, large_string,
+        "Parsed payload content must match original exactly"
+    );
 }
 
 /// Test that fragmented reads are handled correctly.

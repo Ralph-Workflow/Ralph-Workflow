@@ -121,22 +121,22 @@ impl WorkspaceAdapter for RalphWorkspaceAdapter {
 ///
 /// Reads the complete contents of a file from the workspace.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `WorkspaceRead` — Caller must have workspace read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `path` | `string` | Absolute or relative path to the file to read |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a single `text` block with the file contents.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `path` is missing or malformed
 /// - `ToolError::ExecutionError` if the file cannot be read (not found, permission denied, etc.)
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads data.
 ///
 /// ### Access Mode
@@ -174,24 +174,24 @@ fn make_read_file_tool(
 /// Writes content to a file in the workspace, creating it if it does not exist
 /// or overwriting it if it does.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `WorkspaceWriteAny` — Handler determines at runtime whether the target file
 /// is tracked (requires `WorkspaceWriteTracked`) or untracked (requires
 /// `WorkspaceWriteEphemeral`) and performs the appropriate capability check.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `path` | `string` | Absolute or relative path to the file to write |
 /// | `content` | `string` | Content to write to the file |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a single `text` block with `"ok"`.
 /// ### Errors
 /// - `ToolError::InvalidParams` if `path` or `content` is missing
 /// - `ToolError::ExecutionError` if the file cannot be written (permission denied, disk full, etc.)
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// Yes — creates or overwrites the target file.
 ///
 /// ### Access Mode
@@ -232,23 +232,23 @@ fn make_write_file_tool(
 ///
 /// Lists the contents of a directory, optionally recursing into subdirectories.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `WorkspaceRead` — Caller must have workspace read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `path` | `string` | Directory path to list |
 /// | `recursive` | `boolean` | Whether to list subdirectories recursively (default: `false`) |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing directory entries.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `path` is missing
 /// - `ToolError::ExecutionError` if the directory cannot be read
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads directory metadata.
 ///
 /// ### Access Mode
@@ -286,23 +286,23 @@ fn make_list_directory_tool(
 ///
 /// Searches for files matching a glob pattern within a directory tree.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `WorkspaceRead` — Caller must have workspace read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `pattern` | `string` | Glob pattern to match (e.g., `**/*.rs`) |
 /// | `path` | `string` | Directory path to search beneath |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing matching file paths.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `pattern` or `path` is missing
 /// - `ToolError::ExecutionError` if the search fails
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only searches for files.
 ///
 /// ### Access Mode
@@ -340,19 +340,19 @@ fn make_search_files_tool(
 ///
 /// Returns the git status of the workspace, showing modified, staged, and untracked files.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `GitStatusRead` — Caller must have git status read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// None.
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with git status output.
 ///
 /// ### Errors
 /// - `ToolError::ExecutionError` if git status fails (not a git repo, git not installed, etc.)
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads git state.
 ///
 /// ### Access Mode
@@ -386,21 +386,21 @@ fn make_git_status_tool(
 ///
 /// Returns the git diff of changes (unstaged, staged, or between commits).
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `GitStatusRead` — Caller must have git status read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `args` | `string[]` | Optional additional git diff arguments |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with diff output.
 ///
 /// ### Errors
 /// - `ToolError::ExecutionError` if git diff fails
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads git state.
 ///
 /// ### Access Mode
@@ -437,21 +437,21 @@ fn make_git_diff_tool(
 /// Returns the git commit log, showing recent commits with their hashes, authors,
 /// dates, and messages.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `GitStatusRead` — Caller must have git status read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `count` | `number` | Number of commits to show (default: 10) |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with commit log output.
 ///
 /// ### Errors
 /// - `ToolError::ExecutionError` if git log fails
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads git history.
 ///
 /// ### Access Mode
@@ -487,22 +487,22 @@ fn make_git_log_tool(
 ///
 /// Shows a git object (commit, tag, tree, blob) by reference.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `GitStatusRead` — Caller must have git status read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `ref` | `string` | Git object reference (commit hash, tag name, etc.) |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with the object contents.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `ref` is missing
 /// - `ToolError::ExecutionError` if the git object cannot be shown
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads git data.
 ///
 /// ### Access Mode
@@ -539,24 +539,24 @@ fn make_git_show_tool(
 ///
 /// Executes a shell command with resource limits (bounded execution).
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `ProcessExecBounded` — Caller must have bounded process execution capability.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `command` | `string` | Command to execute |
 /// | `args` | `string[]` | Optional command arguments |
 /// | `timeout_ms` | `number` | Timeout in milliseconds (default: 30000) |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with stdout/stderr output.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `command` is missing
 /// - `ToolError::ExecutionError` if the command fails, times out, or exceeds resource limits
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// Depends on the command being executed — the tool itself is considered mutating
 /// because arbitrary command execution can have side effects.
 ///
@@ -596,17 +596,17 @@ fn make_exec_tool(
 ///
 /// Submits a structured artifact to the workflow for processing.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `ArtifactSubmit` — Caller must have artifact submission capability.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `artifact_type` | `string` | Type of artifact (plan, development_result, issues, fix_result, commit_message) |
 /// | `content` | `string` | Artifact content as a JSON string |
 /// | `partial` | `boolean` | Optional. If true, accepts artifact even with validation errors (default: false) |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with a JSON object:
 /// - `accepted`: `true` if the artifact was accepted
 /// - `partial`: `true` if accepted in partial mode (has validation errors)
@@ -618,7 +618,7 @@ fn make_exec_tool(
 /// - `ToolError::ExecutionError` if submission fails (e.g., JSON parsing error)
 /// - `ToolError::CapabilityDenied` if session lacks `ArtifactSubmit` capability
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// Yes — submits an artifact to the workflow for processing.
 ///
 /// ### Access Mode
@@ -656,23 +656,23 @@ fn make_submit_artifact_tool(
 ///
 /// Reports progress status to the running workflow.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `RunReportProgress` — Caller must have progress reporting capability.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `status` | `string` | Status message describing current progress |
 /// | `note` | `string` | Optional additional notes or context |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block confirming report.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `status` is missing
 /// - `ToolError::ExecutionError` if reporting fails
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reports progress to the workflow.
 ///
 /// ### Access Mode
@@ -710,21 +710,21 @@ fn make_report_progress_tool(
 ///
 /// Declares that the agent has completed its task and provides a summary.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `ArtifactSubmit` — Caller must have artifact submission capability.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `summary` | `string` | Summary of what was accomplished |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block confirming completion.
 ///
 /// ### Errors
 /// - `ToolError::ExecutionError` if declaration fails
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// Yes — signals the workflow to transition to a completed state.
 ///
 /// ### Access Mode
@@ -760,15 +760,15 @@ fn make_declare_complete_tool(
 ///
 /// Reads an environment variable from the agent's environment.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `EnvRead` — Caller must have environment read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `name` | `string` | Environment variable name |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block with `name=value`.
 /// If the variable is not set, returns `name=[not found]` (not an error).
 ///
@@ -776,7 +776,7 @@ fn make_declare_complete_tool(
 /// - `ToolError::InvalidParams` if `name` is missing
 /// - `ToolError::CapabilityDenied` if session lacks `EnvRead` capability
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads environment data.
 ///
 /// ### Access Mode
@@ -813,22 +813,22 @@ fn make_read_env_tool(
 ///
 /// Lists the contents of a directory and all subdirectories recursively.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `WorkspaceRead` — Caller must have workspace read access.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `path` | `string` | Directory path to list recursively |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing all directory entries recursively.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `path` is missing
 /// - `ToolError::ExecutionError` if the directory cannot be read
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only reads directory metadata.
 ///
 /// ### Access Mode
@@ -866,24 +866,24 @@ fn make_list_directory_recursive_tool(
 /// Coordinates parallel worker activities such as claiming work units,
 /// reporting status, or acknowledging task distribution.
 ///
-/// ### Required Capability
+/// ### Capabilities
 /// `ArtifactSubmit` — Caller must have artifact submission capability.
 ///
-/// ### Parameters
+/// ### Request Shape
 /// | Name | Type | Description |
 /// |------|------|-------------|
 /// | `action` | `string` | Coordination action (e.g., "claim", "release", "status", "ack") |
 /// | `work_unit_id` | `string` | Optional identifier for the work unit being coordinated |
 /// | `payload` | `object` | Optional JSON payload for coordination data |
 ///
-/// ### Returns
+/// ### Response Shape
 /// `ToolResult` with `content` array containing a text block confirming coordination.
 ///
 /// ### Errors
 /// - `ToolError::InvalidParams` if `action` is missing
 /// - `ToolError::CapabilityDenied` if session lacks `ArtifactSubmit` capability
 ///
-/// ### Mutating
+/// ### Side Effects/Idempotency
 /// No — this operation only coordinates workflow state.
 ///
 /// ### Access Mode

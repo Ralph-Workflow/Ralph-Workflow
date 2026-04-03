@@ -704,15 +704,23 @@ fn test_tool_filter_fires_before_capability_check() {
         "Error should indicate ToolNotAllowed (tool filter fires before capability check), got: {}",
         error.message
     );
-    // Verify it does NOT say CapabilityDenied (which would indicate wrong ordering)
-    let denied_code = error.data.as_ref().and_then(|d| d.as_str());
-    if let Some(code) = denied_code {
-        assert_ne!(
-            code,
-            format!("{:?}", AccessDeniedCode::CapabilityDenied),
-            "Capability check must not fire before tool-filter check"
-        );
-    }
+    let denied_code = error
+        .data
+        .as_ref()
+        .and_then(|data| data.get("code"))
+        .and_then(serde_json::Value::as_str)
+        .expect("Expected error.data.code to be a string");
+
+    assert_eq!(
+        denied_code,
+        format!("{:?}", AccessDeniedCode::ToolNotAllowed),
+        "Tool filter denial must report ToolNotAllowed"
+    );
+    assert_ne!(
+        denied_code,
+        format!("{:?}", AccessDeniedCode::CapabilityDenied),
+        "Capability check must not fire before tool-filter check"
+    );
 }
 
 // ---------------------------------------------------------------------------
