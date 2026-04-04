@@ -2,6 +2,16 @@ use crate::state::SharedState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+fn read_checkpoint_file(path: &std::path::Path) -> Result<String, String> {
+    tauri::async_runtime::block_on(tokio::fs::read_to_string(path))
+        .map_err(|e| format!("Failed to read checkpoint: {e}"))
+}
+
+fn remove_checkpoint_file(path: &std::path::Path) -> Result<(), String> {
+    tauri::async_runtime::block_on(tokio::fs::remove_file(path))
+        .map_err(|e| format!("Failed to delete: {e}"))
+}
+
 /// Summary of a Ralph workflow session.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SessionSummary {
@@ -67,8 +77,7 @@ pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
         return Ok(Vec::new());
     }
 
-    let content = std::fs::read_to_string(&checkpoint_path)
-        .map_err(|e| format!("Failed to read checkpoint: {e}"))?;
+    let content = read_checkpoint_file(&checkpoint_path)?;
 
     let checkpoint: serde_json::Value =
         serde_json::from_str(&content).map_err(|e| format!("Failed to parse checkpoint: {e}"))?;
@@ -212,23 +221,25 @@ pub fn create_session(request: CreateSessionRequest) -> Result<SessionSummary, S
 
 /// Internal: search known repo paths for a session checkpoint matching `run_id`.
 fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<SessionSummary> {
-    for repo_path in repos {
+    repos.iter().find_map(|repo_path| {
         let checkpoint_path = repo_path.join(".agent").join("checkpoint.json");
         if !checkpoint_path.exists() {
-            continue;
+            return None;
         }
-        let Ok(content) = std::fs::read_to_string(&checkpoint_path) else {
-            continue;
+        let Ok(content) =
+            tauri::async_runtime::block_on(tokio::fs::read_to_string(&checkpoint_path))
+        else {
+            return None;
         };
         let Ok(checkpoint) = serde_json::from_str::<serde_json::Value>(&content) else {
-            continue;
+            return None;
         };
         let checkpoint_run_id = checkpoint
             .get("run_id")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if checkpoint_run_id != run_id {
-            continue;
+            return None;
         }
         let phase = checkpoint
             .get("phase")
@@ -281,7 +292,7 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
                 .unwrap_or(0),
         )
         .unwrap_or(0);
-        return Some(SessionSummary {
+        Some(SessionSummary {
             run_id: run_id.to_string(),
             status,
             repo_path: repo_path.to_string_lossy().into_owned(),
@@ -295,9 +306,19 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
             iteration_count,
             review_count,
             total_files_changed,
-        });
-    }
-    None
+        })
+    })
+}
+
+fn append_batch_error(
+    errors: std::collections::HashMap<String, String>,
+    run_id: String,
+    error: String,
+) -> std::collections::HashMap<String, String> {
+    errors
+        .into_iter()
+        .chain(std::iter::once((run_id, error)))
+        .collect()
 }
 
 /// Get details for a specific session by `run_id`.
@@ -370,29 +391,35 @@ pub fn batch_resume_sessions_impl(
         locked.known_repos.clone()
     };
 
-    let mut succeeded = 0u32;
-    let mut failed = 0u32;
-    let mut errors = std::collections::HashMap::new();
-
-    for run_id in run_ids {
-        let session = find_session_in_repos(&run_id, &known_repos);
-        match session {
-            Some(s) if s.status == "paused" || s.status == "failed" => {
-                succeeded += 1;
+    let (succeeded, failed, errors) = run_ids.into_iter().fold(
+        (
+            0u32,
+            0u32,
+            std::collections::HashMap::<String, String>::new(),
+        ),
+        |(succeeded, failed, errors), run_id| {
+            let session = find_session_in_repos(&run_id, &known_repos);
+            match session {
+                Some(s) if s.status == "paused" || s.status == "failed" => {
+                    (succeeded + 1, failed, errors)
+                }
+                Some(s) => (
+                    succeeded,
+                    failed + 1,
+                    append_batch_error(
+                        errors,
+                        run_id,
+                        format!("Session is in state '{}' and cannot be resumed", s.status),
+                    ),
+                ),
+                None => (
+                    succeeded,
+                    failed + 1,
+                    append_batch_error(errors, run_id, "Session not found".to_string()),
+                ),
             }
-            Some(s) => {
-                failed += 1;
-                errors.insert(
-                    run_id,
-                    format!("Session is in state '{}' and cannot be resumed", s.status),
-                );
-            }
-            None => {
-                failed += 1;
-                errors.insert(run_id, "Session not found".to_string());
-            }
-        }
-    }
+        },
+    );
 
     Ok(BatchOperationResult {
         succeeded,
@@ -428,29 +455,33 @@ pub fn batch_cancel_sessions_impl(
         locked.known_repos.clone()
     };
 
-    let mut succeeded = 0u32;
-    let mut failed = 0u32;
-    let mut errors = std::collections::HashMap::new();
-
-    for run_id in run_ids {
-        let session = find_session_in_repos(&run_id, &known_repos);
-        match session {
-            Some(s) if s.status == "running" => {
-                succeeded += 1;
+    let (succeeded, failed, errors) = run_ids.into_iter().fold(
+        (
+            0u32,
+            0u32,
+            std::collections::HashMap::<String, String>::new(),
+        ),
+        |(succeeded, failed, errors), run_id| {
+            let session = find_session_in_repos(&run_id, &known_repos);
+            match session {
+                Some(s) if s.status == "running" => (succeeded + 1, failed, errors),
+                Some(s) => (
+                    succeeded,
+                    failed + 1,
+                    append_batch_error(
+                        errors,
+                        run_id,
+                        format!("Session is in state '{}' and cannot be cancelled", s.status),
+                    ),
+                ),
+                None => (
+                    succeeded,
+                    failed + 1,
+                    append_batch_error(errors, run_id, "Session not found".to_string()),
+                ),
             }
-            Some(s) => {
-                failed += 1;
-                errors.insert(
-                    run_id,
-                    format!("Session is in state '{}' and cannot be cancelled", s.status),
-                );
-            }
-            None => {
-                failed += 1;
-                errors.insert(run_id, "Session not found".to_string());
-            }
-        }
-    }
+        },
+    );
 
     Ok(BatchOperationResult {
         succeeded,
@@ -486,42 +517,47 @@ pub fn batch_delete_sessions_impl(
         locked.known_repos.clone()
     };
 
-    let mut succeeded = 0u32;
-    let mut failed = 0u32;
-    let mut errors = std::collections::HashMap::new();
-
-    for run_id in &run_ids {
-        let session = find_session_in_repos(run_id, &known_repos);
-        match session {
-            Some(s) if s.status == "running" => {
-                failed += 1;
-                errors.insert(
-                    run_id.clone(),
-                    "Cannot delete a running session".to_string(),
-                );
-            }
-            Some(s) => {
-                let checkpoint_path = std::path::PathBuf::from(&s.repo_path)
-                    .join(".agent")
-                    .join("checkpoint.json");
-                if checkpoint_path.exists() {
-                    match std::fs::remove_file(&checkpoint_path) {
-                        Ok(()) => succeeded += 1,
-                        Err(e) => {
-                            failed += 1;
-                            errors.insert(run_id.clone(), format!("Failed to delete: {e}"));
+    let (succeeded, failed, errors) = run_ids.into_iter().fold(
+        (
+            0u32,
+            0u32,
+            std::collections::HashMap::<String, String>::new(),
+        ),
+        |(succeeded, failed, errors), run_id| {
+            let session = find_session_in_repos(&run_id, &known_repos);
+            match session {
+                Some(s) if s.status == "running" => (
+                    succeeded,
+                    failed + 1,
+                    append_batch_error(
+                        errors,
+                        run_id,
+                        "Cannot delete a running session".to_string(),
+                    ),
+                ),
+                Some(s) => {
+                    let checkpoint_path = std::path::PathBuf::from(&s.repo_path)
+                        .join(".agent")
+                        .join("checkpoint.json");
+                    if checkpoint_path.exists() {
+                        match remove_checkpoint_file(&checkpoint_path) {
+                            Ok(()) => (succeeded + 1, failed, errors),
+                            Err(e) => {
+                                (succeeded, failed + 1, append_batch_error(errors, run_id, e))
+                            }
                         }
+                    } else {
+                        (succeeded + 1, failed, errors)
                     }
-                } else {
-                    succeeded += 1;
                 }
+                None => (
+                    succeeded,
+                    failed + 1,
+                    append_batch_error(errors, run_id, "Session not found".to_string()),
+                ),
             }
-            None => {
-                failed += 1;
-                errors.insert(run_id.clone(), "Session not found".to_string());
-            }
-        }
-    }
+        },
+    );
 
     Ok(BatchOperationResult {
         succeeded,

@@ -3,7 +3,6 @@ use specta::Type;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const PREFERENCES_FILE: &str = "gui_preferences.json";
 
@@ -133,12 +132,7 @@ pub async fn get_gui_preferences(app: AppHandle) -> Result<GuiPreferences, Strin
         return Ok(GuiPreferences::default());
     }
 
-    let mut file = fs::File::open(&path)
-        .await
-        .map_err(|e| format!("Failed to open preferences file: {e}"))?;
-
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
+    let contents = fs::read_to_string(&path)
         .await
         .map_err(|e| format!("Failed to read preferences file: {e}"))?;
 
@@ -168,11 +162,7 @@ pub async fn save_gui_preferences(app: AppHandle, prefs: GuiPreferences) -> Resu
     let contents = serde_json::to_string_pretty(&prefs)
         .map_err(|e| format!("Failed to serialize preferences: {e}"))?;
 
-    let mut file = fs::File::create(&path)
-        .await
-        .map_err(|e| format!("Failed to create preferences file: {e}"))?;
-
-    file.write_all(contents.as_bytes())
+    fs::write(&path, contents)
         .await
         .map_err(|e| format!("Failed to write preferences file: {e}"))?;
 

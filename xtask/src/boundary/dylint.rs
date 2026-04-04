@@ -13,42 +13,96 @@ use crate::runtime::dylint;
 /// 3. Wrapper script creation
 /// 4. Delegation to runtime execution
 pub fn run_dylint(verbose: bool) -> ExitCode {
-    let dylint_env = dylint::discover_env();
-    let dylint_env = resolve_env_paths(dylint_env, verbose);
+    run_dylint_inner(verbose).unwrap_or_else(|code| code)
+}
 
-    if !validate_env(&dylint_env) {
-        return ExitCode::from(1);
-    }
+fn run_dylint_inner(verbose: bool) -> Result<ExitCode, ExitCode> {
+    let plan = prepare_dylint_plan(verbose)?;
+    let result = execute_dylint_plan(&plan, verbose);
+    cleanup_wrapper(&plan);
+    Ok(result)
+}
 
+fn prepare_dylint_env(verbose: bool) -> Result<dylint::DylintEnv, ExitCode> {
+    let env = resolve_env_paths(dylint::discover_env(), verbose);
+    ensure_env_ready(&env)?;
     if verbose {
-        print_env_debug(&dylint_env);
+        print_env_debug(&env);
     }
+    ensure_directories_ready(&env)?;
+    Ok(env)
+}
 
-    if !validate_directories(&dylint_env) {
-        return ExitCode::from(1);
+fn ensure_env_ready(env: &dylint::DylintEnv) -> Result<(), ExitCode> {
+    if validate_env(env) {
+        Ok(())
+    } else {
+        Err(failure_code())
     }
+}
 
-    let Some(toolchain) = bootstrap_toolchain(&dylint_env, verbose) else {
-        return ExitCode::from(1);
-    };
-
-    let Some((wrapper_path, path_env)) = setup_wrapper(&dylint_env, &toolchain) else {
-        return ExitCode::from(1);
-    };
-
-    if !ensure_cargo_dylint(&path_env, &toolchain, &dylint_env, verbose) {
-        return ExitCode::from(1);
+fn ensure_directories_ready(env: &dylint::DylintEnv) -> Result<(), ExitCode> {
+    if validate_directories(env) {
+        Ok(())
+    } else {
+        Err(failure_code())
     }
+}
 
-    let result = dylint::execute_dylint(&wrapper_path, &dylint_env, &toolchain, &path_env, verbose)
-        .unwrap_or_else(|_| ExitCode::from(1));
+fn ensure_cargo_dylint_available(
+    path_env: &str,
+    toolchain: &dylint::ToolchainInfo,
+    env: &dylint::DylintEnv,
+    verbose: bool,
+) -> Result<(), ExitCode> {
+    if ensure_cargo_dylint(path_env, toolchain, env, verbose) {
+        Ok(())
+    } else {
+        Err(failure_code())
+    }
+}
 
-    // Clean up wrapper directory
-    if let Some(parent) = wrapper_path.parent() {
+fn failure_code() -> ExitCode {
+    ExitCode::from(1)
+}
+
+struct DylintPlan {
+    dylint_env: dylint::DylintEnv,
+    toolchain: dylint::ToolchainInfo,
+    wrapper_path: PathBuf,
+    path_env: String,
+}
+
+fn prepare_dylint_plan(verbose: bool) -> Result<DylintPlan, ExitCode> {
+    let dylint_env = prepare_dylint_env(verbose)?;
+    let toolchain = bootstrap_toolchain(&dylint_env, verbose).ok_or(failure_code())?;
+    let (wrapper_path, path_env) = setup_wrapper(&dylint_env, &toolchain).ok_or(failure_code())?;
+
+    ensure_cargo_dylint_available(&path_env, &toolchain, &dylint_env, verbose)?;
+
+    Ok(DylintPlan {
+        dylint_env,
+        toolchain,
+        wrapper_path,
+        path_env,
+    })
+}
+
+fn execute_dylint_plan(plan: &DylintPlan, verbose: bool) -> ExitCode {
+    dylint::execute_dylint(
+        &plan.wrapper_path,
+        &plan.dylint_env,
+        &plan.toolchain,
+        &plan.path_env,
+        verbose,
+    )
+    .unwrap_or_else(|_| failure_code())
+}
+
+fn cleanup_wrapper(plan: &DylintPlan) {
+    if let Some(parent) = plan.wrapper_path.parent() {
         let _ = std::fs::remove_dir_all(parent);
     }
-
-    result
 }
 
 /// Resolve environment paths, converting relative to absolute.
@@ -60,28 +114,18 @@ fn resolve_env_paths(mut env: dylint::DylintEnv, verbose: bool) -> dylint::Dylin
 
 /// Validate that required environment variables are set.
 fn validate_env(env: &dylint::DylintEnv) -> bool {
-    if env.cargo_home.is_empty() {
-        eprintln!(
-            "error: HOME is not set and CARGO_HOME is not set.\n\
-             Set HOME, or set CARGO_HOME and RUSTUP_HOME to writable locations."
-        );
-        return false;
+    ensure_env_variable(&env.cargo_home, "error: HOME is not set and CARGO_HOME is not set.\n             Set HOME, or set CARGO_HOME and RUSTUP_HOME to writable locations.")
+        && ensure_env_variable(&env.rustup_home, "error: HOME is not set and RUSTUP_HOME is not set.\n             Set HOME, or set RUSTUP_HOME to a writable location.")
+        && ensure_env_variable(&env.dylint_driver, "error: HOME is not set and DYLINT_DRIVER_PATH is not set.\n             Set HOME, or set DYLINT_DRIVER_PATH to a writable location.")
+}
+
+fn ensure_env_variable(value: &str, message: &str) -> bool {
+    if value.is_empty() {
+        print_formatted_message(message, value);
+        false
+    } else {
+        true
     }
-    if env.rustup_home.is_empty() {
-        eprintln!(
-            "error: HOME is not set and RUSTUP_HOME is not set.\n\
-             Set HOME, or set RUSTUP_HOME to a writable location."
-        );
-        return false;
-    }
-    if env.dylint_driver.is_empty() {
-        eprintln!(
-            "error: HOME is not set and DYLINT_DRIVER_PATH is not set.\n\
-             Set HOME, or set DYLINT_DRIVER_PATH to a writable location."
-        );
-        return false;
-    }
-    true
 }
 
 /// Print environment debug information.
@@ -99,50 +143,63 @@ fn validate_directories(env: &dylint::DylintEnv) -> bool {
     let rustup_home_path = std::path::Path::new(&env.rustup_home);
     let dylint_driver_path = std::path::Path::new(&env.dylint_driver);
 
-    let cargo_home_writable = dylint::is_writable(cargo_home_path);
-
-    if !cargo_home_path.exists() && !cargo_home_writable {
-        eprintln!(
-            "error: cannot access cargo home: {}\n\
-             Set CARGO_HOME to an existing readable location.",
-            env.cargo_home
-        );
+    if !ensure_directory_accessible(
+        cargo_home_path,
+        &env.cargo_home,
+        "error: cannot access cargo home: {}\n             Set CARGO_HOME to an existing readable location.",
+    ) {
         return false;
     }
 
-    let rustup_home_writable = dylint::is_writable(rustup_home_path);
-
-    if !rustup_home_path.exists() && !rustup_home_writable {
-        eprintln!(
-            "error: cannot access rustup home: {}\n\
-             Set RUSTUP_HOME to an existing readable location.",
-            env.rustup_home
-        );
+    if !ensure_directory_accessible(
+        rustup_home_path,
+        &env.rustup_home,
+        "error: cannot access rustup home: {}\n             Set RUSTUP_HOME to an existing readable location.",
+    ) {
         return false;
     }
 
-    if !dylint_driver_path.exists() {
-        if let Err(e) = std::fs::create_dir_all(&env.dylint_driver) {
+    if !ensure_dylint_driver_directory(dylint_driver_path, &env.dylint_driver) {
+        return false;
+    }
+
+    true
+}
+
+fn ensure_directory_accessible(path: &std::path::Path, env_value: &str, message: &str) -> bool {
+    let writable = dylint::is_writable(path);
+    if !path.exists() && !writable {
+        print_formatted_message(message, env_value);
+        return false;
+    }
+    true
+}
+
+fn ensure_dylint_driver_directory(path: &std::path::Path, env_value: &str) -> bool {
+    if !path.exists() {
+        if let Err(e) = std::fs::create_dir_all(env_value) {
             eprintln!(
-                "error: cannot create required directory: {}\n\
-                 Set DYLINT_DRIVER_PATH to a writable location.\n\
-                 Details: {}",
-                env.dylint_driver, e
+                "error: cannot create required directory: {}\n             Set DYLINT_DRIVER_PATH to a writable location.\n             Details: {}",
+                env_value, e
             );
             return false;
         }
     }
 
-    if !dylint::is_writable(dylint_driver_path) {
+    if !dylint::is_writable(path) {
         eprintln!(
-            "error: required directory is not writable: {}\n\
-             Set DYLINT_DRIVER_PATH to a writable location.",
-            env.dylint_driver
+            "error: required directory is not writable: {}\n             Set DYLINT_DRIVER_PATH to a writable location.",
+            env_value
         );
         return false;
     }
 
     true
+}
+
+fn print_formatted_message(template: &str, value: &str) {
+    let message = template.replace("{}", value);
+    eprintln!("{}", message);
 }
 
 /// Bootstrap toolchain: install rustup, nightly, and components if needed.

@@ -11,6 +11,7 @@ use rustc_ast::Crate;
 use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
 use rustc_session::{declare_lint, impl_lint_pass};
 use rustc_span::{FileName, SourceFile, Span};
+use std::path::{Component, Path, PathBuf};
 
 declare_lint! {
     /// ### What it does
@@ -52,6 +53,10 @@ impl ForbidNestedBoundaryModules {
         let Some(path) = real_name.local_path() else {
             return;
         };
+
+        if !path_is_workspace_file(path) {
+            return;
+        }
 
         let violation = path_has_nested_boundary(path);
 
@@ -108,9 +113,42 @@ fn path_has_nested_boundary(path: &std::path::Path) -> Option<(&'static str, Str
     })
 }
 
+fn canonicalize_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn path_contains_component(path: &Path, target: &str) -> bool {
+    path.components()
+        .any(|component| matches!(component, Component::Normal(name) if name == target))
+}
+
+fn current_workspace_root() -> Option<PathBuf> {
+    std::env::current_dir()
+        .ok()
+        .map(|path| path.canonicalize().unwrap_or(path))
+}
+
+fn path_is_workspace_file(path: &Path) -> bool {
+    let canonical = canonicalize_path(path);
+
+    if path_contains_component(&canonical, ".cargo")
+        || path_contains_component(&canonical, ".rustup")
+        || path_contains_component(&canonical, "target")
+    {
+        return false;
+    }
+
+    current_workspace_root()
+        .map(|root| canonical.starts_with(&root))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{nested_boundary_help, path_has_nested_boundary};
+    use super::{
+        current_workspace_root, nested_boundary_help, path_has_nested_boundary,
+        path_is_workspace_file,
+    };
     use std::path::Path;
 
     #[test]
@@ -155,5 +193,18 @@ mod tests {
 
         assert!(help.contains("thin leaf adapters"));
         assert!(help.contains("hide policy"));
+    }
+
+    #[test]
+    fn ignores_cargo_registry_paths() {
+        let path = Path::new("/home/user/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.50.0/src/io/util/mod.rs");
+        assert!(!path_is_workspace_file(path));
+    }
+
+    #[test]
+    fn accepts_workspace_paths() {
+        let root = current_workspace_root().expect("workspace root must be available");
+        let path = root.join("src").join("io").join("writer.rs");
+        assert!(path_is_workspace_file(&path));
     }
 }

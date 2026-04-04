@@ -84,28 +84,38 @@ pub fn discover_env() -> DylintEnv {
 /// Resolve dylint driver path, converting relative to absolute.
 pub fn resolve_driver_path(dylint_driver: String, home: &str, verbose: bool) -> String {
     if std::path::Path::new(&dylint_driver).is_relative() {
-        let absolute_path = std::env::current_dir()
-            .map(|cwd| cwd.join(&dylint_driver).to_string_lossy().to_string())
-            .unwrap_or_else(|_| dylint_driver.clone());
-
-        let driver_exists = std::path::Path::new(&absolute_path)
-            .join("nightly-aarch64-apple-darwin")
-            .join("dylint-driver")
-            .exists();
-
-        if driver_exists {
-            absolute_path
-        } else {
-            if verbose {
-                eprintln!(
-                    "  Note: No driver found at {}, falling back to default",
-                    absolute_path
-                );
-            }
-            format!("{}/.dylint_drivers", home)
-        }
+        resolve_relative_driver(&dylint_driver, home, verbose)
     } else {
         dylint_driver
+    }
+}
+
+fn resolve_relative_driver(dylint_driver: &str, home: &str, verbose: bool) -> String {
+    let absolute_path = std::env::current_dir()
+        .map(|cwd| cwd.join(dylint_driver).to_string_lossy().to_string())
+        .unwrap_or_else(|_| dylint_driver.to_string());
+
+    if driver_path_contains_driver(&absolute_path) {
+        absolute_path
+    } else {
+        log_missing_driver(&absolute_path, verbose);
+        format!("{}/.dylint_drivers", home)
+    }
+}
+
+fn driver_path_contains_driver(candidate: &str) -> bool {
+    std::path::Path::new(candidate)
+        .join("nightly-aarch64-apple-darwin")
+        .join("dylint-driver")
+        .exists()
+}
+
+fn log_missing_driver(path: &str, verbose: bool) {
+    if verbose {
+        eprintln!(
+            "  Note: No driver found at {}, falling back to default",
+            path
+        );
     }
 }
 
@@ -138,34 +148,34 @@ pub fn discover_nightly_toolchain() -> Option<String> {
 
 /// Install rustup using curl or wget.
 pub fn install_rustup() -> std::io::Result<bool> {
-    if Command::new("curl")
+    attempt_install(
+        "curl",
+        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path",
+    )
+    .or_else(|| {
+        attempt_install(
+            "wget",
+            "wget -qO- https://sh.rustup.rs | sh -s -- -y --no-modify-path",
+        )
+    })
+    .unwrap_or(Ok(false))
+}
+
+fn attempt_install(command: &str, script: &str) -> Option<std::io::Result<bool>> {
+    if Command::new(command)
         .arg("--version")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
     {
-        Command::new("bash")
-            .args([
-                "-c",
-                "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path",
-            ])
-            .status()
-            .map(|s| s.success())
-    } else if Command::new("wget")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        Command::new("bash")
-            .args([
-                "-c",
-                "wget -qO- https://sh.rustup.rs | sh -s -- -y --no-modify-path",
-            ])
-            .status()
-            .map(|s| s.success())
+        Some(
+            Command::new("bash")
+                .args(["-c", script])
+                .status()
+                .map(|s| s.success()),
+        )
     } else {
-        Ok(false)
+        None
     }
 }
 
@@ -198,7 +208,20 @@ pub fn add_host_target(nightly_toolchain: &str) {
 
 /// Install required nightly components.
 pub fn install_nightly_components(nightly_toolchain: &str) -> std::io::Result<bool> {
-    let Ok(output) = Command::new("rustup")
+    let Some(installed) = query_installed_components(nightly_toolchain)? else {
+        return Ok(false);
+    };
+
+    let missing = missing_components(&installed);
+    if missing.is_empty() {
+        return Ok(true);
+    }
+
+    install_missing_components(nightly_toolchain, &missing)
+}
+
+fn query_installed_components(nightly_toolchain: &str) -> std::io::Result<Option<String>> {
+    let output = Command::new("rustup")
         .args([
             "component",
             "list",
@@ -206,38 +229,41 @@ pub fn install_nightly_components(nightly_toolchain: &str) -> std::io::Result<bo
             nightly_toolchain,
             "--installed",
         ])
-        .output()
-    else {
-        return Ok(false);
-    };
+        .output()?;
 
-    let installed = String::from_utf8_lossy(&output.stdout);
-    let has_rustc_dev = installed.contains("rustc-dev");
-    let has_llvm_tools =
-        installed.contains("llvm-tools-preview") || installed.contains("llvm-tools");
-
-    let mut missing: Vec<String> = Vec::new();
-    if !has_rustc_dev {
-        missing.push("rustc-dev".to_string());
-    }
-    if !has_llvm_tools {
-        missing.push("llvm-tools-preview".to_string());
+    if !output.status.success() {
+        return Ok(None);
     }
 
-    if missing.is_empty() {
-        return Ok(true);
+    Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
+}
+
+fn missing_components(installed: &str) -> Vec<&'static str> {
+    let mut missing = Vec::new();
+    if !installed.contains("rustc-dev") {
+        missing.push("rustc-dev");
     }
+    if !installed.contains("llvm-tools-preview") && !installed.contains("llvm-tools") {
+        missing.push("llvm-tools-preview");
+    }
+    missing
+}
 
-    let mut args = vec!["component".to_string(), "add".to_string()];
-    args.extend(missing.clone());
-    args.push("--toolchain".to_string());
-    args.push(nightly_toolchain.to_string());
-
+fn install_missing_components(nightly_toolchain: &str, missing: &[&str]) -> std::io::Result<bool> {
+    let args = build_component_args(nightly_toolchain, missing);
     Command::new("rustup")
         .args(&args)
         .env("RUSTUP_TERM_QUIET", "true")
         .status()
         .map(|s| s.success())
+}
+
+fn build_component_args(nightly_toolchain: &str, missing: &[&str]) -> Vec<String> {
+    let mut args = vec!["component".to_string(), "add".to_string()];
+    args.extend(missing.iter().map(|m| m.to_string()));
+    args.push("--toolchain".to_string());
+    args.push(nightly_toolchain.to_string());
+    args
 }
 
 /// Resolve nightly cargo and rustc paths.
@@ -374,57 +400,113 @@ pub fn execute_dylint(
     path_env: &str,
     verbose: bool,
 ) -> std::io::Result<ExitCode> {
+    let package_names = collect_target_packages(wrapper_path)?;
+    if run_dylint_packages(
+        wrapper_path,
+        dylint_env,
+        toolchain,
+        path_env,
+        verbose,
+        &package_names,
+    )? {
+        Ok(ExitCode::SUCCESS)
+    } else {
+        Ok(ExitCode::from(1))
+    }
+}
+
+fn extract_package_names(package_args: &[String]) -> Vec<String> {
+    package_args.iter().skip(1).step_by(2).cloned().collect()
+}
+
+fn collect_target_packages(wrapper_path: &std::path::Path) -> std::io::Result<Vec<String>> {
     let workspace_packages = read_workspace_package_names(wrapper_path)?;
     let package_args = build_dylint_package_args(&workspace_packages);
+    let package_names = extract_package_names(&package_args);
 
-    if package_args.is_empty() {
+    if package_names.is_empty() {
         return Err(std::io::Error::other(
             "no workspace packages available for dylint after lint-crate exclusion",
         ));
     }
 
-    for package_arg in package_args.chunks_exact(2) {
-        let package_name = &package_arg[1];
-        let mut cmd = Command::new(wrapper_path);
-        cmd.arg("dylint");
+    Ok(package_names)
+}
 
-        if !verbose {
-            cmd.arg("-q");
-        }
-
-        cmd.arg("--lib")
-            .arg("ralph_lints")
-            .arg("-p")
-            .arg(package_name);
-
-        if package_name == "ralph-workflow" {
-            cmd.arg("--").arg("--lib");
-
-            if !verbose {
-                cmd.arg("--quiet");
-            }
-        }
-
-        cmd.env("RUSTFLAGS", "--cap-lints=deny -D warnings")
-            .env("PATH", path_env)
-            .env("CARGO_HOME", &dylint_env.cargo_home)
-            .env("RUSTUP_HOME", &dylint_env.rustup_home)
-            .env("DYLINT_DRIVER_PATH", &dylint_env.dylint_driver)
-            .env("RUSTUP_TOOLCHAIN", &toolchain.nightly_toolchain)
-            .env("RUSTC", &toolchain.nightly_rustc)
-            .env("CARGO_TERM_QUIET", if verbose { "false" } else { "true" });
-
-        if dylint_env.force_offline {
-            cmd.env("CARGO_NET_OFFLINE", "true");
-        }
-
-        let status = cmd.status()?;
-        if !status.success() {
-            return Ok(ExitCode::from(1));
+fn run_dylint_packages(
+    wrapper_path: &std::path::Path,
+    dylint_env: &DylintEnv,
+    toolchain: &ToolchainInfo,
+    path_env: &str,
+    verbose: bool,
+    package_names: &[String],
+) -> std::io::Result<bool> {
+    for package_name in package_names {
+        if !run_dylint_for_package(
+            wrapper_path,
+            dylint_env,
+            toolchain,
+            path_env,
+            verbose,
+            package_name,
+        )? {
+            return Ok(false);
         }
     }
+    Ok(true)
+}
 
-    Ok(ExitCode::SUCCESS)
+fn run_dylint_for_package(
+    wrapper_path: &std::path::Path,
+    dylint_env: &DylintEnv,
+    toolchain: &ToolchainInfo,
+    path_env: &str,
+    verbose: bool,
+    package_name: &str,
+) -> std::io::Result<bool> {
+    let mut cmd = Command::new(wrapper_path);
+    cmd.arg("dylint");
+    if !verbose {
+        cmd.arg("-q");
+    }
+    configure_package_args(&mut cmd, package_name, verbose);
+    configure_dylint_envs(&mut cmd, dylint_env, toolchain, path_env, verbose);
+    let status = cmd.status()?;
+    Ok(status.success())
+}
+
+fn configure_package_args(cmd: &mut Command, package_name: &str, verbose: bool) {
+    cmd.arg("--lib")
+        .arg("ralph_lints")
+        .arg("-p")
+        .arg(package_name);
+    if package_name == "ralph-workflow" {
+        cmd.arg("--").arg("--lib");
+        if !verbose {
+            cmd.arg("--quiet");
+        }
+    }
+}
+
+fn configure_dylint_envs(
+    cmd: &mut Command,
+    dylint_env: &DylintEnv,
+    toolchain: &ToolchainInfo,
+    path_env: &str,
+    verbose: bool,
+) {
+    cmd.env("RUSTFLAGS", "--cap-lints=deny -D warnings")
+        .env("PATH", path_env)
+        .env("CARGO_HOME", &dylint_env.cargo_home)
+        .env("RUSTUP_HOME", &dylint_env.rustup_home)
+        .env("DYLINT_DRIVER_PATH", &dylint_env.dylint_driver)
+        .env("RUSTUP_TOOLCHAIN", &toolchain.nightly_toolchain)
+        .env("RUSTC", &toolchain.nightly_rustc)
+        .env("CARGO_TERM_QUIET", if verbose { "false" } else { "true" });
+
+    if dylint_env.force_offline {
+        cmd.env("CARGO_NET_OFFLINE", "true");
+    }
 }
 
 #[cfg(test)]

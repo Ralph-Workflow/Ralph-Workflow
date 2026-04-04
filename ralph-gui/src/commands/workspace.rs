@@ -3,7 +3,6 @@ use specta::Type;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const WORKSPACES_FILE: &str = "workspaces.json";
 const RECENT_FILE: &str = "recent_workspaces.json";
@@ -32,11 +31,7 @@ async fn read_json<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> Re
     if !path.exists() {
         return Ok(T::default());
     }
-    let mut file = fs::File::open(path)
-        .await
-        .map_err(|e| format!("Failed to open file: {e}"))?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
+    let contents = fs::read_to_string(path)
         .await
         .map_err(|e| format!("Failed to read file: {e}"))?;
     if contents.trim().is_empty() {
@@ -53,13 +48,93 @@ async fn write_json<T: Serialize + Send + Sync>(path: &PathBuf, data: &T) -> Res
     }
     let contents =
         serde_json::to_string_pretty(data).map_err(|e| format!("Failed to serialize JSON: {e}"))?;
-    let mut file = fs::File::create(path)
-        .await
-        .map_err(|e| format!("Failed to create file: {e}"))?;
-    file.write_all(contents.as_bytes())
+    fs::write(path, contents)
         .await
         .map_err(|e| format!("Failed to write file: {e}"))?;
     Ok(())
+}
+
+fn move_id_to_front(order: Vec<String>, id: &str) -> Vec<String> {
+    std::iter::once(id.to_string())
+        .chain(order.into_iter().filter(|existing_id| existing_id != id))
+        .collect()
+}
+
+fn with_workspace_added(store: WorkspaceStore, entry: WorkspaceEntry) -> WorkspaceStore {
+    let WorkspaceStore { workspaces, order } = store;
+    let id = entry.id.clone();
+
+    WorkspaceStore {
+        workspaces: workspaces
+            .into_iter()
+            .chain(std::iter::once(entry))
+            .collect(),
+        order: std::iter::once(id).chain(order).collect(),
+    }
+}
+
+fn with_workspace_removed(store: WorkspaceStore, id: &str) -> WorkspaceStore {
+    let WorkspaceStore { workspaces, order } = store;
+
+    WorkspaceStore {
+        workspaces: workspaces
+            .into_iter()
+            .filter(|workspace| workspace.id != id)
+            .collect(),
+        order: order
+            .into_iter()
+            .filter(|existing_id| existing_id != id)
+            .collect(),
+    }
+}
+
+fn with_updated_workspace_nav(store: WorkspaceStore, id: &str, nav: &str) -> WorkspaceStore {
+    let WorkspaceStore { workspaces, order } = store;
+
+    WorkspaceStore {
+        workspaces: workspaces
+            .into_iter()
+            .map(|workspace| {
+                if workspace.id == id {
+                    WorkspaceEntry {
+                        last_nav: nav.to_string(),
+                        ..workspace
+                    }
+                } else {
+                    workspace
+                }
+            })
+            .collect(),
+        order,
+    }
+}
+
+fn with_updated_run_count(store: WorkspaceStore, id: &str, count: u32) -> WorkspaceStore {
+    let WorkspaceStore { workspaces, order } = store;
+
+    WorkspaceStore {
+        workspaces: workspaces
+            .into_iter()
+            .map(|workspace| {
+                if workspace.id == id {
+                    WorkspaceEntry {
+                        active_run_count: count,
+                        ..workspace
+                    }
+                } else {
+                    workspace
+                }
+            })
+            .collect(),
+        order,
+    }
+}
+
+fn with_recent_workspace_path(recent: Vec<String>, path: &str) -> Vec<String> {
+    std::iter::once(path.to_string())
+        .chain(recent.into_iter().filter(|recent_path| recent_path != path))
+        .take(MAX_RECENT)
+        .collect()
 }
 
 fn is_valid_git_repo(path: &str) -> bool {
@@ -113,14 +188,22 @@ pub async fn open_workspace(app: AppHandle, path: String) -> Result<WorkspaceEnt
 
     let data_dir = get_app_data_dir(&app)?;
     let store_path = data_dir.join(WORKSPACES_FILE);
-    let mut store: WorkspaceStore = read_json(&store_path).await?;
+    let store: WorkspaceStore = read_json(&store_path).await?;
 
-    if let Some(existing) = store.workspaces.iter().find(|w| w.repo_path == path) {
+    if let Some(existing) = store
+        .workspaces
+        .iter()
+        .find(|w| w.repo_path == path)
+        .cloned()
+    {
         if !store.order.contains(&existing.id) {
-            store.order.insert(0, existing.id.clone());
-            write_json(&store_path, &store).await?;
+            let updated_store = WorkspaceStore {
+                order: move_id_to_front(store.order, &existing.id),
+                ..store
+            };
+            write_json(&store_path, &updated_store).await?;
         }
-        return Ok(existing.clone());
+        return Ok(existing);
     }
 
     let id = format!("ws-{}", uuid::Uuid::new_v4());
@@ -132,15 +215,12 @@ pub async fn open_workspace(app: AppHandle, path: String) -> Result<WorkspaceEnt
         active_run_count: 0,
     };
 
-    store.workspaces.push(entry.clone());
-    store.order.insert(0, id);
-    write_json(&store_path, &store).await?;
+    let updated_store = with_workspace_added(store, entry.clone());
+    write_json(&store_path, &updated_store).await?;
 
     let recent_path = data_dir.join(RECENT_FILE);
-    let mut recent: Vec<String> = read_json(&recent_path).await.unwrap_or_default();
-    recent.retain(|p| p != &path);
-    recent.insert(0, path);
-    recent.truncate(MAX_RECENT);
+    let recent: Vec<String> = read_json(&recent_path).await.unwrap_or_default();
+    let recent = with_recent_workspace_path(recent, &path);
     let _ = write_json(&recent_path, &recent).await;
 
     Ok(entry)
@@ -157,7 +237,7 @@ pub async fn open_workspace(app: AppHandle, path: String) -> Result<WorkspaceEnt
 pub async fn close_workspace(app: AppHandle, id: String) -> Result<(), String> {
     let data_dir = get_app_data_dir(&app)?;
     let store_path = data_dir.join(WORKSPACES_FILE);
-    let mut store: WorkspaceStore = read_json(&store_path).await?;
+    let store: WorkspaceStore = read_json(&store_path).await?;
 
     let workspace = store
         .workspaces
@@ -172,9 +252,8 @@ pub async fn close_workspace(app: AppHandle, id: String) -> Result<(), String> {
         ));
     }
 
-    store.workspaces.retain(|w| w.id != id);
-    store.order.retain(|oid| oid != &id);
-    write_json(&store_path, &store).await?;
+    let updated_store = with_workspace_removed(store, &id);
+    write_json(&store_path, &updated_store).await?;
 
     Ok(())
 }
@@ -190,7 +269,7 @@ pub async fn close_workspace(app: AppHandle, id: String) -> Result<(), String> {
 pub async fn reorder_workspaces(app: AppHandle, ids: Vec<String>) -> Result<(), String> {
     let data_dir = get_app_data_dir(&app)?;
     let store_path = data_dir.join(WORKSPACES_FILE);
-    let mut store: WorkspaceStore = read_json(&store_path).await?;
+    let store: WorkspaceStore = read_json(&store_path).await?;
 
     let existing_ids: std::collections::HashSet<String> =
         store.workspaces.iter().map(|w| w.id.clone()).collect();
@@ -200,8 +279,11 @@ pub async fn reorder_workspaces(app: AppHandle, ids: Vec<String>) -> Result<(), 
         return Err("Provided IDs do not match existing workspaces".to_string());
     }
 
-    store.order = ids;
-    write_json(&store_path, &store).await?;
+    let updated_store = WorkspaceStore {
+        order: ids,
+        ..store
+    };
+    write_json(&store_path, &updated_store).await?;
 
     Ok(())
 }
@@ -217,11 +299,11 @@ pub async fn reorder_workspaces(app: AppHandle, ids: Vec<String>) -> Result<(), 
 pub async fn set_workspace_nav(app: AppHandle, id: String, nav: String) -> Result<(), String> {
     let data_dir = get_app_data_dir(&app)?;
     let store_path = data_dir.join(WORKSPACES_FILE);
-    let mut store: WorkspaceStore = read_json(&store_path).await?;
+    let store: WorkspaceStore = read_json(&store_path).await?;
 
-    if let Some(workspace) = store.workspaces.iter_mut().find(|w| w.id == id) {
-        workspace.last_nav = nav;
-        write_json(&store_path, &store).await?;
+    if store.workspaces.iter().any(|workspace| workspace.id == id) {
+        let updated_store = with_updated_workspace_nav(store, &id, &nav);
+        write_json(&store_path, &updated_store).await?;
         Ok(())
     } else {
         Err("Workspace not found".to_string())
@@ -257,11 +339,11 @@ pub async fn update_workspace_run_count(
 ) -> Result<(), String> {
     let data_dir = get_app_data_dir(&app)?;
     let store_path = data_dir.join(WORKSPACES_FILE);
-    let mut store: WorkspaceStore = read_json(&store_path).await?;
+    let store: WorkspaceStore = read_json(&store_path).await?;
 
-    if let Some(workspace) = store.workspaces.iter_mut().find(|w| w.id == id) {
-        workspace.active_run_count = count;
-        write_json(&store_path, &store).await?;
+    if store.workspaces.iter().any(|workspace| workspace.id == id) {
+        let updated_store = with_updated_run_count(store, &id, count);
+        write_json(&store_path, &updated_store).await?;
         Ok(())
     } else {
         Err("Workspace not found".to_string())

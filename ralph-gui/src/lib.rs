@@ -4,7 +4,10 @@
 // See `CODE_STYLE.md`, `docs/code-style/boundaries.md`, `docs/code-style/testing.md`,
 // and `ralph-gui/clippy.toml` when fixing GUI lint violations.
 
+pub mod boundary;
 pub mod commands;
+pub mod domain;
+#[path = "boundary/state.rs"]
 pub mod state;
 
 #[cfg(test)]

@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+#[path = "../boundary/session_prompt_boundary.rs"]
+mod session_prompt_boundary;
+
 /// A single message in a multi-turn AI prompt assistant conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct PromptAssistantMessage {
@@ -32,7 +35,8 @@ pub struct PromptReviewResult {
 #[tauri::command]
 #[specta::specta]
 pub fn read_prompt_file(prompt_path: String) -> Result<String, String> {
-    std::fs::read_to_string(&prompt_path).map_err(|e| format!("Failed to read prompt file: {e}"))
+    session_prompt_boundary::read_to_string(&prompt_path)
+        .map_err(|e| format!("Failed to read prompt file: {e}"))
 }
 
 /// Save content to a PROMPT.md file, creating parent directories if needed.
@@ -46,11 +50,12 @@ pub fn save_prompt_file(prompt_path: String, content: String) -> Result<(), Stri
     let path = std::path::PathBuf::from(&prompt_path);
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)
+            session_prompt_boundary::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create directory: {e}"))?;
         }
     }
-    std::fs::write(&path, content).map_err(|e| format!("Failed to write prompt file: {e}"))
+    session_prompt_boundary::write(&path, content)
+        .map_err(|e| format!("Failed to write prompt file: {e}"))
 }
 
 /// Read the Anthropic API key from `~/.ralph/config.toml` `[gui]` section.
@@ -60,8 +65,8 @@ fn read_api_key_from_config() -> Result<String, String> {
         .join(".ralph")
         .join("config.toml");
 
-    let content =
-        std::fs::read_to_string(&config_path).map_err(|e| format!("Cannot read config: {e}"))?;
+    let content = session_prompt_boundary::read_to_string(&config_path)
+        .map_err(|e| format!("Cannot read config: {e}"))?;
 
     let parsed: toml::Value =
         toml::from_str(&content).map_err(|e| format!("Cannot parse config: {e}"))?;
@@ -89,7 +94,7 @@ fn read_api_key_from_config() -> Result<String, String> {
 #[specta::specta]
 pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResult, String> {
     // Dry-run mode for testing — skip network call.
-    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+    if session_prompt_boundary::env_var("RALPH_GUI_DRY_RUN").as_deref() == Some("1") {
         return Ok(PromptReviewResult {
             suggestions: vec![
                 "Ensure acceptance criteria are specific and testable.".to_string(),
@@ -100,8 +105,7 @@ pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResul
         });
     }
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .ok()
+    let api_key = session_prompt_boundary::env_var("ANTHROPIC_API_KEY")
         .filter(|k| !k.is_empty())
         .or_else(|| read_api_key_from_config().ok())
         .ok_or_else(|| {
@@ -119,16 +123,7 @@ pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResul
         "messages": [{ "role": "user", "content": prompt_content }]
     });
 
-    let response = ureq::post("https://api.anthropic.com/v1/messages")
-        .set("x-api-key", &api_key)
-        .set("anthropic-version", "2023-06-01")
-        .set("content-type", "application/json")
-        .send_json(body)
-        .map_err(|e| format!("API call failed: {e}"))?;
-
-    let json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse API response: {e}"))?;
+    let json = session_prompt_boundary::post_anthropic_messages(&api_key, body)?;
 
     let text = json["content"][0]["text"].as_str().unwrap_or("{}");
 
@@ -164,36 +159,36 @@ pub fn list_templates(templates_dir: String) -> Result<Vec<TemplateInfo>, String
         return Ok(Vec::new());
     }
 
-    let mut templates = Vec::new();
-    let entries =
-        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read templates directory: {e}"))?;
+    session_prompt_boundary::read_dir_paths(&dir)
+        .map_err(|e| format!("Failed to read templates directory: {e}"))
+        .map(|entries| {
+            entries
+                .into_iter()
+                .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("md"))
+                .map(|path| {
+                    let content =
+                        session_prompt_boundary::read_to_string(&path).unwrap_or_default();
+                    let name = path
+                        .file_stem()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unnamed")
+                        .to_string();
+                    let description = content
+                        .lines()
+                        .next()
+                        .filter(|l| l.starts_with('#'))
+                        .map(|l| l.trim_start_matches('#').trim().to_string())
+                        .unwrap_or_default();
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let content = std::fs::read_to_string(&path).unwrap_or_default();
-            let name = path
-                .file_stem()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unnamed")
-                .to_string();
-            // Parse first line as description if it starts with #
-            let description = content
-                .lines()
-                .next()
-                .filter(|l| l.starts_with('#'))
-                .map(|l| l.trim_start_matches('#').trim().to_string())
-                .unwrap_or_default();
-            templates.push(TemplateInfo {
-                name,
-                description,
-                content,
-                tags: Vec::new(),
-            });
-        }
-    }
-
-    Ok(templates)
+                    TemplateInfo {
+                        name,
+                        description,
+                        content,
+                        tags: Vec::new(),
+                    }
+                })
+                .collect()
+        })
 }
 
 /// Save a prompt template to the templates directory.
@@ -211,14 +206,15 @@ pub fn save_template(
     templates_dir: String,
 ) -> Result<(), String> {
     let dir = std::path::PathBuf::from(&templates_dir);
-    std::fs::create_dir_all(&dir)
+    session_prompt_boundary::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create templates directory: {e}"))?;
 
     let _ = description; // stored in the content header
     let _ = tags; // future: store in front-matter
 
     let file_path = dir.join(format!("{name}.md"));
-    std::fs::write(&file_path, &content).map_err(|e| format!("Failed to save template: {e}"))
+    session_prompt_boundary::write(&file_path, &content)
+        .map_err(|e| format!("Failed to save template: {e}"))
 }
 
 /// Delete a prompt template from the templates directory.
@@ -231,7 +227,8 @@ pub fn save_template(
 pub fn delete_template(name: String, templates_dir: String) -> Result<(), String> {
     let file_path = std::path::PathBuf::from(&templates_dir).join(format!("{name}.md"));
     if file_path.exists() {
-        std::fs::remove_file(&file_path).map_err(|e| format!("Failed to delete template: {e}"))?;
+        session_prompt_boundary::remove_file(&file_path)
+            .map_err(|e| format!("Failed to delete template: {e}"))?;
     }
     Ok(())
 }
@@ -252,23 +249,24 @@ pub fn assist_prompt_describe(
     _repo_path: String,
     history: Vec<PromptAssistantMessage>,
 ) -> Result<String, String> {
-    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+    if session_prompt_boundary::env_var("RALPH_GUI_DRY_RUN").as_deref() == Some("1") {
         return Ok(format!(
             "# Task: {description}\n\n## Objective\n\nImplement the requested feature.\n\n## Acceptance Criteria\n\n- [ ] Feature works as described\n- [ ] Tests are added\n- [ ] Documentation is updated\n"
         ));
     }
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .ok()
+    let api_key = session_prompt_boundary::env_var("ANTHROPIC_API_KEY")
         .filter(|k| !k.is_empty())
         .ok_or_else(|| "ANTHROPIC_API_KEY not set.".to_string())?;
 
     // Build conversation history for the API call.
-    let mut messages: Vec<serde_json::Value> = history
+    let messages: Vec<serde_json::Value> = history
         .into_iter()
         .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
+        .chain(std::iter::once(
+            serde_json::json!({ "role": "user", "content": description }),
+        ))
         .collect();
-    messages.push(serde_json::json!({ "role": "user", "content": description }));
 
     let body = serde_json::json!({
         "model": "claude-sonnet-4-6",
@@ -277,16 +275,7 @@ pub fn assist_prompt_describe(
         "messages": messages
     });
 
-    let response = ureq::post("https://api.anthropic.com/v1/messages")
-        .set("x-api-key", &api_key)
-        .set("anthropic-version", "2023-06-01")
-        .set("content-type", "application/json")
-        .send_json(body)
-        .map_err(|e| format!("API call failed: {e}"))?;
-
-    let json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse API response: {e}"))?;
+    let json = session_prompt_boundary::post_anthropic_messages(&api_key, body)?;
 
     let text = json["content"][0]["text"]
         .as_str()
@@ -309,7 +298,7 @@ pub fn assist_prompt_refine(
     current_prompt: String,
     _repo_path: String,
 ) -> Result<PromptAnalysis, String> {
-    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+    if session_prompt_boundary::env_var("RALPH_GUI_DRY_RUN").as_deref() == Some("1") {
         return Ok(PromptAnalysis {
             issues: vec!["Acceptance criteria could be more specific.".to_string()],
             suggestions: vec![
@@ -321,8 +310,7 @@ pub fn assist_prompt_refine(
         });
     }
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .ok()
+    let api_key = session_prompt_boundary::env_var("ANTHROPIC_API_KEY")
         .filter(|k| !k.is_empty())
         .ok_or_else(|| "ANTHROPIC_API_KEY not set.".to_string())?;
 
@@ -342,16 +330,7 @@ pub fn assist_prompt_refine(
         "messages": [{ "role": "user", "content": current_prompt }]
     });
 
-    let response = ureq::post("https://api.anthropic.com/v1/messages")
-        .set("x-api-key", &api_key)
-        .set("anthropic-version", "2023-06-01")
-        .set("content-type", "application/json")
-        .send_json(body)
-        .map_err(|e| format!("API call failed: {e}"))?;
-
-    let json: serde_json::Value = response
-        .into_json()
-        .map_err(|e| format!("Failed to parse API response: {e}"))?;
+    let json = session_prompt_boundary::post_anthropic_messages(&api_key, body)?;
 
     let text = json["content"][0]["text"].as_str().unwrap_or("{}");
 
@@ -395,8 +374,8 @@ pub fn get_planning_drain_agent(_repo_path: String) -> Result<Option<String>, St
         return Ok(None);
     }
 
-    let content =
-        std::fs::read_to_string(&config_path).map_err(|e| format!("Failed to read config: {e}"))?;
+    let content = session_prompt_boundary::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config: {e}"))?;
 
     let parsed: toml::Value =
         toml::from_str(&content).map_err(|e| format!("Failed to parse config: {e}"))?;

@@ -11,6 +11,7 @@ pub struct ActiveContext {
     pub known_repos: Vec<PathBuf>,
 }
 
+/// Shared state used across the GUI commands.
 pub type SharedState = Arc<Mutex<ActiveContext>>;
 
 /// Create a new shared state instance with no active context.

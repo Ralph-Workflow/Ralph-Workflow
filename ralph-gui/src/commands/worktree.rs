@@ -31,8 +31,6 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> {
     let repo = git2::Repository::open(&repo_path_buf)
         .map_err(|e| format!("Not a valid git repository: {e}"))?;
 
-    let mut worktrees = Vec::new();
-
     // Add the main worktree first
     let main_path = repo.workdir().map_or_else(
         || repo_path_buf.to_string_lossy().into_owned(),
@@ -44,21 +42,21 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> {
     // Check if main worktree has an active run
     let main_has_run = check_has_active_run(&main_path);
 
-    worktrees.push(WorktreeInfo {
+    let main_worktree = WorktreeInfo {
         path: main_path,
         branch: main_branch,
         name: "main".to_string(),
         has_active_run: main_has_run,
         is_main: true,
-    });
+    };
 
     // List linked worktrees
     let linked = repo
         .worktrees()
         .map_err(|e| format!("Failed to list worktrees: {e}"))?;
 
-    for name in linked.iter().flatten() {
-        if let Ok(wt) = repo.find_worktree(name) {
+    let linked_worktrees = linked.iter().flatten().filter_map(|name| {
+        repo.find_worktree(name).ok().map(|wt| {
             let path = wt.path();
             let wt_path = path.to_string_lossy().to_string();
             let has_run = check_has_active_run(&wt_path);
@@ -66,17 +64,19 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> {
             // Try to get branch from the worktree's HEAD
             let branch = get_worktree_branch(path).unwrap_or_else(|| "unknown".to_string());
 
-            worktrees.push(WorktreeInfo {
+            WorktreeInfo {
                 path: wt_path,
                 branch,
                 name: name.to_string(),
                 has_active_run: has_run,
                 is_main: false,
-            });
-        }
-    }
+            }
+        })
+    });
 
-    Ok(worktrees)
+    Ok(std::iter::once(main_worktree)
+        .chain(linked_worktrees)
+        .collect())
 }
 
 /// Create a new git worktree with the given branch and name.
@@ -142,15 +142,15 @@ pub fn create_worktree(
             .map_err(|e| format!("Failed to create branch '{branch}': {e}"))?;
     }
 
-    let reference = repo
-        .find_reference(&branch_ref)
+    repo.find_reference(&branch_ref)
         .map_err(|e| format!("Failed to find branch reference: {e}"))?;
 
-    let mut opts = git2::WorktreeAddOptions::new();
-    opts.reference(Some(&reference));
-
-    repo.worktree(&name, &wt_path, Some(&opts))
+    repo.worktree(&name, &wt_path, None)
         .map_err(|e| format!("Failed to create worktree: {e}"))?;
+
+    git2::Repository::open(&wt_path)
+        .and_then(|worktree_repo| worktree_repo.set_head(&branch_ref))
+        .map_err(|e| format!("Failed to set worktree HEAD to branch '{branch}': {e}"))?;
 
     Ok(CreateWorktreeResult {
         worktree: WorktreeInfo {
@@ -202,16 +202,32 @@ pub fn switch_context_impl(
     worktree_path: Option<&str>,
 ) -> Result<(), String> {
     validate_context_paths(repo_path, worktree_path)?;
-    let mut locked = state
+    let locked = state
         .lock()
         .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
+
     let repo_pb = std::path::PathBuf::from(repo_path);
-    if !locked.known_repos.contains(&repo_pb) {
-        locked.known_repos.push(repo_pb.clone());
-    }
-    locked.repo_path = Some(repo_pb);
-    locked.worktree_path = worktree_path.map(std::path::PathBuf::from);
+    let known_repos = if locked.known_repos.contains(&repo_pb) {
+        locked.known_repos.clone()
+    } else {
+        locked
+            .known_repos
+            .iter()
+            .cloned()
+            .chain(std::iter::once(repo_pb.clone()))
+            .collect()
+    };
+
     drop(locked);
+
+    *state
+        .lock()
+        .map_err(|e| format!("Failed to acquire state lock: {e}"))? = crate::state::ActiveContext {
+        repo_path: Some(repo_pb),
+        worktree_path: worktree_path.map(std::path::PathBuf::from),
+        known_repos,
+    };
+
     Ok(())
 }
 

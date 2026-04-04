@@ -6,4 +6,5 @@
 pub mod dylint;
 pub mod dylint_report;
 pub mod process;
+pub mod subcommand;
 pub mod verify;
