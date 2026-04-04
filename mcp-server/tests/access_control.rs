@@ -967,3 +967,413 @@ fn root_dir_blocks_escape_via_parent_path() {
         "Error data should contain OutsideRootDir code"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Real registered tool name enforcement tests
+//
+// These tests use the actual tool names deployed by ralph-workflow (read_file,
+// write_file, exec, ralph_submit_artifact) to verify that enforcement works for
+// the specific names consumers call, not just the generic enforcement mechanism.
+// ---------------------------------------------------------------------------
+
+/// Helper: create a test registry entry for `read_file` (non-mutating, WorkspaceRead).
+fn make_real_read_file_tool(counter: &Arc<AtomicU32>) -> ToolRegistry {
+    let counter = Arc::clone(counter);
+    let handler: ToolHandler = Arc::new(
+        move |_session: &dyn mcp_server::HostSession,
+              _workspace: &dyn mcp_server::WorkspaceAdapter,
+              _params: serde_json::Value|
+              -> Result<ToolResult, mcp_server::ToolError> {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "contents".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "read_file".to_string(),
+            description: "Read a file".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
+    };
+    ToolRegistry::new(vec![(metadata, handler)])
+}
+
+/// Helper: create a test registry entry for `write_file` (mutating, WorkspaceWriteTracked).
+fn make_real_write_file_tool(counter: &Arc<AtomicU32>) -> ToolRegistry {
+    let counter = Arc::clone(counter);
+    let handler: ToolHandler = Arc::new(
+        move |_session: &dyn mcp_server::HostSession,
+              _workspace: &dyn mcp_server::WorkspaceAdapter,
+              _params: serde_json::Value|
+              -> Result<ToolResult, mcp_server::ToolError> {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "written".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "write_file".to_string(),
+            description: "Write a file".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::WorkspaceWriteTracked,
+        is_mutating: None,
+    };
+    ToolRegistry::new(vec![(metadata, handler)])
+}
+
+/// Helper: create a test registry entry for `exec` (mutating, ProcessExecBounded).
+fn make_real_exec_tool(counter: &Arc<AtomicU32>) -> ToolRegistry {
+    let counter = Arc::clone(counter);
+    let handler: ToolHandler = Arc::new(
+        move |_session: &dyn mcp_server::HostSession,
+              _workspace: &dyn mcp_server::WorkspaceAdapter,
+              _params: serde_json::Value|
+              -> Result<ToolResult, mcp_server::ToolError> {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "output".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "exec".to_string(),
+            description: "Execute a command".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"command": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::ProcessExecBounded,
+        is_mutating: None,
+    };
+    ToolRegistry::new(vec![(metadata, handler)])
+}
+
+/// Helper: create a test registry entry for `ralph_submit_artifact`
+/// (non-mutating workflow signal, ArtifactSubmit).
+fn make_real_submit_artifact_tool(counter: &Arc<AtomicU32>) -> ToolRegistry {
+    let counter = Arc::clone(counter);
+    let handler: ToolHandler = Arc::new(
+        move |_session: &dyn mcp_server::HostSession,
+              _workspace: &dyn mcp_server::WorkspaceAdapter,
+              _params: serde_json::Value|
+              -> Result<ToolResult, mcp_server::ToolError> {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "accepted".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_submit_artifact".to_string(),
+            description: "Submit a structured artifact".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"artifact_type": {"type": "string"}, "content": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None,
+    };
+    ToolRegistry::new(vec![(metadata, handler)])
+}
+
+/// ReadOnly mode allows `read_file` (non-mutating, real registered name).
+#[test]
+fn real_read_file_allowed_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_real_read_file_tool(&counter);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "read_file",
+        serde_json::json!({"path": "README.md"}),
+    );
+
+    assert!(
+        response.error.is_none(),
+        "read_file must be allowed in ReadOnly mode, got error: {:?}",
+        response.error
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "read_file handler must be called exactly once"
+    );
+}
+
+/// ReadOnly mode blocks `write_file` (mutating, real registered name).
+#[test]
+fn real_write_file_blocked_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_real_write_file_tool(&counter);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "write_file",
+        serde_json::json!({"path": "out.txt", "content": "data"}),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "write_file handler must NOT be called when ReadOnly blocks it"
+    );
+    assert!(
+        response.error.is_some(),
+        "write_file must be denied in ReadOnly mode"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error must mention ReadOnly mode, got: {}",
+        error.message
+    );
+}
+
+/// ReadOnly mode blocks `exec` (mutating, real registered name).
+#[test]
+fn real_exec_blocked_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_real_exec_tool(&counter);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "exec",
+        serde_json::json!({"command": "echo hello"}),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "exec handler must NOT be called when ReadOnly blocks it"
+    );
+    assert!(
+        response.error.is_some(),
+        "exec must be denied in ReadOnly mode"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error must mention ReadOnly mode, got: {}",
+        error.message
+    );
+}
+
+/// ReadOnly mode allows `ralph_submit_artifact` (non-mutating workflow signal, real registered name).
+#[test]
+fn real_ralph_submit_artifact_allowed_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_real_submit_artifact_tool(&counter);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_submit_artifact",
+        serde_json::json!({"artifact_type": "plan", "content": "{}"}),
+    );
+
+    assert!(
+        response.error.is_none(),
+        "ralph_submit_artifact must be allowed in ReadOnly mode (non-mutating workflow signal), got error: {:?}",
+        response.error
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "ralph_submit_artifact handler must be called exactly once"
+    );
+}
+
+/// Blocklist blocks `ralph_submit_artifact` (real registered name).
+#[test]
+fn real_ralph_submit_artifact_blocked_by_blocklist() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_real_submit_artifact_tool(&counter);
+    let config =
+        McpServerConfig::new(PathBuf::from("/tmp")).with_tool_filter(ToolFilter::Blocklist(vec![
+            "ralph_submit_artifact".to_string(),
+        ]));
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(
+        &server,
+        state,
+        "ralph_submit_artifact",
+        serde_json::json!({"artifact_type": "plan", "content": "{}"}),
+    );
+
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "ralph_submit_artifact handler must NOT be called when blocked"
+    );
+    assert!(
+        response.error.is_some(),
+        "ralph_submit_artifact must be blocked by blocklist"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(error.code, -32000);
+    assert_eq!(
+        error
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("ToolNotAllowed"),
+        "Error code must be ToolNotAllowed for blocklist denial"
+    );
+}
+
+/// `tools/list` returns the actual registered tool names, not stale or prefixed variants.
+///
+/// Regression: after the rename commit (d1f09f19) dropped `ralph_` from most tools,
+/// consumers depend on `tools/list` returning the exact registered names. This test
+/// registers a mix of real tool names and verifies the list response contains them.
+#[test]
+fn tools_list_returns_real_registered_names() {
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+
+    // Build a registry with the four tool names that represent the full naming spectrum:
+    // - plain names: read_file, write_file, exec
+    // - prefixed workflow name: ralph_submit_artifact
+    let counter = Arc::new(AtomicU32::new(0));
+    let noop_handler: ToolHandler = {
+        let c = Arc::clone(&counter);
+        Arc::new(
+            move |_session: &dyn mcp_server::HostSession,
+                  _workspace: &dyn mcp_server::WorkspaceAdapter,
+                  _params: serde_json::Value|
+                  -> Result<ToolResult, mcp_server::ToolError> {
+                c.fetch_add(1, Ordering::SeqCst);
+                Ok(ToolResult::success(vec![ToolContent::text("ok".to_string())]))
+            },
+        )
+    };
+    let make_meta = |name: &str, cap: McpCapability| ToolMetadata {
+        definition: ToolDefinition {
+            name: name.to_string(),
+            description: format!("Test tool {}", name),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: cap,
+        is_mutating: None,
+    };
+    let tools = vec![
+        (
+            make_meta("read_file", McpCapability::WorkspaceRead),
+            Arc::clone(&noop_handler),
+        ),
+        (
+            make_meta("write_file", McpCapability::WorkspaceWriteTracked),
+            Arc::clone(&noop_handler),
+        ),
+        (
+            make_meta("exec", McpCapability::ProcessExecBounded),
+            Arc::clone(&noop_handler),
+        ),
+        (
+            make_meta("ralph_submit_artifact", McpCapability::ArtifactSubmit),
+            Arc::clone(&noop_handler),
+        ),
+    ];
+    let registry = ToolRegistry::new(tools);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"));
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    // Call tools/list
+    let list_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, _) = server.handle_request(list_request, state);
+    let response = response.expect("tools/list must return a response");
+
+    assert!(
+        response.error.is_none(),
+        "tools/list must not return an error, got: {:?}",
+        response.error
+    );
+    let result = response.result.expect("tools/list must have a result");
+    let tools_array = result
+        .get("tools")
+        .and_then(|t| t.as_array())
+        .expect("tools/list result must contain a 'tools' array");
+
+    let returned_names: Vec<&str> = tools_array
+        .iter()
+        .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
+        .collect();
+
+    // All four registered names must appear in the response exactly as registered.
+    for expected in &["read_file", "write_file", "exec", "ralph_submit_artifact"] {
+        assert!(
+            returned_names.contains(expected),
+            "tools/list must return '{}' (registered name), but got: {:?}",
+            expected,
+            returned_names
+        );
+    }
+
+    // No stale prefixed names should appear (regression guard).
+    for stale in &[
+        "ralph_read_file",
+        "ralph_write_file",
+        "ralph_exec_command",
+        "ralph_workspace_read_file",
+        "ralph_workspace_write_file",
+    ] {
+        assert!(
+            !returned_names.contains(stale),
+            "tools/list must NOT return stale prefixed name '{}', got: {:?}",
+            stale,
+            returned_names
+        );
+    }
+
+    assert_eq!(
+        returned_names.len(),
+        4,
+        "tools/list must return exactly the 4 registered tools, got: {:?}",
+        returned_names
+    );
+}

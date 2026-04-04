@@ -888,6 +888,200 @@ pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
     }
 }
 
+/// Verifies that `ralph_submit_artifact` is the only MCP tool name retaining the `ralph_`
+/// prefix in production source code.
+///
+/// All other tool names must have dropped the prefix (per commit d1f09f19 "rename all tools
+/// to drop ralph_ prefix"). This check ensures no future tool registration accidentally
+/// reintroduces the `ralph_` prefix on a tool other than the artifact submission tool.
+///
+/// Scanned directories (test directories are excluded):
+/// - `mcp-server/src/`
+/// - `ralph-workflow/src/mcp_server/` (excluding `tests/` subdirectory)
+///
+/// Returns `Pass` when only `ralph_submit_artifact` (or no `ralph_`-prefixed strings at all)
+/// appear in production source. Returns `Error` when any other `ralph_`-prefixed tool name
+/// is found.
+pub fn check_mcp_tool_naming_policy(repo_root: &Path) -> NativeCheckResult {
+    if !repo_root.exists() {
+        return NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        };
+    }
+
+    let scan_dirs = [
+        repo_root.join("mcp-server/src"),
+        repo_root.join("ralph-workflow/src/mcp_server"),
+    ];
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for dir in &scan_dirs {
+        if !dir.exists() {
+            continue;
+        }
+        if let Err(e) = scan_dir_for_ralph_prefix_violations(dir, repo_root, &mut violations) {
+            return NativeCheckResult {
+                status: CheckStatus::Error,
+                message: format!("Failed to scan {}: {e}", dir.display()),
+            };
+        }
+    }
+
+    if violations.is_empty() {
+        NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        }
+    } else {
+        NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "MCP tool naming policy violation: {} occurrence(s) of ralph_ prefix found in \
+                production source (only ralph_submit_artifact may retain this prefix — all other \
+                tool names must drop the ralph_ prefix per the naming convention):\n{}",
+                violations.len(),
+                violations.join("\n")
+            ),
+        }
+    }
+}
+
+/// Verifies that `mcp-server/tests/standalone_host.rs` contains an up-to-date
+/// `assert_no_real_git_state` implementation that uses a loop-based directory walk.
+///
+/// The standalone_host test file defines its own `assert_no_real_git_state` function
+/// (instead of depending on test-helpers) to keep mcp-server independent of ralph-workflow.
+/// This check ensures that the in-file implementation stays in parity with the canonical
+/// shape required by the git safety policy:
+///
+/// 1. The function `fn assert_no_real_git_state` must be present.
+/// 2. The implementation must use a `loop {` for directory traversal (walks parent chain
+///    rather than checking only the given path, preventing bypasses via subdirectory paths).
+///
+/// Returns `Pass` when both requirements are met or when the file does not exist
+/// (e.g., in unit-test environments with a fake repo root).
+pub fn check_standalone_host_git_safety_parity(repo_root: &Path) -> NativeCheckResult {
+    let standalone_host = repo_root.join("mcp-server/tests/standalone_host.rs");
+
+    if !standalone_host.exists() {
+        return NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        };
+    }
+
+    let content = match std::fs::read_to_string(&standalone_host) {
+        Ok(c) => c,
+        Err(e) => {
+            return NativeCheckResult {
+                status: CheckStatus::Error,
+                message: format!("Failed to read {}: {e}", standalone_host.display()),
+            };
+        }
+    };
+
+    let has_function = content.contains("fn assert_no_real_git_state");
+    let has_loop_walk = content.contains("loop {");
+
+    if !has_function {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message:
+                "mcp-server/tests/standalone_host.rs is missing `fn assert_no_real_git_state`. \
+                The standalone_host test file must define this function locally (without importing \
+                test-helpers) to enforce the git safety policy for mcp-server tests."
+                    .to_string(),
+        };
+    }
+
+    if !has_loop_walk {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message:
+                "mcp-server/tests/standalone_host.rs defines `fn assert_no_real_git_state` but \
+                it appears to be missing the loop-based directory walk (`loop {`). The \
+                implementation must traverse the parent chain using a loop to prevent bypasses \
+                via subdirectory paths. Update it to match the canonical pattern in test-helpers."
+                    .to_string(),
+        };
+    }
+
+    NativeCheckResult {
+        status: CheckStatus::Pass,
+        message: String::new(),
+    }
+}
+
+fn scan_dir_for_ralph_prefix_violations(
+    dir: &Path,
+    repo_root: &Path,
+    violations: &mut Vec<String>,
+) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Skip test directories to avoid false positives from test mock tool names
+        if path
+            .components()
+            .any(|c| c.as_os_str() == "tests" || c.as_os_str() == "test")
+        {
+            continue;
+        }
+
+        if path.is_dir() {
+            scan_dir_for_ralph_prefix_violations(&path, repo_root, violations)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            scan_file_for_ralph_prefix_violations(&path, repo_root, violations)?;
+        }
+    }
+    Ok(())
+}
+
+fn scan_file_for_ralph_prefix_violations(
+    path: &Path,
+    repo_root: &Path,
+    violations: &mut Vec<String>,
+) -> std::io::Result<()> {
+    let content = std::fs::read_to_string(path)?;
+    let display = path.strip_prefix(repo_root).unwrap_or(path);
+
+    for (line_idx, line) in content.lines().enumerate() {
+        // Skip comment-only lines (doc comments, line comments)
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.starts_with('*') {
+            continue;
+        }
+
+        // Find all "ralph_…" string literals in this line
+        let mut search_start = 0usize;
+        while let Some(rel) = line[search_start..].find("\"ralph_") {
+            let quote_start = search_start + rel;
+            let token_start = quote_start + 1; // skip opening "
+            match line[token_start..].find('"') {
+                Some(end) => {
+                    let tool_name = &line[token_start..token_start + end];
+                    if tool_name != "ralph_submit_artifact" {
+                        violations.push(format!(
+                            "{}:{}: '{}' uses ralph_ prefix — only ralph_submit_artifact may \
+                            retain this prefix",
+                            display.display(),
+                            line_idx + 1,
+                            tool_name,
+                        ));
+                    }
+                    search_start = token_start + end + 1;
+                }
+                None => break,
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

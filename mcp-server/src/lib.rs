@@ -186,6 +186,8 @@
 //! - **Arguments:** `{ "path": "<relative-path>" }`
 //! - **Response:** File contents as text
 //! - **Errors:** `-32000` if path does not exist or is outside root
+//! - **Idempotency:** Idempotent — repeated calls with the same path return the same result
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `write_file`
 //! - **Capability:** `WorkspaceWriteTracked` (tracked files) or `WorkspaceWriteEphemeral`
@@ -193,6 +195,10 @@
 //! - **Arguments:** `{ "path": "<relative-path>", "content": "<string>" }`
 //! - **Response:** Confirmation message with byte count
 //! - **Errors:** `-32000` if capability denied or write fails
+//! - **Side effects:** Writes to filesystem; overwrites existing file
+//! - **Idempotency:** Non-idempotent — repeated calls with the same content produce the same file
+//!   but each call is a distinct write operation
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `list_directory`
 //! - **Capability:** `WorkspaceRead`
@@ -200,6 +206,8 @@
 //! - **Arguments:** `{ "path": "<relative-path>" }`
 //! - **Response:** Directory listing as text
 //! - **Errors:** `-32000` if path does not exist
+//! - **Idempotency:** Idempotent — repeated calls return the same listing for unchanged directories
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `list_directory_recursive`
 //! - **Capability:** `WorkspaceRead`
@@ -207,6 +215,8 @@
 //! - **Arguments:** `{ "path": "<relative-path>" }`
 //! - **Response:** Recursive directory listing as text
 //! - **Errors:** `-32000` if path does not exist
+//! - **Idempotency:** Idempotent — repeated calls return the same listing for unchanged trees
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `search_files`
 //! - **Capability:** `WorkspaceRead`
@@ -215,6 +225,8 @@
 //! - **Matching:** Filename substring match or `"*"` for all files (not a glob)
 //! - **Response:** Matching file paths as text
 //! - **Errors:** `-32000` on I/O error
+//! - **Idempotency:** Idempotent — repeated calls with the same pattern return the same result
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `git_status`
 //! - **Capability:** `GitStatusRead`
@@ -222,6 +234,8 @@
 //! - **Arguments:** `{}` (no arguments)
 //! - **Response:** Git status output as text
 //! - **Errors:** `-32000` if not a git repo or git unavailable
+//! - **Idempotency:** Idempotent — no filesystem mutation; reflects current working tree state
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `git_diff`
 //! - **Capability:** `GitStatusRead`
@@ -229,6 +243,8 @@
 //! - **Arguments:** `{ "args": ["--staged"] }` — optional array of extra `git diff` arguments
 //! - **Response:** Unified diff as text (may be empty if no changes)
 //! - **Errors:** `-32000` on git error
+//! - **Idempotency:** Idempotent — no filesystem mutation; reflects current diff state
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `git_log`
 //! - **Capability:** `GitStatusRead`
@@ -236,6 +252,8 @@
 //! - **Arguments:** `{ "count": <optional-int> }` — number of recent commits to show (default: 10)
 //! - **Response:** Commit log in oneline format (`<sha> <subject>` per line)
 //! - **Errors:** `-32000` on git error
+//! - **Idempotency:** Idempotent — no filesystem mutation; reflects current commit history
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `git_show`
 //! - **Capability:** `GitStatusRead`
@@ -243,39 +261,58 @@
 //! - **Arguments:** `{ "ref": "<commit-ref>" }`
 //! - **Response:** Commit details as text
 //! - **Errors:** `-32000` if ref not found
+//! - **Idempotency:** Idempotent — commit objects are immutable; repeated calls return the same result
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `exec`
 //! - **Capability:** `ProcessExecBounded`
 //! - **ReadOnly safe:** No — rejected with `ReadOnlyMode` in ReadOnly servers
 //! - **Arguments:** `{ "command": "<cmd>", "args": ["<arg1>", ...], "timeout_ms": <optional-int> }`
 //! - **Response:** Command stdout/stderr as text with exit code
-//! - **Errors:** `-32000` on execution failure or policy blacklist match
-//! - **Side effects:** Spawns a subprocess; non-idempotent
+//! - **Errors:** `-32000` on execution failure, timeout, or policy blacklist match;
+//!   `-32000` with `ReadOnlyMode` code when server is in ReadOnly mode
+//! - **Side effects:** Spawns a subprocess; creates/modifies files if command does so
+//! - **Idempotency:** Non-idempotent — repeated calls may produce different results or side effects
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `ralph_submit_artifact`
 //! - **Capability:** `ArtifactSubmit`
-//! - **ReadOnly safe:** Yes
+//! - **ReadOnly safe:** Yes — classified as a non-mutating workflow signal; does not modify filesystem
 //! - **Arguments:** `{ "artifact_type": "<type>", "content": "<json-string>", "partial": <optional-bool> }`
 //! - **Accepted `artifact_type` values:** `"plan"`, `"development_result"`, `"issues"`,
 //!   `"fix_result"`, `"commit_message"`, `"review_issues"`
 //! - **Response:** JSON with `{ "accepted": true, "artifact_type": "...", "validated_at": "..." }`
-//! - **Errors:** `-32000` if artifact_type is unknown or content fails schema validation
-//! - **Side effects:** Triggers a workflow state transition in the host; non-idempotent
+//! - **Errors:** `-32000` if `artifact_type` is unknown or content fails schema validation;
+//!   `-32000` with `CapabilityDenied` code if session lacks `ArtifactSubmit` capability
+//! - **Side effects:** Triggers a workflow state transition in the host (pipeline phase advancement)
+//! - **Idempotency:** Non-idempotent — each submission advances pipeline state; submitting the same
+//!   artifact twice produces a second state transition
+//! - **Naming note:** This tool retains the `ralph_` prefix because it is a Ralph-specific workflow
+//!   signal, not a generic filesystem or process operation. All other tools use unprefixed names.
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `report_progress`
 //! - **Capability:** `RunReportProgress`
-//! - **ReadOnly safe:** Yes
+//! - **ReadOnly safe:** Yes — non-mutating; does not modify filesystem or git state
 //! - **Arguments:** `{ "status": "<progress-string>", "note": "<optional-string>" }`
 //! - **Response:** Progress acknowledgement text with timestamp
-//! - **Errors:** `-32000` on capability denial
-//! - **Side effects:** Emits a progress event to the workflow; idempotent
+//! - **Errors:** `-32000` with `CapabilityDenied` code if session lacks `RunReportProgress` capability
+//! - **Side effects:** Emits a progress event to the host workflow; does not modify filesystem
+//! - **Idempotency:** Idempotent from the server's perspective — repeated calls with the same status
+//!   each emit a separate progress event to the host, but do not change server state
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `declare_complete`
 //! - **Capability:** `ArtifactSubmit`
-//! - **ReadOnly safe:** Yes
+//! - **ReadOnly safe:** Yes — non-mutating; does not modify filesystem or git state
 //! - **Arguments:** `{ "summary": "<optional-string>" }`
 //! - **Response:** Text confirmation with session ID and timestamp
-//! - **Side effects:** Signals task completion to pipeline; non-idempotent
+//! - **Errors:** `-32000` with `CapabilityDenied` code if session lacks `ArtifactSubmit` capability;
+//!   `-32000` if the session is not in an active pipeline run
+//! - **Side effects:** Signals task completion to the pipeline; advances workflow state in the host
+//! - **Idempotency:** Non-idempotent — calling this tool more than once signals completion multiple
+//!   times; the host may accept or reject duplicate calls depending on pipeline state
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `read_env`
 //! - **Capability:** `EnvRead`
@@ -283,14 +320,23 @@
 //! - **Arguments:** `{ "name": "<env-var-name>" }`
 //! - **Response:** `NAME=VALUE` as text; returns `NAME=[not found]` if variable is not set (not an error)
 //! - **Errors:** `-32000` if name is missing from request or capability denied
+//! - **Idempotency:** Idempotent — reads environment variable without mutation
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ### `coordinate`
 //! - **Capability:** `ArtifactSubmit`
-//! - **ReadOnly safe:** Yes
+//! - **ReadOnly safe:** Yes — non-mutating from the filesystem perspective; does not write files
 //! - **Arguments:** `{ "action": "<action-type>", "work_unit_id": "<optional-string>", "payload": <optional-object> }`
 //! - **Supported actions:** `"claim"`, `"release"`, `"status"`, `"ack"`
 //! - **Response:** Coordination acknowledgement text with timestamp
-//! - **Side effects:** Updates shared coordination state; idempotency depends on action
+//! - **Errors:** `-32000` if `action` is not one of the supported values;
+//!   `-32000` with `CapabilityDenied` code if session lacks `ArtifactSubmit` capability;
+//!   `-32000` if the coordination state machine rejects the transition (e.g., releasing a
+//!   work unit not claimed by this session)
+//! - **Side effects:** Updates shared coordination state in the host; does not modify filesystem
+//! - **Idempotency:** Action-dependent — `"status"` is idempotent (read-only query);
+//!   `"claim"`, `"release"`, `"ack"` are non-idempotent (state transitions)
+//! - **Stability:** Stable since protocol version `2024-11-05`
 //!
 //! ## Lifecycle Methods
 //!

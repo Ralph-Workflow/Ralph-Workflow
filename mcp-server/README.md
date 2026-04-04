@@ -544,19 +544,21 @@ The following tools are registered in Ralph's MCP server. Each tool's contract:
 
 | Tool | McpCapability | Access Mode | ReadOnly-Safe | Side Effects |
 |------|---------------|-------------|---------------|-------------|
-| `ralph_read_file` | `WorkspaceRead` | `ReadOnly` | Yes | No |
-| `ralph_write_file` | `WorkspaceWriteAny` | `ReadWrite` | No | Yes |
-| `ralph_list_directory` | `WorkspaceRead` | `ReadOnly` | Yes | No |
-| `ralph_search_files` | `WorkspaceRead` | `ReadOnly` | Yes | No |
-| `ralph_git_status` | `GitStatusRead` | `ReadOnly` | Yes | No |
-| `ralph_git_log` | `GitStatusRead` | `ReadOnly` | Yes | No |
-| `ralph_git_diff` | `GitStatusRead` | `ReadOnly` | Yes | No |
-| `ralph_git_show` | `GitStatusRead` | `ReadOnly` | Yes | No |
-| `ralph_exec_command` | `ProcessExecBounded` | `ReadWrite` | No | Yes |
-| `ralph_submit_artifact` | `ArtifactSubmit` | `ReadWrite` | No | Yes |
-| `ralph_report_progress` | `RunReportProgress` | `ReadWrite` | No | Yes |
-| `ralph_declare_complete` | `ArtifactSubmit` | `ReadWrite` | No | Yes |
-| `ralph_read_env` | `EnvRead` | `ReadOnly` | Yes | No |
+| `read_file` | `WorkspaceRead` | `ReadOnly` | Yes | No |
+| `write_file` | `WorkspaceWriteAny` | `ReadWrite` | No | Yes |
+| `list_directory` | `WorkspaceRead` | `ReadOnly` | Yes | No |
+| `list_directory_recursive` | `WorkspaceRead` | `ReadOnly` | Yes | No |
+| `search_files` | `WorkspaceRead` | `ReadOnly` | Yes | No |
+| `git_status` | `GitStatusRead` | `ReadOnly` | Yes | No |
+| `git_log` | `GitStatusRead` | `ReadOnly` | Yes | No |
+| `git_diff` | `GitStatusRead` | `ReadOnly` | Yes | No |
+| `git_show` | `GitStatusRead` | `ReadOnly` | Yes | No |
+| `exec` | `ProcessExecBounded` | `ReadWrite` | No | Yes |
+| `ralph_submit_artifact` | `ArtifactSubmit` | `ReadOnly` | Yes | No (workflow signal only) |
+| `report_progress` | `RunReportProgress` | `ReadOnly` | Yes | No (progress event only) |
+| `declare_complete` | `ArtifactSubmit` | `ReadOnly` | Yes | No (workflow signal only) |
+| `coordinate` | `ArtifactSubmit` | `ReadOnly` | Yes | No (coordination state only) |
+| `read_env` | `EnvRead` | `ReadOnly` | Yes | No |
 
 ## Protocol Versioning
 

@@ -44,7 +44,9 @@ use mcp_server::dispatch::audit::AuditRecord;
 use mcp_server::dispatch::host::DirEntry;
 use mcp_server::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
 use mcp_server::io::access::McpServerConfig;
+use mcp_server::io::fake::FakeTransport;
 use mcp_server::io::session_bridge::SessionBridge;
+use mcp_server::io::transport::McpStream;
 use mcp_server::io::{McpServer, ServerState};
 use mcp_server::protocol::{
     JsonRpcRequest, JsonRpcResponse, ToolContent, ToolDefinition, ToolResult,
@@ -157,6 +159,14 @@ impl InMemorySession {
         Self {
             session_id: session_id.to_string(),
             granted_capabilities: granted,
+        }
+    }
+
+    /// Creates a session with no capabilities granted (all denied by default).
+    fn new_empty(session_id: &str) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            granted_capabilities: HashMap::new(),
         }
     }
 
@@ -1811,4 +1821,343 @@ fn test_audit_sink_receives_allow_decision() {
             other
         ),
     }
+}
+
+/// End-to-end protocol roundtrip using in-memory FakeTransport.
+///
+/// Proves the full protocol stack works without ralph-workflow dependency and
+/// without a real Unix socket:
+///
+/// 1. Create McpServer with fake InMemorySession and InMemoryWorkspace
+/// 2. Drive requests through FakeTransport (inject request → handle → read response)
+/// 3. Verify initialize handshake returns protocol version
+/// 4. Verify tools/list returns registered tools
+/// 5. Verify a read tool call succeeds in ReadOnly mode
+/// 6. Verify a write tool call is rejected with ReadOnlyMode in ReadOnly mode
+/// 7. Verify a tool call before initialize returns NotInitialized (-32001)
+/// 8. Verify a tool call rejected by missing capability returns structured CapabilityDenied
+///    payload (error.code = -32000, error.data.code = "CapabilityDenied")
+#[test]
+fn full_protocol_roundtrip_with_fake_host() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // -- Helpers: drive McpServer via FakeTransport ------------------------
+    fn inject_and_handle(
+        server: &McpServer,
+        transport: &mut FakeTransport,
+        request: JsonRpcRequest,
+        state: ServerState,
+    ) -> (JsonRpcResponse, ServerState) {
+        transport.inject_request(request);
+        let req = transport
+            .read_request()
+            .expect("transport read must not error")
+            .expect("transport must have a request");
+        let (maybe_response, new_state) = server.handle_request(req, state);
+        let response = maybe_response.expect("request with id must produce a response");
+        transport
+            .write_response(&response)
+            .expect("write_response must not error");
+        (response, new_state)
+    }
+
+    // -- Step 1: Verify NotInitialized before initialize ------------------
+    // Create a minimal server with no tools registered to test protocol ordering
+    let session_pre =
+        Arc::new(InMemorySession::new("pre-init-session")) as Arc<dyn mcp_server::HostSession>;
+    let workspace_pre =
+        Arc::new(InMemoryWorkspace::new(root.clone())) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config_pre = McpServerConfig::new(root.clone());
+    let server_pre = McpServer::new(
+        session_pre,
+        config_pre,
+        workspace_pre,
+        ToolRegistry::new(vec![]),
+        None,
+    );
+    let mut transport_pre = FakeTransport::new();
+
+    let tool_call_before_init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({"name": "read_file", "arguments": {}})),
+        id: Some(serde_json::json!(99)),
+    };
+    let (not_init_response, _) = inject_and_handle(
+        &server_pre,
+        &mut transport_pre,
+        tool_call_before_init,
+        ServerState::Uninitialized,
+    );
+    assert!(
+        not_init_response.error.is_some(),
+        "tools/call before initialize must return an error"
+    );
+    let not_init_err = not_init_response.error.unwrap();
+    assert_eq!(
+        not_init_err.code, -32001,
+        "Not-initialized error must use code -32001 (NotInitialized), got: {}",
+        not_init_err.code
+    );
+
+    // -- Step 2: Create server with tools for full roundtrip ---------------
+    let read_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "file contents".to_string(),
+            )]))
+        },
+    );
+    let read_meta = ToolMetadata {
+        definition: ToolDefinition {
+            name: "read_file".to_string(),
+            description: "Read a file".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: None,
+    };
+
+    let write_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "written".to_string(),
+            )]))
+        },
+    );
+    let write_meta = ToolMetadata {
+        definition: ToolDefinition {
+            name: "write_file".to_string(),
+            description: "Write a file".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::WorkspaceWriteTracked,
+        is_mutating: None,
+    };
+
+    let session = Arc::new(InMemorySession::new("e2e-session").with_capabilities(&[
+        McpCapability::WorkspaceRead,
+        McpCapability::WorkspaceWriteTracked,
+    ])) as Arc<dyn mcp_server::HostSession>;
+    let workspace =
+        Arc::new(InMemoryWorkspace::new(root.clone())) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    // ReadOnly mode: write_file must be rejected even though session has the capability
+    let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadOnly);
+    let registry = ToolRegistry::new(vec![(read_meta, read_handler), (write_meta, write_handler)]);
+    let server = McpServer::new(session, config, workspace, registry, None);
+    let mut transport = FakeTransport::new();
+
+    // -- Step 3: initialize handshake -------------------------------------
+    let init_req = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(
+            serde_json::json!({"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test-client", "version": "0.1"}}),
+        ),
+        id: Some(serde_json::json!(1)),
+    };
+    let (init_response, state) = inject_and_handle(
+        &server,
+        &mut transport,
+        init_req,
+        ServerState::Uninitialized,
+    );
+    assert!(
+        init_response.error.is_none(),
+        "initialize must succeed, got error: {:?}",
+        init_response.error
+    );
+    let init_result = init_response
+        .result
+        .expect("initialize must return a result");
+    assert_eq!(
+        init_result["protocolVersion"], "2024-11-05",
+        "initialize must echo back protocol version"
+    );
+    assert!(
+        init_result["serverInfo"]["name"].as_str().is_some(),
+        "initialize result must include serverInfo.name"
+    );
+    assert_eq!(state, ServerState::Ready);
+
+    // -- Step 4: tools/list returns registered tools ----------------------
+    let list_req = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    let (list_response, state) = inject_and_handle(&server, &mut transport, list_req, state);
+    assert!(
+        list_response.error.is_none(),
+        "tools/list must succeed, got error: {:?}",
+        list_response.error
+    );
+    let list_result = list_response
+        .result
+        .expect("tools/list must return a result");
+    let tools = list_result["tools"]
+        .as_array()
+        .expect("tools must be an array");
+    let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(
+        tool_names.contains(&"read_file"),
+        "tools/list must include read_file, got: {:?}",
+        tool_names
+    );
+    assert!(
+        tool_names.contains(&"write_file"),
+        "tools/list must include write_file (filter is at dispatch, not list), got: {:?}",
+        tool_names
+    );
+
+    // -- Step 5: read_file succeeds in ReadOnly mode ----------------------
+    let read_call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({"name": "read_file", "arguments": {"path": "README.md"}})),
+        id: Some(serde_json::json!(3)),
+    };
+    let (read_response, state) = inject_and_handle(&server, &mut transport, read_call, state);
+    assert!(
+        read_response.error.is_none(),
+        "read_file must succeed in ReadOnly mode, got error: {:?}",
+        read_response.error
+    );
+    assert!(
+        read_response.result.is_some(),
+        "read_file must return a result"
+    );
+
+    // -- Step 6: write_file is rejected in ReadOnly mode ------------------
+    let write_call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(
+            serde_json::json!({"name": "write_file", "arguments": {"path": "out.txt", "content": "x"}}),
+        ),
+        id: Some(serde_json::json!(4)),
+    };
+    let (write_response, _) = inject_and_handle(&server, &mut transport, write_call, state);
+    assert!(
+        write_response.error.is_some(),
+        "write_file must be denied in ReadOnly mode"
+    );
+    let write_err = write_response.error.unwrap();
+    assert!(
+        write_err.message.contains("ReadOnly") || write_err.message.contains("read only"),
+        "write_file denial must mention ReadOnly mode, got: {}",
+        write_err.message
+    );
+
+    // -- Verify FakeTransport captured all responses correctly ------------
+    // The main transport should have pending responses (init, list, read_call, write_call).
+    // Each inject_and_handle writes one response back via write_response.
+    assert!(
+        transport.has_pending_responses(),
+        "Main transport must have pending responses from the protocol roundtrip"
+    );
+
+    // -- Step 7: capability-denied tool call returns structured CapabilityDenied payload --
+    // Create a session lacking ArtifactSubmit capability to exercise the CapabilityDenied path.
+    // Uses new_empty() so no capability is granted by default — only WorkspaceRead is added.
+    let artifact_submit_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "submitted".to_string(),
+            )]))
+        },
+    );
+    let artifact_meta = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_submit_artifact".to_string(),
+            description: "Submit artifact".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {"plan": {"type": "string"}}}),
+        },
+        required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None,
+    };
+
+    let restricted_session = Arc::new(
+        // new_empty() starts with no grants — only WorkspaceRead is added, so ArtifactSubmit is denied
+        InMemorySession::new_empty("restricted-session")
+            .with_capabilities(&[McpCapability::WorkspaceRead]),
+    ) as Arc<dyn mcp_server::HostSession>;
+    let restricted_workspace =
+        Arc::new(InMemoryWorkspace::new(root.clone())) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    // ReadWrite mode so the ReadOnly check does not interfere — only capability check fires
+    let restricted_config =
+        McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadWrite);
+    let restricted_registry = ToolRegistry::new(vec![(artifact_meta, artifact_submit_handler)]);
+    let server_restricted = McpServer::new(
+        restricted_session,
+        restricted_config,
+        restricted_workspace,
+        restricted_registry,
+        None,
+    );
+    let mut transport_restricted = FakeTransport::new();
+
+    let init_restricted = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "restricted-client", "version": "0.1"}
+        })),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, restricted_state) = inject_and_handle(
+        &server_restricted,
+        &mut transport_restricted,
+        init_restricted,
+        ServerState::Uninitialized,
+    );
+
+    let artifact_call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(
+            serde_json::json!({"name": "ralph_submit_artifact", "arguments": {"plan": "test plan"}}),
+        ),
+        id: Some(serde_json::json!(2)),
+    };
+    let (cap_denied_response, _) = inject_and_handle(
+        &server_restricted,
+        &mut transport_restricted,
+        artifact_call,
+        restricted_state,
+    );
+
+    assert!(
+        cap_denied_response.error.is_some(),
+        "ralph_submit_artifact must be denied when session lacks ArtifactSubmit capability"
+    );
+    let cap_err = cap_denied_response.error.unwrap();
+    assert_eq!(
+        cap_err.code, -32000,
+        "CapabilityDenied must use code -32000 (tool error), got: {}",
+        cap_err.code
+    );
+    assert_eq!(
+        cap_err
+            .data
+            .as_ref()
+            .and_then(|d| d.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("CapabilityDenied"),
+        "error.data.code must be 'CapabilityDenied', got: {:?}",
+        cap_err.data
+    );
 }

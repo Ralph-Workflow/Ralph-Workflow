@@ -323,6 +323,14 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
         name: "dep-isolation-mcp-server",
         run: crate::boundary::compliance::check_mcp_server_dep_isolation,
     },
+    NativeCheck {
+        name: "mcp-tool-naming-policy",
+        run: crate::boundary::compliance::check_mcp_tool_naming_policy,
+    },
+    NativeCheck {
+        name: "mcp-standalone-host-git-safety-parity",
+        run: crate::boundary::compliance::check_standalone_host_git_safety_parity,
+    },
 ];
 
 const FRONTEND_TEST_CHECK_NAME: &str = "ralph-gui-frontend-test";
@@ -1158,9 +1166,37 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
         extra_env: &[],
     },
     CommandSpec {
-        name: "test-mcp-server",
+        name: "test-mcp-server-standalone-host",
         program: "cargo",
         args: &["test", "-p", "mcp-server", "--test", "standalone_host"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-access-control",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server", "--test", "access_control"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-dispatch-capability",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server", "--test", "dispatch_capability"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-protocol-framing",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server", "--test", "protocol_framing"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-session-lifecycle",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server", "--test", "session_lifecycle"],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -2119,7 +2155,11 @@ mod tests {
                 "clippy-core-lib-only",
                 "test-ralph-workflow-lib",
                 "test-integration",
-                "test-mcp-server",
+                "test-mcp-server-standalone-host",
+                "test-mcp-server-access-control",
+                "test-mcp-server-dispatch-capability",
+                "test-mcp-server-protocol-framing",
+                "test-mcp-server-session-lifecycle",
                 "rustdoc-mcp-server",
             ]
         );

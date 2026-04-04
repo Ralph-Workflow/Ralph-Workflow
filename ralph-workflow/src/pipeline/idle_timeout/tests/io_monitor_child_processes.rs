@@ -66,19 +66,13 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    // Auto-advance cpu by 100ms on every query — no background thread needed.
+    let executor_impl = Arc::new(
+        MockProcessExecutor::new()
+            .with_active_children_for(child_pid)
+            .with_cpu_step_per_query(child_pid, 100),
+    );
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
-
-    let cpu_advancer_executor = executor_impl.clone();
-    let cpu_advancer_stop = Arc::clone(&should_stop);
-    let cpu_advancer = thread::spawn(move || {
-        let mut cpu_ms = 0u64;
-        while !cpu_advancer_stop.load(Ordering::Acquire) {
-            cpu_ms += 100;
-            cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
-            thread::sleep(Duration::from_millis(2));
-        }
-    });
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
@@ -100,7 +94,12 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
         )
     });
 
-    thread::sleep(Duration::from_millis(40));
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 3
+        }),
+        "monitor should have queried children at least 3 times with cpu advancing on each query"
+    );
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "no kill signals should be sent while child processes have advancing CPU time"
@@ -109,7 +108,6 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("monitor thread panicked");
-    cpu_advancer.join().expect("cpu advancer panicked");
     assert_eq!(
         result,
         MonitorResult::ProcessCompleted,
@@ -203,28 +201,21 @@ fn child_processes_that_finish_eventually_allow_kill() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
-        child_pid,
-        ChildProcessInfo {
-            child_count: 1,
-            active_child_count: 1,
-            cpu_time_ms: 100,
-            descendant_pid_signature: 11,
-        },
-    ));
+    // Auto-advance cpu by 100ms on every query — no background thread needed.
+    let executor_impl = Arc::new(
+        MockProcessExecutor::new()
+            .with_active_children_info(
+                child_pid,
+                ChildProcessInfo {
+                    child_count: 1,
+                    active_child_count: 1,
+                    cpu_time_ms: 100,
+                    descendant_pid_signature: 11,
+                },
+            )
+            .with_cpu_step_per_query(child_pid, 100),
+    );
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
-
-    let cpu_advancer_executor = executor_impl.clone();
-    let cpu_advancer_stop = Arc::new(AtomicBool::new(false));
-    let cpu_advancer_stop_clone = Arc::clone(&cpu_advancer_stop);
-    let cpu_advancer = thread::spawn(move || {
-        let mut cpu_ms = 100u64;
-        while !cpu_advancer_stop_clone.load(Ordering::Acquire) {
-            cpu_ms += 100;
-            cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
-            thread::sleep(Duration::from_millis(2));
-        }
-    });
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
@@ -246,14 +237,17 @@ fn child_processes_that_finish_eventually_allow_kill() {
         )
     });
 
-    thread::sleep(Duration::from_millis(30));
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 3
+        }),
+        "monitor should have queried children at least 3 times with cpu advancing on each query"
+    );
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "no kill should be sent while children are active"
     );
 
-    cpu_advancer_stop.store(true, Ordering::Release);
-    cpu_advancer.join().expect("cpu advancer panicked");
     executor_impl.remove_active_children_for(child_pid);
 
     let result = handle.join().expect("monitor thread panicked");
@@ -718,7 +712,12 @@ fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_wor
         )
     });
 
-    thread::sleep(Duration::from_millis(35));
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 1
+        }),
+        "monitor should have made at least one child-info query (startup grace for initial child)"
+    );
     executor_impl.add_active_children_info(
         child_pid,
         ChildProcessInfo {
@@ -729,7 +728,12 @@ fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_wor
         },
     );
 
-    thread::sleep(Duration::from_millis(35));
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 2
+        }),
+        "monitor should have made a second child-info query after replacement child appeared"
+    );
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "freshly active replacement descendants should keep the monitor alive even when their PID signature changes"

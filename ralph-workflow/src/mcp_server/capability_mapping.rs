@@ -140,6 +140,34 @@ pub(crate) fn check_mcp_capability_policy(
         // Workspace coordination is always allowed.
         McpCapability::WorkspaceCoordination => AccessDecision::Allow,
         // All other capabilities are evaluated based on their mapped Ralph capability.
-        _ => evaluate_mapped_capability(cap, mapped_outcome),
+        // Each variant is listed explicitly so that adding a new McpCapability variant
+        // without updating this mapping produces a compile error rather than a silent
+        // fall-through. The `_` arm below is required only because McpCapability is
+        // #[non_exhaustive] (defined in a different crate), and will catch genuinely
+        // unknown future variants with an explicit deny.
+        McpCapability::FileRead
+        | McpCapability::GitRead
+        | McpCapability::ProcessExec
+        | McpCapability::ArtifactSubmit
+        | McpCapability::WorkspaceRead
+        | McpCapability::WorkspaceWriteEphemeral
+        | McpCapability::WorkspaceWriteTracked
+        | McpCapability::GitStatusRead
+        | McpCapability::GitWrite
+        | McpCapability::EnvRead
+        | McpCapability::EnvWrite
+        | McpCapability::ProcessExecBounded
+        | McpCapability::ProcessExecUnbounded
+        | McpCapability::RunReportProgress => evaluate_mapped_capability(cap, mapped_outcome),
+        // Required wildcard arm for #[non_exhaustive] McpCapability — deny any future
+        // variant added to mcp-server that ralph-workflow has not yet been updated to handle.
+        _ => AccessDecision::Deny {
+            reason: format!(
+                "Unrecognized McpCapability {:?}: ralph-workflow has not been updated to \
+                handle this capability variant",
+                cap
+            ),
+            code: AccessDeniedCode::CapabilityDenied,
+        },
     }
 }
