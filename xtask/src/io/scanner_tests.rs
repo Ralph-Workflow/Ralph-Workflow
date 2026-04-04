@@ -1290,7 +1290,7 @@ fn test_forbidden_allow_expect_scan_blocks_cfg_attr_expect_without_reason() {
 #[test]
 fn test_line_has_nonempty_reason() {
     // Test cases for the line_has_nonempty_reason helper
-    use super::line_has_nonempty_reason;
+    use crate::domain::scan_policy::line_has_nonempty_reason;
 
     // Valid cases with non-empty reason
     assert!(
@@ -1800,7 +1800,7 @@ mod bmh_tests {
 // ── KMP (Knuth-Morris-Pratt) tests ───────────────────────────────────────
 
 mod kmp_tests {
-    use super::super::kmp_search;
+    use crate::io::string_search::kmp_search;
 
     #[test]
     fn test_kmp_empty_needle_returns_some_zero() {
@@ -2625,6 +2625,7 @@ fn test_collect_scan_groups_skips_excluded_transient_frontend_directories() {
 /// Reference: TAOCP Vol. 3, §6.3 — preprocessing amortization principle.
 #[test]
 fn test_tw_contains_precomputed_matches_tw_contains() {
+    use crate::io::string_search::tw_contains_precomputed;
     let fixed_cases: &[(&[u8], &[u8])] = &[
         // Basic matching
         (b"hello", b"hello"),
@@ -2707,6 +2708,7 @@ fn test_tw_contains_precomputed_matches_tw_contains() {
 /// Empty pattern must return true (same contract as tw_contains).
 #[test]
 fn test_tw_contains_precomputed_empty_pattern_returns_true() {
+    use crate::io::string_search::tw_contains_precomputed;
     // tw_contains_precomputed skips the precomputed path for empty patterns.
     // Use critical_factorization on a non-empty dummy pattern for the call.
     let precomputed = critical_factorization(b"x");
@@ -2723,6 +2725,7 @@ fn test_tw_contains_precomputed_empty_pattern_returns_true() {
 /// Pattern longer than text must return false.
 #[test]
 fn test_tw_contains_precomputed_pattern_longer_than_text_returns_false() {
+    use crate::io::string_search::tw_contains_precomputed;
     let pattern = b"longer";
     let text = b"short";
     let precomputed = critical_factorization(pattern);

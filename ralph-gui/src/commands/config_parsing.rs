@@ -53,14 +53,14 @@ pub(super) fn merge_chains(
     global: HashMap<String, Vec<String>>,
     project: HashMap<String, Vec<String>>,
 ) -> HashMap<String, Vec<String>> {
-    global.into_iter().chain(project.into_iter()).collect()
+    global.into_iter().chain(project).collect()
 }
 
 pub(super) fn merge_drains(
     global: HashMap<String, String>,
     project: HashMap<String, String>,
 ) -> HashMap<String, String> {
-    global.into_iter().chain(project.into_iter()).collect()
+    global.into_iter().chain(project).collect()
 }
 
 fn parse_table<T>(toml: &str, section: &str, parser: impl FnOnce(&Table) -> T) -> T

@@ -141,13 +141,8 @@ pub fn save_ai_api_key(api_key: String) -> Result<(), String> {
     if api_key.trim().is_empty() {
         return Err("API key must not be empty".to_string());
     }
-    let config = load_gui_config()?;
     let updated = GuiConfig {
-        ai: AiConfig {
-            api_key,
-            ..config.ai.clone()
-        },
-        ..config
+        ai: AiConfig { api_key },
     };
     save_gui_config(&updated)
 }

@@ -16,8 +16,7 @@ pub(super) fn spawn_launch_process(
         .into_iter()
         .chain(
             reviewer_agent
-                .map(|rev_agent| vec!["--reviewer-agent".to_string(), rev_agent.to_string()])
-                .into_iter(),
+                .map(|rev_agent| vec!["--reviewer-agent".to_string(), rev_agent.to_string()]),
         )
         .flatten();
 

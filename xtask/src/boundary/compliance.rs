@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use aho_corasick::AhoCorasick;
 
 use crate::domain::compliance::{
-    shell_script_scan_result, tailwind_scan_result, timeout_wrapper_scan_result, ComplianceSummary,
+    extract_test_name, find_fn_line_idx, find_function_end_bytes, find_opening_brace_in_lines,
+    shell_script_scan_result, tailwind_scan_result, timeout_wrapper_scan_result, trim_ascii,
+    ComplianceSummary,
 };
 use crate::domain::tailwind_policy::{
     extract_tailwind_token, normalize_tailwind_candidate, tailwind_candidate_matches_rule,
@@ -302,17 +304,22 @@ fn classify_test_or_timeout(
     line_idx: &LineIndex,
 ) -> Option<MatchOffset> {
     match mat.pattern().as_usize() {
-        PAT_TEST_ATTR => {
-            let line_bytes = line_idx.extract_line(content, mat.start());
-            let trimmed = trim_ascii(line_bytes);
-            if trimmed == b"#[test]" {
-                Some(MatchOffset::Test(mat.start()))
-            } else {
-                None
-            }
-        }
+        PAT_TEST_ATTR => classify_test_attr_match(mat, content, line_idx),
         PAT_DEFAULT_TIMEOUT | PAT_TIMEOUT => Some(MatchOffset::Timeout(mat.start())),
         _ => None,
+    }
+}
+
+fn classify_test_attr_match(
+    mat: aho_corasick::Match,
+    content: &[u8],
+    line_idx: &LineIndex,
+) -> Option<MatchOffset> {
+    let line_bytes = line_idx.extract_line(content, mat.start());
+    if trim_ascii(line_bytes) == b"#[test]" {
+        Some(MatchOffset::Test(mat.start()))
+    } else {
+        None
     }
 }
 
@@ -356,26 +363,14 @@ fn gather_test_context(
 ) -> Option<TestContext> {
     let n = lines.len();
     let test_line = line_idx.line_number(test_start);
-    let fn_line_idx = find_fn_line_idx(lines, test_line + 1)?;
-    if fn_line_idx >= n {
-        return None;
-    }
-
-    let fn_line_str = std::str::from_utf8(lines[fn_line_idx]).ok()?;
+    let fn_line = find_fn_line_idx(lines, test_line + 1).filter(|&idx| idx < n)?;
+    let fn_line_str = std::str::from_utf8(lines[fn_line]).ok()?;
     let test_name = extract_test_name(fn_line_str)
         .unwrap_or("<unknown>")
         .to_string();
-
-    let brace_line = find_opening_brace_in_lines(lines, fn_line_idx, 5)?;
+    let brace_line = find_opening_brace_in_lines(lines, fn_line, 5)?;
     let brace_line_byte_start = line_idx.start_of_line(brace_line);
-    let cap_line = std::cmp::min(brace_line + 40, n);
-    let body_scan_end = if cap_line >= n {
-        content.len()
-    } else {
-        line_idx.start_of_line(cap_line)
-    };
-    let fn_end_byte = find_function_end_bytes(content, brace_line_byte_start, body_scan_end);
-
+    let fn_end_byte = compute_fn_end_byte(content, line_idx, n, brace_line, brace_line_byte_start);
     Some(TestContext {
         test_line,
         brace_line_byte_start,
@@ -384,117 +379,24 @@ fn gather_test_context(
     })
 }
 
+fn compute_fn_end_byte(
+    content: &[u8],
+    line_idx: &LineIndex,
+    n: usize,
+    brace_line: usize,
+    brace_line_byte_start: usize,
+) -> usize {
+    let cap_line = std::cmp::min(brace_line + 40, n);
+    let body_scan_end = if cap_line >= n {
+        content.len()
+    } else {
+        line_idx.start_of_line(cap_line)
+    };
+    find_function_end_bytes(content, brace_line_byte_start, body_scan_end)
+}
+
 fn timeout_inside(brace: usize, end: usize, timeout_offsets: &[usize]) -> bool {
     timeout_offsets.iter().any(|&pos| pos >= brace && pos < end)
-}
-
-fn find_fn_line_idx(lines: &[&[u8]], mut start_idx: usize) -> Option<usize> {
-    const MAX_FN_LOOKAHEAD_LINES: usize = 8;
-    let n = lines.len();
-
-    for _ in 0..MAX_FN_LOOKAHEAD_LINES {
-        if start_idx >= n {
-            return None;
-        }
-
-        let trimmed = trim_ascii(lines[start_idx]);
-        if trimmed.is_empty() || trimmed.starts_with(b"#") || trimmed.starts_with(b"//") {
-            start_idx += 1;
-            continue;
-        }
-
-        let fn_line_str = match std::str::from_utf8(lines[start_idx]) {
-            Ok(s) => s,
-            Err(_) => return None,
-        };
-        if is_fn_decl(fn_line_str) {
-            return Some(start_idx);
-        }
-
-        break;
-    }
-
-    None
-}
-
-/// Find the end of a function body by tracking brace depth in raw bytes.
-///
-/// Scans `content[start..scan_end]` counting `{` and `}` bytes.  Returns the
-/// byte offset **one past** the closing `}` when depth reaches 0, or
-/// `scan_end` if the body is not closed within the scan window.
-fn find_function_end_bytes(content: &[u8], start: usize, scan_end: usize) -> usize {
-    let scan_end = scan_end.min(content.len());
-    let mut depth: i32 = 0;
-    for (i, &b) in content[start..scan_end].iter().enumerate() {
-        if b == b'{' {
-            depth += 1;
-        } else if b == b'}' {
-            depth -= 1;
-            if depth == 0 {
-                return start + i + 1;
-            }
-        }
-    }
-    scan_end
-}
-
-/// Find the index of the first line (in `lines`) at or after `from_idx`
-/// that contains `{`, within `lookahead` additional lines.
-fn find_opening_brace_in_lines(
-    lines: &[&[u8]],
-    from_idx: usize,
-    lookahead: usize,
-) -> Option<usize> {
-    let end = std::cmp::min(from_idx + lookahead + 1, lines.len());
-    lines[from_idx..end]
-        .iter()
-        .enumerate()
-        .find_map(|(offset, line)| {
-            if line.contains(&b'{') {
-                Some(from_idx + offset)
-            } else {
-                None
-            }
-        })
-}
-
-/// Trim leading and trailing ASCII whitespace (space, tab, carriage-return)
-/// from a byte slice.
-fn trim_ascii(b: &[u8]) -> &[u8] {
-    let is_ws = |&x: &u8| x == b' ' || x == b'\t' || x == b'\r';
-    let start = b.iter().position(|x| !is_ws(x)).unwrap_or(b.len());
-    let end = b
-        .iter()
-        .rposition(|x| !is_ws(x))
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    if start >= end {
-        &[]
-    } else {
-        &b[start..end]
-    }
-}
-
-fn is_fn_decl(line: &str) -> bool {
-    let trimmed = line.trim();
-    // Match: fn, pub fn, async fn, pub async fn, unsafe fn, pub unsafe fn, etc.
-    let after_visibility = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
-    let after_async = after_visibility
-        .strip_prefix("async ")
-        .unwrap_or(after_visibility);
-    let after_unsafe = after_async.strip_prefix("unsafe ").unwrap_or(after_async);
-    after_unsafe.starts_with("fn ")
-}
-
-fn extract_test_name(line: &str) -> Option<&str> {
-    let after_fn = line.split("fn ").nth(1)?;
-    let name_end = after_fn
-        .find(|c: char| !c.is_alphanumeric() && c != '_')
-        .unwrap_or(after_fn.len());
-    if name_end == 0 {
-        return None;
-    }
-    Some(&after_fn[..name_end])
 }
 
 fn compliance_summary_to_native(summary: ComplianceSummary) -> NativeCheckResult {

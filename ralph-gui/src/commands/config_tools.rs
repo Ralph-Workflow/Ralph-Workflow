@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-#[path = "../boundary/config_process.rs"]
-mod config_process;
+use crate::boundary::config_process;
 
 /// Information about an update check result for an agent tool.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

@@ -2,7 +2,7 @@ use crate::commands::run_management::checkpoint_boundary;
 use crate::commands::run_management::helpers::status as status_helper;
 use crate::domain::run::{checkpoint_matches_run_id, RunDetail, RunStatus, RunStatusSummary};
 use crate::state::SharedState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn known_repos(state: &SharedState) -> Result<Vec<PathBuf>, String> {
     let locked = state
@@ -11,7 +11,7 @@ fn known_repos(state: &SharedState) -> Result<Vec<PathBuf>, String> {
     Ok(locked.known_repos.clone())
 }
 
-fn read_checkpoint_for_repo(repo_path: &PathBuf) -> Option<serde_json::Value> {
+fn read_checkpoint_for_repo(repo_path: &Path) -> Option<serde_json::Value> {
     let agent_dir = repo_path.join(".agent");
     checkpoint_boundary::read_checkpoint(&agent_dir)
 }

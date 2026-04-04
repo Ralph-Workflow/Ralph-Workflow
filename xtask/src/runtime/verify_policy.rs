@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use crate::domain::verify_policy::{strip_generated_harness_block, strip_integration_warnings};
+
 pub(crate) const FRONTEND_TEST_CHECK_NAME: &str = "ralph-gui-frontend-test";
 pub(crate) const CLIPPY_CORE_CHECK_NAME: &str = "clippy-core";
 pub(crate) const CORE_LIB_TEST_CHECK_NAME: &str = "test-ralph-workflow-lib";
@@ -67,28 +69,6 @@ fn is_known_streaming_warning(line: &str) -> bool {
         || trimmed.starts_with("Warning: Received MessageStart while state is Streaming.")
 }
 
-fn strip_integration_warnings(text: &str) -> Cow<'_, str> {
-    let mut out = String::with_capacity(text.len());
-    let mut changed = false;
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        let is_known_integration_warning = (trimmed.starts_with('[') && trimmed.contains("] ⚠ "))
-            || trimmed.starts_with("⚠️  Risks & Mitigations:")
-            || trimmed.starts_with("Warning: Delta discontinuity detected in OpenCode text.");
-        if is_known_integration_warning {
-            changed = true;
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    if changed {
-        Cow::Owned(out)
-    } else {
-        Cow::Borrowed(text)
-    }
-}
-
 pub(crate) fn strip_allowed_generated_harness_large_stack_frames<'a>(
     check_name: &str,
     text: &'a str,
@@ -117,35 +97,4 @@ fn has_real_source_span(text: &str) -> bool {
             && trimmed.contains("ralph-workflow/src/")
             && !trimmed.contains("ralph-workflow/src/lib.rs:9:50")
     })
-}
-
-fn strip_generated_harness_block(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut skipping_block = false;
-
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("error: this function may allocate ") {
-            skipping_block = true;
-            continue;
-        }
-
-        if skipping_block {
-            if trimmed
-                == "error: could not compile `ralph-workflow` (lib test) due to 1 previous error"
-            {
-                skipping_block = false;
-            }
-            continue;
-        }
-
-        if trimmed == "warning: build failed, waiting for other jobs to finish..." {
-            continue;
-        }
-
-        out.push_str(line);
-        out.push('\n');
-    }
-
-    out
 }

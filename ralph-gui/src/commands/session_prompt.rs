@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-#[path = "../boundary/session_prompt_boundary.rs"]
-mod session_prompt_boundary;
+use crate::boundary::session_prompt_boundary;
 
 /// A single message in a multi-turn AI prompt assistant conversation.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

@@ -53,7 +53,7 @@ pub fn get_effective_chains_config(repo_path: String) -> Result<EffectiveChainsC
     let project_agents = parse_agents_from_toml(&project_toml);
     let merged_agents = global_agents
         .into_iter()
-        .chain(project_agents.into_iter())
+        .chain(project_agents)
         .map(|agent| (agent.name.clone(), agent))
         .collect::<HashMap<_, _>>()
         .into_values()

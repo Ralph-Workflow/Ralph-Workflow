@@ -34,58 +34,13 @@ pub fn run_dylint_capture(repo_root: &Path) -> std::io::Result<String> {
 ///
 /// Extracts errors and groups them by the top-level module in ralph-workflow/src/.
 pub fn parse_dylint_output(output: &str) -> BTreeMap<String, Vec<String>> {
-    collect_error_blocks(output)
+    crate::domain::report::collect_error_blocks(output)
         .into_iter()
         .filter_map(map_block_to_entry)
         .fold(BTreeMap::new(), |mut errors, (module, message)| {
             errors.entry(module).or_default().push(message);
             errors
         })
-}
-
-fn collect_error_blocks(output: &str) -> Vec<String> {
-    let mut blocks = Vec::new();
-    let mut current = None;
-
-    for line in output.lines() {
-        if is_error_start(line) {
-            finish_block(&mut current, &mut blocks);
-            start_block(&mut current);
-        }
-
-        if current.is_none() {
-            continue;
-        }
-
-        append_line(&mut current, line);
-
-        if line.trim().is_empty() {
-            finish_block(&mut current, &mut blocks);
-        }
-    }
-
-    finish_block(&mut current, &mut blocks);
-
-    blocks
-}
-
-fn start_block(current: &mut Option<String>) {
-    *current = Some(String::new());
-}
-
-fn append_line(current: &mut Option<String>, line: &str) {
-    if let Some(buffer) = current {
-        buffer.push_str(line);
-        buffer.push('\n');
-    }
-}
-
-fn finish_block(current: &mut Option<String>, blocks: &mut Vec<String>) {
-    if let Some(block) = current.take() {
-        if !block.trim().is_empty() {
-            blocks.push(block);
-        }
-    }
 }
 
 fn map_block_to_entry(block: String) -> Option<(String, String)> {
@@ -95,11 +50,6 @@ fn map_block_to_entry(block: String) -> Option<(String, String)> {
     }
 
     extract_module(trimmed).map(|module| (module, trimmed.to_string()))
-}
-
-fn is_error_start(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    trimmed.starts_with("error:") || trimmed.starts_with("warning:")
 }
 
 /// Extract module name from error message.

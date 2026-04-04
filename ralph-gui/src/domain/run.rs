@@ -216,7 +216,7 @@ pub fn parse_iteration_history(checkpoint: &Value) -> Vec<IterationHistoryEntry>
                 let iteration_number = item
                     .get("iteration_number")
                     .and_then(Value::as_u64)
-                    .unwrap_or_else(|| fallback_number as u64)
+                    .unwrap_or(fallback_number as u64)
                     .try_into()
                     .unwrap_or(fallback_number);
 
@@ -292,7 +292,7 @@ pub fn parse_review_history(checkpoint: &Value) -> Vec<ReviewHistoryEntry> {
                 let review_number = item
                     .get("review_number")
                     .and_then(Value::as_u64)
-                    .unwrap_or_else(|| fallback_number as u64)
+                    .unwrap_or(fallback_number as u64)
                     .try_into()
                     .unwrap_or(fallback_number);
 

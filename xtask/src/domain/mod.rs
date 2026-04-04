@@ -5,5 +5,10 @@
 //! access.
 
 pub mod compliance;
+pub mod dylint;
 pub mod main_policy;
+pub mod report;
+pub mod scan_policy;
+pub mod string_search;
 pub mod tailwind_policy;
+pub mod verify_policy;

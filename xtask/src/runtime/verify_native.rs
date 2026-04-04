@@ -39,17 +39,20 @@ fn collect_rs_files_in_dir(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Res
 fn handle_dir_entry(entry: fs::DirEntry, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let path = entry.path();
     let file_type = entry.file_type()?;
-
-    if file_type.is_dir() {
-        collect_rs_files_in_dir(&path, files)?;
-    } else if file_type.is_file() && is_rust_source(&path) {
-        files.push(path);
+    match (
+        file_type.is_dir(),
+        file_type.is_file() && is_rust_source(&path),
+    ) {
+        (true, _) => collect_rs_files_in_dir(&path, files),
+        (_, true) => {
+            files.push(path);
+            Ok(())
+        }
+        _ => Ok(()),
     }
-
-    Ok(())
 }
 
-fn is_rust_source(path: &PathBuf) -> bool {
+fn is_rust_source(path: &Path) -> bool {
     path.extension().is_some_and(|ext| ext == "rs")
 }
 

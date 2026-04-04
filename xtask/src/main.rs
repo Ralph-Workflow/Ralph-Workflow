@@ -31,6 +31,7 @@ mod boundary;
 mod domain;
 mod io;
 mod runtime;
+mod types;
 
 use std::process::ExitCode;
 

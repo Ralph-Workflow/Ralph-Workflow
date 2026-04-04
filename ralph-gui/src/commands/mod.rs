@@ -4,8 +4,7 @@ mod config_chains;
 pub mod config_helpers;
 mod config_parsing;
 mod config_schema;
-#[path = "../boundary/config_storage.rs"]
-mod config_storage;
+use crate::boundary::config_storage;
 mod config_tools;
 pub mod preferences;
 pub mod run_management;

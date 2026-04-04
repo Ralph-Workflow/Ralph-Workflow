@@ -138,44 +138,58 @@ fn execute_verify(include_gui: bool) -> ExitCode {
     let reporter: Arc<dyn ProgressReporter> = Arc::new(StderrProgressReporter::new(total_checks));
     let (runner, repo_root) = build_runner(Arc::clone(&reporter));
     eprintln!("=== cargo xtask verify ===");
-    let verify_start = std::time::Instant::now();
-
-    let backend_report = match run_verify_or_exit(
+    let start = std::time::Instant::now();
+    match run_verify_phases(
         Arc::clone(&runner),
         repo_root.as_path(),
-        NATIVE_REQUIRED_CHECKS,
-        &backend_groups(),
+        include_gui,
         &reporter,
-        true,
     ) {
-        Ok(report) => report,
-        Err(code) => return code,
-    };
-
-    let report = if backend_report.exit == VerifyExitCode::Success && include_gui {
-        match run_verify_or_exit(
-            Arc::clone(&runner),
-            repo_root.as_path(),
-            &[],
-            &gui_groups(),
-            &reporter,
-            false,
-        ) {
-            Ok(report) => report,
-            Err(code) => return code,
+        Err(code) => code,
+        Ok(report) => {
+            runner.flush();
+            report_and_finalize(report, total_checks, start.elapsed())
         }
-    } else {
-        backend_report
-    };
+    }
+}
 
-    let total_elapsed = verify_start.elapsed();
-    runner.flush();
-
+fn report_and_finalize(
+    report: verify::VerifyReport,
+    total_checks: usize,
+    elapsed: std::time::Duration,
+) -> ExitCode {
     if report.exit == VerifyExitCode::Failure {
         print_verify_failure(&report);
     }
+    finalize_verify(report, total_checks, elapsed)
+}
 
-    finalize_verify(report, total_checks, total_elapsed)
+fn run_verify_phases(
+    runner: Arc<CachingCommandRunner>,
+    repo_root: &Path,
+    include_gui: bool,
+    reporter: &Arc<dyn ProgressReporter>,
+) -> Result<verify::VerifyReport, ExitCode> {
+    let backend_report = run_verify_or_exit(
+        Arc::clone(&runner),
+        repo_root,
+        NATIVE_REQUIRED_CHECKS,
+        &backend_groups(),
+        reporter,
+        true,
+    )?;
+    if backend_report.exit == VerifyExitCode::Success && include_gui {
+        run_verify_or_exit(
+            Arc::clone(&runner),
+            repo_root,
+            &[],
+            &gui_groups(),
+            reporter,
+            false,
+        )
+    } else {
+        Ok(backend_report)
+    }
 }
 
 fn compute_total_checks(include_gui: bool) -> usize {
@@ -269,22 +283,26 @@ fn print_verify_failure(report: &verify::VerifyReport) {
     let Some(failure) = &report.failure else {
         return;
     };
+    print_failure_header(failure);
+    print_failure_streams(failure);
+    if let Some(guidance) = failure_guidance_message(report) {
+        eprintln!("{guidance}");
+    }
+}
 
+fn print_failure_header(failure: &verify::types::CheckFailure) {
     eprintln!(
         "Verification failed: {} ({:?}, exit_code={})",
         failure.name, failure.status, failure.exit_code
     );
+}
 
+fn print_failure_streams(failure: &verify::types::CheckFailure) {
     if !failure.stdout.trim().is_empty() {
         eprintln!("--- stdout ---\n{}", failure.stdout.trim_end());
     }
-
     if !failure.stderr.trim().is_empty() {
         eprintln!("--- stderr ---\n{}", failure.stderr.trim_end());
-    }
-
-    if let Some(guidance) = failure_guidance_message(report) {
-        eprintln!("{guidance}");
     }
 }
 
