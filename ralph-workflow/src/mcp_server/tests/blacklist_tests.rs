@@ -40,7 +40,7 @@ fn test_blacklist_git() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "git", "args": ["status"]}),
         &host,
         &ws,
@@ -57,7 +57,7 @@ fn test_blacklist_svn() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "svn", "args": ["update"]}),
         &host,
         &ws,
@@ -73,7 +73,7 @@ fn test_blacklist_hg() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "hg", "args": ["status"]}),
         &host,
         &ws,
@@ -91,7 +91,7 @@ fn test_blacklist_sudo() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "sudo", "args": ["ls"]}),
         &host,
         &ws,
@@ -107,7 +107,7 @@ fn test_blacklist_su() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "su", "args": ["root"]}),
         &host,
         &ws,
@@ -125,7 +125,7 @@ fn test_blacklist_rm_rf() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "rm", "args": ["-rf", "/"]}),
         &host,
         &ws,
@@ -141,7 +141,7 @@ fn test_blacklist_dd_with_device() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "dd", "args": ["if=/dev/zero", "of=/dev/sda"]}),
         &host,
         &ws,
@@ -159,7 +159,7 @@ fn test_blacklist_curl_external() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "curl", "args": ["https://evil.com"]}),
         &host,
         &ws,
@@ -175,7 +175,7 @@ fn test_blacklist_wget_external() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "wget", "args": ["https://evil.com"]}),
         &host,
         &ws,
@@ -191,7 +191,7 @@ fn test_blacklist_ssh() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "ssh", "args": ["user@host"]}),
         &host,
         &ws,
@@ -207,7 +207,7 @@ fn test_blacklist_nc() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "nc", "args": ["-l", "1234"]}),
         &host,
         &ws,
@@ -225,7 +225,7 @@ fn test_blacklist_apt_install() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "apt", "args": ["install", "package"]}),
         &host,
         &ws,
@@ -241,7 +241,7 @@ fn test_blacklist_yum_install() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "yum", "args": ["install", "package"]}),
         &host,
         &ws,
@@ -257,7 +257,7 @@ fn test_blacklist_brew_install() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "brew", "args": ["install", "package"]}),
         &host,
         &ws,
@@ -275,7 +275,7 @@ fn test_blacklist_docker_run() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "docker", "args": ["run", "ubuntu"]}),
         &host,
         &ws,
@@ -291,7 +291,7 @@ fn test_blacklist_podman() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "podman", "args": ["run", "ubuntu"]}),
         &host,
         &ws,
@@ -309,7 +309,7 @@ fn test_blacklist_find_exec() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "find", "args": [".", "-exec", "rm", "{}", ";"]}),
         &host,
         &ws,
@@ -325,7 +325,7 @@ fn test_blacklist_sed_i() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "sed", "args": ["-i", "s/old/new/g", "*.txt"]}),
         &host,
         &ws,

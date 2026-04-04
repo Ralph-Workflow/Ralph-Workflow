@@ -101,19 +101,19 @@ fn test_tools_list_contains_required_tools() {
     let tool_names: Vec<_> = tools.iter().map(|t| t.name.clone()).collect();
 
     // All required tools should be present
-    assert!(tool_names.contains(&"ralph_read_file".to_string()));
-    assert!(tool_names.contains(&"ralph_write_file".to_string()));
-    assert!(tool_names.contains(&"ralph_list_directory".to_string()));
-    assert!(tool_names.contains(&"ralph_search_files".to_string()));
-    assert!(tool_names.contains(&"ralph_git_status".to_string()));
-    assert!(tool_names.contains(&"ralph_git_diff".to_string()));
-    assert!(tool_names.contains(&"ralph_git_log".to_string()));
-    assert!(tool_names.contains(&"ralph_git_show".to_string()));
-    assert!(tool_names.contains(&"ralph_exec_command".to_string()));
+    assert!(tool_names.contains(&"read_file".to_string()));
+    assert!(tool_names.contains(&"write_file".to_string()));
+    assert!(tool_names.contains(&"list_directory".to_string()));
+    assert!(tool_names.contains(&"search_files".to_string()));
+    assert!(tool_names.contains(&"git_status".to_string()));
+    assert!(tool_names.contains(&"git_diff".to_string()));
+    assert!(tool_names.contains(&"git_log".to_string()));
+    assert!(tool_names.contains(&"git_show".to_string()));
+    assert!(tool_names.contains(&"exec".to_string()));
     assert!(tool_names.contains(&"ralph_submit_artifact".to_string()));
-    assert!(tool_names.contains(&"ralph_report_progress".to_string()));
-    assert!(tool_names.contains(&"ralph_read_env".to_string()));
-    assert!(tool_names.contains(&"ralph_declare_complete".to_string()));
+    assert!(tool_names.contains(&"report_progress".to_string()));
+    assert!(tool_names.contains(&"read_env".to_string()));
+    assert!(tool_names.contains(&"declare_complete".to_string()));
 }
 
 #[test]

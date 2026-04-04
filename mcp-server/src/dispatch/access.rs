@@ -14,14 +14,14 @@
 ///
 /// | Capability | Standard Tools That Require It |
 /// |-------------|----------------------------------|
-/// | `WorkspaceRead` | `ralph_workspace_read_file`, `ralph_workspace_list_directory` |
-/// | `WorkspaceWriteEphemeral` | `ralph_workspace_write_file` (ephemeral mode) |
-/// | `WorkspaceWriteTracked` | `ralph_workspace_write_file` (tracked mode), `ralph_workspace_edit_file` |
-/// | `GitStatusRead` | `ralph_git_status`, `ralph_git_log`, `ralph_git_diff` |
-/// | `GitWrite` | `ralph_git_commit`, `ralph_git_checkout` |
-/// | `ProcessExecBounded` | `ralph_exec_command` (with timeout/resource limits) |
-/// | `ProcessExecUnbounded` | `ralph_exec_command` (no limits) |
-/// | `ArtifactSubmit` | `ralph_workspace_submit_result` |
+/// | `WorkspaceRead` | `read_file`, `list_directory`, `list_directory_recursive`, `search_files` |
+/// | `WorkspaceWriteEphemeral` | `write_file` (ephemeral mode) |
+/// | `WorkspaceWriteTracked` | `write_file` (tracked mode) |
+/// | `GitStatusRead` | `git_status`, `git_log`, `git_show`, `git_diff` |
+/// | `GitWrite` | (custom git commit tool) |
+/// | `ProcessExecBounded` | `exec` (with timeout/resource limits) |
+/// | `ProcessExecUnbounded` | `exec` (no limits) |
+/// | `ArtifactSubmit` | `ralph_submit_artifact`, `declare_complete`, `coordinate` |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum McpCapability {
@@ -53,7 +53,7 @@ pub enum McpCapability {
     ArtifactSubmit,
 
     /// Coordinate workspace operations across parallel agents.
-    /// Required by: workspace_coordinate, ralph_coordinate
+    /// Required by: coordinate
     WorkspaceCoordination,
 
     // ---------------------------------------------------------------------------

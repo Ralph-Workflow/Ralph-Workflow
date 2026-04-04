@@ -104,7 +104,7 @@ impl ToolRegistry {
             .map(|(mut metadata, handler)| {
                 // Derive is_mutating from required_capability at registration time if not set.
                 // This replaces the hardcoded is_mutating_tool() approach which failed
-                // for tools with non-standard prefixes (e.g., "ralph_write_file" vs "write_file").
+                // for tools regardless of their naming convention.
                 if metadata.is_mutating.is_none() {
                     metadata.is_mutating =
                         Some(capability_is_mutating(metadata.required_capability));

@@ -19,9 +19,48 @@ fn required_string_param<'a>(
         .ok_or_else(|| ToolError::InvalidParams(format!("Missing '{name}' parameter")))
 }
 
-/// Read a file by path.
+/// Read a file from the workspace by path.
 ///
-/// Requires: `Capability::WorkspaceRead`
+/// # Method Identifier
+///
+/// `read_file`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::WorkspaceRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. This tool is available in both ReadOnly and ReadWrite configurations.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"path": "src/main.rs"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `path` (`string`): Workspace-relative file path to read.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "<file contents>"}], "isError": false}
+/// ```
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): File not found or unreadable.
+/// - JSON-RPC `-32000` (InvalidParams): Missing `path` parameter.
+///
+/// # Side Effects
+///
+/// None. This is a read-only operation.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
 pub fn handle_read_file(
     _session: &AgentSession,
     workspace: &dyn Workspace,
@@ -96,13 +135,52 @@ fn walk_directory_recursive(
         .try_for_each(|e| append_dir_entry(workspace, e, output, &indent, depth))
 }
 
-/// List directory contents.
+/// List directory entries (non-recursive by default).
 ///
-/// Requires: `Capability::WorkspaceRead`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `path`: Directory path to list
-/// - `recursive`: Whether to list recursively (optional, default false)
+/// `list_directory`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::WorkspaceRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"path": "src", "recursive": false}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `path` (`string`): Workspace-relative directory path to list.
+///
+/// ## Optional Fields
+///
+/// - `recursive` (`bool`, default `false`): If `true`, lists the full tree recursively.
+///   For deep trees, prefer `list_directory_recursive`.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Directory: src\n  main.rs\n  lib.rs\n"}], "isError": false}
+/// ```
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): Directory not found or unreadable.
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
 pub fn handle_list_directory(
     _session: &AgentSession,
     workspace: &dyn Workspace,
@@ -131,10 +209,43 @@ pub fn handle_list_directory(
 
 /// List directory contents recursively.
 ///
-/// Requires: `Capability::WorkspaceRead`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `path`: Directory path to list recursively
+/// `list_directory_recursive`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::WorkspaceRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"path": "src"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `path` (`string`): Workspace-relative directory path to traverse recursively.
+///
+/// # Response Shape
+///
+/// Indented tree representation of the full directory subtree.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): Directory not found or unreadable.
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
 pub fn handle_list_directory_recursive(
     _session: &AgentSession,
     workspace: &dyn Workspace,
@@ -167,12 +278,54 @@ fn collect_matching_files(entries: impl Iterator<Item = DirEntry>, pattern: &str
         .collect()
 }
 
-/// Search for files matching a pattern.
+/// Search for files matching a filename pattern.
 ///
-/// Requires: `Capability::WorkspaceRead`
+/// # Method Identifier
 ///
-/// Note: This handler provides a simple directory listing. For actual content
-/// search, use `ralph_exec_command` with grep.
+/// `search_files`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::WorkspaceRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"pattern": "*.rs", "path": "src"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `pattern` (`string`): Filename pattern to match. Matches by substring or `"*"` for all.
+/// - `path` (`string`): Workspace-relative directory to search.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Search pattern: '*.rs' in path: src\nFiles found:\n  src/main.rs\n"}], "isError": false}
+/// ```
+///
+/// # Note
+///
+/// This handler matches file names only (not file contents). For content search,
+/// use `exec` with `grep` or `rg`.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): Directory not found or unreadable.
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
+///
 /// Build search results output from matching files in a directory.
 fn build_search_output(
     workspace: &dyn Workspace,
@@ -189,7 +342,7 @@ fn build_search_output(
     for line in collect_matching_files(entries.into_iter(), pattern) {
         output.push_str(&line);
     }
-    output.push_str("\nNote: Use ralph_exec_command with grep for actual content search");
+    output.push_str("\nNote: Use exec with grep for actual content search");
     Ok(output)
 }
 
@@ -285,6 +438,54 @@ fn write_file_to_workspace(
         .map_err(|e| ToolError::ExecutionError(format!("Failed to write file '{}': {}", path, e)))
 }
 
+/// Write content to a file in the workspace.
+///
+/// # Method Identifier
+///
+/// `write_file`
+///
+/// # Capability Requirements
+///
+/// Requires `McpCapability::WorkspaceWriteTracked` for existing git-tracked files,
+/// or `McpCapability::WorkspaceWriteEphemeral` for new or `.agent/`-scoped files.
+/// For parallel workers, the path must also satisfy `session.check_edit_area(path)`.
+///
+/// # Access Mode
+///
+/// ReadWrite only. Rejected in ReadOnly mode with `AccessDeniedCode::ReadOnlyMode`.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"path": "src/main.rs", "content": "fn main() {}"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `path` (`string`): Workspace-relative target file path.
+/// - `content` (`string`): Full content to write (overwrites existing content).
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Successfully wrote 12 bytes to src/main.rs"}], "isError": false}
+/// ```
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (CapabilityDenied): Session lacks the required write capability,
+///   or parallel worker edit area restriction blocks the write.
+/// - JSON-RPC `-32000` (Tool error): Filesystem write failure.
+///
+/// # Side Effects
+///
+/// Writes to the workspace. For real filesystem-backed workspaces, creates/overwrites
+/// the file at the given path. Does not stage, commit, or trigger any git operations.
+///
+/// # Idempotency
+///
+/// Writing the same content twice produces identical state. Multiple writes to the
+/// same path with different content are not idempotent.
 pub fn handle_write_file(
     session: &AgentSession,
     workspace: &dyn Workspace,

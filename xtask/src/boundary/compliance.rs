@@ -299,23 +299,41 @@ pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckR
     }
 }
 
-/// Scans test files (excluding system_tests) for direct git2 commit operations.
+/// Scans test files (excluding system_tests) for direct git commit operations and
+/// risky workspace construction patterns that could bypass the test isolation policy.
 ///
-/// This enforces the policy that integration tests must NOT use real git mutations.
+/// This enforces two policies:
+/// 1. No real git mutations in tests (commit operations are forbidden)
+/// 2. No workspace construction using CWD or repo-root paths (must use TempDir/TestTempDir)
+///
+/// Scanned directories:
+/// - `tests/integration_tests`
+/// - `tests/process_system_tests`
+/// - `ralph-workflow/src/mcp_server/tests/` (MCP e2e tests)
+///
 /// System tests in `tests/system_tests/` are allowed to use real git for testing
 /// git functionality itself.
 ///
 /// Uses Aho-Corasick O(n+m+z) scan for these patterns:
+///
+/// **Git mutation patterns (always forbidden):**
 /// - `Repository::commit` — direct call to Repository::commit
 /// - `.commit(` — method call on any object
 /// - `CommitEffect` — type reference in effect handlers
 ///
+/// **Risky workspace construction patterns (forbidden in tests):**
+/// - `WorkspaceFs::new(std::env::current_dir` — workspace rooted at CWD (real repo)
+/// - `WorkspaceFs::new(PathBuf::from(".")` — workspace rooted at CWD (real repo)
+///
 /// Returns `Pass` when no violations are found or when the test directory does not exist.
 pub fn check_no_real_git_in_tests(repo_root: &Path) -> NativeCheckResult {
-    // Scan integration_tests and process_system_tests but NOT system_tests (those are allowed real git)
+    // Scan integration_tests, process_system_tests, and MCP e2e tests.
+    // system_tests are excluded (they are allowed to use real git).
     let test_dirs = [
         repo_root.join("tests/integration_tests"),
         repo_root.join("tests/process_system_tests"),
+        repo_root.join("ralph-workflow/src/mcp_server/tests"),
+        repo_root.join("mcp-server/tests"),
     ];
 
     // Collect files to scan
@@ -338,8 +356,16 @@ pub fn check_no_real_git_in_tests(repo_root: &Path) -> NativeCheckResult {
         };
     }
 
-    // Patterns that indicate real git usage in tests
-    const GIT_VIOLATION_PATTERNS: &[&str] = &["Repository::commit", ".commit(", "CommitEffect"];
+    // Patterns that indicate real git usage or risky CWD workspace construction in tests.
+    // All of these are policy violations — tests must use MemoryWorkspace or TempDir-backed
+    // WorkspaceFs, never the real repository directory.
+    const GIT_VIOLATION_PATTERNS: &[&str] = &[
+        "Repository::commit",
+        ".commit(",
+        "CommitEffect",
+        "WorkspaceFs::new(std::env::current_dir",
+        "WorkspaceFs::new(PathBuf::from(\".\")",
+    ];
 
     let ac = AhoCorasick::new(GIT_VIOLATION_PATTERNS).expect("valid git violation patterns");
     let mut violations: Vec<String> = Vec::new();
@@ -377,7 +403,9 @@ pub fn check_no_real_git_in_tests(repo_root: &Path) -> NativeCheckResult {
         NativeCheckResult {
             status: CheckStatus::Error,
             message: format!(
-                "Found {} test file(s) with real git operations (real git mutations are forbidden in integration tests):\n{}",
+                "Found {} test file(s) with real git operations or risky workspace construction \
+                (real git mutations and CWD-rooted workspaces are forbidden in tests — use \
+                MemoryWorkspace or TempDir-backed WorkspaceFs):\n{}",
                 violations.len(),
                 violations.join("\n")
             ),

@@ -368,9 +368,109 @@ fn validate_and_dispatch_artifact(
     )
 }
 
-/// Submit a structured artifact.
+/// Submit a structured artifact to the Ralph workflow.
 ///
-/// Requires: `Capability::ArtifactSubmit`
+/// # Method Identifier
+///
+/// `ralph_submit_artifact`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::ArtifactSubmit` — available to all drain types
+/// (Planning, Development, Fix, Analysis, Review, Coordination).
+///
+/// # Access Mode
+///
+/// ReadWrite only. This tool writes to the workspace `.agent/` directory and
+/// triggers a workflow state transition; it is not available in ReadOnly mode.
+///
+/// # Request Shape
+///
+/// ```json
+/// {
+///   "artifact_type": "plan",
+///   "content": "{\"summary\": {\"context\": \"...\", \"scope_items\": [...] }, ...}",
+///   "partial": false
+/// }
+/// ```
+///
+/// ## Required Fields
+///
+/// - `artifact_type` (`string`): One of `"plan"`, `"development_result"`, `"issues"`,
+///   `"fix_result"`, `"commit_message"`. The `"review_issues"` alias is also accepted
+///   and normalized to `"issues"`.
+/// - `content` (`string`): JSON-serialized artifact payload (see schema for each type below).
+///
+/// ## Optional Fields
+///
+/// - `partial` (`bool`, default `false`): If `true`, the artifact is written to
+///   `.agent/tmp/{artifact_type}.partial.json` for incremental preview. Partial artifacts
+///   pass validation but are not recorded as the final artifact for the workflow.
+///
+/// # Response Shape
+///
+/// On success:
+/// ```json
+/// {
+///   "content": [
+///     {
+///       "type": "text",
+///       "text": "{\"accepted\": true, \"artifact_type\": \"plan\", \"partial\": false}"
+///     }
+///   ]
+/// }
+/// ```
+///
+/// On validation failure (schema errors):
+/// ```json
+/// {
+///   "content": [
+///     {
+///       "type": "text",
+///       "text": "{\"accepted\": false, \"validation_errors\": [{\"code\": \"MISSING_REQUIRED\", \"field_path\": \"summary.context\", ...}]}"
+///     }
+///   ],
+///   "isError": true
+/// }
+/// ```
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): Returned when capability is denied, artifact_type
+///   is unrecognized, or `content` is not valid JSON. Validation failures against the
+///   artifact schema return `isError: true` in the `ToolResult` (not a JSON-RPC error).
+/// - JSON-RPC `-32001` (NotInitialized): Returned if called before `initialize` handshake.
+///
+/// # Artifact Types and Schemas
+///
+/// Each artifact type has a JSON Schema enforced at submission time. The schema files
+/// are embedded in the binary from `ralph-workflow/schemas/{artifact_type}.schema.json`.
+///
+/// - **`plan`**: Strategic execution plan with `summary`, `steps`, `critical_files`,
+///   `risks_mitigations`, and `verification_strategy` fields. Required by the Planning
+///   drain before Development agents are spawned.
+/// - **`development_result`**: Outcome of a development iteration including
+///   `result_type`, `evidence`, and optional `next_steps`.
+/// - **`issues`** (alias `review_issues`): Structured issue list produced by Review drain.
+/// - **`fix_result`**: Outcome of a fix attempt, referencing the original issue.
+/// - **`commit_message`**: A formatted commit message artifact with `subject` and `body`.
+///
+/// # Side Effects
+///
+/// - Writes the artifact to `.agent/{artifact_type}.json` in the workspace (non-partial).
+/// - Triggers a workflow state transition in the Ralph pipeline consumer on the next event loop tick.
+/// - Partial submissions write to `.agent/tmp/{artifact_type}.partial.json` only.
+///
+/// # Idempotency
+///
+/// Not idempotent: each submission overwrites the previous artifact of the same type.
+/// The last submitted value is authoritative.
+///
+/// # Stability
+///
+/// The `artifact_type` values and top-level response shape (`accepted`, `artifact_type`,
+/// `partial`) are stable. Schema details within each artifact type may evolve across
+/// Ralph versions.
 pub fn handle_submit_artifact(
     session: &AgentSession,
     workspace: &dyn Workspace,

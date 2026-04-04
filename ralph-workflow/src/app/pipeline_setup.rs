@@ -6,7 +6,6 @@
 use crate::agents::AgentRegistry;
 use crate::app::config::{EventLoopConfig, MAX_EVENT_LOOP_ITERATIONS};
 use crate::app::context::PipelineContext;
-use crate::app::effect::AppEffectHandler;
 use crate::checkpoint::{PipelineCheckpoint, RunContext};
 use crate::cli::Args;
 use crate::config::Config;
@@ -282,7 +281,6 @@ pub struct RunPipelineWithHandlerParams {
 pub fn run_pipeline_with_handler_boundary(
     params: RunPipelineWithHandlerParams,
 ) -> anyhow::Result<PipelineAndRepoRoot> {
-    use crate::app::effect::{AppEffect, AppEffectResult};
     use crate::app::runner::command_handlers::handle_plumbing_commands;
     use crate::app::runner::pipeline_execution::{
         command_requires_prompt_setup, handle_repo_commands_without_prompt_setup,
@@ -306,35 +304,12 @@ pub fn run_pipeline_with_handler_boundary(
         template_context: _,
     } = params;
 
-    let early_repo_root = {
-        let mut discover_handler = crate::app::runtime_factory::create_effect_handler();
-        if let Some(dir) = args.working_dir_override.as_deref() {
-            match discover_handler.execute(AppEffect::SetCurrentDir {
-                path: dir.to_path_buf(),
-            }) {
-                AppEffectResult::Ok => {}
-                AppEffectResult::Error(e) => anyhow::bail!(e),
-                other => anyhow::bail!("unexpected result from SetCurrentDir: {other:?}"),
-            }
-        }
+    let early_repo_root =
+        crate::app::io::repo_discovery::discover_repo_root(args.working_dir_override.as_deref())?;
 
-        match discover_handler.execute(AppEffect::GitRequireRepo) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => anyhow::bail!("Not in a git repository: {e}"),
-            other => anyhow::bail!("unexpected result from GitRequireRepo: {other:?}"),
-        }
-
-        match discover_handler.execute(AppEffect::GitGetRepoRoot) {
-            AppEffectResult::Path(p) => p,
-            AppEffectResult::Error(e) => anyhow::bail!("Failed to get repo root: {e}"),
-            other => anyhow::bail!("unexpected result from GitGetRepoRoot: {other:?}"),
-        }
-    };
-
-    let handler =
-        &mut crate::app::runtime_factory::create_effect_handler_with_workspace(
-            early_repo_root.clone(),
-        );
+    let handler = &mut crate::app::runtime_factory::create_effect_handler_with_workspace(
+        early_repo_root.clone(),
+    );
 
     let workspace: Arc<dyn Workspace> =
         Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root.clone()));

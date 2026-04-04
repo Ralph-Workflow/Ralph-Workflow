@@ -102,7 +102,7 @@ mod tests {
         // Emit a record representing a successful tool call
         let mcp_record = McpAuditRecord::new(
             "test-session-123".to_string(),
-            "ralph_read_file".to_string(),
+            "read_file".to_string(),
             AccessDecision::Allow,
         )
         .with_capability(McpCapability::WorkspaceRead);
@@ -114,7 +114,7 @@ mod tests {
         assert_eq!(drained.len(), 1);
         let record = &drained[0];
         assert_eq!(record.session_id.as_str(), "test-session-123");
-        assert!(record.description.contains("ralph_read_file"));
+        assert!(record.description.contains("read_file"));
         assert!(matches!(record.outcome, PolicyOutcome::Approved));
     }
 
@@ -125,14 +125,14 @@ mod tests {
         // Emit multiple records
         let record1 = McpAuditRecord::new(
             "session-1".to_string(),
-            "ralph_read_file".to_string(),
+            "read_file".to_string(),
             AccessDecision::Allow,
         )
         .with_capability(McpCapability::WorkspaceRead);
 
         let record2 = McpAuditRecord::new(
             "session-1".to_string(),
-            "ralph_write_file".to_string(),
+            "write_file".to_string(),
             AccessDecision::Deny {
                 reason: "ReadOnly mode".to_string(),
                 code: mcp_server::dispatch::access::AccessDeniedCode::ReadOnlyMode,
@@ -159,7 +159,7 @@ mod tests {
 
         let record = McpAuditRecord::new(
             "session".to_string(),
-            "ralph_git_status".to_string(),
+            "git_status".to_string(),
             AccessDecision::Allow,
         )
         .with_capability(McpCapability::GitStatusRead);

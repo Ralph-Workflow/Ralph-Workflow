@@ -63,9 +63,43 @@ fn run_git_command_lenient(workspace: &dyn Workspace, args: &[&str]) -> Result<S
     Ok(format!("{stdout}{stderr}"))
 }
 
-/// Read git status.
+/// Read the git status of the workspace.
 ///
-/// Requires: `Capability::GitStatusRead`
+/// # Method Identifier
+///
+/// `git_status`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::GitStatusRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. Does not modify the repository.
+///
+/// # Request Shape
+///
+/// ```json
+/// {}
+/// ```
+///
+/// No parameters.
+///
+/// # Response Shape
+///
+/// Raw output of `git status` run in the workspace root.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): git command failure (e.g., not a git repo).
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
 pub fn handle_git_status(
     session: &AgentSession,
     workspace: &dyn Workspace,
@@ -79,12 +113,46 @@ pub fn handle_git_status(
     })
 }
 
-/// Read git diff.
+/// Read the git diff of the workspace.
 ///
-/// Requires: `Capability::GitDiffRead`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `args`: Optional array of arguments to pass to git diff (e.g., ["--staged"])
+/// `git_diff`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::GitDiffRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. Does not modify the repository.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"args": ["--staged"]}
+/// ```
+///
+/// ## Optional Fields
+///
+/// - `args` (`array of strings`): Extra arguments forwarded to `git diff`. Examples:
+///   `["--staged"]` for staged changes, `["HEAD~1"]` for last commit diff.
+///
+/// # Response Shape
+///
+/// Raw output of `git diff [args]`. May be empty if no changes exist.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): git command failure.
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
 pub fn handle_git_diff(
     session: &AgentSession,
     workspace: &dyn Workspace,
@@ -105,12 +173,45 @@ pub fn handle_git_diff(
     })
 }
 
-/// Read git log.
+/// Read the git commit log.
 ///
-/// Requires: `Capability::GitStatusRead`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `count`: Optional number of commits to show (default 10)
+/// `git_log`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::GitStatusRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. Does not modify the repository.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"count": 10}
+/// ```
+///
+/// ## Optional Fields
+///
+/// - `count` (`integer`, default `10`): Number of recent commits to show.
+///
+/// # Response Shape
+///
+/// Oneline format: `<sha> <subject>` per line.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (Tool error): git command failure.
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent.
 pub fn handle_git_log(
     session: &AgentSession,
     workspace: &dyn Workspace,
@@ -125,12 +226,46 @@ pub fn handle_git_log(
     })
 }
 
-/// Show a git object (commit, tag, etc.).
+/// Show a git object (commit, tag, tree, or blob).
 ///
-/// Requires: `Capability::GitStatusRead`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `ref`: Git object reference (commit hash, tag name, etc.)
+/// `git_show`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::GitStatusRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. Does not modify the repository.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"ref": "HEAD"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `ref` (`string`): Git object reference (commit hash, tag name, branch name, etc.).
+///
+/// # Response Shape
+///
+/// Raw output of `git show <ref>`.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (InvalidParams): Missing `ref` parameter.
+/// - JSON-RPC `-32000` (Tool error): git command failure or unknown ref.
+///
+/// # Side Effects
+///
+/// None. Read-only.
+///
+/// # Idempotency
+///
+/// Fully idempotent for the same ref at the same point in time.
 pub fn handle_git_show(
     session: &AgentSession,
     workspace: &dyn Workspace,

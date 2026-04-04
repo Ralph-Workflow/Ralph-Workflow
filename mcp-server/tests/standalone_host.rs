@@ -1282,3 +1282,533 @@ fn test_tool_execution_error_returns_json_rpc_error() {
         error
     );
 }
+
+/// Test that an unknown method returns -32601 (MethodNotFound) JSON-RPC error.
+///
+/// Per JSON-RPC 2.0 spec section 5.1, when a client calls a method that does not
+/// exist on the server, the server must return error code -32601 (Method not found).
+/// This is distinct from tool call errors (-32000) and pre-initialize errors (-32001).
+///
+/// Verified invariants:
+/// - Unknown method returns error response with code -32601
+/// - Error message mentions the unknown method or "Method not found"
+/// - Response uses the same id as the request
+#[test]
+fn test_unknown_method_returns_method_not_found() {
+    use std::time::Duration;
+
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    let session = InMemorySession::new("unknown-method-test")
+        .with_capabilities(&[McpCapability::WorkspaceRead]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = ToolRegistry::new(vec![]);
+    let config = McpServerConfig::new(root);
+
+    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Send an initialize request first so the server is in Ready state
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05"},
+        "id": 1
+    });
+    send_framed_request(&mut stream, init_request);
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Send an unknown method — server must return -32601
+    let unknown_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "completely/unknown/method",
+        "params": {},
+        "id": 2
+    });
+    let response_str = send_framed_request(&mut stream, unknown_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
+
+    assert!(
+        response.error.is_some(),
+        "Unknown method must return an error response, got: {:#?}",
+        response
+    );
+    // Assert response id matches the request id (2)
+    assert_eq!(
+        response.id,
+        serde_json::json!(2),
+        "Response id must match request id, got: {:?}",
+        response.id
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32601,
+        "Unknown method must return error code -32601 (MethodNotFound), got: {}",
+        error.code
+    );
+    // Assert error message mentions the method or "Method not found"
+    assert!(
+        error.message.contains("Method")
+            || error.message.contains("not found")
+            || error.message.contains("unknown"),
+        "Error message must mention method-not-found, got: {}",
+        error.message
+    );
+}
+
+/// Test that Allowlist and ReadOnly mode are enforced independently.
+///
+/// A tool in the Allowlist is still rejected by ReadOnly mode if it is mutating.
+/// Both checks must pass: Allowlist presence alone is insufficient.
+///
+/// Verified invariants:
+/// - A mutating tool that IS in the Allowlist still fails under ReadOnly mode
+/// - The error code is -32000 with a ReadOnly mention (not ToolNotAllowed)
+/// - ReadOnly rejection takes precedence for mutating tools regardless of filter
+#[test]
+fn test_allowlist_and_readonly_are_independent() {
+    use std::time::Duration;
+
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create a mutating tool
+    let mutating_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "mutated".to_string(),
+            )]))
+        },
+    );
+    let mutating_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "allowed_but_mutating".to_string(),
+            description: "A mutating tool that is in the Allowlist".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: McpCapability::WorkspaceWriteEphemeral,
+        is_mutating: None,
+    };
+
+    let session = InMemorySession::new("allowlist-readonly-test")
+        .with_capabilities(&[McpCapability::WorkspaceWriteEphemeral]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = ToolRegistry::new(vec![(mutating_metadata, mutating_handler)]);
+    // ReadOnly + Allowlist containing the mutating tool
+    let config = McpServerConfig::new(root)
+        .with_access_mode(AccessMode::ReadOnly)
+        .with_tool_filter(ToolFilter::Allowlist(vec![
+            "allowed_but_mutating".to_string()
+        ]));
+
+    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    bridge.start().expect("Failed to start bridge");
+
+    let socket_path = bridge.socket_path().clone();
+    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+
+    // Initialize
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05"},
+        "id": 1
+    });
+    send_framed_request(&mut stream, init_request);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Call the tool that IS in the Allowlist but is mutating
+    // ReadOnly mode must still reject it, proving the two checks are independent
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {"name": "allowed_but_mutating", "arguments": {}},
+        "id": 2
+    });
+    let response_str = send_framed_request(&mut stream, call_request);
+    let response: JsonRpcResponse =
+        serde_json::from_str(&response_str).expect("Response should be valid JSON");
+
+    assert!(
+        response.error.is_some(),
+        "ReadOnly mode must reject a mutating tool even if it is in the Allowlist, got: {:#?}",
+        response
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32000,
+        "Rejection must use code -32000 (tool error), got: {}",
+        error.code
+    );
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error must mention ReadOnly mode (not ToolNotAllowed), got: {}",
+        error.message
+    );
+}
+
+/// Test that tools/list returns registered tools with required names and exact count.
+///
+/// Verified invariants:
+/// - tools/list response includes "read_file" and "write_file" tool names
+/// - tools/list returns exactly the count of registered tools
+/// - Each tool entry has a non-empty name field
+#[test]
+fn test_tools_list_has_required_names_and_count() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Register read_file and write_file tools
+    let read_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            let _path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "content".to_string(),
+            )]))
+        },
+    );
+    let read_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "read_file".to_string(),
+            description: "Read a file from the workspace".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"]
+            }),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: Some(false),
+    };
+
+    let write_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            let _path = params.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let _content = params.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "written".to_string(),
+            )]))
+        },
+    );
+    let write_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "write_file".to_string(),
+            description: "Write a file to the workspace".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"}
+                },
+                "required": ["path", "content"]
+            }),
+        },
+        required_capability: McpCapability::WorkspaceWriteEphemeral,
+        is_mutating: Some(true),
+    };
+
+    let session = InMemorySession::new("tools-list-test").with_capabilities(&[
+        McpCapability::WorkspaceRead,
+        McpCapability::WorkspaceWriteEphemeral,
+    ]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(root);
+    let registry = ToolRegistry::new(vec![
+        (read_metadata, read_handler),
+        (write_metadata, write_handler),
+    ]);
+
+    let server = McpServer::new(session_arc, config, workspace_arc, registry, None);
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    // tools/list must return both tools
+    let list = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, _) = server.handle_request(list, state);
+    let response = response.expect("tools/list must return a response");
+    assert!(
+        response.error.is_none(),
+        "tools/list must not error: {:?}",
+        response.error
+    );
+
+    let result = response.result.expect("tools/list result must be present");
+    let tools = result["tools"]
+        .as_array()
+        .expect("result.tools must be an array");
+
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+
+    assert!(
+        names.contains(&"read_file"),
+        "tools/list must include 'read_file', got: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"write_file"),
+        "tools/list must include 'write_file', got: {:?}",
+        names
+    );
+    assert_eq!(
+        names.len(),
+        2,
+        "tools/list must return exactly 2 registered tools, got: {:?}",
+        names
+    );
+}
+
+/// Test that ReadOnly mode rejects an exec/process tool with ReadOnlyMode denial.
+///
+/// An exec tool requiring `ProcessExecBounded` capability must be blocked in ReadOnly
+/// mode before capability checking — ReadOnly applies to all mutating operations
+/// regardless of session capabilities.
+///
+/// Verified invariants:
+/// - ReadOnly mode rejects an exec tool with error code -32000
+/// - Error message mentions ReadOnly restriction
+/// - AuditSink receives Deny record with AccessDeniedCode::ReadOnlyMode
+#[test]
+fn test_readonly_rejects_exec_tool() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create an exec tool with ProcessExecBounded requirement
+    let exec_handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "executed".to_string(),
+            )]))
+        },
+    );
+    let exec_metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "exec".to_string(),
+            description: "Execute a command in the workspace".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"]
+            }),
+        },
+        required_capability: McpCapability::ProcessExecBounded,
+        is_mutating: Some(true),
+    };
+
+    let session = InMemorySession::new("exec-readonly-test")
+        .with_capabilities(&[McpCapability::ProcessExecBounded]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    // ReadOnly mode must block exec
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
+    let registry = ToolRegistry::new(vec![(exec_metadata, exec_handler)]);
+
+    let audit_sink = Arc::new(TestAuditSink::new());
+    let server = McpServer::new(
+        session_arc,
+        config,
+        workspace_arc,
+        registry,
+        Some(audit_sink.clone()),
+    );
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    // Call exec tool — must be rejected by ReadOnly mode
+    let call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({"name": "exec", "arguments": {"command": "ls"}})),
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, _) = server.handle_request(call, state);
+    let response = response.expect("exec call must return a response");
+
+    assert!(
+        response.error.is_some(),
+        "ReadOnly mode must reject exec tool"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32000,
+        "Rejection must use code -32000, got: {}",
+        error.code
+    );
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error must mention ReadOnly mode, got: {}",
+        error.message
+    );
+
+    // Verify AuditSink received Deny record with ReadOnlyMode code
+    let records = audit_sink.records();
+    assert_eq!(
+        records.len(),
+        1,
+        "Exactly one audit record expected, got: {}",
+        records.len()
+    );
+    match &records[0].decision {
+        AccessDecision::Deny { code, .. } => {
+            assert!(
+                matches!(code, AccessDeniedCode::ReadOnlyMode),
+                "Audit record must indicate ReadOnlyMode, got: {:?}",
+                code
+            );
+        }
+        other => panic!("Expected Deny decision, got: {:?}", other),
+    }
+}
+
+/// Test that AuditSink receives Allow decisions for successful tool calls.
+///
+/// Per the PLAN, the AuditSink must receive emit() for BOTH Allow and Deny decisions.
+/// This test verifies the Allow path.
+///
+/// Verified invariants:
+/// - AuditSink receives exactly one Allow record when a tool call succeeds
+/// - Allow record contains the correct tool name
+#[test]
+fn test_audit_sink_receives_allow_decision() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Create a simple read tool that always succeeds
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "ok".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "read_tool".to_string(),
+            description: "A read-only tool for audit testing".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: McpCapability::WorkspaceRead,
+        is_mutating: Some(false),
+    };
+
+    let session =
+        InMemorySession::new("audit-allow-test").with_capabilities(&[McpCapability::WorkspaceRead]);
+    let workspace = InMemoryWorkspace::new(root.clone());
+
+    let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
+    let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
+
+    let audit_sink = Arc::new(TestAuditSink::new());
+    let server = McpServer::new(
+        session_arc,
+        config,
+        workspace_arc,
+        registry,
+        Some(audit_sink.clone()),
+    );
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    // Call read_tool — should succeed and generate Allow audit record
+    let call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({"name": "read_tool", "arguments": {}})),
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, _) = server.handle_request(call, state);
+    let response = response.expect("read_tool call must return a response");
+
+    assert!(
+        response.error.is_none(),
+        "read_tool must succeed, got error: {:?}",
+        response.error
+    );
+    assert!(response.result.is_some(), "read_tool must return a result");
+
+    // Verify AuditSink received Allow record
+    let records = audit_sink.records();
+    assert_eq!(
+        records.len(),
+        1,
+        "Exactly one audit record expected for successful call, got: {}",
+        records.len()
+    );
+    assert_eq!(
+        records[0].tool_name, "read_tool",
+        "Audit record tool_name must match, got: {}",
+        records[0].tool_name
+    );
+    match &records[0].decision {
+        AccessDecision::Allow => {}
+        other => panic!(
+            "Expected Allow decision for successful tool call, got: {:?}",
+            other
+        ),
+    }
+}

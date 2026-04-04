@@ -1,6 +1,6 @@
 //! Execution tool handler for MCP server.
 //!
-//! Provides the `ralph_exec_command` tool that executes bounded shell commands
+//! Provides the `exec` tool that executes bounded shell commands
 //! with blacklist filtering via the command_policy module.
 
 use crate::agents::session::command_policy::check_command;
@@ -129,6 +129,67 @@ fn run_exec_command(
     })
 }
 
+/// Execute a bounded shell command in the workspace root.
+///
+/// # Method Identifier
+///
+/// `exec`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::ProcessExecBounded` — available to Development and Fix
+/// drains only. Planning, Analysis, Review, and Coordination drains do not have this
+/// capability.
+///
+/// # Access Mode
+///
+/// ReadWrite only. Rejected in ReadOnly mode with `AccessDeniedCode::ReadOnlyMode`.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"command": "cargo", "args": ["test"], "timeout_ms": 30000}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `command` (`string`): The executable to run (e.g., `"cargo"`, `"git"`, `"ls"`).
+///
+/// ## Optional Fields
+///
+/// - `args` (`array of strings`, default `[]`): Arguments for the command.
+/// - `timeout_ms` (`integer`, default `30000`): Maximum execution time in milliseconds.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Command: cargo test\nExit: 0\n...\n"}], "isError": false}
+/// ```
+///
+/// `isError` is `true` when the command exits with a non-zero status.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (CapabilityDenied): Session lacks `ProcessExecBounded` capability.
+/// - JSON-RPC `-32000` (CapabilityDenied): Command blocked by blacklist policy
+///   (e.g., `git commit`, `git push`, destructive operations).
+/// - JSON-RPC `-32000` (Tool error): Process spawn failure.
+///
+/// # Side Effects
+///
+/// Executes a real subprocess in the workspace root directory. May modify the
+/// filesystem, the git index, or other process state. Side effects depend on
+/// the specific command run.
+///
+/// # Idempotency
+///
+/// Not idempotent in general. Depends entirely on the command executed.
+///
+/// # Security
+///
+/// Commands are filtered through a blacklist policy that blocks git mutation
+/// commands (`commit`, `push`, `merge`, `rebase`, etc.) and other dangerous
+/// operations. The command runs as the process user with full workspace access.
 pub fn handle_exec_command(
     session: &AgentSession,
     workspace: &dyn Workspace,

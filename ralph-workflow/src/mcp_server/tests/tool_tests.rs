@@ -51,7 +51,7 @@ fn test_read_file_tool_success() {
         .expect("create test file");
 
     let result = registry.dispatch(
-        "ralph_read_file",
+        "read_file",
         serde_json::json!({"path": "test_read.txt"}),
         &host,
         &ws,
@@ -69,7 +69,7 @@ fn test_read_file_tool_missing_file() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_read_file",
+        "read_file",
         serde_json::json!({"path": "nonexistent.txt"}),
         &host,
         &ws,
@@ -91,7 +91,7 @@ fn test_list_directory_tool_success() {
         .expect("create file2");
 
     let result = registry.dispatch(
-        "ralph_list_directory",
+        "list_directory",
         serde_json::json!({"path": ".", "recursive": false}),
         &host,
         &ws,
@@ -105,7 +105,7 @@ fn test_write_file_tool_creates_file() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_write_file",
+        "write_file",
         serde_json::json!({
             "path": "new_file.txt",
             "content": "new content"
@@ -130,7 +130,7 @@ fn test_search_files_tool() {
         .expect("create file");
 
     let result = registry.dispatch(
-        "ralph_search_files",
+        "search_files",
         serde_json::json!({
             "pattern": "hello",
             "path": "."
@@ -146,7 +146,7 @@ fn test_search_files_tool() {
 fn test_git_status_tool() {
     let (registry, host, ws) = setup_dispatch();
 
-    let result = registry.dispatch("ralph_git_status", serde_json::json!({}), &host, &ws);
+    let result = registry.dispatch("git_status", serde_json::json!({}), &host, &ws);
 
     // Git status may fail in test environment without git repo, but should not panic
     // Result depends on workspace state
@@ -157,12 +157,7 @@ fn test_git_status_tool() {
 fn test_git_diff_tool() {
     let (registry, host, ws) = setup_dispatch();
 
-    let result = registry.dispatch(
-        "ralph_git_diff",
-        serde_json::json!({"args": []}),
-        &host,
-        &ws,
-    );
+    let result = registry.dispatch("git_diff", serde_json::json!({"args": []}), &host, &ws);
 
     // Git diff may fail in test environment without git repo
     assert!(result.is_ok() || result.is_err());
@@ -173,7 +168,7 @@ fn test_report_progress_tool() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_report_progress",
+        "report_progress",
         serde_json::json!({
             "status": "in_progress",
             "note": "working on it"
@@ -190,7 +185,7 @@ fn test_declare_complete_tool() {
     let (registry, host, ws) = setup_dispatch();
 
     let result = registry.dispatch(
-        "ralph_declare_complete",
+        "declare_complete",
         serde_json::json!({"summary": "done"}),
         &host,
         &ws,
@@ -203,12 +198,7 @@ fn test_declare_complete_tool() {
 fn test_read_env_tool() {
     let (registry, host, ws) = setup_dispatch();
 
-    let result = registry.dispatch(
-        "ralph_read_env",
-        serde_json::json!({"name": "PATH"}),
-        &host,
-        &ws,
-    );
+    let result = registry.dispatch("read_env", serde_json::json!({"name": "PATH"}), &host, &ws);
 
     // May or may not succeed depending on environment
     assert!(result.is_ok() || result.is_err());

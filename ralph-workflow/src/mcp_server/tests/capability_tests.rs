@@ -68,7 +68,7 @@ fn test_dev_session_has_workspace_read() {
         .expect("create file");
 
     let result = registry.dispatch(
-        "ralph_read_file",
+        "read_file",
         serde_json::json!({"path": "test.txt"}),
         &host,
         &ws,
@@ -82,7 +82,7 @@ fn test_dev_session_has_workspace_write() {
     let (registry, host, ws) = setup_dispatch(dev_session());
 
     let result = registry.dispatch(
-        "ralph_write_file",
+        "write_file",
         serde_json::json!({"path": "new.txt", "content": "hello"}),
         &host,
         &ws,
@@ -102,7 +102,7 @@ fn test_planning_session_has_workspace_read() {
         .expect("create file");
 
     let result = registry.dispatch(
-        "ralph_read_file",
+        "read_file",
         serde_json::json!({"path": "test.txt"}),
         &host,
         &ws,
@@ -117,7 +117,7 @@ fn test_planning_session_can_write_ephemeral_new_file() {
     let (registry, host, ws) = setup_dispatch(planning_session());
 
     let result = registry.dispatch(
-        "ralph_write_file",
+        "write_file",
         serde_json::json!({"path": "new.txt", "content": "hello"}),
         &host,
         &ws,
@@ -141,7 +141,7 @@ fn test_planning_session_denied_write_tracked_file() {
         .expect("pre-create tracked file");
 
     let result = registry.dispatch(
-        "ralph_write_file",
+        "write_file",
         serde_json::json!({"path": "tracked.rs", "content": "changed"}),
         &host,
         &ws,
@@ -157,7 +157,7 @@ fn test_planning_session_denied_exec() {
     let (registry, host, ws) = setup_dispatch(planning_session());
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "echo", "args": ["hello"]}),
         &host,
         &ws,
@@ -172,7 +172,7 @@ fn test_planning_session_denied_exec() {
 fn test_planning_session_has_git_status() {
     let (registry, host, ws) = setup_dispatch(planning_session());
 
-    let result = registry.dispatch("ralph_git_status", serde_json::json!({}), &host, &ws);
+    let result = registry.dispatch("git_status", serde_json::json!({}), &host, &ws);
 
     // Should not be capability denied
     match result {
@@ -189,12 +189,7 @@ fn test_planning_session_has_git_status() {
 fn test_review_session_has_git_diff() {
     let (registry, host, ws) = setup_dispatch(review_session());
 
-    let result = registry.dispatch(
-        "ralph_git_diff",
-        serde_json::json!({"args": []}),
-        &host,
-        &ws,
-    );
+    let result = registry.dispatch("git_diff", serde_json::json!({"args": []}), &host, &ws);
 
     // Should not be capability denied
     match result {
@@ -210,7 +205,7 @@ fn test_commit_session_denied_exec() {
     let (registry, host, ws) = setup_dispatch(commit_session());
 
     let result = registry.dispatch(
-        "ralph_exec_command",
+        "exec",
         serde_json::json!({"command": "echo", "args": ["hello"]}),
         &host,
         &ws,

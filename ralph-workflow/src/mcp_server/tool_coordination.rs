@@ -34,13 +34,52 @@ fn require_capability(
     }
 }
 
-/// Report progress and emit structured notes.
+/// Report agent progress to the Ralph pipeline.
 ///
-/// Requires: `Capability::RunReportProgress`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `status`: Status message describing current progress
-/// - `note`: Optional additional notes or context
+/// `report_progress`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::WorkspaceCoordination` (mapped from `RunReportProgress`).
+/// Available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. This is a signaling operation with no filesystem side effects.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"status": "Implementing auth module", "note": "50% complete"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `status` (`string`): Short status message describing current progress.
+///
+/// ## Optional Fields
+///
+/// - `note` (`string`, default `""`): Additional detail or context about progress.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Progress reported: status='...', note='...', timestamp=..."}], "isError": false}
+/// ```
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (CapabilityDenied): Session lacks the required capability.
+///
+/// # Side Effects
+///
+/// Emits a progress event to the Ralph pipeline observable. No filesystem changes.
+///
+/// # Idempotency
+///
+/// Each call emits a distinct timestamped event. Not idempotent.
 pub fn handle_report_progress(
     session: &AgentSession,
     _workspace: &dyn Workspace,
@@ -64,13 +103,50 @@ pub fn handle_report_progress(
     })
 }
 
-/// Declare that the agent has completed its task.
+/// Declare that the agent has completed its assigned task.
 ///
-/// This signals to Ralph that the agent is done and the session can be closed.
-/// The agent should have submitted all necessary artifacts before calling this.
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `summary`: Optional summary of what was accomplished
+/// `declare_complete`
+///
+/// # Capability Requirements
+///
+/// No specific capability required. Available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. This is a signaling operation with no filesystem side effects.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"summary": "Implemented the auth module with tests passing"}
+/// ```
+///
+/// ## Optional Fields
+///
+/// - `summary` (`string`, default `"No summary provided"`): Description of what was accomplished.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Task declared complete: session_id=..., summary='...', timestamp=..."}], "isError": false}
+/// ```
+///
+/// # Error Codes
+///
+/// None specific.
+///
+/// # Side Effects
+///
+/// Emits a completion event to the Ralph pipeline. The session can be closed after
+/// this call. The agent should have submitted all required artifacts via
+/// `ralph_submit_artifact` before calling this.
+///
+/// # Idempotency
+///
+/// Each call emits a distinct timestamped completion event. Calling multiple times
+/// is allowed but emits redundant events.
 pub fn handle_declare_complete(
     session: &AgentSession,
     _workspace: &dyn Workspace,
@@ -121,15 +197,52 @@ fn format_coordination_text(
 
 /// Coordinate parallel worker activities.
 ///
-/// This tool allows parallel workers to coordinate their activities, such as
-/// claiming work units, reporting status, or acknowledging task distribution.
+/// # Method Identifier
 ///
-/// Requires: `Capability::ArtifactSubmit` — coordinates artifact-based workflow.
+/// `coordinate`
 ///
-/// Parameters:
-/// - `action`: The coordination action (e.g., "claim", "release", "status", "ack")
-/// - `work_unit_id`: Optional identifier for the work unit being coordinated
-/// - `payload`: Optional JSON payload for coordination data
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::ArtifactSubmit` — available to parallel worker sessions.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe. This is a signaling operation.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"action": "claim", "work_unit_id": "task-42", "payload": {"step": 1}}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `action` (`string`): Coordination action. Supported values: `"claim"`, `"release"`,
+///   `"status"`, `"ack"`.
+///
+/// ## Optional Fields
+///
+/// - `work_unit_id` (`string`): Identifier for the work unit being coordinated.
+/// - `payload` (`object`): Additional coordination data (free-form JSON).
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "Coordination action 'claim' processed: ..."}], "isError": false}
+/// ```
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (CapabilityDenied): Session lacks `ArtifactSubmit` capability.
+/// - JSON-RPC `-32000` (InvalidParams): Missing `action` parameter.
+///
+/// # Side Effects
+///
+/// Emits a coordination event to the Ralph pipeline. No filesystem changes.
+///
+/// # Idempotency
+///
+/// Each call emits a distinct timestamped event. Not idempotent.
 pub fn handle_coordinate(
     session: &AgentSession,
     _workspace: &dyn Workspace,
@@ -166,12 +279,50 @@ pub fn handle_coordinate(
     })
 }
 
-/// Read an environment variable.
+/// Read an environment variable by name.
 ///
-/// Requires: `Capability::EnvRead`
+/// # Method Identifier
 ///
-/// Parameters:
-/// - `name`: Name of the environment variable
+/// `read_env`
+///
+/// # Capability Requirements
+///
+/// Requires: `McpCapability::EnvRead` — available to all drain types.
+///
+/// # Access Mode
+///
+/// ReadOnly-safe.
+///
+/// # Request Shape
+///
+/// ```json
+/// {"name": "RALPH_MCP_ENDPOINT"}
+/// ```
+///
+/// ## Required Fields
+///
+/// - `name` (`string`): Name of the environment variable to read.
+///
+/// # Response Shape
+///
+/// ```json
+/// {"content": [{"type": "text", "text": "RALPH_MCP_ENDPOINT=/tmp/ralph-mcp-abc123.sock"}], "isError": false}
+/// ```
+///
+/// Returns `NAME=[not found]` if the variable is not set.
+///
+/// # Error Codes
+///
+/// - JSON-RPC `-32000` (CapabilityDenied): Session lacks `EnvRead` capability.
+/// - JSON-RPC `-32000` (InvalidParams): Missing `name` parameter.
+///
+/// # Side Effects
+///
+/// None. Read-only access to the process environment.
+///
+/// # Idempotency
+///
+/// Fully idempotent for the same variable name.
 pub fn handle_read_env(
     session: &AgentSession,
     _workspace: &dyn Workspace,

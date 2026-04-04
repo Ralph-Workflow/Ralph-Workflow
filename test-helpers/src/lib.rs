@@ -527,6 +527,32 @@ pub fn git_switch_force(repo: &Repository, branch_name: &str) {
 pub fn assert_mcp_test_no_real_git(workspace_root: &std::path::Path) {
     assert_no_real_git_state(workspace_root);
 }
+
+/// Fail fast with a policy error if the test would be able to mutate real git state.
+///
+/// This is the primary safety guardrail required at the start of any test that
+/// performs workspace or filesystem operations. Enforces the non-negotiable policy
+/// that no test may touch real git state.
+///
+/// # Panics
+///
+/// Panics with a POLICY VIOLATION message if `path` is inside a real (non-temp)
+/// git repository, indicating the test would be able to mutate real git state.
+///
+/// # Example
+///
+/// ```ignore
+/// #[test]
+/// fn my_workspace_test() {
+///     let ws = MemoryWorkspace::new_test();
+///     assert_no_real_git_mutations(ws.root());
+///     // rest of test...
+/// }
+/// ```
+pub fn assert_no_real_git_mutations(path: &std::path::Path) {
+    assert_no_real_git_state(path);
+}
+
 /// We use atomic increment/decrement to serialize CWD changes in tests.
 /// A value of 0 means unlocked, >0 means locked.
 static CWD_LOCK: AtomicU32 = AtomicU32::new(0);

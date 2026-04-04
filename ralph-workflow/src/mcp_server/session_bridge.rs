@@ -291,7 +291,7 @@ mod tests {
         bridge.audit_adapter.emit(
             McpAuditRecord::new(
                 "test-session".to_string(),
-                "ralph_read_file".to_string(),
+                "read_file".to_string(),
                 AccessDecision::Allow,
             )
             .with_capability(McpCapability::WorkspaceRead),
@@ -314,7 +314,7 @@ mod tests {
         bridge.audit_adapter.emit(
             McpAuditRecord::new(
                 "test-session".to_string(),
-                "ralph_read_file".to_string(),
+                "read_file".to_string(),
                 AccessDecision::Allow,
             )
             .with_capability(McpCapability::WorkspaceRead),
@@ -338,7 +338,7 @@ mod tests {
         bridge.audit_adapter.emit(
             McpAuditRecord::new(
                 "test-session".to_string(),
-                "ralph_read_file".to_string(),
+                "read_file".to_string(),
                 AccessDecision::Allow,
             )
             .with_capability(McpCapability::WorkspaceRead),

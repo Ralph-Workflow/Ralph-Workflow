@@ -117,7 +117,7 @@ impl WorkspaceAdapter for RalphWorkspaceAdapter {
 // Tool handler factory functions
 // ---------------------------------------------------------------------------
 
-/// ## `ralph_read_file` — RPC Contract
+/// ## `read_file` — RPC Contract
 ///
 /// Reads the complete contents of a file from the workspace.
 ///
@@ -150,7 +150,7 @@ fn make_read_file_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_read_file".to_string(),
+            name: "read_file".to_string(),
             description: "Read a file from the workspace".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -169,7 +169,7 @@ fn make_read_file_tool(
     (meta, handler)
 }
 
-/// ## `ralph_write_file` — RPC Contract
+/// ## `write_file` — RPC Contract
 ///
 /// Writes content to a file in the workspace, creating it if it does not exist
 /// or overwriting it if it does.
@@ -205,7 +205,7 @@ fn make_write_file_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_write_file".to_string(),
+            name: "write_file".to_string(),
             description: "Write content to a file in the workspace".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -228,7 +228,7 @@ fn make_write_file_tool(
     (meta, handler)
 }
 
-/// ## `ralph_list_directory` — RPC Contract
+/// ## `list_directory` — RPC Contract
 ///
 /// Lists the contents of a directory, optionally recursing into subdirectories.
 ///
@@ -262,7 +262,7 @@ fn make_list_directory_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_list_directory".to_string(),
+            name: "list_directory".to_string(),
             description: "List directory contents".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -282,7 +282,7 @@ fn make_list_directory_tool(
     (meta, handler)
 }
 
-/// ## `ralph_search_files` — RPC Contract
+/// ## `search_files` — RPC Contract
 ///
 /// Searches for files matching a glob pattern within a directory tree.
 ///
@@ -316,7 +316,7 @@ fn make_search_files_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_search_files".to_string(),
+            name: "search_files".to_string(),
             description: "Search for files matching a pattern".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -336,7 +336,7 @@ fn make_search_files_tool(
     (meta, handler)
 }
 
-/// ## `ralph_git_status` — RPC Contract
+/// ## `git_status` — RPC Contract
 ///
 /// Returns the git status of the workspace, showing modified, staged, and untracked files.
 ///
@@ -366,7 +366,7 @@ fn make_git_status_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_git_status".to_string(),
+            name: "git_status".to_string(),
             description: "Get git status of the workspace".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -382,7 +382,7 @@ fn make_git_status_tool(
     (meta, handler)
 }
 
-/// ## `ralph_git_diff` — RPC Contract
+/// ## `git_diff` — RPC Contract
 ///
 /// Returns the git diff of changes (unstaged, staged, or between commits).
 ///
@@ -414,7 +414,7 @@ fn make_git_diff_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_git_diff".to_string(),
+            name: "git_diff".to_string(),
             description: "Get git diff of changes".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -432,7 +432,7 @@ fn make_git_diff_tool(
     (meta, handler)
 }
 
-/// ## `ralph_git_log` — RPC Contract
+/// ## `git_log` — RPC Contract
 ///
 /// Returns the git commit log, showing recent commits with their hashes, authors,
 /// dates, and messages.
@@ -465,7 +465,7 @@ fn make_git_log_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_git_log".to_string(),
+            name: "git_log".to_string(),
             description: "Get git commit log".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -483,7 +483,7 @@ fn make_git_log_tool(
     (meta, handler)
 }
 
-/// ## `ralph_git_show` — RPC Contract
+/// ## `git_show` — RPC Contract
 ///
 /// Shows a git object (commit, tag, tree, blob) by reference.
 ///
@@ -516,7 +516,7 @@ fn make_git_show_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_git_show".to_string(),
+            name: "git_show".to_string(),
             description: "Show a git object (commit, tag, etc.)".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -535,7 +535,7 @@ fn make_git_show_tool(
     (meta, handler)
 }
 
-/// ## `ralph_exec_command` — RPC Contract
+/// ## `exec` — RPC Contract
 ///
 /// Executes a shell command with resource limits (bounded execution).
 ///
@@ -571,7 +571,7 @@ fn make_exec_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_exec_command".to_string(),
+            name: "exec".to_string(),
             description: "Execute a shell command".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -638,9 +638,10 @@ fn make_submit_artifact_tool(
                 "type": "object",
                 "properties": {
                     "artifact_type": { "type": "string", "description": "Type of artifact (plan, development_result, issues, fix_result, commit_message)" },
-                    "artifact": { "type": "object", "description": "Artifact content" }
+                    "content": { "type": "string", "description": "JSON-serialized artifact payload" },
+                    "partial": { "type": "boolean", "description": "If true, accepts artifact even with validation errors (default: false)" }
                 },
-                "required": ["artifact_type", "artifact"]
+                "required": ["artifact_type", "content"]
             }),
         },
         required_capability: McpCapability::ArtifactSubmit,
@@ -652,7 +653,7 @@ fn make_submit_artifact_tool(
     (meta, handler)
 }
 
-/// ## `ralph_report_progress` — RPC Contract
+/// ## `report_progress` — RPC Contract
 ///
 /// Reports progress status to the running workflow.
 ///
@@ -686,7 +687,7 @@ fn make_report_progress_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_report_progress".to_string(),
+            name: "report_progress".to_string(),
             description: "Report progress status to the agent".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -706,7 +707,7 @@ fn make_report_progress_tool(
     (meta, handler)
 }
 
-/// ## `ralph_declare_complete` — RPC Contract
+/// ## `declare_complete` — RPC Contract
 ///
 /// Declares that the agent has completed its task and provides a summary.
 ///
@@ -738,7 +739,7 @@ fn make_declare_complete_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_declare_complete".to_string(),
+            name: "declare_complete".to_string(),
             description: "Declare that the agent has completed its task".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -756,7 +757,7 @@ fn make_declare_complete_tool(
     (meta, handler)
 }
 
-/// ## `ralph_read_env` — RPC Contract
+/// ## `read_env` — RPC Contract
 ///
 /// Reads an environment variable from the agent's environment.
 ///
@@ -790,7 +791,7 @@ fn make_read_env_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_read_env".to_string(),
+            name: "read_env".to_string(),
             description: "Read an environment variable".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -809,7 +810,7 @@ fn make_read_env_tool(
     (meta, handler)
 }
 
-/// ## `ralph_list_directory_recursive` — RPC Contract
+/// ## `list_directory_recursive` — RPC Contract
 ///
 /// Lists the contents of a directory and all subdirectories recursively.
 ///
@@ -842,7 +843,7 @@ fn make_list_directory_recursive_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_list_directory_recursive".to_string(),
+            name: "list_directory_recursive".to_string(),
             description: "List directory contents recursively".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -861,7 +862,7 @@ fn make_list_directory_recursive_tool(
     (meta, handler)
 }
 
-/// ## `ralph_coordinate` — RPC Contract
+/// ## `coordinate` — RPC Contract
 ///
 /// Coordinates parallel worker activities such as claiming work units,
 /// reporting status, or acknowledging task distribution.
@@ -897,7 +898,7 @@ fn make_coordinate_tool(
 ) -> (ToolMetadata, ToolHandler) {
     let meta = ToolMetadata {
         definition: ToolDefinition {
-            name: "ralph_coordinate".to_string(),
+            name: "coordinate".to_string(),
             description: "Coordinate parallel worker activities".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",

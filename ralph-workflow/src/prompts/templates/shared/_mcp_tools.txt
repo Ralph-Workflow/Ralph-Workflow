@@ -34,31 +34,32 @@ AVAILABLE TOOLS:
 
 {% if HAS_MCP_WRITE %}
 WRITE OPERATIONS:
-- Use `ralph_write_file` to create or modify files
-- Use `ralph_list_directory` to explore directories
-- Use `ralph_search_files` to search file contents
+- Use `write_file` to create or modify files
+- Use `list_directory` to explore directories
+- Use `list_directory_recursive` to explore directories recursively
+- Use `search_files` to search file contents
 {% endif %}
 
 {% if HAS_MCP_EXEC %}
 EXECUTION:
-- Use `ralph_exec_command` to run shell commands
+- Use `exec` to run shell commands
 - Commands are filtered against a blacklist for safety
-- Use `ralph_report_progress` to report status
+- Use `report_progress` to report status
 {% endif %}
 
 {% if HAS_MCP_GIT %}
 GIT OPERATIONS:
-- Use `ralph_git_status` to check repository status
-- Use `ralph_git_diff` to see changes
-- Use `ralph_git_log` to view history
-- Use `ralph_git_show` to inspect commits
+- Use `git_status` to check repository status
+- Use `git_diff` to see changes
+- Use `git_log` to view history
+- Use `git_show` to inspect commits
 
 NOTE: Git write operations (commit, merge, etc.) are NOT available in this session.
 {% endif %}
 
 ARTIFACT SUBMISSION:
 - Use `ralph_submit_artifact` to submit structured results
-- Use `ralph_declare_complete` when finished
+- Use `declare_complete` when finished
 
 IMPORTANT: Do NOT use native Edit, Write, Bash, or Git tools.
 They are blocked and will fail. Use the MCP tools listed above.

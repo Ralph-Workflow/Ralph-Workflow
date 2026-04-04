@@ -8,6 +8,37 @@
 //! - [`host`] - Host abstraction traits (Session, Workspace)
 //! - [`registry`] - Tool registry and dispatch logic
 //! - [`audit`] - Pure audit record types
+//! - [`access`] - Access control types (capabilities, access mode, tool filter)
+//!
+//! # Enforcement Chain Order
+//!
+//! Every `tools/call` request passes through four sequential enforcement checks.
+//! The chain short-circuits on first denial — later checks are not evaluated.
+//!
+//! ```text
+//! tools/call
+//!   → 1. ToolFilter (mcp-server, never delegated to host)
+//!   → 2. AccessMode (mcp-server, never delegated to host)
+//!   → 3. PathBoundary (mcp-server, never delegated to host)
+//!   → 4. Capability  (host via HostSession::check_capability — the ONLY host delegation)
+//!   → handler
+//! ```
+//!
+//! **Denial codes per level:**
+//!
+//! | Level | Denial Code | Error |
+//! |-------|-------------|-------|
+//! | ToolFilter | `ToolNotAllowed` | `-32000` |
+//! | AccessMode | `ReadOnlyMode` | `-32000` |
+//! | PathBoundary | `OutsideRootDir` | `-32000` |
+//! | Capability | `CapabilityDenied` | `-32000` |
+//! | Pre-init | `NotInitialized` | `-32001` |
+//!
+//! # Request/Response Contract
+//!
+//! All tool calls use `tools/call` with params `{ "name": "<tool>", "arguments": {...} }`.
+//! Success responses use `ToolResult { content: [...], isError: false }`.
+//! Error responses are JSON-RPC errors with code `-32000`.
 //!
 //! # Design Principles
 //!
@@ -24,6 +55,9 @@
 //!
 //! 4. **Typed errors** - Use `ToolError` for tool-specific failures rather than
 //!    generic string errors.
+//!
+//! 5. **Host isolation** - The host is only consulted for capability check (level 4).
+//!    Access mode, tool filtering, and path boundary enforcement are internal.
 
 pub mod access;
 pub mod audit;

@@ -500,7 +500,7 @@ fn mcp_audit_records_emitted_when_access_denied() {
             "jsonrpc": "2.0",
             "method": "tools/call",
             "params": {
-                "name": "ralph_read_file",
+                "name": "read_file",
                 "arguments": {"path": "/etc/passwd"}
             },
             "id": 2

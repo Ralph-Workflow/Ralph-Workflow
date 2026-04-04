@@ -287,7 +287,9 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
         ],
         directories: &["ralph-workflow/src"],
         include_glob: "*.rs",
-        exclude_globs: &[],
+        // Test subdirectories (e.g. src/mcp_server/tests/) are allowed to import test_helpers —
+        // they are test code co-located with the production module, not production code itself.
+        exclude_globs: &["**/tests/**", "tests.rs"],
         mode: MatchMode::AnyLiteral {
             skip_comment_lines: false,
         },

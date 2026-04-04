@@ -165,7 +165,7 @@ pub fn capability_template_variables(
     // MCP tool variables for RFC-009
     // HAS_MCP_WRITE is true only when WorkspaceWriteTracked is present.
     // WorkspaceWriteEphemeral allows writing to .agent/ but not tracked source files,
-    // so it doesn't enable ralph_write_file in the MCP tools list.
+    // so it doesn't enable write_file in the MCP tools list.
     let has_mcp_write = capabilities.contains(Capability::WorkspaceWriteTracked);
     let has_mcp_exec = capabilities.contains(Capability::ProcessExecBounded);
     let has_mcp_git = capabilities.contains(Capability::GitStatusRead)
@@ -266,28 +266,30 @@ fn format_capability_summary(capabilities: &CapabilitySet, policy_flags: &Policy
 fn format_mcp_tools_list(capabilities: &CapabilitySet) -> String {
     // Base tools always available
     let base_tools = vec![
-        "ralph_read_file",
-        "ralph_list_directory",
-        "ralph_search_files",
+        "read_file",
+        "list_directory",
+        "list_directory_recursive",
+        "search_files",
         "ralph_submit_artifact",
-        "ralph_report_progress",
-        "ralph_read_env",
-        "ralph_declare_complete",
+        "report_progress",
+        "read_env",
+        "declare_complete",
+        "coordinate",
     ];
 
     // Conditionally available tools built via functional chain
     let git_read_tools: Vec<&str> = if capabilities.contains(Capability::GitStatusRead) {
-        vec!["ralph_git_status", "ralph_git_log", "ralph_git_show"]
+        vec!["git_status", "git_log", "git_show"]
     } else {
         vec![]
     };
     let git_diff_tool: Vec<&str> = if capabilities.contains(Capability::GitDiffRead) {
-        vec!["ralph_git_diff"]
+        vec!["git_diff"]
     } else {
         vec![]
     };
     let write_tool: Vec<&str> = if capabilities.contains(Capability::WorkspaceWriteTracked) {
-        vec!["ralph_write_file"]
+        vec!["write_file"]
     } else {
         vec![]
     };
@@ -297,7 +299,7 @@ fn format_mcp_tools_list(capabilities: &CapabilitySet) -> String {
         vec![]
     };
     let exec_tool: Vec<&str> = if capabilities.contains(Capability::ProcessExecBounded) {
-        vec!["ralph_exec_command"]
+        vec!["exec"]
     } else {
         vec![]
     };
@@ -522,11 +524,11 @@ mod tests {
 
         let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
         // Development has write, exec, git read
-        assert!(mcp_list.contains("ralph_read_file"));
-        assert!(mcp_list.contains("ralph_write_file"));
-        assert!(mcp_list.contains("ralph_exec_command"));
-        assert!(mcp_list.contains("ralph_git_status"));
-        assert!(mcp_list.contains("ralph_git_diff"));
+        assert!(mcp_list.contains("read_file"));
+        assert!(mcp_list.contains("write_file"));
+        assert!(mcp_list.contains("exec"));
+        assert!(mcp_list.contains("git_status"));
+        assert!(mcp_list.contains("git_diff"));
         // Commit-specific tools should not be present
         assert!(!mcp_list.contains("ralph_git_commit"));
     }
@@ -539,15 +541,15 @@ mod tests {
 
         let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
         // Planning has read-only, git read, no write, no exec
-        assert!(mcp_list.contains("ralph_read_file"));
-        assert!(mcp_list.contains("ralph_git_status"));
-        assert!(mcp_list.contains("ralph_git_diff"));
-        assert!(mcp_list.contains("ralph_git_log"));
-        assert!(mcp_list.contains("ralph_git_show"));
+        assert!(mcp_list.contains("read_file"));
+        assert!(mcp_list.contains("git_status"));
+        assert!(mcp_list.contains("git_diff"));
+        assert!(mcp_list.contains("git_log"));
+        assert!(mcp_list.contains("git_show"));
         // No write_file (only WorkspaceWriteEphemeral, not WorkspaceWriteTracked)
-        assert!(!mcp_list.contains("ralph_write_file"));
+        assert!(!mcp_list.contains("write_file"));
         // No exec
-        assert!(!mcp_list.contains("ralph_exec_command"));
+        assert!(!mcp_list.contains("exec"));
         // No git commit (no GitWrite)
         assert!(!mcp_list.contains("ralph_git_commit"));
     }
@@ -561,14 +563,14 @@ mod tests {
         let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
         // Commit has git write, git read, no write_file, no exec
         assert!(mcp_list.contains("ralph_git_commit"));
-        assert!(mcp_list.contains("ralph_git_status"));
-        assert!(mcp_list.contains("ralph_git_diff"));
-        assert!(mcp_list.contains("ralph_git_log"));
-        assert!(mcp_list.contains("ralph_git_show"));
+        assert!(mcp_list.contains("git_status"));
+        assert!(mcp_list.contains("git_diff"));
+        assert!(mcp_list.contains("git_log"));
+        assert!(mcp_list.contains("git_show"));
         // No write_file (only WorkspaceWriteEphemeral, not WorkspaceWriteTracked)
-        assert!(!mcp_list.contains("ralph_write_file"));
+        assert!(!mcp_list.contains("write_file"));
         // No exec
-        assert!(!mcp_list.contains("ralph_exec_command"));
+        assert!(!mcp_list.contains("exec"));
     }
 
     #[test]
@@ -674,15 +676,16 @@ mod tests {
         let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
         // Base tools always present
         assert!(mcp_list.contains("ralph_submit_artifact"));
-        assert!(mcp_list.contains("ralph_report_progress"));
-        assert!(mcp_list.contains("ralph_declare_complete"));
-        assert!(mcp_list.contains("ralph_read_env"));
+        assert!(mcp_list.contains("report_progress"));
+        assert!(mcp_list.contains("declare_complete"));
+        assert!(mcp_list.contains("read_env"));
+        assert!(mcp_list.contains("coordinate"));
         // Development has tracked write and exec
-        assert!(mcp_list.contains("ralph_write_file"));
-        assert!(mcp_list.contains("ralph_exec_command"));
+        assert!(mcp_list.contains("write_file"));
+        assert!(mcp_list.contains("exec"));
         // Development has git read but not git write
-        assert!(mcp_list.contains("ralph_git_status"));
-        assert!(mcp_list.contains("ralph_git_diff"));
+        assert!(mcp_list.contains("git_status"));
+        assert!(mcp_list.contains("git_diff"));
         assert!(!mcp_list.contains("ralph_git_commit"));
     }
 }

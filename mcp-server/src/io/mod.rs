@@ -205,7 +205,7 @@ fn check_enforcement(
 
     // Look up metadata from registry - this replaces the hardcoded is_mutating_tool() check.
     // The metadata's is_mutating field is derived from required_capability at registration time,
-    // which correctly handles all tool name prefixes (e.g., "ralph_write_file", "write_file").
+    // which correctly handles all tool names regardless of naming convention.
     let (is_mutating, required_capability) = params
         .registry
         .get_metadata(params.name)

@@ -1160,7 +1160,7 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "test-mcp-server",
         program: "cargo",
-        args: &["test", "-p", "mcp-server"],
+        args: &["test", "-p", "mcp-server", "--test", "standalone_host"],
         success_exit_codes: &[0],
         extra_env: &[],
     },

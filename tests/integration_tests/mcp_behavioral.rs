@@ -150,7 +150,7 @@ fn consumer_can_initialize() {
 // ============================================================================
 
 /// Verify that after initialize, tools/list returns the expected tool names
-/// including ralph_submit_artifact and ralph_read_file.
+/// including ralph_submit_artifact and read_file.
 #[test]
 fn consumer_can_list_tools() {
     with_default_timeout(|| {
@@ -180,8 +180,8 @@ fn consumer_can_list_tools() {
         let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
 
         assert!(
-            names.contains(&"ralph_read_file"),
-            "must include ralph_read_file, got: {:?}",
+            names.contains(&"read_file"),
+            "must include read_file, got: {:?}",
             names
         );
         assert!(
@@ -196,7 +196,7 @@ fn consumer_can_list_tools() {
 // Test 3: consumer_can_call_read_file_tool
 // ============================================================================
 
-/// Verify that ralph_read_file returns file content without isError when
+/// Verify that read_file returns file content without isError when
 /// the file exists in the workspace.
 #[test]
 fn consumer_can_call_read_file_tool() {
@@ -217,7 +217,7 @@ fn consumer_can_call_read_file_tool() {
                 "jsonrpc": "2.0",
                 "method": "tools/call",
                 "params": {
-                    "name": "ralph_read_file",
+                    "name": "read_file",
                     "arguments": {"path": "test_file.txt"}
                 },
                 "id": 3
@@ -256,7 +256,7 @@ fn consumer_can_call_read_file_tool() {
 // Test 4: consumer_gets_error_for_missing_file
 // ============================================================================
 
-/// Verify that ralph_read_file returns isError:true when the file does not exist.
+/// Verify that read_file returns isError:true when the file does not exist.
 #[test]
 fn consumer_gets_error_for_missing_file() {
     with_default_timeout(|| {
@@ -272,7 +272,7 @@ fn consumer_gets_error_for_missing_file() {
                 "jsonrpc": "2.0",
                 "method": "tools/call",
                 "params": {
-                    "name": "ralph_read_file",
+                    "name": "read_file",
                     "arguments": {"path": "nonexistent_file_xyz.txt"}
                 },
                 "id": 4
@@ -311,7 +311,7 @@ fn consumer_gets_error_for_missing_file() {
 // Test 5: consumer_gets_capability_denied_for_write_in_readonly_session
 // ============================================================================
 
-/// Verify that Planning session denies ralph_write_file with a JSON-RPC protocol error.
+/// Verify that Planning session denies write_file with a JSON-RPC protocol error.
 /// Per RFC-009, capability denials are protocol-level JSON-RPC errors, not tool-level isError responses.
 #[test]
 fn consumer_gets_capability_denied_for_write_in_readonly_session() {
@@ -332,7 +332,7 @@ fn consumer_gets_capability_denied_for_write_in_readonly_session() {
                 "jsonrpc": "2.0",
                 "method": "tools/call",
                 "params": {
-                    "name": "ralph_write_file",
+                    "name": "write_file",
                     "arguments": {"path": "src/lib.rs", "content": "changed"}
                 },
                 "id": 5
