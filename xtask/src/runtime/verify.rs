@@ -1177,6 +1177,19 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
         extra_env: &[],
     },
     CommandSpec {
+        name: "test-mcp-server-standalone-full-stack",
+        program: "cargo",
+        args: &[
+            "test",
+            "-p",
+            "mcp-server",
+            "--test",
+            "standalone_full_stack",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
         name: "test-mcp-server-access-control",
         program: "cargo",
         args: &["test", "-p", "mcp-server", "--test", "access_control"],
@@ -2160,6 +2173,7 @@ mod tests {
                 "test-ralph-workflow-lib",
                 "test-integration",
                 "test-mcp-server-standalone-host",
+                "test-mcp-server-standalone-full-stack",
                 "test-mcp-server-access-control",
                 "test-mcp-server-dispatch-capability",
                 "test-mcp-server-protocol-framing",
