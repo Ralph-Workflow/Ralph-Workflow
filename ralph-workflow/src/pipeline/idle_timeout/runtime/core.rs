@@ -711,19 +711,17 @@ pub fn dispatch_enforcement_phase(
 
 /// Pure: compute the enforcement phase result.
 /// Returns (EnforcementStep, Option<TimeoutEnforcementState>)
+///
+/// Note: `should_stop` is intentionally NOT checked here. Once enforcement has
+/// been triggered (a kill was already sent), the outcome is always `TimedOut` —
+/// the external stop signal does not retroactively change the reason the process
+/// was killed. `should_stop` is checked earlier in `compute_tick_policy` via
+/// `StopConditionsMet`, which fires before enforcement is initiated.
 fn compute_enforcement_phase_result(
     params: &MonitorParams<'_>,
     state: TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
 ) -> (EnforcementStep, Option<TimeoutEnforcementState>) {
-    // If should_stop is set while in enforcement, return ProcessCompleted
-    // instead of continuing enforcement (which could return TimedOut via HardCapReached).
-    if should_stop_during_enforcement(params) {
-        return (
-            EnforcementStep::ReturnResult(MonitorResult::ProcessCompleted),
-            None,
-        );
-    }
     handle_enforcement_phase(
         state,
         last_child_info,
@@ -733,12 +731,6 @@ fn compute_enforcement_phase_result(
         params.kill_config,
         params.completion_check.as_ref(),
     )
-}
-
-/// Pure: check if should_stop is set during enforcement.
-fn should_stop_during_enforcement(params: &MonitorParams<'_>) -> bool {
-    use std::sync::atomic::Ordering;
-    params.should_stop.load(Ordering::Acquire)
 }
 
 fn enforcement_step_to_action(step: EnforcementStep) -> MonitorLoopAction {

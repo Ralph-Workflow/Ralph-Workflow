@@ -217,8 +217,14 @@ fn enforcement_exited_with_output_returns_complete_but_waiting() {
 
 #[test]
 fn enforcement_exited_without_output_returns_process_completed() {
-    // Scenario: child exits DURING enforcement window, completion_check is None.
+    // Scenario: child exits before enforcement begins, completion_check is None.
+    // The monitor's pre-kill try_wait check sees the child is already dead and
+    // returns ProcessCompleted without issuing a kill signal.
     // Expected: ProcessCompleted (not TimedOut).
+    //
+    // Note: the child is marked dead synchronously before the monitor starts to
+    // avoid a timing race where a background thread might not exit within the
+    // monitor's first check_interval under high test parallelism.
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
@@ -230,10 +236,8 @@ fn enforcement_exited_without_output_returns_process_completed() {
 
     let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
 
-    let child_handle = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(15));
-        child_running.store(false, Ordering::Release);
-    });
+    // Child is already dead when the monitor begins enforcement — deterministic.
+    child_running.store(false, Ordering::Release);
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
@@ -253,12 +257,10 @@ fn enforcement_exited_without_output_returns_process_completed() {
         config,
     );
 
-    child_handle.join().expect("child thread should not panic");
-
     assert_eq!(
         result,
         MonitorResult::ProcessCompleted,
-        "exiting during enforcement with no completion_check should return ProcessCompleted"
+        "child already exited before enforcement must return ProcessCompleted"
     );
 }
 

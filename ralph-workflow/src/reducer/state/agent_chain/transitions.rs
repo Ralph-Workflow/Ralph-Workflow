@@ -11,15 +11,16 @@ use super::{AgentChainState, AgentDrain, AgentRole, DrainMode, RateLimitContinua
 impl AgentChainState {
     #[must_use]
     pub fn advance_to_next_model(&self) -> Self {
-        let start_agent_index = self.current_agent_index;
-
         // When models are configured, we try each model for the current agent once.
         // If the models list is exhausted, advance to the next agent/retry cycle
         // instead of looping models indefinitely.
-        let next = match self.models_per_agent.get(self.current_agent_index) {
+        //
+        // Session ID handling: preserved when staying on the same agent (model advance),
+        // cleared via switch_to_next_agent when switching agents or wrapping to a new cycle.
+        match self.models_per_agent.get(self.current_agent_index) {
             Some(models) if !models.is_empty() => {
                 if self.current_model_index + 1 < models.len() {
-                    // Simple model advance - only increment model index
+                    // Simple model advance - only increment model index, preserve session
                     Self {
                         agents: Arc::clone(&self.agents),
                         current_agent_index: self.current_agent_index,
@@ -39,27 +40,25 @@ impl AgentChainState {
                         last_failure_reason: self.last_failure_reason.clone(),
                     }
                 } else {
+                    // Models exhausted for current agent: switch to next agent (clears session).
+                    // When at the last agent, switch_to_next_agent wraps to agent 0 and
+                    // increments the retry cycle, signaling chain exhaustion.
                     self.switch_to_next_agent()
                 }
             }
+            // No models configured: treat as single-model agent, switch immediately.
             _ => self.switch_to_next_agent(),
-        };
-
-        // Clear session ID when switching to a different agent
-        if next.current_agent_index != start_agent_index {
-            Self {
-                last_session_id: None,
-                ..next
-            }
-        } else {
-            next
         }
     }
 
+    /// Switch to the next agent in the fallback chain.
+    ///
+    /// Sessions are agent-scoped: `last_session_id` is always cleared when switching agents.
+    /// Callers do not need to call `clear_session_id()` afterward.
     #[must_use]
     pub fn switch_to_next_agent(&self) -> Self {
         if self.current_agent_index + 1 < self.agents.len() {
-            // Advance to next agent
+            // Advance to next agent. Session is agent-scoped and must not carry over.
             Self {
                 agents: Arc::clone(&self.agents),
                 current_agent_index: self.current_agent_index + 1,
@@ -75,7 +74,7 @@ impl AgentChainState {
                 current_drain: self.current_drain,
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
-                last_session_id: self.last_session_id.clone(),
+                last_session_id: None,
                 last_failure_reason: self.last_failure_reason.clone(),
             }
         } else {
@@ -106,6 +105,7 @@ impl AgentChainState {
                 Some(temp.calculate_backoff_delay_ms_for_retry_cycle())
             };
 
+            // Wrapping to a new retry cycle: session is stale and must be cleared.
             Self {
                 agents: Arc::clone(&self.agents),
                 current_agent_index: 0,
@@ -121,7 +121,7 @@ impl AgentChainState {
                 current_drain: self.current_drain,
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
-                last_session_id: self.last_session_id.clone(),
+                last_session_id: None,
                 last_failure_reason: self.last_failure_reason.clone(),
             }
         }
@@ -487,7 +487,9 @@ impl AgentChainState {
             current_drain: self.current_drain,
             current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
-            last_session_id: self.last_session_id.clone(),
+            // Session IDs are agent-scoped. Starting a new retry cycle means all agents
+            // were exhausted; any session from a previous cycle is stale.
+            last_session_id: None,
             last_failure_reason: self.last_failure_reason.clone(),
         }
     }
@@ -578,6 +580,7 @@ mod advance_to_next_model_tests {
     fn test_advance_to_next_model_wraps_to_retry_cycle_when_all_agents_exhausted() {
         // When the last agent's last model is exhausted, the chain wraps to agent 0
         // and increments the retry cycle with a backoff delay.
+        // Session is cleared because switch_to_next_agent is called, which is agent-scoped.
         let state = AgentChainState::initial()
             .with_agents(
                 vec!["claude".to_string()],
@@ -598,11 +601,278 @@ mod advance_to_next_model_tests {
             next.backoff_pending_ms.is_some(),
             "backoff must be set when a retry cycle begins"
         );
-        // Agent index wraps back to 0 (same as start), so session is preserved.
+        // Session is cleared: switch_to_next_agent clears session at the transition level.
+        assert_eq!(
+            next.last_session_id, None,
+            "session must be cleared when the chain wraps to a new retry cycle"
+        );
+    }
+}
+
+#[cfg(test)]
+mod session_id_lifecycle_tests {
+    use super::*;
+
+    fn state_with_session() -> AgentChainState {
+        AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string(), "codex".to_string()],
+                vec![vec![], vec![]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("test-session".to_string()))
+    }
+
+    #[test]
+    fn test_with_session_id_sets_session() {
+        let state = AgentChainState::initial().with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Developer,
+        );
+        assert_eq!(state.last_session_id, None);
+
+        let state = state.with_session_id(Some("new-session".to_string()));
+        assert_eq!(state.last_session_id, Some("new-session".to_string()));
+    }
+
+    #[test]
+    fn test_with_session_id_can_clear_session() {
+        let state = state_with_session();
+        assert_eq!(state.last_session_id, Some("test-session".to_string()));
+
+        let state = state.with_session_id(None);
+        assert_eq!(state.last_session_id, None);
+    }
+
+    #[test]
+    fn test_clear_continuation_prompt_preserves_session_id() {
+        // clear_continuation_prompt must not affect last_session_id.
+        let state = state_with_session();
+
+        let next = state.clear_continuation_prompt();
+
         assert_eq!(
             next.last_session_id,
-            Some("sess".to_string()),
-            "session is preserved when agent index wraps back to the same position"
+            Some("test-session".to_string()),
+            "clear_continuation_prompt must preserve last_session_id"
+        );
+    }
+
+    #[test]
+    fn test_switch_to_next_agent_clears_session_at_transition_level() {
+        // Sessions are agent-scoped. switch_to_next_agent always clears last_session_id
+        // at the transition level — callers do not need to call clear_session_id() afterward.
+        let state = state_with_session();
+
+        let next = state.switch_to_next_agent();
+
+        assert_eq!(next.current_agent_index, 1);
+        assert_eq!(
+            next.last_session_id, None,
+            "switch_to_next_agent must clear last_session_id: sessions are agent-scoped"
+        );
+    }
+
+    #[test]
+    fn test_switch_to_next_agent_with_prompt_clears_session_at_transition_level() {
+        // switch_to_next_agent_with_prompt_for_role delegates to switch_to_next_agent,
+        // which clears the session. The session must be None after the transition.
+        let state = state_with_session();
+
+        let next = state.switch_to_next_agent_with_prompt_for_role(
+            AgentRole::Developer,
+            Some("continue here".to_string()),
+        );
+
+        assert_eq!(next.current_agent_index, 1);
+        assert_eq!(
+            next.last_session_id,
+            None,
+            "switch_to_next_agent_with_prompt clears session via the underlying switch_to_next_agent"
+        );
+    }
+
+    #[test]
+    fn test_start_retry_cycle_clears_session_id() {
+        // start_retry_cycle signals that ALL agents were exhausted. The session from any
+        // previous cycle is stale and must not be reused in the new cycle.
+        let state = state_with_session();
+
+        let next = state.start_retry_cycle();
+
+        assert_eq!(next.current_agent_index, 0);
+        assert_eq!(next.retry_cycle, 1);
+        assert_eq!(
+            next.last_session_id, None,
+            "start_retry_cycle must clear last_session_id: sessions are agent-scoped \
+             and any session from a previous cycle is stale"
+        );
+    }
+
+    #[test]
+    fn test_reset_for_drain_clears_session_id() {
+        // reset_for_drain is a full drain reset; last_session_id must be cleared.
+        let state = state_with_session();
+
+        let next = state.reset_for_drain(AgentDrain::Review);
+
+        assert_eq!(
+            next.last_session_id, None,
+            "reset_for_drain must clear last_session_id"
+        );
+        assert_eq!(next.current_drain, AgentDrain::Review);
+    }
+
+    #[test]
+    fn test_reset_clears_session_id() {
+        // reset() resets indices but preserves drain; session must still be cleared.
+        let state = state_with_session();
+
+        let next = state.reset();
+
+        assert_eq!(
+            next.last_session_id, None,
+            "reset() must clear last_session_id"
+        );
+    }
+}
+
+#[cfg(test)]
+mod model_fallback_cycling_tests {
+    use super::*;
+
+    #[test]
+    fn test_advance_to_next_model_cycles_through_multiple_models_before_switching_agent() {
+        // With two models for agent 0, advance should stay on agent 0 until both are tried.
+        let state = AgentChainState::initial().with_agents(
+            vec!["claude".to_string(), "codex".to_string()],
+            vec![
+                vec!["m1".to_string(), "m2".to_string()],
+                vec!["m3".to_string()],
+            ],
+            AgentRole::Developer,
+        );
+
+        // First advance: stay on agent 0, go to model 1
+        let state = state.advance_to_next_model();
+        assert_eq!(state.current_agent_index, 0, "should stay on agent 0");
+        assert_eq!(state.current_model_index, 1, "should advance to model 1");
+
+        // Second advance: models exhausted for agent 0, switch to agent 1
+        let state = state.advance_to_next_model();
+        assert_eq!(state.current_agent_index, 1, "should switch to agent 1");
+        assert_eq!(
+            state.current_model_index, 0,
+            "model_index must reset to 0 on agent switch"
+        );
+    }
+
+    #[test]
+    fn test_advance_to_next_model_resets_model_index_to_zero_on_agent_switch() {
+        // Explicit verification that current_model_index resets to 0 when switching agents.
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string(), "codex".to_string()],
+                vec![
+                    vec!["m1".to_string(), "m2".to_string()],
+                    vec!["m3".to_string(), "m4".to_string()],
+                ],
+                AgentRole::Developer,
+            )
+            // Advance to last model of agent 0
+            .advance_to_next_model();
+
+        assert_eq!(state.current_model_index, 1);
+
+        // Now advance again to switch to agent 1
+        let state = state.advance_to_next_model();
+
+        assert_eq!(state.current_agent_index, 1);
+        assert_eq!(
+            state.current_model_index, 0,
+            "current_model_index must reset to 0 after switching to next agent"
+        );
+    }
+
+    #[test]
+    fn test_advance_to_next_model_with_empty_models_list_switches_agent_immediately() {
+        // An empty models list (models_per_agent[i] = []) is treated as a single-model
+        // agent: advance_to_next_model immediately switches to the next agent.
+        let state = AgentChainState::initial().with_agents(
+            vec!["claude".to_string(), "codex".to_string()],
+            vec![vec![], vec![]],
+            AgentRole::Developer,
+        );
+
+        let next = state.advance_to_next_model();
+
+        assert_eq!(
+            next.current_agent_index, 1,
+            "empty models list must cause immediate agent switch"
+        );
+        assert_eq!(next.current_model_index, 0);
+    }
+
+    #[test]
+    fn test_advance_to_next_model_on_last_agent_last_model_wraps_to_cycle() {
+        // When the last agent's last model is exhausted, the chain wraps to agent 0
+        // and increments the retry cycle. For a single-agent chain, agent does not switch
+        // to a different named agent — the chain restarts from the same agent (index 0).
+        // Session is cleared at the transition level since switch_to_next_agent is called.
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec!["m1".to_string(), "m2".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("sess".to_string()));
+
+        // Advance to last model (model 1)
+        let state = state.advance_to_next_model();
+        assert_eq!(state.current_model_index, 1);
+
+        // Advance past last model: wrap
+        let next = state.advance_to_next_model();
+
+        assert_eq!(
+            next.current_agent_index, 0,
+            "should wrap back to agent 0 when all models exhausted (single-agent: same agent)"
+        );
+        assert_eq!(next.current_model_index, 0);
+        assert_eq!(
+            next.retry_cycle, 1,
+            "retry_cycle must increment when chain wraps"
+        );
+        assert!(
+            next.backoff_pending_ms.is_some(),
+            "backoff must be set when starting a new retry cycle"
+        );
+        assert_eq!(
+            next.last_session_id, None,
+            "session must be cleared when chain wraps: switch_to_next_agent clears session"
+        );
+    }
+
+    #[test]
+    fn test_advance_to_next_model_single_model_switches_to_next_agent_immediately() {
+        // With a single model per agent, advance_to_next_model switches agent immediately.
+        let state = AgentChainState::initial().with_agents(
+            vec!["claude".to_string(), "codex".to_string()],
+            vec![vec!["m1".to_string()], vec!["m2".to_string()]],
+            AgentRole::Developer,
+        );
+
+        let next = state.advance_to_next_model();
+
+        assert_eq!(
+            next.current_agent_index, 1,
+            "single-model agent: advance_to_next_model must switch to next agent"
+        );
+        assert_eq!(next.current_model_index, 0);
+        assert_eq!(
+            next.last_session_id, None,
+            "session must be cleared on agent switch"
         );
     }
 }
