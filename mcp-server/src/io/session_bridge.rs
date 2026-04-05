@@ -230,10 +230,15 @@ impl Drop for SessionBridge {
 }
 
 /// Build a unique socket path for a session.
+///
+/// Includes the process ID to prevent collisions when multiple test binaries
+/// run concurrently (each binary has its own `SOCKET_COUNTER` starting at 0,
+/// so PID disambiguation is required for uniqueness across processes).
 fn build_socket_path(nonce: usize) -> PathBuf {
     let socket_dir = std::env::temp_dir().join("ralph-mcp");
     let _ = std::fs::create_dir_all(&socket_dir);
-    socket_dir.join(format!("session-{}.sock", nonce))
+    let pid = std::process::id();
+    socket_dir.join(format!("session-{}-{}.sock", pid, nonce))
 }
 
 /// Pure: check shutdown flag.
@@ -444,8 +449,14 @@ mod tests {
     fn test_socket_path_format() {
         let path = build_socket_path(12345);
         let path_str = path.display().to_string();
+        let pid = std::process::id();
         assert!(path_str.contains("ralph-mcp"));
-        assert!(path_str.contains("session-12345"));
+        // Socket path includes PID to prevent collisions across concurrent test binaries.
+        assert!(
+            path_str.contains(&format!("session-{}-12345", pid)),
+            "socket path must include pid-nonce format, got: {}",
+            path_str
+        );
         assert!(path_str.ends_with(".sock"));
     }
 

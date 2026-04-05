@@ -43,6 +43,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::OnceLock;
 use tempfile::TempDir;
 
+pub mod git_guard;
+pub use git_guard::GitGuard;
 pub mod git_safety;
 pub use git_safety::no_real_git_mutation;
 
@@ -732,7 +734,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "POLICY VIOLATION: test is using real git state")]
+    #[should_panic(expected = "POLICY VIOLATION: test path")]
     fn assert_no_real_git_state_panics_on_real_repo_path() {
         // Use the project repo root as a test case - it contains .git
         // This test verifies the policy guard works correctly by checking
@@ -792,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "POLICY VIOLATION: test is using real git state")]
+    #[should_panic(expected = "POLICY VIOLATION: test path")]
     fn test_workspace_guard_rejects_real_git_workspace() {
         // Use the project repo root to verify the guard rejects it
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))

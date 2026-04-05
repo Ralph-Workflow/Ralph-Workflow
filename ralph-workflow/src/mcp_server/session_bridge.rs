@@ -355,4 +355,104 @@ mod tests {
             "clone should preserve cached audit records for repeated reads"
         );
     }
+
+    /// Verify that `ralph_submit_artifact` is reachable via the MCP protocol.
+    ///
+    /// This test exercises the full initialize → tools/list flow over the Unix socket
+    /// transport to confirm that `ralph_submit_artifact` appears in the tool list returned
+    /// by the server, proving the tool registry is wired correctly end-to-end.
+    #[test]
+    fn test_tools_list_includes_ralph_submit_artifact() {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+        use std::time::Duration;
+
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        bridge.start().expect("bridge should start");
+
+        let socket_path = bridge.socket_path().clone();
+        let mut stream =
+            UnixStream::connect(&socket_path).expect("should connect to bridge socket");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("set_read_timeout");
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .expect("set_write_timeout");
+
+        // Helper: write Content-Length framed request, read framed response.
+        let send_recv = |stream: &mut UnixStream, request: serde_json::Value| -> String {
+            let bytes = serde_json::to_vec(&request).expect("serialize request");
+            write!(stream, "Content-Length: {}\r\n\r\n", bytes.len())
+                .expect("write Content-Length header");
+            stream.write_all(&bytes).expect("write body");
+            stream.flush().expect("flush");
+
+            // Read LSP-style headers until \r\n\r\n
+            let mut header: Vec<u8> = Vec::new();
+            loop {
+                let mut buf = [0u8; 1];
+                stream.read_exact(&mut buf).expect("read header byte");
+                header.push(buf[0]);
+                if header.ends_with(b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let header_str = String::from_utf8_lossy(&header);
+            let content_length = header_str
+                .lines()
+                .find(|l| l.starts_with("Content-Length:"))
+                .and_then(|l| {
+                    l.strip_prefix("Content-Length:")
+                        .unwrap_or("")
+                        .trim()
+                        .parse::<usize>()
+                        .ok()
+                })
+                .expect("missing Content-Length in response header");
+            let mut body = vec![0u8; content_length];
+            stream.read_exact(&mut body).expect("read body");
+            String::from_utf8(body).expect("response is UTF-8")
+        };
+
+        // Step 1: initialize handshake.
+        let init_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05"},
+            "id": 1
+        });
+        let init_resp_str = send_recv(&mut stream, init_req);
+        let init_resp: serde_json::Value =
+            serde_json::from_str(&init_resp_str).expect("initialize response is valid JSON");
+        assert!(
+            init_resp["result"].is_object(),
+            "initialize must return a result object, got: {init_resp}"
+        );
+
+        // Small settle delay so the server records the initialized state.
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Step 2: tools/list — assert ralph_submit_artifact is present.
+        let list_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "tools/list",
+            "id": 2
+        });
+        let list_resp_str = send_recv(&mut stream, list_req);
+        let list_resp: serde_json::Value =
+            serde_json::from_str(&list_resp_str).expect("tools/list response is valid JSON");
+        assert!(
+            list_resp["result"].is_object(),
+            "tools/list must return a result object, got: {list_resp}"
+        );
+        let tools = list_resp["result"]["tools"]
+            .as_array()
+            .expect("tools/list result must contain a 'tools' array");
+        let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        assert!(
+            tool_names.contains(&"ralph_submit_artifact"),
+            "tools/list must include 'ralph_submit_artifact'; registered tools: {tool_names:?}"
+        );
+    }
 }

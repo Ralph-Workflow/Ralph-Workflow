@@ -677,7 +677,7 @@ mod unix_tests {
     // =========================================================================
 
     #[test]
-    fn submit_artifact_tool_executes_end_to_end() {
+    fn test_submit_artifact_tool_callable_via_real_adapter() {
         // Proves the full round-trip: initialize → tools/call ralph_submit_artifact →
         // assert accepted: true. Uses MemoryWorkspace — no real filesystem or git.
         let ws = Arc::new(MemoryWorkspace::new_test());

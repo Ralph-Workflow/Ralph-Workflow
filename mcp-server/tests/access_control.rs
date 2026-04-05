@@ -1282,7 +1282,9 @@ fn tools_list_returns_real_registered_names() {
                   _params: serde_json::Value|
                   -> Result<ToolResult, mcp_server::ToolError> {
                 c.fetch_add(1, Ordering::SeqCst);
-                Ok(ToolResult::success(vec![ToolContent::text("ok".to_string())]))
+                Ok(ToolResult::success(vec![ToolContent::text(
+                    "ok".to_string(),
+                )]))
             },
         )
     };

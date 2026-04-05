@@ -2161,3 +2161,308 @@ fn full_protocol_roundtrip_with_fake_host() {
         cap_err.data
     );
 }
+
+/// Test the full MCP protocol stack: initialize → tools/list → tools/call.
+///
+/// Verifies:
+/// 1. initialize transitions the server from Uninitialized to Ready
+/// 2. tools/list returns the registered ralph_submit_artifact tool
+/// 3. tools/call on a registered tool succeeds and returns a result
+#[test]
+fn full_protocol_stack_initialize_list_call() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Register a fake ralph_submit_artifact tool
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                r#"{"accepted":true}"#.to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_submit_artifact".to_string(),
+            description: "Submit a workflow artifact".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"plan": {"type": "string"}},
+                "required": ["plan"]
+            }),
+        },
+        required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None,
+    };
+
+    let session =
+        Arc::new(InMemorySession::new("stack-test-session")) as Arc<dyn mcp_server::HostSession>;
+    let workspace =
+        Arc::new(InMemoryWorkspace::new(root.clone())) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(root);
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
+    let server = McpServer::new(session, config, workspace, registry, None);
+
+    // Step 1: initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (init_response, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(
+        state,
+        ServerState::Ready,
+        "initialize must transition to Ready"
+    );
+    let init_resp = init_response.expect("initialize must return a response");
+    assert!(
+        init_resp.error.is_none(),
+        "initialize must not return an error: {:?}",
+        init_resp.error
+    );
+
+    // Step 2: tools/list must include ralph_submit_artifact
+    let list = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    let (list_response, state) = server.handle_request(list, state);
+    let list_resp = list_response.expect("tools/list must return a response");
+    assert!(
+        list_resp.error.is_none(),
+        "tools/list must not return an error: {:?}",
+        list_resp.error
+    );
+    let result = list_resp.result.expect("tools/list must return a result");
+    let tools = result["tools"]
+        .as_array()
+        .expect("result.tools must be an array");
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(
+        names.contains(&"ralph_submit_artifact"),
+        "tools/list must include 'ralph_submit_artifact', got: {:?}",
+        names
+    );
+
+    // Step 3: tools/call on ralph_submit_artifact must succeed
+    let call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({
+            "name": "ralph_submit_artifact",
+            "arguments": {"plan": "test plan"}
+        })),
+        id: Some(serde_json::json!(3)),
+    };
+    let (call_response, _) = server.handle_request(call, state);
+    let call_resp = call_response.expect("tools/call must return a response");
+    assert!(
+        call_resp.error.is_none(),
+        "tools/call on ralph_submit_artifact must succeed, got error: {:?}",
+        call_resp.error
+    );
+    assert!(
+        call_resp.result.is_some(),
+        "tools/call must return a result"
+    );
+}
+
+/// Test that ralph_submit_artifact succeeds when the session has ArtifactSubmit capability.
+///
+/// Verifies that a fake artifact submission handler is callable and returns
+/// the expected accepted response when the session is properly authorized.
+#[test]
+fn submit_artifact_tool_callable() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Register a fake submit_artifact handler that returns accepted:true
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                r#"{"accepted":true,"artifact_id":"test-001"}"#.to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_submit_artifact".to_string(),
+            description: "Submit a workflow artifact".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"plan": {"type": "string"}},
+                "required": ["plan"]
+            }),
+        },
+        required_capability: McpCapability::ArtifactSubmit,
+        is_mutating: None,
+    };
+
+    // Session with ArtifactSubmit capability granted
+    let session = Arc::new(
+        InMemorySession::new("artifact-session")
+            .with_capabilities(&[McpCapability::ArtifactSubmit]),
+    ) as Arc<dyn mcp_server::HostSession>;
+    let workspace =
+        Arc::new(InMemoryWorkspace::new(root.clone())) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadWrite);
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
+    let server = McpServer::new(session, config, workspace, registry, None);
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    // Call submit_artifact — must succeed and return accepted:true
+    let call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({
+            "name": "ralph_submit_artifact",
+            "arguments": {"plan": "my plan content"}
+        })),
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, _) = server.handle_request(call, state);
+    let resp = response.expect("tools/call must return a response");
+    assert!(
+        resp.error.is_none(),
+        "ralph_submit_artifact must succeed when session has ArtifactSubmit capability, got: {:?}",
+        resp.error
+    );
+    let result = resp.result.expect("tools/call must return a result");
+    let content_text = result["content"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|c| c["text"].as_str())
+        .unwrap_or("");
+    assert!(
+        content_text.contains("accepted"),
+        "response content must contain 'accepted', got: {}",
+        content_text
+    );
+}
+
+/// Test that ReadOnly mode rejects ralph_submit_artifact when it is registered as mutating.
+///
+/// Verifies:
+/// - `AccessMode::ReadOnly` blocks mutating artifact submission tools
+/// - The denial error uses `AccessDeniedCode::ReadOnlyMode`
+/// - The host session's ArtifactSubmit capability is irrelevant — ReadOnly fires first
+#[test]
+fn readonly_mode_rejects_submit_artifact() {
+    let root = temp_root();
+    assert_no_real_git_state(&root);
+
+    // Register ralph_submit_artifact explicitly as mutating
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                r#"{"accepted":true}"#.to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "ralph_submit_artifact".to_string(),
+            description: "Submit a workflow artifact".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {"plan": {"type": "string"}},
+                "required": ["plan"]
+            }),
+        },
+        required_capability: McpCapability::ArtifactSubmit,
+        // Explicitly mark as mutating so ReadOnly mode blocks it
+        is_mutating: Some(true),
+    };
+
+    // Session WITH ArtifactSubmit capability — ReadOnly must fire before capability check
+    let session = Arc::new(
+        InMemorySession::new("readonly-artifact-session")
+            .with_capabilities(&[McpCapability::ArtifactSubmit]),
+    ) as Arc<dyn mcp_server::HostSession>;
+    let workspace =
+        Arc::new(InMemoryWorkspace::new(root.clone())) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    // ReadOnly mode is the enforcer under test
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
+    let audit_sink = Arc::new(TestAuditSink::new());
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
+    let server = McpServer::new(
+        session,
+        config,
+        workspace,
+        registry,
+        Some(audit_sink.clone()),
+    );
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    let (_, state) = server.handle_request(init, ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    // Call submit_artifact — must be denied due to ReadOnly mode
+    let call = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({
+            "name": "ralph_submit_artifact",
+            "arguments": {"plan": "should be denied"}
+        })),
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, _) = server.handle_request(call, state);
+    let resp = response.expect("tools/call must return a response");
+    assert!(
+        resp.error.is_some(),
+        "ReadOnly mode must deny ralph_submit_artifact (is_mutating=true)"
+    );
+    let error = resp.error.unwrap();
+    assert!(
+        error.message.contains("ReadOnly") || error.message.contains("read only"),
+        "Error message must mention ReadOnly restriction, got: {}",
+        error.message
+    );
+
+    // Audit record must indicate ReadOnlyMode denial
+    let records = audit_sink.records();
+    assert_eq!(
+        records.len(),
+        1,
+        "ReadOnly denial must generate exactly one audit record"
+    );
+    match &records[0].decision {
+        AccessDecision::Deny { code, .. } => {
+            assert!(
+                matches!(code, AccessDeniedCode::ReadOnlyMode),
+                "Audit record must show ReadOnlyMode denial, got: {:?}",
+                code
+            );
+        }
+        other => panic!("Expected Deny decision, got: {:?}", other),
+    }
+}
