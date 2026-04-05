@@ -948,19 +948,18 @@ pub fn check_mcp_tool_naming_policy(repo_root: &Path) -> NativeCheckResult {
     }
 }
 
-/// Verifies that `mcp-server/tests/standalone_host.rs` contains an up-to-date
-/// `assert_no_real_git_state` implementation that uses a loop-based directory walk.
+/// Verifies that `mcp-server/tests/standalone_host.rs` enforces git safety using either:
 ///
-/// The standalone_host test file defines its own `assert_no_real_git_state` function
-/// (instead of depending on test-helpers) to keep mcp-server independent of ralph-workflow.
-/// This check ensures that the in-file implementation stays in parity with the canonical
-/// shape required by the git safety policy:
+/// 1. **Shared helper (preferred)**: calls `test_helpers::assert_not_in_git_repo` — the
+///    canonical API from `test-helpers`. `test-helpers` does not depend on `ralph-workflow`,
+///    so this does not violate the mcp-server isolation invariant.
+/// 2. **Local function (legacy)**: defines `fn assert_no_real_git_state` locally with a
+///    `loop {` parent-chain traversal. This was the original approach before `test-helpers`
+///    exported the shared API.
 ///
-/// 1. The function `fn assert_no_real_git_state` must be present.
-/// 2. The implementation must use a `loop {` for directory traversal (walks parent chain
-///    rather than checking only the given path, preventing bypasses via subdirectory paths).
+/// At least one of these patterns must be present. If neither is found, the check fails.
 ///
-/// Returns `Pass` when both requirements are met or when the file does not exist
+/// Returns `Pass` when either requirement is met or when the file does not exist
 /// (e.g., in unit-test environments with a fake repo root).
 pub fn check_standalone_host_git_safety_parity(repo_root: &Path) -> NativeCheckResult {
     let standalone_host = repo_root.join("mcp-server/tests/standalone_host.rs");
@@ -982,17 +981,28 @@ pub fn check_standalone_host_git_safety_parity(repo_root: &Path) -> NativeCheckR
         }
     };
 
-    let has_function = content.contains("fn assert_no_real_git_state");
+    // New approach: uses the shared helper from test-helpers (preferred)
+    let uses_shared_helper = content.contains("test_helpers::assert_not_in_git_repo");
+
+    // Legacy approach: defines the function locally with loop-based traversal
+    let has_local_function = content.contains("fn assert_no_real_git_state");
     let has_loop_walk = content.contains("loop {");
 
-    if !has_function {
+    if uses_shared_helper {
+        // Preferred pattern — shared helper from test-helpers
+        return NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        };
+    }
+
+    if !has_local_function {
         return NativeCheckResult {
             status: CheckStatus::Error,
-            message:
-                "mcp-server/tests/standalone_host.rs is missing `fn assert_no_real_git_state`. \
-                The standalone_host test file must define this function locally (without importing \
-                test-helpers) to enforce the git safety policy for mcp-server tests."
-                    .to_string(),
+            message: "mcp-server/tests/standalone_host.rs is missing git safety enforcement. \
+                Either call `test_helpers::assert_not_in_git_repo` (preferred) or define \
+                a local `fn assert_no_real_git_state` with loop-based parent-chain traversal."
+                .to_string(),
         };
     }
 

@@ -619,10 +619,13 @@ fn make_exec_tool(
 /// - `ToolError::CapabilityDenied` if session lacks `ArtifactSubmit` capability
 ///
 /// ### Side Effects/Idempotency
-/// Yes — submits an artifact to the workflow for processing.
+/// Yes — submits an artifact to the workflow for processing (triggers a pipeline state transition).
 ///
 /// ### Access Mode
-/// ReadOnly-safe: NO — artifact submission modifies workflow state.
+/// ReadOnly-safe: YES — the `ArtifactSubmit` capability is classified as non-mutating by
+/// `capability_is_mutating`. Artifact submission is a workflow signal to the host; it does
+/// not write to the filesystem, modify git state, or execute processes. The ReadOnly access
+/// mode is intended to block filesystem/process mutations, not workflow coordination signals.
 ///
 /// ### Versioning
 /// Stable since protocol version `2024-11-05`. No breaking changes planned.

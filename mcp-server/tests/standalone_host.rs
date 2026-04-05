@@ -56,47 +56,22 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-/// Returns a safe temp root for MCP tests that is guaranteed not to be inside a git repo.
-fn temp_root() -> PathBuf {
-    std::env::temp_dir().join("ralph-mcp-test")
-}
-
-/// Fail-fast guardrail: panic if path is inside a real git repo.
+/// Returns a safe temp root for MCP tests guaranteed to be outside any git repo.
 ///
-/// This is a standalone implementation of the git safety check that mcp-server tests
-/// use to ensure they don't accidentally touch real git state. This replaces the
-/// assert_no_real_git_state function to keep mcp-server tests
-/// independent of the test-helpers crate.
-fn assert_no_real_git_state(path: &std::path::Path) {
-    let mut current = path.to_path_buf();
-    loop {
-        if current.join(".git").exists() {
-            panic!(
-                "POLICY VIOLATION: test is using real git state at '{}'. \
-                 All tests must use MemoryWorkspace. See docs/agents/testing-guide.md.",
-                path.display()
-            );
-        }
-
-        let next = std::fs::canonicalize(&current)
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .or_else(|| current.parent().map(|p| p.to_path_buf()));
-
-        match next {
-            Some(parent) if parent != current => current = parent,
-            _ => break,
-        }
-    }
+/// Uses `test_helpers::temp_dir_outside_git` to create a unique temporary directory
+/// and verifies it is not inside a git repository. The directory is persisted on disk
+/// (not auto-deleted) and will remain until OS temp cleanup.
+fn temp_root() -> PathBuf {
+    test_helpers::temp_dir_outside_git("ralph-mcp-test-").keep()
 }
 
 #[test]
-#[should_panic(expected = "POLICY VIOLATION: test is using real git state")]
-fn assert_no_real_git_state_panics_for_nonexistent_path_inside_repo() {
+#[should_panic(expected = "POLICY VIOLATION")]
+fn shared_helper_panics_for_path_inside_repo() {
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent();
     if let Some(root) = project_root {
         let missing_path = root.join("definitely-does-not-exist").join("nested");
-        assert_no_real_git_state(&missing_path);
+        test_helpers::assert_not_in_git_repo(&missing_path);
     }
 }
 
@@ -287,7 +262,7 @@ fn create_test_server(session: InMemorySession, workspace: InMemoryWorkspace) ->
 #[test]
 fn test_standalone_session_check_capability() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
     let session = InMemorySession::new("test-session");
     let workspace = InMemoryWorkspace::new(root);
 
@@ -307,7 +282,7 @@ fn test_standalone_session_check_capability() {
 #[test]
 fn test_standalone_workspace_read_write() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
     let session = InMemorySession::new("test-session").with_capabilities(&[
         McpCapability::WorkspaceRead,
         McpCapability::WorkspaceWriteTracked,
@@ -341,7 +316,7 @@ fn test_standalone_workspace_read_write() {
 #[test]
 fn test_capability_denial_from_session() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
     // Session without GitStatusRead capability
     let session = InMemorySession::new("restricted-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]); // No GitStatusRead
@@ -427,7 +402,7 @@ fn test_capability_denial_from_session() {
 #[test]
 fn test_read_only_mode_denies_write_tool() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
     // Create a read-only config
     let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadOnly);
 
@@ -545,7 +520,7 @@ fn test_read_only_mode_denies_write_tool() {
 #[test]
 fn test_allowlist_blocks_unlisted_tool() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
     // Create config with allowlist that only permits "read_file"
     let config = McpServerConfig::new(root.clone())
         .with_tool_filter(ToolFilter::Allowlist(vec!["read_file".to_string()]));
@@ -627,7 +602,7 @@ fn test_allowlist_blocks_unlisted_tool() {
 #[test]
 fn test_blocklist_blocks_listed_tool() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
     // Create config with blocklist that blocks "git_status"
     let config = McpServerConfig::new(root.clone())
         .with_tool_filter(ToolFilter::Blocklist(vec!["git_status".to_string()]));
@@ -727,7 +702,7 @@ fn test_session_bridge_full_protocol_flow() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create an echo tool handler for testing
     let echo_handler: ToolHandler = Arc::new(
@@ -907,7 +882,7 @@ fn test_not_initialized_error_before_initialize() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     let session =
         InMemorySession::new("not-init-test").with_capabilities(&[McpCapability::WorkspaceRead]);
@@ -958,7 +933,7 @@ fn test_readonly_rejects_mutating_tool_via_socket() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create a mutating tool
     let mutating_handler: ToolHandler = Arc::new(
@@ -1043,7 +1018,7 @@ fn test_allowlist_rejects_unlisted_tool_via_socket() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create a tool
     let tool_handler: ToolHandler = Arc::new(
@@ -1125,7 +1100,7 @@ fn test_outside_root_dir_rejected_via_socket() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create a read tool
     let read_handler: ToolHandler = Arc::new(
@@ -1210,7 +1185,7 @@ fn test_outside_root_dir_rejected_via_socket() {
 #[test]
 fn test_tool_execution_error_returns_json_rpc_error() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create a tool handler that always returns an error
     let handler: ToolHandler = Arc::new(
@@ -1308,7 +1283,7 @@ fn test_unknown_method_returns_method_not_found() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     let session = InMemorySession::new("unknown-method-test")
         .with_capabilities(&[McpCapability::WorkspaceRead]);
@@ -1390,7 +1365,7 @@ fn test_allowlist_and_readonly_are_independent() {
     use std::time::Duration;
 
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create a mutating tool
     let mutating_handler: ToolHandler = Arc::new(
@@ -1484,7 +1459,7 @@ fn test_allowlist_and_readonly_are_independent() {
 #[test]
 fn test_tools_list_has_required_names_and_count() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Register read_file and write_file tools
     let read_handler: ToolHandler = Arc::new(
@@ -1620,7 +1595,7 @@ fn test_tools_list_has_required_names_and_count() {
 #[test]
 fn test_readonly_rejects_exec_tool() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create an exec tool with ProcessExecBounded requirement
     let exec_handler: ToolHandler = Arc::new(
@@ -1733,7 +1708,7 @@ fn test_readonly_rejects_exec_tool() {
 #[test]
 fn test_audit_sink_receives_allow_decision() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Create a simple read tool that always succeeds
     let handler: ToolHandler = Arc::new(
@@ -1840,7 +1815,7 @@ fn test_audit_sink_receives_allow_decision() {
 #[test]
 fn full_protocol_roundtrip_with_fake_host() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // -- Helpers: drive McpServer via FakeTransport ------------------------
     fn inject_and_handle(
@@ -2171,7 +2146,7 @@ fn full_protocol_roundtrip_with_fake_host() {
 #[test]
 fn full_protocol_stack_initialize_list_call() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Register a fake ralph_submit_artifact tool
     let handler: ToolHandler = Arc::new(
@@ -2281,7 +2256,7 @@ fn full_protocol_stack_initialize_list_call() {
 #[test]
 fn submit_artifact_tool_callable() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Register a fake submit_artifact handler that returns accepted:true
     let handler: ToolHandler = Arc::new(
@@ -2368,7 +2343,7 @@ fn submit_artifact_tool_callable() {
 #[test]
 fn readonly_mode_rejects_submit_artifact() {
     let root = temp_root();
-    assert_no_real_git_state(&root);
+    test_helpers::assert_not_in_git_repo(&root);
 
     // Register ralph_submit_artifact explicitly as mutating
     let handler: ToolHandler = Arc::new(

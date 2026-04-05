@@ -21,11 +21,20 @@ impl AgentHarness for ClaudeHarness {
             ),
         ]);
 
+        // Resolve the absolute path to the ralph binary using the current executable path.
+        // When ralph itself is the running process, current_exe() returns the absolute
+        // path to the ralph binary, which is embedded in settings.json so agents can
+        // spawn `ralph --mcp-proxy` without relying on PATH being set in their environment.
+        let ralph_command = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+            .unwrap_or_else(|| "ralph".to_string());
+
         let settings = ClaudeCodeSettings {
             mcp_servers: HashMap::from([(
                 "ralph".to_string(),
                 crate::agents::harness::MCPServerConfig {
-                    command: "ralph".to_string(),
+                    command: ralph_command,
                     args: vec!["--mcp-proxy".to_string()],
                     env: mcp_env,
                 },

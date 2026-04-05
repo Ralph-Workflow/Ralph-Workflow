@@ -69,7 +69,7 @@ construction and cannot be changed.
 |-------|------|---------|---------|
 | `root_dir` | `PathBuf` | Authorized directory boundary. All file operations must resolve within this directory. | `"/home/user/project"` |
 | `access_mode` | `AccessMode` | Operations permitted. `ReadOnly` or `ReadWrite`. | `AccessMode::ReadWrite` |
-| `tool_filter` | `ToolFilter` | Tool dispatch filter. `Allowlist(names)` or `Blocklist(names)`. Use `Blocklist(vec![])` to allow all tools. | `ToolFilter::Blocklist(vec!["exec_command"])` |
+| `tool_filter` | `ToolFilter` | Tool dispatch filter. `Allowlist(names)` or `Blocklist(names)`. Use `Blocklist(vec![])` to allow all tools. | `ToolFilter::Blocklist(vec!["exec"])` |
 
 ### Configuration Examples
 
@@ -83,6 +83,21 @@ let config = McpServerConfig::new("/home/user/docs")
     .with_access_mode(AccessMode::ReadOnly);
 ```
 
+**ReadOnly + Allowlist config** (locked-down consumer exposing only specific tools):
+
+```rust
+use mcp_server::io::access::McpServerConfig;
+use mcp_server::dispatch::access::{AccessMode, ToolFilter};
+
+let config = McpServerConfig::new("/home/user/docs")
+    .with_access_mode(AccessMode::ReadOnly)
+    .with_tool_filter(ToolFilter::Allowlist(vec!["read_file".into()]));
+```
+
+This configuration exposes exactly one tool (`read_file`) and rejects all mutations.
+Even if a mutating tool were added to the allowlist, `ReadOnly` mode would still block it —
+the two checks are independent and both must pass.
+
 **ReadWrite config** (for full workflow orchestration):
 
 ```rust
@@ -92,7 +107,7 @@ use mcp_server::dispatch::access::{AccessMode, ToolFilter};
 let config = McpServerConfig::new("/home/user/project")
     .with_access_mode(AccessMode::ReadWrite)
     .with_tool_filter(ToolFilter::Blocklist(vec![
-        "ralph_exec_command".to_string()
+        "exec".to_string()
     ]));
 ```
 

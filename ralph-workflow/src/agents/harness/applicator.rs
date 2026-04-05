@@ -174,9 +174,22 @@ fn apply_codex_harness(
 }
 
 /// Build the `-c key=value` CLI arguments for Codex MCP configuration.
+///
+/// The command is resolved to the absolute path of the current executable so
+/// that Codex can spawn `ralph --mcp-proxy` without relying on PATH being set
+/// in its environment. This mirrors the strategy used by `CodexHarness::generate`
+/// for the config.toml; both must use the same resolved path so that the -c
+/// overrides (which take precedence over the config file) do not regress to a
+/// PATH-dependent bare `"ralph"`.
 fn build_codex_override_args(session: &AgentSession, mcp_endpoint: &str) -> Vec<String> {
+    // Resolve the absolute path to the ralph binary. Falls back to bare "ralph"
+    // if current_exe() cannot be determined (mirrors CodexHarness::generate).
+    let ralph_command = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "ralph".to_string());
     let overrides = [
-        "mcp_servers.ralph.command=\"ralph\"".to_string(),
+        format!("mcp_servers.ralph.command=\"{ralph_command}\""),
         "mcp_servers.ralph.args=[\"--mcp-proxy\"]".to_string(),
         format!("mcp_servers.ralph.env.RALPH_MCP_ENDPOINT=\"{mcp_endpoint}\""),
         format!(

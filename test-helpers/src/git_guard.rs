@@ -3,7 +3,7 @@
 //! `GitGuard` creates an isolated temporary git repository for use in tests,
 //! ensuring that no test accidentally operates on the project's real git repository.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 /// A test-only guard that creates an isolated temporary git repository.
@@ -89,6 +89,75 @@ impl Default for GitGuard {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Assert that `path` is not inside any git repository.
+///
+/// Walks the parent chain from `path` upward looking for a `.git` directory.
+/// If one is found, panics immediately with a `POLICY VIOLATION` message.
+///
+/// This is the shared canonical git-safety guardrail. All tests that create or
+/// use filesystem paths must call this before performing any git-relevant operations.
+///
+/// # Policy
+///
+/// Tests must never operate on real git state. This function enforces that
+/// invariant unconditionally — there are no environment variables or feature
+/// flags that bypass it.
+///
+/// # Panics
+///
+/// Panics with a `POLICY VIOLATION` message if `path` is inside a git repository.
+pub fn assert_not_in_git_repo(path: &Path) {
+    let mut current = path.to_path_buf();
+    loop {
+        if current.join(".git").exists() {
+            panic!(
+                "POLICY VIOLATION: test path '{}' is inside a git repository at '{}'.\n\
+                 Tests must not operate on real git state. Use temp_dir_outside_git() \
+                 to create a safe temporary directory, or ensure your test path is \
+                 outside all git repositories.",
+                path.display(),
+                current.display()
+            );
+        }
+        let parent = current
+            .parent()
+            .filter(|p| *p != current.as_path())
+            .map(|p| p.to_path_buf());
+        match parent {
+            Some(p) => current = p,
+            None => break,
+        }
+    }
+}
+
+/// Create a temporary directory guaranteed to be outside any git repository.
+///
+/// Uses `tempfile::Builder::new().prefix(prefix).tempdir()` to create a unique
+/// temporary directory, then verifies the result with [`assert_not_in_git_repo`].
+///
+/// The returned [`TempDir`] will be automatically deleted when dropped. If you need
+/// a long-lived path, call `.into_path()` to consume the `TempDir` without deleting
+/// the directory.
+///
+/// # Prefix
+///
+/// The `prefix` string is used as the directory name prefix (e.g. `"ralph-mcp-test-"`).
+///
+/// # Panics
+///
+/// Panics if the temporary directory cannot be created, or if the created directory
+/// is unexpectedly inside a git repository (which should not happen with the system
+/// temp directory, but is checked as a safety invariant).
+#[must_use]
+pub fn temp_dir_outside_git(prefix: &str) -> TempDir {
+    let dir = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir()
+        .unwrap_or_else(|e| panic!("temp_dir_outside_git: failed to create temp dir: {e}"));
+    assert_not_in_git_repo(dir.path());
+    dir
 }
 
 #[cfg(test)]

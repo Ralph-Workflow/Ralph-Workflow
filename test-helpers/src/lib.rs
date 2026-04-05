@@ -44,7 +44,7 @@ use std::sync::OnceLock;
 use tempfile::TempDir;
 
 pub mod git_guard;
-pub use git_guard::GitGuard;
+pub use git_guard::{assert_not_in_git_repo, temp_dir_outside_git, GitGuard};
 pub mod git_safety;
 pub use git_safety::no_real_git_mutation;
 

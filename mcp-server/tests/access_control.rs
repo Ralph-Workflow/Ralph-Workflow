@@ -1260,6 +1260,44 @@ fn real_ralph_submit_artifact_blocked_by_blocklist() {
     );
 }
 
+/// Calling any tool before `initialize` returns a `NotInitialized` error (-32001).
+///
+/// This is the "uninitialised client rejection" coverage required by the access control
+/// plan: the server must reject tool calls from clients that have not completed the
+/// initialize handshake, and must use the standardized `-32001` error code.
+#[test]
+fn uninitialised_client_rejected() {
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_ralph_read_tool(None);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"));
+    let server = make_test_server(session, workspace, registry, config);
+
+    // Call the tool WITHOUT calling initialize first (state = Uninitialized)
+    let response = call_tool(
+        &server,
+        ServerState::Uninitialized,
+        "ralph_workspace_read_file",
+        serde_json::json!({ "path": "test.txt" }),
+    );
+
+    assert!(
+        response.error.is_some(),
+        "tools/call before initialize must return an error"
+    );
+    let error = response.error.unwrap();
+    assert_eq!(
+        error.code, -32001,
+        "NotInitialized error must use code -32001, got: {}",
+        error.code
+    );
+    assert!(
+        error.message.contains("initialize") || error.message.contains("nitializ"),
+        "NotInitialized error message should reference initialization, got: {}",
+        error.message
+    );
+}
+
 /// `tools/list` returns the actual registered tool names, not stale or prefixed variants.
 ///
 /// Regression: after the rename commit (d1f09f19) dropped `ralph_` from most tools,

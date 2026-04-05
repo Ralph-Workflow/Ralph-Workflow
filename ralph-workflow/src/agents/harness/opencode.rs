@@ -12,11 +12,17 @@ pub struct OpenCodeHarness;
 
 impl AgentHarness for OpenCodeHarness {
     fn generate(&self, session: &AgentSession, mcp_endpoint: &str) -> HarnessConfig {
+        // Resolve the absolute path to the ralph binary. Falls back to bare "ralph"
+        // if current_exe() cannot be determined.
+        let ralph_command = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.to_str().map(String::from))
+            .unwrap_or_else(|| "ralph".to_string());
         let config = serde_json::json!({
             "mcp": {
                 "ralph": {
                     "type": "local",
-                    "command": ["ralph", "--mcp-proxy"],
+                    "command": [ralph_command, "--mcp-proxy"],
                     "enabled": true,
                     "environment": {
                         "RALPH_MCP_ENDPOINT": mcp_endpoint,

@@ -183,11 +183,16 @@ fn apply_claude_preserves_existing_settings() {
     // User's existing MCP server is preserved
     assert!(parsed["mcpServers"]["my-other-server"].is_object());
 
-    // Ralph's MCP server is added
+    // Ralph's MCP server is added with an absolute command path
     assert!(parsed["mcpServers"]["ralph"].is_object());
-    assert_eq!(
-        parsed["mcpServers"]["ralph"]["command"].as_str(),
-        Some("ralph")
+    let ralph_command = parsed["mcpServers"]["ralph"]["command"]
+        .as_str()
+        .expect("mcpServers.ralph.command must be a string");
+    // The command is resolved to the current executable path at runtime (absolute path).
+    // In tests this is the test binary; in production it is the actual ralph binary.
+    assert!(
+        !ralph_command.is_empty(),
+        "mcpServers.ralph.command must not be empty"
     );
 
     // User's existing permissions are preserved
@@ -578,6 +583,93 @@ fn apply_unknown_returns_error() {
     let session = test_session();
     let result = apply_harness_config(AgentType::Unknown, &session, TEST_ENDPOINT, &ws);
     assert!(result.is_err());
+}
+
+/// Regression: Codex -c override args must use the resolved executable path,
+/// not the hardcoded bare "ralph" which is PATH-dependent.
+///
+/// The `-c` overrides take precedence over config.toml in Codex, so if the
+/// override contains bare "ralph" it negates the absolute-path fix in
+/// CodexHarness::generate and reintroduces PATH-dependent MCP proxy startup risk.
+#[test]
+fn apply_codex_override_args_include_absolute_command() {
+    let ws = MemoryWorkspace::new_test();
+    let session = test_session();
+    let result = apply_harness_config(AgentType::Codex, &session, TEST_ENDPOINT, &ws)
+        .expect("should succeed");
+
+    let args = &result.extra_cmd_args;
+
+    // Find the -c arg that sets mcp_servers.ralph.command
+    let command_override = args
+        .windows(2)
+        .find(|w| w[0] == "-c" && w[1].contains("mcp_servers.ralph.command="))
+        .map(|w| w[1].clone())
+        .expect("Codex -c args must include mcp_servers.ralph.command override");
+
+    // The command value must not be empty
+    assert!(
+        !command_override.is_empty(),
+        "mcp_servers.ralph.command override must not be empty"
+    );
+
+    // The expected command matches current_exe() or falls back to "ralph"
+    let expected_command = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "ralph".to_string());
+
+    assert!(
+        !expected_command.is_empty(),
+        "resolved executable path must not be empty"
+    );
+    assert!(
+        command_override.contains(&expected_command),
+        "Codex -c command override must use the resolved executable path.\n\
+         override arg: {command_override}\n\
+         expected to contain: {expected_command}"
+    );
+}
+
+/// Regression: the Codex config.toml and the -c override args must use the
+/// same resolved command path, so that the -c precedence does not negate the
+/// absolute path written to the TOML file.
+#[test]
+fn apply_codex_config_toml_and_override_args_use_same_command() {
+    let ws = MemoryWorkspace::new_test();
+    let session = test_session();
+    let result = apply_harness_config(AgentType::Codex, &session, TEST_ENDPOINT, &ws)
+        .expect("should succeed");
+
+    let session_id = session.session_id.as_str();
+    let config_path = format!(".agent/tmp/harness/{session_id}/config.toml");
+    let toml_content = ws.read(Path::new(&config_path)).expect("read config.toml");
+
+    // Extract command path from TOML (format: command = "/abs/path/to/ralph")
+    let toml_command = toml_content
+        .lines()
+        .find(|line| line.trim_start().starts_with("command = "))
+        .expect("TOML config must have a command = line")
+        .trim_start()
+        .trim_start_matches("command = \"")
+        .trim_end_matches('"');
+
+    assert!(!toml_command.is_empty(), "TOML command must not be empty");
+
+    // Verify the -c override also contains the same path
+    let args = &result.extra_cmd_args;
+    let command_override = args
+        .windows(2)
+        .find(|w| w[0] == "-c" && w[1].contains("mcp_servers.ralph.command="))
+        .map(|w| w[1].clone())
+        .expect("Codex -c args must include mcp_servers.ralph.command override");
+
+    assert!(
+        command_override.contains(toml_command),
+        "Codex -c command override must contain the same path as the TOML config.\n\
+         -c override: {command_override}\n\
+         TOML command: {toml_command}"
+    );
 }
 
 // -----------------------------------------------------------------------
