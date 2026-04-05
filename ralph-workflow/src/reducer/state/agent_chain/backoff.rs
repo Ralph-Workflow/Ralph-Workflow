@@ -162,8 +162,9 @@ mod backoff_overflow_safety_tests {
     }
 
     #[test]
-    fn test_f64_to_u64_positive_infinity_returns_u64_max() {
-        // Positive infinity: exp_biased is 0x7FF and mantissa is 0, so !is_finite() → 0.
+    fn test_f64_to_u64_positive_infinity_returns_zero() {
+        // Positive infinity is non-finite; the !is_finite() guard at the top of
+        // f64_to_u64_via_bits returns 0 before any bit manipulation occurs.
         assert_eq!(f64_to_u64_via_bits(f64::INFINITY), 0);
     }
 
