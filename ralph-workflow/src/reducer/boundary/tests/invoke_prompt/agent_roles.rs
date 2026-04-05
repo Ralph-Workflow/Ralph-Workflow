@@ -289,8 +289,7 @@ fn test_invoke_development_agent_uses_parser_type_from_agent_config() {
         json_parser: JsonParserType::Codex,
         ..AgentConfig::default()
     };
-    let old_registry = std::mem::replace(&mut fixture.registry, AgentRegistry::new().unwrap());
-    fixture.registry = old_registry.register("test-codex", codex_config);
+    fixture.registry = AgentRegistry::new().unwrap().register("test-codex", codex_config);
 
     // Point the agent chain at "test-codex".
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
@@ -323,6 +322,118 @@ fn test_invoke_development_agent_uses_parser_type_from_agent_config() {
         agent_calls[0].parser_type,
         JsonParserType::Codex,
         "expected parser_type to come from agent_config.json_parser (Codex), \
+         got {:?} — hardcoded JsonParserType::default() (Claude) was used instead",
+        agent_calls[0].parser_type
+    );
+}
+
+#[test]
+fn test_invoke_review_agent_uses_parser_type_from_agent_config() {
+    use crate::agents::{AgentConfig, AgentDrain, AgentRegistry, JsonParserType};
+
+    // Set up workspace with a review prompt.
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/review_prompt.txt",
+        "test review prompt",
+    );
+    let mut fixture = TestFixture::with_workspace(workspace);
+
+    // Register a "test-opencode" agent configured with the OpenCode parser.
+    // Default (buggy) behaviour uses JsonParserType::Claude regardless of this config.
+    let opencode_config = AgentConfig {
+        cmd: String::from("opencode"),
+        json_parser: JsonParserType::OpenCode,
+        ..AgentConfig::default()
+    };
+    fixture.registry = AgentRegistry::new().unwrap().register("test-opencode", opencode_config);
+
+    // Point the agent chain at "test-opencode" with Review drain.
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
+    handler.state.agent_chain = AgentChainState::initial()
+        .with_agents(
+            vec!["test-opencode".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        )
+        .with_drain(AgentDrain::Review);
+
+    // Clone the executor Arc so we can inspect it after the PhaseContext borrow ends.
+    let executor = Arc::clone(&fixture.executor);
+
+    {
+        let mut ctx = fixture.ctx();
+        ctx.reviewer_agent = "test-opencode";
+        // The mock executor returns success by default; ignore the result here.
+        let _ = handler.invoke_review_agent(&mut ctx, 0);
+    }
+
+    let agent_calls = executor.agent_calls();
+    assert_eq!(
+        agent_calls.len(),
+        1,
+        "expected exactly one agent call, got {}",
+        agent_calls.len()
+    );
+    assert_eq!(
+        agent_calls[0].parser_type,
+        JsonParserType::OpenCode,
+        "expected parser_type to come from agent_config.json_parser (OpenCode), \
+         got {:?} — hardcoded JsonParserType::default() (Claude) was used instead",
+        agent_calls[0].parser_type
+    );
+}
+
+#[test]
+fn test_invoke_fix_agent_uses_parser_type_from_agent_config() {
+    use crate::agents::{AgentConfig, AgentDrain, AgentRegistry, JsonParserType};
+
+    // Set up workspace with a fix prompt.
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/fix_prompt.txt",
+        "test fix prompt",
+    );
+    let mut fixture = TestFixture::with_workspace(workspace);
+
+    // Register a "test-gemini" agent configured with the Gemini parser.
+    // Default (buggy) behaviour uses JsonParserType::Claude regardless of this config.
+    let gemini_config = AgentConfig {
+        cmd: String::from("gemini"),
+        json_parser: JsonParserType::Gemini,
+        ..AgentConfig::default()
+    };
+    fixture.registry = AgentRegistry::new().unwrap().register("test-gemini", gemini_config);
+
+    // Point the agent chain at "test-gemini" with Fix drain.
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
+    handler.state.agent_chain = AgentChainState::initial()
+        .with_agents(
+            vec!["test-gemini".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        )
+        .with_drain(AgentDrain::Fix);
+
+    // Clone the executor Arc so we can inspect it after the PhaseContext borrow ends.
+    let executor = Arc::clone(&fixture.executor);
+
+    {
+        let mut ctx = fixture.ctx();
+        ctx.reviewer_agent = "test-gemini";
+        // The mock executor returns success by default; ignore the result here.
+        let _ = handler.invoke_fix_agent(&mut ctx, 0);
+    }
+
+    let agent_calls = executor.agent_calls();
+    assert_eq!(
+        agent_calls.len(),
+        1,
+        "expected exactly one agent call, got {}",
+        agent_calls.len()
+    );
+    assert_eq!(
+        agent_calls[0].parser_type,
+        JsonParserType::Gemini,
+        "expected parser_type to come from agent_config.json_parser (Gemini), \
          got {:?} — hardcoded JsonParserType::default() (Claude) was used instead",
         agent_calls[0].parser_type
     );

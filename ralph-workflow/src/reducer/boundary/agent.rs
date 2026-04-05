@@ -179,7 +179,7 @@ fn run_agent_execution(
         agent_name: inputs.effective_agent,
         cmd_str: &cmd_str,
         parser_type: agent_config.json_parser,
-        env_vars: &std::collections::HashMap::new(),
+        env_vars: &agent_config.env_vars,
         prompt: inputs.effective_prompt,
         display_name: inputs.effective_agent,
         log_prefix: "agent",
