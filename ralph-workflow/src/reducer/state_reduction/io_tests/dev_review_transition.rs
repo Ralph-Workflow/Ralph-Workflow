@@ -119,6 +119,7 @@ fn test_chain_initialized_populates_reviewer_chain() {
                 AgentName::from("opencode"),
                 AgentName::from("claude"),
             ],
+            vec![],
             3,
             1000,
             2.0,

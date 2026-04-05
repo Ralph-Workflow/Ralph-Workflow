@@ -94,6 +94,12 @@ pub enum AgentEvent {
         drain: AgentDrain,
         /// The agents available in this chain.
         agents: Vec<AgentName>,
+        /// Per-agent model flag lists, parallel to `agents`.
+        ///
+        /// Each inner `Vec` contains model flags (e.g. `["-m opencode/glm-4.7-free"]`) for the
+        /// corresponding agent. An empty inner `Vec` means no model-level fallback for that agent
+        /// (treated as a single-model agent).
+        models_per_agent: Vec<Vec<String>>,
         /// Maximum number of retry cycles allowed for this chain.
         max_cycles: u32,
         /// Base retry-cycle delay in milliseconds.

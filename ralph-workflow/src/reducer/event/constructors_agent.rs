@@ -82,9 +82,10 @@ impl PipelineEvent {
 
     /// Create an `AgentChainInitialized` event.
     #[must_use]
-    pub const fn agent_chain_initialized(
+    pub fn agent_chain_initialized(
         drain: AgentDrain,
         agents: Vec<AgentName>,
+        models_per_agent: Vec<Vec<String>>,
         max_cycles: u32,
         retry_delay_ms: u64,
         backoff_multiplier: f64,
@@ -93,6 +94,7 @@ impl PipelineEvent {
         Self::Agent(AgentEvent::ChainInitialized {
             drain,
             agents,
+            models_per_agent,
             max_cycles,
             retry_delay_ms,
             backoff_multiplier,

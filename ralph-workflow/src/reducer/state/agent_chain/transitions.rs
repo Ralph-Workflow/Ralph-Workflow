@@ -203,11 +203,12 @@ impl AgentChainState {
                 current_drain: self.current_drain,
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
-                last_session_id: self.last_session_id.clone(),
+                // Sessions are agent-scoped. Switching to a different (earlier) agent clears it.
+                last_session_id: None,
                 last_failure_reason: self.last_failure_reason.clone(),
             }
         } else {
-            // Advancing to later agent
+            // Advancing to later agent. Sessions are agent-scoped; must not carry over.
             Self {
                 agents: Arc::clone(&self.agents),
                 current_agent_index: target_index,
@@ -223,7 +224,8 @@ impl AgentChainState {
                 current_drain: self.current_drain,
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
-                last_session_id: self.last_session_id.clone(),
+                // Sessions are agent-scoped. Switching to a different (later) agent clears it.
+                last_session_id: None,
                 last_failure_reason: self.last_failure_reason.clone(),
             }
         }
@@ -734,6 +736,69 @@ mod session_id_lifecycle_tests {
         assert_eq!(
             next.last_session_id, None,
             "reset() must clear last_session_id"
+        );
+    }
+
+    #[test]
+    fn test_switch_to_agent_named_backward_clears_session() {
+        // Jumping backward to an earlier agent — session must be cleared (agent-scoped).
+        let chain = AgentChainState::initial()
+            .with_agents(
+                vec!["agent0".to_string(), "agent1".to_string()],
+                vec![vec![], vec![]],
+                AgentRole::Developer,
+            )
+            .with_current_agent_index(1)
+            .with_session_id(Some("session-abc".to_string()));
+
+        let next = chain.switch_to_agent_named("agent0");
+        assert_eq!(next.current_agent_index, 0, "should switch to agent0");
+        assert_eq!(
+            next.last_session_id, None,
+            "session must be cleared when switching to a different (earlier) agent"
+        );
+    }
+
+    #[test]
+    fn test_switch_to_agent_named_forward_clears_session() {
+        // Jumping forward to a later agent — session must be cleared (agent-scoped).
+        let chain = AgentChainState::initial()
+            .with_agents(
+                vec![
+                    "agent0".to_string(),
+                    "agent1".to_string(),
+                    "agent2".to_string(),
+                ],
+                vec![vec![], vec![], vec![]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("session-xyz".to_string()));
+
+        let next = chain.switch_to_agent_named("agent2");
+        assert_eq!(next.current_agent_index, 2, "should switch to agent2");
+        assert_eq!(
+            next.last_session_id, None,
+            "session must be cleared when switching to a different (later) agent"
+        );
+    }
+
+    #[test]
+    fn test_switch_to_agent_named_same_agent_preserves_session() {
+        // Switching to the same agent (no-op) — session must be preserved.
+        let chain = AgentChainState::initial()
+            .with_agents(
+                vec!["agent0".to_string(), "agent1".to_string()],
+                vec![vec![], vec![]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("session-keep".to_string()));
+
+        let next = chain.switch_to_agent_named("agent0");
+        assert_eq!(next.current_agent_index, 0);
+        assert_eq!(
+            next.last_session_id,
+            Some("session-keep".to_string()),
+            "session must be preserved when switching to the same agent"
         );
     }
 }

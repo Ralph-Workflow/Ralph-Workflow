@@ -44,6 +44,7 @@ fn test_complete_pipeline_flow() {
                     PipelineEvent::agent_chain_initialized(
                         drain,
                         vec![AgentName::from("claude")],
+                        vec![],
                         3,
                         1000,
                         2.0,
@@ -409,6 +410,7 @@ fn test_pipeline_skips_planning_dev_when_zero_iterations() {
                     PipelineEvent::agent_chain_initialized(
                         drain,
                         vec![AgentName::from("claude")],
+                        vec![],
                         3,
                         1000,
                         2.0,

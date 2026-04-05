@@ -12,5 +12,6 @@
 
 mod basic_fallback;
 mod chain_exhaustion;
+mod model_fallback;
 mod retry_scenarios;
 mod state_transitions;

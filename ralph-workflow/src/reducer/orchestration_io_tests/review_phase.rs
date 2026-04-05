@@ -50,6 +50,7 @@ fn test_review_runs_exactly_n_passes() {
                     PipelineEvent::agent_chain_initialized(
                         drain,
                         vec![AgentName::from("claude")],
+                        vec![],
                         3,
                         1000,
                         2.0,
@@ -154,6 +155,7 @@ fn test_review_triggers_fix_when_issues_found() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Fix,
             vec![AgentName::from("claude")],
+            vec![],
             3,
             1000,
             2.0,
@@ -190,6 +192,7 @@ fn test_review_triggers_fix_when_issues_found() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Commit,
             vec![AgentName::from("claude")],
+            vec![],
             3,
             1000,
             2.0,

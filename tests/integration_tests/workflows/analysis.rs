@@ -78,6 +78,7 @@ fn test_analysis_runs_after_first_iteration_when_multiple_iterations() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
                 vec!["claude".into()],
+                vec![],
                 3,
                 1_000,
                 2.0,
@@ -130,6 +131,7 @@ fn test_analysis_runs_after_every_iteration() {
                 PipelineEvent::agent_chain_initialized(
                     AgentRole::Developer.into(),
                     vec!["claude".into()],
+                    vec![],
                     3,
                     1_000,
                     2.0,
@@ -472,6 +474,7 @@ fn test_analysis_xsd_invalid_triggers_retry() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Analysis.into(),
                 vec!["claude".into()],
+                vec![],
                 3,
                 1_000,
                 2.0,
@@ -526,6 +529,7 @@ fn test_analysis_uses_agent_chain_fallback() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
                 vec!["agent1".into(), "agent2".into()],
+                vec![],
                 3,
                 1000,
                 2.0,
@@ -586,6 +590,7 @@ fn test_complete_pipeline_with_analysis_verification() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
                 vec!["claude".into()],
+                vec![],
                 3,
                 1000,
                 2.0,
@@ -623,6 +628,7 @@ fn test_complete_pipeline_with_analysis_verification() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Analysis.into(),
                 vec!["claude".into()],
+                vec![],
                 3,
                 1000,
                 2.0,

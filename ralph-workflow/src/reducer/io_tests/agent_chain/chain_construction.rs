@@ -23,6 +23,7 @@ fn test_agent_chain_initialized_for_developer() {
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Development,
             agent_names.clone(),
+            vec![],
             3,
             1000,
             2.0,
@@ -46,6 +47,7 @@ fn test_agent_chain_initialized_for_reviewer() {
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Review,
             agent_names_from_strings(&agents),
+            vec![],
             3,
             1000,
             2.0,
@@ -67,6 +69,7 @@ fn test_agent_chain_initialized_for_commit_role() {
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Commit,
             agent_names_from_strings(&agents),
+            vec![],
             3,
             1000,
             2.0,
@@ -101,6 +104,7 @@ fn test_agent_chain_initialized_resets_retry_cycle() {
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Review,
             agent_names_from_strings(&new_agents),
+            vec![],
             3,
             1000,
             2.0,
@@ -126,6 +130,7 @@ fn test_agent_chain_initialized_with_empty_list() {
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Development,
             Vec::<AgentName>::new(),
+            vec![],
             3,
             1000,
             2.0,
@@ -154,6 +159,7 @@ fn test_agent_chain_initialized_contains_full_fallback_chain() {
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Review,
             agent_names_from_strings(&agents),
+            vec![],
             3,
             1000,
             2.0,

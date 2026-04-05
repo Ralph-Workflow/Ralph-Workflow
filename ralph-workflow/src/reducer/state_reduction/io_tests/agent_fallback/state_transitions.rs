@@ -109,6 +109,7 @@ fn test_chain_initialized_after_fix_drain_populates_agents_and_preserves_drain()
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Fix,
             vec![claude, codex],
+            vec![],
             3,
             1000,
             2.0,
@@ -195,6 +196,7 @@ fn test_review_completed_with_issues_via_real_event_path_sets_fix_drain_with_emp
         PipelineEvent::agent_chain_initialized(
             AgentDrain::Fix,
             vec![claude, codex],
+            vec![],
             3,
             1000,
             2.0,

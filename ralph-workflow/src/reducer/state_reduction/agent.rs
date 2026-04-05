@@ -279,14 +279,13 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         AgentEvent::ChainInitialized {
             drain,
             agents,
+            models_per_agent,
             max_cycles,
             retry_delay_ms,
             backoff_multiplier,
             max_backoff_ms,
         } => {
             let agents_strings: Vec<String> = agents.iter().map(|a| a.to_string()).collect();
-            let models_per_agent: Vec<Vec<String>> =
-                agents_strings.iter().map(|_| vec![]).collect();
             PipelineState {
                 agent_chain: state
                     .agent_chain

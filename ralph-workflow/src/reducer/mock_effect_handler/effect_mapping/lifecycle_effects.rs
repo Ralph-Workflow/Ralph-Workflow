@@ -146,6 +146,7 @@ impl MockEffectHandler {
                     PipelineEvent::agent_chain_initialized(
                         drain,
                         vec![AgentName::from("mock_agent")],
+                        vec![],
                         3,
                         1000,
                         2.0,

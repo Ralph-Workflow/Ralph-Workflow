@@ -80,6 +80,7 @@ fn test_xsd_retry_loops_are_removed() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
                 vec!["dev-primary".into(), "dev-fallback".into()],
+                vec![],
                 3,
                 1_000,
                 2.0,
@@ -96,6 +97,7 @@ fn test_xsd_retry_loops_are_removed() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Analysis.into(),
                 vec!["dev-primary".into(), "dev-fallback".into()],
+                vec![],
                 3,
                 1_000,
                 2.0,
@@ -158,6 +160,7 @@ fn test_planning_output_validation_retries_are_reducer_driven() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
                 vec!["dev-primary".into(), "dev-fallback".into()],
+                vec![],
                 3,
                 1_000,
                 2.0,
