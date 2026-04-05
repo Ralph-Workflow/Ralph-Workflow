@@ -1,4 +1,5 @@
-use super::{config_schema, config_storage, config_tools};
+use super::{config_schema, config_tools};
+use crate::boundary::config_storage;
 use ralph_workflow::config::unified::UnifiedConfig;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -39,7 +40,7 @@ pub struct EffectiveConfigWithSources {
 }
 
 /// Serializable representation of the Ralph configuration for the GUI.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct ConfigView {
     pub verbosity: u8,
     pub developer_iters: u32,
@@ -126,30 +127,9 @@ pub fn get_effective_config(repo_path: String) -> Result<ConfigView, String> {
 pub fn get_effective_config_with_sources(
     repo_path: String,
 ) -> Result<EffectiveConfigWithSources, String> {
-    let global_toml_content = config_storage::get_raw_global_config_toml()?;
-    let global_config = if global_toml_content.is_empty() {
-        UnifiedConfig::default()
-    } else {
-        UnifiedConfig::load_from_content(&global_toml_content).unwrap_or_default()
-    };
-
-    let project_toml_content = config_storage::get_raw_project_config_toml(repo_path)?;
-    let (effective_view, project_toml): (ConfigView, Option<String>) =
-        if project_toml_content.is_empty() {
-            (ConfigView::from(&global_config), None)
-        } else {
-            let project_parsed = UnifiedConfig::load_from_content(&project_toml_content)
-                .map_err(|e| format!("Failed to parse project config: {e}"))?;
-            let merged = global_config.merge_with_content(&project_toml_content, &project_parsed);
-            (ConfigView::from(&merged), Some(project_toml_content))
-        };
-
-    let sources = build_source_list_from_toml(&global_toml_content, project_toml.as_ref());
-
-    Ok(EffectiveConfigWithSources {
-        config: effective_view,
-        sources,
-    })
+    let global_toml = config_storage::get_raw_global_config_toml()?;
+    let project_toml = config_storage::get_raw_project_config_toml(repo_path)?;
+    super::config_parsing::parse_effective_config_with_sources(&global_toml, &project_toml)
 }
 
 /// Save the global Ralph configuration.
@@ -192,6 +172,38 @@ pub fn save_ai_api_key(api_key: String) -> Result<(), String> {
     config_storage::save_ai_api_key(api_key)
 }
 
+/// List available agent profiles from `agents.toml`.
+///
+/// Looks for the file at `{repo_path}/agents.toml` first, then `~/.ralph/agents.toml`.
+/// Returns an empty list if neither file exists.
+pub fn list_agent_profiles(repo_path: Option<String>) -> Result<Vec<AgentProfile>, String> {
+    let Some(content) = config_storage::get_raw_agents_toml(repo_path)? else {
+        return Ok(vec![]);
+    };
+    toml::from_str::<toml::Value>(&content)
+        .map_err(|e| format!("Failed to parse agents.toml: {e}"))?;
+    Ok(parse_agent_profiles_from_toml(&content))
+}
+
+/// Parse a TOML string-array literal (e.g. `["a", "b"]`) into a `Vec<String>`.
+///
+/// Returns `None` if the input is not a valid TOML array of strings.
+pub fn parse_toml_string_array(s: &str) -> Option<Vec<String>> {
+    let wrapped = format!("v = {s}");
+    let parsed: toml::Value = toml::from_str(&wrapped).ok()?;
+    let arr = parsed.get("v")?.as_array()?;
+    arr.iter().map(|v| v.as_str().map(str::to_string)).collect()
+}
+
+/// Parse a TOML quoted-string literal (e.g. `"hello"`) into a `String`.
+///
+/// Returns `None` if the input is not a valid TOML string.
+pub fn parse_toml_quoted_string(s: &str) -> Option<String> {
+    let wrapped = format!("v = {s}");
+    let parsed: toml::Value = toml::from_str(&wrapped).ok()?;
+    parsed.get("v")?.as_str().map(str::to_string)
+}
+
 /// Check for updates to agent tools.
 pub fn check_tool_updates() -> Result<Vec<ToolUpdateInfo>, String> {
     config_tools::check_tool_updates()
@@ -222,77 +234,51 @@ pub fn test_agent_tool_connection(name: String) -> Result<String, String> {
     config_tools::test_agent_tool_connection(name)
 }
 
-/// Determine the source for each config field using TOML presence detection.
+/// Determine the source for each config field by comparing layer values.
 ///
-/// A field is "set" at a layer if it appears explicitly in that layer's TOML.
-/// Priority: Project > Global > Default.
-fn build_source_list_from_toml(
-    global_toml: &str,
-    project_toml: Option<&String>,
+/// A field is `Project` when its value in `project_view` differs from `default_view`,
+/// `Global` when `global_view` differs from `default_view`, and `Default` otherwise.
+/// Production code uses [`build_source_list_from_toml`] which detects TOML presence.
+#[cfg(test)]
+pub(crate) fn build_source_list(
+    default_view: &ConfigView,
+    global_view: &ConfigView,
+    project_view: Option<&ConfigView>,
 ) -> Vec<ConfigFieldWithSource> {
-    let global_val: toml::Value = toml::from_str(global_toml)
-        .unwrap_or_else(|_| toml::Value::Table(toml::map::Map::default()));
-
-    let project_val: Option<toml::Value> = project_toml.map(|t| {
-        toml::from_str(t).unwrap_or_else(|_| toml::Value::Table(toml::map::Map::default()))
-    });
-
-    // Fields live in [general] table (some flattened, some in sub-tables).
-    let global_general = global_val.get("general");
-    let project_general = project_val.as_ref().and_then(|v| v.get("general"));
-
-    let global_has = |key: &str| global_general.and_then(|g| g.get(key)).is_some();
-    let project_has = |key: &str| project_general.and_then(|g| g.get(key)).is_some();
-
-    let source_for = |key: &str| -> ConfigFieldWithSource {
-        let source = if project_has(key) {
-            ConfigSource::Project
-        } else if global_has(key) {
-            ConfigSource::Global
-        } else {
-            ConfigSource::Default
+    macro_rules! source_for {
+        ($field:ident) => {
+            ConfigFieldWithSource {
+                field_name: stringify!($field).to_string(),
+                source: if project_view.is_some_and(|p| p.$field != default_view.$field) {
+                    ConfigSource::Project
+                } else if global_view.$field != default_view.$field {
+                    ConfigSource::Global
+                } else {
+                    ConfigSource::Default
+                },
+            }
         };
-        ConfigFieldWithSource {
-            field_name: key.to_string(),
-            source,
-        }
-    };
-
-    // Behavioral flags live in a sub-table [general.behavior] in some configs,
-    // or directly flattened into [general]. Check both levels.
-    let global_behavior = global_general.and_then(|g| g.get("behavior"));
-    let project_behavior = project_general.and_then(|g| g.get("behavior"));
-
-    let source_for_behavior = |key: &str| -> ConfigFieldWithSource {
-        let in_proj = project_behavior.and_then(|b| b.get(key)).is_some() || project_has(key);
-        let in_global = global_behavior.and_then(|b| b.get(key)).is_some() || global_has(key);
-        let source = if in_proj {
-            ConfigSource::Project
-        } else if in_global {
-            ConfigSource::Global
-        } else {
-            ConfigSource::Default
-        };
-        ConfigFieldWithSource {
-            field_name: key.to_string(),
-            source,
-        }
-    };
-
+    }
     vec![
-        source_for("verbosity"),
-        source_for("developer_iters"),
-        source_for("reviewer_reviews"),
-        // workflow fields (flattened into [general])
-        source_for("checkpoint_enabled"),
-        // execution fields (flattened into [general])
-        source_for("isolation_mode"),
-        // behavior fields (may be in [general.behavior] or [general])
-        source_for_behavior("interactive"),
-        source_for("review_depth"),
-        source_for("max_dev_continuations"),
+        source_for!(verbosity),
+        source_for!(developer_iters),
+        source_for!(reviewer_reviews),
+        source_for!(checkpoint_enabled),
+        source_for!(isolation_mode),
+        source_for!(interactive),
+        source_for!(review_depth),
+        source_for!(max_dev_continuations),
     ]
 }
+
+// Items re-exported for unit tests only.
+#[cfg(test)]
+pub(crate) use super::config_parsing::{
+    build_source_list_from_toml, merge_chains, merge_drains, parse_agents_from_toml,
+    parse_chains_from_toml, parse_drains_from_toml,
+};
+#[cfg(test)]
+pub(crate) use crate::boundary::config_storage::{load_gui_config, AiConfig, GuiConfig};
 
 /// Determine the source for each config field by comparing layers.
 ///
@@ -302,4 +288,5 @@ fn build_source_list_from_toml(
 ///
 /// This version is used by tests; production code uses `build_source_list_from_toml`.
 #[cfg(test)]
+#[path = "config_helpers/tests.rs"]
 mod tests;

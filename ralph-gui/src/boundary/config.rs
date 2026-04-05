@@ -1,6 +1,5 @@
-use crate::boundary::config_io;
-use crate::commands::{config_helpers as helpers, config_schema, config_storage};
-use std::path::PathBuf;
+use crate::boundary::config_storage;
+use crate::commands::{config_helpers as helpers, config_schema};
 
 pub use helpers::{
     AgentInfo, AgentProfile, AgentToolInfo, ChainInfo, ConfigFieldSchema, ConfigFieldWithSource,
@@ -12,30 +11,7 @@ pub use helpers::{
 #[tauri::command]
 #[specta::specta]
 pub fn list_agent_profiles(repo_path: Option<String>) -> Result<Vec<AgentProfile>, String> {
-    let repo_paths = repo_path
-        .into_iter()
-        .map(|repo| PathBuf::from(repo).join("agents.toml"));
-    let home_paths = config_io::home_dir()
-        .map(|home: PathBuf| home.join(".ralph").join("agents.toml"))
-        .into_iter();
-    let content: Option<Result<String, String>> = repo_paths.chain(home_paths).find_map(|path| {
-        if config_io::path_exists(&path) {
-            Some(config_io::map_io_error(
-                config_io::read_to_string(&path),
-                "Failed to read agents.toml",
-            ))
-        } else {
-            None
-        }
-    });
-
-    let toml_content = match content {
-        Some(Ok(text)) => text,
-        Some(Err(err)) => return Err(err),
-        None => return Ok(vec![]),
-    };
-
-    Ok(helpers::parse_agent_profiles_from_toml(&toml_content))
+    helpers::list_agent_profiles(repo_path)
 }
 
 /// Get the global Ralph configuration.

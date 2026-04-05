@@ -78,6 +78,47 @@ fn read_api_key_from_config() -> Result<String, String> {
         .ok_or_else(|| "api_key not found in [gui] section".to_string())
 }
 
+fn dry_run_review_result() -> PromptReviewResult {
+    PromptReviewResult {
+        suggestions: vec![
+            "Ensure acceptance criteria are specific and testable.".to_string(),
+            "Add an 'Out of Scope' section to prevent scope creep.".to_string(),
+            "Specify which files or modules should be modified.".to_string(),
+        ],
+        improved_prompt: None,
+    }
+}
+
+fn resolve_anthropic_api_key() -> Result<String, String> {
+    session_prompt_boundary::env_var("ANTHROPIC_API_KEY")
+        .filter(|k| !k.is_empty())
+        .or_else(|| read_api_key_from_config().ok())
+        .ok_or_else(|| {
+            "ANTHROPIC_API_KEY not set. Set it in environment or ~/.ralph/config.toml [gui] api_key."
+                .to_string()
+        })
+}
+
+fn build_review_body(prompt_content: &str) -> serde_json::Value {
+    serde_json::json!({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 1024,
+        "system": "You review PROMPT.md specifications for AI coding agent tasks. \
+                   Respond ONLY with valid JSON containing: \
+                   'suggestions' (array of improvement strings) and \
+                   'improved_prompt' (optional string with the full improved prompt).",
+        "messages": [{ "role": "user", "content": prompt_content }]
+    })
+}
+
+fn parse_review_api_response(json: &serde_json::Value) -> PromptReviewResult {
+    let text = json["content"][0]["text"].as_str().unwrap_or("{}");
+    serde_json::from_str::<PromptReviewResult>(text).unwrap_or_else(|_| PromptReviewResult {
+        suggestions: vec![text.to_string()],
+        improved_prompt: None,
+    })
+}
+
 /// Review a PROMPT.md using the Anthropic Claude API.
 ///
 /// The API key is read from the `ANTHROPIC_API_KEY` environment variable,
@@ -92,48 +133,13 @@ fn read_api_key_from_config() -> Result<String, String> {
 #[tauri::command]
 #[specta::specta]
 pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResult, String> {
-    // Dry-run mode for testing — skip network call.
     if session_prompt_boundary::env_var("RALPH_GUI_DRY_RUN").as_deref() == Some("1") {
-        return Ok(PromptReviewResult {
-            suggestions: vec![
-                "Ensure acceptance criteria are specific and testable.".to_string(),
-                "Add an 'Out of Scope' section to prevent scope creep.".to_string(),
-                "Specify which files or modules should be modified.".to_string(),
-            ],
-            improved_prompt: None,
-        });
+        return Ok(dry_run_review_result());
     }
-
-    let api_key = session_prompt_boundary::env_var("ANTHROPIC_API_KEY")
-        .filter(|k| !k.is_empty())
-        .or_else(|| read_api_key_from_config().ok())
-        .ok_or_else(|| {
-            "ANTHROPIC_API_KEY not set. Set it in environment or ~/.ralph/config.toml [gui] api_key."
-                .to_string()
-        })?;
-
-    let body = serde_json::json!({
-        "model": "claude-sonnet-4-6",
-        "max_tokens": 1024,
-        "system": "You review PROMPT.md specifications for AI coding agent tasks. \
-                   Respond ONLY with valid JSON containing: \
-                   'suggestions' (array of improvement strings) and \
-                   'improved_prompt' (optional string with the full improved prompt).",
-        "messages": [{ "role": "user", "content": prompt_content }]
-    });
-
+    let api_key = resolve_anthropic_api_key()?;
+    let body = build_review_body(&prompt_content);
     let json = session_prompt_boundary::post_anthropic_messages(&api_key, body)?;
-
-    let text = json["content"][0]["text"].as_str().unwrap_or("{}");
-
-    // Try to parse the model's JSON response; fall back to wrapping raw text as suggestion.
-    let result =
-        serde_json::from_str::<PromptReviewResult>(text).unwrap_or_else(|_| PromptReviewResult {
-            suggestions: vec![text.to_string()],
-            improved_prompt: None,
-        });
-
-    Ok(result)
+    Ok(parse_review_api_response(&json))
 }
 
 /// A prompt template stored in the templates directory.
@@ -351,6 +357,21 @@ trait PipeOk: Sized {
 }
 impl PipeOk for PromptAnalysis {}
 
+fn extract_planning_agent(parsed: &toml::Value) -> Option<String> {
+    let chain_name = parsed
+        .get("drains")
+        .and_then(|d| d.get("planning"))
+        .and_then(|p| p.as_str())?;
+    parsed
+        .get("chains")
+        .and_then(|c| c.get(chain_name))
+        .and_then(|agents| agents.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|agent| agent.get("agent").or_else(|| agent.get("name")))
+        .and_then(|a| a.as_str())
+        .map(std::borrow::ToOwned::to_owned)
+}
+
 /// Return the name of the first agent in the Planning drain, if one is configured.
 ///
 /// Reads from the global config (`~/.config/ralph-workflow.toml`) and searches for the
@@ -362,45 +383,17 @@ impl PipeOk for PromptAnalysis {}
 #[tauri::command]
 #[specta::specta]
 pub fn get_planning_drain_agent(_repo_path: String) -> Result<Option<String>, String> {
-    // Try to read the global config to find the Planning drain.
-    let config_path = if let Some(config_dir) = dirs::config_dir() {
-        config_dir.join("ralph-workflow.toml")
-    } else {
+    let config_path = dirs::config_dir()
+        .map(|d| d.join("ralph-workflow.toml"))
+        .filter(|p| p.exists());
+    let Some(config_path) = config_path else {
         return Ok(None);
     };
-
-    if !config_path.exists() {
-        return Ok(None);
-    }
-
     let content = session_prompt_boundary::read_to_string(&config_path)
         .map_err(|e| format!("Failed to read config: {e}"))?;
-
-    let parsed: toml::Value =
-        toml::from_str(&content).map_err(|e| format!("Failed to parse config: {e}"))?;
-
-    // Navigate: drains.planning -> chain name -> chains[name][0].agent
-    let planning_chain = parsed
-        .get("drains")
-        .and_then(|d| d.get("planning"))
-        .and_then(|p| p.as_str())
-        .map(std::borrow::ToOwned::to_owned);
-
-    let Some(chain_name) = planning_chain else {
-        return Ok(None);
-    };
-
-    // Look up the first agent in that chain.
-    let first_agent = parsed
-        .get("chains")
-        .and_then(|c| c.get(&chain_name))
-        .and_then(|agents| agents.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|agent| agent.get("agent").or_else(|| agent.get("name")))
-        .and_then(|a| a.as_str())
-        .map(std::borrow::ToOwned::to_owned);
-
-    Ok(first_agent)
+    let parsed = toml::from_str::<toml::Value>(&content)
+        .map_err(|e| format!("Failed to parse config: {e}"))?;
+    Ok(extract_planning_agent(&parsed))
 }
 
 #[cfg(test)]

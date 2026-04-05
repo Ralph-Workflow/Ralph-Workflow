@@ -84,22 +84,22 @@ pub fn validate_config_toml(config_toml: String) -> Result<Option<String>, Strin
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct GuiConfig {
+pub(crate) struct GuiConfig {
     #[serde(default)]
-    ai: AiConfig,
+    pub(crate) ai: AiConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct AiConfig {
+pub(crate) struct AiConfig {
     #[serde(default)]
-    api_key: String,
+    pub(crate) api_key: String,
 }
 
 fn gui_config_path() -> Result<PathBuf, String> {
     home_dir_or_err().map(|home| home.join(".config").join("ralph-gui.toml"))
 }
 
-fn load_gui_config() -> Result<GuiConfig, String> {
+pub(crate) fn load_gui_config() -> Result<GuiConfig, String> {
     let path = gui_config_path()?;
     if !path.exists() {
         return Ok(GuiConfig::default());
@@ -130,6 +130,22 @@ fn save_gui_config(config: &GuiConfig) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+pub fn get_raw_agents_toml(repo_path: Option<String>) -> Result<Option<String>, String> {
+    agents_toml_candidates(repo_path)
+        .into_iter()
+        .find(|p| p.exists())
+        .map(|p| io_context(fs::read_to_string(&p), "Failed to read agents.toml"))
+        .transpose()
+}
+
+fn agents_toml_candidates(repo_path: Option<String>) -> Vec<PathBuf> {
+    let repo = repo_path.map(|p| PathBuf::from(p).join("agents.toml"));
+    let home = home_dir_or_err()
+        .ok()
+        .map(|h| h.join(".ralph").join("agents.toml"));
+    [repo, home].into_iter().flatten().collect()
 }
 
 pub fn get_ai_api_key() -> Result<String, String> {

@@ -7,7 +7,7 @@ use super::config_parsing::{
     merge_chains, merge_drains, parse_agents_from_toml, parse_chains_from_toml,
     parse_drains_from_toml,
 };
-use super::config_storage;
+use crate::boundary::config_storage;
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AgentInfo {
     pub name: String,

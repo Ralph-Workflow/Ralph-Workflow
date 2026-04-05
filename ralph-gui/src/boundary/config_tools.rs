@@ -46,6 +46,15 @@ pub fn check_tool_updates() -> Result<Vec<ToolUpdateInfo>, String> {
     Ok(results)
 }
 
+fn tool_install_cmd(name: &str) -> Result<&str, String> {
+    match name {
+        "Claude Code" => Ok("bun install -g @anthropic-ai/claude-code"),
+        "Codex" => Ok("bun install -g @openai/codex"),
+        "OpenCode" => Ok("bun install -g opencode-ai"),
+        other => Err(format!("Unknown tool: {other}")),
+    }
+}
+
 /// Trigger a platform-appropriate installation flow for an agent tool.
 ///
 /// On macOS/Linux this opens a terminal with the recommended install command.
@@ -55,18 +64,8 @@ pub fn check_tool_updates() -> Result<Vec<ToolUpdateInfo>, String> {
 ///
 /// Returns an error if the tool name is unknown or the install command fails to launch.
 pub fn install_agent_tool(name: String) -> Result<(), String> {
-    let install_cmd = match name.as_str() {
-        "Claude Code" => Some("bun install -g @anthropic-ai/claude-code"),
-        "Codex" => Some("bun install -g @openai/codex"),
-        "OpenCode" => Some("bun install -g opencode-ai"),
-        other => return Err(format!("Unknown tool: {other}")),
-    };
-
-    if let Some(cmd) = install_cmd {
-        config_process::spawn_install_command(cmd)?;
-    }
-
-    Ok(())
+    let cmd = tool_install_cmd(&name)?;
+    config_process::spawn_install_command(cmd)
 }
 
 /// Open the CLI settings or configuration for an agent tool.
@@ -75,39 +74,21 @@ pub fn install_agent_tool(name: String) -> Result<(), String> {
 ///
 /// Returns an error if the tool name is unknown or the settings command fails to launch.
 pub fn open_tool_settings(name: String) -> Result<(), String> {
-    let binary = match name.as_str() {
-        "Claude Code" => "claude",
-        "Codex" => "codex",
-        "OpenCode" => "opencode",
-        other => return Err(format!("Unknown tool: {other}")),
-    };
-
-    // Attempt to open settings via the CLI's settings/config subcommand.
-    config_process::spawn_help(binary)?;
-
-    Ok(())
+    let binary = tool_binary_name(&name)?;
+    config_process::spawn_help(binary)
 }
 
-/// Refresh the list of available models for a given agent tool.
-///
-/// # Errors
-///
-/// Returns an error if the tool name is unknown or the model list cannot be retrieved.
-pub fn refresh_tool_models(name: String) -> Result<Vec<String>, String> {
-    let binary = match name.as_str() {
-        "Claude Code" => "claude",
-        "Codex" => "codex",
-        "OpenCode" => "opencode",
-        other => return Err(format!("Unknown tool: {other}")),
-    };
-
-    // Attempt to retrieve model list via CLI.
-    if let Some(models) = config_process::read_model_list(binary) {
-        return Ok(models);
+fn tool_binary_name(name: &str) -> Result<&str, String> {
+    match name {
+        "Claude Code" => Ok("claude"),
+        "Codex" => Ok("codex"),
+        "OpenCode" => Ok("opencode"),
+        other => Err(format!("Unknown tool: {other}")),
     }
+}
 
-    // Fallback: return known model names per tool.
-    let fallback = match name.as_str() {
+fn tool_default_models(name: &str) -> Vec<String> {
+    match name {
         "Claude Code" => vec![
             "claude-opus-4-5".to_string(),
             "claude-sonnet-4-6".to_string(),
@@ -116,9 +97,17 @@ pub fn refresh_tool_models(name: String) -> Result<Vec<String>, String> {
         "Codex" => vec!["gpt-4o".to_string(), "gpt-4o-mini".to_string()],
         "OpenCode" => vec!["claude-sonnet-4-6".to_string(), "gpt-4o".to_string()],
         _ => vec![],
-    };
+    }
+}
 
-    Ok(fallback)
+/// Refresh the list of available models for a given agent tool.
+///
+/// # Errors
+///
+/// Returns an error if the tool name is unknown or the model list cannot be retrieved.
+pub fn refresh_tool_models(name: String) -> Result<Vec<String>, String> {
+    let binary = tool_binary_name(&name)?;
+    Ok(config_process::read_model_list(binary).unwrap_or_else(|| tool_default_models(&name)))
 }
 
 /// Information about an installed or detectable agent tool (CLI).
@@ -135,55 +124,43 @@ pub struct AgentToolInfo {
     pub binary_location: Option<String>,
 }
 
+fn tool_health_status(installed: bool, version_found: bool) -> &'static str {
+    match (installed, version_found) {
+        (false, _) => "Not installed",
+        (true, true) => "Ready",
+        (true, false) => "Needs setup",
+    }
+}
+
+fn tool_auth_status(installed: bool) -> &'static str {
+    if installed {
+        "Unknown"
+    } else {
+        "N/A"
+    }
+}
+
 /// Probe a known CLI tool binary in the PATH.
 fn probe_tool(name: &str, binary: &str, description: &str) -> AgentToolInfo {
     let binary_location = config_process::probe_binary_location(binary);
     let installed = binary_location.is_some();
-
-    let version = if installed {
-        config_process::read_version_line(binary)
-    } else {
-        None
-    };
-
-    let health = if installed {
-        if version.is_some() {
-            "Ready".to_string()
-        } else {
-            "Needs setup".to_string()
-        }
-    } else {
-        "Not installed".to_string()
-    };
-
-    // Try to retrieve available models; fall back to known defaults if the CLI
-    // doesn't support --list-models.
-    let available_models = if installed {
-        config_process::read_model_list(binary).unwrap_or_else(|| match name {
-            "Claude Code" => vec![
-                "claude-opus-4-5".to_string(),
-                "claude-sonnet-4-6".to_string(),
-                "claude-haiku-4".to_string(),
-            ],
-            "Codex" => vec!["gpt-4o".to_string(), "gpt-4o-mini".to_string()],
-            "OpenCode" => vec!["claude-sonnet-4-6".to_string(), "gpt-4o".to_string()],
-            _ => vec![],
+    let version = installed
+        .then(|| config_process::read_version_line(binary))
+        .flatten();
+    let version_found = version.is_some();
+    let available_models = installed
+        .then(|| {
+            config_process::read_model_list(binary).unwrap_or_else(|| tool_default_models(name))
         })
-    } else {
-        vec![]
-    };
+        .unwrap_or_default();
 
     AgentToolInfo {
         name: name.to_string(),
         binary: binary.to_string(),
         installed,
         version,
-        auth_status: if installed {
-            "Unknown".to_string()
-        } else {
-            "N/A".to_string()
-        },
-        health,
+        auth_status: tool_auth_status(installed).to_string(),
+        health: tool_health_status(installed, version_found).to_string(),
         description: description.to_string(),
         available_models,
         binary_location,
@@ -218,12 +195,7 @@ pub fn get_agent_tools() -> Result<Vec<AgentToolInfo>, String> {
 ///
 /// Returns an error string if the tool is not installed or the test invocation fails.
 pub fn test_agent_tool_connection(name: String) -> Result<String, String> {
-    let binary = match name.as_str() {
-        "Claude Code" => "claude",
-        "Codex" => "codex",
-        "OpenCode" => "opencode",
-        other => return Err(format!("Unknown tool: {other}")),
-    };
+    let binary = tool_binary_name(&name)?;
 
     let output = config_process::run_version_output(binary)
         .map_err(|e| format!("{binary} not found or failed to start: {e}"))?;

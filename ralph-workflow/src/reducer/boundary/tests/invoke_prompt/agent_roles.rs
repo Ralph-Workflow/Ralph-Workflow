@@ -270,3 +270,60 @@ fn test_invoke_commit_agent_surfaces_uninitialized_agent_chain_as_error_event() 
         "expected a specific invariant error, not a generic workspace error"
     );
 }
+
+#[test]
+fn test_invoke_development_agent_uses_parser_type_from_agent_config() {
+    use crate::agents::{AgentConfig, AgentDrain, AgentRegistry, JsonParserType};
+
+    // Set up workspace with a development prompt.
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_prompt.txt",
+        "test development prompt",
+    );
+    let mut fixture = TestFixture::with_workspace(workspace);
+
+    // Register a "test-codex" agent configured with the Codex parser.
+    // Default (buggy) behaviour uses JsonParserType::Claude regardless of this config.
+    let codex_config = AgentConfig {
+        cmd: String::from("codex"),
+        json_parser: JsonParserType::Codex,
+        ..AgentConfig::default()
+    };
+    let old_registry = std::mem::replace(&mut fixture.registry, AgentRegistry::new().unwrap());
+    fixture.registry = old_registry.register("test-codex", codex_config);
+
+    // Point the agent chain at "test-codex".
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
+    handler.state.agent_chain = AgentChainState::initial()
+        .with_agents(
+            vec!["test-codex".to_string()],
+            vec![vec![]],
+            AgentRole::Developer,
+        )
+        .with_drain(AgentDrain::Development);
+
+    // Clone the executor Arc so we can inspect it after the PhaseContext borrow ends.
+    let executor = Arc::clone(&fixture.executor);
+
+    {
+        let mut ctx = fixture.ctx();
+        ctx.developer_agent = "test-codex";
+        // The mock executor returns success by default; ignore the result here.
+        let _ = handler.invoke_development_agent(&mut ctx, 0);
+    }
+
+    let agent_calls = executor.agent_calls();
+    assert_eq!(
+        agent_calls.len(),
+        1,
+        "expected exactly one agent call, got {}",
+        agent_calls.len()
+    );
+    assert_eq!(
+        agent_calls[0].parser_type,
+        JsonParserType::Codex,
+        "expected parser_type to come from agent_config.json_parser (Codex), \
+         got {:?} — hardcoded JsonParserType::default() (Claude) was used instead",
+        agent_calls[0].parser_type
+    );
+}
