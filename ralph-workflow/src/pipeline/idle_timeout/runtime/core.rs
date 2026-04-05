@@ -255,26 +255,28 @@ pub fn completion_check_passes(
 }
 
 /// Pure policy: determine MonitorResult when child has exited during enforcement.
+///
+/// Contract: once enforcement has been triggered (a kill signal was already sent),
+/// the outcome is always `TimedOut` unless the completion check confirms the work
+/// finished cleanly. The `escalated` flag distinguishes SIGTERM vs SIGKILL but
+/// does not change whether the outcome is a timeout.
 fn result_on_enforcement_exit(
     state: &TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
     completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>,
     _child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
 ) -> MonitorResult {
-    // If we escalated to SIGKILL (state.escalated = true), any subsequent exit
-    // is a timeout - we decided to kill the process and it is now dead.
-    // The escalated flag means we DECIDED to use SIGKILL, so the outcome
-    // (process no longer running) is a timeout, not clean completion.
-    if state.escalated {
-        return MonitorResult::TimedOut {
-            escalated: true,
-            child_status_at_timeout: last_child_info,
-        };
-    }
+    // Completion check takes priority: if the output file is ready, treat this
+    // as a clean exit regardless of whether escalation was needed.
     if completion_check_passes(completion_check) {
-        MonitorResult::CompleteButWaiting
-    } else {
-        MonitorResult::ProcessCompleted
+        return MonitorResult::CompleteButWaiting;
+    }
+    // A kill was already sent when enforcement state was created. Whether the
+    // process exited after SIGTERM (escalated=false) or SIGKILL (escalated=true),
+    // the cause of exit was the kill signal — the outcome is always TimedOut.
+    MonitorResult::TimedOut {
+        escalated: state.escalated,
+        child_status_at_timeout: last_child_info,
     }
 }
 

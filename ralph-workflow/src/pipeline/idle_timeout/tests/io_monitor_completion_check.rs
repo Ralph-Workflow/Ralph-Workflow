@@ -265,6 +265,66 @@ fn enforcement_exited_without_output_returns_process_completed() {
 }
 
 #[test]
+fn enforcement_exited_during_enforcement_returns_timed_out() {
+    // Scenario: child exits DURING enforcement (after SIGTERM was sent), no completion_check.
+    // Contract: once enforcement has been triggered (kill sent), the outcome is always
+    // TimedOut regardless of whether escalation was needed. The child did not exit
+    // voluntarily — it was killed.
+    // Expected: TimedOut (not ProcessCompleted).
+    //
+    // Timing design:
+    //   - check_interval=10ms: the monitor sleeps 10ms then fires the idle timeout
+    //   - at ~10ms: idle timeout fires, child is alive, SIGTERM "sent" (mock), enforcement
+    //     state created (s.timeout_triggered = Some(...))
+    //   - at ~30ms: child thread sets child_running=false, simulating death from the kill
+    //   - enforcement loop spins without sleeping until try_wait_child returns true
+    //   - result_on_enforcement_exit must return TimedOut (not ProcessCompleted)
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let should_stop_clone = Arc::clone(&should_stop);
+
+    let (mock_child, child_running) = MockAgentChild::new_running(0);
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+
+    // Child exits well AFTER check_interval so the idle timeout fires while the
+    // child is still alive. The monitor sends SIGTERM (mock) and enters enforcement
+    // phase; this thread then simulates the process dying from the kill.
+    let child_handle = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(30));
+        child_running.store(false, Ordering::Release);
+    });
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::from_millis(10),
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 1,
+        check_child_processes: false,
+        completion_check: None,
+    };
+
+    let result = monitor_idle_timeout_with_interval_and_kill_config(
+        &timestamp,
+        None,
+        &child,
+        &should_stop_clone,
+        &executor,
+        config,
+    );
+
+    child_handle.join().expect("child thread should not panic");
+
+    assert!(
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "child killed by SIGTERM during enforcement must return TimedOut, got {result:?}"
+    );
+}
+
+#[test]
 fn idle_timeout_while_alive_no_output_returns_timed_out() {
     // Scenario: child still alive, no completion_check, idle exceeded.
     // Expected: TimedOut (existing behavior preserved).

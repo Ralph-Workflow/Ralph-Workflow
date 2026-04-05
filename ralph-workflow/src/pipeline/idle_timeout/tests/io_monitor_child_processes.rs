@@ -68,11 +68,16 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
         }
     });
 
+    // required_idle_confirmations=3 requires three consecutive 5ms checks (15ms gap)
+    // with no CPU progress before a kill fires. The cpu_advancer runs every 2ms, so
+    // fresh progress is always detected within 15ms while the advancer is running.
+    // This prevents the race where a single missed check interval causes a spurious
+    // kill while children are still advancing CPU time.
     let config = MonitorConfig {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: fast_kill_config(),
-        required_idle_confirmations: 1,
+        required_idle_confirmations: 3,
         check_child_processes: true,
         completion_check: None,
     };
@@ -88,7 +93,7 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
         )
     });
 
-    thread::sleep(Duration::from_millis(40));
+    thread::sleep(Duration::from_millis(50));
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "no kill signals should be sent while child processes have advancing CPU time"
@@ -214,11 +219,16 @@ fn child_processes_that_finish_eventually_allow_kill() {
         }
     });
 
+    // required_idle_confirmations=3 requires three consecutive 5ms checks (15ms gap)
+    // with no CPU progress before a kill fires. The cpu_advancer runs every 2ms, so
+    // fresh progress is always detected within 15ms while the advancer is running.
+    // This prevents the race where a single missed check interval causes a spurious
+    // kill while children are still advancing CPU time.
     let config = MonitorConfig {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: fast_kill_config(),
-        required_idle_confirmations: 1,
+        required_idle_confirmations: 3,
         check_child_processes: true,
         completion_check: None,
     };
@@ -234,7 +244,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
         )
     });
 
-    thread::sleep(Duration::from_millis(30));
+    thread::sleep(Duration::from_millis(50));
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "no kill should be sent while children are active"
