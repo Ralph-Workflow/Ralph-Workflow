@@ -54,10 +54,14 @@ fn resolve_drain_models(ctx: &PhaseContext<'_>, agents: &[AgentName]) -> Vec<Vec
             // Provider is the first path segment when the name contains a slash.
             // e.g., "opencode/zai/glm-4.7" → provider "opencode"
             // e.g., "claude" → no slash, no provider, no model fallback
+            // Provider key is the first path segment for slash-prefixed names
+            // (e.g., "opencode/zai/glm-4.7" → "opencode"), or the full name for
+            // plain agent names (e.g., "opencode" → "opencode").
+            // This lets provider_fallback entries match both naming conventions.
             let provider = if agent_str.contains('/') {
                 agent_str.split('/').next()
             } else {
-                None
+                Some(agent_str)
             };
             provider
                 .and_then(|p| provider_fallback.get(p))
@@ -306,6 +310,49 @@ opencode = ["-m opencode/glm-4.7-free"]
         assert!(
             models[0].is_empty(),
             "slashed agent with no matching provider key must return an empty model list"
+        );
+    }
+
+    /// A plain (non-slash-prefixed) agent name whose full name IS present in `provider_fallback`
+    /// must return the configured model list.
+    ///
+    /// Regression test: previously the `else { None }` branch unconditionally returned no provider,
+    /// so "opencode" (no slash) would silently get an empty model list even when
+    /// `provider_fallback.opencode` was configured.
+    #[test]
+    fn test_resolve_drain_models_plain_agent_name_matches_provider_key() {
+        let registry = registry_with_provider_fallback(
+            r#"
+[agent_chains]
+dev = ["opencode"]
+
+[agent_drains]
+planning = "dev"
+development = "dev"
+analysis = "dev"
+review = "dev"
+fix = "dev"
+commit = "dev"
+
+[general.provider_fallback]
+opencode = ["-m opencode/glm-4.7-free", "-m opencode/claude-sonnet-4"]
+"#,
+        );
+
+        let mut fixture = CtxFixture::new();
+        let ctx = fixture.make_ctx(&registry);
+
+        let agents = vec![AgentName::from("opencode")];
+        let models = resolve_drain_models(&ctx, &agents);
+
+        assert_eq!(models.len(), 1, "one entry per agent");
+        assert_eq!(
+            models[0],
+            vec![
+                "-m opencode/glm-4.7-free".to_string(),
+                "-m opencode/claude-sonnet-4".to_string()
+            ],
+            "plain 'opencode' agent must resolve model list from provider_fallback['opencode']"
         );
     }
 
