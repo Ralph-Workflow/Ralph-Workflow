@@ -598,4 +598,73 @@ mod legacy_rate_limit_prompt_tests {
         assert_eq!(prompt.role, AgentRole::Reviewer);
         assert_eq!(prompt.prompt, "legacy prompt");
     }
+
+    #[test]
+    fn test_legacy_checkpoint_infers_drain_from_structured_continuation_prompt() {
+        // Checkpoints that have no `current_drain` field but carry a structured
+        // continuation prompt with an explicit drain must derive `current_drain`
+        // from the prompt's drain field (second branch of infer_legacy_current_drain).
+        let json = serde_json::json!({
+            "agents": ["a"],
+            "current_agent_index": 0,
+            "models_per_agent": [[]],
+            "current_model_index": 0,
+            "retry_cycle": 0,
+            "max_cycles": 3,
+            "rate_limit_continuation_prompt": {
+                "role": "Reviewer",
+                "drain": "Fix",
+                "prompt": "continue here"
+            }
+        });
+
+        let decoded: AgentChainState =
+            serde_json::from_value(json).expect("deserialize legacy checkpoint");
+
+        assert_eq!(
+            decoded.current_drain,
+            AgentDrain::Fix,
+            "drain must be inferred from the structured continuation prompt's drain field"
+        );
+        assert_eq!(decoded.current_role, AgentRole::Reviewer);
+        let prompt = decoded
+            .rate_limit_continuation_prompt
+            .expect("continuation prompt must survive deserialization");
+        assert_eq!(prompt.drain, AgentDrain::Fix);
+        assert_eq!(prompt.prompt, "continue here");
+    }
+
+    #[test]
+    fn test_legacy_checkpoint_infers_drain_from_role_and_mode_when_no_drain_or_structured_prompt() {
+        // Checkpoints with no `current_drain`, a bare-string continuation prompt, and
+        // current_role=Reviewer + current_mode=Continuation must resolve current_drain
+        // to Fix via the role+mode mapping (third branch of infer_legacy_current_drain).
+        let json = serde_json::json!({
+            "agents": ["a"],
+            "current_agent_index": 0,
+            "models_per_agent": [[]],
+            "current_model_index": 0,
+            "retry_cycle": 0,
+            "max_cycles": 3,
+            "current_role": "Reviewer",
+            "current_mode": "Continuation",
+            "rate_limit_continuation_prompt": "legacy fix prompt"
+        });
+
+        let decoded: AgentChainState =
+            serde_json::from_value(json).expect("deserialize legacy checkpoint");
+
+        assert_eq!(
+            decoded.current_drain,
+            AgentDrain::Fix,
+            "(Reviewer, Continuation) must map to Fix via role+mode inference"
+        );
+        assert_eq!(decoded.current_role, AgentRole::Reviewer);
+        let prompt = decoded
+            .rate_limit_continuation_prompt
+            .expect("legacy string prompt must survive deserialization");
+        assert_eq!(prompt.drain, AgentDrain::Fix);
+        assert_eq!(prompt.role, AgentRole::Reviewer);
+        assert_eq!(prompt.prompt, "legacy fix prompt");
+    }
 }

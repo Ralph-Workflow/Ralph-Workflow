@@ -527,6 +527,87 @@ impl AgentChainState {
 }
 
 #[cfg(test)]
+mod advance_to_next_model_tests {
+    use super::*;
+
+    #[test]
+    fn test_advance_to_next_model_increments_model_index_within_agent() {
+        // When models remain for the current agent, model index advances and session is preserved.
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec!["m1".to_string(), "m2".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("sess".to_string()));
+
+        let next = state.advance_to_next_model();
+
+        assert_eq!(next.current_model_index, 1);
+        assert_eq!(next.current_agent_index, 0);
+        assert_eq!(
+            next.last_session_id,
+            Some("sess".to_string()),
+            "session must be preserved when staying on the same agent"
+        );
+    }
+
+    #[test]
+    fn test_advance_to_next_model_switches_agent_when_models_exhausted() {
+        // When the current agent has no remaining models, advance switches to next agent
+        // and clears the session ID.
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string(), "codex".to_string()],
+                vec![vec!["m1".to_string()], vec!["m2".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("sess".to_string()));
+
+        let next = state.advance_to_next_model();
+
+        assert_eq!(next.current_agent_index, 1);
+        assert_eq!(next.current_model_index, 0);
+        assert_eq!(
+            next.last_session_id, None,
+            "session must be cleared when switching to a different agent"
+        );
+    }
+
+    #[test]
+    fn test_advance_to_next_model_wraps_to_retry_cycle_when_all_agents_exhausted() {
+        // When the last agent's last model is exhausted, the chain wraps to agent 0
+        // and increments the retry cycle with a backoff delay.
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec!["m1".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_session_id(Some("sess".to_string()));
+
+        let next = state.advance_to_next_model();
+
+        assert_eq!(
+            next.retry_cycle, 1,
+            "retry cycle must increment when all agents wrap around"
+        );
+        assert_eq!(next.current_agent_index, 0);
+        assert_eq!(next.current_model_index, 0);
+        assert!(
+            next.backoff_pending_ms.is_some(),
+            "backoff must be set when a retry cycle begins"
+        );
+        // Agent index wraps back to 0 (same as start), so session is preserved.
+        assert_eq!(
+            next.last_session_id,
+            Some("sess".to_string()),
+            "session is preserved when agent index wraps back to the same position"
+        );
+    }
+}
+
+#[cfg(test)]
 mod backoff_semantics_tests {
     use super::*;
 

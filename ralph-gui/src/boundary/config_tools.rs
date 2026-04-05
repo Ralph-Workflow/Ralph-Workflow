@@ -140,20 +140,16 @@ fn tool_auth_status(installed: bool) -> &'static str {
     }
 }
 
-/// Probe a known CLI tool binary in the PATH.
-fn probe_tool(name: &str, binary: &str, description: &str) -> AgentToolInfo {
-    let binary_location = config_process::probe_binary_location(binary);
+fn build_tool_info(
+    name: &str,
+    binary: &str,
+    description: &str,
+    binary_location: Option<String>,
+    version: Option<String>,
+    available_models: Vec<String>,
+) -> AgentToolInfo {
     let installed = binary_location.is_some();
-    let version = installed
-        .then(|| config_process::read_version_line(binary))
-        .flatten();
     let version_found = version.is_some();
-    let available_models = installed
-        .then(|| {
-            config_process::read_model_list(binary).unwrap_or_else(|| tool_default_models(name))
-        })
-        .unwrap_or_default();
-
     AgentToolInfo {
         name: name.to_string(),
         binary: binary.to_string(),
@@ -165,6 +161,28 @@ fn probe_tool(name: &str, binary: &str, description: &str) -> AgentToolInfo {
         available_models,
         binary_location,
     }
+}
+
+/// Probe a known CLI tool binary in the PATH.
+fn probe_tool(name: &str, binary: &str, description: &str) -> AgentToolInfo {
+    let binary_location = config_process::probe_binary_location(binary);
+    let installed = binary_location.is_some();
+    let version = installed
+        .then(|| config_process::read_version_line(binary))
+        .flatten();
+    let available_models = installed
+        .then(|| {
+            config_process::read_model_list(binary).unwrap_or_else(|| tool_default_models(name))
+        })
+        .unwrap_or_default();
+    build_tool_info(
+        name,
+        binary,
+        description,
+        binary_location,
+        version,
+        available_models,
+    )
 }
 
 /// Get information about known agent tools (Claude Code, Codex, `OpenCode`).
