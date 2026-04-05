@@ -801,146 +801,67 @@ mod session_id_lifecycle_tests {
             "session must be preserved when switching to the same agent"
         );
     }
-}
-
-#[cfg(test)]
-mod model_fallback_cycling_tests {
-    use super::*;
 
     #[test]
-    fn test_advance_to_next_model_cycles_through_multiple_models_before_switching_agent() {
-        // With two models for agent 0, advance should stay on agent 0 until both are tried.
-        let state = AgentChainState::initial().with_agents(
-            vec!["claude".to_string(), "codex".to_string()],
-            vec![
-                vec!["m1".to_string(), "m2".to_string()],
-                vec!["m3".to_string()],
-            ],
-            AgentRole::Developer,
-        );
-
-        // First advance: stay on agent 0, go to model 1
-        let state = state.advance_to_next_model();
-        assert_eq!(state.current_agent_index, 0, "should stay on agent 0");
-        assert_eq!(state.current_model_index, 1, "should advance to model 1");
-
-        // Second advance: models exhausted for agent 0, switch to agent 1
-        let state = state.advance_to_next_model();
-        assert_eq!(state.current_agent_index, 1, "should switch to agent 1");
-        assert_eq!(
-            state.current_model_index, 0,
-            "model_index must reset to 0 on agent switch"
-        );
-    }
-
-    #[test]
-    fn test_advance_to_next_model_resets_model_index_to_zero_on_agent_switch() {
-        // Explicit verification that current_model_index resets to 0 when switching agents.
-        let state = AgentChainState::initial()
+    fn test_switch_to_agent_named_same_agent_resets_model_index_and_clears_backoff() {
+        // switch_to_agent_named on the current agent must reset current_model_index to 0
+        // and clear backoff_pending_ms, while preserving last_session_id.
+        //
+        // Setup: build a state where model_index > 0 and backoff_pending_ms is Some.
+        // - start_retry_cycle() produces backoff_pending_ms = Some(1000) at model 0.
+        // - advance_to_next_model() advances model_index to 1, preserving backoff and session.
+        let chain = AgentChainState::initial()
             .with_agents(
-                vec!["claude".to_string(), "codex".to_string()],
-                vec![
-                    vec!["m1".to_string(), "m2".to_string()],
-                    vec!["m3".to_string(), "m4".to_string()],
-                ],
-                AgentRole::Developer,
-            )
-            // Advance to last model of agent 0
-            .advance_to_next_model();
-
-        assert_eq!(state.current_model_index, 1);
-
-        // Now advance again to switch to agent 1
-        let state = state.advance_to_next_model();
-
-        assert_eq!(state.current_agent_index, 1);
-        assert_eq!(
-            state.current_model_index, 0,
-            "current_model_index must reset to 0 after switching to next agent"
-        );
-    }
-
-    #[test]
-    fn test_advance_to_next_model_with_empty_models_list_switches_agent_immediately() {
-        // An empty models list (models_per_agent[i] = []) is treated as a single-model
-        // agent: advance_to_next_model immediately switches to the next agent.
-        let state = AgentChainState::initial().with_agents(
-            vec!["claude".to_string(), "codex".to_string()],
-            vec![vec![], vec![]],
-            AgentRole::Developer,
-        );
-
-        let next = state.advance_to_next_model();
-
-        assert_eq!(
-            next.current_agent_index, 1,
-            "empty models list must cause immediate agent switch"
-        );
-        assert_eq!(next.current_model_index, 0);
-    }
-
-    #[test]
-    fn test_advance_to_next_model_on_last_agent_last_model_wraps_to_cycle() {
-        // When the last agent's last model is exhausted, the chain wraps to agent 0
-        // and increments the retry cycle. For a single-agent chain, agent does not switch
-        // to a different named agent — the chain restarts from the same agent (index 0).
-        // Session is cleared at the transition level since switch_to_next_agent is called.
-        let state = AgentChainState::initial()
-            .with_agents(
-                vec!["claude".to_string()],
+                vec!["agent0".to_string()],
                 vec![vec!["m1".to_string(), "m2".to_string()]],
                 AgentRole::Developer,
             )
-            .with_session_id(Some("sess".to_string()));
+            .with_max_cycles(5)
+            .with_backoff_policy(1000, 2.0, 60_000);
 
-        // Advance to last model (model 1)
-        let state = state.advance_to_next_model();
-        assert_eq!(state.current_model_index, 1);
+        // start_retry_cycle sets backoff_pending_ms = Some(1000) and clears session.
+        let chain = chain.start_retry_cycle();
+        // Restore session to verify it is preserved across the same-agent switch.
+        let chain = chain.with_session_id(Some("session-keep".to_string()));
+        // advance_to_next_model: model 0 → 1; backoff and session both preserved.
+        let chain = chain.advance_to_next_model();
 
-        // Advance past last model: wrap
-        let next = state.advance_to_next_model();
-
-        assert_eq!(
-            next.current_agent_index, 0,
-            "should wrap back to agent 0 when all models exhausted (single-agent: same agent)"
-        );
-        assert_eq!(next.current_model_index, 0);
-        assert_eq!(
-            next.retry_cycle, 1,
-            "retry_cycle must increment when chain wraps"
-        );
+        // Verify the test setup is correct before calling switch_to_agent_named.
+        assert_eq!(chain.current_agent_index, 0, "setup: must be on agent 0");
+        assert_eq!(chain.current_model_index, 1, "setup: model index must be 1");
         assert!(
-            next.backoff_pending_ms.is_some(),
-            "backoff must be set when starting a new retry cycle"
+            chain.backoff_pending_ms.is_some(),
+            "setup: backoff_pending_ms must be Some"
         );
         assert_eq!(
-            next.last_session_id, None,
-            "session must be cleared when chain wraps: switch_to_next_agent clears session"
-        );
-    }
-
-    #[test]
-    fn test_advance_to_next_model_single_model_switches_to_next_agent_immediately() {
-        // With a single model per agent, advance_to_next_model switches agent immediately.
-        let state = AgentChainState::initial().with_agents(
-            vec!["claude".to_string(), "codex".to_string()],
-            vec![vec!["m1".to_string()], vec!["m2".to_string()]],
-            AgentRole::Developer,
+            chain.last_session_id,
+            Some("session-keep".to_string()),
+            "setup: session must be set"
         );
 
-        let next = state.advance_to_next_model();
+        // Act: switch to the same agent.
+        let next = chain.switch_to_agent_named("agent0");
 
+        assert_eq!(next.current_agent_index, 0, "must stay on agent 0");
         assert_eq!(
-            next.current_agent_index, 1,
-            "single-model agent: advance_to_next_model must switch to next agent"
+            next.current_model_index, 0,
+            "model index must reset to 0 on same-agent switch"
         );
-        assert_eq!(next.current_model_index, 0);
         assert_eq!(
-            next.last_session_id, None,
-            "session must be cleared on agent switch"
+            next.backoff_pending_ms, None,
+            "backoff_pending_ms must be cleared on same-agent switch"
+        );
+        assert_eq!(
+            next.last_session_id,
+            Some("session-keep".to_string()),
+            "session must be preserved when switching to the same agent"
         );
     }
 }
+
+#[cfg(test)]
+#[path = "transitions_model_fallback_cycling_tests.rs"]
+mod model_fallback_cycling_tests;
 
 #[cfg(test)]
 mod backoff_semantics_tests {
