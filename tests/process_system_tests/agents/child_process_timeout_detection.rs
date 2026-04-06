@@ -71,11 +71,14 @@ fn detached_descendant_process_group_does_not_qualify_as_active_child_work() {
     let script = "python3 -c 'import os,time; os.setpgid(0,0); time.sleep(1.0)' & wait";
     let mut shell = spawn_shell_in_own_process_group(script);
 
+    // Wait until python3 has called setpgid and moved to its own process group,
+    // indicated by child_count dropping to 0 (no descendants remain in the shell's
+    // process group). Allow up to 2s for Python startup and setpgid call.
     let info = wait_for_descendant_snapshot_matching(
         &executor,
         shell.id(),
-        Duration::from_millis(400),
-        |info| info.active_child_count == 0,
+        Duration::from_secs(2),
+        |info| info.child_count == 0,
     );
 
     shell.wait().expect("wait for shell");
@@ -84,9 +87,9 @@ fn detached_descendant_process_group_does_not_qualify_as_active_child_work() {
         info.active_child_count, 0,
         "detached descendants in a different process group must not count as currently active child work"
     );
-    assert!(
-        info.child_count <= 1,
-        "at most one transient detached descendant should remain observable"
+    assert_eq!(
+        info.child_count, 0,
+        "after setpgid, detached descendant must not remain visible in the shell's process group"
     );
 }
 
