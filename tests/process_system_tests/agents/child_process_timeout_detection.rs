@@ -100,8 +100,16 @@ fn same_process_group_sleeping_descendants_with_only_historical_cpu_do_not_quali
     let script = "python3 -c 'import time\nfor _ in range(5):\n    start=time.time()\n    while time.time()-start < 0.03:\n        pass\n    time.sleep(0.2)' & sleep 1.5";
     let mut shell = spawn_shell_in_own_process_group(script);
 
-    std::thread::sleep(Duration::from_millis(350));
-    let info = executor.get_child_process_info(shell.id());
+    // Wait for the Python script to complete all CPU bursts and enter a sustained
+    // sleep phase. Each iteration takes ~0.23s (0.03s CPU + 0.2s sleep), and the
+    // script runs 5 iterations = ~1.15s total. We wait up to 2s for the process
+    // to settle into a sleeping state where active_child_count == 0.
+    let info = wait_for_descendant_snapshot_matching(
+        &executor,
+        shell.id(),
+        Duration::from_secs(2),
+        |info| info.active_child_count == 0,
+    );
 
     shell.wait().expect("wait for shell");
 

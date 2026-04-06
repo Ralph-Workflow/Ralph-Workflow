@@ -20,11 +20,14 @@
 //! |-------|------|
 //! | Config creation | `standalone_config_creates_without_ralph_workflow` |
 //! | Initialize handshake | `full_stack_initialize_handshake_succeeds` |
+//! | Ping liveness | `full_stack_ping_returns_null_and_preserves_state` |
+//! | Allowed call (happy path) | `full_stack_allowed_tool_call_returns_success_result` |
 //! | ReadOnly mode | `full_stack_readonly_mode_rejects_write_file` |
 //! | Path boundary | `full_stack_root_dir_boundary_rejects_outside_paths` |
 //! | Allowlist | `full_stack_allowlist_rejects_unlisted_tools` |
 //! | Blocklist | `full_stack_blocklist_rejects_listed_tools` |
 //! | Capability denial | `full_stack_capability_denial_propagates_error_code` |
+//! | Audit: Allow + Deny | `full_stack_audit_sink_records_both_allow_and_deny_outcomes` |
 
 use mcp_server::dispatch::access::{
     AccessDecision, AccessDeniedCode, AccessMode, AuditSink, McpCapability, ToolFilter,
@@ -550,5 +553,165 @@ fn full_stack_methods_before_initialize_return_not_initialized() {
         state,
         ServerState::Uninitialized,
         "state must remain Uninitialized"
+    );
+}
+
+/// Verifies that a `ping` request returns a `null` result and leaves the
+/// server state unchanged. This is the MCP liveness-check path.
+#[test]
+fn full_stack_ping_returns_null_and_preserves_state() {
+    let root = PathBuf::from("/tmp/full-stack-ping-test");
+    let config = McpServerConfig::new(root);
+    let session = Arc::new(AlwaysAllowSession) as Arc<dyn mcp_server::HostSession>;
+    let server = build_server(session, config, None);
+
+    // Initialize first so the server is in Ready state
+    let (_, state) = server.handle_request(initialize_request(1), ServerState::Uninitialized);
+    assert_eq!(state, ServerState::Ready);
+
+    let ping_req = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "ping".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    let (response, new_state) = server.handle_request(ping_req, state);
+
+    let resp = response.expect("ping must return a response");
+    assert!(resp.error.is_none(), "ping must not return an error");
+    assert!(resp.result.is_some(), "ping must return a result");
+    assert_eq!(
+        resp.result.unwrap(),
+        serde_json::Value::Null,
+        "ping result must be null"
+    );
+    assert_eq!(new_state, ServerState::Ready, "ping must not change state");
+}
+
+/// Verifies that an allowed `tools/call` succeeds and returns the expected
+/// `ToolResult` content. This is the happy-path: AllowAll session, ReadWrite
+/// mode, open blocklist, non-mutating tool.
+#[test]
+fn full_stack_allowed_tool_call_returns_success_result() {
+    let root = PathBuf::from("/tmp/full-stack-allowed-call-test");
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadWrite);
+    let session = Arc::new(AlwaysAllowSession) as Arc<dyn mcp_server::HostSession>;
+    let server = build_server(session, config, None);
+
+    let (_, state) = server.handle_request(initialize_request(1), ServerState::Uninitialized);
+
+    let (response, _) = server.handle_request(
+        tools_call_request(
+            2,
+            "echo_read",
+            serde_json::json!({ "msg": "hello-allowed" }),
+        ),
+        state,
+    );
+
+    let resp = response.expect("allowed tools/call must return a response");
+    assert!(
+        resp.error.is_none(),
+        "allowed tools/call must not return an error; got: {:?}",
+        resp.error
+    );
+    let result = resp
+        .result
+        .expect("allowed tools/call must return a result");
+    let content = result["content"]
+        .as_array()
+        .expect("result must have a content array");
+    assert!(!content.is_empty(), "content must be non-empty");
+    let text = content[0]["text"].as_str().unwrap_or("");
+    assert_eq!(
+        text, "hello-allowed",
+        "tool must echo the msg argument; got: {text:?}"
+    );
+}
+
+/// Verifies that the `AuditSink` receives records for both `Allow` and `Deny`
+/// outcomes within the same test. This proves the audit path is exercised for
+/// the complete set of access decisions in a single standalone suite run.
+#[test]
+fn full_stack_audit_sink_records_both_allow_and_deny_outcomes() {
+    let root = PathBuf::from("/tmp/full-stack-audit-both-test");
+    // Open config: ReadWrite, empty blocklist → allow path reachable
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadWrite);
+    let audit_sink = Arc::new(RecordingAuditSink::new());
+
+    // Use AlwaysAllowSession so the first call succeeds (Allow record)
+    let session = Arc::new(AlwaysAllowSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(InMemoryFs::new()) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = build_test_registry();
+    let server = McpServer::new(
+        session,
+        config.clone(),
+        workspace,
+        registry,
+        Some(Arc::clone(&audit_sink) as Arc<dyn AuditSink>),
+    );
+
+    // Initialize, then make one successful call (produces Allow audit record)
+    let (_, state) = server.handle_request(initialize_request(1), ServerState::Uninitialized);
+    let (resp_allow, _state) = server.handle_request(
+        tools_call_request(2, "echo_read", serde_json::json!({ "msg": "audit-allow" })),
+        state,
+    );
+    assert!(
+        resp_allow
+            .as_ref()
+            .map(|r| r.error.is_none())
+            .unwrap_or(false),
+        "first call must succeed to produce an Allow audit record"
+    );
+
+    // Now build a second server using AlwaysDenySession to produce a Deny audit record
+    let deny_audit_sink = Arc::clone(&audit_sink);
+    let deny_config = McpServerConfig::new(PathBuf::from("/tmp/full-stack-audit-both-deny-test"))
+        .with_access_mode(AccessMode::ReadWrite);
+    let deny_session = Arc::new(AlwaysDenySession) as Arc<dyn mcp_server::HostSession>;
+    let deny_workspace = Arc::new(InMemoryFs::new()) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let deny_registry = build_test_registry();
+    let deny_server = McpServer::new(
+        deny_session,
+        deny_config,
+        deny_workspace,
+        deny_registry,
+        Some(deny_audit_sink as Arc<dyn AuditSink>),
+    );
+    let (_, deny_state) =
+        deny_server.handle_request(initialize_request(1), ServerState::Uninitialized);
+    let (resp_deny, _) = deny_server.handle_request(
+        tools_call_request(2, "echo_read", serde_json::json!({ "msg": "audit-deny" })),
+        deny_state,
+    );
+    assert!(
+        resp_deny
+            .as_ref()
+            .map(|r| r.error.is_some())
+            .unwrap_or(false),
+        "deny-session call must fail to produce a Deny audit record"
+    );
+
+    // Assert the shared audit sink has at least one Allow and at least one Deny record
+    let records = audit_sink.records();
+    let has_allow = records
+        .iter()
+        .any(|r| matches!(r.decision, AccessDecision::Allow));
+    let has_deny = records
+        .iter()
+        .any(|r| matches!(r.decision, AccessDecision::Deny { .. }));
+    assert!(
+        has_allow,
+        "audit sink must have at least one Allow record; records: {records:?}"
+    );
+    assert!(
+        has_deny,
+        "audit sink must have at least one Deny record; records: {records:?}"
+    );
+    assert!(
+        records.len() >= 2,
+        "audit sink must have at least 2 records (one Allow, one Deny); got: {}",
+        records.len()
     );
 }
