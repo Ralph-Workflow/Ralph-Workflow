@@ -21,6 +21,8 @@ use std::time::Duration;
 use ralph_workflow::agents::session::{AgentSession, SessionDrain};
 use ralph_workflow::mcp_server::session_bridge::SessionBridge;
 use ralph_workflow::workspace::MemoryWorkspace;
+use ralph_workflow::Workspace;
+use test_helpers::assert_no_real_git_mutations;
 
 use crate::test_timeout::with_default_timeout;
 
@@ -94,7 +96,10 @@ fn test_workspace() -> Arc<dyn ralph_workflow::workspace::Workspace> {
     let workspace = MemoryWorkspace::new(PathBuf::from("/test/repo"))
         .with_file("PROMPT.md", "# Test\n## Goal\nTest\n## Acceptance\n- Pass")
         .with_file("test.txt", "Hello, World!");
-    Arc::new(workspace)
+    let ws = Arc::new(workspace);
+    // Guard: no real git mutations allowed in MCP integration tests.
+    assert_no_real_git_mutations(ws.root());
+    ws
 }
 
 // ---------------------------------------------------------------------------
@@ -173,9 +178,6 @@ fn mcp_tools_list_returns_ralph_tools() {
             "id": 1
         });
         send_mcp_request(&mut stream, init_request);
-
-        // Small delay to ensure server processes initialize
-        std::thread::sleep(Duration::from_millis(100));
 
         // Request tools list
         let list_request = serde_json::json!({
@@ -386,9 +388,6 @@ fn mcp_full_protocol_flow_read_file() {
             response.error
         );
 
-        // Small delay to ensure server processes initialize
-        std::thread::sleep(Duration::from_millis(100));
-
         // Step 2: List tools
         let list_request = serde_json::json!({
             "jsonrpc": "2.0",
@@ -489,7 +488,6 @@ fn mcp_audit_records_emitted_when_access_denied() {
             "id": 1
         });
         send_mcp_request(&mut stream, init_request);
-        std::thread::sleep(Duration::from_millis(100));
 
         // Drain any records from initialization
         let _initial_records = bridge.drain_audit_records();
@@ -514,9 +512,6 @@ fn mcp_audit_records_emitted_when_access_denied() {
             "read_file with path outside workspace should be denied, got: {:?}",
             response
         );
-
-        // Small delay to ensure audit record is emitted
-        std::thread::sleep(Duration::from_millis(100));
 
         // Drain audit records after denied tool call
         let records = bridge.drain_audit_records();

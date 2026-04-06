@@ -760,8 +760,7 @@ mod unix_tests {
 
         // Verify AuditSink received an Allow record for the ArtifactSubmit capability.
         // The MCP audit adapter translates AccessDecision::Allow to PolicyOutcome::Approved.
-        // Give the background thread a short window to flush the audit record.
-        std::thread::sleep(Duration::from_millis(50));
+        // No sleep needed: audit records are emitted synchronously before the response is sent.
         let audit_records = bridge.drain_audit_records();
         let artifact_submit_approved = audit_records.iter().any(|r| {
             matches!(r.outcome, PolicyOutcome::Approved)
