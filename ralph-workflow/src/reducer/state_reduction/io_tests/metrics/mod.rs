@@ -13,6 +13,7 @@ mod retry_counting;
 mod summary_accuracy;
 
 use crate::agents::AgentRole;
+use crate::common::domain_types::{AgentName, ModelName};
 use crate::reducer::event::{
     CommitEvent, DevelopmentEvent, PipelineEvent, PlanningEvent, ReviewEvent, TimeoutOutputKind,
 };

@@ -17,7 +17,7 @@ fn test_same_agent_retry_within_budget_does_increment() {
     // First retry (count becomes 1, which is < max) should increment
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
+        AgentName::from("claude"),
         TimeoutOutputKind::PartialResult,
         Some(".agent/logs/developer_0.log".to_string()),
         None,

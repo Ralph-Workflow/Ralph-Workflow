@@ -177,8 +177,8 @@ fn test_agent_fallback_increments_counter() {
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_fallback_triggered(
         AgentRole::Developer,
-        "claude".to_string(),
-        "gpt4".to_string(),
+        AgentName::from("claude"),
+        AgentName::from("gpt4"),
     );
     let state = reduce(state, event);
 

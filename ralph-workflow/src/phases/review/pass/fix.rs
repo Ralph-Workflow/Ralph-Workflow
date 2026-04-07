@@ -182,16 +182,18 @@ pub fn run_fix_pass(
     )?;
     if result.exit_code != 0 {
         let auth_failure = stderr_contains_auth_error(&result.stderr);
-        // Only fail if auth error or no valid result file exists.
+        // Auth errors always fail regardless of output file state.
+        if auth_failure {
+            return Ok(FixPassResult::agent_failed(true));
+        }
+        // Non-auth non-zero exit: fail only when no valid result file exists.
         // A valid FIX_RESULT_XML despite non-zero exit means the agent completed
         // its work (e.g., proprietary exit codes like reason:91 from OpenCode).
-        if auth_failure
-            || !crate::files::llm_output_extraction::has_valid_xml_output(
-                ctx.workspace,
-                Path::new(xml_paths::FIX_RESULT_XML),
-            )
-        {
-            return Ok(FixPassResult::agent_failed(auth_failure));
+        if !crate::files::llm_output_extraction::has_valid_xml_output(
+            ctx.workspace,
+            Path::new(xml_paths::FIX_RESULT_XML),
+        ) {
+            return Ok(FixPassResult::agent_failed(false));
         }
     }
 

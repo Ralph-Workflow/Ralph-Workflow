@@ -1,6 +1,7 @@
 mod agent_fallback;
 mod awaiting_dev_fix;
 mod basic_transitions;
+mod metrics;
 mod cloud_push_retry;
 mod commit_phase;
 mod connectivity;

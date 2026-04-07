@@ -172,7 +172,7 @@ fn test_same_agent_retry_increments_counter() {
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
+        AgentName::from("claude"),
         TimeoutOutputKind::PartialResult,
         Some(".agent/logs/developer_0.log".to_string()),
         None,
@@ -187,9 +187,9 @@ fn test_model_fallback_increments_counter() {
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_model_fallback_triggered(
         AgentRole::Developer,
-        "claude".to_string(),
-        "claude-sonnet".to_string(),
-        "gpt-4".to_string(),
+        AgentName::from("claude"),
+        ModelName::from("claude-sonnet"),
+        ModelName::from("gpt-4"),
     );
     let state = reduce(state, event);
 
@@ -385,7 +385,7 @@ fn test_same_agent_retry_exhausted_does_not_increment() {
     // First retry (count becomes 3, which is >= max) should NOT increment because will_retry = false
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
+        AgentName::from("claude"),
         TimeoutOutputKind::PartialResult,
         Some(".agent/logs/developer_0.log".to_string()),
         None,
@@ -407,7 +407,7 @@ fn test_no_output_timeout_increments_timeout_no_output_agent_switches_total() {
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
+        AgentName::from("claude"),
         TimeoutOutputKind::NoResult,
         None,
         None,
@@ -425,7 +425,7 @@ fn test_partial_output_timeout_does_not_increment_timeout_no_output_agent_switch
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
+        AgentName::from("claude"),
         TimeoutOutputKind::PartialResult,
         Some(".agent/logs/developer_0.log".to_string()),
         None,
@@ -448,7 +448,7 @@ fn test_no_output_timeout_does_not_increment_same_agent_retry_attempts_total() {
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
+        AgentName::from("claude"),
         TimeoutOutputKind::NoResult,
         None,
         None,
