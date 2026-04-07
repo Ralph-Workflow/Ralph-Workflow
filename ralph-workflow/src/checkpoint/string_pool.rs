@@ -20,9 +20,8 @@ use std::sync::Arc;
 /// use ralph_workflow::checkpoint::string_pool::StringPool;
 /// use std::sync::Arc;
 ///
-/// let mut pool = StringPool::new();
-/// let phase1 = pool.intern("Development");
-/// let phase2 = pool.intern("Development");
+/// let (pool, phase1) = StringPool::new().intern("Development");
+/// let (_, phase2) = pool.intern("Development");
 ///
 /// // Both Arc<str> values point to the same allocation
 /// assert!(Arc::ptr_eq(&phase1, &phase2));

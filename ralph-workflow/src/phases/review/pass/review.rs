@@ -175,7 +175,17 @@ pub fn run_review_pass(
     )?;
     if result.exit_code != 0 {
         let auth_failure = stderr_contains_auth_error(&result.stderr);
-        return Ok(ReviewPassResult::agent_failed(auth_failure));
+        // Only fail if auth error or no valid result file exists.
+        // A valid ISSUES_XML despite non-zero exit means the agent completed
+        // its work (e.g., proprietary exit codes like reason:91 from OpenCode).
+        if auth_failure
+            || !crate::files::llm_output_extraction::has_valid_xml_output(
+                ctx.workspace,
+                Path::new(xml_paths::ISSUES_XML),
+            )
+        {
+            return Ok(ReviewPassResult::agent_failed(auth_failure));
+        }
     }
 
     let parse_result = extract_and_validate_review_output_xml(ctx, &log_prefix, issues_path)?;

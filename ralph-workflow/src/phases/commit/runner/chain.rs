@@ -180,7 +180,9 @@ fn try_single_commit_agent(
         return TryAgentResult::Skip(Some(anyhow::anyhow!("Authentication error detected")));
     }
 
-    if had_error {
+    if had_error
+        && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML))
+    {
         return TryAgentResult::Skip(Some(anyhow::anyhow!(
             "Agent {} failed with exit code {}",
             commit_agent,
