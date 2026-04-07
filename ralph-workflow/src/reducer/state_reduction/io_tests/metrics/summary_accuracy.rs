@@ -262,7 +262,7 @@ fn test_same_agent_retry_exhaustion_does_not_increment_metrics() {
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
         "claude".to_string(),
-        TimeoutOutputKind::PartialOutput,
+        TimeoutOutputKind::PartialResult,
         Some(".agent/logs/developer_0.log".to_string()),
         None,
     );

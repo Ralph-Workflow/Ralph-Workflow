@@ -255,9 +255,32 @@ fn try_agent_execution(
 
             // Special handling for timeout: emit fact event (reducer decides retry/fallback)
             // Unlike rate limits, timeouts do not preserve prompt context.
-            // Determine output_kind by reading the logfile via workspace.
+            //
+            // RESULT FILE PRE-CHECK (mandatory ordering per acceptance criteria):
+            // Check the completion output file BEFORE any timeout classification.
+            // A valid result file means the agent completed its work successfully —
+            // the SIGTERM exit code (143) is irrelevant noise from the idle timeout
+            // enforcement mechanism killing an already-finished process.
             if is_timeout_error(&error_kind) {
-                let output_kind = determine_timeout_output_kind(config.logfile, runtime.workspace);
+                if let Some(path) = config.completion_output_path {
+                    if crate::files::llm_output_extraction::has_valid_xml_output(
+                        runtime.workspace,
+                        path,
+                    ) {
+                        return AgentExecutionResult {
+                            event: PipelineEvent::agent_invocation_succeeded(
+                                config.role,
+                                agent_name.clone(),
+                            ),
+                            session_id: None,
+                        };
+                    }
+                }
+                let output_kind = determine_timeout_output_kind(
+                    config.logfile,
+                    config.completion_output_path,
+                    runtime.workspace,
+                );
                 return AgentExecutionResult {
                     event: PipelineEvent::agent_timed_out(
                         config.role,
@@ -288,20 +311,32 @@ fn try_agent_execution(
             // instead of attempting to downcast the inner error payload.
             let error_kind = classify_io_error(&e);
 
-            // Mirror special-case handling from the non-zero exit path.
-            // If `run_with_prompt` itself returns an error classified as Timeout,
-            // emit TimedOut so the reducer can decide retry vs fallback deterministically.
-            // In the Err case, the execution failed before completion, so we default to NoOutput.
+            // Mirror the result-file pre-check from the Ok path.
+            // In the Err path the agent likely never completed, but check anyway
+            // for consistency: valid result → success, regardless of timeout signal.
             if is_timeout_error(&error_kind) {
-                // When run_with_prompt itself errors, the agent never produced any output
-                // (the logfile may not even exist), so default to NoOutput.
+                if let Some(path) = config.completion_output_path {
+                    if crate::files::llm_output_extraction::has_valid_xml_output(
+                        runtime.workspace,
+                        path,
+                    ) {
+                        return AgentExecutionResult {
+                            event: PipelineEvent::agent_invocation_succeeded(
+                                config.role,
+                                agent_name.clone(),
+                            ),
+                            session_id: None,
+                        };
+                    }
+                }
+                // Err path: run_with_prompt itself failed, so no output was produced.
                 return AgentExecutionResult {
                     event: PipelineEvent::agent_timed_out(
                         config.role,
                         agent_name.clone(),
-                        TimeoutOutputKind::NoOutput,
+                        TimeoutOutputKind::NoResult,
                         Some(config.logfile.to_string()),
-                        None, // No CommandResult available in error path
+                        None,
                     ),
                     session_id: None,
                 };
@@ -328,41 +363,53 @@ fn build_error_preview(message: &str, max_chars: usize) -> String {
 
 /// Minimum non-whitespace characters to classify as meaningful output.
 ///
-/// This threshold distinguishes between:
-/// - **`NoOutput`**: Agent produced nothing useful (empty, whitespace-only, or trivial fragments)
-/// - **`PartialOutput`**: Agent was doing real work before being cut off
-///
-/// The value of 10 is chosen to exclude noise (a few stray characters, partial words)
-/// while being low enough to recognize any substantive work.
+/// Used only in the logfile-heuristic fallback path (when no `completion_output_path`
+/// is configured, e.g. Analysis drain).
 const MEANINGFUL_OUTPUT_THRESHOLD: usize = 10;
 
-/// Determine whether a timed-out agent produced meaningful output by reading the logfile.
+/// Determine whether a timed-out agent produced a valid result.
 ///
-/// This is pure I/O observation - no policy is encoded here.
-/// The reducer decides what to do with this information.
+/// When a `completion_output_path` is provided, classification is based on
+/// whether that file exists on disk:
+/// - File present (even if invalid XML) → `PartialResult`
+/// - File absent → `NoResult`
 ///
-/// # Classification Logic
+/// Note: callers MUST check `has_valid_xml_output` BEFORE calling this function
+/// and promote a valid result to success. By the time this function is reached,
+/// the valid-result case has already been handled.
 ///
-/// - `NoOutput`: Logfile is missing, empty, or contains fewer than ~10 non-whitespace characters
-/// - `PartialOutput`: Logfile contains at least 10 non-whitespace characters (indicates real work)
+/// When no `completion_output_path` is provided (e.g., Analysis drain), falls
+/// back to logfile content heuristic.
 ///
 /// # Fail-Safe Behavior
 ///
-/// If the logfile cannot be read, the function returns `NoOutput` to trigger
-/// immediate agent switching rather than retrying a potentially broken agent.
+/// If the logfile cannot be read in the fallback path, returns `NoResult` to
+/// trigger immediate agent switching rather than retrying a potentially broken agent.
 fn determine_timeout_output_kind(
     logfile_path: &str,
+    completion_output_path: Option<&std::path::Path>,
     workspace: &dyn Workspace,
 ) -> TimeoutOutputKind {
+    // When a completion file is expected, classify based on file existence.
+    // The valid-file case is handled upstream; here we distinguish missing vs. present-but-invalid.
+    if let Some(path) = completion_output_path {
+        return if workspace.exists(path) {
+            TimeoutOutputKind::PartialResult
+        } else {
+            TimeoutOutputKind::NoResult
+        };
+    }
+
+    // Fallback: no completion path configured (e.g. Analysis drain).
+    // Use logfile content as a proxy for whether the agent did any real work.
     let Some(content) = workspace.read(std::path::Path::new(logfile_path)).ok() else {
-        return TimeoutOutputKind::NoOutput;
+        return TimeoutOutputKind::NoResult;
     };
 
     let non_whitespace_count = content.chars().filter(|c| !c.is_whitespace()).count();
-
     if non_whitespace_count >= MEANINGFUL_OUTPUT_THRESHOLD {
-        TimeoutOutputKind::PartialOutput
+        TimeoutOutputKind::PartialResult
     } else {
-        TimeoutOutputKind::NoOutput
+        TimeoutOutputKind::NoResult
     }
 }

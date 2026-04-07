@@ -36,7 +36,7 @@ fn test_planning_timeout_retry_recleans_plan_xml_before_reinvoke() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("claude"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/planning_0.log".to_string()),
             None,
         ),
@@ -90,7 +90,7 @@ fn test_development_timeout_retry_recleans_dev_xml_before_reinvoke() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("claude"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -140,7 +140,7 @@ fn test_review_timeout_retry_recleans_issues_xml_before_reinvoke() {
         PipelineEvent::agent_timed_out(
             AgentRole::Reviewer,
             AgentName::from("codex"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/reviewer_0.log".to_string()),
             None,
         ),
@@ -190,7 +190,7 @@ fn test_fix_timeout_retry_recleans_fix_xml_before_reinvoke() {
         PipelineEvent::agent_timed_out(
             AgentRole::Reviewer,
             AgentName::from("codex"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/reviewer_0.log".to_string()),
             None,
         ),
@@ -246,7 +246,7 @@ fn test_commit_timeout_retry_recleans_commit_xml_before_reinvoke() {
         PipelineEvent::agent_timed_out(
             AgentRole::Commit,
             AgentName::from("commit-agent"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/commit_1.log".to_string()),
             None,
         ),

@@ -39,7 +39,7 @@
 // | current_review_pass                 | ReviewEvent::PassStarted                                  | Tracks current pass number               |
 // | xsd_retry_*                         | *Event::OutputValidationFailed (when will_retry == true)  | Only when retrying, not when exhausted   |
 // | same_agent_retry_attempts_total     | AgentEvent::TimedOut / InternalError (when will_retry)    | Only when retrying same agent            |
-// | timeout_no_output_agent_switches_total | AgentEvent::TimedOut { output_kind: NoOutput }         | NoOutput timeout triggered immediate switch |
+// | timeout_no_output_agent_switches_total | AgentEvent::TimedOut { output_kind: NoResult }         | NoResult timeout triggered immediate switch |
 // | agent_fallbacks_total               | AgentEvent::FallbackTriggered                             | Agent switched in chain                  |
 // | model_fallbacks_total               | AgentEvent::ModelFallbackTriggered                        | Model switched for agent                 |
 // | retry_cycles_started_total          | AgentEvent::RetryCycleStarted                             | Chain exhausted, restarting              |
@@ -170,11 +170,11 @@ pub struct RunMetrics {
     #[serde(default)]
     pub same_agent_retry_attempts_total: u32,
 
-    /// Agent switches caused by no-output timeouts.
+    /// Agent switches caused by no-result timeouts.
     ///
-    /// Incremented only in the reducer's `TimedOut { output_kind: NoOutput }` arm.
+    /// Incremented only in the reducer's `TimedOut { output_kind: NoResult }` arm.
     /// Distinct from `agent_fallbacks_total` (which tracks `FallbackTriggered` events).
-    /// Distinct from `same_agent_retry_attempts_total` (`NoOutput` does not retry same agent).
+    /// Distinct from `same_agent_retry_attempts_total` (`NoResult` does not retry same agent).
     #[serde(default)]
     pub timeout_no_output_agent_switches_total: u32,
 
@@ -376,7 +376,7 @@ impl RunMetrics {
 
     /// Increment `timeout_no_output_agent_switches_total` counter.
     ///
-    /// Called only when a `TimedOut { output_kind: NoOutput }` event triggers
+    /// Called only when a `TimedOut { output_kind: NoResult }` event triggers
     /// an immediate agent switch.
     #[must_use]
     pub const fn increment_timeout_no_output_agent_switches_total(self) -> Self {

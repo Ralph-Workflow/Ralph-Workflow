@@ -177,7 +177,7 @@ pub struct ContinuationState {
     // =========================================================================
     /// Whether a timeout context file write is pending.
     ///
-    /// Set when a timeout with `PartialOutput` occurs but the agent has no session ID.
+    /// Set when a timeout with `PartialResult` occurs but the agent has no session ID.
     /// The context must be extracted from the logfile and written to a temp file
     /// before the retry prompt is prepared.
     #[serde(default)]

@@ -456,7 +456,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent1"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -478,7 +478,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent1"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -585,7 +585,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent1"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -625,7 +625,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent1"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -856,12 +856,12 @@ fn test_template_variables_invalid_retries_same_agent_until_budget_exhausted() {
 }
 
 // ========================================================================
-// NoOutput timeout immediate switch tests (AC-3, AC-4)
+// NoResult timeout immediate switch tests (AC-3, AC-4)
 // ========================================================================
 
 #[test]
 fn test_no_output_timeout_triggers_immediate_agent_switch() {
-    // AC-3: NoOutput timeout should switch agents immediately without same-agent retry
+    // AC-3: NoResult timeout should switch agents immediately without same-agent retry
     let base_state = create_test_state();
     let state = PipelineState {
         phase: PipelinePhase::Development,
@@ -879,7 +879,7 @@ fn test_no_output_timeout_triggers_immediate_agent_switch() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent1"),
-            TimeoutOutputKind::NoOutput,
+            TimeoutOutputKind::NoResult,
             None,
             None,
         ),
@@ -892,37 +892,37 @@ fn test_no_output_timeout_triggers_immediate_agent_switch() {
             .current_agent()
             .map(String::as_str),
         Some("agent2"),
-        "NoOutput timeout should immediately switch to next agent"
+        "NoResult timeout should immediately switch to next agent"
     );
     // Retry budget NOT consumed
     assert_eq!(
         after_timeout.continuation.same_agent_retry_count, 0,
-        "NoOutput timeout should not consume retry budget"
+        "NoResult timeout should not consume retry budget"
     );
     assert!(
         !after_timeout.continuation.same_agent_retry_pending,
-        "NoOutput timeout should not set same_agent_retry_pending"
+        "NoResult timeout should not set same_agent_retry_pending"
     );
     // Session cleared
     assert!(
         after_timeout.agent_chain.last_session_id.is_none(),
-        "NoOutput timeout should clear session ID"
+        "NoResult timeout should clear session ID"
     );
     // Metric incremented
     assert_eq!(
         after_timeout.metrics.timeout_no_output_agent_switches_total, 1,
-        "NoOutput timeout should increment timeout_no_output_agent_switches_total"
+        "NoResult timeout should increment timeout_no_output_agent_switches_total"
     );
     // same_agent_retry_attempts_total NOT incremented
     assert_eq!(
         after_timeout.metrics.same_agent_retry_attempts_total, 0,
-        "NoOutput timeout should not increment same_agent_retry_attempts_total"
+        "NoResult timeout should not increment same_agent_retry_attempts_total"
     );
 }
 
 #[test]
 fn test_no_output_timeout_does_not_consume_retry_budget() {
-    // AC-4: Starting with same_agent_retry_count = 1, NoOutput should still switch immediately
+    // AC-4: Starting with same_agent_retry_count = 1, NoResult should still switch immediately
     // and reset count to 0 (not increment to 2)
     let base_state = create_test_state();
     let state = PipelineState {
@@ -944,7 +944,7 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent1"),
-            TimeoutOutputKind::NoOutput,
+            TimeoutOutputKind::NoResult,
             None,
             None,
         ),
@@ -957,11 +957,11 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
             .current_agent()
             .map(String::as_str),
         Some("agent2"),
-        "NoOutput timeout should switch agents immediately even with prior retry count"
+        "NoResult timeout should switch agents immediately even with prior retry count"
     );
     // Count should be reset to 0, not incremented
     assert_eq!(
         after_timeout.continuation.same_agent_retry_count, 0,
-        "NoOutput timeout should reset retry count to 0, not increment"
+        "NoResult timeout should reset retry count to 0, not increment"
     );
 }

@@ -361,7 +361,7 @@ fn test_classify_io_error_network() {
 
 #[test]
 fn test_timeout_with_empty_logfile_emits_no_output() {
-    // AC-2a: Empty logfile after timeout execution = NoOutput
+    // AC-2a: Empty logfile after timeout execution = NoResult
     use crate::reducer::event::TimeoutOutputKind;
 
     let colors = Colors { enabled: false };
@@ -420,8 +420,8 @@ fn test_timeout_with_empty_logfile_emits_no_output() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::NoOutput,
-                "Empty logfile should emit NoOutput"
+                TimeoutOutputKind::NoResult,
+                "Empty logfile should emit NoResult"
             );
         }
         _ => panic!("Expected TimedOut event, got {:?}", result.event),
@@ -430,7 +430,7 @@ fn test_timeout_with_empty_logfile_emits_no_output() {
 
 #[test]
 fn test_timeout_with_nonempty_logfile_emits_partial_output() {
-    // AC-2b: Non-empty logfile after timeout execution = PartialOutput
+    // AC-2b: Non-empty logfile after timeout execution = PartialResult
     use crate::reducer::event::TimeoutOutputKind;
 
     let colors = Colors { enabled: false };
@@ -489,8 +489,8 @@ fn test_timeout_with_nonempty_logfile_emits_partial_output() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::PartialOutput,
-                "Non-empty logfile should emit PartialOutput"
+                TimeoutOutputKind::PartialResult,
+                "Non-empty logfile should emit PartialResult"
             );
         }
         _ => panic!("Expected TimedOut event, got {:?}", result.event),
@@ -557,8 +557,8 @@ fn test_timeout_with_missing_logfile_defaults_to_no_output() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::NoOutput,
-                "Missing logfile should default to NoOutput"
+                TimeoutOutputKind::NoResult,
+                "Missing logfile should default to NoResult"
             );
         }
         _ => panic!("Expected TimedOut event, got {:?}", result.event),
@@ -571,7 +571,7 @@ fn test_timeout_with_missing_logfile_defaults_to_no_output() {
 
 #[test]
 fn test_timeout_with_9_non_whitespace_chars_emits_no_output() {
-    // AC-4: 9 non-whitespace chars is below threshold → NoOutput
+    // AC-4: 9 non-whitespace chars is below threshold → NoResult
     use crate::reducer::event::TimeoutOutputKind;
 
     let colors = Colors { enabled: false };
@@ -629,7 +629,7 @@ fn test_timeout_with_9_non_whitespace_chars_emits_no_output() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::NoOutput,
+                TimeoutOutputKind::NoResult,
                 "9 non-whitespace chars should emit NoOutput (below threshold of 10)"
             );
         }
@@ -639,7 +639,7 @@ fn test_timeout_with_9_non_whitespace_chars_emits_no_output() {
 
 #[test]
 fn test_timeout_with_10_non_whitespace_chars_emits_partial_output() {
-    // AC-4: 10 non-whitespace chars meets threshold → PartialOutput
+    // AC-4: 10 non-whitespace chars meets threshold → PartialResult
     use crate::reducer::event::TimeoutOutputKind;
 
     let colors = Colors { enabled: false };
@@ -697,7 +697,7 @@ fn test_timeout_with_10_non_whitespace_chars_emits_partial_output() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 "10 non-whitespace chars should emit PartialOutput (meets threshold)"
             );
         }
@@ -707,7 +707,7 @@ fn test_timeout_with_10_non_whitespace_chars_emits_partial_output() {
 
 #[test]
 fn test_timeout_with_whitespace_only_logfile_emits_no_output() {
-    // AC-4: Whitespace-only content → NoOutput
+    // AC-4: Whitespace-only content → NoResult
     use crate::reducer::event::TimeoutOutputKind;
 
     let colors = Colors { enabled: false };
@@ -765,8 +765,8 @@ fn test_timeout_with_whitespace_only_logfile_emits_no_output() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::NoOutput,
-                "Whitespace-only logfile should emit NoOutput"
+                TimeoutOutputKind::NoResult,
+                "Whitespace-only logfile should emit NoResult"
             );
         }
         _ => panic!("Expected TimedOut event, got {:?}", result.event),
@@ -833,8 +833,8 @@ fn test_timeout_with_meaningful_output_surrounded_by_whitespace() {
         PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
             assert_eq!(
                 output_kind,
-                TimeoutOutputKind::PartialOutput,
-                "10 non-whitespace chars with surrounding whitespace should emit PartialOutput"
+                TimeoutOutputKind::PartialResult,
+                "10 non-whitespace chars with surrounding whitespace should emit PartialResult"
             );
         }
         _ => panic!("Expected TimedOut event, got {:?}", result.event),
@@ -931,6 +931,223 @@ fn test_classify_agent_error_auth_from_json_error() {
     let error_kind = classify_agent_error(1, stderr, None);
     // The "unauthorized" keyword should still be detected via substring matching
     assert_eq!(error_kind, AgentErrorKind::Authentication);
+}
+
+// ========================================================================
+// Result-file-aware timeout classification tests (Bug 1 + Bug 2 fix)
+// ========================================================================
+
+#[test]
+fn test_timeout_with_valid_completion_file_emits_success() {
+    // SIGTERM (exit 143) + valid completion file → InvocationSucceeded, NOT TimedOut.
+    // This is the core fix for Bug 1: valid result means the agent finished,
+    // regardless of the timeout signal.
+    use crate::reducer::event::AgentEvent;
+
+    let colors = Colors { enabled: false };
+    let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
+
+    // Pre-populate the workspace with a valid XML file at the completion path.
+    let workspace = Arc::new(MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "<ralph-development-result><status>completed</status></ralph-development-result>",
+    ));
+
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    // Agent exits with SIGTERM (143) — the idle timeout enforcement code path.
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "claude",
+            Ok(crate::executor::AgentCommandResult::failure(143, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+    let workspace_arc = Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: workspace.as_ref(),
+        workspace_arc: Arc::clone(&workspace_arc),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Developer,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "hello",
+        display_name: "claude",
+        log_prefix: ".agent/logs/test",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/test.log",
+        completion_output_path: Some(completion_path),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        ),
+        "SIGTERM + valid completion file should emit InvocationSucceeded, got {:?}",
+        result.event
+    );
+}
+
+#[test]
+fn test_timeout_with_missing_completion_file_emits_no_result() {
+    // SIGTERM (exit 143) + missing completion file → TimedOut with NoResult.
+    // Missing file = agent never produced output (crash, auth failure, etc.)
+    use crate::reducer::event::TimeoutOutputKind;
+
+    let colors = Colors { enabled: false };
+    let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
+
+    // Empty workspace — no completion file exists.
+    let workspace = Arc::new(MemoryWorkspace::new_test());
+
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "claude",
+            Ok(crate::executor::AgentCommandResult::failure(143, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+    let workspace_arc = Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: workspace.as_ref(),
+        workspace_arc: Arc::clone(&workspace_arc),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Developer,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "hello",
+        display_name: "claude",
+        log_prefix: ".agent/logs/test.log",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/test.log",
+        completion_output_path: Some(completion_path),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    match result.event {
+        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
+            assert_eq!(
+                output_kind,
+                TimeoutOutputKind::NoResult,
+                "Missing completion file should emit NoResult"
+            );
+        }
+        _ => panic!(
+            "Expected TimedOut event with NoResult, got {:?}",
+            result.event
+        ),
+    }
+}
+
+#[test]
+fn test_timeout_with_invalid_completion_file_emits_partial_result() {
+    // SIGTERM (exit 143) + file-exists-but-not-valid-XML → TimedOut with PartialResult.
+    // File exists but is invalid = agent started work but was interrupted.
+    use crate::reducer::event::TimeoutOutputKind;
+
+    let colors = Colors { enabled: false };
+    let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
+
+    // Workspace with a non-XML file at the completion path (agent was interrupted mid-write).
+    let workspace = Arc::new(MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "truncated non-xml content",
+    ));
+
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "claude",
+            Ok(crate::executor::AgentCommandResult::failure(143, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+    let workspace_arc = Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: workspace.as_ref(),
+        workspace_arc: Arc::clone(&workspace_arc),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Developer,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "hello",
+        display_name: "claude",
+        log_prefix: ".agent/logs/test.log",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/test.log",
+        completion_output_path: Some(completion_path),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    match result.event {
+        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
+            assert_eq!(
+                output_kind,
+                TimeoutOutputKind::PartialResult,
+                "File-exists-but-invalid completion file should emit PartialResult"
+            );
+        }
+        _ => panic!(
+            "Expected TimedOut event with PartialResult, got {:?}",
+            result.event
+        ),
+    }
 }
 
 #[test]

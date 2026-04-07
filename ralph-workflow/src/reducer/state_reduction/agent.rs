@@ -87,7 +87,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         // The agent produced no output at all — likely overloaded or unavailable.
         // Switching agents immediately is safer than retrying the same agent.
         AgentEvent::TimedOut {
-            output_kind: TimeoutOutputKind::NoOutput,
+            output_kind: TimeoutOutputKind::NoResult,
             ..
         } => {
             let state = reset_phase_xml_cleanup_for_retry(state);
@@ -118,7 +118,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         // Retry the same agent first; fall back only after retry budget exhaustion.
         // Context should be preserved (session reuse or context file extraction).
         AgentEvent::TimedOut {
-            output_kind: TimeoutOutputKind::PartialOutput,
+            output_kind: TimeoutOutputKind::PartialResult,
             logfile_path,
             ..
         } => reduce_same_agent_retryable_failure(
