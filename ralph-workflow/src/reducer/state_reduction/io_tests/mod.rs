@@ -1,7 +1,6 @@
 mod agent_fallback;
 mod awaiting_dev_fix;
 mod basic_transitions;
-mod metrics;
 mod cloud_push_retry;
 mod commit_phase;
 mod connectivity;
@@ -11,6 +10,7 @@ mod event_sequence;
 mod finalization;
 mod fix_continuation;
 mod gitignore_entries;
+mod metrics;
 mod output_validation;
 mod prompt_permissions;
 mod proptest_reducers;

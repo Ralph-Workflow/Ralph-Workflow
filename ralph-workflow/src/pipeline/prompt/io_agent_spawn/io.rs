@@ -98,6 +98,15 @@ fn make_completion_check(
     }))
 }
 
+fn make_partial_completion_check(
+    path: Option<&std::path::Path>,
+    workspace: &std::sync::Arc<dyn crate::workspace::Workspace>,
+) -> Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>> {
+    let path = path?.to_owned();
+    let workspace = std::sync::Arc::clone(workspace);
+    Some(std::sync::Arc::new(move || workspace.exists(&path)))
+}
+
 fn spawn_stdout_cancel_watcher(
     stdout_cancel: Arc<std::sync::atomic::AtomicBool>,
     monitor_should_stop: Arc<std::sync::atomic::AtomicBool>,
@@ -549,6 +558,7 @@ fn create_shared_monitor_state(
 fn spawn_monitor_thread(
     state: SharedMonitorState,
     completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    partial_completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> std::thread::JoinHandle<MonitorResult> {
     use std::sync::atomic::Ordering;
     let SharedMonitorState {
@@ -573,6 +583,7 @@ fn spawn_monitor_thread(
                 check_interval: Duration::from_secs(30),
                 kill_config: DEFAULT_KILL_CONFIG,
                 completion_check,
+                partial_completion_check,
                 ..MonitorConfig::default()
             },
             Some(&child_activity_suppressed_for_monitor),
@@ -609,13 +620,14 @@ fn build_spawned_agent_handles(
     stderr_cancel: Arc<std::sync::atomic::AtomicBool>,
     stderr_join_handle: Option<std::thread::JoinHandle<Result<String, std::io::Error>>>,
     completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    partial_completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> SpawnedAgentHandles {
     let child_shared = Arc::clone(&state.child_shared);
     let activity_timestamp = state.activity_timestamp.clone();
     let stdout_cancel = Arc::clone(&state.stdout_cancel);
     let monitor_should_stop = Arc::clone(&state.monitor_should_stop);
     let child_activity_suppressed = Arc::clone(&state.child_activity_suppressed);
-    let monitor_handle = Some(spawn_monitor_thread(state, completion_check));
+    let monitor_handle = Some(spawn_monitor_thread(state, completion_check, partial_completion_check));
     SpawnedAgentHandles {
         child_shared,
         activity_timestamp,
@@ -634,6 +646,7 @@ fn spawn_agent_with_monitoring(
     runtime: &PipelineRuntime<'_>,
     argv0: &str,
     completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    partial_completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> SpawnAgentResult {
     use std::sync::atomic::AtomicBool;
     let agent_handle = match runtime.executor.spawn_agent(&spawn_config) {
@@ -658,8 +671,13 @@ fn spawn_agent_with_monitoring(
         state.activity_timestamp.clone(),
         Arc::clone(&stderr_cancel),
     ));
-    let handles =
-        build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle, completion_check);
+    let handles = build_spawned_agent_handles(
+        state,
+        stderr_cancel,
+        stderr_join_handle,
+        completion_check,
+        partial_completion_check,
+    );
     Ok(Ok((handles, agent_handle.stdout)))
 }
 
@@ -762,11 +780,18 @@ pub(crate) fn run_with_agent_spawn(
     let argv0 = parsed.argv[0].clone();
     let completion_check =
         make_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
-    let (mut handles, stdout) =
-        match spawn_agent_with_monitoring(spawn_config, runtime, &argv0, completion_check)? {
-            Ok(pair) => pair,
-            Err(result) => return Ok(result),
-        };
+    let partial_completion_check =
+        make_partial_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
+    let (mut handles, stdout) = match spawn_agent_with_monitoring(
+        spawn_config,
+        runtime,
+        &argv0,
+        completion_check,
+        partial_completion_check,
+    )? {
+        Ok(pair) => pair,
+        Err(result) => return Ok(result),
+    };
     let (exit_code, stderr_output, monitor_result_early) =
         stream_and_wait(stdout, &mut handles, cmd, runtime)?;
     Ok(finalize_result(

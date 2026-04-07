@@ -53,6 +53,17 @@ pub struct MonitorConfig {
     /// returns `MonitorResult::CompleteButWaiting` instead of treating the exit
     /// as a timeout, allowing the pipeline to advance as success.
     pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Optional callback to check if the output file exists (even if incomplete).
+    ///
+    /// When provided, returning `true` suppresses the idle-timeout kill,
+    /// signaling that the agent is actively writing output. This is distinct
+    /// from `completion_check` which requires VALID output. Use this to avoid
+    /// killing an agent that is mid-write of a large XML file.
+    ///
+    /// The suppression only resets the idle counter for one tick; if the file
+    /// never becomes valid XML, the timeout will eventually fire once stdout/stderr
+    /// activity also ceases for the required number of idle confirmations.
+    pub partial_completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl Default for MonitorConfig {
@@ -64,6 +75,7 @@ impl Default for MonitorConfig {
             required_idle_confirmations: 2,
             check_child_processes: true,
             completion_check: None,
+            partial_completion_check: None,
         }
     }
 }
@@ -140,6 +152,7 @@ pub struct MonitorParams<'a> {
     pub required_idle_confirmations: u32,
     pub check_child_processes: bool,
     pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    pub partial_completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 pub enum EnforcementStep {

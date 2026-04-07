@@ -15,7 +15,9 @@
 
 mod basic_execution;
 mod error_predicates;
+mod proprietary_exit_codes;
 mod rate_limit_patterns;
+mod timeout_output_kind;
 
 use super::*;
 use crate::agents::JsonParserType;

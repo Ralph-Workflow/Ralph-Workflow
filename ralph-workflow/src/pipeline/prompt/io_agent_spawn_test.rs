@@ -159,6 +159,8 @@ pub fn run_with_agent_spawn_with_monitor_config(
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );

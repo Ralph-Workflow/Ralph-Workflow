@@ -308,6 +308,8 @@ fn active_ai_file_updates_prevent_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -380,6 +382,8 @@ fn log_only_activity_does_not_prevent_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -439,6 +443,8 @@ fn no_output_and_no_ai_files_times_out() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -522,6 +528,8 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -599,6 +607,8 @@ fn mixed_output_and_file_activity_prevents_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -681,6 +691,8 @@ fn workspace_source_file_update_prevents_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -756,6 +768,8 @@ fn only_excluded_workspace_files_still_produce_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -821,6 +835,8 @@ fn deep_nested_source_file_prevents_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -903,6 +919,8 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -973,6 +991,8 @@ fn output_activity_during_file_scan_prevents_kill() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1051,6 +1071,8 @@ fn active_subprocess_prevents_idle_kill() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1136,6 +1158,8 @@ fn sleeping_subprocess_with_historical_cpu_still_times_out() {
                     required_idle_confirmations: 1,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1198,6 +1222,8 @@ fn active_flag_without_fresh_subprocess_progress_still_times_out() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1249,6 +1275,8 @@ fn no_active_subprocess_and_no_file_activity_times_out() {
                     required_idle_confirmations: 1,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1306,6 +1334,8 @@ fn stalled_subprocess_timeout_includes_child_status() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1369,6 +1399,8 @@ fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
                     required_idle_confirmations: 4,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });
@@ -1489,6 +1521,8 @@ fn no_subprocess_timeout_has_none_child_status() {
                     required_idle_confirmations: 1,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         });

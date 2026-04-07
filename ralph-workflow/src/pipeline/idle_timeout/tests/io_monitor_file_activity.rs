@@ -149,6 +149,8 @@ fn monitor_prevents_timeout_with_file_activity() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -219,6 +221,8 @@ fn monitor_times_out_without_any_activity() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -260,6 +264,8 @@ fn monitor_respects_output_activity() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let timestamp_clone = timestamp.clone();
@@ -312,6 +318,8 @@ fn monitor_uses_configurable_check_interval() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -362,6 +370,8 @@ fn monitor_file_activity_with_old_files_times_out() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -412,6 +422,8 @@ fn monitor_times_out_when_file_activity_check_errors() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let handle = thread::spawn(move || {
@@ -471,6 +483,8 @@ fn monitor_without_file_activity_config_works() {
         required_idle_confirmations: 2,
         check_child_processes: true,
         completion_check: None,
+
+        partial_completion_check: None,
     };
 
     let handle = thread::spawn(move || {

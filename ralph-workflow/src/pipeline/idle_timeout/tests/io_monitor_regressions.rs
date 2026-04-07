@@ -95,6 +95,8 @@ fn monitor_releases_child_lock_between_sigterm_checks_so_caller_can_access_child
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         }
@@ -176,6 +178,8 @@ fn monitor_reports_timeout_even_if_sigkill_confirmation_times_out() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         }
@@ -265,6 +269,8 @@ fn monitor_treats_try_wait_errors_as_status_unknown_and_continues_enforcement() 
             required_idle_confirmations: 2,
             check_child_processes: true,
             completion_check: None,
+
+            partial_completion_check: None,
         },
     );
 
@@ -319,6 +325,8 @@ fn monitor_escalates_to_sigkill_when_sigterm_ignored() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         }
@@ -390,6 +398,8 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             )
         }
@@ -459,6 +469,8 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
                 },
             );
             let _ = tx.send(result);

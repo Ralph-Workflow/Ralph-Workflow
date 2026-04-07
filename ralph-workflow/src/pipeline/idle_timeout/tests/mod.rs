@@ -4,6 +4,7 @@ mod io_monitor_child_processes;
 mod io_monitor_completion_check;
 mod io_monitor_file_activity;
 mod io_monitor_idle_confirmations;
+mod io_monitor_partial_completion;
 mod io_monitor_regressions;
 mod io_readers;
 mod monitor_basic;
