@@ -293,6 +293,30 @@ fn try_agent_execution(
                 };
             }
 
+            // RESULT FILE PRE-CHECK for non-timeout exits (Bug 1 fix):
+            // An agent that exits with any non-zero, non-rate-limit, non-auth code
+            // but produced a valid result file completed its work successfully.
+            // This covers proprietary exit codes (e.g., reason:91 from OpenCode)
+            // that do not map to SIGTERM but still indicate successful completion.
+            //
+            // Rate-limit and auth errors are handled above with early returns;
+            // timeout (143) is handled in the is_timeout_error block above.
+            // This check covers everything else: InternalError, Network, etc.
+            if let Some(path) = config.completion_output_path {
+                if crate::files::llm_output_extraction::has_valid_xml_output(
+                    runtime.workspace,
+                    path,
+                ) {
+                    return AgentExecutionResult {
+                        event: PipelineEvent::agent_invocation_succeeded(
+                            config.role,
+                            agent_name.clone(),
+                        ),
+                        session_id: None,
+                    };
+                }
+            }
+
             let retriable = is_retriable_agent_error(&error_kind);
 
             AgentExecutionResult {

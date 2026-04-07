@@ -1150,6 +1150,145 @@ fn test_timeout_with_invalid_completion_file_emits_partial_result() {
     }
 }
 
+// ========================================================================
+// Non-SIGTERM exit code + result file classification tests (Bug 1 extension)
+// ========================================================================
+
+#[test]
+fn test_non_sigterm_exit_with_valid_result_emits_success() {
+    // Bug 1: exit code 91 (agent proprietary exit) + valid result file
+    // must emit InvocationSucceeded, not InvocationFailed.
+    // This covers agents like OpenCode that use non-standard OS exit codes
+    // for internal reasons unrelated to whether the task completed.
+    use crate::reducer::event::AgentEvent;
+
+    let colors = Colors { enabled: false };
+    let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
+
+    let workspace = Arc::new(MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "<ralph-development-result><status>completed</status></ralph-development-result>",
+    ));
+
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    // Agent exits with 91 — a non-SIGTERM non-zero code (not a timeout signal).
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "claude",
+            Ok(crate::executor::AgentCommandResult::failure(91, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+    let workspace_arc = Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: workspace.as_ref(),
+        workspace_arc: Arc::clone(&workspace_arc),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Developer,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "hello",
+        display_name: "claude",
+        log_prefix: ".agent/logs/test",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/test.log",
+        completion_output_path: Some(completion_path),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        ),
+        "exit code 91 + valid completion file must emit InvocationSucceeded, got {:?}",
+        result.event
+    );
+}
+
+#[test]
+fn test_non_sigterm_exit_without_result_emits_failure() {
+    // When no valid result file exists, non-SIGTERM non-zero exit code
+    // must still emit InvocationFailed (not promoted to success).
+    use crate::reducer::event::AgentEvent;
+
+    let colors = Colors { enabled: false };
+    let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
+
+    // Empty workspace — no completion file exists.
+    let workspace = Arc::new(MemoryWorkspace::new_test());
+
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "claude",
+            Ok(crate::executor::AgentCommandResult::failure(91, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+    let workspace_arc = Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: workspace.as_ref(),
+        workspace_arc: Arc::clone(&workspace_arc),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Developer,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "hello",
+        display_name: "claude",
+        log_prefix: ".agent/logs/test",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/test.log",
+        completion_output_path: Some(completion_path),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "exit code 91 + missing completion file must emit InvocationFailed, got {:?}",
+        result.event
+    );
+}
+
 #[test]
 fn test_classify_agent_error_403_from_json_error() {
     let stderr = r#"{"error":{"code":"403","message":"Forbidden: API key does not have access"}}"#;
