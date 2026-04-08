@@ -36,6 +36,8 @@ use mcp_server::dispatch::audit::AuditRecord;
 use mcp_server::dispatch::host::DirEntry;
 use mcp_server::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
 use mcp_server::io::access::McpServerConfig;
+use mcp_server::io::fake::FakeTransportPair;
+use mcp_server::io::transport::McpStream;
 use mcp_server::io::{McpServer, ServerState};
 use mcp_server::protocol::{JsonRpcRequest, ToolContent, ToolDefinition, ToolResult};
 use std::path::{Path, PathBuf};
@@ -713,5 +715,108 @@ fn full_stack_audit_sink_records_both_allow_and_deny_outcomes() {
         records.len() >= 2,
         "audit sink must have at least 2 records (one Allow, one Deny); got: {}",
         records.len()
+    );
+}
+
+/// Verify that [`FakeTransportPair`] routes requests and responses bidirectionally.
+///
+/// Proves that the shared-queue transport pair correctly wires the client and
+/// server halves:
+///
+/// 1. Client injects an `initialize` request.
+/// 2. Server reads it via `McpStream::read_request()`.
+/// 3. Server handles the request and writes the response via `McpStream::write_response()`.
+/// 4. Client reads the response via `read_response()`.
+///
+/// This test uses only `mcp_server` types (no `ralph_workflow` import) — it is
+/// part of the standalone isolation proof.
+#[test]
+fn fake_transport_pair_bidirectional_request_response_roundtrip() {
+    let root = PathBuf::from("/tmp/fake-pair-roundtrip-test");
+    let session = Arc::new(AlwaysAllowSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(InMemoryFs::new()) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadWrite);
+    let server = McpServer::new(session, config, workspace, build_test_registry(), None);
+
+    let mut pair = FakeTransportPair::new();
+
+    // Step 1: client injects an initialize request
+    let init_req = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(1)),
+    };
+    pair.client.inject_request(init_req);
+
+    // Step 2: server reads the request from the shared client-to-server queue
+    let req = pair
+        .server
+        .read_request()
+        .expect("server read_request must not error")
+        .expect("request injected by client must be available on server side");
+    assert_eq!(
+        req.method, "initialize",
+        "server must receive the initialize request"
+    );
+
+    // Step 3: server handles the request and writes the response
+    let (maybe_resp, state) = server.handle_request(req, ServerState::Uninitialized);
+    let resp = maybe_resp.expect("initialize must produce a response");
+    assert_eq!(
+        state,
+        ServerState::Ready,
+        "state must be Ready after initialize"
+    );
+    pair.server
+        .write_response(&resp)
+        .expect("server write_response must not error");
+
+    // Step 4: client reads the response from the shared server-to-client queue
+    let client_resp = pair
+        .client
+        .read_response()
+        .expect("response written by server must be available on client side");
+    assert!(
+        client_resp.result.is_some(),
+        "initialize response must have a result; got: {client_resp:?}"
+    );
+    assert!(
+        client_resp.error.is_none(),
+        "initialize response must not have an error; got: {client_resp:?}"
+    );
+
+    // Step 5: exercise a full tool call through the pair (tools/list)
+    let list_req = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    pair.client.inject_request(list_req);
+
+    let list_server_req = pair
+        .server
+        .read_request()
+        .expect("read must not error")
+        .expect("tools/list must be available");
+    let (list_maybe_resp, _) = server.handle_request(list_server_req, state);
+    let list_resp = list_maybe_resp.expect("tools/list must produce a response");
+    pair.server
+        .write_response(&list_resp)
+        .expect("write must not error");
+
+    let client_list_resp = pair
+        .client
+        .read_response()
+        .expect("tools/list response must reach client");
+    let tools = client_list_resp
+        .result
+        .as_ref()
+        .and_then(|r| r["tools"].as_array())
+        .expect("tools/list result must have a tools array");
+    assert!(
+        !tools.is_empty(),
+        "tools/list must return at least one tool (echo_read or echo_write)"
     );
 }

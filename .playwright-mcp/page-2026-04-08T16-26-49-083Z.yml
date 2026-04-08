@@ -1,0 +1,880 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "Skip to main content" [ref=e3] [cursor=pointer]:
+      - /url: "#content-area"
+    - generic [ref=e5]:
+      - generic [ref=e9]:
+        - generic [ref=e12]:
+          - generic [ref=e13]:
+            - link "Model Context Protocol home page light logo" [ref=e14] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e15]: Model Context Protocol home page
+              - img "light logo" [ref=e16]
+            - button "Version 2025-11-25 (latest)" [ref=e18] [cursor=pointer]:
+              - generic [ref=e19]: Version 2025-11-25 (latest)
+              - img [ref=e20]
+          - button "Open search" [ref=e23] [cursor=pointer]:
+            - generic [ref=e24]:
+              - img [ref=e25]
+              - generic [ref=e28]: Search...
+            - generic [ref=e29]: ⌘K
+          - generic [ref=e30]:
+            - navigation [ref=e31]:
+              - list [ref=e32]:
+                - listitem [ref=e33]:
+                  - link "Blog" [ref=e34] [cursor=pointer]:
+                    - /url: https://blog.modelcontextprotocol.io
+                - listitem [ref=e35]:
+                  - link "GitHub" [ref=e36] [cursor=pointer]:
+                    - /url: https://github.com/modelcontextprotocol
+            - button "Toggle dark mode" [ref=e38] [cursor=pointer]:
+              - img [ref=e39]
+        - generic [ref=e47]:
+          - link "Documentation" [ref=e48] [cursor=pointer]:
+            - /url: /docs/getting-started/intro
+            - text: Documentation
+          - link "Extensions" [ref=e50] [cursor=pointer]:
+            - /url: /extensions/overview
+            - text: Extensions
+          - link "Specification" [ref=e52] [cursor=pointer]:
+            - /url: /specification/2025-11-25
+            - text: Specification
+          - link "Registry" [ref=e54] [cursor=pointer]:
+            - /url: /registry/about
+            - text: Registry
+          - link "SEPs" [ref=e56] [cursor=pointer]:
+            - /url: /seps
+            - text: SEPs
+          - link "Community" [ref=e58] [cursor=pointer]:
+            - /url: /community/contributing
+            - text: Community
+      - generic [ref=e60]:
+        - generic [ref=e64]:
+          - list [ref=e65]:
+            - listitem [ref=e66]:
+              - link "Specification" [ref=e67] [cursor=pointer]:
+                - /url: /specification/2025-11-25
+                - generic [ref=e70]: Specification
+          - list [ref=e71]:
+            - listitem [ref=e72]:
+              - link "Key Changes" [ref=e73] [cursor=pointer]:
+                - /url: /specification/2025-11-25/changelog
+                - generic [ref=e76]: Key Changes
+          - list [ref=e77]:
+            - listitem [ref=e78]:
+              - link "Architecture" [ref=e79] [cursor=pointer]:
+                - /url: /specification/2025-11-25/architecture
+                - generic [ref=e82]: Architecture
+          - generic [ref=e83]:
+            - heading "Base Protocol" [level=5] [ref=e85]
+            - list [ref=e86]:
+              - listitem [ref=e87]:
+                - link "Overview" [ref=e88] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/basic
+                  - generic [ref=e91]: Overview
+              - listitem [ref=e92]:
+                - link "Lifecycle" [ref=e93] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/basic/lifecycle
+                  - generic [ref=e96]: Lifecycle
+              - listitem [ref=e97]:
+                - link "Transports" [ref=e98] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/basic/transports
+                  - generic [ref=e101]: Transports
+              - listitem [ref=e102]:
+                - link "Authorization" [ref=e103] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/basic/authorization
+                  - generic [ref=e106]: Authorization
+              - listitem [ref=e107]:
+                - button "Toggle Utilities section" [ref=e108] [cursor=pointer]:
+                  - generic [ref=e109]: Utilities
+                  - img [ref=e110]
+          - generic [ref=e112]:
+            - heading "Client Features" [level=5] [ref=e114]
+            - list [ref=e115]:
+              - listitem [ref=e116]:
+                - link "Roots" [ref=e117] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/client/roots
+                  - generic [ref=e120]: Roots
+              - listitem [ref=e121]:
+                - link "Sampling" [ref=e122] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/client/sampling
+                  - generic [ref=e125]: Sampling
+              - listitem [ref=e126]:
+                - link "Elicitation" [ref=e127] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/client/elicitation
+                  - generic [ref=e130]: Elicitation
+          - generic [ref=e131]:
+            - heading "Server Features" [level=5] [ref=e133]
+            - list [ref=e134]:
+              - listitem [ref=e135]:
+                - link "Overview" [ref=e136] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/server
+                  - generic [ref=e139]: Overview
+              - listitem [ref=e140]:
+                - link "Prompts" [ref=e141] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/server/prompts
+                  - generic [ref=e144]: Prompts
+              - listitem [ref=e145]:
+                - link "Resources" [ref=e146] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/server/resources
+                  - generic [ref=e149]: Resources
+              - listitem [ref=e150]:
+                - link "Tools" [ref=e151] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/server/tools
+                  - generic [ref=e154]: Tools
+              - listitem [ref=e155]:
+                - button "Toggle Utilities section" [ref=e156] [cursor=pointer]:
+                  - generic [ref=e157]: Utilities
+                  - img [ref=e158]
+          - list [ref=e160]:
+            - listitem [ref=e161]:
+              - link "Schema Reference" [ref=e162] [cursor=pointer]:
+                - /url: /specification/2025-11-25/schema
+                - generic [ref=e165]: Schema Reference
+        - generic [ref=e168]:
+          - banner [ref=e169]:
+            - generic [ref=e170]:
+              - generic [ref=e171]: Server Features
+              - generic [ref=e172]:
+                - heading "Tools" [level=1] [ref=e173]
+                - generic [ref=e174]:
+                  - button "Copy page" [ref=e175] [cursor=pointer]:
+                    - generic [ref=e176]:
+                      - img [ref=e177]
+                      - generic [ref=e180]: Copy page
+                  - button "More actions" [ref=e181] [cursor=pointer]:
+                    - img [ref=e182]
+          - generic [ref=e184]:
+            - generic [ref=e185]: The Model Context Protocol (MCP) allows servers to expose tools that can be invoked by language models. Tools enable models to interact with external systems, such as querying databases, calling APIs, or performing computations. Each tool is uniquely identified by a name and includes metadata describing its schema.
+            - heading "Navigate to header User Interaction Model" [level=2] [ref=e186]:
+              - link "Navigate to header" [ref=e187] [cursor=pointer]:
+                - /url: "#user-interaction-model"
+                - img [ref=e189]
+              - generic [ref=e191] [cursor=pointer]: User Interaction Model
+            - generic [ref=e192]:
+              - text: Tools in MCP are designed to be
+              - strong [ref=e193]: model-controlled
+              - text: ", meaning that the language model can discover and invoke tools automatically based on its contextual understanding and the user’s prompts."
+            - generic [ref=e194]: However, implementations are free to expose tools through any interface pattern that suits their needs—the protocol itself does not mandate any specific user interaction model.
+            - generic [ref=e195]:
+              - img "Warning" [ref=e197]
+              - generic [ref=e199]:
+                - generic [ref=e200]:
+                  - text: For trust & safety and security, there
+                  - strong [ref=e201]: SHOULD
+                  - text: always be a human in the loop with the ability to deny tool invocations.
+                - generic [ref=e202]:
+                  - text: Applications
+                  - strong [ref=e203]: SHOULD
+                  - text: ":"
+                - list [ref=e204]:
+                  - listitem [ref=e205]: Provide UI that makes clear which tools are being exposed to the AI model
+                  - listitem [ref=e206]: Insert clear visual indicators when tools are invoked
+                  - listitem [ref=e207]: Present confirmation prompts to the user for operations, to ensure a human is in the loop
+            - heading "Navigate to header Capabilities" [level=2] [ref=e208]:
+              - link "Navigate to header" [ref=e209] [cursor=pointer]:
+                - /url: "#capabilities"
+                - img [ref=e211]
+              - generic [ref=e213] [cursor=pointer]: Capabilities
+            - generic [ref=e214]:
+              - text: Servers that support tools
+              - strong [ref=e215]: MUST
+              - text: declare the
+              - code [ref=e216]: tools
+              - text: "capability:"
+            - generic [ref=e217]:
+              - button "Copy the contents from the code block" [ref=e220] [cursor=pointer]:
+                - img [ref=e221]
+              - code [ref=e227]:
+                - generic [ref=e228]: "{"
+                - generic [ref=e229]: "\"capabilities\": {"
+                - generic [ref=e230]: "\"tools\": {"
+                - generic [ref=e231]: "\"listChanged\": true"
+                - generic [ref=e232]: "}"
+                - generic [ref=e233]: "}"
+                - generic [ref=e234]: "}"
+            - generic [ref=e235]:
+              - code [ref=e236]: listChanged
+              - text: indicates whether the server will emit notifications when the list of available tools changes.
+            - heading "Navigate to header Protocol Messages" [level=2] [ref=e237]:
+              - link "Navigate to header" [ref=e238] [cursor=pointer]:
+                - /url: "#protocol-messages"
+                - img [ref=e240]
+              - generic [ref=e242] [cursor=pointer]: Protocol Messages
+            - heading "Navigate to header Listing Tools" [level=3] [ref=e243]:
+              - link "Navigate to header" [ref=e244] [cursor=pointer]:
+                - /url: "#listing-tools"
+                - img [ref=e246]
+              - generic [ref=e248] [cursor=pointer]: Listing Tools
+            - generic [ref=e249]:
+              - text: To discover available tools, clients send a
+              - code [ref=e250]: tools/list
+              - text: request. This operation supports
+              - link "pagination" [ref=e251] [cursor=pointer]:
+                - /url: /specification/2025-11-25/server/utilities/pagination
+              - text: .
+            - strong [ref=e253]: "Request:"
+            - generic [ref=e254]:
+              - button "Copy the contents from the code block" [ref=e257] [cursor=pointer]:
+                - img [ref=e258]
+              - code [ref=e264]:
+                - generic [ref=e265]: "{"
+                - generic [ref=e266]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e267]: "\"id\": 1,"
+                - generic [ref=e268]: "\"method\": \"tools/list\","
+                - generic [ref=e269]: "\"params\": {"
+                - generic [ref=e270]: "\"cursor\": \"optional-cursor-value\""
+                - generic [ref=e271]: "}"
+                - generic [ref=e272]: "}"
+            - strong [ref=e274]: "Response:"
+            - generic [ref=e275]:
+              - button "Copy the contents from the code block" [ref=e278] [cursor=pointer]:
+                - img [ref=e279]
+              - code [ref=e285]:
+                - generic [ref=e286]: "{"
+                - generic [ref=e287]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e288]: "\"id\": 1,"
+                - generic [ref=e289]: "\"result\": {"
+                - generic [ref=e290]: "\"tools\": ["
+                - generic [ref=e291]: "{"
+                - generic [ref=e292]: "\"name\": \"get_weather\","
+                - generic [ref=e293]: "\"title\": \"Weather Information Provider\","
+                - generic [ref=e294]: "\"description\": \"Get current weather information for a location\","
+                - generic [ref=e295]: "\"inputSchema\": {"
+                - generic [ref=e296]: "\"type\": \"object\","
+                - generic [ref=e297]: "\"properties\": {"
+                - generic [ref=e298]: "\"location\": {"
+                - generic [ref=e299]: "\"type\": \"string\","
+                - generic [ref=e300]: "\"description\": \"City name or zip code\""
+                - generic [ref=e301]: "}"
+                - generic [ref=e302]: "},"
+                - generic [ref=e303]: "\"required\": [\"location\"]"
+                - generic [ref=e304]: "},"
+                - generic [ref=e305]: "\"icons\": ["
+                - generic [ref=e306]: "{"
+                - generic [ref=e307]: "\"src\": \"https://example.com/weather-icon.png\","
+                - generic [ref=e308]: "\"mimeType\": \"image/png\","
+                - generic [ref=e309]: "\"sizes\": [\"48x48\"]"
+                - generic [ref=e310]: "}"
+                - generic [ref=e311]: "],"
+                - generic [ref=e312]: "\"execution\": {"
+                - generic [ref=e313]: "\"taskSupport\": \"optional\""
+                - generic [ref=e314]: "}"
+                - generic [ref=e315]: "}"
+                - generic [ref=e316]: "],"
+                - generic [ref=e317]: "\"nextCursor\": \"next-page-cursor\""
+                - generic [ref=e318]: "}"
+                - generic [ref=e319]: "}"
+            - heading "Navigate to header Calling Tools" [level=3] [ref=e320]:
+              - link "Navigate to header" [ref=e321] [cursor=pointer]:
+                - /url: "#calling-tools"
+                - img [ref=e323]
+              - generic [ref=e325] [cursor=pointer]: Calling Tools
+            - generic [ref=e326]:
+              - text: To invoke a tool, clients send a
+              - code [ref=e327]: tools/call
+              - text: "request:"
+            - strong [ref=e329]: "Request:"
+            - generic [ref=e330]:
+              - button "Copy the contents from the code block" [ref=e333] [cursor=pointer]:
+                - img [ref=e334]
+              - code [ref=e340]:
+                - generic [ref=e341]: "{"
+                - generic [ref=e342]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e343]: "\"id\": 2,"
+                - generic [ref=e344]: "\"method\": \"tools/call\","
+                - generic [ref=e345]: "\"params\": {"
+                - generic [ref=e346]: "\"name\": \"get_weather\","
+                - generic [ref=e347]: "\"arguments\": {"
+                - generic [ref=e348]: "\"location\": \"New York\""
+                - generic [ref=e349]: "}"
+                - generic [ref=e350]: "}"
+                - generic [ref=e351]: "}"
+            - strong [ref=e353]: "Response:"
+            - generic [ref=e354]:
+              - button "Copy the contents from the code block" [ref=e357] [cursor=pointer]:
+                - img [ref=e358]
+              - code [ref=e364]:
+                - generic [ref=e365]: "{"
+                - generic [ref=e366]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e367]: "\"id\": 2,"
+                - generic [ref=e368]: "\"result\": {"
+                - generic [ref=e369]: "\"content\": ["
+                - generic [ref=e370]: "{"
+                - generic [ref=e371]: "\"type\": \"text\","
+                - generic [ref=e372]: "\"text\": \"Current weather in New York:\\nTemperature: 72°F\\nConditions: Partly cloudy\""
+                - generic [ref=e373]: "}"
+                - generic [ref=e374]: "],"
+                - generic [ref=e375]: "\"isError\": false"
+                - generic [ref=e376]: "}"
+                - generic [ref=e377]: "}"
+            - heading "Navigate to header List Changed Notification" [level=3] [ref=e378]:
+              - link "Navigate to header" [ref=e379] [cursor=pointer]:
+                - /url: "#list-changed-notification"
+                - img [ref=e381]
+              - generic [ref=e383] [cursor=pointer]: List Changed Notification
+            - generic [ref=e384]:
+              - text: When the list of available tools changes, servers that declared the
+              - code [ref=e385]: listChanged
+              - text: capability
+              - strong [ref=e386]: SHOULD
+              - text: "send a notification:"
+            - generic [ref=e387]:
+              - button "Copy the contents from the code block" [ref=e390] [cursor=pointer]:
+                - img [ref=e391]
+              - code [ref=e397]:
+                - generic [ref=e398]: "{"
+                - generic [ref=e399]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e400]: "\"method\": \"notifications/tools/list_changed\""
+                - generic [ref=e401]: "}"
+            - heading "Navigate to header Message Flow" [level=2] [ref=e402]:
+              - link "Navigate to header" [ref=e403] [cursor=pointer]:
+                - /url: "#message-flow"
+                - img [ref=e405]
+              - generic [ref=e407] [cursor=pointer]: Message Flow
+            - heading "Navigate to header Data Types" [level=2] [ref=e408]:
+              - link "Navigate to header" [ref=e409] [cursor=pointer]:
+                - /url: "#data-types"
+                - img [ref=e411]
+              - generic [ref=e413] [cursor=pointer]: Data Types
+            - heading "Navigate to header Tool" [level=3] [ref=e414]:
+              - link "Navigate to header" [ref=e415] [cursor=pointer]:
+                - /url: "#tool"
+                - img [ref=e417]
+              - generic [ref=e419] [cursor=pointer]: Tool
+            - generic [ref=e420]: "A tool definition includes:"
+            - list [ref=e421]:
+              - listitem [ref=e422]:
+                - code [ref=e423]: name
+                - text: ": Unique identifier for the tool"
+              - listitem [ref=e424]:
+                - code [ref=e425]: title
+                - text: ": Optional human-readable name of the tool for display purposes."
+              - listitem [ref=e426]:
+                - code [ref=e427]: description
+                - text: ": Human-readable description of functionality"
+              - listitem [ref=e428]:
+                - code [ref=e429]: icons
+                - text: ": Optional array of icons for display in user interfaces"
+              - listitem [ref=e430]:
+                - code [ref=e431]: inputSchema
+                - text: ": JSON Schema defining expected parameters"
+                - list [ref=e432]:
+                  - listitem [ref=e433]:
+                    - text: Follows the
+                    - link "JSON Schema usage guidelines" [ref=e434] [cursor=pointer]:
+                      - /url: /specification/2025-11-25/basic#json-schema-usage
+                  - listitem [ref=e435]:
+                    - text: Defaults to 2020-12 if no
+                    - code [ref=e436]: $schema
+                    - text: field is present
+                  - listitem [ref=e437]:
+                    - strong [ref=e438]: MUST
+                    - text: be a valid JSON Schema object (not
+                    - code [ref=e439]: "null"
+                    - text: )
+                  - listitem [ref=e440]:
+                    - text: "For tools with no parameters, use one of these valid approaches:"
+                    - list [ref=e441]:
+                      - listitem [ref=e442]:
+                        - code [ref=e443]: "{ \"type\": \"object\", \"additionalProperties\": false }"
+                        - text: "-"
+                        - strong [ref=e444]: Recommended
+                        - text: ": explicitly accepts only empty objects"
+                      - listitem [ref=e445]:
+                        - code [ref=e446]: "{ \"type\": \"object\" }"
+                        - text: "- accepts any object (including with properties)"
+              - listitem [ref=e447]:
+                - code [ref=e448]: outputSchema
+                - text: ": Optional JSON Schema defining expected output structure"
+                - list [ref=e449]:
+                  - listitem [ref=e450]:
+                    - text: Follows the
+                    - link "JSON Schema usage guidelines" [ref=e451] [cursor=pointer]:
+                      - /url: /specification/2025-11-25/basic#json-schema-usage
+                  - listitem [ref=e452]:
+                    - text: Defaults to 2020-12 if no
+                    - code [ref=e453]: $schema
+                    - text: field is present
+              - listitem [ref=e454]:
+                - code [ref=e455]: annotations
+                - text: ": Optional properties describing tool behavior"
+              - listitem [ref=e456]:
+                - code [ref=e457]: execution
+                - text: ": Optional object describing execution-related properties"
+                - list [ref=e458]:
+                  - listitem [ref=e459]:
+                    - code [ref=e460]: taskSupport
+                    - text: ": Indicates whether this tool supports"
+                    - link "task-augmented execution" [ref=e461] [cursor=pointer]:
+                      - /url: /specification/2025-11-25/basic/utilities/tasks#tool-level-negotiation
+                    - text: ". Values:"
+                    - code [ref=e462]: "\"forbidden\""
+                    - text: (default),
+                    - code [ref=e463]: "\"optional\""
+                    - text: ", or"
+                    - code [ref=e464]: "\"required\""
+            - generic [ref=e465]:
+              - img "Warning" [ref=e467]
+              - generic [ref=e470]:
+                - text: For trust & safety and security, clients
+                - strong [ref=e471]: MUST
+                - text: consider tool annotations to be untrusted unless they come from trusted servers.
+            - heading "Navigate to header Tool Names" [level=4] [ref=e472]:
+              - link "Navigate to header" [ref=e473] [cursor=pointer]:
+                - /url: "#tool-names"
+                - img [ref=e475]
+              - generic [ref=e477] [cursor=pointer]: Tool Names
+            - list [ref=e478]:
+              - listitem [ref=e479]:
+                - text: Tool names
+                - strong [ref=e480]: SHOULD
+                - text: be between 1 and 128 characters in length (inclusive).
+              - listitem [ref=e481]:
+                - text: Tool names
+                - strong [ref=e482]: SHOULD
+                - text: be considered case-sensitive.
+              - listitem [ref=e483]:
+                - text: The following
+                - strong [ref=e484]: SHOULD
+                - text: "be the only allowed characters: uppercase and lowercase ASCII letters (A-Z, a-z), digits (0-9), underscore (_), hyphen (-), and dot (.)"
+              - listitem [ref=e485]:
+                - text: Tool names
+                - strong [ref=e486]: SHOULD NOT
+                - text: contain spaces, commas, or other special characters.
+              - listitem [ref=e487]:
+                - text: Tool names
+                - strong [ref=e488]: SHOULD
+                - text: be unique within a server.
+              - listitem [ref=e489]:
+                - text: "Example valid tool names:"
+                - list [ref=e490]:
+                  - listitem [ref=e491]: getUser
+                  - listitem [ref=e492]: DATA_EXPORT_v2
+                  - listitem [ref=e493]: admin.tools.list
+            - heading "Navigate to header Tool Result" [level=3] [ref=e494]:
+              - link "Navigate to header" [ref=e495] [cursor=pointer]:
+                - /url: "#tool-result"
+                - img [ref=e497]
+              - generic [ref=e499] [cursor=pointer]: Tool Result
+            - generic [ref=e500]:
+              - text: Tool results may contain
+              - link "structured" [ref=e501] [cursor=pointer]:
+                - /url: "#structured-content"
+                - strong [ref=e502]: structured
+              - text: or
+              - strong [ref=e503]: unstructured
+              - text: content.
+            - generic [ref=e504]:
+              - strong [ref=e505]: Unstructured
+              - text: content is returned in the
+              - code [ref=e506]: content
+              - text: "field of a result, and can contain multiple content items of different types:"
+            - generic [ref=e507]:
+              - img "Note" [ref=e509]
+              - generic [ref=e512]:
+                - text: All content types (text, image, audio, resource links, and embedded resources) support optional
+                - link "annotations" [ref=e513] [cursor=pointer]:
+                  - /url: /specification/2025-11-25/server/resources#annotations
+                - text: that provide metadata about audience, priority, and modification times. This is the same annotation format used by resources and prompts.
+            - heading "Navigate to header Text Content" [level=4] [ref=e514]:
+              - link "Navigate to header" [ref=e515] [cursor=pointer]:
+                - /url: "#text-content"
+                - img [ref=e517]
+              - generic [ref=e519] [cursor=pointer]: Text Content
+            - generic [ref=e520]:
+              - button "Copy the contents from the code block" [ref=e523] [cursor=pointer]:
+                - img [ref=e524]
+              - code [ref=e530]:
+                - generic [ref=e531]: "{"
+                - generic [ref=e532]: "\"type\": \"text\","
+                - generic [ref=e533]: "\"text\": \"Tool result text\""
+                - generic [ref=e534]: "}"
+            - heading "Navigate to header Image Content" [level=4] [ref=e535]:
+              - link "Navigate to header" [ref=e536] [cursor=pointer]:
+                - /url: "#image-content"
+                - img [ref=e538]
+              - generic [ref=e540] [cursor=pointer]: Image Content
+            - generic [ref=e541]:
+              - button "Copy the contents from the code block" [ref=e544] [cursor=pointer]:
+                - img [ref=e545]
+              - code [ref=e551]:
+                - generic [ref=e552]: "{"
+                - generic [ref=e553]: "\"type\": \"image\","
+                - generic [ref=e554]: "\"data\": \"base64-encoded-data\","
+                - generic [ref=e555]: "\"mimeType\": \"image/png\","
+                - generic [ref=e556]: "\"annotations\": {"
+                - generic [ref=e557]: "\"audience\": [\"user\"],"
+                - generic [ref=e558]: "\"priority\": 0.9"
+                - generic [ref=e559]: "}"
+                - generic [ref=e560]: "}"
+            - heading "Navigate to header Audio Content" [level=4] [ref=e561]:
+              - link "Navigate to header" [ref=e562] [cursor=pointer]:
+                - /url: "#audio-content"
+                - img [ref=e564]
+              - generic [ref=e566] [cursor=pointer]: Audio Content
+            - generic [ref=e567]:
+              - button "Copy the contents from the code block" [ref=e570] [cursor=pointer]:
+                - img [ref=e571]
+              - code [ref=e577]:
+                - generic [ref=e578]: "{"
+                - generic [ref=e579]: "\"type\": \"audio\","
+                - generic [ref=e580]: "\"data\": \"base64-encoded-audio-data\","
+                - generic [ref=e581]: "\"mimeType\": \"audio/wav\""
+                - generic [ref=e582]: "}"
+            - heading "Navigate to header Resource Links" [level=4] [ref=e583]:
+              - link "Navigate to header" [ref=e584] [cursor=pointer]:
+                - /url: "#resource-links"
+                - img [ref=e586]
+              - generic [ref=e588] [cursor=pointer]: Resource Links
+            - generic [ref=e589]:
+              - text: A tool
+              - strong [ref=e590]: MAY
+              - text: return links to
+              - link "Resources" [ref=e591] [cursor=pointer]:
+                - /url: /specification/2025-11-25/server/resources
+              - text: ", to provide additional context or data. In this case, the tool will return a URI that can be subscribed to or fetched by the client:"
+            - generic [ref=e592]:
+              - button "Copy the contents from the code block" [ref=e595] [cursor=pointer]:
+                - img [ref=e596]
+              - code [ref=e602]:
+                - generic [ref=e603]: "{"
+                - generic [ref=e604]: "\"type\": \"resource_link\","
+                - generic [ref=e605]: "\"uri\": \"file:///project/src/main.rs\","
+                - generic [ref=e606]: "\"name\": \"main.rs\","
+                - generic [ref=e607]: "\"description\": \"Primary application entry point\","
+                - generic [ref=e608]: "\"mimeType\": \"text/x-rust\""
+                - generic [ref=e609]: "}"
+            - generic [ref=e610]:
+              - text: Resource links support the same
+              - link "Resource annotations" [ref=e611] [cursor=pointer]:
+                - /url: /specification/2025-11-25/server/resources#annotations
+              - text: as regular resources to help clients understand how to use them.
+            - generic [ref=e612]:
+              - img "Info" [ref=e614]
+              - generic [ref=e617]:
+                - text: Resource links returned by tools are not guaranteed to appear in the results of a
+                - code [ref=e618]: resources/list
+                - text: request.
+            - heading "Navigate to header Embedded Resources" [level=4] [ref=e619]:
+              - link "Navigate to header" [ref=e620] [cursor=pointer]:
+                - /url: "#embedded-resources"
+                - img [ref=e622]
+              - generic [ref=e624] [cursor=pointer]: Embedded Resources
+            - generic [ref=e625]:
+              - link "Resources" [ref=e626] [cursor=pointer]:
+                - /url: /specification/2025-11-25/server/resources
+              - strong [ref=e627]: MAY
+              - text: be embedded to provide additional context or data using a suitable
+              - link "URI scheme" [ref=e628] [cursor=pointer]:
+                - /url: ./resources#common-uri-schemes
+              - text: . Servers that use embedded resources
+              - strong [ref=e629]: SHOULD
+              - text: implement the
+              - code [ref=e630]: resources
+              - text: "capability:"
+            - generic [ref=e631]:
+              - button "Copy the contents from the code block" [ref=e634] [cursor=pointer]:
+                - img [ref=e635]
+              - code [ref=e641]:
+                - generic [ref=e642]: "{"
+                - generic [ref=e643]: "\"type\": \"resource\","
+                - generic [ref=e644]: "\"resource\": {"
+                - generic [ref=e645]: "\"uri\": \"file:///project/src/main.rs\","
+                - generic [ref=e646]: "\"mimeType\": \"text/x-rust\","
+                - generic [ref=e647]: "\"text\": \"fn main() {\\n println!(\\\"Hello world!\\\");\\n}\","
+                - generic [ref=e648]: "\"annotations\": {"
+                - generic [ref=e649]: "\"audience\": [\"user\", \"assistant\"],"
+                - generic [ref=e650]: "\"priority\": 0.7,"
+                - generic [ref=e651]: "\"lastModified\": \"2025-05-03T14:30:00Z\""
+                - generic [ref=e652]: "}"
+                - generic [ref=e653]: "}"
+                - generic [ref=e654]: "}"
+            - generic [ref=e655]:
+              - text: Embedded resources support the same
+              - link "Resource annotations" [ref=e656] [cursor=pointer]:
+                - /url: /specification/2025-11-25/server/resources#annotations
+              - text: as regular resources to help clients understand how to use them.
+            - heading "Navigate to header Structured Content" [level=4] [ref=e657]:
+              - link "Navigate to header" [ref=e658] [cursor=pointer]:
+                - /url: "#structured-content"
+                - img [ref=e660]
+              - generic [ref=e662] [cursor=pointer]: Structured Content
+            - generic [ref=e663]:
+              - strong [ref=e664]: Structured
+              - text: content is returned as a JSON object in the
+              - code [ref=e665]: structuredContent
+              - text: field of a result.
+            - generic [ref=e666]: For backwards compatibility, a tool that returns structured content SHOULD also return the serialized JSON in a TextContent block.
+            - heading "Navigate to header Output Schema" [level=4] [ref=e667]:
+              - link "Navigate to header" [ref=e668] [cursor=pointer]:
+                - /url: "#output-schema"
+                - img [ref=e670]
+              - generic [ref=e672] [cursor=pointer]: Output Schema
+            - generic [ref=e673]: "Tools may also provide an output schema for validation of structured results. If an output schema is provided:"
+            - list [ref=e674]:
+              - listitem [ref=e675]:
+                - text: Servers
+                - strong [ref=e676]: MUST
+                - text: provide structured results that conform to this schema.
+              - listitem [ref=e677]:
+                - text: Clients
+                - strong [ref=e678]: SHOULD
+                - text: validate structured results against this schema.
+            - generic [ref=e679]: "Example tool with output schema:"
+            - generic [ref=e680]:
+              - button "Copy the contents from the code block" [ref=e683] [cursor=pointer]:
+                - img [ref=e684]
+              - code [ref=e690]:
+                - generic [ref=e691]: "{"
+                - generic [ref=e692]: "\"name\": \"get_weather_data\","
+                - generic [ref=e693]: "\"title\": \"Weather Data Retriever\","
+                - generic [ref=e694]: "\"description\": \"Get current weather data for a location\","
+                - generic [ref=e695]: "\"inputSchema\": {"
+                - generic [ref=e696]: "\"type\": \"object\","
+                - generic [ref=e697]: "\"properties\": {"
+                - generic [ref=e698]: "\"location\": {"
+                - generic [ref=e699]: "\"type\": \"string\","
+                - generic [ref=e700]: "\"description\": \"City name or zip code\""
+                - generic [ref=e701]: "}"
+                - generic [ref=e702]: "},"
+                - generic [ref=e703]: "\"required\": [\"location\"]"
+                - generic [ref=e704]: "},"
+                - generic [ref=e705]: "\"outputSchema\": {"
+                - generic [ref=e706]: "\"type\": \"object\","
+                - generic [ref=e707]: "\"properties\": {"
+                - generic [ref=e708]: "\"temperature\": {"
+                - generic [ref=e709]: "\"type\": \"number\","
+                - generic [ref=e710]: "\"description\": \"Temperature in celsius\""
+                - generic [ref=e711]: "},"
+                - generic [ref=e712]: "\"conditions\": {"
+                - generic [ref=e713]: "\"type\": \"string\","
+                - generic [ref=e714]: "\"description\": \"Weather conditions description\""
+                - generic [ref=e715]: "},"
+                - generic [ref=e716]: "\"humidity\": {"
+                - generic [ref=e717]: "\"type\": \"number\","
+                - generic [ref=e718]: "\"description\": \"Humidity percentage\""
+                - generic [ref=e719]: "}"
+                - generic [ref=e720]: "},"
+                - generic [ref=e721]: "\"required\": [\"temperature\", \"conditions\", \"humidity\"]"
+                - generic [ref=e722]: "}"
+                - generic [ref=e723]: "}"
+            - generic [ref=e724]: "Example valid response for this tool:"
+            - generic [ref=e725]:
+              - button "Copy the contents from the code block" [ref=e728] [cursor=pointer]:
+                - img [ref=e729]
+              - code [ref=e735]:
+                - generic [ref=e736]: "{"
+                - generic [ref=e737]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e738]: "\"id\": 5,"
+                - generic [ref=e739]: "\"result\": {"
+                - generic [ref=e740]: "\"content\": ["
+                - generic [ref=e741]: "{"
+                - generic [ref=e742]: "\"type\": \"text\","
+                - generic [ref=e743]: "\"text\": \"{\\\"temperature\\\": 22.5, \\\"conditions\\\": \\\"Partly cloudy\\\", \\\"humidity\\\": 65}\""
+                - generic [ref=e744]: "}"
+                - generic [ref=e745]: "],"
+                - generic [ref=e746]: "\"structuredContent\": {"
+                - generic [ref=e747]: "\"temperature\": 22.5,"
+                - generic [ref=e748]: "\"conditions\": \"Partly cloudy\","
+                - generic [ref=e749]: "\"humidity\": 65"
+                - generic [ref=e750]: "}"
+                - generic [ref=e751]: "}"
+                - generic [ref=e752]: "}"
+            - generic [ref=e753]: "Providing an output schema helps clients and LLMs understand and properly handle structured tool outputs by:"
+            - list [ref=e754]:
+              - listitem [ref=e755]: Enabling strict schema validation of responses
+              - listitem [ref=e756]: Providing type information for better integration with programming languages
+              - listitem [ref=e757]: Guiding clients and LLMs to properly parse and utilize the returned data
+              - listitem [ref=e758]: Supporting better documentation and developer experience
+            - heading "Navigate to header Schema Examples" [level=3] [ref=e759]:
+              - link "Navigate to header" [ref=e760] [cursor=pointer]:
+                - /url: "#schema-examples"
+                - img [ref=e762]
+              - generic [ref=e764] [cursor=pointer]: Schema Examples
+            - heading "Navigate to header Tool with default 2020-12 schema:" [level=4] [ref=e765]:
+              - link "Navigate to header" [ref=e766] [cursor=pointer]:
+                - /url: "#tool-with-default-2020-12-schema"
+                - img [ref=e768]
+              - generic [ref=e770] [cursor=pointer]: "Tool with default 2020-12 schema:"
+            - generic [ref=e771]:
+              - button "Copy the contents from the code block" [ref=e774] [cursor=pointer]:
+                - img [ref=e775]
+              - code [ref=e781]:
+                - generic [ref=e782]: "{"
+                - generic [ref=e783]: "\"name\": \"calculate_sum\","
+                - generic [ref=e784]: "\"description\": \"Add two numbers\","
+                - generic [ref=e785]: "\"inputSchema\": {"
+                - generic [ref=e786]: "\"type\": \"object\","
+                - generic [ref=e787]: "\"properties\": {"
+                - generic [ref=e788]: "\"a\": { \"type\": \"number\" },"
+                - generic [ref=e789]: "\"b\": { \"type\": \"number\" }"
+                - generic [ref=e790]: "},"
+                - generic [ref=e791]: "\"required\": [\"a\", \"b\"]"
+                - generic [ref=e792]: "}"
+                - generic [ref=e793]: "}"
+            - heading "Navigate to header Tool with explicit draft-07 schema:" [level=4] [ref=e794]:
+              - link "Navigate to header" [ref=e795] [cursor=pointer]:
+                - /url: "#tool-with-explicit-draft-07-schema"
+                - img [ref=e797]
+              - generic [ref=e799] [cursor=pointer]: "Tool with explicit draft-07 schema:"
+            - generic [ref=e800]:
+              - button "Copy the contents from the code block" [ref=e803] [cursor=pointer]:
+                - img [ref=e804]
+              - code [ref=e810]:
+                - generic [ref=e811]: "{"
+                - generic [ref=e812]: "\"name\": \"calculate_sum\","
+                - generic [ref=e813]: "\"description\": \"Add two numbers\","
+                - generic [ref=e814]: "\"inputSchema\": {"
+                - generic [ref=e815]: "\"$schema\": \"http://json-schema.org/draft-07/schema#\","
+                - generic [ref=e816]: "\"type\": \"object\","
+                - generic [ref=e817]: "\"properties\": {"
+                - generic [ref=e818]: "\"a\": { \"type\": \"number\" },"
+                - generic [ref=e819]: "\"b\": { \"type\": \"number\" }"
+                - generic [ref=e820]: "},"
+                - generic [ref=e821]: "\"required\": [\"a\", \"b\"]"
+                - generic [ref=e822]: "}"
+                - generic [ref=e823]: "}"
+            - heading "Navigate to header Tool with no parameters:" [level=4] [ref=e824]:
+              - link "Navigate to header" [ref=e825] [cursor=pointer]:
+                - /url: "#tool-with-no-parameters"
+                - img [ref=e827]
+              - generic [ref=e829] [cursor=pointer]: "Tool with no parameters:"
+            - generic [ref=e830]:
+              - button "Copy the contents from the code block" [ref=e833] [cursor=pointer]:
+                - img [ref=e834]
+              - code [ref=e840]:
+                - generic [ref=e841]: "{"
+                - generic [ref=e842]: "\"name\": \"get_current_time\","
+                - generic [ref=e843]: "\"description\": \"Returns the current server time\","
+                - generic [ref=e844]: "\"inputSchema\": {"
+                - generic [ref=e845]: "\"type\": \"object\","
+                - generic [ref=e846]: "\"additionalProperties\": false"
+                - generic [ref=e847]: "}"
+                - generic [ref=e848]: "}"
+            - heading "Navigate to header Error Handling" [level=2] [ref=e849]:
+              - link "Navigate to header" [ref=e850] [cursor=pointer]:
+                - /url: "#error-handling"
+                - img [ref=e852]
+              - generic [ref=e854] [cursor=pointer]: Error Handling
+            - generic [ref=e855]: "Tools use two error reporting mechanisms:"
+            - list [ref=e856]:
+              - listitem [ref=e857]:
+                - generic [ref=e858]:
+                  - strong [ref=e859]: Protocol Errors
+                  - text: ": Standard JSON-RPC errors for issues like:"
+                - list [ref=e860]:
+                  - listitem [ref=e861]: Unknown tools
+                  - listitem [ref=e862]:
+                    - text: Malformed requests (requests that fail to satisfy
+                    - link "CallToolRequest schema" [ref=e863] [cursor=pointer]:
+                      - /url: /specification/2025-11-25/schema#calltoolrequest
+                    - text: )
+                  - listitem [ref=e864]: Server errors
+              - listitem [ref=e865]:
+                - generic [ref=e866]:
+                  - strong [ref=e867]: Tool Execution Errors
+                  - text: ": Reported in tool results with"
+                  - code [ref=e868]: "isError: true"
+                  - text: ":"
+                - list [ref=e869]:
+                  - listitem [ref=e870]: API failures
+                  - listitem [ref=e871]: Input validation errors (e.g., date in wrong format, value out of range)
+                  - listitem [ref=e872]: Business logic errors
+            - generic [ref=e873]:
+              - strong [ref=e874]: Tool Execution Errors
+              - text: contain actionable feedback that language models can use to self-correct and retry with adjusted parameters.
+              - strong [ref=e875]: Protocol Errors
+              - text: indicate issues with the request structure itself that models are less likely to be able to fix. Clients
+              - strong [ref=e876]: SHOULD
+              - text: provide tool execution errors to language models to enable self-correction. Clients
+              - strong [ref=e877]: MAY
+              - text: provide protocol errors to language models, though these are less likely to result in successful recovery.
+            - generic [ref=e878]: "Example protocol error:"
+            - generic [ref=e879]:
+              - button "Copy the contents from the code block" [ref=e882] [cursor=pointer]:
+                - img [ref=e883]
+              - code [ref=e889]:
+                - generic [ref=e890]: "{"
+                - generic [ref=e891]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e892]: "\"id\": 3,"
+                - generic [ref=e893]: "\"error\": {"
+                - generic [ref=e894]: "\"code\": -32602,"
+                - generic [ref=e895]: "\"message\": \"Unknown tool: invalid_tool_name\""
+                - generic [ref=e896]: "}"
+                - generic [ref=e897]: "}"
+            - generic [ref=e898]: "Example tool execution error (input validation):"
+            - generic [ref=e899]:
+              - button "Copy the contents from the code block" [ref=e902] [cursor=pointer]:
+                - img [ref=e903]
+              - code [ref=e909]:
+                - generic [ref=e910]: "{"
+                - generic [ref=e911]: "\"jsonrpc\": \"2.0\","
+                - generic [ref=e912]: "\"id\": 4,"
+                - generic [ref=e913]: "\"result\": {"
+                - generic [ref=e914]: "\"content\": ["
+                - generic [ref=e915]: "{"
+                - generic [ref=e916]: "\"type\": \"text\","
+                - generic [ref=e917]: "\"text\": \"Invalid departure date: must be in the future. Current date is 08/08/2025.\""
+                - generic [ref=e918]: "}"
+                - generic [ref=e919]: "],"
+                - generic [ref=e920]: "\"isError\": true"
+                - generic [ref=e921]: "}"
+                - generic [ref=e922]: "}"
+            - heading "Navigate to header Security Considerations" [level=2] [ref=e923]:
+              - link "Navigate to header" [ref=e924] [cursor=pointer]:
+                - /url: "#security-considerations"
+                - img [ref=e926]
+              - generic [ref=e928] [cursor=pointer]: Security Considerations
+            - list [ref=e929]:
+              - listitem [ref=e930]:
+                - generic [ref=e931]:
+                  - text: Servers
+                  - strong [ref=e932]: MUST
+                  - text: ":"
+                - list [ref=e933]:
+                  - listitem [ref=e934]: Validate all tool inputs
+                  - listitem [ref=e935]: Implement proper access controls
+                  - listitem [ref=e936]: Rate limit tool invocations
+                  - listitem [ref=e937]: Sanitize tool outputs
+              - listitem [ref=e938]:
+                - generic [ref=e939]:
+                  - text: Clients
+                  - strong [ref=e940]: SHOULD
+                  - text: ":"
+                - list [ref=e941]:
+                  - listitem [ref=e942]: Prompt for user confirmation on sensitive operations
+                  - listitem [ref=e943]: Show tool inputs to the user before calling the server, to avoid malicious or accidental data exfiltration
+                  - listitem [ref=e944]: Validate tool results before passing to LLM
+                  - listitem [ref=e945]: Implement timeouts for tool calls
+                  - listitem [ref=e946]: Log tool usage for audit purposes
+          - generic [ref=e948]:
+            - paragraph [ref=e949]: Was this page helpful?
+            - generic [ref=e951]:
+              - button "Yes" [ref=e952] [cursor=pointer]:
+                - img [ref=e953]
+                - generic [ref=e955]: "Yes"
+              - button "No" [ref=e956] [cursor=pointer]:
+                - img [ref=e957]
+                - generic [ref=e959]: "No"
+          - generic [ref=e960]:
+            - link "Resources" [ref=e961] [cursor=pointer]:
+              - /url: /specification/2025-11-25/server/resources
+              - img [ref=e962]
+              - generic [ref=e964]: Resources
+            - link "Completion" [ref=e965] [cursor=pointer]:
+              - /url: /specification/2025-11-25/server/utilities/completion
+              - generic [ref=e966]: Completion
+              - img [ref=e967]
+          - contentinfo [ref=e969]:
+            - link "github" [ref=e971] [cursor=pointer]:
+              - /url: https://github.com/modelcontextprotocol
+              - generic [ref=e972]: github
+              - img [ref=e973]
+            - generic [ref=e974]:
+              - text: Copyright © Model Context Protocol a Series of LF Projects, LLC.
+              - text: For web site terms of use, trademark policy and other project policies please see
+              - link "https://lfprojects.org" [ref=e975] [cursor=pointer]:
+                - /url: https://lfprojects.org
+              - text: .
+  - alert [ref=e976]

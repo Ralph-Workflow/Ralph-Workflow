@@ -61,6 +61,8 @@ fn test_create_commit_with_specific_files_creates_commit_with_only_selected_file
 
     let repo_dir = tempfile::TempDir::new().expect("create temp git repo dir");
     let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    // Safety guard: ensure this test never mutates the real project repository.
+    test_helpers::assert_repo_is_isolated(&repo);
     let sig = git2::Signature::now("test", "test@test.com").expect("create signature");
 
     // Initial commit so HEAD exists.
@@ -132,6 +134,8 @@ fn test_create_commit_with_specific_files_fails_on_invalid_path() {
 
     let repo_dir = tempfile::TempDir::new().expect("create temp git repo dir");
     let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    // Safety guard: ensure this test never mutates the real project repository.
+    test_helpers::assert_repo_is_isolated(&repo);
     let sig = git2::Signature::now("test", "test@test.com").expect("create signature");
 
     // Initial commit so HEAD exists.
