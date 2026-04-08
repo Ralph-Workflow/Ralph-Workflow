@@ -447,6 +447,97 @@ pub fn format_tokens_suffix(tokens_str: &str) -> String {
     }
 }
 
+/// Format multiline tool output with blank-line normalization and a single truncation summary.
+///
+/// Strips leading/trailing blank lines, collapses interior blank runs, and emits at most
+/// one `...(N more lines)` summary at the end.
+#[must_use]
+pub fn format_tool_output_lines(
+    output: &str,
+    limit: usize,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    let normalized = normalize_blank_lines(output);
+    if normalized.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<&str> = normalized.lines().collect();
+    if lines.len() <= 1 {
+        format_single_line_tool_output(&normalized, limit, prefix, c)
+    } else {
+        format_multiline_tool_output(&lines, limit, prefix, c)
+    }
+}
+
+fn format_single_line_tool_output(
+    output: &str,
+    limit: usize,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    let preview = truncate_text(output, limit);
+    if preview.is_empty() {
+        return String::new();
+    }
+    format!(
+        "{}[{}]{} {}  └─ Output:{} {}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.cyan(),
+        c.reset(),
+        preview
+    )
+}
+
+fn format_multiline_tool_output_header(prefix: &str, c: crate::logger::Colors) -> String {
+    format!(
+        "{}[{}]{} {}  └─ Output:{}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.cyan(),
+        c.reset()
+    )
+}
+
+fn format_tool_content_lines(shown: &[&str], indent: &str, c: crate::logger::Colors) -> String {
+    shown
+        .iter()
+        .map(|line| format!("{}{}{}{}\n", indent, c.dim(), line, c.reset()))
+        .collect()
+}
+
+fn format_tool_truncation_summary(
+    total: usize,
+    cutoff: usize,
+    indent: &str,
+    c: crate::logger::Colors,
+) -> String {
+    let remaining = total - cutoff;
+    if remaining == 0 {
+        String::new()
+    } else {
+        format!("{}{}...({remaining} more lines)\n", indent, c.dim())
+    }
+}
+
+fn format_multiline_tool_output(
+    lines: &[&str],
+    limit: usize,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    use crate::config::truncation::MAX_OUTPUT_LINES;
+    let cutoff = determine_output_cutoff(lines, MAX_OUTPUT_LINES, limit);
+    let indent = format!("{}[{}]{}     ", c.dim(), prefix, c.reset());
+    let header = format_multiline_tool_output_header(prefix, c);
+    let shown = format_tool_content_lines(&lines[..cutoff], &indent, c);
+    let summary = format_tool_truncation_summary(lines.len(), cutoff, &indent, c);
+    format!("{header}{shown}{summary}")
+}
+
 /// Format an unknown JSON event for display in verbose/debug mode.
 ///
 /// This is a generic handler for unknown events that works across all parsers.

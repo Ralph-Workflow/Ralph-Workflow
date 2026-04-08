@@ -14,7 +14,7 @@ pub use accumulator::{ContentType, DeltaAccumulator};
 pub use formatting::{
     determine_output_cutoff, format_cost_suffix, format_dim_continuation_line,
     format_duration_for_display, format_short_hash, format_token_counts, format_tokens_suffix,
-    format_tool_input, format_unknown_json_event, normalize_blank_lines,
+    format_tool_input, format_tool_output_lines, format_unknown_json_event, normalize_blank_lines,
 };
 
 pub type AssistantMessage = claude::AssistantMessage;

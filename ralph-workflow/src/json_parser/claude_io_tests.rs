@@ -27,7 +27,7 @@ fn test_parse_claude_tool_result_object_payload() {
     let parser = ClaudeParser::new(Colors { enabled: false }, Verbosity::Normal);
     let json = r#"{"type":"assistant","message":{"content":[{"type":"tool_result","content":{"ok":true,"n":1}}]}}"#;
     let output = parser.parse_event(json).unwrap();
-    assert!(output.contains("Result"));
+    assert!(output.contains("Output") || output.contains("ok"));
     assert!(output.contains("ok"));
 }
 

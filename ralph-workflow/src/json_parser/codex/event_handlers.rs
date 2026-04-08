@@ -8,7 +8,8 @@ use crate::json_parser::delta_display::{
 };
 use crate::json_parser::terminal::TerminalMode;
 use crate::json_parser::types::{
-    format_dim_continuation_line, format_tool_input, CodexItem, CodexUsage, ContentType,
+    format_dim_continuation_line, format_token_counts, format_tokens_suffix, format_tool_input,
+    CodexItem, CodexUsage, ContentType,
 };
 use crate::logger::{CHECK, CROSS};
 
@@ -200,8 +201,10 @@ pub fn handle_turn_completed(ctx: &EventHandlerContext<'_>, usage: Option<CodexU
     } else {
         String::new()
     };
+    let tokens_str = format_token_counts(input, output, 0, 0);
+    let tokens_suffix = format_tokens_suffix(&tokens_str);
     format!(
-        "{}{}[{}]{} {}{} Turn completed{} {}(in:{} out:{}){}\n",
+        "{}{}[{}]{} {}{} Turn completed{}{}{}{}\n",
         completion,
         ctx.colors.dim(),
         ctx.display_name,
@@ -210,8 +213,7 @@ pub fn handle_turn_completed(ctx: &EventHandlerContext<'_>, usage: Option<CodexU
         CHECK,
         ctx.colors.reset(),
         ctx.colors.dim(),
-        input,
-        output,
+        tokens_suffix,
         ctx.colors.reset()
     )
 }
