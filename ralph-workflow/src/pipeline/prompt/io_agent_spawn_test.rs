@@ -145,6 +145,17 @@ pub fn run_with_agent_spawn_with_monitor_config(
     let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
         std::sync::Arc::clone(&runtime.executor_arc);
 
+    // Mirror production wiring: create a shared tool-activity flag so parser events (tool-start,
+    // tool-complete) suppress or resume the idle-timeout monitor during long tool operations.
+    let tool_active = Arc::new(AtomicBool::new(false));
+    let tool_active_for_check = Arc::clone(&tool_active);
+    let tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>> =
+        Some(Arc::new(move || {
+            tool_active_for_check.load(std::sync::atomic::Ordering::Acquire)
+        }));
+    let tool_activity_tracker: Option<crate::pipeline::prompt::io::streaming::ToolActivityTracker> =
+        Some(Arc::clone(&tool_active));
+
     let mut monitor_handle: Option<std::thread::JoinHandle<MonitorResult>> =
         Some(std::thread::spawn(move || {
             let result = monitor_idle_timeout_with_interval_and_kill_config_and_observer(
@@ -162,6 +173,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
                     completion_check: None,
 
                     partial_completion_check: None,
+                    tool_activity_check,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );
@@ -186,9 +198,14 @@ pub fn run_with_agent_spawn_with_monitor_config(
     }));
 
     let activity_timestamp_for_timeout = activity_timestamp.clone();
-    if let Err(e) =
-        stream_agent_output_from_handle(stdout, cmd, runtime, activity_timestamp, &stdout_cancel)
-    {
+    if let Err(e) = stream_agent_output_from_handle(
+        stdout,
+        cmd,
+        runtime,
+        activity_timestamp,
+        &stdout_cancel,
+        tool_activity_tracker,
+    ) {
         cleanup_after_agent_failure(
             &child_shared,
             &monitor_should_stop,

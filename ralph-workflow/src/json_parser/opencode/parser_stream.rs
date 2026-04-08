@@ -18,9 +18,38 @@ impl OpenCodeParser {
         if output.is_empty() { None } else { Some(output) }
     }
 
+    /// Update the shared tool-activity flag based on the OpenCode event before dispatching.
+    ///
+    /// `step_finish` → clear (step ended, any tool is now done).
+    /// `tool_use` with status "pending"/"running" → set active.
+    /// `tool_use` with status "completed"/"error" → clear.
+    /// All other events → no change.
+    fn apply_tool_activity_for_event(&self, event: &OpenCodeEvent) {
+        match event.event_type.as_str() {
+            "step_finish" => self.clear_tool_active(),
+            "tool_use" => self.apply_tool_use_activity(event),
+            _ => {}
+        }
+    }
+
+    fn apply_tool_use_activity(&self, event: &OpenCodeEvent) {
+        let status = event
+            .part
+            .as_ref()
+            .and_then(|p| p.state.as_ref())
+            .and_then(|s| s.status.as_deref())
+            .unwrap_or("pending");
+        match status {
+            "pending" | "running" => self.set_tool_active(),
+            "completed" | "error" => self.clear_tool_active(),
+            _ => {}
+        }
+    }
+
     fn dispatch_event(&self, event: &OpenCodeEvent, line: &str) -> String {
         let c = &self.colors;
         let prefix = &self.display_name;
+        self.apply_tool_activity_for_event(event);
         match event.event_type.as_str() {
             "step_start" => self.format_step_start_event(event),
             "step_finish" => self.format_step_finish_event(event),

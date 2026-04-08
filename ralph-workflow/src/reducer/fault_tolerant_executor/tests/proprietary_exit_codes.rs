@@ -396,6 +396,165 @@ fn test_rate_limit_error_with_valid_result_file_returns_succeeded_not_rate_limit
     );
 }
 
+/// Analysis drain with exit code 91 and valid development_result.xml → `InvocationSucceeded`
+///
+/// Bug 1 regression: Analysis drain incorrectly returns None for completion_path,
+/// causing exit code 91 (a proprietary stop reason, NOT a timeout) to be
+/// misclassified. With the correct completion_path wiring, a valid result file
+/// must promote the result to success regardless of exit code 91.
+#[test]
+fn test_analysis_drain_exit_code_91_with_valid_result_returns_succeeded() {
+    use crate::interrupt::{
+        interrupt_test_lock, reset_user_interrupted_occurred, take_user_interrupt_request,
+    };
+    let _lock = interrupt_test_lock();
+    let _ = take_user_interrupt_request();
+    reset_user_interrupted_occurred();
+
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    // Valid development_result.xml present — same file Analysis agent writes
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "<ralph-development-result><ralph-status>completed</ralph-status></ralph-development-result>",
+    );
+
+    // Agent exits with exit code 91 (OpenCode proprietary "stop, reason:91")
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "opencode",
+            Ok(crate::executor::AgentCommandResult::failure(91, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Analysis,
+        agent_name: "opencode",
+        cmd_str: "opencode -p",
+        parser_type: JsonParserType::OpenCode,
+        env_vars: &env_vars,
+        prompt: "analyze the changes",
+        display_name: "opencode",
+        log_prefix: ".agent/logs/analysis",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/analysis_1.log",
+        // This is the completion path Analysis drain SHOULD use
+        completion_output_path: Some(Path::new(".agent/tmp/development_result.xml")),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        ),
+        "exit code 91 with valid development_result.xml must return InvocationSucceeded; got: {:?}",
+        result.event
+    );
+}
+
+/// Analysis drain with exit code 91 and no result file → `InvocationFailed`
+///
+/// Bug 1 regression: When no valid result file exists, exit code 91 must NOT be
+/// treated as a timeout. It should be `InvocationFailed` with AgentErrorKind::Error
+/// (or the proprietary error kind for 91).
+#[test]
+fn test_analysis_drain_exit_code_91_without_result_returns_failed_not_timed_out() {
+    use crate::interrupt::{
+        interrupt_test_lock, reset_user_interrupted_occurred, take_user_interrupt_request,
+    };
+    let _lock = interrupt_test_lock();
+    let _ = take_user_interrupt_request();
+    reset_user_interrupted_occurred();
+
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    // No result file present
+    let workspace = MemoryWorkspace::new_test();
+
+    let executor = Arc::new(
+        crate::executor::MockProcessExecutor::new().with_agent_result(
+            "opencode",
+            Ok(crate::executor::AgentCommandResult::failure(91, "")),
+        ),
+    );
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+
+    let mut runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Analysis,
+        agent_name: "opencode",
+        cmd_str: "opencode -p",
+        parser_type: JsonParserType::OpenCode,
+        env_vars: &env_vars,
+        prompt: "analyze the changes",
+        display_name: "opencode",
+        log_prefix: ".agent/logs/analysis",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/analysis_1.log",
+        // Analysis drain currently passes None, which bypasses result file check
+        // After fix, this should be set to DEVELOPMENT_RESULT_XML
+        completion_output_path: Some(Path::new(".agent/tmp/development_result.xml")),
+    };
+
+    let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
+        .expect("executor should never return Err");
+
+    // Must NOT be a timeout — exit code 91 is NOT a timeout signal
+    assert!(
+        !matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::TimedOut { .. })
+        ),
+        "exit code 91 without result file must NOT return TimedOut; got: {:?}",
+        result.event
+    );
+
+    // Must be InvocationFailed
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "exit code 91 without result file must return InvocationFailed; got: {:?}",
+        result.event
+    );
+}
+
 /// Auth failure error in stderr + valid result file → `InvocationSucceeded`
 ///
 /// An authentication failure may appear in stderr even when the agent already

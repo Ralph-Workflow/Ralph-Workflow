@@ -1147,3 +1147,325 @@ fn test_run_with_agent_spawn_logs_stale_active_child_timeout_reason() {
         "structured logger output should explain when stale active child snapshots stop suppressing timeout"
     );
 }
+
+/// Bug 3 regression: A Codex `item.started` event emitted on stdout causes the parser to set
+/// the tool-activity flag, which suppresses the idle-timeout monitor during the quiet period
+/// that follows (e.g. while a file-write tool is executing with no further output).
+///
+/// The test verifies the end-to-end wiring:
+///   parser sees item.started → sets tool_active = true → monitor sees tool_active = true →
+///   suppresses timeout → child eventually exits → result is ProcessCompleted, not TimedOut.
+#[test]
+#[cfg(unix)]
+fn test_codex_item_started_event_suppresses_idle_timeout() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    // Executor that emits a single Codex item.started JSON line then goes quiet.
+    // The child keeps running until `still_running` is set to false.
+    #[derive(Debug)]
+    struct CodexToolStartExecutor {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for CodexToolStartChild {
+        fn id(&self) -> u32 {
+            77777
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+            Ok(Some(ExitStatus::from_raw(0)))
+        }
+    }
+
+    #[derive(Debug)]
+    struct CodexToolStartChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::ProcessExecutor for CodexToolStartExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" && args.contains(&"-KILL") {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Emit a single Codex item.started JSON event on stdout — this causes the Codex
+            // parser to set tool_active = true via apply_tool_activity_for_event().
+            // After this line, stdout closes (EOF). The child keeps running so the monitor
+            // can observe the tool_active flag before the process exits.
+            let codex_item_started = b"{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/test.xml\"}}\n";
+            let stdout =
+                Box::new(Cursor::new(codex_item_started.to_vec())) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(CodexToolStartChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let executor = Arc::new(CodexToolStartExecutor {
+        still_running: Arc::clone(&still_running),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-agent",
+        prompt: "hello",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        // Use Codex parser so item.started events are processed and update the tool-activity flag.
+        parser_type: JsonParserType::Codex,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    // Stop the child shortly after the parser has had time to process the item.started event
+    // and set tool_active = true. With the tool-activity suppressor engaged, the idle monitor
+    // (timeout = ZERO) should not kill the process.
+    let still_running_for_stopper = Arc::clone(&still_running);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        still_running_for_stopper.store(false, Ordering::Release);
+    });
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        // Idle timeout is ZERO — fires immediately unless suppressed.
+        Duration::ZERO,
+        Duration::from_millis(20),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    // The Codex item.started event should have suppressed the idle timeout.
+    // Child exits cleanly → result should be exit code 0, NOT SIGTERM (143).
+    assert_ne!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "Codex item.started event must suppress idle timeout; child should exit cleanly, not be killed"
+    );
+    assert_eq!(
+        result.exit_code, 0,
+        "child should exit with code 0 after item.started suppresses idle timeout"
+    );
+}
+
+/// Bug 3 regression: Once the tool-activity suppressor is cleared (item.completed or
+/// turn.completed received), the idle-timeout monitor resumes normal enforcement.
+///
+/// The test verifies:
+///   item.started sets tool_active = true → timeout suppressed during write
+///   item.completed clears tool_active = false → timeout fires when child is still running and quiet
+#[test]
+#[cfg(unix)]
+fn test_codex_item_completed_clears_suppressor_and_timeout_fires() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct CodexToolCompleteExecutor {
+        still_running: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct CodexToolCompleteChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for CodexToolCompleteChild {
+        fn id(&self) -> u32 {
+            88888
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                Ok(None)
+            } else {
+                Ok(Some(ExitStatus::from_raw(0)))
+            }
+        }
+    }
+
+    impl crate::executor::ProcessExecutor for CodexToolCompleteExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            _args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Emit item.started then immediately item.completed so the tool_active flag
+            // is set and then cleared. After stdout closes, the monitor should time out
+            // because there is no active tool, no file activity, and no output.
+            let events = concat!(
+                "{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/out.xml\"}}\n",
+                "{\"type\":\"item.completed\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/out.xml\"}}\n",
+            );
+            let stdout =
+                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(CodexToolCompleteChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let executor = Arc::new(CodexToolCompleteExecutor {
+        still_running: Arc::clone(&still_running),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-agent",
+        prompt: "hello",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        parser_type: JsonParserType::Codex,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        // Idle timeout is ZERO — fires as soon as tool_active is cleared.
+        Duration::ZERO,
+        Duration::from_millis(5),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(10),
+            Duration::from_millis(1),
+            Duration::from_millis(10),
+            Duration::from_millis(50),
+            Duration::from_millis(10),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    // After item.completed clears the suppressor, the idle timeout should fire and kill
+    // the still-running child via SIGTERM (exit code 143).
+    assert_eq!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "after item.completed clears tool_active, idle timeout must fire and kill the child"
+    );
+}

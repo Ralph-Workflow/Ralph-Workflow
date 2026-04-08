@@ -26,6 +26,10 @@ pub struct ClaudeParser {
     state: ParserState,
     show_streaming_metrics: bool,
     printer: Rc<RefCell<dyn Printable>>,
+    /// Shared flag set while a tool `ContentBlock` is in progress. Cleared on `MessageStop` or
+    /// when the stream ends. Allows the idle-timeout monitor to avoid killing the agent during
+    /// long tool calls (e.g. `Write` tool) that produce no stdout activity.
+    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl ClaudeParser {
@@ -53,6 +57,31 @@ impl ClaudeParser {
             state: ParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
+            tool_activity_tracker: None,
+        }
+    }
+
+    /// Register a shared flag that the idle-timeout monitor polls to detect active tool execution.
+    ///
+    /// Set to `true` when a `ToolUse` content block starts; cleared on `MessageStop` or stream
+    /// end. Prevents idle-timeout kills during long tool operations.
+    pub(crate) fn with_tool_activity_tracker(
+        mut self,
+        tracker: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.tool_activity_tracker = Some(tracker);
+        self
+    }
+
+    fn set_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(true, std::sync::atomic::Ordering::Release);
+        }
+    }
+
+    fn clear_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(false, std::sync::atomic::Ordering::Release);
         }
     }
 
@@ -307,6 +336,11 @@ impl ClaudeParser {
     }
 
     fn handle_content_block_start_with_block(&self, index: u64, block: ContentBlock) -> String {
+        // A ToolUse content block means the agent is actively calling a tool — suppress
+        // idle timeout for the duration. Other block types (Text, etc.) do not set the flag.
+        if matches!(block, ContentBlock::ToolUse { .. }) {
+            self.set_tool_active();
+        }
         self.state.with_session_mut(|session| {
             session.on_content_block_start(index);
             apply_content_block_start_to_session(session, index, &block);
@@ -325,6 +359,9 @@ impl ClaudeParser {
     }
 
     fn handle_message_stop_inner(&self) -> String {
+        // Message ended — any in-flight tool is now complete. Clear the flag so the
+        // idle-timeout monitor can enforce the timeout after the message boundary.
+        self.clear_tool_active();
         self.state
             .with_session_mut(|session| self.handle_message_stop(session))
     }

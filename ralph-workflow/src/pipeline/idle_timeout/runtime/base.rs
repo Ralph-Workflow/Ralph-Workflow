@@ -64,6 +64,20 @@ pub struct MonitorConfig {
     /// never becomes valid XML, the timeout will eventually fire once stdout/stderr
     /// activity also ceases for the required number of idle confirmations.
     pub partial_completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Optional callback to check if an active tool execution is in progress.
+    ///
+    /// When provided, returning `true` suppresses the idle-timeout kill,
+    /// signaling that the agent has an active tool execution in progress
+    /// (e.g., a `write` tool call to create the output file). This is distinct
+    /// from `partial_completion_check` which only checks file existence.
+    ///
+    /// A running tool should suppress idle timeout even if:
+    /// - The output file doesn't exist yet (tool is still writing)
+    /// - No fresh stdout/stderr has been produced
+    ///
+    /// This allows the idle timeout to be suppressed during parser-observable
+    /// tool lifecycle events (tool-start, tool-running, tool-finish, etc.).
+    pub tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl Default for MonitorConfig {
@@ -76,6 +90,7 @@ impl Default for MonitorConfig {
             check_child_processes: true,
             completion_check: None,
             partial_completion_check: None,
+            tool_activity_check: None,
         }
     }
 }
@@ -153,6 +168,7 @@ pub struct MonitorParams<'a> {
     pub check_child_processes: bool,
     pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
     pub partial_completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    pub tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 pub enum EnforcementStep {

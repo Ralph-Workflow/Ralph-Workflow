@@ -111,6 +111,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         check_child_processes: config.check_child_processes,
         completion_check: config.completion_check,
         partial_completion_check: config.partial_completion_check,
+        tool_activity_check: config.tool_activity_check,
     };
     run_monitor_loop(&params)
 }

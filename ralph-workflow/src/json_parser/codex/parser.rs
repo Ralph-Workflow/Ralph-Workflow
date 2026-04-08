@@ -13,6 +13,11 @@ pub struct CodexParser {
     state: CodexParserState,
     show_streaming_metrics: bool,
     printer: SharedPrinter,
+    /// Shared flag set while a tool or item is actively executing. When `Some`, the idle-timeout
+    /// monitor reads this flag to suppress spurious kills during long tool operations (e.g. file
+    /// writes) that produce no stdout. Set on `ItemStarted`, cleared on `ItemCompleted` /
+    /// `TurnCompleted` / `TurnFailed`.
+    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl CodexParser {
@@ -39,6 +44,32 @@ impl CodexParser {
             state: CodexParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
+            tool_activity_tracker: None,
+        }
+    }
+
+    /// Register a shared flag that the idle-timeout monitor polls to detect active tool execution.
+    ///
+    /// When a tool item starts, the flag is set to `true`. When the item completes or the turn
+    /// ends, it is cleared back to `false`. This prevents the idle-timeout monitor from killing
+    /// the agent during long-running writes or other tool calls that produce no stdout.
+    pub(crate) fn with_tool_activity_tracker(
+        mut self,
+        tracker: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.tool_activity_tracker = Some(tracker);
+        self
+    }
+
+    fn set_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(true, std::sync::atomic::Ordering::Release);
+        }
+    }
+
+    fn clear_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(false, std::sync::atomic::Ordering::Release);
         }
     }
 

@@ -965,3 +965,159 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
         "NoResult timeout should reset retry count to 0, not increment"
     );
 }
+
+// ========================================================================
+// PartialResult vs NoResult explicit contrast tests
+// ========================================================================
+
+/// PartialResult timeout on first occurrence keeps the same agent (does not switch).
+///
+/// This is the critical distinction from NoResult: PartialResult means the agent produced
+/// some output before timing out (likely a connectivity issue), so it gets a same-agent
+/// retry first. NoResult switches immediately.
+#[test]
+fn test_partial_result_timeout_first_occurrence_stays_same_agent() {
+    let base_state = create_test_state();
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["agent1".to_string(), "agent2".to_string()],
+            vec![vec![], vec![]],
+            AgentRole::Developer,
+        ),
+        continuation: ContinuationState::with_limits(2, 3, 2),
+        ..base_state
+    };
+
+    let after_timeout = reduce(
+        state,
+        PipelineEvent::agent_timed_out(
+            AgentRole::Developer,
+            AgentName::from("agent1"),
+            TimeoutOutputKind::PartialResult,
+            Some(".agent/logs/developer_0.log".to_string()),
+            None,
+        ),
+    );
+
+    // PartialResult: same agent on first timeout
+    assert_eq!(
+        after_timeout
+            .agent_chain
+            .current_agent()
+            .map(String::as_str),
+        Some("agent1"),
+        "PartialResult first timeout must keep same agent (not switch to agent2)"
+    );
+    assert_eq!(
+        after_timeout.continuation.same_agent_retry_count, 1,
+        "PartialResult timeout must consume one same-agent retry"
+    );
+    assert!(
+        after_timeout.continuation.same_agent_retry_pending,
+        "PartialResult timeout must set same_agent_retry_pending"
+    );
+    // timeout_no_output_agent_switches_total must NOT be incremented for PartialResult
+    assert_eq!(
+        after_timeout.metrics.timeout_no_output_agent_switches_total, 0,
+        "PartialResult timeout must not increment timeout_no_output_agent_switches_total"
+    );
+    // same_agent_retry_attempts_total MUST be incremented
+    assert_eq!(
+        after_timeout.metrics.same_agent_retry_attempts_total, 1,
+        "PartialResult timeout must increment same_agent_retry_attempts_total"
+    );
+}
+
+/// Side-by-side contrast: same state, PartialResult stays on same agent while
+/// NoResult switches immediately. This documents the classification contract.
+///
+/// | Condition            | Agent switch? | Retry budget consumed? | Metric incremented?               |
+/// |----------------------|---------------|------------------------|-----------------------------------|
+/// | PartialResult        | No (retry)    | Yes (+1)               | same_agent_retry_attempts_total   |
+/// | NoResult             | Yes (switch)  | No (reset to 0)        | timeout_no_output_agent_switches_total |
+#[test]
+fn test_partial_result_vs_no_result_timeout_classification_contract() {
+    let make_state = || {
+        let base_state = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Development,
+            agent_chain: AgentChainState::initial().with_agents(
+                vec!["agent1".to_string(), "agent2".to_string()],
+                vec![vec![], vec![]],
+                AgentRole::Developer,
+            ),
+            continuation: ContinuationState::with_limits(2, 3, 2),
+            ..base_state
+        }
+    };
+
+    let after_partial = reduce(
+        make_state(),
+        PipelineEvent::agent_timed_out(
+            AgentRole::Developer,
+            AgentName::from("agent1"),
+            TimeoutOutputKind::PartialResult,
+            Some(".agent/logs/developer_0.log".to_string()),
+            None,
+        ),
+    );
+
+    let after_no_result = reduce(
+        make_state(),
+        PipelineEvent::agent_timed_out(
+            AgentRole::Developer,
+            AgentName::from("agent1"),
+            TimeoutOutputKind::NoResult,
+            None,
+            None,
+        ),
+    );
+
+    // PartialResult: stays same agent, consumes retry budget
+    assert_eq!(
+        after_partial
+            .agent_chain
+            .current_agent()
+            .map(String::as_str),
+        Some("agent1"),
+        "PartialResult must stay on same agent"
+    );
+    assert_eq!(
+        after_partial.continuation.same_agent_retry_count, 1,
+        "PartialResult must increment retry count"
+    );
+    assert_eq!(
+        after_partial.metrics.same_agent_retry_attempts_total, 1,
+        "PartialResult must increment same_agent_retry_attempts_total"
+    );
+    assert_eq!(
+        after_partial.metrics.timeout_no_output_agent_switches_total, 0,
+        "PartialResult must NOT increment timeout_no_output_agent_switches_total"
+    );
+
+    // NoResult: switches to next agent, does NOT consume retry budget
+    assert_eq!(
+        after_no_result
+            .agent_chain
+            .current_agent()
+            .map(String::as_str),
+        Some("agent2"),
+        "NoResult must switch to next agent"
+    );
+    assert_eq!(
+        after_no_result.continuation.same_agent_retry_count, 0,
+        "NoResult must reset retry count to 0"
+    );
+    assert_eq!(
+        after_no_result.metrics.same_agent_retry_attempts_total, 0,
+        "NoResult must NOT increment same_agent_retry_attempts_total"
+    );
+    assert_eq!(
+        after_no_result
+            .metrics
+            .timeout_no_output_agent_switches_total,
+        1,
+        "NoResult must increment timeout_no_output_agent_switches_total"
+    );
+}

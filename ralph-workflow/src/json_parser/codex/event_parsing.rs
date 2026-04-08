@@ -18,7 +18,23 @@ impl CodexParser {
         }
     }
 
+    /// Update the shared tool-activity flag based on the event variant before dispatching.
+    ///
+    /// `ItemStarted` → set active (tool or item began executing).
+    /// `ItemCompleted`, `TurnCompleted`, `TurnFailed` → clear active (work finished or turn ended).
+    /// All other events → no change.
+    fn apply_tool_activity_for_event(&self, event: &CodexEvent) {
+        match event {
+            CodexEvent::ItemStarted { .. } => self.set_tool_active(),
+            CodexEvent::ItemCompleted { .. }
+            | CodexEvent::TurnCompleted { .. }
+            | CodexEvent::TurnFailed { .. } => self.clear_tool_active(),
+            _ => {}
+        }
+    }
+
     fn dispatch_event(&self, event: CodexEvent, line: &str, ctx: &EventHandlerContext<'_>) -> Option<String> {
+        self.apply_tool_activity_for_event(&event);
         match event {
             CodexEvent::ThreadStarted { thread_id } => Self::optional_output(handle_thread_started(ctx, thread_id)),
             CodexEvent::TurnStarted {} => {

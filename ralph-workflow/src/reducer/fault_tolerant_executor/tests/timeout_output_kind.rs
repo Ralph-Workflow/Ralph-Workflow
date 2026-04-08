@@ -433,6 +433,228 @@ fn test_explicit_timeout_with_invalid_result_file_returns_timed_out_partial_resu
     let _ = runtime;
 }
 
+/// Analysis drain: explicit timeout + valid development_result.xml → `InvocationSucceeded`
+///
+/// Bug 2 regression: When the idle timeout monitor fires and kills the process
+/// (explicit timeout_context), but the agent already produced a valid result file,
+/// the result must be promoted to success. The timeout signal is irrelevant noise
+/// when valid work was completed before the kill arrived.
+#[test]
+fn test_analysis_drain_explicit_timeout_with_valid_result_returns_invocation_succeeded() {
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "<ralph-development-result><ralph-status>completed</ralph-status></ralph-development-result>",
+    );
+
+    let executor = Arc::new(crate::executor::MockProcessExecutor::new());
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Analysis,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: crate::agents::JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "analyze the changes",
+        display_name: "claude",
+        log_prefix: ".agent/logs/analysis",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/analysis_1.log",
+        // Analysis drain should use development_result.xml as completion path
+        completion_output_path: Some(Path::new(".agent/tmp/development_result.xml")),
+    };
+
+    let agent_name = crate::common::domain_types::AgentName::from("claude".to_string());
+    let result_with_timeout = crate::pipeline::CommandResult {
+        exit_code: 143,
+        stderr: String::new(),
+        session_id: None,
+        child_status_at_timeout: None,
+        timeout_context: Some(crate::pipeline::types::TimeoutContext {
+            escalated: false,
+            child_status_at_timeout: None,
+        }),
+    };
+
+    let result =
+        classify_nonzero_command_result(result_with_timeout, &exec_config, &agent_name, &runtime);
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        ),
+        "timeout_context=Some with valid development_result.xml must return InvocationSucceeded; got: {:?}",
+        result.event
+    );
+    let _ = runtime;
+}
+
+/// Analysis drain: explicit timeout + no result file → `TimedOut(NoResult)`
+///
+/// Bug 2 regression: When the idle timeout fires and no result file exists,
+/// this is a genuine no-result timeout and must be classified as such.
+#[test]
+fn test_analysis_drain_explicit_timeout_with_no_result_returns_timed_out_no_result() {
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let workspace = MemoryWorkspace::new_test();
+
+    let executor = Arc::new(crate::executor::MockProcessExecutor::new());
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Analysis,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: crate::agents::JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "analyze the changes",
+        display_name: "claude",
+        log_prefix: ".agent/logs/analysis",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/analysis_1.log",
+        completion_output_path: Some(Path::new(".agent/tmp/development_result.xml")),
+    };
+
+    let agent_name = crate::common::domain_types::AgentName::from("claude".to_string());
+    let result_with_timeout = crate::pipeline::CommandResult {
+        exit_code: 143,
+        stderr: String::new(),
+        session_id: None,
+        child_status_at_timeout: None,
+        timeout_context: Some(crate::pipeline::types::TimeoutContext {
+            escalated: false,
+            child_status_at_timeout: None,
+        }),
+    };
+
+    let result =
+        classify_nonzero_command_result(result_with_timeout, &exec_config, &agent_name, &runtime);
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::TimedOut {
+                output_kind: crate::reducer::event::TimeoutOutputKind::NoResult,
+                ..
+            })
+        ),
+        "timeout_context=Some with absent result file must return TimedOut(NoResult); got: {:?}",
+        result.event
+    );
+    let _ = runtime;
+}
+
+/// Analysis drain: explicit timeout + invalid result file → `TimedOut(PartialResult)`
+///
+/// Bug 2 regression: When the idle timeout fires and a file exists but is not
+/// valid XML, the agent started but didn't finish. Must emit PartialResult.
+#[test]
+fn test_analysis_drain_explicit_timeout_with_invalid_result_returns_timed_out_partial_result() {
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "agent started writing but did not finish the XML",
+    );
+
+    let executor = Arc::new(crate::executor::MockProcessExecutor::new());
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Analysis,
+        agent_name: "claude",
+        cmd_str: "claude -p",
+        parser_type: crate::agents::JsonParserType::Claude,
+        env_vars: &env_vars,
+        prompt: "analyze the changes",
+        display_name: "claude",
+        log_prefix: ".agent/logs/analysis",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/analysis_1.log",
+        completion_output_path: Some(Path::new(".agent/tmp/development_result.xml")),
+    };
+
+    let agent_name = crate::common::domain_types::AgentName::from("claude".to_string());
+    let result_with_timeout = crate::pipeline::CommandResult {
+        exit_code: 143,
+        stderr: String::new(),
+        session_id: None,
+        child_status_at_timeout: None,
+        timeout_context: Some(crate::pipeline::types::TimeoutContext {
+            escalated: false,
+            child_status_at_timeout: None,
+        }),
+    };
+
+    let result =
+        classify_nonzero_command_result(result_with_timeout, &exec_config, &agent_name, &runtime);
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::TimedOut {
+                output_kind: crate::reducer::event::TimeoutOutputKind::PartialResult,
+                ..
+            })
+        ),
+        "timeout_context=Some with invalid file must return TimedOut(PartialResult); got: {:?}",
+        result.event
+    );
+    let _ = runtime;
+}
+
 // ── determine_timeout_output_kind unit tests ──────────────────────────────────
 //
 // These tests exercise the helper that classifies timed-out output as NoResult

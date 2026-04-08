@@ -15,6 +15,10 @@ pub struct OpenCodeParser {
     pub(crate) state: OpenCodeParserState,
     show_streaming_metrics: bool,
     printer: SharedPrinter,
+    /// Shared flag set while a tool_use event has status "pending" or "running". Cleared when
+    /// status becomes "completed" or "error", or when a "step_finish" event is received.
+    /// Allows the idle-timeout monitor to avoid killing the agent during active tool execution.
+    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +58,31 @@ impl OpenCodeParser {
             state: OpenCodeParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
+            tool_activity_tracker: None,
+        }
+    }
+
+    /// Register a shared flag that the idle-timeout monitor polls to detect active tool execution.
+    ///
+    /// Set to `true` when a tool_use event with status "pending" or "running" is received.
+    /// Cleared when status becomes "completed" or "error", or on "step_finish".
+    pub(crate) fn with_tool_activity_tracker(
+        mut self,
+        tracker: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        self.tool_activity_tracker = Some(tracker);
+        self
+    }
+
+    pub(super) fn set_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(true, std::sync::atomic::Ordering::Release);
+        }
+    }
+
+    pub(super) fn clear_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(false, std::sync::atomic::Ordering::Release);
         }
     }
 

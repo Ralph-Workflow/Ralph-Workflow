@@ -588,8 +588,26 @@ fn check_partial_completion_suppression(
     }
 }
 
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn check_tool_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
+    let Some(ref check) = params.tool_activity_check else {
+        return false;
+    };
+    if check() {
+        s.reset_idle();
+        eprintln!(
+            "Active tool execution detected during idle timeout; \
+             agent is actively running a tool — continuing monitoring"
+        );
+        true
+    } else {
+        false
+    }
+}
+
 fn any_suppressor_active(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
     check_partial_completion_suppression(params, s)
+        || check_tool_activity_suppression(params, s)
         || check_file_activity_suppression(params, s)
         || activity_resumed_after_file_scan(params, s)
         || child_processes_still_active(params, s)
