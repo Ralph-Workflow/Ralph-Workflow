@@ -37,7 +37,30 @@ use mcp_server::io::{McpServer, ServerState};
 use mcp_server::protocol::JsonRpcRequest;
 use std::path::Path;
 use std::sync::Arc;
-use test_helpers::assert_no_real_git_mutations;
+
+/// Safety guard: verify test path is not inside a real git repository.
+/// Prevents tests from accidentally mutating real project git state.
+fn assert_no_real_git_mutations(path: &Path) {
+    let mut current = path.to_path_buf();
+    loop {
+        if current.join(".git").exists() {
+            panic!(
+                "POLICY VIOLATION: test path '{}' is inside a real git repository at '{}'. \
+                 Tests must use MemoryWorkspace or isolated temp directories outside any repo.",
+                path.display(),
+                current.display()
+            );
+        }
+        let next = std::fs::canonicalize(&current)
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .or_else(|| current.parent().map(|p| p.to_path_buf()));
+        match next {
+            Some(parent) if parent != current => current = parent,
+            _ => break,
+        }
+    }
+}
 
 fn dev_session() -> Arc<AgentSession> {
     Arc::new(AgentSession::for_drain(

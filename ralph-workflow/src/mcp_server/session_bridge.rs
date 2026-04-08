@@ -18,6 +18,7 @@
 //! agent connections.
 
 use crate::agents::session::{AgentSession, AuditRecord as RalphAuditRecord, AuditTrail};
+use crate::mcp_server::capability_mapping::drain_to_access_mode;
 use crate::mcp_server::tool_bridge::{
     build_ralph_tool_registry, RalphAuditSinkAdapter, RalphHostSessionAdapter,
     RalphWorkspaceAdapter,
@@ -83,10 +84,14 @@ impl SessionBridge {
         // Create the audit sink adapter for MCP audit records
         let audit_adapter = Arc::new(RalphAuditSinkAdapter::new());
 
+        // Derive the access mode from the session's drain — per RFC-009:
+        // Planning/Analysis/Review/Fix → ReadOnly; Development/Commit → ReadWrite.
+        let access_mode = drain_to_access_mode(session_arc.drain);
+
         // Create config with workspace root and session ID for audit correlation
         let config = McpServerConfig::new(workspace.root().to_path_buf())
             .with_session_id(session_arc.session_id.as_str().to_string())
-            .with_access_mode(::mcp_server::dispatch::access::AccessMode::ReadWrite);
+            .with_access_mode(access_mode);
 
         // Create the inner session bridge (audit sink passed at start() time)
         let inner = McpSessionBridge::new(host, config, ws, registry);

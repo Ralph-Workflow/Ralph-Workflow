@@ -12,7 +12,13 @@
 
 use crate::common::with_locked_prompt_permissions;
 use crate::test_timeout::with_default_timeout;
+use ralph_workflow::agents::session::SessionDrain;
 use ralph_workflow::agents::AgentRole;
+use ralph_workflow::prompts::template_variables::SessionCapabilities;
+use ralph_workflow::prompts::{
+    prompt_developer_iteration_xsd_retry_with_context, prompt_planning_xsd_retry_with_context,
+    prompt_review_xsd_retry_with_context, TemplateContext,
+};
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::{CheckpointTrigger, PipelineEvent, PipelinePhase};
 use ralph_workflow::reducer::orchestration::determine_next_effect;
@@ -20,10 +26,73 @@ use ralph_workflow::reducer::state::{
     AgentChainState, CommitState, ContinuationState, PipelineState,
 };
 use ralph_workflow::reducer::state_reduction::reduce;
+use ralph_workflow::workspace::MemoryWorkspace;
 
 // ============================================================================
 // PLANNING PHASE XSD RETRY TESTS
 // ============================================================================
+
+#[test]
+fn test_xsd_retry_prompts_enforce_submission_fix_only_contract() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let context = TemplateContext::default();
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
+
+        let planning_prompt = prompt_planning_xsd_retry_with_context(
+            &context,
+            "original prompt",
+            "XSD error: missing element",
+            "<invalid xml",
+            &workspace,
+            session_caps,
+        );
+        assert_retry_prompt_contract(&planning_prompt, "Planning XSD retry");
+
+        let dev_prompt = prompt_developer_iteration_xsd_retry_with_context(
+            &context,
+            "XSD error: invalid element",
+            "<invalid xml",
+            &workspace,
+            false,
+            session_caps,
+        );
+        assert_retry_prompt_contract(&dev_prompt, "Developer XSD retry");
+
+        let review_prompt = prompt_review_xsd_retry_with_context(
+            &context,
+            "XSD error",
+            "<invalid xml",
+            &workspace,
+            session_caps,
+        );
+        assert_retry_prompt_contract(&review_prompt, "Review XSD retry");
+    });
+}
+
+fn assert_retry_prompt_contract(result: &str, label: &str) {
+    assert!(
+        result.contains("SUBMISSION-FIX-ONLY"),
+        "{label} must declare submission-fix-only scope. Got:\n{result}"
+    );
+    assert!(
+        result.contains("REFERENCE ONLY") || result.contains("Reference"),
+        "{label} must label prior artifacts as REFERENCE ONLY. Got:\n{result}"
+    );
+    assert!(
+        result.to_uppercase().contains("PRIMARY OBJECTIVE"),
+        "{label} should emphasize malformed XML as the primary objective. Got:\n{result}"
+    );
+    assert!(
+        result.to_uppercase().contains("DO NOT"),
+        "{label} should include DO NOT section/anti-actions. Got:\n{result}"
+    );
+    assert!(
+        result.contains("malformed") || result.contains("MALFORMED") || result.contains("XML"),
+        "{label} should mention malformed XML focus. Got:\n{result}"
+    );
+}
 
 /// Test that planning XSD validation failure triggers agent re-invocation.
 ///

@@ -144,6 +144,7 @@ pub mod json_parser;
 pub mod language_detector;
 pub mod logger;
 pub mod logging;
+pub mod mcp;
 pub mod mcp_server;
 pub mod monitoring;
 pub mod phases;

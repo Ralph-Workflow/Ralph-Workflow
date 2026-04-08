@@ -2,7 +2,23 @@
 {# Template: developer_iteration_xsd_retry_continuation.txt                      #}
 {# Version: 2.0 - MCP JSON resubmission only                                    #}
 {# ============================================================================ #}
-
+{#                                                                             #}
+{# PURPOSE:                                                                    #}
+{#   Retry prompt when continuation XML validation fails during development.      #}
+{#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
+{#                                                                             #}
+{# VARIABLES:                                                                  #}
+{#   {{XSD_ERROR}} - XSD validation error message (required)                   #}
+{#                                                                             #}
+{# FILES TO READ (REFERENCE ONLY):                                              #}
+{#   .agent/tmp/development_result.xsd - The XSD schema (for structure)       #}
+{#   .agent/tmp/last_output.xml        - Your previous invalid output (for format) #}
+{#                                                                             #}
+{# OUTPUT FORMAT:                                                               #}
+{#   Valid <ralph-development-result> XML conforming to the XSD schema         #}
+{#                                                                             #}
+{# IMPORTANT: All three status values (completed/partial/failed) are valid.    #}
+{# Do NOT omit completed. FR#7 contract requires all three.                   #}
 {{> shared/_unattended_mode}}
 
 {{> shared/_session_capabilities}}
@@ -14,6 +30,8 @@ CONTINUATION VALIDATION FAILED
 ═══════════════════════════════════════════════════════════════════════════════
 
 Your previous continuation submission failed validation.
+
+**THIS IS A SUBMISSION-FIX-ONLY RETRY**
 
 ERROR: {{XSD_ERROR}}
 

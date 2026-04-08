@@ -33,9 +33,10 @@ fn test_missing_implementation_steps() {
     let err = result.unwrap_err();
     assert_eq!(err.error_type, XsdErrorType::MissingRequiredElement);
     assert!(err.element_path.contains("ralph-implementation-steps"));
-    // Verify error message is helpful for reprompting
+    // Verify error message is helpful for reprompting (dumb-agent-proof format)
     let retry_msg = err.format_for_ai_retry();
-    assert!(retry_msg.contains("MISSING REQUIRED ELEMENT"));
+    assert!(retry_msg.contains("What failed"));
+    assert!(retry_msg.contains("Missing required element"));
     assert!(retry_msg.contains("ralph-implementation-steps"));
 }
 

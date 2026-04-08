@@ -233,11 +233,17 @@ pub fn prompt_fix_xsd_retry_with_log(
 
     if !schema_exists && !last_output_exists {
         let prompt_content = format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - FIX ISSUES\n\n\
+            "{diagnostic_prefix}\
+             XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+             **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
              Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please fix the issues described in ISSUES.md.\n\n\
-             Output format: <ralph-fix-result><ralph-summary>Summary</ralph-summary><ralph-fixes-applied>Changes made</ralph-fixes-applied></ralph-fix-result>\n"
+             The schema and previous output files could not be found.\n\n\
+             PRIMARY OBJECTIVE: Fix malformed XML structure - fix root parse errors FIRST.\n\n\
+             DO NOT DO:\n             - Do NOT write any new code\n             - Do NOT modify any source files\n             - Do NOT run any commands\n             - Do NOT do ANY fix/development work\n             - Do NOT change the content/meaning of your response\n\n\
+             This is a PURE XML SYNTAX FIX. Your fix work is done. \
+             The only problem is that your XML output doesn't conform to the schema. \
+             Fix the XML structure, nothing else.\n\n\
+             Output format: <ralph-fix-result><ralph-status>all_issues_addressed|issues_remain|no_issues_found</ralph-status><ralph-summary>Summary</ralph-summary></ralph-fix-result>\n"
         );
         return RenderedTemplate {
             content: prompt_content,
@@ -296,9 +302,20 @@ pub fn prompt_fix_xsd_retry_with_log(
         })
         .unwrap_or_else(|_| {
             let prompt_content = format!(
-                "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
-                 Read .agent/tmp/fix_result.xsd for the schema and .agent/tmp/last_output.xml for your previous output.\n\
-                 Rewrite .agent/tmp/fix_result.xml with valid XML.\n"
+                "XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+                 **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
+                 Error: {xsd_error}\n\n\
+                 REFERENCE ONLY: Read .agent/tmp/fix_result.xsd and .agent/tmp/last_output.xml.\n\
+                 Do NOT redo fix/development work.\n\n\
+                 PRIMARY OBJECTIVE: Fix malformed XML structure - fix root parse errors FIRST.\n\n\
+                 DO NOT DO:\n\
+                 - Do NOT write any new code\n\
+                 - Do NOT modify any source files\n\
+                 - Do NOT run any commands\n\
+                 - Do NOT do ANY fix/development work\n\
+                 - Do NOT change the content/meaning of your response\n\n\
+                 This is a PURE XML SYNTAX FIX. Fix the XML structure to conform to the schema.\n\n\
+                 Output format: <ralph-fix-result><ralph-status>all_issues_addressed|issues_remain|no_issues_found</ralph-status><ralph-summary>Summary</ralph-summary></ralph-fix-result>\n"
             );
             RenderedTemplate {
                 content: prompt_content,
@@ -473,11 +490,17 @@ pub fn prompt_fix_xsd_retry_with_context_files(
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {
         return format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - FIX ISSUES\n\n\
+            "{diagnostic_prefix}\
+             XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+             **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
              Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please fix the issues described in ISSUES.md.\n\n\
-             Output format: <ralph-fix-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-fix-result>\n"
+             The schema and previous output files could not be found.\n\n\
+             PRIMARY OBJECTIVE: Fix malformed XML structure - fix root parse errors FIRST.\n\n\
+             DO NOT DO:\n             - Do NOT write any new code\n             - Do NOT modify any source files\n             - Do NOT run any commands\n             - Do NOT do ANY fix/development work\n             - Do NOT change the content/meaning of your response\n\n\
+             This is a PURE XML SYNTAX FIX. Your fix work is done. \
+             The only problem is that your XML output doesn't conform to the schema. \
+             Fix the XML structure, nothing else.\n\n\
+             Output format: <ralph-fix-result><ralph-status>all_issues_addressed|issues_remain|no_issues_found</ralph-status><ralph-summary>Summary</ralph-summary></ralph-fix-result>\n"
         );
     }
 
@@ -525,9 +548,20 @@ pub fn prompt_fix_xsd_retry_with_context_files(
         .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
-                "Your previous fix failed XSD validation.\n\nError: {xsd_error}\n\n\
-                 Read .agent/tmp/fix_result.xsd for the schema and .agent/tmp/last_output.xml for your previous output.\n\
-                 Please resend your fix in valid XML format conforming to the XSD schema.\n"
+                "XSD VALIDATION FAILED - FIX XML ONLY\n\n\
+                 **THIS IS A SUBMISSION-FIX-ONLY RETRY**\n\n\
+                 Error: {xsd_error}\n\n\
+                 REFERENCE ONLY: Read .agent/tmp/fix_result.xsd and .agent/tmp/last_output.xml.\n\
+                 Do NOT redo fix/development work.\n\n\
+                 PRIMARY OBJECTIVE: Fix malformed XML structure - fix root parse errors FIRST.\n\n\
+                 DO NOT DO:\n\
+                 - Do NOT write any new code\n\
+                 - Do NOT modify any source files\n\
+                 - Do NOT run any commands\n\
+                 - Do NOT do ANY fix/development work\n\
+                 - Do NOT change the content/meaning of your response\n\n\
+                 This is a PURE XML SYNTAX FIX. Fix the XML structure to conform to the schema.\n\n\
+                 Output format: <ralph-fix-result><ralph-status>all_issues_addressed|issues_remain|no_issues_found</ralph-status><ralph-summary>Summary</ralph-summary></ralph-fix-result>\n"
             )
         });
 

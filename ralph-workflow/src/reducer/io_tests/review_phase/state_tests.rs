@@ -273,6 +273,7 @@ fn test_handler_reads_correct_agent_from_state_after_chain_initialized() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             agent_names_from_strings(&reviewers),
+            vec![],
             3,
             1000,
             2.0,
@@ -360,6 +361,7 @@ fn test_full_pipeline_flow_uses_correct_reviewer_agent() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             agent_names_from_strings(&review_agents),
+            vec![],
             3,
             1000,
             2.0,
@@ -442,6 +444,7 @@ fn test_event_loop_state_consistency_for_review_agent() {
     let event = PipelineEvent::agent_chain_initialized(
         crate::agents::AgentDrain::Review,
         agent_names_from_strings(&review_agents),
+        vec![],
         3,
         1000,
         2.0,
@@ -682,6 +685,7 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             agent_names_from_strings(&last_reviewer_agents),
+            vec![],
             3,
             1000,
             2.0,

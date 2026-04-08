@@ -96,9 +96,6 @@ impl Default for GitGuard {
 /// Walks the parent chain from `path` upward looking for a `.git` directory.
 /// If one is found, panics immediately with a `POLICY VIOLATION` message.
 ///
-/// This is the shared canonical git-safety guardrail. All tests that create or
-/// use filesystem paths must call this before performing any git-relevant operations.
-///
 /// # Policy
 ///
 /// Tests must never operate on real git state. This function enforces that
@@ -109,27 +106,7 @@ impl Default for GitGuard {
 ///
 /// Panics with a `POLICY VIOLATION` message if `path` is inside a git repository.
 pub fn assert_not_in_git_repo(path: &Path) {
-    let mut current = path.to_path_buf();
-    loop {
-        if current.join(".git").exists() {
-            panic!(
-                "POLICY VIOLATION: test path '{}' is inside a git repository at '{}'.\n\
-                 Tests must not operate on real git state. Use temp_dir_outside_git() \
-                 to create a safe temporary directory, or ensure your test path is \
-                 outside all git repositories.",
-                path.display(),
-                current.display()
-            );
-        }
-        let parent = current
-            .parent()
-            .filter(|p| *p != current.as_path())
-            .map(|p| p.to_path_buf());
-        match parent {
-            Some(p) => current = p,
-            None => break,
-        }
-    }
+    crate::boundary::assert_not_in_git_repo_impl(path);
 }
 
 /// Create a temporary directory guaranteed to be outside any git repository.
@@ -152,12 +129,7 @@ pub fn assert_not_in_git_repo(path: &Path) {
 /// temp directory, but is checked as a safety invariant).
 #[must_use]
 pub fn temp_dir_outside_git(prefix: &str) -> TempDir {
-    let dir = tempfile::Builder::new()
-        .prefix(prefix)
-        .tempdir()
-        .unwrap_or_else(|e| panic!("temp_dir_outside_git: failed to create temp dir: {e}"));
-    assert_not_in_git_repo(dir.path());
-    dir
+    crate::boundary::temp_dir_outside_git_impl(prefix)
 }
 
 #[cfg(test)]

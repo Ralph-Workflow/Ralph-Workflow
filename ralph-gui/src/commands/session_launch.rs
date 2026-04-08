@@ -12,6 +12,9 @@ fn find_ralph_binary() -> Result<std::path::PathBuf, String> {
     })
 }
 
+#[path = "runtime/session_launch_runtime.rs"]
+mod runtime;
+
 /// Arguments for launching a new unattended Ralph session.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LaunchSessionArgs {
@@ -48,46 +51,22 @@ pub fn launch_ralph_session(args: LaunchSessionArgs) -> Result<String, String> {
     }
 
     // Dry-run mode for tests — skip spawning.
-    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+    if runtime::is_dry_run_enabled() {
         let run_id = uuid::Uuid::new_v4().to_string();
         return Ok(run_id);
     }
 
     let ralph = find_ralph_binary()?;
-
-    let mut cmd = std::process::Command::new(&ralph);
-    cmd.current_dir(&target_pb)
-        .arg("--prompt")
-        .arg(&args.prompt_path)
-        .arg("--developer-iters")
-        .arg(args.developer_iterations.to_string())
-        .arg("--reviewer-passes")
-        .arg(args.reviewer_passes.to_string());
-
-    if let Some(ref dev_agent) = args.developer_agent {
-        cmd.arg("--developer-agent").arg(dev_agent);
-    }
-    if let Some(ref rev_agent) = args.reviewer_agent {
-        cmd.arg("--reviewer-agent").arg(rev_agent);
-    }
-
-    // Spawn detached so the GUI doesn't need to wait for completion.
-    let child = cmd
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn ralph: {e}"))?;
-
-    // Store PID for monitoring.
-    let pid = child.id();
-    let pid_dir = target_pb.join(".agent").join("tmp");
-    if let Err(e) = std::fs::create_dir_all(&pid_dir) {
-        // Non-fatal: PID file is best-effort.
-        eprintln!("Warning: could not create .agent/tmp for PID file: {e}");
-    } else {
-        let _ = std::fs::write(pid_dir.join("gui-pid"), pid.to_string());
-    }
+    let pid = runtime::spawn_launch_process(
+        &ralph,
+        &target_pb,
+        &args.prompt_path,
+        args.developer_iterations,
+        args.reviewer_passes,
+        args.developer_agent.as_deref(),
+        args.reviewer_agent.as_deref(),
+    )?;
+    runtime::store_pid_file(&target_pb, pid);
 
     // Generate a session run_id for the GUI to track this launch.
     let run_id = uuid::Uuid::new_v4().to_string();
@@ -114,22 +93,13 @@ pub fn resume_ralph_session(run_id: String, repo_path: String) -> Result<(), Str
     }
 
     // Dry-run mode for tests.
-    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+    if runtime::is_dry_run_enabled() {
         return Ok(());
     }
 
     let ralph = find_ralph_binary()?;
 
-    std::process::Command::new(&ralph)
-        .current_dir(&target_pb)
-        .arg("--resume")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn ralph --resume: {e}"))?;
-
-    Ok(())
+    runtime::spawn_resume_process(&ralph, &target_pb)
 }
 
 #[cfg(test)]

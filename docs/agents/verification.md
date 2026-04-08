@@ -15,11 +15,11 @@ If verification exposes a pre-existing failure, or if you discover any other pre
 `cargo xtask verify` runs a shared serial preparation step, a serial native-check gate, and then seven concurrent lanes:
 
 - **Phase 0 (serial, warm-run optimization):** Prepare verify cache state once for the full check set. `xtask` precomputes unique scope hashes, native required-check hashes, and the native-scan eligibility hash before any verify check starts, so later cache lookups are O(1) map reads instead of repeated scope traversal in each lane or native-check dispatch.
-- **Phase 1 (serial):** Native checks — Rust function checks (compliance-timeout-wrapper, audit-no-shell-scripts). On unchanged warm runs, `xtask` may satisfy these from the verify cache instead of rescanning the same inputs.
+- **Phase 1 (serial):** Native checks — Rust function checks (compliance-timeout-wrapper, audit-no-shell-scripts, tailwind4-removed-angular-classes, test-utils-items-used-in-tests, dependency-isolation-mcp-server). On unchanged warm runs, `xtask` may satisfy these from the verify cache instead of rescanning the same inputs.
 - **Phase 2 (concurrent):**
   - Lane 1: Native Aho-Corasick scan (pure file I/O, no target/ interaction)
   - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
-  - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
+  - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration, test-mcp-server-lib, test-mcp-server-integration — default target/)
   - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
   - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify) **`--gui` only**
   - Lane 6: Frontend (bun install, lint, test — independent of cargo) **`--gui` only**
@@ -112,11 +112,15 @@ cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-se
 # assumes they're external API). These MUST be placed behind #[cfg(feature = "test-utils")].
 cargo clippy -p ralph-workflow --lib -- -D warnings
 
-# Native check (runs in Phase 1 via `cargo xtask verify`):
+# Native checks (run in Phase 1 via `cargo xtask verify`):
 # audit-test-utils-used-in-tests — ensures every pub item behind
 # #[cfg(feature = "test-utils")] in ralph-workflow/src/ is actually referenced
 # by tests/ or test-helpers/src/. Items with no test-side reference are dead code.
 # Implemented in xtask/src/boundary/test_utils_usage.rs.
+#
+# dependency-isolation-mcp-server — enforces that mcp-server has no transitive
+# dependency on ralph-workflow. The dependency arrow must be strictly one-directional:
+# ralph-workflow → mcp-server. Implemented in xtask/src/boundary/checks.rs.
 
 # Lint xtask runner (runs in parallel group with separate target dir)
 cargo clippy -p xtask --all-targets -- -D warnings
@@ -135,6 +139,10 @@ bun --cwd ralph-gui/ui run test
 cargo test -p xtask
 cargo test -p ralph-gui --lib
 cargo test -p ralph-workflow --lib --all-features
+
+# mcp-server tests (Lane 3, always runs in core-cargo)
+cargo test -p mcp-server --lib
+cargo test -p mcp-server --tests
 
 # Drain/chain architecture changes (named chains, drain bindings, checkpoint drain metadata)
 cargo test -p ralph-workflow agents::config::file::tests
@@ -184,16 +192,16 @@ cargo build --release
 # Custom lints (dylint) - all lints consolidated in ralph_lints
 #
 # IMPORTANT:
-# - Running dylint against the `ralph` binary target can fail the build because the binary uses
-#   `#![deny(warnings)]` (warnings become hard errors).
-# - Run the lint against the `ralph-workflow` *library* target instead.
+# - The xtask dylint runner lints every workspace package except lint crates (e.g. *_lints).
+# - It keeps `ralph-workflow` on `--lib` only to avoid known binary-target warning escalation
+#   (`#![deny(warnings)]` in `ralph` binary).
 # - The Makefile automatically ensures nightly toolchain's cargo is used for driver builds,
 #   even when system cargo (Homebrew/apt) is stable.
 #
-# Recommended (library target only):
+# Recommended:
 make dylint
 # or:
-cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
+cargo xtask dylint
 ```
 
 **If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.

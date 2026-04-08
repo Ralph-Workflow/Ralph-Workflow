@@ -44,6 +44,7 @@
 // | model_fallbacks_total               | AgentEvent::ModelFallbackTriggered                        | Model switched for agent                 |
 // | retry_cycles_started_total          | AgentEvent::RetryCycleStarted                             | Chain exhausted, restarting              |
 // | commits_created_total               | CommitEvent::Created                                      | Actual git commit created                |
+// | connectivity_interruptions_total    | AgentEvent::ConnectivityCheckFailed (offline entry only)   | Only on false->true is_offline transition|
 //
 // # How to Add New Metrics
 //
@@ -192,6 +193,15 @@ pub struct RunMetrics {
     /// Total commits created during the run.
     #[serde(default)]
     pub commits_created_total: u32,
+
+    // Connectivity interruption tracking
+    /// Number of times the pipeline entered offline mode (connectivity interruption count).
+    ///
+    /// Incremented exactly once per offline entry (false → true transition of is_offline).
+    /// Does NOT increment for subsequent poll failures within the same offline window.
+    /// Use this to distinguish connectivity interruptions from agent failures in reporting.
+    #[serde(default)]
+    pub connectivity_interruptions_total: u32,
 
     // Config-derived display fields (set once at init, not serialized from events)
     /// Maximum development iterations (from config, for X/Y display).
@@ -394,4 +404,5 @@ impl RunMetrics {
     pub const fn increment_commits_created_total(self) -> Self {
         Self { commits_created_total: self.commits_created_total.saturating_add(1), ..self }
     }
+
 }

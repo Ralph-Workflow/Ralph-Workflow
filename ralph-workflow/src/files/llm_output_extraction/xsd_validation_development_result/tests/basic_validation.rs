@@ -47,6 +47,29 @@ fn test_validate_valid_failed() {
     assert!(elements.is_failed());
 }
 
+/// Regression guard: development_result.xsd MUST always accept exactly three statuses.
+/// FR#7 contract: completed, partial, and failed are ALL required.
+/// If this test fails, the status enum has been accidentally truncated.
+#[test]
+fn test_status_contract_includes_all_three_values() {
+    for status in &["completed", "partial", "failed"] {
+        let xml = format!(
+            "<ralph-development-result>\
+             <ralph-status>{}</ralph-status>\
+             <ralph-summary>test</ralph-summary>\
+             </ralph-development-result>",
+            status
+        );
+        let result = validate_development_result_xml(&xml);
+        assert!(
+            result.is_ok(),
+            "Status '{}' must be valid per FR#7 contract. Got: {:?}",
+            status,
+            result.unwrap_err()
+        );
+    }
+}
+
 #[test]
 fn test_validate_valid_with_all_optional_fields() {
     let xml = r"<ralph-development-result>

@@ -408,19 +408,20 @@ fn test_development_xml_invalid_format_provides_specific_error() {
             "Error should provide actionable suggestion"
         );
 
-        // Verify the error can be formatted for AI retry
+        // Verify the error can be formatted for AI retry (dumb-agent-proof format)
         let formatted_for_ai = error.format_for_ai_retry();
         assert!(
             formatted_for_ai.contains("ralph-summary"),
             "Formatted error should include element name"
         );
+        // New format uses "What failed:" style instead of "expected"/"found"
         assert!(
-            formatted_for_ai.contains("expected"),
-            "Formatted error should include what was expected"
+            formatted_for_ai.contains("What failed"),
+            "Formatted error should use dumb-agent-proof format"
         );
         assert!(
-            formatted_for_ai.contains("found"),
-            "Formatted error should include what was found"
+            formatted_for_ai.contains("How to fix"),
+            "Formatted error should include fix guidance"
         );
     });
 }
@@ -829,19 +830,20 @@ fn test_development_xsd_error_contains_all_required_information() {
         // Verify error has suggestion (how to fix it)
         assert!(!error.suggestion.is_empty(), "Error should have suggestion");
 
-        // Verify format_for_ai_retry produces a complete message
+        // Verify format_for_ai_retry produces a complete message (dumb-agent-proof format)
         let formatted = error.format_for_ai_retry();
         assert!(
             formatted.contains(&error.element_path),
             "Formatted error should include element_path"
         );
+        // New format uses "What failed:" style for dumb-agent-proof contract
         assert!(
-            formatted.contains(&error.expected),
-            "Formatted error should include expected"
+            formatted.contains("What failed"),
+            "Formatted error should use dumb-agent-proof format"
         );
         assert!(
-            formatted.contains(&error.found),
-            "Formatted error should include found"
+            formatted.contains("How to fix"),
+            "Formatted error should include fix guidance"
         );
     });
 }

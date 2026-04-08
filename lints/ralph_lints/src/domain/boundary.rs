@@ -102,6 +102,7 @@ fn nesting_complexity_points(max_nesting_depth: usize) -> usize {
 /// - `delta_display/` — Delta display rendering utilities
 /// - `printer/` — Terminal output (stdout/stderr access)
 /// - `mcp_server/` — MCP server: Unix socket I/O and background thread management
+/// - `main` — Binary entry point: process args, clock reads, environment access
 pub const BOUNDARY_MODULES: &[&str] = &[
     "boundary",
     "claude",
@@ -114,6 +115,7 @@ pub const BOUNDARY_MODULES: &[&str] = &[
     "harness",
     "health",
     "io",
+    "main",
     "mcp_server",
     "opencode",
     "printer",

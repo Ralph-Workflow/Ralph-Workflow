@@ -27,7 +27,32 @@ VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 
 Your previous commit message submission failed validation.
 
+**THIS IS A SUBMISSION-FIX-ONLY RETRY**
+
 ERROR: {{XSD_ERROR}}
+
+═══════════════════════════════════════════════════════════════════════════════
+REFERENCE ONLY (Do not redo task logic)
+═══════════════════════════════════════════════════════════════════════════════
+
+Read these files ONLY to understand expected structure:
+- `{{COMMIT_MESSAGE_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `{{COMMIT_MESSAGE_XML_PATH}}` - Your invalid output (REFERENCE ONLY)
+
+These files are for structure reference only. Do NOT redo commit message
+work from them.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIMARY OBJECTIVE: Fix Malformed XML Structure
+═══════════════════════════════════════════════════════════════════════════════
+
+Your main task is to fix the malformed XML structure. The most common issue
+is malformed XML/root parse errors - fix those FIRST.
+
+Focus on:
+1. Fix malformed XML/root structure first
+2. Fix any remaining XML format issues
+3. Ensure all required elements are present
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL INSTRUCTIONS - READ CAREFULLY

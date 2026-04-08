@@ -34,58 +34,26 @@
     clippy::needless_collect
 )]
 
-use git2::build::CheckoutBuilder;
-use git2::{IndexAddOption, Oid, Repository, Signature, Status, StatusOptions};
-use std::fs;
+use git2::{Oid, Repository};
 use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::OnceLock;
 use tempfile::TempDir;
 
+pub mod boundary;
 pub mod git_guard;
 pub use git_guard::{assert_not_in_git_repo, temp_dir_outside_git, GitGuard};
 pub mod git_safety;
 pub use git_safety::no_real_git_mutation;
 
-static PROJECT_REPO_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
-
-fn project_repo_root() -> Option<&'static Path> {
-    PROJECT_REPO_ROOT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().ok()?;
-            let start = exe.parent()?.to_path_buf();
-            std::iter::successors(Some(start), |p| {
-                p.parent().map(|parent| parent.to_path_buf())
-            })
-            .find(|p| p.join(".git").exists())
-        })
-        .as_deref()
-}
+// ── Project-repo helpers (thin wrappers over boundary) ───────────────────────
 
 /// Enforce that no test operates on the project's real git repository.
 ///
 /// # Panics
 ///
 /// Panics with a policy-violation message if `repo_root` is inside or equal to
-/// the project's own repository root. All test git operations must use isolated temporary
-/// repositories created with `TempDir::new()`.
+/// the project's own repository root.
 pub fn assert_not_project_repo(repo_root: &Path) {
-    let Some(project) = project_repo_root() else {
-        return;
-    };
-    let repo_abs = std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
-    let project_abs = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    let is_project_repo = repo_abs == project_abs || repo_abs.starts_with(&project_abs);
-
-    if is_project_repo {
-        panic!(
-            "POLICY VIOLATION: test attempted to mutate real git repository at {}\n\
-             All tests MUST operate on isolated repositories under std::env::temp_dir().\n\
-             Use test_helpers::init_git_repo() to create an isolated test repository.",
-            repo_abs.display()
-        );
-    }
+    boundary::assert_not_project_repo(repo_root);
 }
 
 /// Enforce that a `Repository` is not the project's real git repository.
@@ -101,54 +69,22 @@ pub fn assert_repo_is_isolated(repo: &Repository) {
 
 /// Enforce that a `Repository` is inside a temporary directory.
 ///
-/// This prevents tests from accidentally creating repos in the project directory
-/// even if TMPDIR is set to a subdirectory of the project.
-///
 /// # Panics
 ///
 /// Panics with a policy-violation message if `repo.workdir()` is not inside
-/// `std::env::temp_dir()`. Uses `canonicalize()` on both paths to resolve
-/// symlinks (important on macOS where `/var/folders` symlinks to `/private/var/folders`).
+/// `std::env::temp_dir()`.
 pub fn assert_repo_is_temp_isolated(repo: &Repository) {
-    let Some(workdir) = repo.workdir() else {
-        return; // Bare repo - skip check
-    };
-
-    let workdir_abs = std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf());
-    let temp_dir_abs =
-        std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
-
-    if !workdir_abs.starts_with(&temp_dir_abs) {
-        panic!(
-            "POLICY VIOLATION: repository workdir '{}' is not inside temp directory '{}'. \
-             All test repositories must be created with TempDir::new() and live under the \
-             system's temp directory. This prevents tests from modifying the project repo \
-             even if TMPDIR is misconfigured. \
-             Workdir canonicalized: '{}', TempDir canonicalized: '{}'",
-            workdir.display(),
-            temp_dir_abs.display(),
-            workdir_abs.display(),
-            temp_dir_abs.display()
-        );
-    }
+    boundary::assert_repo_is_temp_isolated(repo);
 }
 
 /// Capture the HEAD OID of the project repository.
 ///
 /// Returns `None` if the project root cannot be determined or if reading fails.
-/// Uses git2 directly (no subprocess) for fast, reliable reading.
 pub fn capture_project_head_oid() -> Option<String> {
-    let project = project_repo_root()?;
-    let repo = Repository::open(project).ok()?;
-    let head = repo.head().ok()?;
-    let oid = head.target()?;
-    Some(oid.to_string())
+    boundary::capture_project_head_oid()
 }
 
 /// Assert that the project repository's HEAD has not changed since `before` was captured.
-///
-/// This guards against tests creating commits in the real project repository.
-/// Used before and after spawning Ralph processes to ensure no commits were injected.
 ///
 /// # Panics
 ///
@@ -156,7 +92,7 @@ pub fn capture_project_head_oid() -> Option<String> {
 pub fn assert_project_head_unchanged(before: &Option<String>) {
     let after = match capture_project_head_oid() {
         Some(oid) => oid,
-        None => return, // Cannot read HEAD — skip check gracefully
+        None => return,
     };
     if before.as_ref() != Some(&after) {
         panic!(
@@ -168,9 +104,6 @@ pub fn assert_project_head_unchanged(before: &Option<String>) {
 }
 
 /// Policy: assert that a repository is allowed to receive git mutations.
-///
-/// This function is called by `commit_all()` and `git_commit_all()` before performing
-/// any mutation. It verifies the repository is isolated from the project repo.
 ///
 /// # Panics
 ///
@@ -185,34 +118,12 @@ pub fn assert_git_mutation_allowed(repo: &Repository) {
 ///
 /// On construction, captures the HEAD OID of the project repository.
 /// On drop, asserts the HEAD has not changed.
-///
-/// This provides fail-fast detection of any test that creates commits
-/// in the real project repository without requiring per-test assertions.
-///
-/// # Example
-///
-/// ```ignore
-/// #[test]
-/// fn my_test() {
-///     let _guard = GitMutationGuard::new();
-///     // Any commit_all() or git_commit_all() that targets the real project repo
-///     // will now panic when the guard drops.
-/// }
-/// ```
-///
-/// # Panics
-///
-/// Panics on drop if HEAD changed between construction and destruction,
-/// indicating a test created a commit in the real project repository.
 pub struct GitMutationGuard {
     before_head: Option<String>,
 }
 
 impl GitMutationGuard {
     /// Create a new guard, capturing the current project HEAD.
-    ///
-    /// If the project root cannot be determined, the guard becomes a no-op
-    /// (returns None) since we cannot verify isolation anyway.
     #[must_use]
     pub fn new() -> Option<Self> {
         Some(Self {
@@ -233,8 +144,9 @@ impl Drop for GitMutationGuard {
     }
 }
 
+// ── Git operation wrappers (policy check + boundary delegation) ───────────────
+
 /// Create an isolated config file in the test directory.
-/// This prevents user config from interfering with tests.
 ///
 /// # Panics
 ///
@@ -242,26 +154,10 @@ impl Drop for GitMutationGuard {
 /// - If config file write fails
 #[must_use]
 pub fn create_isolated_config(dir: &Path) -> std::path::PathBuf {
-    let config_home = dir.join(".config");
-    fs::create_dir_all(&config_home).expect("create config home");
-    fs::write(
-        config_home.join("ralph-workflow.toml"),
-        r#"[agent_chain]
-developer = ["codex"]
-reviewer = ["codex"]
-"#,
-    )
-    .expect("write ralph-workflow.toml");
-    config_home
+    boundary::create_isolated_config(dir)
 }
 
 /// Initialize a git repository in a temporary directory.
-///
-/// This function:
-/// 1. Creates a new git repository
-/// 2. Configures user.name and user.email
-/// 3. Creates initial .gitignore and PROMPT.md files
-/// 4. Creates the .agent directory
 ///
 /// # Panics
 ///
@@ -271,37 +167,8 @@ reviewer = ["codex"]
 /// - If directory creation fails
 #[must_use]
 pub fn init_git_repo(dir: &TempDir) -> Repository {
-    // Safety: verify the temp dir is actually isolated before any git operations.
-    // This is the policy enforcement point - it panics if the path is wrong.
     assert_not_project_repo(dir.path());
-    let repo = Repository::init(dir.path()).expect("init git repo");
-
-    // Configure user for libgit2's repo.signature() and Ralph's git_commit().
-    let mut cfg = repo.config().expect("repo config");
-    cfg.set_str("user.name", "Test User")
-        .expect("set user.name");
-    cfg.set_str("user.email", "test@example.com")
-        .expect("set user.email");
-
-    fs::write(dir.path().join(".gitignore"), ".agent/\nPROMPT.md\n").expect("write .gitignore");
-    fs::write(
-        dir.path().join("PROMPT.md"),
-        r#"# Test Requirements
-
-## Goal
-
-Test the Ralph workflow integration.
-
-## Acceptance
-
-- Tests pass successfully
-- No validation errors occur
-"#,
-    )
-    .expect("write PROMPT.md");
-    fs::create_dir_all(dir.path().join(".agent")).expect("create .agent");
-
-    repo
+    boundary::init_git_repo(dir)
 }
 
 /// Write contents to a file, creating parent directories if needed.
@@ -310,12 +177,7 @@ Test the Ralph workflow integration.
 ///
 /// - If file system write fails
 pub fn write_file<P: AsRef<Path>>(path: P, contents: &str) {
-    if let Some(parent) = path.as_ref().parent() {
-        if !parent.as_os_str().is_empty() {
-            let _ = fs::create_dir_all(parent);
-        }
-    }
-    fs::write(path, contents).expect("write file");
+    boundary::write_file(path, contents);
 }
 
 /// Stage all changes and create a commit.
@@ -327,28 +189,8 @@ pub fn write_file<P: AsRef<Path>>(path: P, contents: &str) {
 /// - If commit creation fails
 #[must_use]
 pub fn commit_all(repo: &Repository, message: &str) -> Oid {
-    // Policy enforcement: verify repo is isolated before allowing mutation.
     assert_git_mutation_allowed(repo);
-    stage_all(repo);
-
-    let mut index = repo.index().expect("open index");
-    let tree_id = index.write_tree().expect("write tree");
-    let tree = repo.find_tree(tree_id).expect("find tree");
-
-    let sig = Signature::now("Test User", "test@example.com").expect("signature");
-
-    let commit_oid = match repo.head() {
-        Ok(head) => {
-            let parent = head.peel_to_commit().expect("parent commit");
-            repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])
-                .expect("commit")
-        }
-        Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => repo
-            .commit(Some("HEAD"), &sig, &sig, message, &tree, &[])
-            .expect("initial commit"),
-        Err(e) => panic!("unexpected head error: {e}"),
-    };
-    commit_oid
+    boundary::commit_all(repo, message)
 }
 
 /// Get the HEAD commit OID as a string.
@@ -356,11 +198,7 @@ pub fn commit_all(repo: &Repository, message: &str) -> Oid {
 /// Returns an empty string if there is no HEAD (e.g., empty repository).
 #[must_use]
 pub fn head_oid(repo: &Repository) -> String {
-    repo.head()
-        .ok()
-        .and_then(|h| h.target())
-        .map(|oid| oid.to_string())
-        .unwrap_or_default()
+    boundary::head_oid(repo)
 }
 
 /// Stage all changes in the repository, including deletions.
@@ -371,310 +209,78 @@ pub fn head_oid(repo: &Repository) -> String {
 /// - If status retrieval fails
 pub fn stage_all(repo: &Repository) {
     assert_repo_is_isolated(repo);
-    let mut index = repo.index().expect("open index");
-
-    // Stage deletions explicitly.
-    let mut status_opts = StatusOptions::new();
-    status_opts
-        .include_untracked(true)
-        .recurse_untracked_dirs(true)
-        .include_ignored(false);
-    let statuses = repo.statuses(Some(&mut status_opts)).expect("statuses");
-    for entry in statuses.iter() {
-        if entry.status().contains(Status::WT_DELETED) {
-            if let Some(path) = entry.path() {
-                index
-                    .remove_path(Path::new(path))
-                    .expect("remove deleted path");
-            }
-        }
-    }
-
-    index
-        .add_all(["."], IndexAddOption::DEFAULT, None)
-        .expect("add_all");
-    index.write().expect("write index");
+    boundary::stage_all(repo);
 }
 
 /// Commit all changes using git2 library (no subprocess spawning).
-///
-/// This function uses git2 library APIs directly to create commits without
-/// spawning external git processes. All operations are in-process and mockable.
-/// It stages all changes (including deletions) and creates a commit.
-///
-/// # Arguments
-///
-/// * `repo` - The git repository (must be initialized)
-/// * `message` - The commit message
-///
-/// # Returns
-///
-/// The OID of the created commit.
 ///
 /// # Panics
 ///
 /// - If git operations fail (index write, commit creation, etc.)
 #[must_use]
 pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
-    // Policy enforcement: verify repo is isolated before allowing mutation.
     assert_git_mutation_allowed(repo);
-    // Stage all changes using git2 (same as commit_all, but for git CLI migration)
-    stage_all(repo);
-
-    let mut index = repo.index().expect("open index");
-    let tree_id = index.write_tree().expect("write tree");
-    let tree = repo.find_tree(tree_id).expect("find tree");
-
-    let sig = Signature::now("Test User", "test@example.com").expect("signature");
-
-    // Create commit using git2 API (no subprocess)
-    let commit_oid = match repo.head() {
-        Ok(head) => {
-            let parent = head.peel_to_commit().expect("parent commit");
-            repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])
-                .expect("commit")
-        }
-        Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => {
-            // Initial commit (no HEAD yet)
-            repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[])
-                .expect("initial commit")
-        }
-        Err(e) => panic!("unexpected head error: {e}"),
-    };
-    commit_oid
+    boundary::git_commit_all(repo, message)
 }
 
 /// Switch to a branch using git2 library (no subprocess spawning).
-///
-/// This function uses git2 library APIs to checkout branches directly
-/// without spawning external git processes. It updates HEAD, index, and
-/// working directory to match the target branch.
-///
-/// # Arguments
-///
-/// * `repo` - The git repository
-/// * `branch_name` - The name of branch to checkout (e.g., "main", "feature")
 ///
 /// # Panics
 ///
 /// - If branch cannot be found
 /// - If checkout operations fail
 pub fn git_switch(repo: &Repository, branch_name: &str) {
-    // Policy enforcement: verify repo is isolated before allowing branch switch.
     assert_repo_is_isolated(repo);
-    let branch_ref = format!("refs/heads/{branch_name}");
-    let obj = repo
-        .revparse_single(&branch_ref)
-        .expect("find branch for checkout");
-    let commit = obj.peel_to_commit().expect("peel to commit");
-
-    // Use git2 checkout builder (no subprocess)
-    let mut checkout_builder = CheckoutBuilder::new();
-    checkout_builder
-        .force()
-        .remove_untracked(true)
-        .remove_ignored(true);
-
-    repo.checkout_tree(commit.as_object(), Some(&mut checkout_builder))
-        .expect("checkout tree");
-
-    repo.set_head(&branch_ref).expect("set HEAD");
+    boundary::git_switch(repo, branch_name);
 }
 
 /// Switch to a branch using git2 library with force checkout (no subprocess spawning).
-///
-/// This function uses git2 library APIs to force checkout branches
-/// and update working directory without spawning external git processes.
-/// The force checkout is built into git2's checkout builder.
-///
-/// # Arguments
-///
-/// * `repo` - The git repository
-/// * `branch_name` - The name of branch to switch to
 ///
 /// # Panics
 ///
 /// - If git operations fail
 pub fn git_switch_force(repo: &Repository, branch_name: &str) {
-    // Policy enforcement: verify repo is isolated before allowing force branch switch.
     assert_repo_is_isolated(repo);
-    // Use git2 checkout with force option (built-in, no separate commands)
-    let branch_ref = format!("refs/heads/{branch_name}");
-    let obj = repo
-        .revparse_single(&branch_ref)
-        .expect("find branch for checkout");
-    let commit = obj.peel_to_commit().expect("peel to commit");
-
-    let mut checkout_builder = CheckoutBuilder::new();
-    checkout_builder
-        .force() // This handles checkout-index -f -a behavior
-        .remove_untracked(true)
-        .remove_ignored(true);
-
-    repo.checkout_tree(commit.as_object(), Some(&mut checkout_builder))
-        .expect("checkout tree");
-
-    repo.set_head(&branch_ref).expect("set HEAD");
+    boundary::git_switch_force(repo, branch_name);
 }
 
+// ── Safety guardrails ─────────────────────────────────────────────────────────
+
 /// Fail fast if an MCP test session would allow real git mutation.
-///
-/// Call this at the start of any MCP test that uses a workspace adapter
-/// pointing to a real filesystem path. Panics if the path is inside a real git repo.
-///
-/// # Policy
-///
-/// MCP tool handlers must NEVER trigger real git mutations during tests.
-/// All workspace operations must go through MemoryWorkspace or InMemoryWorkspace.
 pub fn assert_mcp_test_no_real_git(workspace_root: &std::path::Path) {
     assert_no_real_git_state(workspace_root);
 }
 
 /// Fail fast with a policy error if the test would be able to mutate real git state.
 ///
-/// This is the primary safety guardrail required at the start of any test that
-/// performs workspace or filesystem operations. Enforces the non-negotiable policy
-/// that no test may touch real git state.
-///
 /// # Panics
 ///
 /// Panics with a POLICY VIOLATION message if `path` is inside a real (non-temp)
-/// git repository, indicating the test would be able to mutate real git state.
-///
-/// # Example
-///
-/// ```ignore
-/// #[test]
-/// fn my_workspace_test() {
-///     let ws = MemoryWorkspace::new_test();
-///     assert_no_real_git_mutations(ws.root());
-///     // rest of test...
-/// }
-/// ```
+/// git repository.
 pub fn assert_no_real_git_mutations(path: &std::path::Path) {
     assert_no_real_git_state(path);
 }
 
-/// We use atomic increment/decrement to serialize CWD changes in tests.
-/// A value of 0 means unlocked, >0 means locked.
-static CWD_LOCK: AtomicU32 = AtomicU32::new(0);
-
-/// RAII guard to restore the working directory on drop.
-struct DirGuard(std::path::PathBuf);
-
-impl Drop for DirGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.0);
-    }
-}
-
 /// Run a test function in a temporary directory.
-///
-/// This function:
-/// 1. Acquires a global lock to prevent CWD race conditions
-/// 2. Creates a temporary directory
-/// 3. Changes to that directory
-/// 4. Runs the provided test function
-/// 5. Restores the original directory (even on panic)
 ///
 /// # Panics
 ///
-/// If the mutex is poisoned (a previous test panicked while holding it),
-/// this function will clear the poison and continue. This prevents a single
-/// test failure from causing cascading failures.
-///
-/// # Example
-///
-/// ```ignore
-/// use test_helpers::with_temp_cwd;
-///
-/// #[test]
-/// fn test_something() {
-///     with_temp_cwd(|dir| {
-///         // dir is the TempDir, and we're already in it
-///         std::fs::write("test.txt", "hello").unwrap();
-///         assert!(std::path::Path::new("test.txt").exists());
-///     });
-/// }
-/// ```
+/// If the temp directory cannot be created or changed to.
 pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
-    loop {
-        match CWD_LOCK.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-            Ok(_) => break,
-            Err(_) => std::thread::yield_now(),
-        }
-    }
-
-    let dir = TempDir::new().expect("Failed to create temp directory");
-    // Safety assertion: verify temp directory is isolated from project git repo
-    // This prevents accidental git operations on the project repository
-    git_safety::assert_in_isolated_temp_repo(dir.path());
-    let old_dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
-    std::env::set_current_dir(dir.path()).expect("Failed to change to temp directory");
-    let _guard = DirGuard(old_dir);
-
-    f(&dir);
-
-    CWD_LOCK.store(0, Ordering::Release);
+    boundary::with_temp_cwd(f);
 }
 
 /// Fail fast with a policy error if `path` is inside a real (non-temp) git repository.
-///
-/// This function checks that a given path is either not a git repo, or is a git repo
-/// inside a system temp directory (per `std::env::temp_dir()`). Call this at the start
-/// of any test that touches the filesystem to enforce the no-real-git-mutation policy.
-///
-/// # Algorithm
-///
-/// Walks up from `path` checking for a `.git` directory. If found, verifies the
-/// containing directory is inside `std::env::temp_dir()`. If the repo is outside
-/// temp (e.g., the user's project repo), panics with a clear policy violation.
 ///
 /// # Panics
 ///
 /// Panics with a POLICY VIOLATION message if a `.git` directory is found outside
 /// of `std::env::temp_dir()`.
-///
-/// # Example
-///
-/// ```ignore
-/// // At the start of a test:
-/// assert_no_real_git_repo!(workspace.root());
-/// ```
 pub fn assert_no_real_git_repo(path: &std::path::Path) {
-    let mut current = path.to_path_buf();
-
-    loop {
-        if current.join(".git").exists() {
-            let tmp = std::env::temp_dir();
-            assert!(
-                current.starts_with(&tmp),
-                "POLICY VIOLATION: Test attempted to operate on a real git repository at {:?}. \
-                 All tests must use MemoryWorkspace or a git repo inside a temp directory. \
-                 Do NOT use environment variables or feature flags to bypass this requirement.",
-                current
-            );
-            return;
-        }
-
-        let next = std::fs::canonicalize(&current)
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .or_else(|| current.parent().map(|p| p.to_path_buf()));
-
-        match next {
-            Some(parent) if parent != current => current = parent,
-            _ => break,
-        }
-    }
+    boundary::assert_no_real_git_repo_impl(path);
 }
 
-/// Check whether any ancestor of `path` (including `path` itself) is inside a real git
-/// repository (identified by the presence of a `.git` directory).
-///
-/// This is a fail-fast guardrail: any test that attempts to use real git state must
-/// panic immediately with a clear policy error rather than silently succeeding or
-/// corrupting the project's git state.
+/// Fail fast with a policy error if `path` is inside any real git repository.
 ///
 /// # Panics
 ///
@@ -685,27 +291,12 @@ pub fn assert_no_real_git_state(path: &std::path::Path) {
 }
 
 /// RAII guard that prevents tests from using real git state with a workspace.
-///
-/// Constructing a `TestWorkspaceGuard` with a workspace that has a root inside
-/// a real git repository will panic immediately with a POLICY VIOLATION error.
-/// This ensures tests cannot accidentally mutate the project's real git state.
-///
-/// # Example
-///
-/// ```ignore
-/// let guard = TestWorkspaceGuard::new(workspace, workspace.root().to_path_buf());
-/// // Use workspace safely - any git state access will panic
-/// ```
 pub struct TestWorkspaceGuard<W> {
     workspace: W,
 }
 
 impl<W> TestWorkspaceGuard<W> {
     /// Create a new guard for the given workspace.
-    ///
-    /// The `root_hint` parameter specifies the root path to check for real git state.
-    /// This allows guards to be created for workspaces that may not expose their root
-    /// directly, or to explicitly validate the intended root path.
     ///
     /// # Panics
     ///
@@ -722,9 +313,6 @@ impl<W> TestWorkspaceGuard<W> {
 }
 
 /// Trait for workspace types that have a root directory.
-///
-/// This allows `TestWorkspaceGuard` to work with any workspace-like type
-/// without requiring a dependency on ralph-workflow.
 pub trait HasRoot {
     fn root(&self) -> &std::path::Path;
 }
@@ -732,31 +320,23 @@ pub trait HasRoot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     #[should_panic(expected = "POLICY VIOLATION: test path")]
     fn assert_no_real_git_state_panics_on_real_repo_path() {
-        // Use the project repo root as a test case - it contains .git
-        // This test verifies the policy guard works correctly by checking
-        // that it panics with the expected message when given a real git repo path.
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent() // test-helpers/
-            .and_then(|p| p.parent()); // workspace root
+            .parent()
+            .and_then(|p| p.parent());
 
         if let Some(root) = project_root {
-            // Only run if we found a valid project root
-            // The test will panic with POLICY VIOLATION if the path is inside a git repo
             assert_no_real_git_state(root);
-            // If we get here without panicking, the path was not inside a git repo
-            // which is fine for the test - we've verified the function doesn't panic unexpectedly
         }
     }
 
     #[test]
     fn assert_no_real_git_state_does_not_panic_on_temp_path() {
-        // Temp directories are not inside a git repo (unless TMPDIR is misconfigured)
         let temp_path = std::env::temp_dir();
-        // This should not panic
         assert_no_real_git_state(&temp_path);
     }
 
@@ -775,7 +355,6 @@ mod tests {
 
     #[test]
     fn test_workspace_guard_accepts_non_git_workspace() {
-        // TestWorkspaceGuard should accept a workspace with a temp root
         struct FakeWorkspace {
             root: PathBuf,
         }
@@ -789,17 +368,15 @@ mod tests {
         let fake_ws = FakeWorkspace {
             root: temp_dir.path().to_path_buf(),
         };
-        // This should not panic
         let _guard = TestWorkspaceGuard::new(fake_ws, temp_dir.path().to_path_buf());
     }
 
     #[test]
     #[should_panic(expected = "POLICY VIOLATION: test path")]
     fn test_workspace_guard_rejects_real_git_workspace() {
-        // Use the project repo root to verify the guard rejects it
         let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent() // test-helpers/
-            .and_then(|p| p.parent()); // workspace root
+            .parent()
+            .and_then(|p| p.parent());
 
         if let Some(root) = project_root {
             struct FakeWorkspace {
@@ -814,39 +391,28 @@ mod tests {
             let fake_ws = FakeWorkspace {
                 root: root.to_path_buf(),
             };
-            // This should panic because root is inside a real git repo
             let _guard = TestWorkspaceGuard::new(fake_ws, root.to_path_buf());
         }
     }
 
     #[test]
     fn test_git_mutation_guard_detects_real_project_repo() {
-        // Regression test: verify that GitMutationGuard detects when a test
-        // attempts to create commits in the real project repository.
-        //
-        // This test opens the project repo and attempts to create a commit.
-        // The GitMutationGuard should panic when dropped if HEAD changed.
-        let project = project_repo_root();
+        let project = boundary::project_repo_root();
         if project.is_none() {
-            return; // Cannot test without project repo
+            return;
         }
         let repo = Repository::open(project.unwrap()).expect("open project repo");
 
-        // Create guard - captures current HEAD
         let guard = GitMutationGuard::new();
         if guard.is_none() {
-            return; // Cannot test without HEAD access
+            return;
         }
         let _guard = guard.unwrap();
 
-        // Attempting to call commit_all on the project repo would panic.
-        // We use catch_unwind to verify the policy fires correctly.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            // This would panic with POLICY VIOLATION because the repo is the project repo
             let _ = commit_all(&repo, "test commit");
         }));
 
-        // The commit should have panicked, not succeeded
         assert!(
             result.is_err(),
             "commit_all on project repo should panic with POLICY VIOLATION"
@@ -855,23 +421,19 @@ mod tests {
 
     #[test]
     fn test_git_mutation_guard_allows_temp_repo() {
-        // Verify that GitMutationGuard does NOT panic for an isolated temp repo.
         let temp_dir = tempfile::TempDir::new().expect("create temp dir");
         let repo = init_git_repo(&temp_dir);
 
-        // Create guard - captures current HEAD
         let guard = GitMutationGuard::new();
         if guard.is_none() {
-            return; // Cannot test without HEAD access
+            return;
         }
         let _guard = guard.unwrap();
 
-        // This should NOT panic - repo is isolated
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = commit_all(&repo, "test commit in temp repo");
         }));
 
-        // The commit should have succeeded (no panic)
         assert!(
             result.is_ok(),
             "commit_all on temp repo should succeed without panic"

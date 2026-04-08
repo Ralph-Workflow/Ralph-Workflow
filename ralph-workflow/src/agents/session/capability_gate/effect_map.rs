@@ -178,6 +178,9 @@ pub fn required_capabilities(effect: &Effect) -> Vec<Capability> {
         Effect::EvaluateParallelPlan { .. } => vec![],
         Effect::DispatchParallelWorkers { .. } => vec![],
         Effect::InvokeParallelVerifier { .. } => vec![],
+        // Connectivity effects require no capabilities — they are system probes.
+        Effect::CheckNetworkConnectivity => vec![],
+        Effect::PollForConnectivity { .. } => vec![],
     }
 }
 
@@ -271,6 +274,8 @@ pub fn effect_kind(effect: &Effect) -> EffectKind {
         Effect::EvaluateParallelPlan { .. } => EffectKind::System,
         Effect::DispatchParallelWorkers { .. } => EffectKind::System,
         Effect::InvokeParallelVerifier { .. } => EffectKind::AgentInvocation,
+        Effect::CheckNetworkConnectivity => EffectKind::System,
+        Effect::PollForConnectivity { .. } => EffectKind::System,
     }
 }
 
@@ -611,5 +616,9 @@ fn format_effect_name(effect: &Effect) -> String {
         Effect::EvaluateParallelPlan { .. } => "EvaluateParallelPlan".to_string(),
         Effect::DispatchParallelWorkers { .. } => "DispatchParallelWorkers".to_string(),
         Effect::InvokeParallelVerifier { .. } => "InvokeParallelVerifier".to_string(),
+        Effect::CheckNetworkConnectivity => "CheckNetworkConnectivity".to_string(),
+        Effect::PollForConnectivity { interval_ms, .. } => {
+            format!("PollForConnectivity(interval_ms={})", interval_ms)
+        }
     }
 }

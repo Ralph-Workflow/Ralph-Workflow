@@ -206,7 +206,14 @@ fn run_agent_execution(
         return Ok(denied);
     }
     let model_index = resolve_model_index(state, inputs.in_dev_fix);
-    execute_with_config(ctx, &inputs, &cmd_str, &merged_env, model_index)
+    execute_with_config(
+        ctx,
+        &inputs,
+        &cmd_str,
+        &merged_env,
+        model_index,
+        agent_config.json_parser,
+    )
 }
 
 fn resolve_agent_config_and_cmd(
@@ -343,12 +350,13 @@ fn execute_with_config(
     cmd_str: &str,
     merged_env: &std::collections::HashMap<String, String>,
     model_index: usize,
+    parser_type: crate::agents::JsonParserType,
 ) -> Result<crate::reducer::event::PipelineEvent> {
     let config = AgentExecutionConfig {
         role: inputs.role,
         agent_name: inputs.effective_agent,
         cmd_str,
-        parser_type: crate::agents::JsonParserType::default(),
+        parser_type,
         env_vars: merged_env,
         prompt: inputs.effective_prompt,
         display_name: inputs.effective_agent,

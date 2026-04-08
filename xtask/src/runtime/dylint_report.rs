@@ -34,58 +34,22 @@ pub fn run_dylint_capture(repo_root: &Path) -> std::io::Result<String> {
 ///
 /// Extracts errors and groups them by the top-level module in ralph-workflow/src/.
 pub fn parse_dylint_output(output: &str) -> BTreeMap<String, Vec<String>> {
-    let mut errors_by_module: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut current_error = String::new();
-    let mut in_error = false;
+    crate::domain::report::collect_error_blocks(output)
+        .into_iter()
+        .filter_map(map_block_to_entry)
+        .fold(BTreeMap::new(), |mut errors, (module, message)| {
+            errors.entry(module).or_default().push(message);
+            errors
+        })
+}
 
-    for line in output.lines() {
-        // Error/warning starts with these patterns (note: no brackets for dylint)
-        if line.starts_with("error:") || line.starts_with("warning:") {
-            // Save previous error if exists
-            if in_error && !current_error.is_empty() {
-                if let Some(module) = extract_module(&current_error) {
-                    errors_by_module
-                        .entry(module)
-                        .or_default()
-                        .push(current_error.trim().to_string());
-                }
-            }
-
-            // Start new error
-            current_error = String::from(line);
-            current_error.push('\n');
-            in_error = true;
-        } else if in_error {
-            current_error.push_str(line);
-            current_error.push('\n');
-
-            // End of error block is an empty line
-            if line.trim().is_empty() {
-                if !current_error.trim().is_empty() {
-                    if let Some(module) = extract_module(&current_error) {
-                        errors_by_module
-                            .entry(module)
-                            .or_default()
-                            .push(current_error.trim().to_string());
-                    }
-                }
-                current_error.clear();
-                in_error = false;
-            }
-        }
+fn map_block_to_entry(block: String) -> Option<(String, String)> {
+    let trimmed = block.trim();
+    if trimmed.is_empty() {
+        return None;
     }
 
-    // Save last error if exists
-    if in_error && !current_error.trim().is_empty() {
-        if let Some(module) = extract_module(&current_error) {
-            errors_by_module
-                .entry(module)
-                .or_default()
-                .push(current_error.trim().to_string());
-        }
-    }
-
-    errors_by_module
+    extract_module(trimmed).map(|module| (module, trimmed.to_string()))
 }
 
 /// Extract module name from error message.
@@ -94,31 +58,13 @@ pub fn parse_dylint_output(output: &str) -> BTreeMap<String, Vec<String>> {
 ///   --> ralph-workflow/src/MODULE/...
 ///   --> ralph-workflow/src/MODULE.rs
 fn extract_module(error: &str) -> Option<String> {
-    for line in error.lines() {
-        // Look for file path markers
-        if line.contains("-->") || line.contains("ralph-workflow/src/") {
-            if let Some(path_start) = line.find("ralph-workflow/src/") {
-                let path = &line[path_start + 19..]; // Skip "ralph-workflow/src/"
-
-                // Extract module name (first path component)
-                let module = path
-                    .split('/')
-                    .next()
-                    .unwrap_or(path)
-                    .split(':')
-                    .next()
-                    .unwrap_or("")
-                    .trim_end_matches(".rs")
-                    .to_string();
-
-                if !module.is_empty() && module != "lib" && module != "main" {
-                    return Some(module);
-                }
-            }
-        }
-    }
-
-    None
+    error
+        .lines()
+        .filter_map(|line| line.split("ralph-workflow/src/").nth(1))
+        .filter_map(|path| path.split(&['/', ':']).next())
+        .map(|module| module.trim_end_matches(".rs"))
+        .find(|module| !module.is_empty() && module != &"lib" && module != &"main")
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -147,5 +93,20 @@ mod tests {
   --> ralph-workflow/src/banner.rs:10:5"#;
 
         assert_eq!(extract_module(error), Some("banner".to_string()));
+    }
+
+    #[test]
+    fn test_parse_handles_indented_error_start() {
+        let output =
+            " error: `let mut` bindings are forbidden\n  --> ralph-workflow/src/banner.rs:10:5\n\n";
+
+        let parsed = parse_dylint_output(output);
+
+        let errors = parsed
+            .get("banner")
+            .expect("should map the banner module when the error line is indented");
+
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("error: `let mut` bindings are forbidden"));
     }
 }

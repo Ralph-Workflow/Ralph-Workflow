@@ -28,8 +28,10 @@
 )]
 
 mod boundary;
+mod domain;
 mod io;
 mod runtime;
+mod types;
 
 // Re-export for convenient crate-level access
 pub use boundary::{compliance, coverage, dylint, dylint_report, lsp_diagnostics};
@@ -37,33 +39,36 @@ pub use io::cache::CachingCommandRunner;
 pub use io::scanner::{LineIndex, NativeScanCheck, NativeScanCheckResult, NativeScanViolation};
 pub use runtime::verify;
 
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use runtime::process::RealRunner;
 use runtime::verify::{CommandRunner, ProgressReporter, VerifyExitCode};
 
-fn print_verify_failure(report: &verify::VerifyReport) {
-    let Some(failure) = &report.failure else {
-        return;
-    };
+fn print_stream_if_nonempty(label: &str, content: &str) {
+    if !content.trim().is_empty() {
+        eprintln!("--- {label} ---\n{}", content.trim_end());
+    }
+}
 
+fn print_failure_output(failure: &verify::CheckFailure, guidance: Option<&str>) {
     eprintln!(
         "Verification failed: {} ({:?}, exit_code={})",
         failure.name, failure.status, failure.exit_code
     );
-
-    if !failure.stdout.trim().is_empty() {
-        eprintln!("--- stdout ---\n{}", failure.stdout.trim_end());
+    print_stream_if_nonempty("stdout", &failure.stdout);
+    print_stream_if_nonempty("stderr", &failure.stderr);
+    if let Some(g) = guidance {
+        eprintln!("{g}");
     }
+}
 
-    if !failure.stderr.trim().is_empty() {
-        eprintln!("--- stderr ---\n{}", failure.stderr.trim_end());
-    }
-
-    if let Some(guidance) = failure_guidance_message(report) {
-        eprintln!("{guidance}");
-    }
+fn print_verify_failure(report: &verify::VerifyReport) {
+    let Some(failure) = &report.failure else {
+        return;
+    };
+    print_failure_output(failure, failure_guidance_message(report).as_deref());
 }
 
 fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
@@ -95,201 +100,274 @@ fn is_test_check(check_name: &str) -> bool {
     check_name.starts_with("test-") || check_name == "ralph-gui-frontend-test"
 }
 
+// ── Subcommand: verify ────────────────────────────────────────────────────────
+
+fn print_verify_help() {
+    eprintln!("Usage: cargo xtask verify [--gui]");
+    eprintln!();
+    eprintln!("Run all verification checks for the repository.");
+    eprintln!();
+    eprintln!("Options:");
+    eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
+}
+
+fn count_total_checks(include_gui: bool) -> usize {
+    let backend = verify::NATIVE_REQUIRED_CHECKS.len()
+        + 1
+        + verify::FMT_CHECKS.len()
+        + verify::CORE_CARGO_CHECKS.len()
+        + verify::XTASK_CARGO_CHECKS.len()
+        + verify::DYLINT_CHECKS.len();
+    let gui = if include_gui {
+        verify::GUI_CARGO_CHECKS.len()
+            + verify::FRONTEND_INSTALL_CHECKS.len()
+            + verify::FRONTEND_POST_INSTALL_CHECKS.len()
+            + verify::RELEASE_BUILD_CHECKS.len()
+    } else {
+        0
+    };
+    backend + gui
+}
+
+fn build_verify_runner(
+    total_checks: usize,
+) -> (
+    Arc<CachingCommandRunner>,
+    Arc<dyn ProgressReporter>,
+    PathBuf,
+) {
+    let reporter: Arc<dyn ProgressReporter> =
+        Arc::new(verify::StderrProgressReporter::new(total_checks));
+    let real_runner = RealRunner::new(Arc::clone(&reporter));
+    let repo_root = real_runner.repo_root().clone();
+    let runner = Arc::new(io::cache::CachingCommandRunner::new(
+        real_runner,
+        repo_root.clone(),
+    ));
+    (runner, reporter, repo_root)
+}
+
+fn build_backend_groups() -> verify::CheckGroups<'static> {
+    verify::CheckGroups {
+        fmt: verify::FMT_CHECKS,
+        core_cargo: verify::CORE_CARGO_CHECKS,
+        xtask_cargo: verify::XTASK_CARGO_CHECKS,
+        gui_cargo: &[],
+        frontend_install: &[],
+        frontend_post_install: &[],
+        release: verify::DYLINT_CHECKS,
+    }
+}
+
+fn build_gui_groups() -> verify::CheckGroups<'static> {
+    verify::CheckGroups {
+        fmt: &[],
+        core_cargo: &[],
+        xtask_cargo: &[],
+        gui_cargo: verify::GUI_CARGO_CHECKS,
+        frontend_install: verify::FRONTEND_INSTALL_CHECKS,
+        frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
+        release: verify::RELEASE_BUILD_CHECKS,
+    }
+}
+
+fn run_backend_checks(
+    runner: Arc<dyn CommandRunner>,
+    repo_root: &Path,
+    reporter: &dyn ProgressReporter,
+) -> Option<verify::VerifyReport> {
+    match verify::verify_fast_with_options(
+        runner,
+        repo_root,
+        verify::NATIVE_REQUIRED_CHECKS,
+        &build_backend_groups(),
+        reporter,
+        true,
+    ) {
+        Ok(report) => Some(report),
+        Err(err) => {
+            eprintln!("xtask error: {err:#}");
+            None
+        }
+    }
+}
+
+fn run_gui_checks(
+    runner: Arc<dyn CommandRunner>,
+    repo_root: &Path,
+    reporter: &dyn ProgressReporter,
+) -> Option<verify::VerifyReport> {
+    match verify::verify_fast_with_options(
+        runner,
+        repo_root,
+        &[],
+        &build_gui_groups(),
+        reporter,
+        false,
+    ) {
+        Ok(report) => Some(report),
+        Err(err) => {
+            eprintln!("xtask error: {err:#}");
+            None
+        }
+    }
+}
+
+fn run_all_checks(
+    runner: &Arc<CachingCommandRunner>,
+    repo_root: &Path,
+    reporter: &dyn ProgressReporter,
+    include_gui: bool,
+) -> Option<verify::VerifyReport> {
+    let backend_runner: Arc<dyn CommandRunner> = runner.clone();
+    let backend_report = run_backend_checks(backend_runner, repo_root, reporter)?;
+    if backend_report.exit != VerifyExitCode::Success || !include_gui {
+        return Some(backend_report);
+    }
+    let gui_runner: Arc<dyn CommandRunner> = runner.clone();
+    run_gui_checks(gui_runner, repo_root, reporter)
+}
+
+fn finalize_verify(
+    runner: Arc<CachingCommandRunner>,
+    report: verify::VerifyReport,
+    total_checks: usize,
+    verify_start: std::time::Instant,
+) -> ExitCode {
+    let total_elapsed = verify_start.elapsed();
+    runner.flush();
+    if report.exit == VerifyExitCode::Failure {
+        print_verify_failure(&report);
+    }
+    match report.exit {
+        VerifyExitCode::Success => {
+            eprintln!("=== all {total_checks} checks passed in {total_elapsed:.1?} ===");
+            ExitCode::SUCCESS
+        }
+        VerifyExitCode::Failure => ExitCode::from(1),
+    }
+}
+
+fn execute_verify(include_gui: bool) -> ExitCode {
+    let total_checks = count_total_checks(include_gui);
+    let (runner, reporter, repo_root) = build_verify_runner(total_checks);
+    eprintln!("=== cargo xtask verify ===");
+    let verify_start = std::time::Instant::now();
+    match run_all_checks(&runner, &repo_root, reporter.as_ref(), include_gui) {
+        None => ExitCode::from(1),
+        Some(report) => finalize_verify(runner, report, total_checks, verify_start),
+    }
+}
+
+fn run_verify_subcommand(args: &[String]) -> ExitCode {
+    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+        print_verify_help();
+        return ExitCode::SUCCESS;
+    }
+    execute_verify(args.contains(&"--gui".to_string()))
+}
+
+// ── Subcommand: dylint ────────────────────────────────────────────────────────
+
+fn run_dylint_subcommand(args: &[String]) -> ExitCode {
+    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+        eprintln!("Usage: cargo xtask dylint [--verbose] [--package <pkg>]");
+        eprintln!("  --verbose, -v    Show detailed dylint output");
+        return ExitCode::SUCCESS;
+    }
+    let verbose = args.contains(&"--verbose".to_string()) || args.contains(&"-v".to_string());
+    boundary::dylint::run_dylint(verbose)
+}
+
+// ── Subcommand: lsp-forbidden-allow-expect ────────────────────────────────────
+
+fn lsp_exit_code(result: anyhow::Result<bool>) -> ExitCode {
+    match result {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::from(1),
+        Err(err) => {
+            eprintln!("xtask error: {err:#}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn execute_lsp_forbidden_allow_expect() -> ExitCode {
+    match std::env::current_dir() {
+        Ok(repo_root) => lsp_exit_code(lsp_diagnostics::emit_forbidden_allow_expect_to_stdout(
+            &repo_root,
+        )),
+        Err(err) => {
+            eprintln!("xtask error: failed to determine current directory: {err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_lsp_subcommand(args: &[String]) -> ExitCode {
+    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+        eprintln!("Usage: cargo xtask lsp-forbidden-allow-expect");
+        eprintln!(
+            "  Emit Cargo JSON compiler-message diagnostics for the forbidden allow/expect native scan"
+        );
+        return ExitCode::SUCCESS;
+    }
+    execute_lsp_forbidden_allow_expect()
+}
+
+// ── Subcommand: dylint-report ─────────────────────────────────────────────────
+
+fn run_dylint_report_subcommand(args: &[String]) -> ExitCode {
+    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+        eprintln!("Usage: cargo xtask dylint-report");
+        eprintln!("  Generate dylint reports organized by module in tmp/");
+        return ExitCode::SUCCESS;
+    }
+    dylint_report::generate_dylint_report()
+}
+
+// ── Subcommand: coverage ──────────────────────────────────────────────────────
+
+fn run_coverage_subcommand(args: &[String]) -> ExitCode {
+    if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+        eprintln!("Usage: cargo xtask coverage");
+        eprintln!();
+        eprintln!("Run cargo llvm-cov coverage commands in diagnostic mode.");
+        eprintln!();
+        eprintln!("Runs in sequence:");
+        eprintln!("  cargo llvm-cov --all-features --lib -p ralph-workflow --html \\");
+        eprintln!("      --output-dir target/coverage/html");
+        eprintln!("  cargo llvm-cov report --lib -p ralph-workflow");
+        eprintln!();
+        eprintln!("Coverage is diagnostic only — exit is always 0 regardless of result.");
+        eprintln!("This command is NOT a build gate.");
+        return ExitCode::SUCCESS;
+    }
+    coverage::run_coverage()
+}
+
+// ── Dispatch ──────────────────────────────────────────────────────────────────
+
+fn print_usage() -> ExitCode {
+    eprintln!("Usage: cargo xtask verify [--gui]");
+    eprintln!("       cargo xtask dylint [--verbose]");
+    eprintln!("       cargo xtask lsp-forbidden-allow-expect");
+    eprintln!("       cargo xtask dylint-report");
+    eprintln!("       cargo xtask coverage");
+    eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
+    eprintln!("  --verbose, -v    Show detailed dylint output");
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let subcommand = args.first().map(|s| s.as_str());
-
-    match subcommand {
-        Some("verify") => {
-            // Handle help flag
-            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-                eprintln!("Usage: cargo xtask verify [--gui]");
-                eprintln!();
-                eprintln!("Run all verification checks for the repository.");
-                eprintln!();
-                eprintln!("Options:");
-                eprintln!(
-                    "  --gui    Also run GUI cargo, Angular frontend, and release build checks"
-                );
-                return ExitCode::SUCCESS;
-            }
-            let include_gui = args.contains(&"--gui".to_string());
-            let backend_checks = verify::NATIVE_REQUIRED_CHECKS.len()
-                + 1
-                + verify::FMT_CHECKS.len()
-                + verify::CORE_CARGO_CHECKS.len()
-                + verify::XTASK_CARGO_CHECKS.len()
-                + verify::DYLINT_CHECKS.len();
-            let gui_checks = if include_gui {
-                verify::GUI_CARGO_CHECKS.len()
-                    + verify::FRONTEND_INSTALL_CHECKS.len()
-                    + verify::FRONTEND_POST_INSTALL_CHECKS.len()
-                    + verify::RELEASE_BUILD_CHECKS.len()
-            } else {
-                0
-            };
-            let total_checks = backend_checks + gui_checks;
-            let reporter: Arc<dyn ProgressReporter> =
-                Arc::new(verify::StderrProgressReporter::new(total_checks));
-            let real_runner = RealRunner::new(Arc::clone(&reporter));
-            let repo_root = real_runner.repo_root().clone();
-            let runner = Arc::new(io::cache::CachingCommandRunner::new(
-                real_runner,
-                repo_root.clone(),
-            ));
-            eprintln!("=== cargo xtask verify ===");
-            let verify_start = std::time::Instant::now();
-            let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
-
-            let backend_groups = verify::CheckGroups {
-                fmt: verify::FMT_CHECKS,
-                core_cargo: verify::CORE_CARGO_CHECKS,
-                xtask_cargo: verify::XTASK_CARGO_CHECKS,
-                gui_cargo: &[],
-                frontend_install: &[],
-                frontend_post_install: &[],
-                release: verify::DYLINT_CHECKS,
-            };
-
-            let backend_report = match verify::verify_fast_with_options(
-                runner_for_verify,
-                &repo_root,
-                verify::NATIVE_REQUIRED_CHECKS,
-                &backend_groups,
-                reporter.as_ref(),
-                true,
-            ) {
-                Ok(report) => report,
-                Err(err) => {
-                    eprintln!("xtask error: {err:#}");
-                    return ExitCode::from(1);
-                }
-            };
-
-            let report = if backend_report.exit == VerifyExitCode::Success && include_gui {
-                let gui_groups = verify::CheckGroups {
-                    fmt: &[],
-                    core_cargo: &[],
-                    xtask_cargo: &[],
-                    gui_cargo: verify::GUI_CARGO_CHECKS,
-                    frontend_install: verify::FRONTEND_INSTALL_CHECKS,
-                    frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
-                    release: verify::RELEASE_BUILD_CHECKS,
-                };
-                match verify::verify_fast_with_options(
-                    runner.clone(),
-                    &repo_root,
-                    &[],
-                    &gui_groups,
-                    reporter.as_ref(),
-                    false,
-                ) {
-                    Ok(report) => report,
-                    Err(err) => {
-                        eprintln!("xtask error: {err:#}");
-                        return ExitCode::from(1);
-                    }
-                }
-            } else {
-                backend_report
-            };
-            let total_elapsed = verify_start.elapsed();
-
-            runner.flush();
-
-            if report.exit == VerifyExitCode::Failure {
-                print_verify_failure(&report);
-            }
-
-            match report.exit {
-                VerifyExitCode::Success => {
-                    eprintln!("=== all {total_checks} checks passed in {total_elapsed:.1?} ===");
-                    ExitCode::SUCCESS
-                }
-                VerifyExitCode::Failure => ExitCode::from(1),
-            }
-        }
-        Some("dylint") => {
-            // Handle help flag
-            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-                eprintln!("Usage: cargo xtask dylint [--verbose] [--package <pkg>]");
-                eprintln!("  --verbose, -v    Show detailed dylint output");
-                eprintln!("  --package <pkg>  Package to lint (default: ralph-workflow)");
-                return ExitCode::SUCCESS;
-            }
-            // Run custom dylint lints - delegates to boundary module
-            let verbose =
-                args.contains(&"--verbose".to_string()) || args.contains(&"-v".to_string());
-            // Parse --package argument
-            let package = args
-                .iter()
-                .skip_while(|s| *s != "--package")
-                .nth(1)
-                .map(|s| s.as_str())
-                .unwrap_or("ralph-workflow");
-            boundary::dylint::run_dylint(verbose, package)
-        }
-        Some("lsp-forbidden-allow-expect") => {
-            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-                eprintln!("Usage: cargo xtask lsp-forbidden-allow-expect");
-                eprintln!(
-                    "  Emit Cargo JSON compiler-message diagnostics for the forbidden allow/expect native scan"
-                );
-                return ExitCode::SUCCESS;
-            }
-
-            let repo_root = match std::env::current_dir() {
-                Ok(path) => path,
-                Err(err) => {
-                    eprintln!("xtask error: failed to determine current directory: {err}");
-                    return ExitCode::from(1);
-                }
-            };
-
-            match lsp_diagnostics::emit_forbidden_allow_expect_to_stdout(&repo_root) {
-                Ok(true) => ExitCode::SUCCESS,
-                Ok(false) => ExitCode::from(1),
-                Err(err) => {
-                    eprintln!("xtask error: {err:#}");
-                    ExitCode::from(1)
-                }
-            }
-        }
-        Some("dylint-report") => {
-            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-                eprintln!("Usage: cargo xtask dylint-report");
-                eprintln!("  Generate dylint reports organized by module in tmp/");
-                return ExitCode::SUCCESS;
-            }
-            dylint_report::generate_dylint_report()
-        }
-        Some("coverage") => {
-            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
-                eprintln!("Usage: cargo xtask coverage");
-                eprintln!();
-                eprintln!("Run cargo llvm-cov coverage commands in diagnostic mode.");
-                eprintln!();
-                eprintln!("Runs in sequence:");
-                eprintln!("  cargo llvm-cov --all-features --lib -p ralph-workflow --html \\");
-                eprintln!("      --output-dir target/coverage/html");
-                eprintln!("  cargo llvm-cov report --lib -p ralph-workflow");
-                eprintln!();
-                eprintln!("Coverage is diagnostic only — exit is always 0 regardless of result.");
-                eprintln!("This command is NOT a build gate.");
-                return ExitCode::SUCCESS;
-            }
-            coverage::run_coverage()
-        }
-        _ => {
-            eprintln!("Usage: cargo xtask verify [--gui]");
-            eprintln!("       cargo xtask dylint [--verbose]");
-            eprintln!("       cargo xtask lsp-forbidden-allow-expect");
-            eprintln!("       cargo xtask dylint-report");
-            eprintln!("       cargo xtask coverage");
-            eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
-            eprintln!("  --verbose, -v    Show detailed dylint output");
-            ExitCode::from(2)
-        }
+    match args.first().map(|s| s.as_str()) {
+        Some("verify") => run_verify_subcommand(&args),
+        Some("dylint") => run_dylint_subcommand(&args),
+        Some("lsp-forbidden-allow-expect") => run_lsp_subcommand(&args),
+        Some("dylint-report") => run_dylint_report_subcommand(&args),
+        Some("coverage") => run_coverage_subcommand(&args),
+        _ => print_usage(),
     }
 }
 

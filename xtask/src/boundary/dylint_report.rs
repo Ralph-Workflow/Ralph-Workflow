@@ -24,39 +24,36 @@ pub fn generate_dylint_report() -> ExitCode {
         }
     };
 
+    if let Err(code) = run_report_pipeline(&repo_root) {
+        return code;
+    }
+
+    ExitCode::SUCCESS
+}
+
+fn run_report_pipeline(repo_root: &Path) -> Result<(), ExitCode> {
     eprintln!("Running dylint to generate module reports...");
     eprintln!("(This may take a while...)");
 
-    let dylint_output = match runtime::run_dylint_capture(&repo_root) {
-        Ok(output) => output,
-        Err(err) => {
-            eprintln!("error: failed to run dylint: {err}");
-            return ExitCode::from(1);
-        }
-    };
+    let dylint_output = runtime::run_dylint_capture(repo_root).map_err(|err| {
+        eprintln!("error: failed to run dylint: {err}");
+        ExitCode::from(1)
+    })?;
 
     eprintln!("Parsing dylint output...");
 
     let errors_by_module = runtime::parse_dylint_output(&dylint_output);
-
-    if errors_by_module.is_empty() {
-        eprintln!("error: dylint failed to compile or produced no parseable output");
-        eprintln!("hint: run `make dylint` manually to see the error");
-        return ExitCode::from(1);
-    }
+    ensure_errors_found(&errors_by_module)?;
 
     let tmp_dir = repo_root.join("tmp");
-    if let Err(err) = std::fs::create_dir_all(&tmp_dir) {
-        eprintln!("error: failed to create tmp directory: {err}");
-        return ExitCode::from(1);
-    }
+    ensure_tmp_dir(&tmp_dir)?;
 
     eprintln!("Writing reports to tmp/...");
 
-    if let Err(err) = write_reports(&tmp_dir, &errors_by_module, &dylint_output) {
+    write_reports(&tmp_dir, &errors_by_module, &dylint_output).map_err(|err| {
         eprintln!("error: failed to write reports: {err}");
-        return ExitCode::from(1);
-    }
+        ExitCode::from(1)
+    })?;
 
     eprintln!("\nDylint reports generated successfully:");
     eprintln!(
@@ -76,7 +73,26 @@ pub fn generate_dylint_report() -> ExitCode {
         errors_by_module.len()
     );
 
-    ExitCode::SUCCESS
+    Ok(())
+}
+
+fn ensure_errors_found(errors_by_module: &BTreeMap<String, Vec<String>>) -> Result<(), ExitCode> {
+    if errors_by_module.is_empty() {
+        eprintln!("error: dylint failed to compile or produced no parseable output");
+        eprintln!("hint: run `make dylint` manually to see the error");
+        return Err(ExitCode::from(1));
+    }
+
+    Ok(())
+}
+
+fn ensure_tmp_dir(tmp_dir: &Path) -> Result<(), ExitCode> {
+    std::fs::create_dir_all(tmp_dir).map_err(|err| {
+        eprintln!("error: failed to create tmp directory: {err}");
+        ExitCode::from(1)
+    })?;
+
+    Ok(())
 }
 
 /// Write all reports to tmp directory.
@@ -104,26 +120,27 @@ fn write_reports(
 
 /// Generate summary report.
 fn generate_summary(errors_by_module: &BTreeMap<String, Vec<String>>) -> String {
-    let mut summary = String::from("# Dylint Errors by Module\n\n");
-
     let total: usize = errors_by_module.values().map(|v| v.len()).sum();
 
-    summary.push_str(&format!("Total errors: {}\n\n", total));
+    format!(
+        "# Dylint Errors by Module\n\nTotal errors: {total}\n\n{module_lines}\n## Files Generated\n\n- `dylint-all.txt` - Complete dylint output\n{file_lines}",
+        module_lines = format_module_lines(errors_by_module),
+        file_lines = format_file_lines(errors_by_module),
+    )
+}
 
-    for (module, errors) in errors_by_module {
-        summary.push_str(&format!("{:30} {:5} errors\n", module, errors.len()));
-    }
+fn format_module_lines(errors_by_module: &BTreeMap<String, Vec<String>>) -> String {
+    errors_by_module
+        .iter()
+        .map(|(module, errors)| format!("{:30} {:5} errors\n", module, errors.len()))
+        .collect()
+}
 
-    summary.push_str("\n## Files Generated\n\n");
-    summary.push_str("- `dylint-all.txt` - Complete dylint output\n");
-    for module in errors_by_module.keys() {
-        summary.push_str(&format!(
-            "- `dylint-{}.txt` - {} module errors\n",
-            module, module
-        ));
-    }
-
-    summary
+fn format_file_lines(errors_by_module: &BTreeMap<String, Vec<String>>) -> String {
+    errors_by_module
+        .keys()
+        .map(|module| format!("- `dylint-{}.txt` - {} module errors\n", module, module))
+        .collect()
 }
 
 /// Format module report.

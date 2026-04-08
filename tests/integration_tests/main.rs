@@ -93,6 +93,7 @@ mod loop_detection_recovery;
 mod mcp_artifact_reducer_parity;
 mod mcp_behavioral;
 mod memory_safety;
+mod offline_detection;
 mod opencode_parser_tests;
 mod opencode_usage_limit_detection;
 mod plan_xml_validation;

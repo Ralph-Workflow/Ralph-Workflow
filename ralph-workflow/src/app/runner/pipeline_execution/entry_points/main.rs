@@ -15,7 +15,10 @@ use crate::logger::{Colors, Logger};
 use crate::prompts::TemplateContext;
 use crate::ProcessExecutor;
 
+use crate::agents::ConfigSource;
 use crate::app::pipeline_setup::{PipelineAndRepoRoot, RunPipelineWithHandlerParams};
+use crate::config::Config;
+
 // run_pipeline is in scope via include!
 
 /// Main application entry point.
@@ -44,66 +47,85 @@ use crate::app::pipeline_setup::{PipelineAndRepoRoot, RunPipelineWithHandlerPara
 pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow::Result<()> {
     let colors = Colors::new();
     let logger = Logger::new(colors);
-
-    // Set working directory first if override is provided
-    // This ensures all subsequent operations (including config init) use the correct directory
     if let Some(ref override_dir) = args.working_dir_override {
         crate::app::env_access::set_current_dir(override_dir)?;
     }
-
-    // Initialize configuration and agent registry
     let Some(init_result) = initialize_config(&args, colors, &logger)? else {
-        return Ok(()); // Early exit (--init/--init-global)
+        return Ok(());
     };
+    run_with_init_result(args, executor, init_result, colors, logger)
+}
 
+fn run_with_init_result(
+    args: Args,
+    executor: std::sync::Arc<dyn ProcessExecutor>,
+    init_result: config_init::ConfigInitResult,
+    colors: Colors,
+    logger: Logger,
+) -> anyhow::Result<()> {
+    if handle_listing_commands(&args, &init_result.registry, colors) {
+        return Ok(());
+    }
+    if args.recovery.diagnose {
+        run_diagnose_and_exit(
+            &init_result.config,
+            &init_result.registry,
+            &init_result.config_path,
+            &init_result.config_sources,
+            &*executor,
+            colors,
+        );
+        return Ok(());
+    }
+    run_validated_pipeline(args, executor, init_result, colors, logger)
+}
+
+fn run_diagnose_and_exit(
+    config: &Config,
+    registry: &AgentRegistry,
+    config_path: &std::path::Path,
+    config_sources: &[ConfigSource],
+    executor: &dyn ProcessExecutor,
+    colors: Colors,
+) {
+    let diagnose_workspace =
+        crate::workspace::WorkspaceFs::new(crate::app::env_access::get_current_dir());
+    handle_diagnose(
+        &mut std::io::stdout(),
+        colors,
+        config,
+        registry,
+        crate::cli::ConfigInfo {
+            path: config_path,
+            sources: config_sources,
+        },
+        executor,
+        &diagnose_workspace,
+    );
+}
+
+fn run_validated_pipeline(
+    args: Args,
+    executor: std::sync::Arc<dyn ProcessExecutor>,
+    init_result: config_init::ConfigInitResult,
+    colors: Colors,
+    logger: Logger,
+) -> anyhow::Result<()> {
     let config_init::ConfigInitResult {
         config,
         registry,
         config_path,
-        config_sources,
         agent_resolution_sources,
+        ..
     } = init_result;
-
-    // Resolve required agent names
     let validated = resolve_required_agents(&config, &agent_resolution_sources)?;
     let developer_agent = validated.developer_agent;
     let reviewer_agent = validated.reviewer_agent;
-
-    // Handle listing commands (these can run without git repo)
-    if handle_listing_commands(&args, &registry, colors) {
-        return Ok(());
-    }
-
-    // Handle --diagnose
-    if args.recovery.diagnose {
-        let diagnose_workspace =
-            crate::workspace::WorkspaceFs::new(crate::app::env_access::get_current_dir());
-        handle_diagnose(
-            &mut std::io::stdout(),
-            colors,
-            &config,
-            &registry,
-            crate::cli::ConfigInfo {
-                path: &config_path,
-                sources: &config_sources,
-            },
-            &*executor,
-            &diagnose_workspace,
-        );
-        return Ok(());
-    }
-
-    // Validate agent chains
     validate_agent_chains(&registry, &agent_resolution_sources, &logger);
-
-    let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
-        config.user_templates_dir().cloned(),
-    );
-
+    let template_context =
+        TemplateContext::from_user_templates_dir(config.user_templates_dir().cloned());
     let developer_display = registry.display_name(&developer_agent);
     let reviewer_display = registry.display_name(&reviewer_agent);
-
-    // Run the full pipeline with handler creation inside the boundary
     let params = RunPipelineWithHandlerParams {
         args,
         config,
@@ -118,15 +140,11 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
         executor,
         template_context,
     };
-
     let PipelineAndRepoRoot { ctx, repo_root: _ } =
         crate::app::pipeline_setup::run_pipeline_with_handler_boundary(params)?;
-
     if ctx.args.recovery.inspect_checkpoint {
         crate::app::resume::inspect_checkpoint(ctx.workspace.as_ref(), &ctx.logger)?;
         return Ok(());
     }
-
-    // Run the pipeline
     run_pipeline(&ctx)
 }

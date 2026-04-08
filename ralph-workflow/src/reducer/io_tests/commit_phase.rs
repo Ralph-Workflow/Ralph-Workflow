@@ -600,6 +600,7 @@ fn test_commit_agent_chain_initialized_preserves_role() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Commit,
             agents.iter().cloned().map(AgentName::from).collect(),
+            vec![],
             3,
             1000,
             2.0,

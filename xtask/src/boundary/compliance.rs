@@ -3,6 +3,15 @@ use std::path::{Path, PathBuf};
 
 use aho_corasick::AhoCorasick;
 
+use crate::domain::compliance::{
+    extract_test_name, find_fn_line_idx, find_function_end_bytes, find_opening_brace_in_lines,
+    shell_script_scan_result, tailwind_scan_result, timeout_wrapper_scan_result, trim_ascii,
+    ComplianceSummary,
+};
+use crate::domain::tailwind_policy::{
+    extract_tailwind_token, normalize_tailwind_candidate, tailwind_candidate_matches_rule,
+    REMOVED_TAILWIND4_ANGULAR_CLASSES,
+};
 use crate::io::scanner::LineIndex;
 use crate::runtime::verify::{CheckStatus, NativeCheckResult};
 
@@ -11,70 +20,8 @@ const PAT_TEST_ATTR: usize = 0; // "#[test]"
 const PAT_DEFAULT_TIMEOUT: usize = 1; // "with_default_timeout"
 const PAT_TIMEOUT: usize = 2; // "with_timeout"
 const TIMEOUT_PATTERNS: &[&str] = &["#[test]", "with_default_timeout", "with_timeout"];
-
-struct RemovedTailwindClass {
-    literal: &'static str,
-    replacement: &'static str,
-    is_prefix: bool,
-}
-
-const REMOVED_TAILWIND4_ANGULAR_CLASSES: &[RemovedTailwindClass] = &[
-    RemovedTailwindClass {
-        literal: "bg-opacity-",
-        replacement: "bg-<color>/<opacity>",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "text-opacity-",
-        replacement: "text-<color>/<opacity>",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "border-opacity-",
-        replacement: "border-<color>/<opacity>",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "divide-opacity-",
-        replacement: "divide-<color>/<opacity>",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "ring-opacity-",
-        replacement: "ring-<color>/<opacity>",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "placeholder-opacity-",
-        replacement: "placeholder-<color>/<opacity>",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "flex-shrink-",
-        replacement: "shrink-*",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "flex-grow-",
-        replacement: "grow-*",
-        is_prefix: true,
-    },
-    RemovedTailwindClass {
-        literal: "overflow-ellipsis",
-        replacement: "text-ellipsis",
-        is_prefix: false,
-    },
-    RemovedTailwindClass {
-        literal: "decoration-slice",
-        replacement: "box-decoration-slice",
-        is_prefix: false,
-    },
-    RemovedTailwindClass {
-        literal: "decoration-clone",
-        replacement: "box-decoration-clone",
-        is_prefix: false,
-    },
-];
+const CHECK_STATUS_MAPPING: [CheckStatus; 3] =
+    [CheckStatus::Pass, CheckStatus::Warning, CheckStatus::Error];
 
 /// Scans `scripts/` and `tests/integration_tests/` for `.sh` files.
 ///
@@ -84,59 +31,10 @@ const REMOVED_TAILWIND4_ANGULAR_CLASSES: &[RemovedTailwindClass] = &[
 /// exist (e.g. in unit-test environments with fake repo paths).
 pub fn check_no_shell_scripts(repo_root: &Path) -> NativeCheckResult {
     let scan_dirs = ["scripts", "tests/integration_tests"];
-    let mut found: Vec<String> = Vec::new();
-    let mut walk_errors: Vec<String> = Vec::new();
+    let scan_paths: Vec<PathBuf> = scan_dirs.iter().map(|rel| repo_root.join(rel)).collect();
+    let (found, walk_errors) = crate::io::shell_scripts::scan_for_shell_scripts(&scan_paths);
 
-    for rel_dir in &scan_dirs {
-        let dir = repo_root.join(rel_dir);
-        if !dir.exists() {
-            continue;
-        }
-        if let Err(e) = collect_sh_files(&dir, &mut found) {
-            walk_errors.push(format!("read_dir error for {}: {e}", dir.display()));
-        }
-    }
-
-    if !walk_errors.is_empty() {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Failed to scan for .sh files due to directory walk errors:\n{}",
-                walk_errors.join("\n")
-            ),
-        };
-    }
-
-    if found.is_empty() {
-        NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        }
-    } else {
-        NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Found {} .sh file(s) that must not exist after the shell-script migration:\n{}",
-                found.len(),
-                found.join("\n")
-            ),
-        }
-    }
-}
-
-fn collect_sh_files(dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
-    let entries = std::fs::read_dir(dir)?;
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_sh_files(&path, out)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("sh") {
-            out.push(path.display().to_string());
-        }
-    }
-
-    Ok(())
+    compliance_summary_to_native(shell_script_scan_result(&found, &walk_errors))
 }
 
 /// Scans integration test files for `#[test]` functions that do not call
@@ -162,7 +60,11 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
         };
     }
 
-    let files = match collect_rs_files(&test_dir) {
+    run_timeout_wrapper_scan(&test_dir)
+}
+
+fn run_timeout_wrapper_scan(test_dir: &Path) -> NativeCheckResult {
+    let files = match collect_rs_files(test_dir) {
         Ok(f) => f,
         Err(e) => {
             return NativeCheckResult {
@@ -176,72 +78,27 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
     };
 
     let ac = AhoCorasick::new(TIMEOUT_PATTERNS).expect("valid patterns");
-    let mut violations: Vec<String> = Vec::new();
-    let mut read_errors: Vec<String> = Vec::new();
+    let (violations, read_errors) = scan_timeout_wrapper_files(&files, &ac);
 
-    for file_path in &files {
-        let content = match std::fs::read(file_path) {
-            Ok(c) => c,
-            Err(e) => {
-                read_errors.push(format!("{}: read error: {e}", file_path.display()));
-                continue;
-            }
-        };
-
-        scan_file_for_violations_ac(file_path, &content, &ac, &mut violations);
-    }
-
-    if !read_errors.is_empty() {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Failed to read {} integration test file(s) during timeout-wrapper compliance scan:\n{}",
-                read_errors.len(),
-                read_errors.join("\n")
-            ),
-        };
-    }
-
-    if violations.is_empty() {
-        NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        }
-    } else {
-        NativeCheckResult {
-            status: CheckStatus::Warning,
-            message: format!(
-                "Found {} test(s) missing timeout wrapper:\n{}",
-                violations.len(),
-                violations.join("\n")
-            ),
-        }
-    }
+    compliance_summary_to_native(timeout_wrapper_scan_result(&violations, &read_errors))
 }
 
 pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckResult {
+    match tailwind_removed_class_summary(repo_root) {
+        Ok(summary) => compliance_summary_to_native(summary),
+        Err(error) => NativeCheckResult {
+            status: CheckStatus::Error,
+            message: error,
+        },
+    }
+}
+
+fn tailwind_removed_class_summary(repo_root: &Path) -> Result<ComplianceSummary, String> {
     let template_dir = repo_root.join("ralph-gui/ui/src");
 
     if !template_dir.exists() {
-        return NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        };
+        return Ok(tailwind_scan_result(&[], &[]));
     }
-
-    let mut files = Vec::new();
-    if let Err(error) =
-        crate::io::scanner::collect_files_with_glob(&template_dir, "*.html", &mut files)
-    {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Failed to walk Angular template directory {}: {error}",
-                template_dir.display()
-            ),
-        };
-    }
-    files.sort();
 
     let ac = AhoCorasick::new(
         REMOVED_TAILWIND4_ANGULAR_CLASSES
@@ -250,53 +107,9 @@ pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckR
     )
     .expect("valid Tailwind migration patterns");
 
-    let mut violations = Vec::new();
-    let mut read_errors = Vec::new();
-
-    for file_path in &files {
-        let content = match std::fs::read(file_path) {
-            Ok(content) => content,
-            Err(error) => {
-                read_errors.push(format!("{}: read error: {error}", file_path.display()));
-                continue;
-            }
-        };
-
-        scan_file_for_removed_tailwind4_classes(
-            file_path,
-            repo_root,
-            &content,
-            &ac,
-            &mut violations,
-        );
-    }
-
-    if !read_errors.is_empty() {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Failed to read {} Angular template file(s) during Tailwind 4 migration scan:\n{}",
-                read_errors.len(),
-                read_errors.join("\n")
-            ),
-        };
-    }
-
-    if violations.is_empty() {
-        NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        }
-    } else {
-        NativeCheckResult {
-            status: CheckStatus::Warning,
-            message: format!(
-                "Found {} Tailwind 3-only class usage(s) in Angular templates that do not exist in Tailwind 4. Each affected component/file needs rework:\n{}",
-                violations.len(),
-                violations.join("\n")
-            ),
-        }
-    }
+    let (violations, read_errors) =
+        collect_tailwind_template_violations(&template_dir, repo_root, &ac)?;
+    Ok(tailwind_scan_result(&violations, &read_errors))
 }
 
 /// Scans test files (excluding system_tests) for direct git commit operations and
@@ -314,129 +127,105 @@ pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckR
 /// System tests in `tests/system_tests/` are allowed to use real git for testing
 /// git functionality itself.
 ///
-/// Uses Aho-Corasick O(n+m+z) scan for these patterns:
-///
-/// **Git mutation patterns (always forbidden):**
-/// - `Repository::commit` — direct call to Repository::commit
-/// - `.commit(` — method call on any object
-/// - `CommitEffect` — type reference in effect handlers
-///
-/// **Risky workspace construction patterns (forbidden in tests):**
-/// - `WorkspaceFs::new(std::env::current_dir` — workspace rooted at CWD (real repo)
-/// - `WorkspaceFs::new(PathBuf::from(".")` — workspace rooted at CWD (real repo)
-///
 /// Returns `Pass` when no violations are found or when the test directory does not exist.
 pub fn check_no_real_git_in_tests(repo_root: &Path) -> NativeCheckResult {
-    // Scan integration_tests, process_system_tests, and MCP e2e tests.
-    // system_tests are excluded (they are allowed to use real git).
+    let files = match collect_git_scan_files(repo_root) {
+        Ok(f) => f,
+        Err(r) => return r,
+    };
+    if files.is_empty() {
+        return pass_native();
+    }
+    let ac = AhoCorasick::new(GIT_VIOLATION_PATTERNS).expect("valid git violation patterns");
+    let (violations, read_errors) = scan_files_for_git_violations(&files, &ac);
+    build_git_scan_result(&violations, &read_errors)
+}
+
+// Patterns that indicate real git usage or risky CWD workspace construction in tests.
+const GIT_VIOLATION_PATTERNS: &[&str] = &[
+    "Repository::commit",
+    ".commit(",
+    "CommitEffect",
+    "WorkspaceFs::new(std::env::current_dir",
+    "WorkspaceFs::new(PathBuf::from(\".\")",
+];
+
+fn collect_git_scan_files(repo_root: &Path) -> Result<Vec<PathBuf>, NativeCheckResult> {
     let test_dirs = [
         repo_root.join("tests/integration_tests"),
         repo_root.join("tests/process_system_tests"),
         repo_root.join("ralph-workflow/src/mcp_server/tests"),
         repo_root.join("mcp-server/tests"),
     ];
-
-    // Collect files to scan
     let mut files = Vec::new();
     for test_dir in &test_dirs {
-        if test_dir.exists() {
-            if let Err(e) = collect_rs_files_from(test_dir, &mut files) {
-                return NativeCheckResult {
-                    status: CheckStatus::Error,
-                    message: format!("Failed to walk test directory {}: {e}", test_dir.display()),
-                };
-            }
-        }
+        collect_from_dir_if_exists(test_dir, &mut files)?;
     }
+    Ok(files)
+}
 
-    if files.is_empty() {
-        return NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        };
-    }
-
-    // Patterns that indicate real git usage or risky CWD workspace construction in tests.
-    // All of these are policy violations — tests must use MemoryWorkspace or TempDir-backed
-    // WorkspaceFs, never the real repository directory.
-    const GIT_VIOLATION_PATTERNS: &[&str] = &[
-        "Repository::commit",
-        ".commit(",
-        "CommitEffect",
-        "WorkspaceFs::new(std::env::current_dir",
-        "WorkspaceFs::new(PathBuf::from(\".\")",
-    ];
-
-    let ac = AhoCorasick::new(GIT_VIOLATION_PATTERNS).expect("valid git violation patterns");
-    let mut violations: Vec<String> = Vec::new();
-    let mut read_errors: Vec<String> = Vec::new();
-
-    for file_path in &files {
-        let content = match std::fs::read(file_path) {
-            Ok(c) => c,
-            Err(e) => {
-                read_errors.push(format!("{}: read error: {e}", file_path.display()));
-                continue;
-            }
-        };
-
-        scan_file_for_git_violations(file_path, &content, &ac, &mut violations);
-    }
-
-    if !read_errors.is_empty() {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Failed to read {} test file(s) during git-violation scan:\n{}",
-                read_errors.len(),
-                read_errors.join("\n")
-            ),
-        };
-    }
-
-    if violations.is_empty() {
-        NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        }
+fn collect_from_dir_if_exists(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), NativeCheckResult> {
+    if dir.exists() {
+        collect_rs_files_from(dir, out).map_err(|e| {
+            error_native(format!(
+                "Failed to walk test directory {}: {e}",
+                dir.display()
+            ))
+        })
     } else {
-        NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "Found {} test file(s) with real git operations or risky workspace construction \
-                (real git mutations and CWD-rooted workspaces are forbidden in tests — use \
-                MemoryWorkspace or TempDir-backed WorkspaceFs):\n{}",
-                violations.len(),
-                violations.join("\n")
-            ),
-        }
+        Ok(())
     }
 }
 
 fn collect_rs_files_from(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    if !dir.exists() {
-        return Ok(());
-    }
-
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        // Skip system_tests - those are allowed to use real git
-        if path.components().any(|c| c.as_os_str() == "system_tests") {
-            continue;
-        }
-
-        if path.is_dir() {
-            collect_rs_files_from(&path, out)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
-            && !should_skip_file(&path)
-        {
-            out.push(path);
-        }
-    }
-
+    let mut all_files = Vec::new();
+    crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut all_files)?;
+    out.extend(
+        all_files
+            .into_iter()
+            .filter(|p| !should_exclude_from_git_scan(p)),
+    );
     Ok(())
+}
+
+fn should_exclude_from_git_scan(path: &Path) -> bool {
+    path.components().any(|c| c.as_os_str() == "system_tests") || should_skip_file(path)
+}
+
+fn scan_files_for_git_violations(
+    files: &[PathBuf],
+    ac: &AhoCorasick,
+) -> (Vec<String>, Vec<String>) {
+    let mut violations = Vec::new();
+    let mut read_errors = Vec::new();
+    for file_path in files {
+        match std::fs::read(file_path) {
+            Ok(content) => scan_file_for_git_violations(file_path, &content, ac, &mut violations),
+            Err(e) => read_errors.push(format!("{}: read error: {e}", file_path.display())),
+        }
+    }
+    (violations, read_errors)
+}
+
+fn build_git_scan_result(violations: &[String], read_errors: &[String]) -> NativeCheckResult {
+    if !read_errors.is_empty() {
+        return error_native(format!(
+            "Failed to read {} test file(s) during git-violation scan:\n{}",
+            read_errors.len(),
+            read_errors.join("\n")
+        ));
+    }
+    if violations.is_empty() {
+        pass_native()
+    } else {
+        error_native(format!(
+            "Found {} test file(s) with real git operations or risky workspace construction \
+             (real git mutations and CWD-rooted workspaces are forbidden in tests — use \
+             MemoryWorkspace or TempDir-backed WorkspaceFs):\n{}",
+            violations.len(),
+            violations.join("\n")
+        ))
+    }
 }
 
 fn scan_file_for_git_violations(
@@ -469,6 +258,56 @@ fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+fn collect_tailwind_template_violations(
+    template_dir: &Path,
+    repo_root: &Path,
+    ac: &AhoCorasick,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut files = Vec::new();
+    crate::io::scanner::collect_files_with_glob(template_dir, "*.html", &mut files).map_err(
+        |error| {
+            format!(
+                "Failed to walk Angular template directory {}: {error}",
+                template_dir.display()
+            )
+        },
+    )?;
+    files.sort();
+
+    let (violations, read_errors) = files.into_iter().fold(
+        (Vec::new(), Vec::new()),
+        |(mut violations, mut read_errors), file_path| {
+            match std::fs::read(&file_path) {
+                Ok(content) => {
+                    violations.extend(collect_removed_tailwind4_violations(
+                        &file_path, repo_root, &content, ac,
+                    ));
+                }
+                Err(error) => {
+                    read_errors.push(format!("{}: read error: {error}", file_path.display()));
+                }
+            }
+            (violations, read_errors)
+        },
+    );
+
+    Ok((violations, read_errors))
+}
+
+fn scan_timeout_wrapper_files(files: &[PathBuf], ac: &AhoCorasick) -> (Vec<String>, Vec<String>) {
+    let mut violations = Vec::new();
+    let mut read_errors = Vec::new();
+
+    for file_path in files {
+        match std::fs::read(file_path) {
+            Ok(content) => scan_file_for_violations_ac(file_path, &content, ac, &mut violations),
+            Err(e) => read_errors.push(format!("{}: read error: {e}", file_path.display())),
+        }
+    }
+
+    (violations, read_errors)
+}
+
 fn should_skip_file(path: &Path) -> bool {
     let file_name = path
         .file_name()
@@ -478,88 +317,66 @@ fn should_skip_file(path: &Path) -> bool {
     matches!(file_name, "_TEMPLATE.rs" | "compliance_check.rs" | "mod.rs")
 }
 
-fn scan_file_for_removed_tailwind4_classes(
+fn collect_removed_tailwind4_violations(
     file_path: &Path,
     repo_root: &Path,
     content: &[u8],
     ac: &AhoCorasick,
-    violations: &mut Vec<String>,
-) {
+) -> Vec<String> {
+    collect_tailwind_violations(file_path, repo_root, content, ac)
+}
+
+fn build_tailwind_violation(
+    file_path: &Path,
+    repo_root: &Path,
+    content: &[u8],
+    mat: &aho_corasick::Match,
+    line_idx: &LineIndex,
+) -> Option<(String, String)> {
+    let rule = &REMOVED_TAILWIND4_ANGULAR_CLASSES[mat.pattern().as_usize()];
+    let line_number = line_idx.line_number(mat.start()) + 1;
+    let line_start = line_idx.line_start(mat.start());
+    let line_bytes = line_idx.extract_line(content, mat.start());
+    let local_offset = mat.start().saturating_sub(line_start);
+    let token = extract_tailwind_token(line_bytes, local_offset)?;
+
+    let candidate = normalize_tailwind_candidate(&token);
+    if !tailwind_candidate_matches_rule(candidate, rule) {
+        return None;
+    }
+
+    let dedupe_key = format!("{line_number}:{candidate}");
+    let display_path = file_path.strip_prefix(repo_root).unwrap_or(file_path);
+    let violation = format!(
+        "{}:{}: Tailwind 3-only class '{}' does not exist in Tailwind 4; replace it with '{}'. This component/file needs rework. Look up the current Tailwind CSS v4 documentation and upgrade guide before changing it.",
+        display_path.display(),
+        line_number,
+        candidate,
+        rule.replacement,
+    );
+
+    Some((dedupe_key, violation))
+}
+
+fn collect_tailwind_violations(
+    file_path: &Path,
+    repo_root: &Path,
+    content: &[u8],
+    ac: &AhoCorasick,
+) -> Vec<String> {
     let line_idx = LineIndex::new(content);
     let mut seen = HashSet::new();
 
-    for mat in ac.find_iter(content) {
-        let rule = &REMOVED_TAILWIND4_ANGULAR_CLASSES[mat.pattern().as_usize()];
-        let line_number = line_idx.line_number(mat.start()) + 1;
-        let line_start = line_idx.line_start(mat.start());
-        let line_bytes = line_idx.extract_line(content, mat.start());
-        let local_offset = mat.start().saturating_sub(line_start);
-        let Some(token) = extract_tailwind_token(line_bytes, local_offset) else {
-            continue;
-        };
-        let candidate = normalize_tailwind_candidate(&token);
-        let matches_rule = if rule.is_prefix {
-            candidate.starts_with(rule.literal)
-        } else {
-            candidate == rule.literal
-        };
-        if !matches_rule {
-            continue;
-        }
-
-        let dedupe_key = format!("{line_number}:{candidate}");
-        if !seen.insert(dedupe_key) {
-            continue;
-        }
-
-        let display_path = file_path.strip_prefix(repo_root).unwrap_or(file_path);
-        violations.push(format!(
-            "{}:{}: Tailwind 3-only class '{}' does not exist in Tailwind 4; replace it with '{}'. This component/file needs rework. Look up the current Tailwind CSS v4 documentation and upgrade guide before changing it.",
-            display_path.display(),
-            line_number,
-            candidate,
-            rule.replacement
-        ));
-    }
-}
-
-fn extract_tailwind_token(line: &[u8], match_offset: usize) -> Option<String> {
-    if match_offset >= line.len() {
-        return None;
-    }
-
-    let mut start = match_offset;
-    while start > 0 && is_tailwind_token_char(line[start - 1]) {
-        start -= 1;
-    }
-
-    let mut end = match_offset;
-    while end < line.len() && is_tailwind_token_char(line[end]) {
-        end += 1;
-    }
-
-    if start == end {
-        return None;
-    }
-
-    Some(String::from_utf8_lossy(&line[start..end]).to_string())
-}
-
-fn is_tailwind_token_char(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'-' | b'_' | b':' | b'/' | b'[' | b']' | b'!' | b'.' | b'(' | b')'
-        )
-}
-
-fn normalize_tailwind_candidate(token: &str) -> &str {
-    token
-        .rsplit(':')
-        .next()
-        .unwrap_or(token)
-        .trim_start_matches('!')
-        .trim_end_matches('!')
+    ac.find_iter(content)
+        .filter_map(|mat| build_tailwind_violation(file_path, repo_root, content, &mat, &line_idx))
+        .filter_map(|(dedupe_key, violation)| {
+            if seen.insert(dedupe_key) {
+                Some(violation)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Scan a single file using Aho-Corasick O(n+m+z) to find all `#[test]`,
@@ -579,190 +396,171 @@ fn scan_file_for_violations_ac(
 
     // Build byte-slice view of each line once per file (O(n), done once).
     let lines: Vec<&[u8]> = content.split(|&b| b == b'\n').collect();
-    let n = lines.len();
-
-    // Single O(n+m+z) Aho-Corasick pass over the file bytes.
-    let mut test_attr_offsets: Vec<usize> = Vec::new();
-    let mut timeout_offsets: Vec<usize> = Vec::new();
-
-    for mat in ac.find_iter(content) {
-        match mat.pattern().as_usize() {
-            PAT_TEST_ATTR => {
-                // Accept only when the entire trimmed line equals "#[test]"
-                // (same semantics as the original line.trim() == "#[test]" check).
-                let line_bytes = line_idx.extract_line(content, mat.start());
-                let trimmed = trim_ascii(line_bytes);
-                if trimmed == b"#[test]" {
-                    test_attr_offsets.push(mat.start());
-                }
-            }
-            PAT_DEFAULT_TIMEOUT | PAT_TIMEOUT => {
-                timeout_offsets.push(mat.start());
-            }
-            _ => {}
-        }
-    }
+    let (test_attr_offsets, timeout_offsets) =
+        collect_test_and_timeout_offsets(content, ac, &line_idx);
 
     for test_start in test_attr_offsets {
-        // O(log L) binary-search line lookup via LineIndex.
-        let test_line = line_idx.line_number(test_start); // 0-based
-        let mut fn_line_idx = test_line + 1;
-        if fn_line_idx >= n {
-            continue;
-        }
+        process_test_attribute(
+            file_path,
+            content,
+            &lines,
+            &line_idx,
+            &timeout_offsets,
+            test_start,
+            violations,
+        );
+    }
+}
 
-        // Some tests include additional attributes between `#[test]` and the
-        // function declaration (e.g., `#[ignore]`, `#[cfg_attr]`).
-        // Advance to the next plausible `fn` declaration within a small bound.
-        const MAX_FN_LOOKAHEAD_LINES: usize = 8;
-        let mut found_fn = None;
-        for _ in 0..MAX_FN_LOOKAHEAD_LINES {
-            if fn_line_idx >= n {
-                break;
-            }
+fn collect_test_and_timeout_offsets(
+    content: &[u8],
+    ac: &AhoCorasick,
+    line_idx: &LineIndex,
+) -> (Vec<usize>, Vec<usize>) {
+    ac.find_iter(content)
+        .filter_map(|mat| classify_test_or_timeout(mat, content, line_idx))
+        .fold(
+            (Vec::new(), Vec::new()),
+            |(mut tests, mut timeouts), kind| {
+                match kind {
+                    MatchOffset::Test(offset) => tests.push(offset),
+                    MatchOffset::Timeout(offset) => timeouts.push(offset),
+                }
+                (tests, timeouts)
+            },
+        )
+}
 
-            let trimmed = trim_ascii(lines[fn_line_idx]);
-            if trimmed.is_empty() || trimmed.starts_with(b"#") || trimmed.starts_with(b"//") {
-                fn_line_idx += 1;
-                continue;
-            }
+enum MatchOffset {
+    Test(usize),
+    Timeout(usize),
+}
 
-            let fn_line_str = match std::str::from_utf8(lines[fn_line_idx]) {
-                Ok(s) => s,
-                Err(_) => break,
-            };
-            if is_fn_decl(fn_line_str) {
-                found_fn = Some(fn_line_idx);
-            }
-            break;
-        }
+fn classify_test_or_timeout(
+    mat: aho_corasick::Match,
+    content: &[u8],
+    line_idx: &LineIndex,
+) -> Option<MatchOffset> {
+    match mat.pattern().as_usize() {
+        PAT_TEST_ATTR => classify_test_attr_match(mat, content, line_idx),
+        PAT_DEFAULT_TIMEOUT | PAT_TIMEOUT => Some(MatchOffset::Timeout(mat.start())),
+        _ => None,
+    }
+}
 
-        let Some(fn_line_idx) = found_fn else {
-            continue;
-        };
+fn classify_test_attr_match(
+    mat: aho_corasick::Match,
+    content: &[u8],
+    line_idx: &LineIndex,
+) -> Option<MatchOffset> {
+    let line_bytes = line_idx.extract_line(content, mat.start());
+    if trim_ascii(line_bytes) == b"#[test]" {
+        Some(MatchOffset::Test(mat.start()))
+    } else {
+        None
+    }
+}
 
-        let fn_line_str = match std::str::from_utf8(lines[fn_line_idx]) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-
-        let test_name = extract_test_name(fn_line_str).unwrap_or("<unknown>");
-
-        // Find the line that contains the opening `{` (up to 5 lines lookahead).
-        let brace_line = match find_opening_brace_in_lines(&lines, fn_line_idx, 5) {
-            Some(l) => l,
-            None => continue,
-        };
-
-        // O(1) byte offset of the brace line start via LineIndex.start_of_line.
-        let brace_line_byte_start = line_idx.start_of_line(brace_line);
-
-        // Cap the body scan at 40 lines past the brace line (failsafe for
-        // malformed files), matching the original 40-line limit.
-        let cap_line = std::cmp::min(brace_line + 40, n);
-        let body_scan_end = if cap_line >= n {
-            content.len()
-        } else {
-            line_idx.start_of_line(cap_line)
-        };
-
-        // Brace-depth tracking over raw bytes to find the exact body end.
-        let fn_end_byte = find_function_end_bytes(content, brace_line_byte_start, body_scan_end);
-
-        // O(z) check: does any timeout wrapper offset fall inside the body?
-        let has_timeout = timeout_offsets
-            .iter()
-            .any(|&pos| pos >= brace_line_byte_start && pos < fn_end_byte);
-
-        if !has_timeout {
+fn process_test_attribute(
+    file_path: &Path,
+    content: &[u8],
+    lines: &[&[u8]],
+    line_idx: &LineIndex,
+    timeout_offsets: &[usize],
+    test_start: usize,
+    violations: &mut Vec<String>,
+) {
+    if let Some(context) = gather_test_context(content, lines, line_idx, test_start) {
+        if !timeout_inside(
+            context.brace_line_byte_start,
+            context.fn_end_byte,
+            timeout_offsets,
+        ) {
             violations.push(format!(
                 "  {}:{}: test '{}' missing timeout wrapper (with_default_timeout or with_timeout)",
                 file_path.display(),
-                test_line + 1, // 1-based line number of #[test]
-                test_name,
+                context.test_line + 1,
+                context.test_name,
             ));
         }
     }
 }
 
-/// Find the end of a function body by tracking brace depth in raw bytes.
-///
-/// Scans `content[start..scan_end]` counting `{` and `}` bytes.  Returns the
-/// byte offset **one past** the closing `}` when depth reaches 0, or
-/// `scan_end` if the body is not closed within the scan window.
-fn find_function_end_bytes(content: &[u8], start: usize, scan_end: usize) -> usize {
-    let scan_end = scan_end.min(content.len());
-    let mut depth: i32 = 0;
-    for (i, &b) in content[start..scan_end].iter().enumerate() {
-        if b == b'{' {
-            depth += 1;
-        } else if b == b'}' {
-            depth -= 1;
-            if depth == 0 {
-                return start + i + 1;
-            }
-        }
-    }
-    scan_end
+struct TestContext {
+    test_line: usize,
+    brace_line_byte_start: usize,
+    fn_end_byte: usize,
+    test_name: String,
 }
 
-/// Find the index of the first line (in `lines`) at or after `from_idx`
-/// that contains `{`, within `lookahead` additional lines.
-fn find_opening_brace_in_lines(
+fn gather_test_context(
+    content: &[u8],
     lines: &[&[u8]],
-    from_idx: usize,
-    lookahead: usize,
-) -> Option<usize> {
-    let end = std::cmp::min(from_idx + lookahead + 1, lines.len());
-    lines[from_idx..end]
-        .iter()
-        .enumerate()
-        .find_map(|(offset, line)| {
-            if line.contains(&b'{') {
-                Some(from_idx + offset)
-            } else {
-                None
-            }
-        })
+    line_idx: &LineIndex,
+    test_start: usize,
+) -> Option<TestContext> {
+    let n = lines.len();
+    let test_line = line_idx.line_number(test_start);
+    let fn_line = find_fn_line_idx(lines, test_line + 1).filter(|&idx| idx < n)?;
+    let fn_line_str = std::str::from_utf8(lines[fn_line]).ok()?;
+    let test_name = extract_test_name(fn_line_str)
+        .unwrap_or("<unknown>")
+        .to_string();
+    let brace_line = find_opening_brace_in_lines(lines, fn_line, 5)?;
+    let brace_line_byte_start = line_idx.start_of_line(brace_line);
+    let fn_end_byte = compute_fn_end_byte(content, line_idx, n, brace_line, brace_line_byte_start);
+    Some(TestContext {
+        test_line,
+        brace_line_byte_start,
+        fn_end_byte,
+        test_name,
+    })
 }
 
-/// Trim leading and trailing ASCII whitespace (space, tab, carriage-return)
-/// from a byte slice.
-fn trim_ascii(b: &[u8]) -> &[u8] {
-    let is_ws = |&x: &u8| x == b' ' || x == b'\t' || x == b'\r';
-    let start = b.iter().position(|x| !is_ws(x)).unwrap_or(b.len());
-    let end = b
-        .iter()
-        .rposition(|x| !is_ws(x))
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    if start >= end {
-        &[]
+fn compute_fn_end_byte(
+    content: &[u8],
+    line_idx: &LineIndex,
+    n: usize,
+    brace_line: usize,
+    brace_line_byte_start: usize,
+) -> usize {
+    let cap_line = std::cmp::min(brace_line + 40, n);
+    let body_scan_end = if cap_line >= n {
+        content.len()
     } else {
-        &b[start..end]
+        line_idx.start_of_line(cap_line)
+    };
+    find_function_end_bytes(content, brace_line_byte_start, body_scan_end)
+}
+
+fn timeout_inside(brace: usize, end: usize, timeout_offsets: &[usize]) -> bool {
+    timeout_offsets.iter().any(|&pos| pos >= brace && pos < end)
+}
+
+fn compliance_summary_to_native(summary: ComplianceSummary) -> NativeCheckResult {
+    let status = CHECK_STATUS_MAPPING
+        .get(summary.status_code as usize)
+        .copied()
+        .unwrap_or(CheckStatus::Error);
+
+    NativeCheckResult {
+        status,
+        message: summary.message,
     }
 }
 
-fn is_fn_decl(line: &str) -> bool {
-    let trimmed = line.trim();
-    // Match: fn, pub fn, async fn, pub async fn, unsafe fn, pub unsafe fn, etc.
-    let after_visibility = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
-    let after_async = after_visibility
-        .strip_prefix("async ")
-        .unwrap_or(after_visibility);
-    let after_unsafe = after_async.strip_prefix("unsafe ").unwrap_or(after_async);
-    after_unsafe.starts_with("fn ")
+fn pass_native() -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Pass,
+        message: String::new(),
+    }
 }
 
-fn extract_test_name(line: &str) -> Option<&str> {
-    let after_fn = line.split("fn ").nth(1)?;
-    let name_end = after_fn
-        .find(|c: char| !c.is_alphanumeric() && c != '_')
-        .unwrap_or(after_fn.len());
-    if name_end == 0 {
-        return None;
+fn error_native(message: String) -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Error,
+        message,
     }
-    Some(&after_fn[..name_end])
 }
 
 /// Verifies that `mcp-server` has no dependency on `ralph-workflow` (direct or
@@ -772,15 +570,18 @@ fn extract_test_name(line: &str) -> Option<&str> {
 /// Uses `cargo metadata --format-version 1` to get the full dependency graph and
 /// traverses all dependencies of mcp-server to verify ralph-workflow is not present.
 pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
-    // Skip if the repo root doesn't exist (e.g., fake path in tests)
     if !repo_root.exists() {
-        return NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        };
+        return pass_native();
     }
+    match run_cargo_metadata_for_mcp(repo_root) {
+        Ok(Some(metadata)) => check_dep_isolation_in_metadata(&metadata),
+        Ok(None) => pass_native(),
+        Err(r) => r,
+    }
+}
 
-    let output = std::process::Command::new("cargo")
+fn run_cargo_metadata_for_mcp(repo_root: &Path) -> Result<Option<String>, NativeCheckResult> {
+    let output = match std::process::Command::new("cargo")
         .args([
             "metadata",
             "--format-version",
@@ -789,103 +590,34 @@ pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
             "mcp-server/Cargo.toml",
         ])
         .current_dir(repo_root)
-        .output();
-
-    let output = match output {
+        .output()
+    {
         Ok(o) => o,
-        Err(_) => {
-            // If cargo fails to run (e.g., no Cargo.toml), skip the check
-            return NativeCheckResult {
-                status: CheckStatus::Pass,
-                message: String::new(),
-            };
-        }
+        Err(_) => return Ok(None),
     };
-
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // If the package is not found or Cargo.toml is missing, skip the check
-        // (not an error in test scenarios with fake repo paths)
-        if stderr.contains("package not found")
-            || stderr.contains("`mcp-server` is not found")
-            || stderr.contains("could not find `Cargo.toml`")
-            || stderr.contains("does not exist")
-        {
-            return NativeCheckResult {
-                status: CheckStatus::Pass,
-                message: String::new(),
-            };
-        }
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!("DEPENDENCY ISOLATION VIOLATION: cargo metadata failed: {stderr}"),
-        };
+        return handle_cargo_metadata_failure(&String::from_utf8_lossy(&output.stderr));
     }
+    Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
+}
 
-    // Parse cargo metadata JSON manually using serde_json
-    let metadata_str = String::from_utf8_lossy(&output.stdout);
-    let metadata: serde_json::Value = match serde_json::from_str(&metadata_str) {
-        Ok(v) => v,
-        Err(e) => {
-            return NativeCheckResult {
-                status: CheckStatus::Error,
-                message: format!(
-                    "DEPENDENCY ISOLATION VIOLATION: failed to parse cargo metadata: {e}"
-                ),
-            };
-        }
-    };
-
-    // Build a map of package name -> package dependencies
-    // cargo metadata structure: { "packages": [{ "name": "...", "dependencies": [{ "name": "..." }, ...] }, ...] }
-    let mut deps_map: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
-
-    if let Some(packages) = metadata.get("packages").and_then(|p| p.as_array()) {
-        for pkg in packages {
-            let name = pkg.get("name").and_then(|n| n.as_str()).unwrap_or("");
-            let deps = pkg
-                .get("dependencies")
-                .and_then(|d| d.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|d| d.get("name").and_then(|n| n.as_str()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            deps_map.insert(name, deps);
-        }
+fn handle_cargo_metadata_failure(stderr: &str) -> Result<Option<String>, NativeCheckResult> {
+    if stderr.contains("package not found")
+        || stderr.contains("`mcp-server` is not found")
+        || stderr.contains("could not find `Cargo.toml`")
+        || stderr.contains("does not exist")
+    {
+        return Ok(None);
     }
+    Err(error_native(format!(
+        "DEPENDENCY ISOLATION VIOLATION: cargo metadata failed: {stderr}"
+    )))
+}
 
-    // BFS traversal from mcp-server to find all transitive dependencies
-    let mut visited: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
-    queue.push_back("mcp-server");
-    visited.insert("mcp-server");
-
-    while let Some(current) = queue.pop_front() {
-        if let Some(deps) = deps_map.get(current) {
-            for dep in deps {
-                if *dep == "ralph-workflow" {
-                    return NativeCheckResult {
-                        status: CheckStatus::Error,
-                        message: format!(
-                            "DEPENDENCY ISOLATION VIOLATION: mcp-server must not depend on ralph-workflow (direct or transitive). Found dependency path: mcp-server -> {}. Remove the dependency and use adapter traits instead.",
-                            dep
-                        ),
-                    };
-                }
-                if !visited.contains(dep) {
-                    visited.insert(dep);
-                    queue.push_back(dep);
-                }
-            }
-        }
-    }
-
-    NativeCheckResult {
-        status: CheckStatus::Pass,
-        message: String::new(),
-    }
+fn check_dep_isolation_in_metadata(metadata: &str) -> NativeCheckResult {
+    compliance_summary_to_native(
+        crate::domain::compliance::check_mcp_dep_isolation_from_metadata(metadata),
+    )
 }
 
 /// Verifies that `ralph_submit_artifact` is the only MCP tool name retaining the `ralph_`
@@ -904,756 +636,85 @@ pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
 /// is found.
 pub fn check_mcp_tool_naming_policy(repo_root: &Path) -> NativeCheckResult {
     if !repo_root.exists() {
-        return NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        };
+        return pass_native();
     }
-
-    let scan_dirs = [
+    let dirs = [
         repo_root.join("mcp-server/src"),
         repo_root.join("ralph-workflow/src/mcp_server"),
     ];
+    match collect_ralph_prefix_violations(&dirs, repo_root) {
+        Ok(violations) => compliance_summary_to_native(
+            crate::domain::compliance::ralph_prefix_violations_summary(&violations),
+        ),
+        Err(e) => error_native(e),
+    }
+}
 
-    let mut violations: Vec<String> = Vec::new();
-
-    for dir in &scan_dirs {
+fn collect_ralph_prefix_violations(
+    dirs: &[PathBuf],
+    repo_root: &Path,
+) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    for dir in dirs {
         if !dir.exists() {
             continue;
         }
-        if let Err(e) = scan_dir_for_ralph_prefix_violations(dir, repo_root, &mut violations) {
-            return NativeCheckResult {
-                status: CheckStatus::Error,
-                message: format!("Failed to scan {}: {e}", dir.display()),
-            };
-        }
+        collect_ralph_violations_from_dir(dir, repo_root, &mut violations)
+            .map_err(|e| format!("Failed to scan {}: {e}", dir.display()))?;
     }
-
-    if violations.is_empty() {
-        NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        }
-    } else {
-        NativeCheckResult {
-            status: CheckStatus::Error,
-            message: format!(
-                "MCP tool naming policy violation: {} occurrence(s) of ralph_ prefix found in \
-                production source (only ralph_submit_artifact may retain this prefix — all other \
-                tool names must drop the ralph_ prefix per the naming convention):\n{}",
-                violations.len(),
-                violations.join("\n")
-            ),
-        }
-    }
+    Ok(violations)
 }
 
-/// Verifies that `mcp-server/tests/standalone_host.rs` enforces git safety using either:
-///
-/// 1. **Shared helper (preferred)**: calls `test_helpers::assert_not_in_git_repo` — the
-///    canonical API from `test-helpers`. `test-helpers` does not depend on `ralph-workflow`,
-///    so this does not violate the mcp-server isolation invariant.
-/// 2. **Local function (legacy)**: defines `fn assert_no_real_git_state` locally with a
-///    `loop {` parent-chain traversal. This was the original approach before `test-helpers`
-///    exported the shared API.
-///
-/// At least one of these patterns must be present. If neither is found, the check fails.
-///
-/// Returns `Pass` when either requirement is met or when the file does not exist
-/// (e.g., in unit-test environments with a fake repo root).
-pub fn check_standalone_host_git_safety_parity(repo_root: &Path) -> NativeCheckResult {
-    let standalone_host = repo_root.join("mcp-server/tests/standalone_host.rs");
-
-    if !standalone_host.exists() {
-        return NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        };
-    }
-
-    let content = match std::fs::read_to_string(&standalone_host) {
-        Ok(c) => c,
-        Err(e) => {
-            return NativeCheckResult {
-                status: CheckStatus::Error,
-                message: format!("Failed to read {}: {e}", standalone_host.display()),
-            };
-        }
-    };
-
-    // New approach: uses the shared helper from test-helpers (preferred)
-    let uses_shared_helper = content.contains("test_helpers::assert_not_in_git_repo");
-
-    // Legacy approach: defines the function locally with loop-based traversal
-    let has_local_function = content.contains("fn assert_no_real_git_state");
-    let has_loop_walk = content.contains("loop {");
-
-    if uses_shared_helper {
-        // Preferred pattern — shared helper from test-helpers
-        return NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        };
-    }
-
-    if !has_local_function {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message: "mcp-server/tests/standalone_host.rs is missing git safety enforcement. \
-                Either call `test_helpers::assert_not_in_git_repo` (preferred) or define \
-                a local `fn assert_no_real_git_state` with loop-based parent-chain traversal."
-                .to_string(),
-        };
-    }
-
-    if !has_loop_walk {
-        return NativeCheckResult {
-            status: CheckStatus::Error,
-            message:
-                "mcp-server/tests/standalone_host.rs defines `fn assert_no_real_git_state` but \
-                it appears to be missing the loop-based directory walk (`loop {`). The \
-                implementation must traverse the parent chain using a loop to prevent bypasses \
-                via subdirectory paths. Update it to match the canonical pattern in test-helpers."
-                    .to_string(),
-        };
-    }
-
-    NativeCheckResult {
-        status: CheckStatus::Pass,
-        message: String::new(),
-    }
-}
-
-fn scan_dir_for_ralph_prefix_violations(
+fn collect_ralph_violations_from_dir(
     dir: &Path,
     repo_root: &Path,
     violations: &mut Vec<String>,
 ) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        // Skip test directories to avoid false positives from test mock tool names
-        if path
-            .components()
-            .any(|c| c.as_os_str() == "tests" || c.as_os_str() == "test")
-        {
-            continue;
-        }
-
-        if path.is_dir() {
-            scan_dir_for_ralph_prefix_violations(&path, repo_root, violations)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            scan_file_for_ralph_prefix_violations(&path, repo_root, violations)?;
-        }
+    let mut rs_files = Vec::new();
+    crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut rs_files)?;
+    for file_path in rs_files.iter().filter(|p| !is_in_test_subdir(p)) {
+        let content = std::fs::read_to_string(file_path)?;
+        let display = file_path
+            .strip_prefix(repo_root)
+            .unwrap_or(file_path.as_path());
+        violations.extend(
+            crate::domain::compliance::scan_content_for_ralph_violations(&content, display),
+        );
     }
     Ok(())
 }
 
-fn scan_file_for_ralph_prefix_violations(
-    path: &Path,
-    repo_root: &Path,
-    violations: &mut Vec<String>,
-) -> std::io::Result<()> {
-    let content = std::fs::read_to_string(path)?;
-    let display = path.strip_prefix(repo_root).unwrap_or(path);
-
-    for (line_idx, line) in content.lines().enumerate() {
-        // Skip comment-only lines (doc comments, line comments)
-        let trimmed = line.trim();
-        if trimmed.starts_with("//") || trimmed.starts_with('*') {
-            continue;
-        }
-
-        // Find all "ralph_…" string literals in this line
-        let mut search_start = 0usize;
-        while let Some(rel) = line[search_start..].find("\"ralph_") {
-            let quote_start = search_start + rel;
-            let token_start = quote_start + 1; // skip opening "
-            match line[token_start..].find('"') {
-                Some(end) => {
-                    let tool_name = &line[token_start..token_start + end];
-                    if tool_name != "ralph_submit_artifact" {
-                        violations.push(format!(
-                            "{}:{}: '{}' uses ralph_ prefix — only ralph_submit_artifact may \
-                            retain this prefix",
-                            display.display(),
-                            line_idx + 1,
-                            tool_name,
-                        ));
-                    }
-                    search_start = token_start + end + 1;
-                }
-                None => break,
-            }
-        }
-    }
-
-    Ok(())
+fn is_in_test_subdir(path: &Path) -> bool {
+    path.components()
+        .any(|c| c.as_os_str() == "tests" || c.as_os_str() == "test")
 }
 
+/// Verifies that `mcp-server/tests/standalone_host.rs` enforces git safety using either:
+///
+/// 1. **Shared helper (preferred)**: calls `test_helpers::assert_not_in_git_repo`
+/// 2. **Local function (legacy)**: defines `fn assert_no_real_git_state` with `loop {`
+///
+/// Returns `Pass` when either requirement is met or when the file does not exist.
+pub fn check_standalone_host_git_safety_parity(repo_root: &Path) -> NativeCheckResult {
+    let standalone_host = repo_root.join("mcp-server/tests/standalone_host.rs");
+    if !standalone_host.exists() {
+        return pass_native();
+    }
+    let content = match std::fs::read_to_string(&standalone_host) {
+        Ok(c) => c,
+        Err(e) => {
+            return error_native(format!("Failed to read {}: {e}", standalone_host.display()))
+        }
+    };
+    compliance_summary_to_native(
+        crate::domain::compliance::standalone_host_git_safety_summary(
+            content.contains("test_helpers::assert_not_in_git_repo"),
+            content.contains("fn assert_no_real_git_state"),
+            content.contains("loop {"),
+        ),
+    )
+}
+
+#[path = "compliance_tests.rs"]
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    fn make_temp_dir(name: &str) -> PathBuf {
-        let base = std::env::temp_dir().join(format!("xtask-compliance-{name}"));
-        let _ = fs::remove_dir_all(&base);
-        fs::create_dir_all(&base).unwrap();
-        base
-    }
-
-    fn write_file(dir: &Path, path: &str, content: &str) {
-        let full = dir.join(path);
-        if let Some(parent) = full.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(full, content).unwrap();
-    }
-
-    // ── check_no_shell_scripts tests ──────────────────────────────────────────
-
-    #[test]
-    fn test_check_no_shell_scripts_pass_when_dirs_missing() {
-        let result = check_no_shell_scripts(Path::new("/nonexistent-fake-repo-path"));
-        assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.message.is_empty());
-    }
-
-    #[test]
-    fn test_check_no_shell_scripts_pass_when_no_sh_files() {
-        let dir = make_temp_dir("no-sh-pass");
-        fs::create_dir_all(dir.join("scripts")).unwrap();
-        fs::create_dir_all(dir.join("tests/integration_tests")).unwrap();
-        write_file(&dir, "scripts/README.md", "# no scripts here");
-        write_file(&dir, "tests/integration_tests/my_test.rs", "// rust file");
-
-        let result = check_no_shell_scripts(&dir);
-        assert_eq!(
-            result.status,
-            CheckStatus::Pass,
-            "message: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_no_shell_scripts_error_when_sh_file_found() {
-        let dir = make_temp_dir("sh-found");
-        fs::create_dir_all(dir.join("scripts")).unwrap();
-        write_file(&dir, "scripts/migrate.sh", "#!/bin/bash\necho hello");
-
-        let result = check_no_shell_scripts(&dir);
-        assert_eq!(result.status, CheckStatus::Error);
-        assert!(
-            result.message.contains("migrate.sh"),
-            "message must mention the file: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_no_shell_scripts_error_when_sh_in_integration_tests() {
-        let dir = make_temp_dir("sh-in-integration");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-        write_file(&dir, "tests/integration_tests/old_check.sh", "#!/bin/bash");
-
-        let result = check_no_shell_scripts(&dir);
-        assert_eq!(result.status, CheckStatus::Error);
-        assert!(
-            result.message.contains("old_check.sh"),
-            "{}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_check_no_shell_scripts_errors_on_unreadable_directory() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = make_temp_dir("no-shell-unreadable");
-        let scripts_dir = dir.join("scripts");
-        fs::create_dir_all(&scripts_dir).unwrap();
-        write_file(&dir, "scripts/migrate.sh", "#!/bin/bash\necho hi");
-
-        let mut perms = fs::metadata(&scripts_dir).unwrap().permissions();
-        perms.set_mode(0o000);
-        fs::set_permissions(&scripts_dir, perms).unwrap();
-
-        let result = check_no_shell_scripts(&dir);
-
-        // Restore permissions so cleanup works.
-        let mut perms_restore = fs::metadata(&scripts_dir).unwrap().permissions();
-        perms_restore.set_mode(0o755);
-        let _ = fs::set_permissions(&scripts_dir, perms_restore);
-
-        assert_eq!(result.status, CheckStatus::Error, "{}", result.message);
-        assert!(
-            result.message.contains("read_dir") || result.message.contains("Failed"),
-            "message must mention directory walk error: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    // ── check_timeout_wrappers tests ──────────────────────────────────────────
-
-    #[test]
-    fn test_check_timeout_wrappers_pass_when_dir_missing() {
-        let result = check_timeout_wrappers(Path::new("/nonexistent-fake-repo-path"));
-        assert_eq!(result.status, CheckStatus::Pass);
-        assert!(result.message.is_empty());
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_pass_when_all_tests_wrapped() {
-        let dir = make_temp_dir("pass");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/my_test.rs",
-            r#"
-#[test]
-fn test_something() {
-    with_default_timeout(|| {
-        // test body
-    });
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(
-            result.status,
-            CheckStatus::Pass,
-            "message: {}",
-            result.message
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_warning_when_missing_wrapper() {
-        let dir = make_temp_dir("warn");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/bad_test.rs",
-            r#"
-#[test]
-fn test_missing_timeout() {
-    // No timeout wrapper here
-    assert!(true);
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(result.status, CheckStatus::Warning);
-        assert!(
-            result.message.contains("test_missing_timeout"),
-            "message should mention the failing test: {}",
-            result.message
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_finds_fn_after_additional_attributes() {
-        let dir = make_temp_dir("warn-extra-attrs");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/bad_test_attr.rs",
-            r#"
-#[test]
-#[ignore = "https://example.com/issues/123"]
-fn test_missing_timeout_with_extra_attr() {
-    // No timeout wrapper here
-    assert!(true);
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(result.status, CheckStatus::Warning);
-        assert!(
-            result
-                .message
-                .contains("test_missing_timeout_with_extra_attr"),
-            "message should mention the failing test: {}",
-            result.message
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_skip_template_file() {
-        let dir = make_temp_dir("skip-template");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        // _TEMPLATE.rs should be skipped even if it has violations
-        write_file(
-            &dir,
-            "tests/integration_tests/_TEMPLATE.rs",
-            r#"
-#[test]
-fn test_template_no_timeout() {
-    // Template test without timeout wrapper
-    assert!(true);
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(
-            result.status,
-            CheckStatus::Pass,
-            "message: {}",
-            result.message
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_handles_nested_module() {
-        let dir = make_temp_dir("nested");
-
-        write_file(
-            &dir,
-            "tests/integration_tests/submodule/mod.rs",
-            r#"
-#[test]
-fn test_nested_missing() {
-    assert!(true);
-}
-"#,
-        );
-
-        // mod.rs is skipped, so no violations
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(
-            result.status,
-            CheckStatus::Pass,
-            "message: {}",
-            result.message
-        );
-
-        write_file(
-            &dir,
-            "tests/integration_tests/submodule/tests.rs",
-            r#"
-#[test]
-fn test_nested_no_timeout() {
-    assert!(true);
-}
-"#,
-        );
-
-        let result2 = check_timeout_wrappers(&dir);
-        assert_eq!(result2.status, CheckStatus::Warning);
-        assert!(result2.message.contains("test_nested_no_timeout"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_with_timeout_variant() {
-        let dir = make_temp_dir("with-timeout");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/slow_test.rs",
-            r#"
-#[test]
-fn test_slow() {
-    with_timeout(|| {
-        // slow test body
-    }, std::time::Duration::from_secs(30));
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(
-            result.status,
-            CheckStatus::Pass,
-            "message: {}",
-            result.message
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_multiple_tests_mixed() {
-        let dir = make_temp_dir("mixed");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/mixed.rs",
-            r#"
-#[test]
-fn test_ok() {
-    with_default_timeout(|| {
-        assert!(true);
-    });
-}
-
-#[test]
-fn test_missing() {
-    assert!(true);
-}
-
-#[test]
-fn test_also_ok() {
-    with_timeout(|| {
-        assert!(true);
-    }, std::time::Duration::from_secs(10));
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result.message.contains("test_missing"));
-        assert!(!result.message.contains("test_ok"));
-        assert!(!result.message.contains("test_also_ok"));
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    // ── New Aho-Corasick specific tests ───────────────────────────────────────
-
-    #[test]
-    fn test_check_timeout_wrappers_fn_with_brace_on_same_line() {
-        // fn declaration and opening brace on the same line (e.g. `fn test_foo() {`)
-        let dir = make_temp_dir("brace-same-line");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/inline.rs",
-            "#[test]\nfn test_inline() {\n    with_default_timeout(|| assert!(true));\n}\n",
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(
-            result.status,
-            CheckStatus::Pass,
-            "fn with brace on same line should pass when wrapper present: {}",
-            result.message
-        );
-
-        // Also check missing wrapper on same-line-brace fn.
-        let dir2 = make_temp_dir("brace-same-line-missing");
-        let test_dir2 = dir2.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir2).unwrap();
-
-        write_file(
-            &dir2,
-            "tests/integration_tests/inline_missing.rs",
-            "#[test]\nfn test_inline_missing() {\n    assert!(true);\n}\n",
-        );
-
-        let result2 = check_timeout_wrappers(&dir2);
-        assert_eq!(result2.status, CheckStatus::Warning);
-        assert!(
-            result2.message.contains("test_inline_missing"),
-            "{}",
-            result2.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-        let _ = fs::remove_dir_all(&dir2);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_multiple_files_mixed() {
-        // Two files: one passing, one failing.
-        let dir = make_temp_dir("multi-file-mixed");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/good.rs",
-            r#"
-#[test]
-fn test_good() {
-    with_default_timeout(|| {
-        assert!(true);
-    });
-}
-"#,
-        );
-
-        write_file(
-            &dir,
-            "tests/integration_tests/bad.rs",
-            r#"
-#[test]
-fn test_bad() {
-    assert!(false);
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(result.status, CheckStatus::Warning);
-        assert!(
-            result.message.contains("test_bad"),
-            "message must mention the bad test: {}",
-            result.message
-        );
-        assert!(
-            !result.message.contains("test_good"),
-            "message must not mention the good test: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_timeout_wrappers_timeout_outside_body_not_counted() {
-        // A timeout wrapper present in a sibling function must not satisfy
-        // the constraint for a test that lacks one.
-        let dir = make_temp_dir("timeout-outside-body");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        write_file(
-            &dir,
-            "tests/integration_tests/sibling.rs",
-            r#"
-#[test]
-fn test_has_timeout() {
-    with_default_timeout(|| {
-        assert!(true);
-    });
-}
-
-#[test]
-fn test_lacks_timeout() {
-    assert!(true);
-}
-"#,
-        );
-
-        let result = check_timeout_wrappers(&dir);
-        assert_eq!(result.status, CheckStatus::Warning);
-        assert!(
-            result.message.contains("test_lacks_timeout"),
-            "test_lacks_timeout should be flagged: {}",
-            result.message
-        );
-        assert!(
-            !result.message.contains("test_has_timeout"),
-            "test_has_timeout should NOT be flagged: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn test_check_timeout_wrappers_reports_read_errors_separately() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = make_temp_dir("read-error");
-        let test_dir = dir.join("tests/integration_tests");
-        fs::create_dir_all(&test_dir).unwrap();
-
-        let file_rel = "tests/integration_tests/unreadable.rs";
-        write_file(
-            &dir,
-            file_rel,
-            "#[test]\nfn test_unreadable() { assert!(true); }\n",
-        );
-
-        let file_path = dir.join(file_rel);
-        let mut perms = fs::metadata(&file_path).unwrap().permissions();
-        perms.set_mode(0o000);
-        fs::set_permissions(&file_path, perms).unwrap();
-
-        let result = check_timeout_wrappers(&dir);
-
-        // Restore permissions so cleanup works.
-        let mut perms_restore = fs::metadata(&file_path).unwrap().permissions();
-        perms_restore.set_mode(0o644);
-        let _ = fs::set_permissions(&file_path, perms_restore);
-
-        assert_eq!(result.status, CheckStatus::Error, "{}", result.message);
-        assert!(
-            result.message.contains("read error"),
-            "message must mention read error: {}",
-            result.message
-        );
-        assert!(
-            !result.message.contains("missing timeout wrapper"),
-            "read errors must not be counted as missing wrappers: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn test_check_tailwind4_removed_angular_classes_warns_on_tailwind3_only_class() {
-        let dir = make_temp_dir("tailwind4-removed-class");
-        write_file(
-            &dir,
-            "ralph-gui/ui/src/app/components/example/example.component.html",
-            r#"<div class="flex items-center flex-shrink-0">Example</div>"#,
-        );
-
-        let result = check_tailwind4_removed_angular_classes(&dir);
-
-        assert_eq!(result.status, CheckStatus::Warning, "{}", result.message);
-        assert!(
-            result.message.contains("flex-shrink-0"),
-            "message must mention the removed Tailwind 3 class: {}",
-            result.message
-        );
-        assert!(
-            result.message.contains("shrink-0"),
-            "message must mention the Tailwind 4 replacement: {}",
-            result.message
-        );
-        assert!(
-            result.message.contains("needs rework"),
-            "message must tell the user the component/file needs rework: {}",
-            result.message
-        );
-        assert!(
-            result
-                .message
-                .contains("Tailwind CSS v4 documentation and upgrade guide"),
-            "message must direct the user to current Tailwind v4 docs: {}",
-            result.message
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-}
+mod tests;

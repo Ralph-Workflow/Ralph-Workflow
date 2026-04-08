@@ -148,15 +148,18 @@ fn start_mcp_bridge_for_session(
     session: &AgentSession,
 ) -> Result<(SessionBridge, Option<String>)> {
     let workspace_arc = Arc::clone(&ctx.workspace_arc);
-    let bridge = crate::phases::commit::start_mcp_bridge(session.clone(), workspace_arc)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "MCP bridge startup failed for session {} (drain={}): {}. MCP is mandatory and execution was aborted.",
-                session.session_id,
-                session.drain.as_str(),
-                e
-            )
-        })?;
+    let bridge = crate::mcp::server_startup::start_mcp_server_for_session(
+        session.clone(),
+        workspace_arc,
+    )
+    .map_err(|e| {
+        anyhow::anyhow!(
+            "MCP bridge startup failed for session {} (drain={}): {}. MCP is mandatory and execution was aborted.",
+            session.session_id,
+            session.drain.as_str(),
+            e
+        )
+    })?;
     let uri = bridge.endpoint_uri();
     ctx.logger.info(&format!(
         "RFC-009 MCP endpoint prepared: {} (socket: {})",

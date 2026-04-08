@@ -221,6 +221,8 @@ fn test_effects_are_single_task() {
                 worker_results: vec![],
                 iteration: 0,
             },
+            Effect::CheckNetworkConnectivity,
+            Effect::PollForConnectivity { interval_ms: 5000 },
         ];
 
         // Exhaustive match guard: forces compile error when new variants are added.
@@ -305,14 +307,16 @@ fn test_effects_are_single_task() {
                 Effect::EvaluateParallelPlan { .. } => "evaluate-parallel-plan",
                 Effect::DispatchParallelWorkers { .. } => "dispatch-parallel-workers",
                 Effect::InvokeParallelVerifier { .. } => "invoke-parallel-verifier",
+                Effect::CheckNetworkConnectivity => "check-connectivity",
+                Effect::PollForConnectivity { .. } => "poll-connectivity",
             };
         }
 
         // Variant count guard: catches additions/removals even if the match is updated.
         assert_eq!(
             effects.len(),
-            78,
-            "Expected 78 Effect instances; update this test if variants were added or removed"
+            80,
+            "Expected 80 Effect instances; update this test if variants were added or removed"
         );
     });
 }

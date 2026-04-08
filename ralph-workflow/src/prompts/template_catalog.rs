@@ -380,6 +380,7 @@ mod tests {
             "commit_xsd_retry should clearly be a JSON-only retry prompt"
         );
 
+        // New dumb-agent-proof format uses REFERENCE ONLY instead of READ-ONLY
         assert!(
             content.contains("ralph_submit_artifact"),
             "commit_xsd_retry should instruct submission via ralph_submit_artifact"

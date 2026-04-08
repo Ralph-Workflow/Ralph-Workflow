@@ -29,6 +29,29 @@ Your previous fix result submission failed validation.
 ERROR: {{XSD_ERROR}}
 
 ═══════════════════════════════════════════════════════════════════════════════
+REFERENCE ONLY (Do not redo task logic)
+═══════════════════════════════════════════════════════════════════════════════
+
+Read these files ONLY to understand expected structure:
+- `{{FIX_RESULT_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `{{FIX_RESULT_XML_PATH}}` - Your previous fix result output (REFERENCE ONLY)
+- `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
+
+These files are for structure reference only. Do NOT redo fix work from them.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIMARY OBJECTIVE: Fix Malformed XML Structure
+═══════════════════════════════════════════════════════════════════════════════
+
+Your main task is to fix the malformed XML structure. The most common issue
+is malformed XML/root parse errors - fix those FIRST.
+
+Focus on:
+1. Fix malformed XML/root structure first
+2. Fix any remaining XML format issues
+3. Ensure all required elements are present
+
+═══════════════════════════════════════════════════════════════════════════════
 CRITICAL INSTRUCTIONS - READ CAREFULLY
 ═══════════════════════════════════════════════════════════════════════════════
 

@@ -279,23 +279,28 @@ pub(crate) fn completion_check_passes(
 }
 
 /// Pure policy: determine MonitorResult when child has exited during enforcement.
+///
+/// Contract: once enforcement has been triggered (a kill signal was already sent),
+/// the outcome is always `TimedOut` unless the completion check confirms the work
+/// finished cleanly. The `escalated` flag distinguishes SIGTERM vs SIGKILL but
+/// does not change whether the outcome is a timeout.
 fn result_on_enforcement_exit(
     state: &TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
     completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>,
+    _child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
 ) -> MonitorResult {
-    // If we already escalated to SIGKILL (state.escalated = true), any subsequent
-    // exit is a timeout, not a clean completion.
-    if state.escalated {
-        return MonitorResult::TimedOut {
-            escalated: true,
-            child_status_at_timeout: last_child_info,
-        };
-    }
+    // Completion check takes priority: if the output file is ready, treat this
+    // as a clean exit regardless of whether escalation was needed.
     if completion_check_passes(completion_check) {
-        MonitorResult::CompleteButWaiting
-    } else {
-        MonitorResult::ProcessCompleted
+        return MonitorResult::CompleteButWaiting;
+    }
+    // A kill was already sent when enforcement state was created. Whether the
+    // process exited after SIGTERM (escalated=false) or SIGKILL (escalated=true),
+    // the cause of exit was the kill signal — the outcome is always TimedOut.
+    MonitorResult::TimedOut {
+        escalated: state.escalated,
+        child_status_at_timeout: last_child_info,
     }
 }
 
@@ -701,7 +706,8 @@ pub(crate) fn handle_enforcement_phase(
 ) -> (EnforcementStep, Option<TimeoutEnforcementState>) {
     match advance_timeout_enforcement(state, child, executor, kill_config) {
         TimeoutEnforcementContinuation::Exited => {
-            let result = result_on_enforcement_exit(&state, last_child_info, completion_check);
+            let result =
+                result_on_enforcement_exit(&state, last_child_info, completion_check, child);
             (EnforcementStep::ReturnResult(result), None)
         }
         TimeoutEnforcementContinuation::HardCapReached => {
@@ -742,6 +748,12 @@ pub(crate) fn dispatch_enforcement_phase(
 
 /// Pure: compute the enforcement phase result.
 /// Returns (EnforcementStep, Option<TimeoutEnforcementState>)
+///
+/// Note: `should_stop` is intentionally NOT checked here. Once enforcement has
+/// been triggered (a kill was already sent), the outcome is always `TimedOut` —
+/// the external stop signal does not retroactively change the reason the process
+/// was killed. `should_stop` is checked earlier in `compute_tick_policy` via
+/// `StopConditionsMet`, which fires before enforcement is initiated.
 fn compute_enforcement_phase_result(
     params: &MonitorParams<'_>,
     state: TimeoutEnforcementState,

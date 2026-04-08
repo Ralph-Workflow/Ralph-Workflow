@@ -6,8 +6,27 @@
 //! It also provides thin boundary functions that wire capability checking inputs
 //! to pure domain policy helpers.
 
-use crate::agents::session::{Capability, PolicyOutcome};
-use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, McpCapability};
+use crate::agents::session::{Capability, PolicyOutcome, SessionDrain};
+use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, AccessMode, McpCapability};
+
+// ---------------------------------------------------------------------------
+// Drain-to-access-mode mapping
+// ---------------------------------------------------------------------------
+
+/// Pure mapping: determine the MCP `AccessMode` for a session drain.
+///
+/// Per RFC-009: Planning/Analysis/Review/Fix drains operate in ReadOnly mode —
+/// no write mutations are permitted via MCP during these phases. Development and
+/// Commit drains receive ReadWrite access so they can modify workspace files.
+pub(crate) fn drain_to_access_mode(drain: SessionDrain) -> AccessMode {
+    match drain {
+        SessionDrain::Planning
+        | SessionDrain::Analysis
+        | SessionDrain::Review
+        | SessionDrain::Fix => AccessMode::ReadOnly,
+        SessionDrain::Development | SessionDrain::Commit => AccessMode::ReadWrite,
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Static mapping table

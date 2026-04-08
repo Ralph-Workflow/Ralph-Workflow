@@ -19,6 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::domain::test_utils_scan::TestUtilsItem;
 use crate::runtime::verify::{CheckStatus, NativeCheckResult};
 
 /// Scans `ralph-workflow/src/` for items declared under
@@ -36,64 +37,81 @@ pub fn check_test_utils_items_used_in_tests(repo_root: &Path) -> NativeCheckResu
     if !src_dir.exists() {
         return pass();
     }
+    run_test_utils_scan(src_dir, repo_root).unwrap_or_else(|e| e)
+}
 
-    // Phase 1: collect every pub item declared under #[cfg(feature = "test-utils")]
-    let src_files = match collect_rs_files(&src_dir) {
-        Ok(f) => f,
-        Err(e) => {
-            return error(format!(
-                "Failed to walk ralph-workflow/src during test-utils scan: {e}"
-            ))
-        }
-    };
-
-    let mut items: Vec<TestUtilsItem> = Vec::new();
-    let mut read_errors: Vec<String> = Vec::new();
-
-    for file_path in &src_files {
-        match std::fs::read_to_string(file_path) {
-            Ok(content) => collect_test_utils_items(file_path, &content, &mut items),
-            Err(e) => read_errors.push(format!("{}: {e}", file_path.display())),
-        }
-    }
-
-    if !read_errors.is_empty() {
-        return error(format!(
-            "Failed to read {} file(s) while scanning for test-utils items:\n{}",
-            read_errors.len(),
-            read_errors.join("\n")
-        ));
-    }
-
+fn run_test_utils_scan(
+    src_dir: PathBuf,
+    repo_root: &Path,
+) -> Result<NativeCheckResult, NativeCheckResult> {
+    let items = collect_items_from_dir(&src_dir)?;
     if items.is_empty() {
-        return pass();
+        return Ok(pass());
     }
-
-    // Phase 2: gather all content from test-side directories
     let test_dirs = [repo_root.join("tests"), repo_root.join("test-helpers/src")];
+    let content = gather_test_content(&test_dirs)?;
+    Ok(unused_items_result(&items, &content))
+}
 
-    let mut test_content = String::new();
-    for test_dir in &test_dirs {
-        if !test_dir.exists() {
-            continue;
-        }
-        let files = match collect_rs_files(test_dir) {
-            Ok(f) => f,
-            Err(e) => {
-                return error(format!(
-                    "Failed to walk {} during test-utils usage scan: {e}",
-                    test_dir.display()
-                ))
-            }
-        };
-        for fp in &files {
-            if let Ok(c) = std::fs::read_to_string(fp) {
-                test_content.push_str(&c);
-            }
-        }
+fn collect_items_from_dir(src_dir: &Path) -> Result<Vec<TestUtilsItem>, NativeCheckResult> {
+    let src_files = collect_rs_files(src_dir).map_err(|e| {
+        error(format!(
+            "Failed to walk ralph-workflow/src during test-utils scan: {e}"
+        ))
+    })?;
+    read_and_collect_items(&src_files)
+}
+
+fn read_and_collect_items(src_files: &[PathBuf]) -> Result<Vec<TestUtilsItem>, NativeCheckResult> {
+    let (successes, failures): (Vec<_>, Vec<_>) = src_files
+        .iter()
+        .map(|fp| {
+            std::fs::read_to_string(fp)
+                .map(|content| {
+                    crate::domain::test_utils_scan::collect_test_utils_items_in_file(fp, &content)
+                })
+                .map_err(|e| format!("{}: {e}", fp.display()))
+        })
+        .partition(Result::is_ok);
+    if failures.is_empty() {
+        Ok(successes
+            .into_iter()
+            .flat_map(|r| r.unwrap_or_default())
+            .collect())
+    } else {
+        let msgs: Vec<String> = failures.into_iter().filter_map(|r| r.err()).collect();
+        Err(error(format!(
+            "Failed to read {} file(s) while scanning for test-utils items:\n{}",
+            msgs.len(),
+            msgs.join("\n")
+        )))
     }
+}
 
-    // Phase 3: any item not referenced in test code is dead code
+fn gather_test_content(test_dirs: &[PathBuf]) -> Result<String, NativeCheckResult> {
+    test_dirs
+        .iter()
+        .filter(|d| d.exists())
+        .try_fold(String::new(), |content, test_dir| {
+            append_dir_content(content, test_dir)
+        })
+}
+
+fn append_dir_content(content: String, test_dir: &Path) -> Result<String, NativeCheckResult> {
+    let files = collect_rs_files(test_dir).map_err(|e| {
+        error(format!(
+            "Failed to walk {} during test-utils usage scan: {e}",
+            test_dir.display()
+        ))
+    })?;
+    let added: String = files
+        .iter()
+        .filter_map(|fp| std::fs::read_to_string(fp).ok())
+        .collect();
+    Ok(content + &added)
+}
+
+fn unused_items_result(items: &[TestUtilsItem], test_content: &str) -> NativeCheckResult {
     let unused: Vec<String> = items
         .iter()
         .filter(|item| !test_content.contains(item.name.as_str()))
@@ -111,73 +129,6 @@ pub fn check_test_utils_items_used_in_tests(repo_root: &Path) -> NativeCheckResu
             unused.len(),
             unused.join("\n")
         ))
-    }
-}
-
-struct TestUtilsItem {
-    name: String,
-    file: PathBuf,
-    line: usize,
-}
-
-/// Scans `content` for `#[cfg(feature = "test-utils")]` annotations and
-/// records the name of the `pub` item that immediately follows each one.
-fn collect_test_utils_items(file_path: &Path, content: &str, out: &mut Vec<TestUtilsItem>) {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        if lines[i].trim().contains("#[cfg(feature = \"test-utils\")]") {
-            // Skip blank lines, comments, and further attributes between the
-            // cfg annotation and the actual item declaration.
-            let mut j = i + 1;
-            while j < lines.len() {
-                let next = lines[j].trim();
-                if next.is_empty() || next.starts_with("//") || next.starts_with("#[") {
-                    j += 1;
-                    continue;
-                }
-                if let Some(name) = extract_pub_item_name(next) {
-                    out.push(TestUtilsItem {
-                        name,
-                        file: file_path.to_owned(),
-                        line: j + 1,
-                    });
-                }
-                break;
-            }
-        }
-        i += 1;
-    }
-}
-
-/// Extracts the identifier from a `pub` item declaration line.
-///
-/// Handles `pub fn`, `pub struct`, `pub enum`, `pub type`, `pub const`,
-/// `pub trait`, `pub mod`, and their `pub(crate)` equivalents.
-fn extract_pub_item_name(line: &str) -> Option<String> {
-    let rest = line
-        .strip_prefix("pub(crate)")
-        .or_else(|| line.strip_prefix("pub"))?;
-    let rest = rest.trim_start();
-
-    let ident_start = rest
-        .strip_prefix("fn ")
-        .or_else(|| rest.strip_prefix("struct "))
-        .or_else(|| rest.strip_prefix("enum "))
-        .or_else(|| rest.strip_prefix("type "))
-        .or_else(|| rest.strip_prefix("const "))
-        .or_else(|| rest.strip_prefix("trait "))
-        .or_else(|| rest.strip_prefix("mod "))?;
-
-    let name: String = ident_start
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_')
-        .collect();
-
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
     }
 }
 
@@ -306,23 +257,5 @@ mod tests {
             result.message
         );
         let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn extract_pub_item_name_handles_common_kinds() {
-        assert_eq!(
-            extract_pub_item_name("pub fn make_fixture() {}"),
-            Some("make_fixture".into())
-        );
-        assert_eq!(
-            extract_pub_item_name("pub struct FakeEnv;"),
-            Some("FakeEnv".into())
-        );
-        assert_eq!(
-            extract_pub_item_name("pub(crate) mod helpers {"),
-            Some("helpers".into())
-        );
-        assert_eq!(extract_pub_item_name("fn private_fn() {}"), None);
-        assert_eq!(extract_pub_item_name("// comment"), None);
     }
 }

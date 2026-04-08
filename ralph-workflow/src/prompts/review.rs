@@ -19,3 +19,6 @@ include!("review/fix_prompts.rs");
 
 #[cfg(test)]
 mod io_tests;
+
+#[cfg(test)]
+mod tests;

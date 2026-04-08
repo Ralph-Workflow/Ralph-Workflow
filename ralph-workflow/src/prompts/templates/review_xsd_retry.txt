@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: review_xsd_retry.txt                                               #}
-{# Version: 5.0 - MCP JSON resubmission only                                   #}
+{# Version: 6.0 - MCP JSON resubmission only                                   #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -9,6 +9,8 @@
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   {{XSD_ERROR}} - Validation error message (required)                        #}
+{#   {{ISSUES_XML_PATH}} - Path to issues XML file                              #}
+{#   {{ISSUES_XSD_PATH}} - Path to issues XSD schema                            #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
 {#   Corrected JSON submitted via ralph_submit_artifact                        #}
@@ -26,10 +28,36 @@ VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 
 Your previous issues submission failed validation.
 
+**THIS IS A SUBMISSION-FIX-ONLY RETRY**
+
 ERROR: {{XSD_ERROR}}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CRITICAL INSTRUCTIONS - READ CAREFULLY
+REFERENCE ONLY (Do NOT review any code or Do NOT DO any review work)
+═══════════════════════════════════════════════════════════════════════════════
+
+Read these files ONLY to understand expected structure:
+- `{{ISSUES_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `{{ISSUES_XML_PATH}}` - Your previous issues output (REFERENCE ONLY)
+- `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
+
+These files are for structure reference only. Do NOT review code or
+Do NOT DO any additional review work from them.
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIMARY OBJECTIVE: Fix Malformed JSON Submission
+═══════════════════════════════════════════════════════════════════════════════
+
+Your main task is to fix the malformed JSON submission. The most common issues
+are missing required fields and invalid field values.
+
+Focus on:
+1. Fix malformed JSON structure first
+2. Fix any remaining field format issues
+3. Ensure all required fields are present
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL INSTRUCTIONS - FIX XML ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
 The validation error is in JSON directive format:
@@ -39,8 +67,8 @@ You MUST call `ralph_submit_artifact` with artifact_type="issues" and corrected
 JSON content. Follow every instruction in the `next_actions` array exactly.
 
 You MUST NOT:
-- Review any code
-- Analyze any files
+- Do NOT review any code
+- Do NOT analyze any files
 - Run any commands
 - Do ANY review work
 - Change the content/meaning of your response - ONLY fix the validation errors
@@ -59,4 +87,4 @@ COMMON MISTAKES TO FIX
 4. Malformed JSON structure
 
 Resubmit your corrected JSON via `ralph_submit_artifact`.
-DO NOT do any other work.
+DO NOT DO any other work.

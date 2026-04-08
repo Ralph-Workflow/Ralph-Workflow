@@ -78,7 +78,7 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: fast_kill_config(),
-        required_idle_confirmations: 1,
+        required_idle_confirmations: 3,
         check_child_processes: true,
         completion_check: None,
     };
@@ -221,7 +221,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: fast_kill_config(),
-        required_idle_confirmations: 1,
+        required_idle_confirmations: 3,
         check_child_processes: true,
         completion_check: None,
     };

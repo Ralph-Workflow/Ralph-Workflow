@@ -59,6 +59,7 @@ fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -81,6 +82,7 @@ fn test_review_phase_emits_prepare_review_context_after_chain_initialized() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -104,6 +106,7 @@ fn test_review_phase_emits_cleanup_required_files_after_prompt_prepared() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -140,6 +143,7 @@ fn test_review_phase_emits_extract_review_issues_xml_after_agent_invoked() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -176,6 +180,7 @@ fn test_review_phase_emits_validate_review_issues_xml_after_extracted() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -216,6 +221,7 @@ fn test_review_phase_emits_write_issues_markdown_after_validated() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -263,6 +269,7 @@ fn test_review_phase_emits_extract_issue_snippets_after_markdown_written() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -314,6 +321,7 @@ fn test_review_phase_emits_archive_issues_xml_after_snippets_extracted() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -363,6 +371,7 @@ fn test_review_phase_emits_apply_review_outcome_after_issues_xml_archived() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,
@@ -423,6 +432,7 @@ fn test_review_phase_emits_prepare_review_prompt_after_context_prepared() {
         PipelineEvent::agent_chain_initialized(
             crate::agents::AgentDrain::Review,
             vec![AgentName::from("mock")],
+            vec![],
             1,
             0,
             1.0,

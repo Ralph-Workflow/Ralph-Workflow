@@ -6,6 +6,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use ralph_gui::commands::{config, run_management, session, workspace, worktree};
+use ralph_gui::domain::run as domain_run;
 use ralph_gui::state::new_shared_state;
 use tauri_specta::collect_commands;
 
@@ -89,8 +90,8 @@ fn register_extra_types(
         .typ::<ralph_gui::commands::config::ChainInfo>()
         .typ::<ralph_gui::commands::config::EffectiveChainsConfig>()
         .typ::<ralph_gui::commands::preferences::GuiPreferences>()
-        .typ::<ralph_gui::commands::run_management::RunStatus>()
-        .typ::<ralph_gui::commands::run_management::RunDetail>()
+        .typ::<domain_run::RunStatus>()
+        .typ::<domain_run::RunDetail>()
         .typ::<ralph_gui::commands::run_management::RunLogLine>()
         .typ::<ralph_gui::commands::run_management::FileDiff>()
         .typ::<ralph_gui::commands::run_management::RunChanges>()
@@ -98,8 +99,8 @@ fn register_extra_types(
         .typ::<ralph_gui::commands::run_management::IterationStatus>()
         .typ::<ralph_gui::commands::run_management::ReviewSummary>()
         .typ::<ralph_gui::commands::run_management::ReviewStatus>()
-        .typ::<ralph_gui::commands::run_management::PhaseDuration>()
-        .typ::<ralph_gui::commands::run_management::DegradedInfo>()
+        .typ::<domain_run::PhaseDuration>()
+        .typ::<domain_run::DegradedInfo>()
         .typ::<ralph_gui::commands::session::SessionSummary>()
         .typ::<ralph_gui::commands::session::CreateSessionRequest>()
         .typ::<ralph_gui::commands::session::BatchOperationResult>()

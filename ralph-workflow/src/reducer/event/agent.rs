@@ -97,6 +97,12 @@ pub enum AgentEvent {
         drain: AgentDrain,
         /// The agents available in this chain.
         agents: Vec<AgentName>,
+        /// Per-agent model flag lists, parallel to `agents`.
+        ///
+        /// Each inner `Vec` contains model flags (e.g. `["-m opencode/glm-4.7-free"]`) for the
+        /// corresponding agent. An empty inner `Vec` means no model-level fallback for that agent
+        /// (treated as a single-model agent).
+        models_per_agent: Vec<Vec<String>>,
         /// Maximum number of retry cycles allowed for this chain.
         max_cycles: u32,
         /// Base retry-cycle delay in milliseconds.
@@ -320,4 +326,18 @@ pub enum AgentEvent {
         /// Reason for collapsing to single-agent.
         reason: String,
     },
+
+    /// Connectivity probe succeeded (network is reachable).
+    ///
+    /// Emitted when a connectivity probe succeeds. The reducer processes this
+    /// to update ConnectivityState accordingly. If the pipeline was waiting
+    /// for connectivity verification, this clears that pending flag.
+    ConnectivityCheckSucceeded,
+
+    /// Connectivity probe failed (network is unreachable).
+    ///
+    /// Emitted when a connectivity probe fails. The reducer processes this
+    /// to update ConnectivityState. If the failure threshold is reached,
+    /// the pipeline enters offline mode.
+    ConnectivityCheckFailed,
 }

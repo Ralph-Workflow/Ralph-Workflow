@@ -94,6 +94,12 @@ existing adapter code:
 - `deduplication/`
 - `delta_display/`
 - `printer/`
+- `mcp_server/`
+- `harness/`
+- `main` — binary entry point (`main.rs` files); subjects them to `boundary_function_too_complex`
+  and `forbid_boundary_policy_calls` but exempts them from functional purity lints
+  (`forbid_mut_binding`, `forbid_imperative_loops`, etc.) because `main` is inherently effectful:
+  it reads process arguments, accesses the clock, and dispatches to real effects.
 
 This mirrors the Haskell separation between pure computation and the `IO` monad, but with an
 important repository-specific rule: a boundary marker is an effect seam, not a general escape
@@ -145,9 +151,13 @@ near the top of the file. When `cargo xtask verify` sees that marker, it prints
 # Run all custom lints (via make - recommended)
 make dylint
 
-# Run using cargo dylint directly with ralph_lints
-cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
+# Equivalent runner entrypoint
+cargo xtask dylint
 ```
+
+`cargo xtask dylint` resolves workspace packages from `cargo metadata`, lints each package with
+`ralph_lints`, excludes lint crates themselves (for example `*_lints`), and keeps
+`ralph-workflow` scoped to `--lib` to avoid known binary-target warning escalation.
 
 ## Local Crate Verification
 

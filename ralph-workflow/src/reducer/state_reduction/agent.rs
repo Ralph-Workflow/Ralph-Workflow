@@ -2,7 +2,7 @@
 
 use crate::agents::DrainMode;
 use crate::reducer::event::{AgentErrorKind, AgentEvent, PipelinePhase, TimeoutOutputKind};
-use crate::reducer::state::{ContinuationState, PipelineState, SameAgentRetryReason};
+use crate::reducer::state::{ContinuationState, PipelineState, RunMetrics, SameAgentRetryReason};
 
 pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> PipelineState {
     match event {
@@ -155,7 +155,23 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             SameAgentRetryableFailure::TimeoutWithContext,
             logfile_path,
         ),
-        // Other retriable errors (Network, ModelUnavailable): try next model
+        // Network errors: trigger connectivity check before consuming any retry budget.
+        //
+        // IMPORTANT: We do NOT advance models, reset retry counters, or change agent chain
+        // state. All retry/continuation state is preserved unchanged. The orchestrator
+        // will return CheckNetworkConnectivity (Priority 2) before any budget-consuming
+        // effect. If connectivity is confirmed offline, the pipeline freezes without
+        // consuming budget. If connectivity is restored, the orchestrator re-derives
+        // the same effect that was about to run, and normal retry proceeds.
+        AgentEvent::InvocationFailed {
+            retriable: true,
+            error_kind: AgentErrorKind::Network,
+            ..
+        } => PipelineState {
+            connectivity: state.connectivity.trigger_check(),
+            ..state
+        },
+        // Other retriable errors (ModelUnavailable): try next model
         AgentEvent::InvocationFailed {
             retriable: true, ..
         } => {
@@ -292,14 +308,13 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         AgentEvent::ChainInitialized {
             drain,
             agents,
+            models_per_agent,
             max_cycles,
             retry_delay_ms,
             backoff_multiplier,
             max_backoff_ms,
         } => {
             let agents_strings: Vec<String> = agents.iter().map(|a| a.to_string()).collect();
-            let models_per_agent: Vec<Vec<String>> =
-                agents_strings.iter().map(|_| vec![]).collect();
             PipelineState {
                 agent_chain: state
                     .agent_chain
@@ -463,6 +478,38 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 parallel_workers_completed: Vec::new(),
                 parallel_verification_completed: false,
                 parallel_verification_iteration: 0,
+                ..state
+            }
+        }
+        // Connectivity probe succeeded: update ConnectivityState to reflect the probe result.
+        // This clears check_pending and, if we were offline, transitions back to online.
+        AgentEvent::ConnectivityCheckSucceeded => PipelineState {
+            connectivity: state.connectivity.on_probe_succeeded(),
+            ..state
+        },
+
+        // Connectivity probe failed: update ConnectivityState by incrementing failure count.
+        // The reducer maintains the failure counter via on_probe_failed().
+        // If the failure threshold is reached, enters offline mode.
+        // Increment connectivity_interruptions_total only on the false→true transition.
+        // This is the exact moment the pipeline enters offline mode (debounce threshold met).
+        AgentEvent::ConnectivityCheckFailed => {
+            let new_connectivity = state.connectivity.clone().on_probe_failed();
+            let connectivity_interruptions_total =
+                if new_connectivity.is_offline && !state.connectivity.is_offline {
+                    state
+                        .metrics
+                        .connectivity_interruptions_total
+                        .saturating_add(1)
+                } else {
+                    state.metrics.connectivity_interruptions_total
+                };
+            PipelineState {
+                connectivity: new_connectivity,
+                metrics: RunMetrics {
+                    connectivity_interruptions_total,
+                    ..state.metrics.clone()
+                },
                 ..state
             }
         }

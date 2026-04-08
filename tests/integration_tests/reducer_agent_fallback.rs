@@ -287,6 +287,7 @@ fn test_chain_initialized_event_populates_state() {
             PipelineEvent::agent_chain_initialized(
                 AgentRole::Developer.into(),
                 EXPECTED_AGENTS.iter().map(|s| (*s).into()).collect(),
+                vec![],
                 3,
                 1000,
                 2.0,

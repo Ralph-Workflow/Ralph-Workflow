@@ -107,7 +107,10 @@ For each issue found, provide:
 - File and line reference (e.g., `src/file.rs:42`)
 - Severity level: Critical, High, Medium, or Low
 - Clear description of the problem
-- Suggested fix or approach
+- **What is wrong**: The specific issue
+- **Where it is**: File and line reference
+- **Why it matters**: Impact and risk
+- **How to fix**: Direction for correction
 
 Do NOT report:
 - Style preferences that don't affect correctness
@@ -116,6 +119,18 @@ Do NOT report:
 - Nitpicks about naming, formatting, or documentation
 
 If no important issues are found, explicitly state why the implementation is correct.
+
+═══════════════════════════════════════════════════════════════════════════════
+ISSUE STRUCTURE (Prioritized, Actionable)
+═══════════════════════════════════════════════════════════════════════════════
+
+Each issue MUST include:
+1. **What is wrong** - The specific issue in plain language
+2. **Where it is** - File:line reference
+3. **Why it matters** - Impact assessment
+4. **How to fix** - Direction for the fixer agent
+
+Issues should be ordered by priority (Critical first, then High, Medium, Low).
 
 Parallel review guidance:
 - Use parallel review agents only for independent review tracks (for example: correctness, security, tests)
