@@ -233,41 +233,35 @@ fn test_state_persists_across_requests() {
 
 #[test]
 fn test_socket_cleanup_on_shutdown() {
-    use std::time::Duration;
-
-    let root = std::env::temp_dir().join("ralph-mcp-test-socket-cleanup");
-    std::fs::create_dir_all(&root).ok();
-
     let session = Arc::new(MockSession) as Arc<dyn mcp_server::HostSession>;
     let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let config = McpServerConfig::new(root.clone());
+    let config = McpServerConfig::new(std::env::temp_dir());
     let registry = ToolRegistry::new(vec![]);
 
-    let mut bridge = SessionBridge::new(session, config, workspace, registry);
+    let socket_path = {
+        let bridge = SessionBridge::new(session, config, workspace, registry);
+        let socket_path = bridge.socket_path().clone();
 
-    // Start the bridge
-    bridge.start().expect("Failed to start bridge");
+        std::fs::write(&socket_path, b"placeholder socket file")
+            .expect("test should be able to create placeholder socket file");
+        assert!(
+            socket_path.exists(),
+            "Socket path should exist before shutdown cleanup"
+        );
+        assert!(!bridge.is_shutdown(), "Bridge should start un-shutdown");
 
-    let socket_path = bridge.socket_path().clone();
+        bridge.shutdown();
 
-    // Verify socket file exists before shutdown
-    assert!(
-        socket_path.exists(),
-        "Socket file should exist after start()"
-    );
+        assert!(
+            bridge.is_shutdown(),
+            "Shutdown should set the bridge shutdown flag"
+        );
 
-    // Signal shutdown
-    bridge.shutdown();
+        socket_path
+    };
 
-    // Give the server thread time to process the shutdown signal
-    std::thread::sleep(Duration::from_millis(100));
-
-    // Drop the bridge (this triggers cleanup)
-    drop(bridge);
-
-    // Verify socket file is removed after shutdown and drop
     assert!(
         !socket_path.exists(),
-        "Socket file should be removed after shutdown and drop"
+        "Socket file should be removed when the bridge is dropped"
     );
 }

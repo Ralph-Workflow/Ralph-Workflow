@@ -734,6 +734,19 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
+    CommandSpec {
+        name: "test-mcp-server-standalone",
+        program: "cargo",
+        args: &[
+            "test",
+            "-p",
+            "mcp-server",
+            "--test",
+            "standalone_integration",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
 ];
 
 pub const XTASK_CARGO_CHECKS: &[CommandSpec] = &[

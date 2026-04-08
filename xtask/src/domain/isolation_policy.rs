@@ -4,7 +4,7 @@
 //! transitive dependency on `ralph-workflow`. All logic here is side-effect-free
 //! and operates on pre-parsed cargo metadata JSON values.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 /// Check whether `mcp-server` transitively depends on `ralph-workflow`.
 ///
@@ -54,16 +54,23 @@ pub fn build_id_to_deps(packages: &[serde_json::Value]) -> HashMap<&str, Vec<&st
 /// Multiple ids may share a name when different versions of the same crate
 /// are present in the workspace (e.g. serde 1.0.0 and serde 2.0.0).
 pub fn build_name_to_ids(packages: &[serde_json::Value]) -> HashMap<&str, Vec<&str>> {
-    let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
-    for pkg in packages {
-        if let (Some(name), Some(id)) = (
-            pkg.get("name").and_then(|n| n.as_str()),
-            pkg.get("id").and_then(|i| i.as_str()),
-        ) {
-            map.entry(name).or_default().push(id);
-        }
-    }
-    map
+    packages
+        .iter()
+        .filter_map(|pkg| Some((pkg.get("name")?.as_str()?, pkg.get("id")?.as_str()?)))
+        .fold(HashMap::new(), |name_to_ids, (name, id)| {
+            let updated_ids = name_to_ids
+                .get(name)
+                .into_iter()
+                .flat_map(|ids| ids.iter().copied())
+                .chain(std::iter::once(id))
+                .collect();
+
+            name_to_ids
+                .into_iter()
+                .filter(|(existing_name, _)| *existing_name != name)
+                .chain(std::iter::once((name, updated_ids)))
+                .collect()
+        })
 }
 
 /// Find the package id for a package with the given name.
@@ -92,111 +99,122 @@ pub fn check_isolation<'a>(
     id_to_deps: &HashMap<&'a str, Vec<&'a str>>,
     name_to_ids: &HashMap<&'a str, Vec<&'a str>>,
 ) -> Option<String> {
-    let mut visited: HashSet<&str> = HashSet::new();
-    let mut queue: VecDeque<&str> = VecDeque::new();
-    queue.push_back(mcp_server_id);
-    visited.insert(mcp_server_id);
-
-    while let Some(current_id) = queue.pop_front() {
-        if current_id == mcp_server_id {
-            if let Some(msg) = check_direct_deps(
-                mcp_server_id,
-                id_to_deps,
-                name_to_ids,
-                &mut visited,
-                &mut queue,
-            ) {
-                return Some(msg);
-            }
-            continue;
-        }
-
-        if let Some(msg) = check_transitive_dep(
-            current_id,
-            id_to_name,
-            id_to_deps,
-            name_to_ids,
-            &mut visited,
-            &mut queue,
-        ) {
-            return Some(msg);
-        }
-    }
-
-    None
+    walk_dependency_graph(
+        vec![mcp_server_id],
+        [mcp_server_id].into_iter().collect(),
+        mcp_server_id,
+        id_to_name,
+        id_to_deps,
+        name_to_ids,
+    )
 }
 
-/// Check direct dependencies of mcp-server for ralph-workflow.
-///
-/// Returns Some(error) if ralph-workflow is a direct dep, enqueues others for BFS.
-fn check_direct_deps<'a>(
-    pkg_id: &'a str,
-    id_to_deps: &HashMap<&'a str, Vec<&'a str>>,
-    name_to_ids: &HashMap<&'a str, Vec<&'a str>>,
-    visited: &mut HashSet<&'a str>,
-    queue: &mut VecDeque<&'a str>,
-) -> Option<String> {
-    let dep_names = id_to_deps.get(pkg_id)?;
-    for &dep_name in dep_names {
-        if dep_name == "ralph-workflow" {
-            return Some(
-                "DEPENDENCY ISOLATION VIOLATION: mcp-server directly depends on \
-                 ralph-workflow. The dependency arrow must be strictly \
-                 one-directional: ralph-workflow \u{2192} mcp-server. \
-                 Remove ralph-workflow from mcp-server/Cargo.toml."
-                    .to_string(),
-            );
-        }
-        enqueue_by_name(dep_name, name_to_ids, visited, queue);
-    }
-    None
-}
-
-/// Check a transitive dependency node for ralph-workflow.
-///
-/// Returns Some(error) if this node is ralph-workflow, enqueues its deps.
-fn check_transitive_dep<'a>(
-    current_id: &'a str,
+fn walk_dependency_graph<'a>(
+    pending_ids: Vec<&'a str>,
+    visited_ids: HashSet<&'a str>,
+    mcp_server_id: &'a str,
     id_to_name: &HashMap<&'a str, &'a str>,
     id_to_deps: &HashMap<&'a str, Vec<&'a str>>,
     name_to_ids: &HashMap<&'a str, Vec<&'a str>>,
-    visited: &mut HashSet<&'a str>,
-    queue: &mut VecDeque<&'a str>,
 ) -> Option<String> {
-    if let Some(&name) = id_to_name.get(current_id) {
-        if name == "ralph-workflow" {
-            return Some(format!(
-                "DEPENDENCY ISOLATION VIOLATION: mcp-server transitively depends on \
-                 ralph-workflow (via package id: {current_id}). The dependency arrow must \
-                 be strictly one-directional: ralph-workflow \u{2192} mcp-server. \
-                 Audit mcp-server's dependency chain and remove the transitive path."
-            ));
-        }
-    }
+    pending_ids
+        .split_first()
+        .and_then(|(current_id, remaining_ids)| {
+            check_current_node(
+                current_id,
+                mcp_server_id,
+                id_to_name,
+                id_to_deps,
+                name_to_ids,
+            )
+            .or_else(|| {
+                let next_ids = dependency_ids_for(current_id, id_to_deps, name_to_ids);
+                let unseen_ids: Vec<&str> = next_ids
+                    .into_iter()
+                    .filter(|dep_id| !visited_ids.contains(dep_id))
+                    .collect();
+                let next_pending_ids = remaining_ids
+                    .iter()
+                    .copied()
+                    .chain(unseen_ids.iter().copied())
+                    .collect();
+                let next_visited_ids = visited_ids.iter().copied().chain(unseen_ids).collect();
 
-    if let Some(dep_names) = id_to_deps.get(current_id) {
-        for &dep_name in dep_names {
-            enqueue_by_name(dep_name, name_to_ids, visited, queue);
-        }
-    }
-
-    None
+                walk_dependency_graph(
+                    next_pending_ids,
+                    next_visited_ids,
+                    mcp_server_id,
+                    id_to_name,
+                    id_to_deps,
+                    name_to_ids,
+                )
+            })
+        })
 }
 
-/// Resolve a dependency name to package ids and enqueue unvisited ones.
-fn enqueue_by_name<'a>(
-    dep_name: &'a str,
+fn check_current_node<'a>(
+    current_id: &'a str,
+    mcp_server_id: &'a str,
+    id_to_name: &HashMap<&'a str, &'a str>,
+    id_to_deps: &HashMap<&'a str, Vec<&'a str>>,
     name_to_ids: &HashMap<&'a str, Vec<&'a str>>,
-    visited: &mut HashSet<&'a str>,
-    queue: &mut VecDeque<&'a str>,
-) {
-    if let Some(dep_ids) = name_to_ids.get(dep_name) {
-        for &dep_id in dep_ids {
-            if visited.insert(dep_id) {
-                queue.push_back(dep_id);
-            }
-        }
+) -> Option<String> {
+    if current_id == mcp_server_id {
+        return dependency_names_for(current_id, id_to_deps)
+            .into_iter()
+            .find(|dep_name| *dep_name == "ralph-workflow")
+            .map(|_| direct_violation_message());
     }
+
+    id_to_name
+        .get(current_id)
+        .copied()
+        .filter(|name| *name == "ralph-workflow")
+        .map(|_| transitive_violation_message(current_id))
+        .or_else(|| {
+            let _ = name_to_ids;
+            None
+        })
+}
+
+fn dependency_names_for<'a>(
+    package_id: &'a str,
+    id_to_deps: &HashMap<&'a str, Vec<&'a str>>,
+) -> Vec<&'a str> {
+    id_to_deps.get(package_id).cloned().unwrap_or_default()
+}
+
+fn dependency_ids_for<'a>(
+    package_id: &'a str,
+    id_to_deps: &HashMap<&'a str, Vec<&'a str>>,
+    name_to_ids: &HashMap<&'a str, Vec<&'a str>>,
+) -> Vec<&'a str> {
+    dependency_names_for(package_id, id_to_deps)
+        .into_iter()
+        .flat_map(|dep_name| {
+            name_to_ids
+                .get(dep_name)
+                .into_iter()
+                .flat_map(|dep_ids| dep_ids.iter().copied())
+        })
+        .collect()
+}
+
+fn direct_violation_message() -> String {
+    "DEPENDENCY ISOLATION VIOLATION: mcp-server directly depends on \
+     ralph-workflow. The dependency arrow must be strictly \
+     one-directional: ralph-workflow \u{2192} mcp-server. \
+     Remove ralph-workflow from mcp-server/Cargo.toml."
+        .to_string()
+}
+
+fn transitive_violation_message(package_id: &str) -> String {
+    format!(
+        "DEPENDENCY ISOLATION VIOLATION: mcp-server transitively depends on \
+         ralph-workflow (via package id: {package_id}). The dependency arrow must \
+         be strictly one-directional: ralph-workflow \u{2192} mcp-server. \
+         Audit mcp-server's dependency chain and remove the transitive path."
+    )
 }
 
 #[cfg(test)]

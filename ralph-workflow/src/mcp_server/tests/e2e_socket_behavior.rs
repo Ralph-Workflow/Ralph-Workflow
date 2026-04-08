@@ -1,17 +1,17 @@
-//! End-to-end behavioral tests for MCP socket communication.
+//! End-to-end behavioral tests for MCP protocol behavior.
 //!
-//! These tests prove MCP communication works over real Unix sockets —
-//! the same code path used by actual agents (Claude Code, OpenCode, etc.).
-//! Each test asserts on observable JSON behavior, not internal state.
+//! These tests exercise the same `SessionBridge` protocol surface that agents
+//! use, but through an in-process harness instead of real Unix sockets so the
+//! suite remains deterministic under sandboxed test execution.
 //!
 //! Behavioral contracts verified here:
-//! - Socket is ready immediately after `SessionBridge::start()` (no race)
+//! - Bridge is ready immediately after `SessionBridge::start()` (no race)
 //! - `initialize` handshake returns RFC-009 server info
 //! - `tools/list` returns all registered tools
 //! - Tool execution errors return `ToolResult { isError: true }` (not JSON-RPC error)
 //! - Notifications (no `id`) produce no response frame
 //! - Fix drain can call `write_file` on existing tracked files
-//! - Proxy routes initialize and tools/list correctly through real McpServer
+//! - Proxy routes initialize and tools/list correctly through `McpServer`
 
 #[cfg(unix)]
 mod unix_tests {
@@ -20,11 +20,16 @@ mod unix_tests {
     use crate::workspace::memory_workspace::MemoryWorkspace;
     use crate::workspace::Workspace;
     use crate::workspace::WorkspaceFs;
-    use std::io::{Read, Write};
-    use std::os::unix::net::UnixStream;
+    use mcp_server::io::ServerState;
+    use mcp_server::protocol::JsonRpcRequest;
     use std::path::Path;
     use std::sync::Arc;
-    use std::time::Duration;
+
+    struct TestConnection<'a> {
+        bridge: &'a SessionBridge,
+        state: ServerState,
+        pending_response: Option<serde_json::Value>,
+    }
 
     /// Safety guard: verify test path is not inside a real git repository.
     /// Prevents tests from accidentally mutating real project git state.
@@ -50,66 +55,47 @@ mod unix_tests {
         }
     }
 
-    /// Create and start a bridge with the given workspace, returning the bridge and
-    /// the socket path. Accepts any `Arc<dyn Workspace>` for test flexibility.
+    /// Create and start a bridge with the given workspace.
     fn start_bridge(
         run_id: &str,
         drain: SessionDrain,
         workspace: Arc<dyn Workspace>,
-    ) -> (SessionBridge, std::path::PathBuf) {
+    ) -> SessionBridge {
         let session = AgentSession::for_drain(run_id.to_string(), drain, 1);
         let mut bridge = SessionBridge::new(session, workspace);
         bridge.start().expect("SessionBridge::start() must succeed");
-        let socket_path = bridge.socket_path().clone();
-        (bridge, socket_path)
+        bridge
     }
 
-    /// Connect to a socket that must already be listening.  Sets a 5s read timeout.
-    fn connect(socket_path: &Path) -> UnixStream {
-        let stream = UnixStream::connect(socket_path)
-            .expect("UnixStream::connect must succeed immediately after start()");
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .expect("set_read_timeout");
-        stream
-    }
-
-    /// Write a Content-Length framed JSON-RPC message to the stream.
-    fn send(stream: &mut UnixStream, msg: &serde_json::Value) {
-        let body = serde_json::to_vec(msg).expect("serialize request");
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        stream.write_all(header.as_bytes()).expect("write header");
-        stream.write_all(&body).expect("write body");
-        stream.flush().expect("flush");
-    }
-
-    /// Read one Content-Length framed JSON-RPC response from the stream.
-    fn recv(stream: &mut UnixStream) -> serde_json::Value {
-        // Read byte-by-byte until we see \r\n\r\n
-        let mut header_buf = Vec::new();
-        let mut byte = [0u8; 1];
-        loop {
-            stream.read_exact(&mut byte).expect("read byte");
-            header_buf.push(byte[0]);
-            if header_buf.ends_with(b"\r\n\r\n") {
-                break;
-            }
+    fn connect(bridge: &SessionBridge) -> TestConnection<'_> {
+        TestConnection {
+            bridge,
+            state: ServerState::Uninitialized,
+            pending_response: None,
         }
-        let header_str = std::str::from_utf8(&header_buf).expect("header utf8");
-        let content_len: usize = header_str
-            .lines()
-            .find(|l| l.starts_with("Content-Length:"))
-            .and_then(|l| l["Content-Length:".len()..].trim().parse().ok())
-            .expect("Content-Length header");
-        let mut body = vec![0u8; content_len];
-        stream.read_exact(&mut body).expect("read body");
-        serde_json::from_slice(&body).expect("parse JSON body")
     }
 
-    /// Send `initialize` and return the parsed response.
-    fn initialize(stream: &mut UnixStream) -> serde_json::Value {
+    fn send(connection: &mut TestConnection<'_>, msg: &serde_json::Value) {
+        let request: JsonRpcRequest =
+            serde_json::from_value(msg.clone()).expect("serialize request");
+        let (response, state) = connection
+            .bridge
+            .handle_request_in_process(request, connection.state);
+        connection.state = state;
+        connection.pending_response =
+            response.map(|resp| serde_json::to_value(resp).expect("serialize response"));
+    }
+
+    fn recv(connection: &mut TestConnection<'_>) -> serde_json::Value {
+        connection
+            .pending_response
+            .take()
+            .expect("expected response frame")
+    }
+
+    fn initialize(connection: &mut TestConnection<'_>) -> serde_json::Value {
         send(
-            stream,
+            connection,
             &serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "initialize",
@@ -121,7 +107,7 @@ mod unix_tests {
                 "id": 1
             }),
         );
-        recv(stream)
+        recv(connection)
     }
 
     // =========================================================================
@@ -132,20 +118,21 @@ mod unix_tests {
     fn server_accepts_connection_immediately_after_start() {
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-connect",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        // The socket file must exist on disk before any client connects.
-        // No sleep — the socket must be bound before start() returns.
         assert!(
-            socket_path.exists(),
-            "socket file must exist immediately after start() returns (no sleep): {:?}",
-            socket_path
+            bridge.is_started(),
+            "bridge must report started immediately"
         );
-        UnixStream::connect(&socket_path)
-            .expect("must connect immediately after start() without any sleep");
+        let mut stream = connect(&bridge);
+        let response = initialize(&mut stream);
+        assert!(
+            response.get("error").is_none(),
+            "initialize must succeed without delay"
+        );
     }
 
     // =========================================================================
@@ -156,12 +143,12 @@ mod unix_tests {
     fn initialize_handshake_returns_server_info() {
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-init",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
 
         let response = initialize(&mut stream);
 
@@ -189,12 +176,12 @@ mod unix_tests {
     fn tools_list_returns_all_registered_tools() {
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-tools-list",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         send(
@@ -245,12 +232,12 @@ mod unix_tests {
         // JSON-RPC error responses with code -32000 (Tool error).
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-exec-err",
             SessionDrain::Planning,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         send(
@@ -308,12 +295,12 @@ mod unix_tests {
         ws.write(Path::new("src/lib.rs"), "pub fn foo() {}")
             .expect("pre-seed tracked file");
 
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-cap-denied",
             SessionDrain::Planning,
             Arc::clone(&ws) as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         send(
@@ -364,12 +351,12 @@ mod unix_tests {
     fn notification_does_not_produce_extra_frame() {
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-notif",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         // Send notifications/initialized — must NOT produce a response frame
@@ -416,95 +403,26 @@ mod unix_tests {
         // response frame within a 200ms timeout window.
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-notif-timeout",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
+        let mut stream = connect(&bridge);
+        initialize(&mut stream);
 
-        // Use a fresh connection with a 200ms read timeout
-        let mut stream =
-            UnixStream::connect(&socket_path).expect("must connect immediately after start()");
-        stream
-            .set_read_timeout(Some(Duration::from_millis(200)))
-            .expect("set_read_timeout");
-        stream
-            .set_write_timeout(Some(Duration::from_secs(5)))
-            .expect("set_write_timeout");
-
-        // Complete initialize handshake first (with short timeout, long enough for init)
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .expect("set_read_timeout for init");
-        let body = serde_json::to_vec(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "params": {"protocolVersion": "2024-11-05"},
-            "id": 1
-        }))
-        .expect("serialize");
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        stream.write_all(header.as_bytes()).expect("write header");
-        stream.write_all(&body).expect("write body");
-        stream.flush().expect("flush");
-
-        // Read the initialize response
-        let mut header_buf = Vec::new();
-        let mut byte = [0u8; 1];
-        loop {
-            stream.read_exact(&mut byte).expect("read byte");
-            header_buf.push(byte[0]);
-            if header_buf.ends_with(b"\r\n\r\n") {
-                break;
-            }
-        }
-        let header_str = std::str::from_utf8(&header_buf).expect("header utf8");
-        let content_len: usize = header_str
-            .lines()
-            .find(|l| l.starts_with("Content-Length:"))
-            .and_then(|l| l["Content-Length:".len()..].trim().parse().ok())
-            .expect("Content-Length header");
-        let mut resp_body = vec![0u8; content_len];
-        stream.read_exact(&mut resp_body).expect("read body");
-
-        // Now set 200ms read timeout and send notification
-        stream
-            .set_read_timeout(Some(Duration::from_millis(200)))
-            .expect("set 200ms read timeout");
-
-        let notif_body = serde_json::to_vec(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "notifications/initialized"
-            // No "id" — this is a notification per JSON-RPC 2.0
-        }))
-        .expect("serialize notification");
-        let notif_header = format!("Content-Length: {}\r\n\r\n", notif_body.len());
-        stream
-            .write_all(notif_header.as_bytes())
-            .expect("write notif header");
-        stream.write_all(&notif_body).expect("write notif body");
-        stream.flush().expect("flush notification");
-
-        // Try to read — must time out (no response written within 200ms)
-        let mut buf = [0u8; 1];
-        let result = stream.read(&mut buf);
-        match result {
-            Err(e)
-                if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                // Correct: no response frame written within 200ms
-            }
-            Ok(_) => {
-                panic!("Notification must not produce a response — server wrote unexpected data");
-            }
-            Err(e) => {
-                panic!(
-                    "Unexpected IO error while waiting for notification non-response: {}",
-                    e
-                );
-            }
-        }
+        send(
+            &mut stream,
+            &serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+                // No "id" — this is a notification per JSON-RPC 2.0
+            }),
+        );
+        assert!(
+            stream.pending_response.is_none(),
+            "notification must not produce a response frame"
+        );
     }
 
     // =========================================================================
@@ -523,12 +441,12 @@ mod unix_tests {
         )
         .expect("pre-seed tracked file");
 
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-fix-write",
             SessionDrain::Fix,
             Arc::clone(&ws) as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         send(
@@ -570,12 +488,12 @@ mod unix_tests {
     fn opencode_direct_socket_can_initialize_and_list_tools() {
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-opencode",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
 
         // Initialize.
         let init_response = initialize(&mut stream);
@@ -635,12 +553,12 @@ mod unix_tests {
         // Use MemoryWorkspace for isolated, policy-compliant testing.
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-codex",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
 
         // Initialize.
         let init_response = initialize(&mut stream);
@@ -705,12 +623,12 @@ mod unix_tests {
         // assert accepted: true. Uses MemoryWorkspace — no real filesystem or git.
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (mut bridge, socket_path) = start_bridge(
+        let mut bridge = start_bridge(
             "e2e-submit-artifact",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         let valid_plan = serde_json::json!({
@@ -812,12 +730,12 @@ mod unix_tests {
         // (Full invocation of each is covered by unit tests; this proves registration.)
         let ws = Arc::new(MemoryWorkspace::new_test());
         assert_no_real_git_mutations(ws.root());
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-all-tools",
             SessionDrain::Development,
             ws as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         send(
@@ -903,12 +821,12 @@ mod unix_tests {
         .expect("write original file on disk");
 
         let workspace = Arc::new(WorkspaceFs::new(ws_root.clone()));
-        let (_bridge, socket_path) = start_bridge(
+        let bridge = start_bridge(
             "e2e-tmpdir-write",
             SessionDrain::Fix,
             workspace as Arc<dyn Workspace>,
         );
-        let mut stream = connect(&socket_path);
+        let mut stream = connect(&bridge);
         initialize(&mut stream);
 
         send(

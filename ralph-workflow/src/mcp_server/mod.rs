@@ -29,6 +29,7 @@
 pub(crate) mod audit_adapter;
 pub(crate) mod capability_mapping;
 pub mod session_bridge;
+pub mod startup;
 pub mod tool_artifact;
 pub(crate) mod tool_bridge;
 pub mod tool_coordination;

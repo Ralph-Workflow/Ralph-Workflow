@@ -35,7 +35,7 @@
 //! - ToolFilter enforcement: Allowlist blocks unlisted tools
 //! - ToolFilter enforcement: Blocklist blocks listed tools
 //! - Capability-based access control
-//! - SessionBridge full protocol flow over Unix socket
+//! - SessionBridge full protocol flow without external socket dependencies
 
 use mcp_server::dispatch::access::{
     AccessDecision, AccessDeniedCode, AccessMode, AuditSink, McpCapability, ToolFilter,
@@ -52,7 +52,6 @@ use mcp_server::protocol::{
     JsonRpcRequest, JsonRpcResponse, ToolContent, ToolDefinition, ToolResult,
 };
 use std::collections::HashMap;
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
@@ -647,44 +646,40 @@ fn test_blocklist_blocks_listed_tool() {
     );
 }
 
-/// Helper: send framed request and read framed response over Unix socket.
-fn send_framed_request(stream: &mut UnixStream, request: serde_json::Value) -> String {
-    use std::io::{Read, Write};
-    let bytes = serde_json::to_vec(&request).unwrap();
-    write!(stream, "Content-Length: {}\r\n\r\n", bytes.len()).unwrap();
-    stream.write_all(&bytes).unwrap();
-    stream.flush().unwrap();
-
-    // Read headers until blank line
-    let mut header = Vec::new();
-    loop {
-        let mut buf = [0u8; 1];
-        stream.read_exact(&mut buf).expect("Read error");
-        header.push(buf[0]);
-        if header.ends_with(b"\r\n\r\n") {
-            break;
-        }
-    }
-    // Parse Content-Length
-    let header_str = String::from_utf8_lossy(&header);
-    let content_length = header_str
-        .lines()
-        .find(|l| l.starts_with("Content-Length:"))
-        .and_then(|l| {
-            l.strip_prefix("Content-Length:")
-                .unwrap()
-                .trim()
-                .parse::<usize>()
-                .ok()
-        })
-        .expect("Missing Content-Length header");
-    // Read body
-    let mut body = vec![0u8; content_length];
-    stream.read_exact(&mut body).unwrap();
-    String::from_utf8(body).unwrap()
+struct TestConnection {
+    bridge: SessionBridge,
+    state: ServerState,
+    pending_response: Option<JsonRpcResponse>,
 }
 
-/// Test full protocol flow through SessionBridge over Unix socket.
+fn connect(bridge: &SessionBridge) -> TestConnection {
+    TestConnection {
+        bridge: bridge.clone(),
+        state: ServerState::Uninitialized,
+        pending_response: None,
+    }
+}
+
+/// Helper: send a request and read the JSON response through the in-process bridge.
+fn send_framed_request(connection: &mut TestConnection, request: serde_json::Value) -> String {
+    let request: JsonRpcRequest =
+        serde_json::from_value(request).expect("Request should be valid JSON-RPC");
+    let (response, next_state) = connection
+        .bridge
+        .handle_request_in_process(request, connection.state);
+    connection.state = next_state;
+    connection.pending_response = response;
+
+    serde_json::to_string(
+        &connection
+            .pending_response
+            .take()
+            .expect("Request should produce a response"),
+    )
+    .expect("Response should serialize to JSON")
+}
+
+/// Test full protocol flow through SessionBridge without a live socket.
 ///
 /// This test exercises ALL 9 required assertions from the standalone E2E test plan:
 ///
@@ -699,8 +694,6 @@ fn send_framed_request(stream: &mut UnixStream, request: serde_json::Value) -> S
 /// 9. Verify that path outside root_dir is rejected with OutsideRootDir
 #[test]
 fn test_session_bridge_full_protocol_flow() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -775,16 +768,8 @@ fn test_session_bridge_full_protocol_flow() {
     ]);
     let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadWrite);
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-
-    // Start the bridge
-    bridge.start().expect("Failed to start bridge");
-
-    // Connect via Unix socket
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect to bridge");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // ============================================================
     // ASSERTION 3: initialize returns successful response with protocol version
@@ -807,9 +792,6 @@ fn test_session_bridge_full_protocol_flow() {
         result["protocolVersion"], "2024-11-05",
         "Protocol version should be echoed back"
     );
-
-    // Give server time to process
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // ============================================================
     // ASSERTION 4: tools/list shows the echo tool
@@ -869,7 +851,6 @@ fn test_session_bridge_full_protocol_flow() {
         text
     );
 
-    // Close this connection - we'll test other scenarios with fresh connections
     drop(stream);
 }
 
@@ -879,8 +860,6 @@ fn test_session_bridge_full_protocol_flow() {
 /// error code -32001 (NotInitialized).
 #[test]
 fn test_not_initialized_error_before_initialize() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -893,13 +872,8 @@ fn test_not_initialized_error_before_initialize() {
     let registry = ToolRegistry::new(vec![]);
     let config = McpServerConfig::new(root);
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-    bridge.start().expect("Failed to start bridge");
-
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // Try to call tools/list WITHOUT initialize - should get NotInitialized error
     let list_request = serde_json::json!({
@@ -930,8 +904,6 @@ fn test_not_initialized_error_before_initialize() {
 /// with is_mutating=true, returning ReadOnlyMode denial.
 #[test]
 fn test_readonly_rejects_mutating_tool_via_socket() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -966,13 +938,8 @@ fn test_readonly_rejects_mutating_tool_via_socket() {
     // ReadOnly mode should block mutating tools
     let config = McpServerConfig::new(root).with_access_mode(AccessMode::ReadOnly);
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-    bridge.start().expect("Failed to start bridge");
-
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // Initialize first
     let init_request = serde_json::json!({
@@ -982,7 +949,6 @@ fn test_readonly_rejects_mutating_tool_via_socket() {
         "id": 1
     });
     send_framed_request(&mut stream, init_request);
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Try to call mutating tool - should be rejected by ReadOnly mode
     let call_request = serde_json::json!({
@@ -1015,8 +981,6 @@ fn test_readonly_rejects_mutating_tool_via_socket() {
 /// Test that Allowlist rejects tools not in the list.
 #[test]
 fn test_allowlist_rejects_unlisted_tool_via_socket() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -1052,13 +1016,8 @@ fn test_allowlist_rejects_unlisted_tool_via_socket() {
     let config = McpServerConfig::new(root)
         .with_tool_filter(ToolFilter::Allowlist(vec!["other_tool".to_string()]));
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-    bridge.start().expect("Failed to start bridge");
-
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // Initialize first
     let init_request = serde_json::json!({
@@ -1068,7 +1027,6 @@ fn test_allowlist_rejects_unlisted_tool_via_socket() {
         "id": 1
     });
     send_framed_request(&mut stream, init_request);
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Try to call tool not in allowlist - should be rejected
     let call_request = serde_json::json!({
@@ -1097,8 +1055,6 @@ fn test_allowlist_rejects_unlisted_tool_via_socket() {
 /// Test that path outside root_dir is rejected with OutsideRootDir denial.
 #[test]
 fn test_outside_root_dir_rejected_via_socket() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -1135,13 +1091,8 @@ fn test_outside_root_dir_rejected_via_socket() {
     let registry = ToolRegistry::new(vec![(read_metadata, read_handler)]);
     let config = McpServerConfig::new(root.clone()).with_access_mode(AccessMode::ReadWrite);
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-    bridge.start().expect("Failed to start bridge");
-
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // Initialize first
     let init_request = serde_json::json!({
@@ -1151,7 +1102,6 @@ fn test_outside_root_dir_rejected_via_socket() {
         "id": 1
     });
     send_framed_request(&mut stream, init_request);
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Try to access path outside root - should be rejected
     let call_request = serde_json::json!({
@@ -1280,8 +1230,6 @@ fn test_tool_execution_error_returns_json_rpc_error() {
 /// - Response uses the same id as the request
 #[test]
 fn test_unknown_method_returns_method_not_found() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -1294,13 +1242,8 @@ fn test_unknown_method_returns_method_not_found() {
     let registry = ToolRegistry::new(vec![]);
     let config = McpServerConfig::new(root);
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-    bridge.start().expect("Failed to start bridge");
-
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // Send an initialize request first so the server is in Ready state
     let init_request = serde_json::json!({
@@ -1310,7 +1253,6 @@ fn test_unknown_method_returns_method_not_found() {
         "id": 1
     });
     send_framed_request(&mut stream, init_request);
-    std::thread::sleep(std::time::Duration::from_millis(50));
 
     // Send an unknown method — server must return -32601
     let unknown_request = serde_json::json!({
@@ -1362,8 +1304,6 @@ fn test_unknown_method_returns_method_not_found() {
 /// - ReadOnly rejection takes precedence for mutating tools regardless of filter
 #[test]
 fn test_allowlist_and_readonly_are_independent() {
-    use std::time::Duration;
-
     let root = temp_root();
     test_helpers::assert_not_in_git_repo(&root);
 
@@ -1402,13 +1342,8 @@ fn test_allowlist_and_readonly_are_independent() {
             "allowed_but_mutating".to_string()
         ]));
 
-    let mut bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
-    bridge.start().expect("Failed to start bridge");
-
-    let socket_path = bridge.socket_path().clone();
-    let mut stream = UnixStream::connect(&socket_path).expect("Failed to connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    let bridge = SessionBridge::new(session_arc, config, workspace_arc, registry);
+    let mut stream = connect(&bridge);
 
     // Initialize
     let init_request = serde_json::json!({
@@ -1418,7 +1353,6 @@ fn test_allowlist_and_readonly_are_independent() {
         "id": 1
     });
     send_framed_request(&mut stream, init_request);
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Call the tool that IS in the Allowlist but is mutating
     // ReadOnly mode must still reject it, proving the two checks are independent

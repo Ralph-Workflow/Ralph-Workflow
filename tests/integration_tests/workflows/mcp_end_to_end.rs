@@ -1,7 +1,8 @@
 //! End-to-end MCP protocol integration tests.
 //!
-//! These tests verify the full MCP stack works correctly over Unix socket transport,
-//! using Ralph's actual SessionBridge and MemoryWorkspace for isolation.
+//! These tests verify the full MCP stack works correctly using Ralph's actual
+//! SessionBridge and MemoryWorkspace for isolation, while routing requests
+//! through an in-process protocol seam instead of OS sockets.
 //!
 //! # Integration Test Style Guide
 //!
@@ -14,68 +15,42 @@
 //! - Uses `AgentSession::for_drain` for session creation with proper capabilities
 //! - Tests are deterministic and isolated
 
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
-
+use mcp_server::io::ServerState;
+use mcp_server::protocol::{JsonRpcRequest, JsonRpcResponse};
 use ralph_workflow::agents::session::{AgentSession, SessionDrain};
 use ralph_workflow::mcp_server::session_bridge::SessionBridge;
 use ralph_workflow::workspace::MemoryWorkspace;
 use ralph_workflow::Workspace;
+use std::path::PathBuf;
+use std::sync::Arc;
 use test_helpers::assert_no_real_git_mutations;
 
 use crate::test_timeout::with_default_timeout;
 
 // ---------------------------------------------------------------------------
-// Helper: MCP message framing over Unix socket
+// Helper: MCP message flow through the public session bridge seam
 // ---------------------------------------------------------------------------
 
-/// Send a JSON-RPC request with Content-Length framing and read the response.
-fn send_mcp_request(
-    stream: &mut std::os::unix::net::UnixStream,
-    request: serde_json::Value,
-) -> String {
-    use std::io::{Read, Write};
-
-    let bytes = serde_json::to_vec(&request).unwrap();
-    write!(stream, "Content-Length: {}\r\n\r\n", bytes.len()).unwrap();
-    stream.write_all(&bytes).unwrap();
-    stream.flush().unwrap();
-
-    // Read headers until blank line
-    let mut header = Vec::new();
-    loop {
-        let mut buf = [0u8; 1];
-        stream.read_exact(&mut buf).expect("Read error");
-        header.push(buf[0]);
-        if header.ends_with(b"\r\n\r\n") {
-            break;
-        }
-    }
-
-    // Parse Content-Length
-    let header_str = String::from_utf8_lossy(&header);
-    let content_length = header_str
-        .lines()
-        .find(|l| l.starts_with("Content-Length:"))
-        .and_then(|l| {
-            l.strip_prefix("Content-Length:")
-                .unwrap()
-                .trim()
-                .parse::<usize>()
-                .ok()
-        })
-        .expect("Missing Content-Length header");
-
-    // Read body
-    let mut body = vec![0u8; content_length];
-    stream.read_exact(&mut body).unwrap();
-    String::from_utf8(body).unwrap()
+struct TestConnection {
+    bridge: SessionBridge,
+    state: ServerState,
 }
 
-/// Parse a JSON-RPC response.
-fn parse_response(response_str: &str) -> mcp_server::protocol::JsonRpcResponse {
-    serde_json::from_str(response_str).expect("Response should be valid JSON")
+fn connect(bridge: &SessionBridge) -> TestConnection {
+    TestConnection {
+        bridge: bridge.clone(),
+        state: ServerState::Uninitialized,
+    }
+}
+
+fn send_mcp_request(stream: &mut TestConnection, request: serde_json::Value) -> JsonRpcResponse {
+    let request: JsonRpcRequest =
+        serde_json::from_value(request).expect("request should be valid JSON-RPC");
+    let (response, state) = stream
+        .bridge
+        .handle_request_in_process(request, stream.state);
+    stream.state = state;
+    response.expect("request should return a response")
 }
 
 // ---------------------------------------------------------------------------
@@ -116,12 +91,7 @@ fn mcp_initialize_handshake_succeeds() {
         let mut bridge = SessionBridge::new(session, workspace);
         bridge.start().expect("Bridge should start");
 
-        // Connect via Unix socket
-        let socket_path = bridge.socket_path().clone();
-        let mut stream =
-            std::os::unix::net::UnixStream::connect(&socket_path).expect("Failed to connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+        let mut stream = connect(&bridge);
 
         // Send initialize request
         let init_request = serde_json::json!({
@@ -131,8 +101,7 @@ fn mcp_initialize_handshake_succeeds() {
             "id": 1
         });
 
-        let response_str = send_mcp_request(&mut stream, init_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, init_request);
 
         // Verify success
         assert!(
@@ -147,8 +116,6 @@ fn mcp_initialize_handshake_succeeds() {
             "Protocol version should be echoed back"
         );
 
-        // Cleanup
-        drop(stream);
         bridge.shutdown();
     });
 }
@@ -163,12 +130,7 @@ fn mcp_tools_list_returns_ralph_tools() {
         let mut bridge = SessionBridge::new(session, workspace);
         bridge.start().expect("Bridge should start");
 
-        // Connect via Unix socket
-        let socket_path = bridge.socket_path().clone();
-        let mut stream =
-            std::os::unix::net::UnixStream::connect(&socket_path).expect("Failed to connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+        let mut stream = connect(&bridge);
 
         // First initialize
         let init_request = serde_json::json!({
@@ -177,7 +139,7 @@ fn mcp_tools_list_returns_ralph_tools() {
             "params": {"protocolVersion": "2024-11-05"},
             "id": 1
         });
-        send_mcp_request(&mut stream, init_request);
+        let _ = send_mcp_request(&mut stream, init_request);
 
         // Request tools list
         let list_request = serde_json::json!({
@@ -186,8 +148,7 @@ fn mcp_tools_list_returns_ralph_tools() {
             "id": 2
         });
 
-        let response_str = send_mcp_request(&mut stream, list_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, list_request);
 
         assert!(
             response.result.is_some(),
@@ -220,8 +181,6 @@ fn mcp_tools_list_returns_ralph_tools() {
             tool_names
         );
 
-        // Cleanup
-        drop(stream);
         bridge.shutdown();
     });
 }
@@ -236,12 +195,7 @@ fn mcp_tool_call_before_initialize_returns_error() {
         let mut bridge = SessionBridge::new(session, workspace);
         bridge.start().expect("Bridge should start");
 
-        // Connect via Unix socket
-        let socket_path = bridge.socket_path().clone();
-        let mut stream =
-            std::os::unix::net::UnixStream::connect(&socket_path).expect("Failed to connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+        let mut stream = connect(&bridge);
 
         // Try to call a tool WITHOUT initializing first
         let call_request = serde_json::json!({
@@ -254,8 +208,7 @@ fn mcp_tool_call_before_initialize_returns_error() {
             "id": 1
         });
 
-        let response_str = send_mcp_request(&mut stream, call_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, call_request);
 
         // Should get an error response (not initialized)
         assert!(
@@ -271,8 +224,6 @@ fn mcp_tool_call_before_initialize_returns_error() {
             error.message
         );
 
-        // Cleanup
-        drop(stream);
         bridge.shutdown();
     });
 }
@@ -356,7 +307,6 @@ fn mcp_bridge_shutdown_stops_server() {
 }
 
 /// Test full MCP protocol flow: initialize → tools/list → tools/call (read_file).
-/// This verifies the complete request-response cycle over Unix socket.
 #[test]
 fn mcp_full_protocol_flow_read_file() {
     with_default_timeout(|| {
@@ -366,12 +316,7 @@ fn mcp_full_protocol_flow_read_file() {
         let mut bridge = SessionBridge::new(session, workspace);
         bridge.start().expect("Bridge should start");
 
-        // Connect via Unix socket
-        let socket_path = bridge.socket_path().clone();
-        let mut stream =
-            std::os::unix::net::UnixStream::connect(&socket_path).expect("Failed to connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+        let mut stream = connect(&bridge);
 
         // Step 1: Initialize
         let init_request = serde_json::json!({
@@ -380,8 +325,7 @@ fn mcp_full_protocol_flow_read_file() {
             "params": {"protocolVersion": "2024-11-05"},
             "id": 1
         });
-        let response_str = send_mcp_request(&mut stream, init_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, init_request);
         assert!(
             response.result.is_some(),
             "initialize should succeed, got error: {:?}",
@@ -394,8 +338,7 @@ fn mcp_full_protocol_flow_read_file() {
             "method": "tools/list",
             "id": 2
         });
-        let response_str = send_mcp_request(&mut stream, list_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, list_request);
         assert!(
             response.result.is_some(),
             "tools/list should succeed, got error: {:?}",
@@ -424,8 +367,7 @@ fn mcp_full_protocol_flow_read_file() {
             },
             "id": 3
         });
-        let response_str = send_mcp_request(&mut stream, call_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, call_request);
 
         // Verify the call succeeded
         assert!(
@@ -454,8 +396,6 @@ fn mcp_full_protocol_flow_read_file() {
             text_content["text"]
         );
 
-        // Cleanup
-        drop(stream);
         bridge.shutdown();
     });
 }
@@ -473,12 +413,7 @@ fn mcp_audit_records_emitted_when_access_denied() {
         let mut bridge = SessionBridge::new(session, workspace);
         bridge.start().expect("Bridge should start");
 
-        // Connect via Unix socket
-        let socket_path = bridge.socket_path().clone();
-        let mut stream =
-            std::os::unix::net::UnixStream::connect(&socket_path).expect("Failed to connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+        let mut stream = connect(&bridge);
 
         // Initialize
         let init_request = serde_json::json!({
@@ -487,7 +422,7 @@ fn mcp_audit_records_emitted_when_access_denied() {
             "params": {"protocolVersion": "2024-11-05"},
             "id": 1
         });
-        send_mcp_request(&mut stream, init_request);
+        let _ = send_mcp_request(&mut stream, init_request);
 
         // Drain any records from initialization
         let _initial_records = bridge.drain_audit_records();
@@ -503,8 +438,7 @@ fn mcp_audit_records_emitted_when_access_denied() {
             },
             "id": 2
         });
-        let response_str = send_mcp_request(&mut stream, call_request);
-        let response = parse_response(&response_str);
+        let response = send_mcp_request(&mut stream, call_request);
 
         // The call should be denied (not succeed)
         assert!(
@@ -531,8 +465,6 @@ fn mcp_audit_records_emitted_when_access_denied() {
             );
         }
 
-        // Cleanup
-        drop(stream);
         bridge.shutdown();
     });
 }

@@ -20,11 +20,12 @@ use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, AccessMode,
 /// Commit drains receive ReadWrite access so they can modify workspace files.
 pub(crate) fn drain_to_access_mode(drain: SessionDrain) -> AccessMode {
     match drain {
-        SessionDrain::Planning
-        | SessionDrain::Analysis
-        | SessionDrain::Review
-        | SessionDrain::Fix => AccessMode::ReadOnly,
-        SessionDrain::Development | SessionDrain::Commit => AccessMode::ReadWrite,
+        SessionDrain::Planning | SessionDrain::Analysis | SessionDrain::Review => {
+            AccessMode::ReadOnly
+        }
+        SessionDrain::Fix | SessionDrain::Development | SessionDrain::Commit => {
+            AccessMode::ReadWrite
+        }
     }
 }
 

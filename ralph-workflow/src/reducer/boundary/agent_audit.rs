@@ -148,7 +148,7 @@ fn start_mcp_bridge_for_session(
     session: &AgentSession,
 ) -> Result<(SessionBridge, Option<String>)> {
     let workspace_arc = Arc::clone(&ctx.workspace_arc);
-    let bridge = crate::mcp::server_startup::start_mcp_server_for_session(
+    let bridge = crate::mcp_server::startup::start_mcp_server_for_session(
         session.clone(),
         workspace_arc,
     )

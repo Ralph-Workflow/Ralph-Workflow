@@ -71,35 +71,47 @@ fn run_cargo_metadata(repo_root: &Path) -> Result<String, String> {
 /// Thin boundary wiring: parses JSON, extracts packages array, delegates
 /// to pure domain policy, translates result.
 fn check_isolation_from_json(metadata_json: &str) -> NativeCheckResult {
-    let metadata: serde_json::Value = match serde_json::from_str(metadata_json) {
-        Ok(v) => v,
-        Err(e) => {
-            return NativeCheckResult {
-                status: CheckStatus::Error,
-                message: format!("Failed to parse cargo metadata JSON: {e}"),
-            }
-        }
-    };
+    parse_metadata_json(metadata_json)
+        .and_then(extract_packages)
+        .map_or_else(error_result, evaluate_isolation)
+}
 
-    let packages = match metadata.get("packages").and_then(|p| p.as_array()) {
-        Some(pkgs) => pkgs,
-        None => {
-            return NativeCheckResult {
-                status: CheckStatus::Error,
-                message: "cargo metadata missing 'packages' array".to_string(),
-            }
-        }
-    };
+fn parse_metadata_json(metadata_json: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(metadata_json)
+        .map_err(|e| format!("Failed to parse cargo metadata JSON: {e}"))
+}
 
-    match isolation_policy::check_mcp_server_isolation_from_packages(packages) {
-        None => NativeCheckResult {
-            status: CheckStatus::Pass,
-            message: String::new(),
-        },
-        Some(msg) => NativeCheckResult {
-            status: CheckStatus::Error,
-            message: msg,
-        },
+fn extract_packages(metadata: serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+    metadata
+        .get("packages")
+        .and_then(|packages| packages.as_array())
+        .cloned()
+        .ok_or_else(|| "cargo metadata missing 'packages' array".to_string())
+}
+
+fn evaluate_isolation(packages: Vec<serde_json::Value>) -> NativeCheckResult {
+    isolation_policy::check_mcp_server_isolation_from_packages(&packages)
+        .map_or_else(pass_result, violation_result)
+}
+
+fn pass_result() -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Pass,
+        message: String::new(),
+    }
+}
+
+fn violation_result(message: String) -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Error,
+        message,
+    }
+}
+
+fn error_result(message: String) -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Error,
+        message,
     }
 }
 

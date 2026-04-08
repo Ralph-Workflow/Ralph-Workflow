@@ -52,36 +52,27 @@ impl HttpFetcher for RealHttpFetcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mockito::Server;
+    use ureq::http::StatusCode;
 
     #[test]
-    fn fetch_url_returns_mocked_body() {
-        let mut server = Server::new();
-        let _mock = server
-            .mock("GET", "/test")
-            .with_status(200)
-            .with_body("test content")
-            .create();
-
-        let url = format!("{}/test", server.url());
-        let result = fetch_url(&url).unwrap();
-
-        assert_eq!(result, "test content");
+    fn check_http_status_allows_success_statuses() {
+        let result = check_http_status(StatusCode::OK, "test content");
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn fetch_url_propagates_error_status() {
-        let mut server = Server::new();
-        let _mock = server
-            .mock("GET", "/error")
-            .with_status(500)
-            .with_body("server error")
-            .create();
-
-        let url = format!("{}/error", server.url());
-        let error = fetch_url(&url).unwrap_err();
+    fn check_http_status_propagates_error_status() {
+        let error =
+            check_http_status(StatusCode::INTERNAL_SERVER_ERROR, "server error").unwrap_err();
 
         assert!(error.contains("500"));
         assert!(error.contains("server error"));
+    }
+
+    #[test]
+    fn check_http_status_uses_status_only_when_body_is_empty() {
+        let error = check_http_status(StatusCode::BAD_REQUEST, "").unwrap_err();
+
+        assert_eq!(error, "status 400");
     }
 }

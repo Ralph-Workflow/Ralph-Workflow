@@ -602,6 +602,7 @@ fn test_core_cargo_checks_run_in_stable_order() {
             "test-integration",
             "test-mcp-server-lib",
             "test-mcp-server-integration",
+            "test-mcp-server-standalone",
         ]
     );
 }

@@ -1,4 +1,4 @@
-//! Standalone full-stack integration tests for `mcp-server`.
+//! Standalone integration tests for `mcp-server`.
 //!
 //! # Purpose
 //!

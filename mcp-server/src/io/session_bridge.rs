@@ -22,7 +22,7 @@ use crate::dispatch::{HostSession, ToolRegistry, WorkspaceAdapter};
 use crate::io::access::McpServerConfig;
 use crate::io::transport::{McpStream, McpStreamImpl, TransportError, UnixSocketTransport};
 use crate::io::{McpServer, ServerState};
-use crate::protocol::JsonRpcRequest;
+use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -197,6 +197,30 @@ impl SessionBridge {
     /// Signal the session bridge to shutdown.
     pub fn shutdown(&self) {
         self.shutdown_flag.store(true, Ordering::Release);
+    }
+
+    /// Handle a request directly without binding a transport.
+    ///
+    /// This seam keeps protocol tests deterministic in environments where
+    /// socket binding is unavailable. It exercises the same server dispatch
+    /// path as the transport bridge while leaving connection lifecycle to
+    /// the caller-provided [`ServerState`].
+    pub fn handle_request_in_process(
+        &self,
+        request: JsonRpcRequest,
+        state: ServerState,
+    ) -> (Option<JsonRpcResponse>, ServerState) {
+        self.build_server().handle_request(request, state)
+    }
+
+    fn build_server(&self) -> McpServer {
+        McpServer::new(
+            Arc::clone(&self.session),
+            self.config.clone(),
+            Arc::clone(&self.workspace),
+            self.registry.clone(),
+            self.audit_sink.clone(),
+        )
     }
 }
 
