@@ -26,9 +26,9 @@ pub struct ClaudeParser {
     state: ParserState,
     show_streaming_metrics: bool,
     printer: Rc<RefCell<dyn Printable>>,
-    /// Shared flag set while a tool `ContentBlock` is in progress. Cleared on `MessageStop` or
+    /// Shared flag set while a tool `ContentBlock` is in progress. Cleared on `MessageStart` or
     /// when the stream ends. Allows the idle-timeout monitor to avoid killing the agent during
-    /// long tool calls (e.g. `Write` tool) that produce no stdout activity.
+    /// long tool calls (e.g. `Write` tool executes after `MessageStop`, before `MessageStart`).
     tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
@@ -63,8 +63,9 @@ impl ClaudeParser {
 
     /// Register a shared flag that the idle-timeout monitor polls to detect active tool execution.
     ///
-    /// Set to `true` when a `ToolUse` content block starts; cleared on `MessageStop` or stream
-    /// end. Prevents idle-timeout kills during long tool operations.
+    /// Set to `true` when a `ToolUse` content block starts; cleared on `MessageStart` or stream
+    /// end. Prevents idle-timeout kills during long tool operations (e.g. `Write` tool executes
+    /// after `MessageStop`, before the next `MessageStart`).
     pub(crate) fn with_tool_activity_tracker(
         mut self,
         tracker: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -291,6 +292,10 @@ impl ClaudeParser {
         message: Option<crate::json_parser::types::AssistantMessage>,
         message_id: Option<String>,
     ) -> String {
+        // Tool result has been delivered — the prior tool's execution window is now complete.
+        // Clearing here (rather than at MessageStop) ensures the idle-timeout suppressor stays
+        // active while the Write tool (or any tool) executes between MessageStop and MessageStart.
+        self.clear_tool_active();
         let in_place_finalize = self
             .state
             .with_session_mut(|session| self.finalize_in_place_full_mode(session));
@@ -359,9 +364,9 @@ impl ClaudeParser {
     }
 
     fn handle_message_stop_inner(&self) -> String {
-        // Message ended — any in-flight tool is now complete. Clear the flag so the
-        // idle-timeout monitor can enforce the timeout after the message boundary.
-        self.clear_tool_active();
+        // MessageStop arrives BEFORE Claude Code executes the Write tool. Do NOT clear
+        // tool_active here — the tool's execution window spans MessageStop → MessageStart.
+        // Clearing happens in handle_message_start once the tool result has been delivered.
         self.state
             .with_session_mut(|session| self.handle_message_stop(session))
     }

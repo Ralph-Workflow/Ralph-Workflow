@@ -1469,3 +1469,178 @@ fn test_codex_item_completed_clears_suppressor_and_timeout_fires() {
         "after item.completed clears tool_active, idle timeout must fire and kill the child"
     );
 }
+
+/// Bug 3 regression: Claude `ContentBlockStart`+`ToolUse` suppresses idle timeout across the
+/// `MessageStop` boundary until the process exits.
+///
+/// Protocol modeled after real Claude Code streaming:
+///   `ContentBlockStart(ToolUse)` → `set_tool_active=true` → suppressor active
+///   `MessageStop` → `tool_active` must remain true (Write tool not yet executed)
+///   (quiet period — Write tool executing, no more stdout from Claude)
+///   Child exits (simulating tool completion + process exit)
+///   Expected: exit code 0, NOT SIGTERM (143)
+///
+/// The test fails with the unfixed code because `handle_message_stop_inner` clears
+/// `tool_active`, so the monitor kills the process during the quiet period.
+/// After the fix (clear at `MessageStart` instead), the suppressor holds.
+#[test]
+#[cfg(unix)]
+fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct ClaudeToolStartExecutor {
+        still_running: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct ClaudeToolStartChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for ClaudeToolStartChild {
+        fn id(&self) -> u32 {
+            88887
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+            Ok(Some(ExitStatus::from_raw(0)))
+        }
+    }
+
+    impl crate::executor::ProcessExecutor for ClaudeToolStartExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" && args.contains(&"-KILL") {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Emit Claude SSE: ContentBlockStart(ToolUse) then MessageStop.
+            // After this stdout closes — the monitor must observe tool_active=true
+            // (from ContentBlockStart) and suppress the idle timeout.
+            // Events are wrapped in ClaudeEvent::StreamEvent; outer type is "stream_event".
+            let events = concat!(
+                // ContentBlockStart with ToolUse — parser calls set_tool_active()
+                r#"{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_write","name":"Write","input":{}}}}"#,
+                "\n",
+                // MessageStop — must NOT clear tool_active under the fix
+                r#"{"type":"stream_event","event":{"type":"message_stop"}}"#,
+                "\n"
+            );
+            let stdout =
+                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(ClaudeToolStartChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let executor = Arc::new(ClaudeToolStartExecutor {
+        still_running: Arc::clone(&still_running),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-claude",
+        prompt: "write the plan",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        parser_type: JsonParserType::Claude,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    // Stop the child after parser has processed ContentBlockStart+MessageStop events.
+    // With the fix, tool_active remains true after MessageStop, suppressing the monitor.
+    let still_running_stopper = Arc::clone(&still_running);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        still_running_stopper.store(false, Ordering::Release);
+    });
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        Duration::ZERO, // idle timeout fires immediately unless suppressed
+        Duration::from_millis(20),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    assert_ne!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "Claude ContentBlockStart+ToolUse must suppress idle timeout across MessageStop; child must not be killed (expected exit 0, not SIGTERM)"
+    );
+    assert_eq!(
+        result.exit_code,
+        0,
+        "child must exit cleanly with code 0 after ContentBlockStart+ToolUse suppresses idle timeout"
+    );
+}
