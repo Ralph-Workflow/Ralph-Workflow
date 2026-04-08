@@ -7,7 +7,9 @@ use crate::json_parser::delta_display::{
     sanitize_for_display, DeltaRenderer, TextDeltaRenderer, ThinkingDeltaRenderer,
 };
 use crate::json_parser::terminal::TerminalMode;
-use crate::json_parser::types::{format_tool_input, CodexItem, CodexUsage, ContentType};
+use crate::json_parser::types::{
+    format_dim_continuation_line, format_tool_input, CodexItem, CodexUsage, ContentType,
+};
 use crate::logger::{CHECK, CROSS};
 
 #[cfg(any(test, debug_assertions))]
@@ -273,22 +275,6 @@ pub fn handle_file_io_started(
     )
 }
 
-fn format_mcp_tool_input_preview(ctx: &EventHandlerContext<'_>, preview: &str) -> String {
-    match ctx.terminal_mode {
-        TerminalMode::Full | TerminalMode::Basic => format!(
-            "{}[{}]{} {}  \u{2514}\u{2500} {}{}{}\n",
-            ctx.colors.dim(),
-            ctx.display_name,
-            ctx.colors.reset(),
-            ctx.colors.dim(),
-            ctx.colors.reset(),
-            preview,
-            ctx.colors.reset()
-        ),
-        TerminalMode::None => format!("[{}]   \u{2514}\u{2500} {}\n", ctx.display_name, preview),
-    }
-}
-
 fn maybe_format_mcp_tool_input(
     ctx: &EventHandlerContext<'_>,
     arguments: Option<&serde_json::Value>,
@@ -302,7 +288,13 @@ fn maybe_format_mcp_tool_input(
             if preview.is_empty() {
                 String::new()
             } else {
-                format_mcp_tool_input_preview(ctx, &preview)
+                // TerminalMode::None must not emit ANSI codes even when colors are enabled.
+                match ctx.terminal_mode {
+                    TerminalMode::None => {
+                        format!("[{}]   \u{2514}\u{2500} {}\n", ctx.display_name, preview)
+                    }
+                    _ => format_dim_continuation_line(&preview, ctx.display_name, *ctx.colors),
+                }
             }
         })
 }

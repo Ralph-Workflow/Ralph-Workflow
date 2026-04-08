@@ -373,20 +373,77 @@ pub fn format_duration_for_display(duration_ms: u64) -> String {
 /// Format a hash (or any identifier string) as a short parenthetical for display.
 ///
 /// Returns:
-/// - `""` (empty) when hash is empty
+/// - `""` (empty) when hash is empty or shorter than 8 characters (placeholder / non-hash strings
+///   are suppressed so callers never produce meaningless `(...)` output)
 /// - `"(abcdef12...)"` when hash is >= 8 chars (first 8 chars + "...")
-/// - `"(abcd)"` when hash is < 8 chars (full hash, no ellipsis)
 #[must_use]
 pub fn format_short_hash(hash: &str) -> String {
-    if hash.is_empty() {
+    if hash.len() < 8 {
         return String::new();
     }
-    let prefix_len = hash.len().min(8);
-    let short = &hash[..prefix_len];
-    if prefix_len < hash.len() {
+    let short = &hash[..8];
+    if hash.len() > 8 {
         format!("({short}...)")
     } else {
         format!("({short})")
+    }
+}
+
+/// Format a dim continuation line with └─ indicator.
+///
+/// Used for tool input previews and other sub-details in the output.
+#[must_use]
+pub fn format_dim_continuation_line(
+    preview: &str,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    format!(
+        "{}[{}]{} {}  └─ {}{}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.dim(),
+        preview,
+        c.reset()
+    )
+}
+
+/// Format token counts for display in step-finish events.
+///
+/// Returns a string like "in:532 out:85 reasoning:24 cache:151680".
+#[must_use]
+pub fn format_token_counts(input: u64, output: u64, reasoning: u64, cache_read: u64) -> String {
+    if reasoning > 0 {
+        format!("in:{input} out:{output} reasoning:{reasoning} cache:{cache_read}")
+    } else if cache_read > 0 {
+        format!("in:{input} out:{output} cache:{cache_read}")
+    } else {
+        format!("in:{input} out:{output}")
+    }
+}
+
+/// Format a cost suffix for display in step-finish events.
+///
+/// Returns " · $0.0042" for non-zero cost, or empty string for zero cost.
+#[must_use]
+pub fn format_cost_suffix(cost: f64) -> String {
+    if cost > 0.0 {
+        format!(" \u{00b7} ${cost:.4}")
+    } else {
+        String::new()
+    }
+}
+
+/// Format a tokens string as a delimited suffix.
+///
+/// Returns " · in:532 out:85 ..." for non-empty token string, or empty string.
+#[must_use]
+pub fn format_tokens_suffix(tokens_str: &str) -> String {
+    if tokens_str.is_empty() {
+        String::new()
+    } else {
+        format!(" \u{00b7} {tokens_str}")
     }
 }
 

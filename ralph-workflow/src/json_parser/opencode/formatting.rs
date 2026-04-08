@@ -542,38 +542,12 @@ impl OpenCodeParser {
     }
 }
 
-fn format_token_counts(input: u64, output: u64, reasoning: u64, cache_read: u64) -> String {
-    if reasoning > 0 {
-        format!("in:{input} out:{output} reasoning:{reasoning} cache:{cache_read}")
-    } else if cache_read > 0 {
-        format!("in:{input} out:{output} cache:{cache_read}")
-    } else {
-        format!("in:{input} out:{output}")
-    }
-}
-
 fn step_finish_icon_and_color(reason: &str, colors: crate::logger::Colors) -> (char, &'static str) {
     let is_success = reason == "tool-calls" || reason == "end_turn";
     if is_success {
         (CHECK, colors.green())
     } else {
         (CROSS, colors.yellow())
-    }
-}
-
-fn format_cost_suffix(cost: f64) -> String {
-    if cost > 0.0 {
-        format!(" \u{00b7} ${cost:.4}")
-    } else {
-        String::new()
-    }
-}
-
-fn format_tokens_suffix(tokens_str: &str) -> String {
-    if tokens_str.is_empty() {
-        String::new()
-    } else {
-        format!(" \u{00b7} {tokens_str}")
     }
 }
 
@@ -633,18 +607,6 @@ fn extract_error_from_event_error(err: &OpenCodeError) -> String {
         .or_else(|| err.message.clone())
         .or_else(|| err.name.clone())
         .unwrap_or_else(|| "Unknown error".to_string())
-}
-
-fn format_dim_continuation_line(preview: &str, prefix: &str, c: crate::logger::Colors) -> String {
-    format!(
-        "{}[{}]{} {}  └─ {}{}\n",
-        c.dim(),
-        prefix,
-        c.reset(),
-        c.dim(),
-        preview,
-        c.reset()
-    )
 }
 
 fn format_tool_output_lines(
