@@ -24,6 +24,34 @@ pub struct CommandResult {
     /// Only populated when the process was killed due to idle timeout.
     /// Contains the child count and cumulative CPU time when the timeout fired.
     pub(crate) child_status_at_timeout: Option<ChildProcessInfo>,
+    /// Explicit timeout evidence from the idle-timeout monitor.
+    ///
+    /// This field carries definitive proof that a wall-clock timeout was enforced
+    /// by the monitor. It is populated ONLY when `MonitorResult::TimedOut` is
+    /// returned by the idle-timeout monitor — never inferred from exit codes or
+    /// stderr patterns.
+    ///
+    /// When `Some`, the agent was definitely killed by the idle-timeout mechanism.
+    /// When `None`, no explicit timeout evidence exists (exit code 143 alone is
+    /// insufficient evidence of timeout as SIGTERM may be sent for other reasons).
+    pub(crate) timeout_context: Option<TimeoutContext>,
+}
+
+/// Explicit evidence that a timeout was enforced by the idle-timeout monitor.
+///
+/// This type captures the metadata from `MonitorResult::TimedOut` so that
+/// downstream classification can distinguish genuine timeouts from other SIGTERM exits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimeoutContext {
+    /// Whether SIGKILL escalation was required after SIGTERM grace period.
+    ///
+    /// `false`: Process terminated after SIGTERM within grace period.
+    /// `true`: Process did not respond to SIGTERM, required SIGKILL/taskkill.
+    pub escalated: bool,
+    /// Child process state at the time the timeout was enforced.
+    ///
+    /// This enables observability and debugging of timeout events.
+    pub child_status_at_timeout: Option<ChildProcessInfo>,
 }
 
 /// Why the idle-timeout monitor stopped waiting for an agent process.

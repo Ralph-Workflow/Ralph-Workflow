@@ -9,7 +9,7 @@ use crate::pipeline::prompt::io_stderr_collector::{
     cancel_and_join_stderr_collector, collect_stderr_with_cap_and_drain,
 };
 use crate::pipeline::prompt::runtime::{cleanup_after_agent_failure, terminate_child_best_effort};
-use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
+use crate::pipeline::types::{CommandResult, IdleTimeoutCause, TimeoutContext};
 use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
@@ -87,6 +87,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
                 stderr: format!("{}: {} - {}", argv[0], detail, e),
                 session_id: None,
                 child_status_at_timeout: None,
+                timeout_context: None,
             });
         }
     };
@@ -247,7 +248,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
         .lock()
         .expect("child activity observer mutex poisoned");
 
-    let (final_exit_code, child_status) = match monitor_result {
+    let (final_exit_code, child_status, timeout_context) = match monitor_result {
         MonitorResult::TimedOut {
             escalated,
             child_status_at_timeout,
@@ -297,7 +298,14 @@ pub fn run_with_agent_spawn_with_monitor_config(
                 escalation_msg,
                 child_msg
             ));
-            (super::SIGTERM_EXIT_CODE, child_status_at_timeout)
+            (
+                super::SIGTERM_EXIT_CODE,
+                child_status_at_timeout,
+                Some(TimeoutContext {
+                    escalated,
+                    child_status_at_timeout,
+                }),
+            )
         }
         MonitorResult::ProcessCompleted => {
             if let Some(info) = child_activity_suppression_info {
@@ -310,14 +318,14 @@ pub fn run_with_agent_spawn_with_monitor_config(
                     info.descendant_pid_signature
                 ));
             }
-            (exit_code, None)
+            (exit_code, None, None)
         }
         MonitorResult::CompleteButWaiting => {
             runtime.logger.info(
                 "Agent output ready; process was idle-but-done and was forcibly terminated \
                  (complete-but-waiting). Treating as success.",
             );
-            (0, None)
+            (0, None, None)
         }
     };
 
@@ -329,5 +337,6 @@ pub fn run_with_agent_spawn_with_monitor_config(
         stderr: stderr_output,
         session_id,
         child_status_at_timeout: child_status,
+        timeout_context,
     })
 }

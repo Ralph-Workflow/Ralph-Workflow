@@ -18,7 +18,7 @@ use crate::pipeline::idle_timeout::{
 use crate::pipeline::prompt::io_streaming;
 use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
 use crate::pipeline::prompt::SIGTERM_EXIT_CODE;
-use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
+use crate::pipeline::types::{CommandResult, IdleTimeoutCause, TimeoutContext};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,6 +47,7 @@ fn map_spawn_error_to_result(e: std::io::Error, argv0: &str) -> CommandResult {
         stderr: format!("{}: {} - {}", argv0, detail, e),
         session_id: None,
         child_status_at_timeout: None,
+        timeout_context: None,
     }
 }
 
@@ -398,7 +399,7 @@ fn resolve_final_exit_code(
     activity_timestamp: &crate::pipeline::idle_timeout::SharedActivityTimestamp,
     child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
     runtime: &PipelineRuntime<'_>,
-) -> (i32, Option<crate::executor::ChildProcessInfo>) {
+) -> (i32, Option<crate::executor::ChildProcessInfo>, Option<TimeoutContext>) {
     let resolution =
         classify_monitor_result(monitor_result, exit_code, child_activity_suppression_info);
 
@@ -406,15 +407,22 @@ fn resolve_final_exit_code(
 
     match resolution {
         ExitCodeResolution::TimedOut {
-            escalated: _,
+            escalated,
             exit_code: _,
             child_status_at_timeout,
-        } => (SIGTERM_EXIT_CODE, child_status_at_timeout),
-        ExitCodeResolution::CompleteButWaiting => (0, None),
+        } => (
+            SIGTERM_EXIT_CODE,
+            child_status_at_timeout,
+            Some(TimeoutContext {
+                escalated,
+                child_status_at_timeout,
+            }),
+        ),
+        ExitCodeResolution::CompleteButWaiting => (0, None, None),
         ExitCodeResolution::ProcessCompleted {
             exit_code,
             child_activity_suppression_info: _,
-        } => (exit_code, None),
+        } => (exit_code, None, None),
     }
 }
 
@@ -746,7 +754,7 @@ fn finalize_result(
         .child_activity_suppressed
         .lock()
         .expect("child activity observer mutex poisoned");
-    let (final_exit_code, child_status) = resolve_final_exit_code(
+    let (final_exit_code, child_status, timeout_context) = resolve_final_exit_code(
         monitor_result,
         exit_code,
         &handles.activity_timestamp,
@@ -765,6 +773,7 @@ fn finalize_result(
         stderr: stderr_output,
         session_id,
         child_status_at_timeout: child_status,
+        timeout_context,
     }
 }
 

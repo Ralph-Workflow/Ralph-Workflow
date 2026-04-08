@@ -75,7 +75,12 @@ fn test_extracted_stdout_error_debug_log_is_gated_by_verbosity() {
 }
 
 #[test]
-fn test_timeout_error_from_run_with_prompt_err_arm_triggers_timeout_fallback() {
+fn test_io_timeout_from_run_with_prompt_err_arm_returns_invocation_failed() {
+    // TIMEOUT CONTRACT: only `timeout_context: Some(_)` (set by the idle-timeout monitor in the
+    // Ok path) constitutes definitive timeout evidence. An I/O error of kind `TimedOut` from the
+    // infrastructure layer (e.g., filesystem write to save the prompt) is NOT a wall-clock idle
+    // timeout — it never carries `timeout_context`. The Err arm must always emit InvocationFailed,
+    // never TimedOut.
     let colors = Colors { enabled: false };
     let logger = Logger::new(colors);
     let mut timer = Timer::new();
@@ -118,10 +123,28 @@ fn test_timeout_error_from_run_with_prompt_err_arm_triggers_timeout_fallback() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    assert!(matches!(
-        result.event,
-        PipelineEvent::Agent(AgentEvent::TimedOut { .. })
-    ));
+    // Must NOT be a timeout event — infrastructure I/O errors (TimedOut write) must
+    // NOT produce AgentEvent::TimedOut; only the idle-timeout monitor (timeout_context)
+    // can produce that event.
+    assert!(
+        !matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::TimedOut { .. })
+        ),
+        "I/O timeout from run_with_prompt Err arm must NOT emit TimedOut; got: {:?}",
+        result.event
+    );
+
+    // Must be InvocationFailed — the Err arm is an infrastructure failure, not a
+    // wall-clock agent timeout.
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "I/O timeout from run_with_prompt Err arm must emit InvocationFailed; got: {:?}",
+        result.event
+    );
 }
 
 #[test]
@@ -361,8 +384,10 @@ fn test_classify_io_error_network() {
 
 #[test]
 fn test_timeout_with_empty_logfile_emits_no_output() {
-    // AC-2a: Empty logfile after timeout execution = NoResult
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // The mock executor exits immediately (monitor never fires), so timeout_context is None.
+    // Under the explicit-timeout contract, SIGTERM alone is not sufficient evidence
+    // for a TimedOut event — only monitor-generated timeout_context is.
 
     let colors = Colors { enabled: false };
     // Use ReadHijackWorkspace to simulate an empty logfile read
@@ -416,22 +441,20 @@ fn test_timeout_with_empty_logfile_emits_no_output() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::NoResult,
-                "Empty logfile should emit NoResult"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 #[test]
 fn test_timeout_with_nonempty_logfile_emits_partial_output() {
-    // AC-2b: Non-empty logfile after timeout execution = PartialResult
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Logfile content does not affect event type when timeout_context is absent.
 
     let colors = Colors { enabled: false };
     // Use ReadHijackWorkspace to simulate a non-empty logfile read
@@ -485,22 +508,20 @@ fn test_timeout_with_nonempty_logfile_emits_partial_output() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::PartialResult,
-                "Non-empty logfile should emit PartialResult"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 #[test]
 fn test_timeout_with_missing_logfile_defaults_to_no_output() {
-    // AC-2c: Missing logfile = treat as NoOutput (safer default)
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Missing logfile does not affect event type when timeout_context is absent.
 
     let colors = Colors { enabled: false };
     // Use ReadFailWorkspace to simulate a missing logfile read
@@ -553,16 +574,14 @@ fn test_timeout_with_missing_logfile_defaults_to_no_output() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::NoResult,
-                "Missing logfile should default to NoResult"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 // ========================================================================
@@ -571,8 +590,8 @@ fn test_timeout_with_missing_logfile_defaults_to_no_output() {
 
 #[test]
 fn test_timeout_with_9_non_whitespace_chars_emits_no_output() {
-    // AC-4: 9 non-whitespace chars is below threshold → NoResult
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Logfile char count does not affect event type when timeout_context is absent.
 
     let colors = Colors { enabled: false };
     // "123456789" = exactly 9 non-whitespace characters
@@ -625,22 +644,20 @@ fn test_timeout_with_9_non_whitespace_chars_emits_no_output() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::NoResult,
-                "9 non-whitespace chars should emit NoOutput (below threshold of 10)"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 #[test]
 fn test_timeout_with_10_non_whitespace_chars_emits_partial_output() {
-    // AC-4: 10 non-whitespace chars meets threshold → PartialResult
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Logfile char count does not affect event type when timeout_context is absent.
 
     let colors = Colors { enabled: false };
     // "1234567890" = exactly 10 non-whitespace characters
@@ -693,22 +710,20 @@ fn test_timeout_with_10_non_whitespace_chars_emits_partial_output() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::PartialResult,
-                "10 non-whitespace chars should emit PartialOutput (meets threshold)"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 #[test]
 fn test_timeout_with_whitespace_only_logfile_emits_no_output() {
-    // AC-4: Whitespace-only content → NoResult
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Logfile content does not affect event type when timeout_context is absent.
 
     let colors = Colors { enabled: false };
     // Whitespace only (spaces, tabs, newlines)
@@ -761,22 +776,20 @@ fn test_timeout_with_whitespace_only_logfile_emits_no_output() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::NoResult,
-                "Whitespace-only logfile should emit NoResult"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 #[test]
 fn test_timeout_with_meaningful_output_surrounded_by_whitespace() {
-    // AC-4: Content with meaningful chars surrounded by whitespace should count only non-whitespace
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Logfile content does not affect event type when timeout_context is absent.
 
     let colors = Colors { enabled: false };
     // "  hello world  \n\n" = 10 non-whitespace characters (helloworld)
@@ -829,16 +842,14 @@ fn test_timeout_with_meaningful_output_surrounded_by_whitespace() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::PartialResult,
-                "10 non-whitespace chars with surrounding whitespace should emit PartialResult"
-            );
-        }
-        _ => panic!("Expected TimedOut event, got {:?}", result.event),
-    }
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+        ),
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 // ========================================================================
@@ -1009,9 +1020,9 @@ fn test_timeout_with_valid_completion_file_emits_success() {
 
 #[test]
 fn test_timeout_with_missing_completion_file_emits_no_result() {
-    // SIGTERM (exit 143) + missing completion file → TimedOut with NoResult.
-    // Missing file = agent never produced output (crash, auth failure, etc.)
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Missing completion file does not change the outcome: without timeout_context
+    // (monitor never fired), SIGTERM is treated as a regular non-zero exit.
 
     let colors = Colors { enabled: false };
     let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
@@ -1062,26 +1073,21 @@ fn test_timeout_with_missing_completion_file_emits_no_result() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::NoResult,
-                "Missing completion file should emit NoResult"
-            );
-        }
-        _ => panic!(
-            "Expected TimedOut event with NoResult, got {:?}",
-            result.event
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
         ),
-    }
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 #[test]
 fn test_timeout_with_invalid_completion_file_emits_partial_result() {
-    // SIGTERM (exit 143) + file-exists-but-not-valid-XML → TimedOut with PartialResult.
-    // File exists but is invalid = agent started work but was interrupted.
-    use crate::reducer::event::TimeoutOutputKind;
+    // SIGTERM (143) without explicit timeout_context → InvocationFailed.
+    // Partial completion file does not change the outcome: without timeout_context
+    // (monitor never fired), SIGTERM is treated as a regular non-zero exit.
 
     let colors = Colors { enabled: false };
     let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
@@ -1135,19 +1141,14 @@ fn test_timeout_with_invalid_completion_file_emits_partial_result() {
     let result = execute_agent_fault_tolerantly(exec_config, &mut runtime)
         .expect("executor should never return Err");
 
-    match result.event {
-        PipelineEvent::Agent(AgentEvent::TimedOut { output_kind, .. }) => {
-            assert_eq!(
-                output_kind,
-                TimeoutOutputKind::PartialResult,
-                "File-exists-but-invalid completion file should emit PartialResult"
-            );
-        }
-        _ => panic!(
-            "Expected TimedOut event with PartialResult, got {:?}",
-            result.event
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
         ),
-    }
+        "SIGTERM without timeout_context must return InvocationFailed; got {:?}",
+        result.event
+    );
 }
 
 // ========================================================================
