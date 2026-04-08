@@ -555,6 +555,84 @@ fn test_analysis_drain_exit_code_91_without_result_returns_failed_not_timed_out(
     );
 }
 
+/// exit code 91 + timeout_context=Some + valid result → `InvocationSucceeded`
+///
+/// Critical regression coverage: even when the wall-clock timeout fired and killed the
+/// OpenCode agent (which exits with its proprietary reason:91 stop code), a valid result
+/// file means the agent finished its work before the kill signal arrived.
+///
+/// The result-file pre-check MUST override BOTH the proprietary exit code AND the
+/// explicit timeout signal. This is the intersection of Bug 1 and Bug 2 fix coverage.
+#[test]
+fn test_exit_code_91_with_timeout_context_and_valid_result_returns_succeeded() {
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let config = Config::default();
+
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/development_result.xml",
+        "<ralph-development-result><ralph-status>completed</ralph-status></ralph-development-result>",
+    );
+
+    let executor = Arc::new(crate::executor::MockProcessExecutor::new());
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor_arc.as_ref(),
+        executor_arc: Arc::clone(&executor_arc),
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let env_vars: HashMap<String, String> = HashMap::new();
+    let exec_config = AgentExecutionConfig {
+        role: AgentRole::Developer,
+        agent_name: "opencode",
+        cmd_str: "opencode -p",
+        parser_type: JsonParserType::OpenCode,
+        env_vars: &env_vars,
+        prompt: "implement the feature",
+        display_name: "opencode",
+        log_prefix: ".agent/logs/test",
+        model_index: 0,
+        attempt: 0,
+        logfile: ".agent/logs/test.log",
+        completion_output_path: Some(Path::new(".agent/tmp/development_result.xml")),
+    };
+
+    let agent_name = crate::common::domain_types::AgentName::from("opencode".to_string());
+    // Synthesize CommandResult with exit_code 91 (OpenCode proprietary stop reason)
+    // AND an explicit timeout_context — the monitor fired AND the agent used reason:91.
+    let result_with_timeout = crate::pipeline::CommandResult {
+        exit_code: 91,
+        stderr: String::new(),
+        session_id: None,
+        child_status_at_timeout: None,
+        timeout_context: Some(crate::pipeline::types::TimeoutContext {
+            escalated: false,
+            child_status_at_timeout: None,
+        }),
+    };
+
+    let result =
+        classify_nonzero_command_result(result_with_timeout, &exec_config, &agent_name, &runtime);
+
+    assert!(
+        matches!(
+            result.event,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        ),
+        "exit code 91 + timeout_context=Some with valid result file must return InvocationSucceeded; got: {:?}",
+        result.event
+    );
+    let _ = runtime;
+}
+
 /// Auth failure error in stderr + valid result file → `InvocationSucceeded`
 ///
 /// An authentication failure may appear in stderr even when the agent already

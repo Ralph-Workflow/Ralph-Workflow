@@ -1644,3 +1644,323 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
         "child must exit cleanly with code 0 after ContentBlockStart+ToolUse suppresses idle timeout"
     );
 }
+
+/// Bug 3 regression: An OpenCode `tool_use` event with status "pending" emitted on stdout
+/// causes the OpenCode parser to set the tool-activity flag, suppressing the idle-timeout
+/// monitor during the quiet period that follows (e.g. while a file-write tool is executing
+/// with no further stdout output).
+///
+/// The test verifies the end-to-end wiring for OpenCode agents:
+///   parser sees tool_use{status:pending} → sets tool_active = true → monitor reads true →
+///   suppresses timeout → child eventually exits cleanly → result is exit 0, not SIGTERM.
+#[test]
+#[cfg(unix)]
+fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct OpenCodeToolStartExecutor {
+        still_running: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct OpenCodeToolStartChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for OpenCodeToolStartChild {
+        fn id(&self) -> u32 {
+            99991
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+            Ok(Some(ExitStatus::from_raw(0)))
+        }
+    }
+
+    impl crate::executor::ProcessExecutor for OpenCodeToolStartExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" && args.contains(&"-KILL") {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Emit a single OpenCode tool_use event with status "pending" on stdout.
+            // This causes the OpenCode parser to call set_tool_active() → tool_active = true.
+            // After this line, stdout closes (EOF). The child keeps running so the monitor
+            // can observe the tool_active flag before the process exits.
+            let tool_use_pending = b"{\"type\":\"tool_use\",\"timestamp\":1234,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-1\",\"tool\":\"write\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/test.xml\"}}}}\n";
+            let stdout =
+                Box::new(Cursor::new(tool_use_pending.to_vec())) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(OpenCodeToolStartChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let executor = Arc::new(OpenCodeToolStartExecutor {
+        still_running: Arc::clone(&still_running),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-opencode",
+        prompt: "implement the feature",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        // Use OpenCode parser so tool_use{status:pending} events update the tool-activity flag.
+        parser_type: JsonParserType::OpenCode,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    // Stop the child shortly after the parser has had time to process the tool_use event
+    // and set tool_active = true. With the tool-activity suppressor engaged, the idle monitor
+    // (timeout = ZERO) should not kill the process.
+    let still_running_for_stopper = Arc::clone(&still_running);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        still_running_for_stopper.store(false, Ordering::Release);
+    });
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        // Idle timeout is ZERO — fires immediately unless suppressed.
+        Duration::ZERO,
+        Duration::from_millis(20),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    // The OpenCode tool_use{status:pending} event should have suppressed the idle timeout.
+    // Child exits cleanly → result should be exit code 0, NOT SIGTERM (143).
+    assert_ne!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "OpenCode tool_use{{status:pending}} event must suppress idle timeout; child should exit cleanly, not be killed"
+    );
+    assert_eq!(
+        result.exit_code,
+        0,
+        "child should exit with code 0 after OpenCode tool_use{{status:pending}} suppresses idle timeout"
+    );
+}
+
+/// Bug 3 regression: Once the tool-activity suppressor is cleared by a `step_finish` event,
+/// the idle-timeout monitor resumes normal enforcement for OpenCode agents.
+///
+/// The test verifies:
+///   tool_use{status:pending} sets tool_active = true → timeout suppressed during write
+///   step_finish clears tool_active = false → timeout fires when child is still running and quiet
+#[test]
+#[cfg(unix)]
+fn test_opencode_step_finish_event_clears_suppressor_and_timeout_fires() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct OpenCodeStepFinishExecutor {
+        still_running: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct OpenCodeStepFinishChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for OpenCodeStepFinishChild {
+        fn id(&self) -> u32 {
+            99992
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                Ok(None)
+            } else {
+                Ok(Some(ExitStatus::from_raw(0)))
+            }
+        }
+    }
+
+    impl crate::executor::ProcessExecutor for OpenCodeStepFinishExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            _args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Emit tool_use{status:pending} then step_finish so the tool_active flag
+            // is set and then cleared. After stdout closes, the monitor should time out
+            // because there is no active tool, no file activity, and no output.
+            let events = concat!(
+                "{\"type\":\"tool_use\",\"timestamp\":1234,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-1\",\"tool\":\"write\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/out.xml\"}}}}\n",
+                "{\"type\":\"step_finish\",\"timestamp\":5678,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"step\",\"reason\":\"tool_result\"}}\n",
+            );
+            let stdout =
+                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(OpenCodeStepFinishChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let executor = Arc::new(OpenCodeStepFinishExecutor {
+        still_running: Arc::clone(&still_running),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-opencode",
+        prompt: "implement the feature",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        parser_type: JsonParserType::OpenCode,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        // Idle timeout is ZERO — fires as soon as tool_active is cleared.
+        Duration::ZERO,
+        Duration::from_millis(5),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    assert_eq!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "after OpenCode step_finish clears tool_active, idle timeout must fire and kill the child"
+    );
+}
