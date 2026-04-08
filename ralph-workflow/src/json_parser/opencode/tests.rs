@@ -333,4 +333,74 @@ mod tests {
 
         assert_eq!(classification, MonitorEventClassification::Ignored);
     }
+
+    /// Regression: tool_use "running" must not double-count an already-counted call.
+    ///
+    /// With AtomicBool, pending/running both called set_tool_active (idempotent). With AtomicU32,
+    /// "running" must be a no-op — only "pending" increments so the counter returns to 0 on
+    /// "completed".
+    #[test]
+    fn test_opencode_tool_use_pending_running_completed_single_count() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        // pending: new call starting — increment
+        parser.parse_event(r#"{"type":"tool_use","timestamp":1,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"pending","input":{"filePath":"/f"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 1, "counter should be 1 after pending");
+
+        // running: status update, already counted — no-op
+        parser.parse_event(r#"{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"running","input":{"filePath":"/f"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 1, "counter must stay at 1 for running (no-op)");
+
+        // completed: call done — decrement
+        parser.parse_event(r#"{"type":"tool_use","timestamp":3,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"filePath":"/f"},"output":"ok"}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 0, "counter should be 0 after completed");
+    }
+
+    /// step_finish hard-resets the counter to 0 regardless of the current count.
+    #[test]
+    fn test_opencode_step_finish_hard_resets_tracker() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        // Two tool calls start
+        parser.parse_event(r#"{"type":"tool_use","timestamp":1,"sessionID":"s","part":{"type":"tool","tool":"read","state":{"status":"pending","input":{"filePath":"/a"}}}}"#);
+        parser.parse_event(r#"{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","tool":"read","state":{"status":"pending","input":{"filePath":"/b"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 2, "counter should be 2 with two pending calls");
+
+        // step_finish hard-resets
+        parser.parse_event(r#"{"type":"step_finish","timestamp":3,"sessionID":"s","part":{"type":"step-finish","reason":"end_turn"}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 0, "step_finish must hard-reset counter to 0");
+    }
+
+    /// Concurrent tool calls: two pending + one completed = counter 1 (second still in flight).
+    #[test]
+    fn test_opencode_concurrent_tool_calls_tracked_independently() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        parser.parse_event(r#"{"type":"tool_use","timestamp":1,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"pending","input":{"filePath":"/a"}}}}"#);
+        parser.parse_event(r#"{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"pending","input":{"filePath":"/b"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 2, "counter should be 2 with two concurrent calls");
+
+        // First call completes
+        parser.parse_event(r#"{"type":"tool_use","timestamp":3,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"filePath":"/a"},"output":"ok"}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 1, "counter should be 1 after first completes");
+
+        // Second call completes
+        parser.parse_event(r#"{"type":"tool_use","timestamp":4,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"filePath":"/b"},"output":"ok"}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 0, "counter should be 0 after both complete");
+    }
 }

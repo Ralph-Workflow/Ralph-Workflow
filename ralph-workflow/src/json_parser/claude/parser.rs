@@ -26,10 +26,12 @@ pub struct ClaudeParser {
     state: ParserState,
     show_streaming_metrics: bool,
     printer: Rc<RefCell<dyn Printable>>,
-    /// Shared flag set while a tool `ContentBlock` is in progress. Cleared on `MessageStart` or
+    /// Shared counter tracking active tool `ContentBlock`s in progress. Incremented when a
+    /// `ToolUse` block starts, saturating-decremented on `MessageStart` (tool result received) or
     /// when the stream ends. Allows the idle-timeout monitor to avoid killing the agent during
     /// long tool calls (e.g. `Write` tool executes after `MessageStop`, before `MessageStart`).
-    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Correctly tracks concurrent parallel tool calls (multiple `ToolUse` blocks per message).
+    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
 }
 
 impl ClaudeParser {
@@ -61,14 +63,13 @@ impl ClaudeParser {
         }
     }
 
-    /// Register a shared flag that the idle-timeout monitor polls to detect active tool execution.
-    ///
-    /// Set to `true` when a `ToolUse` content block starts; cleared on `MessageStart` or stream
-    /// end. Prevents idle-timeout kills during long tool operations (e.g. `Write` tool executes
-    /// after `MessageStop`, before the next `MessageStart`).
+    /// Register a shared counter that the idle-timeout monitor polls to detect active tool
+    /// execution. Incremented when a `ToolUse` content block starts (supporting parallel tool
+    /// calls); saturating-decremented on `MessageStart` or stream end. Prevents idle-timeout kills
+    /// during long tool operations (e.g. `Write` tool executes after `MessageStop`).
     pub(crate) fn with_tool_activity_tracker(
         mut self,
-        tracker: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        tracker: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) -> Self {
         self.tool_activity_tracker = Some(tracker);
         self
@@ -76,13 +77,21 @@ impl ClaudeParser {
 
     fn set_tool_active(&self) {
         if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.store(true, std::sync::atomic::Ordering::Release);
+            tracker.fetch_update(
+                std::sync::atomic::Ordering::Release,
+                std::sync::atomic::Ordering::Acquire,
+                |n| Some(n.saturating_add(1)),
+            ).ok();
         }
     }
 
     fn clear_tool_active(&self) {
         if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.store(false, std::sync::atomic::Ordering::Release);
+            tracker.fetch_update(
+                std::sync::atomic::Ordering::Release,
+                std::sync::atomic::Ordering::Acquire,
+                |n| Some(n.saturating_sub(1)),
+            ).ok();
         }
     }
 

@@ -18,15 +18,16 @@ impl OpenCodeParser {
         if output.is_empty() { None } else { Some(output) }
     }
 
-    /// Update the shared tool-activity flag based on the OpenCode event before dispatching.
+    /// Update the shared tool-activity counter based on the OpenCode event before dispatching.
     ///
-    /// `step_finish` → clear (step ended, any tool is now done).
-    /// `tool_use` with status "pending"/"running" → set active.
-    /// `tool_use` with status "completed"/"error" → clear.
+    /// `step_finish` → hard-reset counter to 0 (step is definitively over).
+    /// `tool_use` with status "pending" → increment (new call starting).
+    /// `tool_use` with status "running" → no-op (already counted; avoid double-increment).
+    /// `tool_use` with status "completed"/"error" → saturating-decrement (call done).
     /// All other events → no change.
     fn apply_tool_activity_for_event(&self, event: &OpenCodeEvent) {
         match event.event_type.as_str() {
-            "step_finish" => self.clear_tool_active(),
+            "step_finish" => self.reset_tool_active(),
             "tool_use" => self.apply_tool_use_activity(event),
             _ => {}
         }
@@ -40,8 +41,9 @@ impl OpenCodeParser {
             .and_then(|s| s.status.as_deref())
             .unwrap_or("pending");
         match status {
-            "pending" | "running" => self.set_tool_active(),
-            "completed" | "error" => self.clear_tool_active(),
+            "pending" => self.set_tool_active(),   // new call starting — increment
+            "running" => {}                         // status update, already counted — no-op
+            "completed" | "error" => self.clear_tool_active(), // call done — decrement
             _ => {}
         }
     }

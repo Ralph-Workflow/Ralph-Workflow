@@ -527,16 +527,6 @@ fn check_file_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLo
     })
 }
 
-#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
-fn activity_resumed_after_file_scan(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
-    if is_idle_timeout_exceeded(params.activity_timestamp, params.timeout) {
-        return false;
-    }
-    s.reset_idle();
-    eprintln!("Output activity detected after file scan; continuing monitoring");
-    true
-}
-
 fn check_child_processes_activity(
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     executor: &Arc<dyn ProcessExecutor>,
@@ -609,7 +599,6 @@ fn any_suppressor_active(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -
     check_partial_completion_suppression(params, s)
         || check_tool_activity_suppression(params, s)
         || check_file_activity_suppression(params, s)
-        || activity_resumed_after_file_scan(params, s)
         || child_processes_still_active(params, s)
 }
 

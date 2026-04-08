@@ -5,8 +5,8 @@
 mod tool_activity_tracker_boundary_tests {
     use super::*;
     use std::sync::{
+        atomic::{AtomicU32, Ordering},
         Arc,
-        atomic::{AtomicBool, Ordering},
     };
 
     /// Bug 3 regression: MessageStop must NOT clear tool_active.
@@ -15,11 +15,11 @@ mod tool_activity_tracker_boundary_tests {
     /// Fix: clear tool_active at MessageStart (when tool result has been delivered).
     #[test]
     fn tool_active_not_cleared_at_message_stop_cleared_at_next_message_start() {
-        let tracker = Arc::new(AtomicBool::new(false));
+        let tracker = Arc::new(AtomicU32::new(0));
         let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal)
             .with_tool_activity_tracker(Arc::clone(&tracker));
 
-        // 1. ContentBlockStart with ToolUse — must set tracker to true.
+        // 1. ContentBlockStart with ToolUse — must increment tracker.
         // Events are wrapped in ClaudeEvent::StreamEvent; the outer type is "stream_event".
         let cbs = concat!(
             r#"{"type":"stream_event","event":{"type":"content_block_start","index":0,"#,
@@ -27,19 +27,19 @@ mod tool_activity_tracker_boundary_tests {
         );
         let _ = parser.parse_event(cbs);
         assert!(
-            tracker.load(Ordering::Acquire),
-            "tool_active must be true after ContentBlockStart+ToolUse"
+            tracker.load(Ordering::Acquire) > 0,
+            "tool_active counter must be non-zero after ContentBlockStart+ToolUse"
         );
 
-        // 2. MessageStop: tool submitted but NOT yet executed — tracker must stay true
+        // 2. MessageStop: tool submitted but NOT yet executed — tracker must stay non-zero
         let message_stop = r#"{"type":"stream_event","event":{"type":"message_stop"}}"#;
         let _ = parser.parse_event(message_stop);
         assert!(
-            tracker.load(Ordering::Acquire),
-            "tool_active must remain true after MessageStop; Write tool executes after this event"
+            tracker.load(Ordering::Acquire) > 0,
+            "tool_active must remain non-zero after MessageStop; Write tool executes after this event"
         );
 
-        // 3. MessageStart: tool result delivered — tracker must now be cleared
+        // 3. MessageStart: tool result delivered — tracker must now be decremented to 0
         let message_start = concat!(
             r#"{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_02","type":"message","#,
             r#""role":"assistant","content":[],"model":"claude-opus-4-6","#,
@@ -47,24 +47,26 @@ mod tool_activity_tracker_boundary_tests {
             r#""usage":{"input_tokens":10,"output_tokens":0}}}}"#
         );
         let _ = parser.parse_event(message_start);
-        assert!(
-            !tracker.load(Ordering::Acquire),
-            "tool_active must be false after MessageStart — tool result was delivered"
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "tool_active counter must be 0 after MessageStart — tool result was delivered"
         );
     }
 
-    /// When no tool is in flight, MessageStop and MessageStart must leave tracker false.
+    /// When no tool is in flight, MessageStop and MessageStart must leave tracker at 0.
     #[test]
     fn tracker_stays_false_when_no_tool_in_flight_across_message_boundary() {
-        let tracker = Arc::new(AtomicBool::new(false));
+        let tracker = Arc::new(AtomicU32::new(0));
         let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal)
             .with_tool_activity_tracker(Arc::clone(&tracker));
 
         let message_stop = r#"{"type":"stream_event","event":{"type":"message_stop"}}"#;
         let _ = parser.parse_event(message_stop);
-        assert!(
-            !tracker.load(Ordering::Acquire),
-            "tracker must stay false at MessageStop when no tool was in flight"
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "tracker must stay at 0 at MessageStop when no tool was in flight"
         );
 
         let message_start = concat!(
@@ -74,9 +76,10 @@ mod tool_activity_tracker_boundary_tests {
             r#""usage":{"input_tokens":10,"output_tokens":0}}}}"#
         );
         let _ = parser.parse_event(message_start);
-        assert!(
-            !tracker.load(Ordering::Acquire),
-            "tracker must stay false at MessageStart when no tool was in flight"
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "tracker must stay at 0 at MessageStart when no tool was in flight"
         );
     }
 }
