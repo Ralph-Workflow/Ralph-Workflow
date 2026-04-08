@@ -299,6 +299,97 @@ fn extract_common_fields(obj: &serde_json::Map<String, serde_json::Value>) -> Ve
     .collect()
 }
 
+/// Normalize blank lines in tool output for display.
+///
+/// - Strips leading blank lines
+/// - Strips trailing blank lines
+/// - Collapses runs of consecutive blank lines to a single blank line
+///
+/// Non-blank content is preserved verbatim.
+#[must_use]
+pub fn normalize_blank_lines(s: &str) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| !l.trim().is_empty())
+        .unwrap_or(lines.len());
+    // rev().position() gives index from end; convert to index-from-start
+    let end = lines
+        .iter()
+        .rev()
+        .position(|l| !l.trim().is_empty())
+        .map(|i| lines.len() - i)
+        .unwrap_or(0);
+    if start >= end {
+        return String::new();
+    }
+    // scan tracks whether the previous line was blank; None short-circuits collapsed blanks
+    lines[start..end]
+        .iter()
+        .scan(false, |last_blank, line| {
+            let is_blank = line.trim().is_empty();
+            let keep = !is_blank || !*last_blank;
+            *last_blank = is_blank;
+            Some(keep.then_some(*line))
+        })
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Determine how many lines to show before truncation in multiline output.
+///
+/// Returns the count of leading lines that fit within both `max_lines` and
+/// `char_limit`. Lines from `[cutoff..]` will be summarised as "N more lines".
+#[must_use]
+pub fn determine_output_cutoff(lines: &[&str], max_lines: usize, char_limit: usize) -> usize {
+    lines
+        .iter()
+        .take(max_lines)
+        .scan(0usize, |prefix_len, line| {
+            if *prefix_len + line.len() > char_limit {
+                None // budget exceeded — stop here
+            } else {
+                *prefix_len += line.len() + 1; // +1 for the newline
+                Some(())
+            }
+        })
+        .count()
+}
+
+/// Format a duration in milliseconds for display.
+///
+/// Returns "Xms" for sub-second durations, "Xs" for one second and above.
+/// No decimal places — this is a "should I worry?" signal, not a profiler.
+#[must_use]
+pub fn format_duration_for_display(duration_ms: u64) -> String {
+    if duration_ms < 1000 {
+        format!("{duration_ms}ms")
+    } else {
+        format!("{}s", duration_ms / 1000)
+    }
+}
+
+/// Format a hash (or any identifier string) as a short parenthetical for display.
+///
+/// Returns:
+/// - `""` (empty) when hash is empty
+/// - `"(abcdef12...)"` when hash is >= 8 chars (first 8 chars + "...")
+/// - `"(abcd)"` when hash is < 8 chars (full hash, no ellipsis)
+#[must_use]
+pub fn format_short_hash(hash: &str) -> String {
+    if hash.is_empty() {
+        return String::new();
+    }
+    let prefix_len = hash.len().min(8);
+    let short = &hash[..prefix_len];
+    if prefix_len < hash.len() {
+        format!("({short}...)")
+    } else {
+        format!("({short})")
+    }
+}
+
 /// Format an unknown JSON event for display in verbose/debug mode.
 ///
 /// This is a generic handler for unknown events that works across all parsers.

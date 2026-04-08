@@ -518,6 +518,239 @@ fn test_opencode_parser_interleaved_tool_text() {
     });
 }
 
+/// Regression: truncated tool output must emit exactly one "more lines" summary.
+///
+/// Before the fix, each omitted line produced its own summary, burying all subsequent output.
+#[test]
+fn test_opencode_parser_truncation_single_summary_line() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Verbose, printer);
+
+        // Build output with 10 lines — exceeds MAX_OUTPUT_LINES (5)
+        let output_lines: Vec<&str> = (0..10).map(|_| "line content here").collect();
+        let output_str = output_lines.join("\n");
+        let tool_event = format!(
+            r#"{{"type":"tool_use","timestamp":1000,"sessionID":"trunc-test","part":{{"type":"tool","tool":"grep","state":{{"status":"completed","input":{{"pattern":"foo"}},"output":{output_str:?}}}}}}}"#
+        );
+
+        let reader = BufReader::new(tool_event.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+
+        let output = test_printer.borrow().get_output();
+        let more_lines_count = output.matches("more lines").count();
+        assert_eq!(
+            more_lines_count, 1,
+            "Expected exactly one 'more lines' summary line, got {more_lines_count}. Output:\n{output}"
+        );
+        // 10 total - 5 shown = 5 remaining
+        assert!(
+            output.contains("(5 more lines)"),
+            "Summary should show 5 remaining lines. Output:\n{output}"
+        );
+    });
+}
+
+/// Regression: tool event with empty string title must not emit a blank └─ line.
+#[test]
+fn test_opencode_parser_empty_title_no_blank_continuation() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer);
+
+        // Tool event with empty string title
+        let input = r#"{"type":"tool_use","timestamp":1000,"sessionID":"blank-title","part":{"type":"tool","tool":"grep","state":{"status":"completed","input":{"pattern":"foo","path":"/src"},"output":"match.rs","title":""}}}"#;
+
+        let reader = BufReader::new(input.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+
+        let output = test_printer.borrow().get_output();
+        // No line should consist solely of the └─ prefix with nothing meaningful after it
+        for line in output.lines() {
+            let stripped = line.trim();
+            assert!(
+                !stripped.ends_with("└─") && !stripped.ends_with("└─ "),
+                "Found blank └─ line in output. Line: {:?}\nFull output:\n{output}",
+                line
+            );
+        }
+    });
+}
+
+/// Regression: step-started with missing or empty snapshot must not show "(…)" or "(...)".
+#[test]
+fn test_opencode_parser_step_start_no_ellipsis_when_no_snapshot() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+
+        // step_start with no snapshot field
+        let no_snapshot = r#"{"type":"step_start","timestamp":1000,"sessionID":"hash-test","part":{"type":"step-start"}}"#;
+        // step_start with empty snapshot
+        let empty_snapshot = r#"{"type":"step_start","timestamp":2000,"sessionID":"hash-test2","part":{"type":"step-start","snapshot":""}}"#;
+
+        for input in [no_snapshot, empty_snapshot] {
+            let test_printer2 = Rc::new(RefCell::new(TestPrinter::new()));
+            let printer2: SharedPrinter = test_printer2.clone();
+            let mut p =
+                OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer2);
+            let reader = BufReader::new(input.as_bytes());
+            p.parse_stream_for_test(reader, &workspace).unwrap();
+            let output = test_printer2.borrow().get_output();
+            assert!(
+                !output.contains("(...)") && !output.contains("(\u{2026})"),
+                "Step started should not show meaningless ellipsis. Input: {input}\nOutput:\n{output}"
+            );
+        }
+
+        // Positive case: step_start with real hash shows 8-char prefix
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer);
+        let real_hash = r#"{"type":"step_start","timestamp":3000,"sessionID":"hash-test3","part":{"type":"step-start","snapshot":"5d36aa035d4df6edb73a68058733063258114ed5"}}"#;
+        let reader = BufReader::new(real_hash.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+        let output = test_printer.borrow().get_output();
+        assert!(
+            output.contains("(5d36aa03...)"),
+            "Step started with real hash should show 8-char prefix. Output:\n{output}"
+        );
+    });
+}
+
+/// Regression: step-finished uses "reasoning:" not "reason:", "·" delimited fields, cost shown.
+#[test]
+fn test_opencode_parser_step_finish_readable_format() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer);
+
+        let input = r#"{"type":"step_finish","timestamp":1000,"sessionID":"fmt-test","part":{"type":"step-finish","reason":"tool-calls","cost":0.0042,"tokens":{"input":532,"output":85,"reasoning":24,"cache":{"read":151680,"write":0}}}}"#;
+
+        let reader = BufReader::new(input.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+
+        let output = test_printer.borrow().get_output();
+        // Must use "reasoning:" not "reason:"
+        assert!(
+            !output.contains("reason:24") && output.contains("reasoning:24"),
+            "Reasoning token field must use label 'reasoning:', not 'reason:'. Output:\n{output}"
+        );
+        // Cost must appear
+        assert!(
+            output.contains("0.0042"),
+            "Cost must appear on step-finished line. Output:\n{output}"
+        );
+        // Old parenthetical format "(tool-calls," must not appear
+        assert!(
+            !output.contains("(tool-calls,"),
+            "Old parenthetical format must not appear. Output:\n{output}"
+        );
+        // Middle-dot delimiter (U+00B7) must separate fields (token block from cost, reason from tokens)
+        assert!(
+            output.contains('\u{00b7}'),
+            "Step-finished line must use middle-dot (·) delimiter between fields. Output:\n{output}"
+        );
+    });
+}
+
+/// Regression: tool output with leading/trailing/consecutive blank lines is normalized.
+#[test]
+fn test_opencode_parser_tool_output_blank_lines_normalized() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Verbose, printer);
+
+        // Output with leading blank, trailing blank, and consecutive blanks in the middle
+        let output_with_blanks = "\n\nline1\n\n\nline2\n\n";
+        let tool_event = format!(
+            r#"{{"type":"tool_use","timestamp":1000,"sessionID":"blank-lines","part":{{"type":"tool","tool":"bash","state":{{"status":"completed","input":{{"command":"ls"}},"output":{output_with_blanks:?}}}}}}}"#
+        );
+
+        let reader = BufReader::new(tool_event.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+
+        let output = test_printer.borrow().get_output();
+        assert!(
+            output.contains("line1"),
+            "line1 must appear. Output:\n{output}"
+        );
+        assert!(
+            output.contains("line2"),
+            "line2 must appear. Output:\n{output}"
+        );
+        // No triple (or more) consecutive newlines — at most one blank line between content
+        assert!(
+            !output.contains("\n\n\n"),
+            "No triple consecutive newlines allowed after normalization. Output:\n{output}"
+        );
+    });
+}
+
+/// Regression: completed tool events with time.start and time.end show duration.
+#[test]
+fn test_opencode_parser_tool_duration_displayed() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer);
+
+        // time.start = 1000ms, time.end = 15000ms → 14s duration
+        let input = r#"{"type":"tool_use","timestamp":15000,"sessionID":"dur-test","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"sleep 14"},"output":"done","time":{"start":1000,"end":15000}}}}"#;
+
+        let reader = BufReader::new(input.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+
+        let output = test_printer.borrow().get_output();
+        assert!(
+            output.contains("14s"),
+            "Completed tool should show 14s duration. Output:\n{output}"
+        );
+    });
+}
+
+/// Regression: pending tool events (no time data) show no duration field.
+#[test]
+fn test_opencode_parser_pending_tool_no_duration() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let printer: SharedPrinter = test_printer.clone();
+        let mut parser =
+            OpenCodeParser::with_printer_for_test(Colors::new(), Verbosity::Normal, printer);
+
+        let input = r#"{"type":"tool_use","timestamp":1000,"sessionID":"dur-pending","part":{"type":"tool","tool":"bash","state":{"status":"pending","input":{"command":"ls"}}}}"#;
+
+        let reader = BufReader::new(input.as_bytes());
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
+
+        let output = test_printer.borrow().get_output();
+        // Pending tool with no timing data must not show a duration parenthetical
+        let has_duration = output.lines().any(|l| {
+            (l.contains("Tool") || l.contains("bash"))
+                && (l.contains("ms)") || l.ends_with("s)") || l.contains("s) "))
+        });
+        assert!(
+            !has_duration,
+            "Pending tool with no timing data must not show duration. Output:\n{output}"
+        );
+    });
+}
+
 /// Test that cost and token statistics produce detailed output.
 #[test]
 fn test_opencode_parser_cost_and_tokens() {

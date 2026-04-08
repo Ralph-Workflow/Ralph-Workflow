@@ -140,16 +140,25 @@ pub fn handle_thread_started(ctx: &EventHandlerContext<'_>, thread_id: Option<St
     ctx.streaming_session
         .borrow_mut()
         .set_current_message_id(Some(tid.clone()));
+    let hash_display = crate::json_parser::types::format_short_hash(&tid);
+    let hash_suffix = if hash_display.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " {}{}{}",
+            ctx.colors.dim(),
+            hash_display,
+            ctx.colors.reset()
+        )
+    };
     format!(
-        "{}[{}]{} {}Thread started{} {}({:.8}...){}\n",
+        "{}[{}]{} {}Thread started{}{}\n",
         ctx.colors.dim(),
         ctx.display_name,
         ctx.colors.reset(),
         ctx.colors.cyan(),
         ctx.colors.reset(),
-        ctx.colors.dim(),
-        tid,
-        ctx.colors.reset()
+        hash_suffix
     )
 }
 

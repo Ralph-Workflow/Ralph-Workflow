@@ -11,7 +11,10 @@ mod formatting;
 mod gemini;
 
 pub use accumulator::{ContentType, DeltaAccumulator};
-pub use formatting::{format_tool_input, format_unknown_json_event};
+pub use formatting::{
+    determine_output_cutoff, format_duration_for_display, format_short_hash, format_tool_input,
+    format_unknown_json_event, normalize_blank_lines,
+};
 
 pub type AssistantMessage = claude::AssistantMessage;
 pub type ClaudeEvent = claude::ClaudeEvent;
