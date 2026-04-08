@@ -358,11 +358,11 @@ pub fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
 
 /// Format project stack section lines.
 pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
-    let root = workspace.root();
-    let stack = match language_detector::detect_stack(root) {
-        Ok(s) => s,
-        Err(e) => return vec![format!("  Detection failed: {e}")],
-    };
+    let stack =
+        match language_detector::detect_stack_with_workspace(workspace, std::path::Path::new("")) {
+            Ok(s) => s,
+            Err(e) => return vec![format!("  Detection failed: {e}")],
+        };
 
     let secondary = (!stack.secondary_languages.is_empty())
         .then_some(vec![format!(

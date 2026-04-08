@@ -22,6 +22,7 @@ use crate::common::{
     create_test_config_struct, mock_executor_with_success, run_ralph_cli_with_handler,
 };
 use crate::test_timeout::with_default_timeout;
+use clap::Parser as _;
 use ralph_workflow::app::mock_effect_handler::MockAppEffectHandler;
 use std::path::PathBuf;
 
@@ -109,20 +110,20 @@ fn ralph_diagnose_shows_system_info() {
     });
 }
 
-/// Test that the `-d` short flag works equivalently to `--diagnose`.
+/// Test that the `-d` short flag is parsed as an alias for `--diagnose`.
 ///
 /// This verifies that when a user invokes ralph with the `-d` short flag,
-/// the command executes successfully without errors.
+/// it is parsed identically to `--diagnose`. Full execution behavior for
+/// the diagnose command is covered by `ralph_diagnose_shows_system_info`.
 #[test]
 fn ralph_diagnose_short_flag_works() {
     with_default_timeout(|| {
-        let mut handler = MockAppEffectHandler::new()
-            .with_head_oid("a".repeat(40))
-            .with_cwd(PathBuf::from("/mock/repo"));
-
-        let config = create_test_config_struct();
-        let executor = mock_executor_with_success();
-        run_ralph_cli_with_handler(&["-d"], executor, config, &mut handler).unwrap();
+        let args = ralph_workflow::cli::Args::try_parse_from(["ralph", "-d"])
+            .expect("-d should parse successfully");
+        assert!(
+            args.recovery.diagnose,
+            "-d should be equivalent to --diagnose (sets diagnose=true)"
+        );
     });
 }
 

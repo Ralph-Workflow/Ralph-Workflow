@@ -781,6 +781,81 @@ impl OutcomeDescription {
     }
 }
 
+// ============================================================================
+// Comment stripping — pure domain helper
+// ============================================================================
+
+/// Determine the end-of-comment position in `bytes` starting from `pos` (the
+/// `{` of `{#`), returning the byte index immediately after the closing `#}`.
+///
+/// Returns `None` if no `#}` is found (unclosed comment).
+fn find_strip_comment_end(bytes: &[u8], pos: usize) -> Option<usize> {
+    bytes[pos + 2..]
+        .windows(2)
+        .position(|w| w[0] == b'#' && w[1] == b'}')
+        .map(|i| pos + 2 + i + 2)
+}
+
+/// Advance one step of the comment-stripping scan.
+///
+/// Returns `(bytes_to_emit, next_pos)`:
+/// - `bytes_to_emit` is the slice from `bytes` to append to the output at this
+///   step (empty when a comment is consumed).
+/// - `next_pos` is the position to resume from on the next call.
+///
+/// `None` signals that scanning is complete.
+fn strip_advance(bytes: &[u8], pos: usize) -> Option<(&[u8], usize)> {
+    if pos >= bytes.len() {
+        return None;
+    }
+    if pos + 1 < bytes.len() && bytes[pos] == b'{' && bytes[pos + 1] == b'#' {
+        match find_strip_comment_end(bytes, pos) {
+            Some(end) => {
+                // Consume one optional trailing newline to avoid blank lines.
+                let next = if end < bytes.len() && bytes[end] == b'\n' {
+                    end + 1
+                } else {
+                    end
+                };
+                // Emit nothing; resume after the comment (and optional newline).
+                Some((&bytes[pos..pos], next))
+            }
+            // Unclosed comment: pass through the opening `{` byte so the
+            // unclosed marker is preserved verbatim.
+            None => Some((&bytes[pos..pos + 1], pos + 1)),
+        }
+    } else {
+        Some((&bytes[pos..pos + 1], pos + 1))
+    }
+}
+
+/// Strip all `{# ... #}` comment blocks from a template string.
+///
+/// Scans the input byte-by-byte using a cursor driven by
+/// [`std::iter::successors`]. When `{#` is found, advances past the matching
+/// `#}` (and one trailing `\n` if present, to avoid leaving blank lines).
+/// Bytes outside comments are copied verbatim to the output buffer.
+///
+/// Unclosed `{#` markers (no matching `#}`) are passed through unchanged;
+/// validation in `validate_template_bytes` surfaces those as errors.
+///
+/// # Safety
+/// All emitted bytes are subslices of the original `&str` input, which is
+/// guaranteed valid UTF-8. `{#` and `#}` are pure ASCII, so the scan never
+/// splits a multi-byte UTF-8 sequence. The `from_utf8` call therefore always
+/// succeeds; `unwrap_or_else` is a defensive fallback returning the original
+/// content.
+pub(crate) fn strip_comments_impl(content: &str) -> String {
+    let bytes = content.as_bytes();
+    let output: Vec<u8> = std::iter::successors(Some((b"".as_slice(), 0usize)), |&(_, pos)| {
+        strip_advance(bytes, pos)
+    })
+    .flat_map(|(slice, _)| slice.iter().copied())
+    .collect();
+    // SAFETY: see doc comment above.
+    String::from_utf8(output).unwrap_or_else(|_| content.to_string())
+}
+
 #[cfg(test)]
 mod proptest_parsers {
     use super::{
