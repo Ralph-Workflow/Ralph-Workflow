@@ -27,10 +27,10 @@ impl CodexParser {
     /// All other events → no change.
     fn apply_tool_activity_for_event(&self, event: &CodexEvent) {
         match event {
-            CodexEvent::ItemStarted { .. } => self.set_tool_active(),
-            CodexEvent::ItemCompleted { .. } => self.clear_tool_active(),
+            CodexEvent::ItemStarted { .. } => self.tool_activity_tracker.set_active(),
+            CodexEvent::ItemCompleted { .. } => self.tool_activity_tracker.clear_active(),
             CodexEvent::TurnCompleted { .. } | CodexEvent::TurnFailed { .. } => {
-                self.reset_tool_active();
+                self.tool_activity_tracker.reset();
             }
             _ => {}
         }

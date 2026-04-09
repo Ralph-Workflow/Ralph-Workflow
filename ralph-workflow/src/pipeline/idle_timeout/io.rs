@@ -96,7 +96,7 @@ pub const DEFAULT_KILL_CONFIG: KillConfig = KillConfig::new(
 );
 
 #[cfg(unix)]
-pub fn force_kill_best_effort(pid: u32, executor: &dyn ProcessExecutor) -> bool {
+pub(crate) fn force_kill_best_effort(pid: u32, executor: &dyn ProcessExecutor) -> bool {
     let pid_str = pid.to_string();
     let process_group_id = format!("-{pid_str}");
 
@@ -233,7 +233,7 @@ fn kill_process_with_child(
 /// First attempts SIGTERM, waits for a grace period while verifying liveness,
 /// then escalates to SIGKILL if the process hasn't terminated.
 #[cfg(unix)]
-pub fn kill_process(
+pub(crate) fn kill_process(
     pid: u32,
     executor: &dyn ProcessExecutor,
     child: Option<&Arc<Mutex<Box<dyn AgentChild>>>>,

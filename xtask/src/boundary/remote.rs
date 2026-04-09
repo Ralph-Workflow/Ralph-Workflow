@@ -45,6 +45,9 @@ fn probe_and_execute(repo_root: &str, args: &[String]) -> Option<ExitCode> {
 }
 
 fn execute_on_remote(repo_root: &str, remote_root: &str, args: &[String]) -> Option<ExitCode> {
+    // Kill any stale cargo/rustc processes from a previous interrupted run
+    // that would otherwise hold file locks or race on target/ artifacts.
+    kill_stale_processes(remote_root);
     eprintln!("[remote-build] syncing to rw-build-server:{remote_root}...");
     if !sync_to_remote(repo_root, remote_root) {
         eprintln!("[remote-build] rsync failed");
@@ -53,10 +56,15 @@ fn execute_on_remote(repo_root: &str, remote_root: &str, args: &[String]) -> Opt
     ensure_remote_git_repo(remote_root);
     let args_str = args.join(" ");
     eprintln!("[remote-build] running: cargo xtask {args_str}");
+    // Disable incremental compilation on the remote to avoid fragile
+    // dep-graph.part.bin moves that fail when /tmp cleanup or concurrent
+    // lane I/O removes intermediate files mid-build.
     let status = Command::new("ssh")
         .arg("-t")
         .arg("rw-build-server")
-        .arg(format!("cd {remote_root} && cargo xtask {args_str}"))
+        .arg(format!(
+            "cd {remote_root} && CARGO_INCREMENTAL=0 cargo xtask {args_str}"
+        ))
         .status()
         .ok()?;
     Some(ExitCode::from(status.code().unwrap_or(1) as u8))
@@ -129,13 +137,68 @@ fn sync_to_remote(repo_root: &str, remote_root: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn kill_stale_processes(remote_root: &str) {
+    // When an SSH session terminates abruptly (timeout, network drop), cargo
+    // and rustc child processes on the remote keep running.  A subsequent rsync
+    // + build then races against stale processes that hold open file descriptors
+    // in target/, causing "No such file or directory" errors on intermediate
+    // artifacts (dep-graph.part.bin, rmeta temp dirs, libssh2.h).
+    //
+    // We kill only cargo and rustc processes whose command line references this
+    // remote root, not any arbitrary process (rsync, ssh, shell) that happens
+    // to mention the path.  This prevents concurrent `cargo xtask` invocations
+    // from killing each other's active transport sessions.
+    //
+    // SELF-EXCLUSION: the kill script runs in a shell whose command line contains
+    // the remote_root (embedded in the pgrep pattern argument).  Without excluding
+    // $$ (the script's own shell PID), pgrep would match it and the kill would
+    // terminate the script mid-execution, leaving stale processes alive and causing
+    // SIGTERM propagation to the wrong process tree.
+    //
+    // TARGET CLEANUP: when stale processes are killed, they may leave the
+    // target/ directory in a corrupted state (missing deps/ subdirs, partial
+    // rmeta files).  We detect stale processes first, then kill them and
+    // remove target/ entirely so the next build starts from a clean slate.
+    // Detection runs before killing so a clean reconnection (no stale
+    // processes) preserves the incremental build cache.
+    let script = format!(
+        "SELF=$$; STALE=0; \
+         for proc in cargo rustc rustdoc clippy-driver; do \
+           pgrep -f \"$proc.*{remote_root}\" 2>/dev/null | while read pid; do \
+             [ \"$pid\" != \"$SELF\" ] && echo \"$pid\"; \
+           done; \
+         done > /tmp/rw_stale_pids_$$; \
+         if [ -s /tmp/rw_stale_pids_$$ ]; then STALE=1; \
+           while read pid; do kill \"$pid\" 2>/dev/null; done < /tmp/rw_stale_pids_$$; \
+           sleep 1; \
+           while read pid; do kill -9 \"$pid\" 2>/dev/null; done < /tmp/rw_stale_pids_$$; \
+         fi; \
+         rm -f /tmp/rw_stale_pids_$$; \
+         [ \"$STALE\" = \"1\" ] && rm -rf {remote_root}/target; \
+         true"
+    );
+    let _ = Command::new("ssh")
+        .arg("rw-build-server")
+        .arg(script)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 fn ensure_remote_git_repo(remote_root: &str) {
-    // The synced directory has no .git/ (excluded from rsync).
-    // Tests that call libgit2 or `git rev-parse` need a valid git repo.
-    // Initialize a minimal one if not already present, then commit all
-    // synced files so HEAD is valid and git_diff / git_snapshot work.
+    // The synced directory has no .git/ (excluded from rsync), but a worktree
+    // `.git` *file* (containing `gitdir: /local/path/...`) may survive the
+    // rsync because `--exclude=.git/` only matches the directory form.
+    // That stale pointer causes libgit2 to fail with "No such file or directory"
+    // on every git operation.  Remove the file before initializing.
+    //
+    // Sequence:
+    // 1. If `.git` is a regular file (worktree pointer), delete it.
+    // 2. If no valid git repo exists, run `git init`.
+    // 3. Stage + commit so HEAD is valid and git_diff / git_snapshot work.
     let script = format!(
         "cd {remote_root} && \
+         if [ -f .git ]; then rm -f .git; fi && \
          git rev-parse --git-dir >/dev/null 2>&1 || \
          (git init -q && \
           git config user.email build@remote && \

@@ -9,6 +9,7 @@ mod claude;
 mod codex;
 mod formatting;
 mod gemini;
+mod tool_activity;
 
 pub use accumulator::{ContentType, DeltaAccumulator};
 pub use formatting::{
@@ -33,3 +34,5 @@ pub type CodexUsage = codex::CodexUsage;
 
 pub type GeminiEvent = gemini::GeminiEvent;
 pub type GeminiStats = gemini::GeminiStats;
+
+pub(crate) use tool_activity::ToolActivityTracker;

@@ -6,16 +6,21 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
+#[cfg(test)]
+use std::time::Instant;
 
+#[cfg(test)]
 pub trait Clock: Send + Sync {
     fn now_millis(&self) -> u64;
 }
 
+#[cfg(test)]
 pub struct MonotonicClock {
     epoch: Instant,
 }
 
+#[cfg(test)]
 impl MonotonicClock {
     #[must_use]
     pub fn new() -> Self {
@@ -25,12 +30,14 @@ impl MonotonicClock {
     }
 }
 
+#[cfg(test)]
 impl Default for MonotonicClock {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(test)]
 impl Clock for MonotonicClock {
     fn now_millis(&self) -> u64 {
         u64::try_from(self.epoch.elapsed().as_millis()).unwrap_or(u64::MAX)
@@ -53,7 +60,7 @@ pub mod inner {
             Self(FileActivityTracker::new())
         }
 
-        pub fn lock(&self) -> &FileActivityTracker {
+        pub fn tracker(&self) -> &FileActivityTracker {
             &self.0
         }
     }
@@ -70,6 +77,7 @@ pub fn new_activity_timestamp() -> SharedActivityTimestamp {
     Arc::new(AtomicU64::new(current_time_millis()))
 }
 
+#[cfg(test)]
 #[must_use]
 pub fn new_activity_timestamp_with_clock(clock: &dyn Clock) -> SharedActivityTimestamp {
     Arc::new(AtomicU64::new(clock.now_millis()))
@@ -85,6 +93,7 @@ pub fn touch_activity(timestamp: &SharedActivityTimestamp) {
     timestamp.store(now_ms, Ordering::Release);
 }
 
+#[cfg(test)]
 pub fn touch_activity_with_clock(timestamp: &SharedActivityTimestamp, clock: &dyn Clock) {
     timestamp.store(clock.now_millis(), Ordering::Release);
 }
@@ -95,6 +104,7 @@ pub fn time_since_activity(timestamp: &SharedActivityTimestamp) -> Duration {
     Duration::from_millis(now_ms.saturating_sub(last_ms))
 }
 
+#[cfg(test)]
 pub fn time_since_activity_with_clock(
     timestamp: &SharedActivityTimestamp,
     clock: &dyn Clock,
@@ -108,6 +118,7 @@ pub fn is_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout: Du
     time_since_activity(timestamp) > timeout
 }
 
+#[cfg(test)]
 pub fn is_idle_timeout_exceeded_with_clock(
     timestamp: &SharedActivityTimestamp,
     timeout: Duration,

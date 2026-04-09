@@ -197,8 +197,8 @@ impl CodexParser {
         incremental_parser: crate::json_parser::incremental_parser::IncrementalNdjsonParser,
         result_written: &std::cell::Cell<bool>,
     ) -> std::io::Result<()> {
-        self.reset_tool_active(); // hard-reset at stream end — stdout is closed, no more tool events
         if let Some(remaining) = incremental_parser.finish() { self.process_remaining_input(&remaining, monitor, logging_enabled, log_buffer)?; }
+        self.tool_activity_tracker.reset(); // hard-reset at stream end — after processing any trailing buffered input
         if logging_enabled { self.flush_unwritten_result(log_buffer, result_written)?; }
         if let Some(log_path) = &self.log_path { workspace.append_bytes(log_path, log_buffer)?; }
         self.print_monitor_warning(monitor);

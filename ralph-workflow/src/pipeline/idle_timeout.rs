@@ -61,10 +61,9 @@
 //! special operational requirements.
 //!
 //! ## Performance Characteristics
-//! File activity checking uses selective directory scanning:
-//! - Only .agent/ and .agent/tmp/ are scanned
+//! File activity checking uses targeted directory scanning:
+//! - Only `.agent/` and `.agent/tmp/` are scanned (no workspace-wide scan)
 //! - Excluded files (logs, system artifacts) are filtered early
-//! - Modification times are cached to avoid redundant disk I/O
 //! - Impact on monitor overhead: typically <1ms per check on modern systems
 //!
 //! ## Timeout Reporting
@@ -83,13 +82,17 @@ mod readers;
 mod runtime;
 
 pub use clock::{
-    is_idle_timeout_exceeded, is_idle_timeout_exceeded_with_clock, new_activity_timestamp,
-    new_activity_timestamp_with_clock, new_file_activity_tracker, time_since_activity,
-    time_since_activity_with_clock, touch_activity, touch_activity_with_clock, Clock,
-    MonotonicClock, SharedActivityTimestamp, SharedFileActivityTracker, IDLE_TIMEOUT_SECS,
+    is_idle_timeout_exceeded, new_activity_timestamp, new_file_activity_tracker,
+    time_since_activity, touch_activity, SharedActivityTimestamp, SharedFileActivityTracker,
+    IDLE_TIMEOUT_SECS,
+};
+#[cfg(test)]
+pub use clock::{
+    is_idle_timeout_exceeded_with_clock, new_activity_timestamp_with_clock,
+    time_since_activity_with_clock, touch_activity_with_clock, Clock, MonotonicClock,
 };
 pub use file_activity::FileActivityTracker;
-pub use readers::{ActivityTrackingReader, StderrActivityTracker};
+pub use readers::ActivityTrackingReader;
 pub type KillConfig = self::io::KillConfig;
 pub const DEFAULT_KILL_CONFIG: KillConfig = self::io::DEFAULT_KILL_CONFIG;
 
