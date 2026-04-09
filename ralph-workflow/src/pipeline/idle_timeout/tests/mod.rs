@@ -8,4 +8,5 @@ mod io_monitor_partial_completion;
 mod io_monitor_regressions;
 mod io_readers;
 mod monitor_basic;
+mod monitor_tool_suppression;
 mod monitor_try_wait_error;

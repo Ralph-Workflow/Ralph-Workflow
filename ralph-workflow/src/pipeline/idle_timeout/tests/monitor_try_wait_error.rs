@@ -57,6 +57,7 @@ fn monitor_does_not_skip_timeout_enforcement_when_try_wait_errors_before_kill() 
 
             partial_completion_check: None,
             tool_activity_check: None,
+            max_tool_suppression_ticks: 20,
         },
     );
 

@@ -1,5 +1,43 @@
 use super::*;
 
+/// A test-only stdout reader that emits pre-baked events then blocks until `unblock` is set.
+///
+/// Simulates a real agent's stdout: events flow while the process is active, then stdout
+/// stays open (blocking) until the process exits. Only returns EOF after `unblock` fires.
+///
+/// This models the real agent lifecycle: if a tool is executing, stdout remains open because
+/// the agent will write the tool-result event when it finishes. `reset_tool_active()` at
+/// stream end is called only after this reader returns EOF — i.e., only after process exit.
+struct BlockingEventsReader {
+    cursor: Cursor<Vec<u8>>,
+    unblock: Arc<AtomicBool>,
+}
+
+impl BlockingEventsReader {
+    fn new(data: Vec<u8>, unblock: Arc<AtomicBool>) -> Self {
+        Self {
+            cursor: Cursor::new(data),
+            unblock,
+        }
+    }
+}
+
+impl Read for BlockingEventsReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.cursor.read(buf)?;
+        if n > 0 {
+            return Ok(n);
+        }
+        // Events exhausted — block until unblock signal (process exit simulation).
+        // In real agents, stdout stays open as long as the process is alive; EOF only
+        // occurs when the process exits and its stdout file descriptor is closed.
+        while !self.unblock.load(Ordering::Acquire) {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        Ok(0) // EOF after process exit
+    }
+}
+
 #[test]
 #[cfg(unix)]
 fn test_run_with_agent_spawn_does_not_hang_when_stdout_closes_early_and_idle_timeout_triggers() {
@@ -1170,6 +1208,7 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
     #[derive(Debug)]
     struct CodexToolStartExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     impl crate::executor::AgentChild for CodexToolStartChild {
@@ -1224,8 +1263,10 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
             // After this line, stdout closes (EOF). The child keeps running so the monitor
             // can observe the tool_active flag before the process exits.
             let codex_item_started = b"{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/test.xml\"}}\n";
-            let stdout =
-                Box::new(Cursor::new(codex_item_started.to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                codex_item_started.to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(CodexToolStartChild {
                 still_running: Arc::clone(&self.still_running),
@@ -1245,8 +1286,10 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(CodexToolStartExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -1278,12 +1321,16 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
     };
 
     // Stop the child shortly after the parser has had time to process the item.started event
-    // and set tool_active = true. With the tool-activity suppressor engaged, the idle monitor
-    // (timeout = ZERO) should not kill the process.
+    // and set tool_active = true. The stopper also unblocks the reader (simulating stdout
+    // closing when the process exits) so that reset_tool_active() is called AFTER the child
+    // has already exited. With the tool-activity suppressor engaged during streaming (stdout
+    // open), and the child exiting before the monitor fires, idle timeout must not kill.
     let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
         still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -1496,6 +1543,7 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
     #[derive(Debug)]
     struct ClaudeToolStartExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     #[derive(Debug)]
@@ -1557,8 +1605,10 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
                 r#"{"type":"stream_event","event":{"type":"message_stop"}}"#,
                 "\n"
             );
-            let stdout =
-                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                events.as_bytes().to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(ClaudeToolStartChild {
                 still_running: Arc::clone(&self.still_running),
@@ -1578,8 +1628,10 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(ClaudeToolStartExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -1610,11 +1662,15 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
     };
 
     // Stop the child after parser has processed ContentBlockStart+MessageStop events.
-    // With the fix, tool_active remains true after MessageStop, suppressing the monitor.
+    // The stopper also unblocks the reader (simulating stdout closing on process exit)
+    // so that reset_tool_active() is called only AFTER the child has already exited.
+    // While stdout is open (reader blocking), tool_active > 0 suppresses the monitor.
     let still_running_stopper = Arc::clone(&still_running);
+    let unblock_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(300));
         still_running_stopper.store(false, Ordering::Release);
+        unblock_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -1666,6 +1722,7 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
     #[derive(Debug)]
     struct OpenCodeToolStartExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     #[derive(Debug)]
@@ -1720,8 +1777,10 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
             // After this line, stdout closes (EOF). The child keeps running so the monitor
             // can observe the tool_active flag before the process exits.
             let tool_use_pending = b"{\"type\":\"tool_use\",\"timestamp\":1234,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-1\",\"tool\":\"write\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/test.xml\"}}}}\n";
-            let stdout =
-                Box::new(Cursor::new(tool_use_pending.to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                tool_use_pending.to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(OpenCodeToolStartChild {
                 still_running: Arc::clone(&self.still_running),
@@ -1741,8 +1800,10 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(OpenCodeToolStartExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -1774,12 +1835,15 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
     };
 
     // Stop the child shortly after the parser has had time to process the tool_use event
-    // and set tool_active = true. With the tool-activity suppressor engaged, the idle monitor
-    // (timeout = ZERO) should not kill the process.
+    // and set tool_active = true. The stopper also unblocks the reader (simulating stdout
+    // closing on process exit) so that reset_tool_active() is called AFTER the child exits.
+    // While stdout is open (reader blocking), tool_active > 0 suppresses the monitor.
     let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
         still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -1962,5 +2026,381 @@ fn test_opencode_step_finish_event_clears_suppressor_and_timeout_fires() {
         result.exit_code,
         super::SIGTERM_EXIT_CODE,
         "after OpenCode step_finish clears tool_active, idle timeout must fire and kill the child"
+    );
+}
+
+/// Concurrent-tool false-positive regression: when two Codex items are in-flight simultaneously,
+/// the first `item.completed` must NOT clear the suppressor (counter goes 2→1, still active).
+/// Only after both items complete (counter reaches 0) should the idle timeout be able to fire.
+///
+/// This tests the AtomicU32 counter semantics against the old AtomicBool false-positive:
+///   Old behaviour (AtomicBool): `item.completed` sets flag = false even if a second tool is
+///   still in flight → monitor fires spuriously → false positive timeout.
+///   New behaviour (AtomicU32): `item.completed` decrements counter; as long as counter > 0,
+///   the monitor sees the suppressor active → no false positive.
+///
+/// The test verifies:
+///   2× item.started → counter = 2 → suppressor active
+///   1× item.completed → counter = 1 → suppressor still active → timeout must NOT fire
+///   child exits cleanly → result is exit code 0, NOT SIGTERM (143)
+#[test]
+#[cfg(unix)]
+fn test_codex_concurrent_tool_items_first_complete_does_not_clear_suppressor() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct ConcurrentToolExecutor {
+        still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct ConcurrentToolChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for ConcurrentToolChild {
+        fn id(&self) -> u32 {
+            77779
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                Ok(None)
+            } else {
+                Ok(Some(ExitStatus::from_raw(0)))
+            }
+        }
+    }
+
+    impl crate::executor::ProcessExecutor for ConcurrentToolExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" && args.contains(&"-KILL") {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Two item.started events → counter reaches 2.
+            // Then one item.completed → counter drops to 1.
+            // Counter is still 1 (second tool still in flight) so the idle-timeout monitor
+            // must keep the suppressor active. After stdout closes, the child keeps running
+            // so the monitor has time to observe counter = 1 before the child exits cleanly.
+            let events = concat!(
+                "{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/tool-a.xml\"}}\n",
+                "{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/tool-b.xml\"}}\n",
+                "{\"type\":\"item.completed\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/tool-a.xml\"}}\n",
+            );
+            let stdout = Box::new(BlockingEventsReader::new(
+                events.as_bytes().to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(ConcurrentToolChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
+    let executor = Arc::new(ConcurrentToolExecutor {
+        still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-agent",
+        prompt: "concurrent tools test",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        // Codex parser so item.started/item.completed events update the counter.
+        parser_type: JsonParserType::Codex,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    // Stop the child after the parser has had time to process all events and the monitor has
+    // had time to observe counter = 1 (suppressor still active after first item.completed).
+    // The stopper also unblocks the reader (simulating stdout closing on process exit)
+    // so reset_tool_active() fires only AFTER the child has exited.
+    let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
+    });
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        // Idle timeout is ZERO — fires immediately unless suppressed by counter > 0.
+        Duration::ZERO,
+        Duration::from_millis(20),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    // Counter is 1 (second tool still in flight) → suppressor active → timeout must NOT fire.
+    // Child exits cleanly → result must be exit code 0, NOT SIGTERM (143).
+    assert_ne!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "first item.completed must not clear suppressor when second tool is still in flight (counter = 1)"
+    );
+    assert_eq!(
+        result.exit_code, 0,
+        "child must exit cleanly; concurrent-tool counter prevents spurious timeout"
+    );
+}
+
+/// Concurrent-tool false-positive regression for OpenCode: when two tool_use calls are
+/// in-flight simultaneously, the first `tool_use{status:completed}` must NOT clear the
+/// suppressor (counter goes 2→1, still active). Only when counter reaches 0 may the timeout fire.
+///
+/// This tests the AtomicU32 counter semantics for OpenCode against the old AtomicBool
+/// false-positive:
+///   Old behaviour (AtomicBool): any `tool_use{completed}` sets flag = false even if a second
+///   tool is still in flight → monitor fires spuriously → false positive timeout.
+///   New behaviour (AtomicU32): `tool_use{completed}` decrements counter; as long as counter > 0
+///   the monitor sees the suppressor active → no false positive.
+///
+/// The test verifies:
+///   tool_use{pending} (call A) → counter = 1 → suppressor active
+///   tool_use{pending} (call B) → counter = 2 → suppressor active
+///   tool_use{completed} (call A) → counter = 1 → suppressor still active → timeout must NOT fire
+///   child exits cleanly → result is exit code 0, NOT SIGTERM (143)
+#[test]
+#[cfg(unix)]
+fn test_opencode_concurrent_tool_calls_first_complete_does_not_clear_suppressor() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct OpenCodeConcurrentExecutor {
+        still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
+    }
+
+    #[derive(Debug)]
+    struct OpenCodeConcurrentChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for OpenCodeConcurrentChild {
+        fn id(&self) -> u32 {
+            99993
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                Ok(None)
+            } else {
+                Ok(Some(ExitStatus::from_raw(0)))
+            }
+        }
+    }
+
+    impl crate::executor::ProcessExecutor for OpenCodeConcurrentExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" && args.contains(&"-KILL") {
+                self.still_running.store(false, Ordering::Release);
+            }
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            // Two tool_use{pending} events → counter reaches 2.
+            // Then one tool_use{completed} for call A → counter drops to 1.
+            // Counter is still 1 (call B still in flight) so the idle-timeout monitor must keep
+            // the suppressor active. After stdout closes, the child keeps running so the monitor
+            // has time to observe counter = 1 before the child exits cleanly.
+            let events = concat!(
+                "{\"type\":\"tool_use\",\"timestamp\":1000,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-A\",\"tool\":\"write\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/a.xml\"}}}}\n",
+                "{\"type\":\"tool_use\",\"timestamp\":1001,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-B\",\"tool\":\"read\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/b.xml\"}}}}\n",
+                "{\"type\":\"tool_use\",\"timestamp\":1002,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-A\",\"tool\":\"write\",\"state\":{\"status\":\"completed\",\"output\":\"ok\"}}}\n",
+            );
+            let stdout = Box::new(BlockingEventsReader::new(
+                events.as_bytes().to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(OpenCodeConcurrentChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let logger = test_logger();
+    let colors = Colors::new();
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
+    let executor = Arc::new(OpenCodeConcurrentExecutor {
+        still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-opencode",
+        prompt: "concurrent opencode tools test",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        // OpenCode parser so tool_use{pending/completed} events update the counter.
+        parser_type: JsonParserType::OpenCode,
+        env_vars: &env_vars,
+        completion_output_path: None,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    // Stop the child after the parser has had time to process all events and the monitor has
+    // had time to observe counter = 1 (suppressor still active after first tool_use{completed}).
+    // The stopper also unblocks the reader (simulating stdout closing on process exit)
+    // so reset_tool_active() fires only AFTER the child has exited.
+    let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
+    });
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        // Idle timeout is ZERO — fires immediately unless suppressed by counter > 0.
+        Duration::ZERO,
+        Duration::from_millis(20),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    // Counter is 1 (call B still in flight) → suppressor active → timeout must NOT fire.
+    // Child exits cleanly → result must be exit code 0, NOT SIGTERM (143).
+    assert_ne!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "first tool_use{{completed}} must not clear suppressor when second OpenCode call is still in flight (counter = 1)"
+    );
+    assert_eq!(
+        result.exit_code, 0,
+        "child must exit cleanly; concurrent OpenCode tool counter prevents spurious timeout"
     );
 }

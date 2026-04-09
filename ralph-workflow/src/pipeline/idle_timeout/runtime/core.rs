@@ -9,8 +9,9 @@ use crate::pipeline::idle_timeout::{
 };
 
 use super::base::{
-    EnforcementStep, IdleConfirmedAction, KillResultContinuation, MonitorLoopAction,
-    MonitorLoopState, MonitorParams, MonitorResult, TimeoutEnforcementState,
+    evaluate_tool_suppression, EnforcementStep, IdleConfirmedAction, KillResultContinuation,
+    MonitorLoopAction, MonitorLoopState, MonitorParams, MonitorResult, TimeoutEnforcementState,
+    ToolSuppressionAction,
 };
 use super::sleep::sleep_until_next_check_or_stop;
 
@@ -527,16 +528,6 @@ fn check_file_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLo
     })
 }
 
-#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
-fn activity_resumed_after_file_scan(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
-    if is_idle_timeout_exceeded(params.activity_timestamp, params.timeout) {
-        return false;
-    }
-    s.reset_idle();
-    eprintln!("Output activity detected after file scan; continuing monitoring");
-    true
-}
-
 fn check_child_processes_activity(
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     executor: &Arc<dyn ProcessExecutor>,
@@ -588,20 +579,47 @@ fn check_partial_completion_suppression(
     }
 }
 
-#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
 fn check_tool_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {
     let Some(ref check) = params.tool_activity_check else {
         return false;
     };
-    if check() {
-        s.reset_idle();
-        eprintln!(
-            "Active tool execution detected during idle timeout; \
-             agent is actively running a tool — continuing monitoring"
-        );
-        true
-    } else {
-        false
+    let action = evaluate_tool_suppression(
+        check(),
+        s.consecutive_tool_suppression_ticks,
+        params.max_tool_suppression_ticks,
+    );
+    apply_tool_suppression_action(action, params.max_tool_suppression_ticks, s)
+}
+
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
+fn apply_tool_suppression_action(
+    action: ToolSuppressionAction,
+    max_ticks: u32,
+    s: &mut MonitorLoopState,
+) -> bool {
+    match action {
+        ToolSuppressionAction::Inactive => {
+            s.consecutive_tool_suppression_ticks = 0;
+            false
+        }
+        ToolSuppressionAction::CapExceeded { ticks } => {
+            eprintln!(
+                "Warning: tool-activity suppressor has been active for {ticks} consecutive ticks \
+                 (max {max_ticks}); bypassing suppressor to allow idle-timeout enforcement"
+            );
+            false
+        }
+        ToolSuppressionAction::Suppress { ticks } => {
+            s.reset_idle();
+            // reset_idle() zeros consecutive_tool_suppression_ticks; restore the
+            // accumulated count so the cap continues to apply on subsequent ticks.
+            s.consecutive_tool_suppression_ticks = ticks;
+            eprintln!(
+                "Active tool execution detected during idle timeout; \
+                 agent is actively running a tool — continuing monitoring"
+            );
+            true
+        }
     }
 }
 
@@ -609,7 +627,6 @@ fn any_suppressor_active(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -
     check_partial_completion_suppression(params, s)
         || check_tool_activity_suppression(params, s)
         || check_file_activity_suppression(params, s)
-        || activity_resumed_after_file_scan(params, s)
         || child_processes_still_active(params, s)
 }
 

@@ -9,15 +9,16 @@ use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
 use crate::rendering::json_pretty::format_generic_json_for_display;
 use crate::runtime::streaming::{CancelAwareReceiverBufRead, StreamingLineReader};
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::pipeline::idle_timeout::SharedActivityTimestamp;
 
-/// Shared flag passed to parsers so they can signal to the idle-timeout monitor that a tool
-/// call is actively executing. Type alias for readability at call sites.
-pub type ToolActivityTracker = Arc<AtomicBool>;
+/// Shared counter passed to parsers to signal active tool executions to the idle-timeout monitor.
+/// Non-zero = at least one tool is actively executing. Incremented on tool start, saturating-
+/// decremented on tool complete, reset to 0 on step/turn end.
+pub type ToolActivityTracker = Arc<AtomicU32>;
 
 type StdoutChunkResult = Result<Vec<u8>, std::io::Error>;
 type StdoutTx = std::sync::mpsc::SyncSender<StdoutChunkResult>;

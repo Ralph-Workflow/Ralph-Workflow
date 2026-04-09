@@ -801,16 +801,17 @@ pub(crate) fn run_with_agent_spawn(
     let partial_completion_check =
         make_partial_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
 
-    // Shared flag: parsers set this to `true` when a tool item begins executing and clear it
-    // when the item completes, errors, or the turn ends. The monitor reads it to suppress
-    // idle-timeout kills during long tool operations (e.g. file writes) that produce no stdout.
+    // Shared counter: parsers increment when a tool item begins executing and decrement (or reset)
+    // when the item completes, errors, or the turn ends. Non-zero = at least one tool is active.
+    // The monitor reads it to suppress idle-timeout kills during long tool operations (e.g. file
+    // writes) that produce no stdout.
     // Analysis assumption: development_result.xml is the completion artifact for both Analysis
     // and Development drains; this tracker suppresses spurious kills during the write phase.
-    let tool_active = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let tool_active = Arc::new(std::sync::atomic::AtomicU32::new(0));
     let tool_active_for_check = Arc::clone(&tool_active);
     let tool_activity_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>> =
         Some(Arc::new(move || {
-            tool_active_for_check.load(Ordering::Acquire)
+            tool_active_for_check.load(Ordering::Acquire) > 0
         }));
     let tool_activity_tracker: Option<
         crate::pipeline::prompt::io::streaming::ToolActivityTracker,

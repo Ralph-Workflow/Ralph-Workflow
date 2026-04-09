@@ -100,16 +100,6 @@ pub type FileActivityConfig = self::runtime::FileActivityConfig;
 pub type MonitorConfig = self::runtime::MonitorConfig;
 pub type MonitorResult = self::runtime::MonitorResult;
 
-pub fn monitor_idle_timeout(
-    activity_timestamp: &SharedActivityTimestamp,
-    child: &SharedAgentChild,
-    timeout: std::time::Duration,
-    should_stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
-    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
-) -> MonitorResult {
-    self::runtime::monitor_idle_timeout(activity_timestamp, child, timeout, should_stop, executor)
-}
-
 pub fn monitor_idle_timeout_with_interval(
     activity_timestamp: &SharedActivityTimestamp,
     child: &SharedAgentChild,

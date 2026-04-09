@@ -57,6 +57,7 @@ fn clean_exit_with_valid_output_returns_complete_but_waiting() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -103,6 +104,7 @@ fn proactive_completion_advances_before_idle_timeout() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -152,6 +154,7 @@ fn clean_exit_no_output_returns_process_completed() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -207,6 +210,7 @@ fn enforcement_exited_with_output_returns_complete_but_waiting() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -261,6 +265,7 @@ fn enforcement_exited_without_output_returns_process_completed() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -323,6 +328,7 @@ fn enforcement_exited_during_enforcement_returns_timed_out() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -367,6 +373,7 @@ fn idle_timeout_while_alive_no_output_returns_timed_out() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -417,6 +424,7 @@ fn idle_timeout_does_not_fire_after_process_exited_cleanly() {
 
             partial_completion_check: None,
             tool_activity_check: None,
+            max_tool_suppression_ticks: 20,
         };
 
         monitor_idle_timeout_with_interval_and_kill_config(
@@ -471,6 +479,7 @@ fn empty_output_file_does_not_trigger_completion_ready() {
 
         partial_completion_check: None,
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(

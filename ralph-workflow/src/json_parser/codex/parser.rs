@@ -13,11 +13,11 @@ pub struct CodexParser {
     state: CodexParserState,
     show_streaming_metrics: bool,
     printer: SharedPrinter,
-    /// Shared flag set while a tool or item is actively executing. When `Some`, the idle-timeout
-    /// monitor reads this flag to suppress spurious kills during long tool operations (e.g. file
-    /// writes) that produce no stdout. Set on `ItemStarted`, cleared on `ItemCompleted` /
-    /// `TurnCompleted` / `TurnFailed`.
-    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Shared counter tracking active tool executions. When `Some`, the idle-timeout monitor
+    /// reads this counter to suppress spurious kills during long tool operations (e.g. file
+    /// writes) that produce no stdout. Incremented on `ItemStarted`, saturating-decremented on
+    /// `ItemCompleted`, hard-reset to 0 on `TurnCompleted` / `TurnFailed`.
+    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
 }
 
 impl CodexParser {
@@ -48,14 +48,13 @@ impl CodexParser {
         }
     }
 
-    /// Register a shared flag that the idle-timeout monitor polls to detect active tool execution.
-    ///
-    /// When a tool item starts, the flag is set to `true`. When the item completes or the turn
-    /// ends, it is cleared back to `false`. This prevents the idle-timeout monitor from killing
-    /// the agent during long-running writes or other tool calls that produce no stdout.
+    /// Register a shared counter that the idle-timeout monitor polls to detect active tool
+    /// execution. Incremented on `ItemStarted`, saturating-decremented on `ItemCompleted`,
+    /// hard-reset to 0 on `TurnCompleted` / `TurnFailed`. This prevents the idle-timeout monitor
+    /// from killing the agent during long-running writes or other concurrent tool calls.
     pub(crate) fn with_tool_activity_tracker(
         mut self,
-        tracker: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        tracker: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) -> Self {
         self.tool_activity_tracker = Some(tracker);
         self
@@ -63,13 +62,27 @@ impl CodexParser {
 
     fn set_tool_active(&self) {
         if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.store(true, std::sync::atomic::Ordering::Release);
+            tracker.fetch_update(
+                std::sync::atomic::Ordering::Release,
+                std::sync::atomic::Ordering::Acquire,
+                |n| Some(n.saturating_add(1)),
+            ).ok();
         }
     }
 
     fn clear_tool_active(&self) {
         if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.store(false, std::sync::atomic::Ordering::Release);
+            tracker.fetch_update(
+                std::sync::atomic::Ordering::Release,
+                std::sync::atomic::Ordering::Acquire,
+                |n| Some(n.saturating_sub(1)),
+            ).ok();
+        }
+    }
+
+    fn reset_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(0, std::sync::atomic::Ordering::Release);
         }
     }
 

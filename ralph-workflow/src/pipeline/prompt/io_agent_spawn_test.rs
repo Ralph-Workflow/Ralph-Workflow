@@ -145,13 +145,14 @@ pub fn run_with_agent_spawn_with_monitor_config(
     let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
         std::sync::Arc::clone(&runtime.executor_arc);
 
-    // Mirror production wiring: create a shared tool-activity flag so parser events (tool-start,
+    // Mirror production wiring: create a shared tool-activity counter so parser events (tool-start,
     // tool-complete) suppress or resume the idle-timeout monitor during long tool operations.
-    let tool_active = Arc::new(AtomicBool::new(false));
+    // Non-zero = at least one tool is actively executing.
+    let tool_active = Arc::new(std::sync::atomic::AtomicU32::new(0));
     let tool_active_for_check = Arc::clone(&tool_active);
     let tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>> =
         Some(Arc::new(move || {
-            tool_active_for_check.load(std::sync::atomic::Ordering::Acquire)
+            tool_active_for_check.load(std::sync::atomic::Ordering::Acquire) > 0
         }));
     let tool_activity_tracker: Option<crate::pipeline::prompt::io::streaming::ToolActivityTracker> =
         Some(Arc::clone(&tool_active));
@@ -174,6 +175,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
 
                     partial_completion_check: None,
                     tool_activity_check,
+                    max_tool_suppression_ticks: 20,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );
