@@ -263,7 +263,6 @@ fn result_on_enforcement_exit(
     state: &TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
     completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>,
-    _child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
 ) -> MonitorResult {
     // Completion check takes priority: if the output file is ready, treat this
     // as a clean exit regardless of whether escalation was needed.
@@ -720,8 +719,7 @@ fn handle_enforcement_phase(
 ) -> (EnforcementStep, Option<TimeoutEnforcementState>) {
     match advance_timeout_enforcement(state, child, executor, kill_config) {
         TimeoutEnforcementContinuation::Exited => {
-            let result =
-                result_on_enforcement_exit(&state, last_child_info, completion_check, child);
+            let result = result_on_enforcement_exit(&state, last_child_info, completion_check);
             (EnforcementStep::ReturnResult(result), None)
         }
         TimeoutEnforcementContinuation::HardCapReached => {

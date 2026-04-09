@@ -88,6 +88,17 @@ pub struct MonitorConfig {
     /// confirmation counter resumes accumulating, and the timeout fires after
     /// `required_idle_confirmations` additional ticks.
     ///
+    /// ## Cap lifecycle
+    ///
+    /// - **Cap exceeded**: the tool suppressor returns `false` each tick, allowing
+    ///   idle confirmations to accumulate normally. The `consecutive_tool_suppression_ticks`
+    ///   counter stays at the exceeded value.
+    /// - **Tool completes** (check returns `false`): `consecutive_tool_suppression_ticks`
+    ///   resets to 0. A future tool execution gets a fresh cap window.
+    /// - **Genuine progress** (`reset_idle`): `consecutive_tool_suppression_ticks`
+    ///   resets to 0, giving the current or next tool execution a fresh cap window.
+    ///   This happens when another suppressor (file/child activity) detects real work.
+    ///
     /// Default: 20 (= 10 minutes at 30 s check interval). Set lower in tests.
     pub max_tool_suppression_ticks: u32,
 }
@@ -198,7 +209,7 @@ pub(super) enum KillResultContinuation {
 }
 
 #[derive(Debug)]
-pub enum MonitorLoopAction {
+pub(crate) enum MonitorLoopAction {
     Return(MonitorResult),
     Continue,
 }
@@ -214,23 +225,23 @@ pub(super) enum IdleConfirmedAction {
     CompleteAndKill(u32),
 }
 
-pub struct MonitorLoopState {
-    pub timeout_triggered: Option<TimeoutEnforcementState>,
-    pub last_file_activity: Option<std::time::Instant>,
-    pub consecutive_idle_count: u32,
-    pub last_child_observation: Option<ChildProcessInfo>,
-    pub last_child_info: Option<ChildProcessInfo>,
-    pub child_startup_grace_available: bool,
+pub(crate) struct MonitorLoopState {
+    pub(crate) timeout_triggered: Option<TimeoutEnforcementState>,
+    pub(crate) last_file_activity: Option<std::time::Instant>,
+    pub(crate) consecutive_idle_count: u32,
+    pub(crate) last_child_observation: Option<ChildProcessInfo>,
+    pub(crate) last_child_info: Option<ChildProcessInfo>,
+    pub(crate) child_startup_grace_available: bool,
     /// Number of consecutive ticks the tool-activity suppressor has been active.
     ///
     /// Reset to 0 when: (a) the tool-activity check returns false, or (b)
     /// `reset_idle()` is called (i.e., some other suppressor — file/child activity
     /// — resets the idle state, meaning the agent IS making genuine progress).
-    pub consecutive_tool_suppression_ticks: u32,
+    pub(crate) consecutive_tool_suppression_ticks: u32,
 }
 
 impl MonitorLoopState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             timeout_triggered: None,
             last_file_activity: None,
@@ -251,7 +262,7 @@ impl MonitorLoopState {
     /// If you need to reset idle state while preserving the tool suppression counter
     /// (e.g. from within the tool suppressor itself), use
     /// [`reset_idle_preserving_tool_suppression`](Self::reset_idle_preserving_tool_suppression).
-    pub fn reset_idle(&mut self) {
+    pub(crate) fn reset_idle(&mut self) {
         self.consecutive_idle_count = 0;
         self.last_child_observation = None;
         self.last_child_info = None;
@@ -264,7 +275,7 @@ impl MonitorLoopState {
     /// Used by the tool-activity suppressor to reset the idle confirmation counter
     /// without resetting its own cap tracking. This avoids the fragile pattern of
     /// calling `reset_idle()` and then immediately restoring the tick counter.
-    pub fn reset_idle_preserving_tool_suppression(&mut self) {
+    pub(crate) fn reset_idle_preserving_tool_suppression(&mut self) {
         self.consecutive_idle_count = 0;
         self.last_child_observation = None;
         self.last_child_info = None;
@@ -273,7 +284,7 @@ impl MonitorLoopState {
 }
 
 /// Decision produced by the pure tool-suppression policy function.
-pub enum ToolSuppressionAction {
+pub(crate) enum ToolSuppressionAction {
     /// Tool check returned `false`; reset consecutive tick counter.
     Inactive,
     /// Tool is active but the consecutive-tick cap is exceeded; bypass suppressor.
@@ -286,7 +297,7 @@ pub enum ToolSuppressionAction {
 ///
 /// No I/O, no mutations — takes inputs, returns a decision.
 #[must_use]
-pub fn evaluate_tool_suppression(
+pub(crate) fn evaluate_tool_suppression(
     check_result: bool,
     current_ticks: u32,
     max_ticks: u32,

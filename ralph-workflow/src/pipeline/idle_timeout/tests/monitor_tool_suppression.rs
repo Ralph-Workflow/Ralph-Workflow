@@ -10,11 +10,12 @@
 
 use super::super::io::KillConfig;
 use super::super::runtime::base::{
-    evaluate_tool_suppression, MonitorLoopState, ToolSuppressionAction,
+    evaluate_tool_suppression, FileActivityConfig, MonitorLoopState, ToolSuppressionAction,
 };
 use super::super::runtime::MonitorConfig;
 use super::super::*;
 use crate::executor::{AgentChild, MockAgentChild, MockProcessExecutor};
+use crate::workspace::MemoryWorkspace;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -369,5 +370,348 @@ fn tool_suppression_counter_survives_interleaved_resets() {
     assert_eq!(
         s.consecutive_tool_suppression_ticks, 0,
         "second genuine-progress reset must zero the counter again"
+    );
+}
+
+// ============================================================================
+// Regression tests for edge cases
+// ============================================================================
+
+/// Verify that after the tool suppression cap is exceeded and the tool later becomes
+/// inactive (check returns false), the counter resets to 0. When a new tool execution
+/// starts (check returns true again), suppression works normally with a fresh cap window.
+///
+/// This tests the recovery path after a protocol anomaly: the stuck counter eventually
+/// gets cleared, and subsequent legitimate tool executions are not penalized.
+#[test]
+fn tool_suppression_cap_exceeded_then_tool_resumes_resets_counter() {
+    let max_ticks: u32 = 3;
+
+    let mut s = MonitorLoopState::new();
+
+    // Phase 1: tool active for max_ticks+1 ticks → cap exceeded.
+    for tick in 0..=max_ticks {
+        let action =
+            evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+        match action {
+            ToolSuppressionAction::Suppress { ticks } => {
+                s.reset_idle_preserving_tool_suppression();
+                s.consecutive_tool_suppression_ticks = ticks;
+                assert!(tick < max_ticks, "should suppress before cap; tick={tick}");
+            }
+            ToolSuppressionAction::CapExceeded { ticks: _ } => {
+                // Cap exceeded — suppressor returns false, counter stays at exceeded value.
+                assert_eq!(tick, max_ticks, "cap should exceed at tick={max_ticks}");
+            }
+            ToolSuppressionAction::Inactive => {
+                panic!("check_result was true; Inactive is impossible");
+            }
+        }
+    }
+
+    // Phase 2: tool becomes inactive → counter resets to 0.
+    let action = evaluate_tool_suppression(false, s.consecutive_tool_suppression_ticks, max_ticks);
+    assert!(
+        matches!(action, ToolSuppressionAction::Inactive),
+        "tool check false must produce Inactive"
+    );
+    s.consecutive_tool_suppression_ticks = 0; // as apply_tool_suppression_action does
+
+    assert_eq!(
+        s.consecutive_tool_suppression_ticks, 0,
+        "counter must reset to 0 after tool goes inactive"
+    );
+
+    // Phase 3: new tool execution starts — suppression works from scratch.
+    let action = evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+    match action {
+        ToolSuppressionAction::Suppress { ticks } => {
+            assert_eq!(ticks, 1, "first tick of new tool execution should be 1");
+            s.reset_idle_preserving_tool_suppression();
+            s.consecutive_tool_suppression_ticks = ticks;
+        }
+        other => panic!(
+            "expected Suppress for fresh tool execution, got {other:?}",
+            other = std::mem::discriminant(&other)
+        ),
+    }
+
+    // Continue for max_ticks-1 more ticks — all should suppress.
+    for _ in 1..max_ticks {
+        let action =
+            evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+        assert!(
+            matches!(action, ToolSuppressionAction::Suppress { .. }),
+            "should still suppress within the fresh cap window"
+        );
+        if let ToolSuppressionAction::Suppress { ticks } = action {
+            s.reset_idle_preserving_tool_suppression();
+            s.consecutive_tool_suppression_ticks = ticks;
+        }
+    }
+
+    // Next tick should exceed the cap again.
+    let action = evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+    assert!(
+        matches!(action, ToolSuppressionAction::CapExceeded { .. }),
+        "fresh cap window should also expire after max_ticks"
+    );
+}
+
+/// Verify that genuine progress (reset_idle) during an active tool execution resets the
+/// cap counter, giving the tool a fresh suppression window.
+///
+/// Scenario: tool is active and approaching the cap, then file activity triggers
+/// reset_idle() (genuine progress). The cap counter resets, and the tool gets a full
+/// fresh window of suppression ticks.
+#[test]
+fn tool_suppression_genuine_progress_resets_cap_during_active_tool() {
+    let max_ticks: u32 = 5;
+    let mut s = MonitorLoopState::new();
+
+    // Accumulate ticks approaching the cap (max_ticks - 1 ticks).
+    for _ in 0..(max_ticks - 1) {
+        let action =
+            evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+        if let ToolSuppressionAction::Suppress { ticks } = action {
+            s.reset_idle_preserving_tool_suppression();
+            s.consecutive_tool_suppression_ticks = ticks;
+        } else {
+            panic!("expected Suppress while approaching cap");
+        }
+    }
+
+    assert_eq!(
+        s.consecutive_tool_suppression_ticks,
+        max_ticks - 1,
+        "should be one tick away from the cap"
+    );
+
+    // Genuine progress detected (file activity) — full reset.
+    s.reset_idle();
+
+    assert_eq!(
+        s.consecutive_tool_suppression_ticks, 0,
+        "genuine progress must zero the tool suppression counter"
+    );
+
+    // Tool is still active — but now has a fresh cap window.
+    // We should be able to suppress for another full max_ticks.
+    for expected_tick in 1..=max_ticks {
+        let action =
+            evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+        match action {
+            ToolSuppressionAction::Suppress { ticks } => {
+                assert_eq!(ticks, expected_tick);
+                s.reset_idle_preserving_tool_suppression();
+                s.consecutive_tool_suppression_ticks = ticks;
+            }
+            other => panic!(
+                "expected Suppress at tick {expected_tick} after progress reset, got {other:?}",
+                other = std::mem::discriminant(&other)
+            ),
+        }
+    }
+
+    // Now cap should be exceeded.
+    let action = evaluate_tool_suppression(true, s.consecutive_tool_suppression_ticks, max_ticks);
+    assert!(
+        matches!(action, ToolSuppressionAction::CapExceeded { .. }),
+        "cap must be exceeded after full window following progress reset"
+    );
+}
+
+/// Verify that when the tool suppressor's cap is exceeded, other suppressors
+/// can still independently prevent the timeout from firing.
+///
+/// `any_suppressor_active` uses short-circuit OR with partial completion checked
+/// first. To exercise the fallthrough path, partial completion returns false
+/// initially (letting the tool suppressor accumulate ticks and hit its cap),
+/// then switches to true once the cap is exceeded. `required_idle_confirmations`
+/// is set to 2 so there is a grace tick between cap-exceeded and timeout firing,
+/// during which partial completion kicks in and suppresses.
+#[test]
+fn tool_suppressor_cap_exceeded_but_partial_completion_suppresses() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let should_stop_clone = Arc::clone(&should_stop);
+    let should_stop_for_test = Arc::clone(&should_stop);
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+
+    // Tool check always returns true — will hit the cap.
+    let tool_check_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let tool_check_count_clone = Arc::clone(&tool_check_count);
+    let tool_activity_check: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || {
+        tool_check_count_clone.fetch_add(1, Ordering::SeqCst);
+        true
+    });
+
+    // Partial completion starts returning false so the tool suppressor can
+    // accumulate ticks and hit its cap. Once tool_check_count reaches 3
+    // (cap exceeded with max_tool_suppression_ticks=2), partial completion
+    // switches to true to take over suppression.
+    let tool_check_count_for_partial = Arc::clone(&tool_check_count);
+    let partial_check_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let partial_check_count_clone = Arc::clone(&partial_check_count);
+    let partial_completion_check: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || {
+        partial_check_count_clone.fetch_add(1, Ordering::SeqCst);
+        // Return true only after tool cap has been exceeded.
+        // With max_tool_suppression_ticks=2, the cap fires on the 3rd tool check
+        // (ticks 0→Suppress, 1→Suppress, 2→CapExceeded). tool_check_count ≥ 3
+        // means the cap has been hit at least once.
+        tool_check_count_for_partial.load(Ordering::SeqCst) >= 3
+    });
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        // Use 50ms interval so the test completes quickly.
+        check_interval: Duration::from_millis(50),
+        kill_config: fast_kill_config(),
+        // 2 confirmations: when tool cap exceeds on tick 3, idle count reaches 1
+        // (not enough to kill). On tick 4, partial completion kicks in and suppresses.
+        required_idle_confirmations: 2,
+        check_child_processes: false,
+        completion_check: None,
+        partial_completion_check: Some(partial_completion_check),
+        tool_activity_check: Some(tool_activity_check),
+        // Low cap so it exceeds quickly.
+        max_tool_suppression_ticks: 2,
+    };
+
+    let handle = std::thread::spawn(move || {
+        monitor_idle_timeout_with_interval_and_kill_config(
+            &timestamp,
+            None,
+            &child,
+            &should_stop_clone,
+            &executor,
+            config,
+        )
+    });
+
+    // Wait until partial completion has been called enough times after taking
+    // over suppression (at least 5 total calls ensures it has been active for
+    // several ticks after the tool cap was exceeded).
+    while partial_check_count.load(Ordering::SeqCst) < 5 {
+        std::thread::yield_now();
+    }
+
+    // The monitor should still be running because partial_completion_check
+    // suppresses the timeout even after tool cap is exceeded.
+    // Signal clean stop.
+    should_stop_for_test.store(true, Ordering::Release);
+
+    let result = handle.join().expect("monitor thread panicked");
+    assert_eq!(
+        result,
+        MonitorResult::ProcessCompleted,
+        "partial completion suppressor must prevent timeout even when tool suppressor cap is exceeded"
+    );
+
+    // Verify both suppressors were actually called.
+    assert!(
+        tool_check_count.load(Ordering::SeqCst) >= 3,
+        "tool check must have been called enough times to exceed cap"
+    );
+    assert!(
+        partial_check_count.load(Ordering::SeqCst) >= 1,
+        "partial completion check must have been called at least once after cap exceeded"
+    );
+}
+
+/// Verify that when the tool suppressor's cap is exceeded, the file activity
+/// suppressor can still independently prevent the timeout from firing.
+///
+/// This exercises the real `check_file_activity_suppression` path in
+/// `any_suppressor_active`: tool suppressor returns false (cap exceeded),
+/// then file activity suppressor scans the workspace for recently-modified
+/// AI-generated files and finds them → suppresses the timeout.
+#[test]
+fn tool_suppressor_cap_exceeded_but_file_activity_suppresses() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let should_stop_clone = Arc::clone(&should_stop);
+    let should_stop_for_test = Arc::clone(&should_stop);
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+
+    // Tool check always returns true — will hit the cap.
+    let tool_check_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let tool_check_count_clone = Arc::clone(&tool_check_count);
+    let tool_activity_check: Arc<dyn Fn() -> bool + Send + Sync> = Arc::new(move || {
+        tool_check_count_clone.fetch_add(1, Ordering::SeqCst);
+        true
+    });
+
+    // Create a workspace with a recently-modified AI-generated file in .agent/.
+    // The file activity scanner checks .agent/ for files with recent mtime.
+    // MemoryWorkspace files get SystemTime::now() as their modified time on creation,
+    // so the file will appear "fresh" during the test's short lifetime.
+    let workspace: Arc<dyn crate::workspace::Workspace> =
+        Arc::new(MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Progress"));
+
+    let file_activity_config = Some(FileActivityConfig {
+        tracker: new_file_activity_tracker(),
+        workspace,
+    });
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        // Use 50ms interval so the test completes quickly.
+        check_interval: Duration::from_millis(50),
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 1,
+        check_child_processes: false,
+        completion_check: None,
+        partial_completion_check: None,
+        tool_activity_check: Some(tool_activity_check),
+        // Low cap so it exceeds quickly.
+        max_tool_suppression_ticks: 2,
+    };
+
+    let handle = std::thread::spawn(move || {
+        monitor_idle_timeout_with_interval_and_kill_config(
+            &timestamp,
+            file_activity_config.as_ref(),
+            &child,
+            &should_stop_clone,
+            &executor,
+            config,
+        )
+    });
+
+    // Wait until the tool cap has been exceeded (at least max_ticks+2 checks)
+    // and the file activity suppressor has had a chance to fire.
+    while tool_check_count.load(Ordering::SeqCst) < 5 {
+        std::thread::yield_now();
+    }
+
+    // The monitor should still be running because file activity suppressor
+    // detects recent file changes even after tool cap is exceeded.
+    // Signal clean stop.
+    should_stop_for_test.store(true, Ordering::Release);
+
+    let result = handle.join().expect("monitor thread panicked");
+    assert_eq!(
+        result,
+        MonitorResult::ProcessCompleted,
+        "file activity suppressor must prevent timeout even when tool suppressor cap is exceeded"
+    );
+
+    // Verify the tool check was called enough times to exceed the cap.
+    assert!(
+        tool_check_count.load(Ordering::SeqCst) >= 3,
+        "tool check must have been called enough times to exceed cap"
     );
 }

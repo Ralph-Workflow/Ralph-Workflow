@@ -83,10 +83,14 @@ mod readers;
 mod runtime;
 
 pub use clock::{
-    is_idle_timeout_exceeded, is_idle_timeout_exceeded_with_clock, new_activity_timestamp,
-    new_activity_timestamp_with_clock, new_file_activity_tracker, time_since_activity,
-    time_since_activity_with_clock, touch_activity, touch_activity_with_clock, Clock,
-    MonotonicClock, SharedActivityTimestamp, SharedFileActivityTracker, IDLE_TIMEOUT_SECS,
+    is_idle_timeout_exceeded, new_activity_timestamp, new_file_activity_tracker,
+    time_since_activity, touch_activity, SharedActivityTimestamp, SharedFileActivityTracker,
+    IDLE_TIMEOUT_SECS,
+};
+#[cfg(test)]
+pub use clock::{
+    is_idle_timeout_exceeded_with_clock, new_activity_timestamp_with_clock,
+    time_since_activity_with_clock, touch_activity_with_clock, Clock, MonotonicClock,
 };
 pub use file_activity::FileActivityTracker;
 pub use readers::{ActivityTrackingReader, StderrActivityTracker};
