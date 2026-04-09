@@ -129,10 +129,7 @@ fn check_remaining_lanes(
 }
 
 fn drain_secondary_lanes(lane_results: &LaneResults) -> Result<VerifyReport> {
-    if let Some(report) = drain_lane_order(&[
-        lane_results.xtask(),
-        lane_results.release(),
-    ])? {
+    if let Some(report) = drain_lane_order(&[lane_results.xtask(), lane_results.release()])? {
         return Ok(report);
     }
     Ok(VerifyReport {
@@ -580,7 +577,14 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "test-ralph-workflow-lib",
         program: "cargo",
-        args: &["test", "-p", "ralph-workflow", "--lib", "--all-features"],
+        args: &[
+            "nextest",
+            "run",
+            "-p",
+            "ralph-workflow",
+            "--lib",
+            "--all-features",
+        ],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -588,11 +592,16 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
         name: "test-integration",
         program: "cargo",
         args: &[
-            "test",
+            "nextest",
+            "run",
             "-p",
             "ralph-workflow-tests",
             "--test",
-            "integration_tests",
+            "integration_tests_agent_core",
+            "--test",
+            "integration_tests_reducer",
+            "--test",
+            "integration_tests_workflow",
         ],
         success_exit_codes: &[0],
         extra_env: &[],
@@ -618,7 +627,7 @@ pub const XTASK_CARGO_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "test-xtask",
         program: "cargo",
-        args: &["test", "-p", "xtask"],
+        args: &["nextest", "run", "-p", "xtask"],
         success_exit_codes: &[0],
         extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
     },

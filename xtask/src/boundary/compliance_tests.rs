@@ -579,4 +579,3 @@ fn test_check_timeout_wrappers_reports_read_errors_separately() {
 
     let _ = fs::remove_dir_all(&dir);
 }
-

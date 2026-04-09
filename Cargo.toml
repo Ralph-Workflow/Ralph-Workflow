@@ -13,13 +13,28 @@ libraries = [
 ]
 
 [workspace.dependencies]
-# Shared dependencies for all workspace members
+# Shared dependencies for all workspace members.
+# Using workspace references prevents version drift that can cause
+# duplicate crate compilation when versions diverge.
 git2 = "0.18"
 tempfile = "3.10"
+anyhow = "1"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+sha2 = "0.10"
+chrono = "0.4"
+regex = "1.10"
+clap = { version = "4", features = ["derive"] }
+serial_test = "3"
 
 [profile.dev]
 # Faster debug builds: split debug info reduces linker work on macOS
 split-debuginfo = "unpacked"
+# Explicitly enable incremental compilation for dev builds.
+incremental = true
+# More codegen units = more parallelism in codegen phase.
+# Default is 256 for dev, but being explicit ensures consistent behavior.
+codegen-units = 256
 
 [profile.dev.package."*"]
 # Optimize dependencies even in dev mode — they rarely change and
@@ -29,6 +44,9 @@ opt-level = 2
 [profile.test]
 # Light optimization for test execution speed without heavy compile cost
 opt-level = 1
+# Explicitly enable incremental compilation for test builds.
+incremental = true
+codegen-units = 256
 
 [profile.release]
 opt-level = 3
@@ -41,3 +59,6 @@ inherits = "release"
 # Verification only needs to confirm the release build compiles, not maximize
 # runtime performance.
 lto = "thin"
+# More codegen units allows more parallel LLVM work. Thin LTO still optimizes
+# across units, so the final binary quality is comparable.
+codegen-units = 16

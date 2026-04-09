@@ -440,7 +440,10 @@ fn test_scope_for_forbidden_allow_expect_scan_covers_all_scanned_rust_trees() {
                     .any(|glob| glob.dir == "lints" && glob.pattern == "*.rs"),
                 "forbidden allow/expect scan must cover lints"
             );
-            assert!(files.is_empty(), "forbidden allow/expect scan should have no extra files");
+            assert!(
+                files.is_empty(),
+                "forbidden allow/expect scan should have no extra files"
+            );
             assert!(
                 !include_lock,
                 "forbidden allow/expect scan should not depend on Cargo.lock"

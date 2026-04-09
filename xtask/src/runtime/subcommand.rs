@@ -57,15 +57,30 @@ fn handle_unknown() -> ExitCode {
     ExitCode::from(2)
 }
 
+/// Pure policy: determines the effective cargo command and extra arguments.
+/// This is separated from wiring to satisfy the boundary function lint.
+fn cargo_passthrough_args<'a>(cmd: &'a str, args: &'a [String]) -> (&'a str, Vec<String>) {
+    if cmd == "test" && !args.iter().any(|a| a == "--doc") {
+        // Translate `cargo xtask test` to `cargo nextest run` for faster
+        // per-test-process parallelism.
+        ("nextest", vec!["run".to_string()])
+    } else {
+        (cmd, Vec::new())
+    }
+}
+
 fn run_cargo_passthrough(cmd: &str, args: &[String]) -> ExitCode {
+    let (effective_cmd, extra_args) = cargo_passthrough_args(cmd, args);
+
     let status = std::process::Command::new("cargo")
-        .arg(cmd)
+        .arg(effective_cmd)
+        .args(&extra_args)
         .args(args)
         .status();
     match status {
         Ok(s) => ExitCode::from(s.code().unwrap_or(1) as u8),
         Err(err) => {
-            eprintln!("xtask error: failed to run cargo {cmd}: {err}");
+            eprintln!("xtask error: failed to run cargo {effective_cmd}: {err}");
             ExitCode::from(1)
         }
     }

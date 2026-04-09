@@ -961,10 +961,7 @@ fn test_required_checks_contain_no_rg_entries() {
 
 // ── TDD tests for concurrent execution ──────────────────────────────────
 
-fn test_groups<'a>(
-    core_cargo: &'a [CommandSpec],
-    release: &'a [CommandSpec],
-) -> CheckGroups<'a> {
+fn test_groups<'a>(core_cargo: &'a [CommandSpec], release: &'a [CommandSpec]) -> CheckGroups<'a> {
     CheckGroups {
         fmt: &[],
         core_cargo,
@@ -2030,13 +2027,7 @@ fn test_verify_fast_reports_lane_timing() {
     assert_eq!(report.exit, VerifyExitCode::Success);
 
     let lanes = reporter.lanes.lock().unwrap();
-    let expected_lanes = [
-        "native-scan",
-        "fmt",
-        "core-cargo",
-        "xtask-cargo",
-        "release",
-    ];
+    let expected_lanes = ["native-scan", "fmt", "core-cargo", "xtask-cargo", "release"];
     for lane_name in &expected_lanes {
         assert!(
             lanes.contains(&lane_name.to_string()),
