@@ -27,7 +27,7 @@ impl OpenCodeParser {
     /// All other events → no change.
     fn apply_tool_activity_for_event(&self, event: &OpenCodeEvent) {
         match event.event_type.as_str() {
-            "step_finish" => self.reset_tool_active(),
+            "step_finish" => self.tool_activity_tracker.reset(),
             "tool_use" => self.apply_tool_use_activity(event),
             _ => {}
         }
@@ -41,9 +41,9 @@ impl OpenCodeParser {
             .and_then(|s| s.status.as_deref())
             .unwrap_or("pending");
         match status {
-            "pending" => self.set_tool_active(),   // new call starting — increment
+            "pending" => self.tool_activity_tracker.set_active(),   // new call starting — increment
             "running" => {}                         // status update, already counted — no-op
-            "completed" | "error" => self.clear_tool_active(), // call done — decrement
+            "completed" | "error" => self.tool_activity_tracker.clear_active(), // call done — decrement
             _ => {}
         }
     }
@@ -386,7 +386,7 @@ impl OpenCodeParser {
             )?;
         }
 
-        self.reset_tool_active(); // hard-reset at stream end — no more tool events can arrive
+        self.tool_activity_tracker.reset(); // hard-reset at stream end — no more tool events can arrive
 
         self.write_log_buffer_if_enabled(workspace, &log_buffer)?;
         self.persist_extracted_xml_artifacts(workspace)?;

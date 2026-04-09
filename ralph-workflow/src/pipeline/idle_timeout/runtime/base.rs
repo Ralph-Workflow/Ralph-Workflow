@@ -185,12 +185,12 @@ pub struct MonitorParams<'a> {
     pub max_tool_suppression_ticks: u32,
 }
 
-pub enum EnforcementStep {
+pub(super) enum EnforcementStep {
     ReturnResult(MonitorResult),
     Continue,
 }
 
-pub enum KillResultContinuation {
+pub(super) enum KillResultContinuation {
     TimedOut { escalated: bool },
     AwaitingExit(TimeoutEnforcementState),
     ProcessCompleted,
@@ -203,7 +203,7 @@ pub enum MonitorLoopAction {
     Continue,
 }
 
-pub enum IdleConfirmedAction {
+pub(super) enum IdleConfirmedAction {
     /// Not enough idle confirmations yet; continue polling.
     Continue,
     /// Child already exited or completion check passed; return the given action.
@@ -242,12 +242,33 @@ impl MonitorLoopState {
         }
     }
 
+    /// Reset all idle state, including the tool suppression tick counter.
+    ///
+    /// Use this when genuine agent progress is detected (file activity, child-process
+    /// activity, non-idle output). The tool suppression counter is zeroed because
+    /// genuine progress means the cap should restart from scratch.
+    ///
+    /// If you need to reset idle state while preserving the tool suppression counter
+    /// (e.g. from within the tool suppressor itself), use
+    /// [`reset_idle_preserving_tool_suppression`](Self::reset_idle_preserving_tool_suppression).
     pub fn reset_idle(&mut self) {
         self.consecutive_idle_count = 0;
         self.last_child_observation = None;
         self.last_child_info = None;
         self.child_startup_grace_available = true;
         self.consecutive_tool_suppression_ticks = 0;
+    }
+
+    /// Reset idle state but preserve the tool suppression tick counter.
+    ///
+    /// Used by the tool-activity suppressor to reset the idle confirmation counter
+    /// without resetting its own cap tracking. This avoids the fragile pattern of
+    /// calling `reset_idle()` and then immediately restoring the tick counter.
+    pub fn reset_idle_preserving_tool_suppression(&mut self) {
+        self.consecutive_idle_count = 0;
+        self.last_child_observation = None;
+        self.last_child_info = None;
+        self.child_startup_grace_available = true;
     }
 }
 

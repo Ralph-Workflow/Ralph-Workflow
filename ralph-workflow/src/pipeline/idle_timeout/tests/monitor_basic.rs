@@ -1,4 +1,5 @@
 use super::super::io::{force_kill_best_effort, kill_process, KillResult};
+use super::super::runtime::sleep::sleep_until_next_check_or_stop;
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -166,4 +167,25 @@ fn force_kill_best_effort_uses_correct_syntax_for_negative_pgid() {
     let calls = executor.execute_calls_for("kill");
     assert!(!calls.is_empty(), "expected at least one kill invocation");
     assert_eq!(calls[0].1, vec!["-KILL", "--", "-12345"]);
+}
+
+/// Regression test: sleep_until_next_check_or_stop must actually sleep
+/// for approximately the check interval, not busy-wait (return immediately).
+/// A busy-wait regression would cause this test to complete in microseconds
+/// instead of the expected ~200ms.
+#[test]
+fn sleep_until_next_check_actually_sleeps() {
+    let should_stop = AtomicBool::new(false);
+    let check_interval = Duration::from_millis(200);
+    let start = std::time::Instant::now();
+
+    let stopped = sleep_until_next_check_or_stop(&should_stop, check_interval);
+
+    assert!(!stopped, "should_stop was not set, so must return false");
+    assert!(
+        start.elapsed() >= Duration::from_millis(150),
+        "sleep_until_next_check_or_stop returned in {:?}, expected ~200ms — \
+         this indicates a busy-wait regression (thread::sleep is missing)",
+        start.elapsed()
+    );
 }

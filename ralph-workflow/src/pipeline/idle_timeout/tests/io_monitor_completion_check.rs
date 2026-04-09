@@ -296,9 +296,13 @@ fn enforcement_exited_during_enforcement_returns_timed_out() {
     //   - check_interval=10ms: the monitor sleeps 10ms then fires the idle timeout
     //   - at ~10ms: idle timeout fires, child is alive, SIGTERM "sent" (mock), enforcement
     //     state created (s.timeout_triggered = Some(...))
-    //   - at ~30ms: child thread sets child_running=false, simulating death from the kill
+    //   - at ~200ms: child thread sets child_running=false, simulating death from the kill
     //   - enforcement loop spins without sleeping until try_wait_child returns true
     //   - result_on_enforcement_exit must return TimedOut (not ProcessCompleted)
+    //
+    //   The 200ms child exit delay provides ample margin over the ~25ms that the first
+    //   tick (10ms sleep + ~15ms kill_process round-trip) requires, so the kill is always
+    //   initiated before the child exits — even on loaded CI machines.
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
@@ -314,7 +318,7 @@ fn enforcement_exited_during_enforcement_returns_timed_out() {
     // child is still alive. The monitor sends SIGTERM (mock) and enters enforcement
     // phase; this thread then simulates the process dying from the kill.
     let child_handle = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(30));
+        thread::sleep(Duration::from_millis(200));
         child_running.store(false, Ordering::Release);
     });
 
