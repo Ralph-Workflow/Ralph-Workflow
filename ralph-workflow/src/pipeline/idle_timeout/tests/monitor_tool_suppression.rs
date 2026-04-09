@@ -521,6 +521,183 @@ fn tool_suppression_genuine_progress_resets_cap_during_active_tool() {
     );
 }
 
+// ============================================================================
+// Unit tests for warn-once behavior via apply_tool_suppression_action
+// ============================================================================
+
+use super::super::runtime::core::apply_tool_suppression_action;
+
+/// Verify that the first CapExceeded action sets the cap_warned flag (which gates
+/// the warning emission), and subsequent CapExceeded actions do NOT re-emit
+/// (flag stays true, guarding the eprintln branch).
+#[test]
+fn cap_exceeded_warns_once_then_suppresses_duplicate_warnings() {
+    let mut s = MonitorLoopState::new();
+    let max_ticks: u32 = 3;
+
+    assert!(
+        !s.tool_suppression_cap_warned,
+        "new MonitorLoopState must start with cap_warned = false"
+    );
+
+    // First CapExceeded: flag transitions false → true (warning emitted).
+    let result = apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 4 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(!result, "CapExceeded must return false (no suppression)");
+    assert!(
+        s.tool_suppression_cap_warned,
+        "first CapExceeded must set cap_warned = true"
+    );
+
+    // Second CapExceeded: flag is already true — no warning re-emitted.
+    let result = apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 5 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(!result, "CapExceeded must still return false");
+    assert!(
+        s.tool_suppression_cap_warned,
+        "cap_warned must remain true across subsequent CapExceeded ticks"
+    );
+
+    // Third CapExceeded: still no duplicate.
+    let result = apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 6 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(!result, "CapExceeded must still return false");
+    assert!(s.tool_suppression_cap_warned, "cap_warned must remain true");
+}
+
+/// Verify that `reset_idle()` resets the cap-warned flag, allowing the warning
+/// to fire again if a new cap-exceeded episode occurs after genuine progress.
+#[test]
+fn reset_idle_resets_cap_warned_allowing_fresh_warning() {
+    let mut s = MonitorLoopState::new();
+    let max_ticks: u32 = 2;
+
+    // First episode: cap exceeded, warning emitted.
+    apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 3 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(s.tool_suppression_cap_warned);
+
+    // Genuine progress resets everything.
+    s.reset_idle();
+    assert!(
+        !s.tool_suppression_cap_warned,
+        "reset_idle must clear cap_warned for fresh warning on next episode"
+    );
+    assert_eq!(s.consecutive_tool_suppression_ticks, 0);
+
+    // Second episode: cap exceeded again — warning should fire (flag was reset).
+    apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 3 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(
+        s.tool_suppression_cap_warned,
+        "new episode must set cap_warned again after reset_idle"
+    );
+}
+
+/// Verify the Inactive → CapExceeded → Inactive → CapExceeded cycle:
+/// each Inactive transition resets cap_warned so the next CapExceeded can warn.
+#[test]
+fn inactive_resets_cap_warned_for_fresh_episode() {
+    let mut s = MonitorLoopState::new();
+    let max_ticks: u32 = 2;
+
+    // Phase 1: cap exceeded — warning emitted.
+    apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 3 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(s.tool_suppression_cap_warned);
+
+    // Phase 2: tool becomes inactive — Inactive arm resets flag and ticks.
+    apply_tool_suppression_action(ToolSuppressionAction::Inactive, max_ticks, &mut s);
+    assert!(
+        !s.tool_suppression_cap_warned,
+        "Inactive must reset cap_warned"
+    );
+    assert_eq!(
+        s.consecutive_tool_suppression_ticks, 0,
+        "Inactive must zero tick counter"
+    );
+
+    // Phase 3: new tool execution hits cap — warning fires again.
+    apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 3 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(
+        s.tool_suppression_cap_warned,
+        "new CapExceeded after Inactive must set flag again"
+    );
+}
+
+/// Verify that `reset_idle_preserving_tool_suppression` does NOT reset the
+/// cap-warned flag. The tool suppressor's own idle reset should preserve both
+/// the tick counter and the warning state.
+#[test]
+fn preserving_reset_keeps_cap_warned_flag() {
+    let mut s = MonitorLoopState::new();
+    let max_ticks: u32 = 2;
+
+    // Trigger cap_warned via apply_tool_suppression_action.
+    apply_tool_suppression_action(
+        ToolSuppressionAction::CapExceeded { ticks: 3 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(s.tool_suppression_cap_warned);
+    s.consecutive_tool_suppression_ticks = 8;
+
+    s.reset_idle_preserving_tool_suppression();
+
+    assert!(
+        s.tool_suppression_cap_warned,
+        "preserving reset must not reset the cap_warned flag"
+    );
+    assert_eq!(
+        s.consecutive_tool_suppression_ticks, 8,
+        "preserving reset must not reset the tick counter"
+    );
+}
+
+/// Verify that the Suppress arm does not affect the cap_warned flag.
+/// Suppress resets idle state (preserving tool ticks) and returns true.
+#[test]
+fn suppress_action_does_not_affect_cap_warned() {
+    let mut s = MonitorLoopState::new();
+    let max_ticks: u32 = 10;
+
+    assert!(!s.tool_suppression_cap_warned);
+
+    let result = apply_tool_suppression_action(
+        ToolSuppressionAction::Suppress { ticks: 1 },
+        max_ticks,
+        &mut s,
+    );
+    assert!(result, "Suppress must return true");
+    assert!(
+        !s.tool_suppression_cap_warned,
+        "Suppress must not set cap_warned"
+    );
+    assert_eq!(s.consecutive_tool_suppression_ticks, 1);
+}
+
 /// Verify that when the tool suppressor's cap is exceeded, other suppressors
 /// can still independently prevent the timeout from firing.
 ///

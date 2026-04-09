@@ -9,9 +9,9 @@ use crate::pipeline::idle_timeout::{
 };
 
 use super::base::{
-    evaluate_tool_suppression, EnforcementStep, IdleConfirmedAction, KillResultContinuation,
-    MonitorLoopAction, MonitorLoopState, MonitorParams, MonitorResult, TimeoutEnforcementState,
-    ToolSuppressionAction,
+    evaluate_tool_suppression, resolve_tool_suppression, EnforcementStep, IdleConfirmedAction,
+    KillResultContinuation, MonitorLoopAction, MonitorLoopState, MonitorParams, MonitorResult,
+    TimeoutEnforcementState, ToolSuppressionAction,
 };
 use super::sleep::sleep_until_next_check_or_stop;
 
@@ -504,7 +504,7 @@ fn check_file_activity(
     let cap = timeout + check_interval + scan_overhead_buffer;
     let actual_idle = time_since_activity(activity_timestamp);
     let file_window = (actual_idle + scan_overhead_buffer).min(cap);
-    let locked_tracker = fac.tracker.lock();
+    let locked_tracker = fac.tracker.tracker();
     let result = locked_tracker.check_for_recent_activity(
         fac.workspace.as_ref(),
         file_window,
@@ -589,33 +589,21 @@ fn check_tool_activity_suppression(params: &MonitorParams<'_>, s: &mut MonitorLo
 }
 
 #[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
-fn apply_tool_suppression_action(
+pub(crate) fn apply_tool_suppression_action(
     action: ToolSuppressionAction,
     max_ticks: u32,
     s: &mut MonitorLoopState,
 ) -> bool {
-    match action {
-        ToolSuppressionAction::Inactive => {
-            s.consecutive_tool_suppression_ticks = 0;
-            false
-        }
-        ToolSuppressionAction::CapExceeded { ticks } => {
-            eprintln!(
-                "Warning: tool-activity suppressor has been active for {ticks} consecutive ticks \
-                 (max {max_ticks}); bypassing suppressor to allow idle-timeout enforcement"
-            );
-            false
-        }
-        ToolSuppressionAction::Suppress { ticks } => {
-            s.reset_idle_preserving_tool_suppression();
-            s.consecutive_tool_suppression_ticks = ticks;
-            eprintln!(
-                "Active tool execution detected during idle timeout; \
-                 agent is actively running a tool — continuing monitoring"
-            );
-            true
-        }
+    let effect = resolve_tool_suppression(action, max_ticks, s.tool_suppression_cap_warned);
+    if effect.reset_idle {
+        s.reset_idle_preserving_tool_suppression();
     }
+    s.consecutive_tool_suppression_ticks = effect.ticks;
+    s.tool_suppression_cap_warned = effect.cap_warned;
+    if let Some(msg) = &effect.diagnostic {
+        eprintln!("{msg}");
+    }
+    effect.suppressed
 }
 
 fn any_suppressor_active(params: &MonitorParams<'_>, s: &mut MonitorLoopState) -> bool {

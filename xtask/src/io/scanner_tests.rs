@@ -1577,10 +1577,6 @@ fn test_forbidden_allow_expect_scan_covers_gui_rust() {
         "forbidden-allow-expect-scan must cover test-helpers/src"
     );
     assert!(
-        check.directories.contains(&"ralph-gui"),
-        "forbidden-allow-expect-scan must cover ralph-gui so GUI Rust files are scanned"
-    );
-    assert!(
         check.exclude_globs.contains(&"**/node_modules/**"),
         "forbidden-allow-expect-scan must exclude transient node_modules trees"
     );
@@ -2550,65 +2546,6 @@ fn test_collect_scan_groups_separate_directories_produce_separate_groups() {
         groups.len(),
         2,
         "two checks with different directories must produce two groups"
-    );
-
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn test_collect_scan_groups_skips_excluded_transient_frontend_directories() {
-    let dir = make_temp_dir("collect-groups-skip-transient-frontend");
-    write_file(&dir, "ralph-gui/build.rs", "fn main() {}\n");
-    write_file(&dir, "ralph-gui/src/lib.rs", "pub fn gui() {}\n");
-    write_file(
-        &dir,
-        "ralph-gui/ui/node_modules/pkg/index.rs",
-        "#[allow(clippy::all)]\n",
-    );
-    write_file(
-        &dir,
-        "ralph-gui/ui/dist/generated.rs",
-        "#[allow(clippy::all)]\n",
-    );
-
-    let check = NativeScanCheck {
-        name: "forbidden-allow-expect-scan",
-        literals: &["#[allow("],
-        directories: &["ralph-gui"],
-        include_glob: "*.rs",
-        exclude_globs: &["**/node_modules/**", "**/dist/**"],
-        mode: MatchMode::AnyLiteralAtLineStart {
-            skip_comment_lines: true,
-        },
-    };
-
-    let groups = collect_scan_groups(&dir, &[check]);
-    let (_, (_, result)) = groups.into_iter().next().unwrap();
-    let files = result.expect("traversal must succeed");
-
-    assert!(
-        files
-            .iter()
-            .all(|path| !path.to_string_lossy().contains("node_modules")),
-        "excluded node_modules files must not be traversed: {files:?}"
-    );
-    assert!(
-        files
-            .iter()
-            .all(|path| !path.to_string_lossy().contains("/dist/")),
-        "excluded dist files must not be traversed: {files:?}"
-    );
-    assert!(
-        files
-            .iter()
-            .any(|path| path.ends_with(Path::new("ralph-gui/build.rs"))),
-        "stable Rust-owned build.rs must still be scanned"
-    );
-    assert!(
-        files
-            .iter()
-            .any(|path| path.ends_with(Path::new("ralph-gui/src/lib.rs"))),
-        "stable GUI Rust sources must still be scanned"
     );
 
     let _ = fs::remove_dir_all(&dir);

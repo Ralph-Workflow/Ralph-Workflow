@@ -1,7 +1,0 @@
-[install]
-# Use exact versions for reproducibility
-exact = true
-
-[run]
-# Silent mode for scripts
-silent = true

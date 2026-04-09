@@ -1,5 +1,5 @@
 [workspace]
-members = ["ralph-workflow", "test-helpers", "tests", "xtask", "ralph-gui"]
+members = ["ralph-workflow", "test-helpers", "tests", "xtask"]
 default-members = ["ralph-workflow", "test-helpers", "xtask"]
 resolver = "2"
 
@@ -16,16 +16,28 @@ libraries = [
 # Shared dependencies for all workspace members
 git2 = "0.18"
 tempfile = "3.10"
-tauri = { version = "2" }
-tauri-build = { version = "2", features = [] }
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-specta = { version = "2.0.0-rc", features = ["serde", "chrono"] }
-specta-typescript = "0.0.7"
-tauri-specta = { version = "2.0.0-rc", features = ["typescript"] }
-frunk = "0.4.4"
+
+[profile.dev]
+# Faster debug builds: split debug info reduces linker work on macOS
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+# Optimize dependencies even in dev mode — they rarely change and
+# optimized deps make test execution faster (especially serde, regex, git2)
+opt-level = 2
+
+[profile.test]
+# Light optimization for test execution speed without heavy compile cost
+opt-level = 1
 
 [profile.release]
 opt-level = 3
 lto = true
 strip = true
+
+[profile.release-verify]
+inherits = "release"
+# Thin LTO is much faster than full LTO and still catches the same link errors.
+# Verification only needs to confirm the release build compiles, not maximize
+# runtime performance.
+lto = "thin"

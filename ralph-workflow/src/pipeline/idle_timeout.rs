@@ -61,10 +61,9 @@
 //! special operational requirements.
 //!
 //! ## Performance Characteristics
-//! File activity checking uses selective directory scanning:
-//! - Only .agent/ and .agent/tmp/ are scanned
+//! File activity checking uses targeted directory scanning:
+//! - Only `.agent/` and `.agent/tmp/` are scanned (no workspace-wide scan)
 //! - Excluded files (logs, system artifacts) are filtered early
-//! - Modification times are cached to avoid redundant disk I/O
 //! - Impact on monitor overhead: typically <1ms per check on modern systems
 //!
 //! ## Timeout Reporting
@@ -93,7 +92,7 @@ pub use clock::{
     time_since_activity_with_clock, touch_activity_with_clock, Clock, MonotonicClock,
 };
 pub use file_activity::FileActivityTracker;
-pub use readers::{ActivityTrackingReader, StderrActivityTracker};
+pub use readers::ActivityTrackingReader;
 pub type KillConfig = self::io::KillConfig;
 pub const DEFAULT_KILL_CONFIG: KillConfig = self::io::DEFAULT_KILL_CONFIG;
 

@@ -12,5 +12,10 @@ xtask = "run -p xtask --"
 #   "found crate ... compiled by an incompatible version of rustc"
 #
 # This wrapper only activates for Dylint builds and forces dependency builds to
-# use the same toolchain.
+# use the same toolchain. It also chains through sccache when available.
 rustc-wrapper = "./.cargo/rustc-wrapper-dylint"
+
+# TODO(wt-71): Re-enable mold linker once rw-build-server has mold installed.
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]

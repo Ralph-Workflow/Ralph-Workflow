@@ -67,29 +67,6 @@ fn test_verify_help_flag_exits_successfully() {
         result.status.success(),
         "verify --help should exit successfully"
     );
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(stderr.contains("--gui"), "help should document --gui flag");
-}
-
-#[test]
-fn test_verify_gui_flag_is_accepted() {
-    skip_if_in_verify();
-    let result = std::process::Command::new("cargo")
-        .args(["xtask", "verify", "--gui", "--help"])
-        .output()
-        .expect("cargo xtask verify --gui --help should execute");
-
-    assert!(
-        result.status.success(),
-        "verify --gui --help should exit successfully"
-    );
-
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(
-        stderr.contains("--gui"),
-        "verify help should include --gui option, got: {}",
-        stderr
-    );
 }
 
 #[test]

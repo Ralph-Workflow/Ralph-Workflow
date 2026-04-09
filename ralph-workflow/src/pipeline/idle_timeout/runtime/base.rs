@@ -238,6 +238,10 @@ pub(crate) struct MonitorLoopState {
     /// `reset_idle()` is called (i.e., some other suppressor — file/child activity
     /// — resets the idle state, meaning the agent IS making genuine progress).
     pub(crate) consecutive_tool_suppression_ticks: u32,
+    /// Whether the cap-exceeded warning has already been emitted for the current
+    /// tool suppression sequence. Reset when the tool becomes inactive or when
+    /// genuine progress resets idle state.
+    pub(crate) tool_suppression_cap_warned: bool,
 }
 
 impl MonitorLoopState {
@@ -250,6 +254,7 @@ impl MonitorLoopState {
             last_child_info: None,
             child_startup_grace_available: true,
             consecutive_tool_suppression_ticks: 0,
+            tool_suppression_cap_warned: false,
         }
     }
 
@@ -268,6 +273,7 @@ impl MonitorLoopState {
         self.last_child_info = None;
         self.child_startup_grace_available = true;
         self.consecutive_tool_suppression_ticks = 0;
+        self.tool_suppression_cap_warned = false;
     }
 
     /// Reset idle state but preserve the tool suppression tick counter.
@@ -310,5 +316,64 @@ pub(crate) fn evaluate_tool_suppression(
         ToolSuppressionAction::CapExceeded { ticks }
     } else {
         ToolSuppressionAction::Suppress { ticks }
+    }
+}
+
+/// Pure state effects produced by applying a [`ToolSuppressionAction`].
+///
+/// No I/O — the boundary wiring in `core.rs` reads these fields to perform
+/// mutations and emit diagnostics.
+pub(crate) struct ToolSuppressionEffect {
+    /// New value for `consecutive_tool_suppression_ticks`.
+    pub(crate) ticks: u32,
+    /// New value for `tool_suppression_cap_warned`.
+    pub(crate) cap_warned: bool,
+    /// Whether to reset idle state (preserving tool suppression counters).
+    pub(crate) reset_idle: bool,
+    /// Optional diagnostic message to emit via stderr.
+    pub(crate) diagnostic: Option<String>,
+    /// Whether the suppressor is active (i.e., should the tick count as suppressed).
+    pub(crate) suppressed: bool,
+}
+
+/// Pure policy: given a [`ToolSuppressionAction`], max tick cap, and current
+/// warning state, compute the state effects and diagnostics without performing I/O.
+#[must_use]
+pub(crate) fn resolve_tool_suppression(
+    action: ToolSuppressionAction,
+    max_ticks: u32,
+    already_warned: bool,
+) -> ToolSuppressionEffect {
+    match action {
+        ToolSuppressionAction::Inactive => ToolSuppressionEffect {
+            ticks: 0,
+            cap_warned: false,
+            reset_idle: false,
+            diagnostic: None,
+            suppressed: false,
+        },
+        ToolSuppressionAction::CapExceeded { ticks } => ToolSuppressionEffect {
+            ticks,
+            cap_warned: true,
+            reset_idle: false,
+            diagnostic: (!already_warned).then(|| {
+                format!(
+                    "Warning: tool-activity suppressor has been active for {ticks} consecutive \
+                     ticks (max {max_ticks}); bypassing suppressor to allow idle-timeout enforcement"
+                )
+            }),
+            suppressed: false,
+        },
+        ToolSuppressionAction::Suppress { ticks } => ToolSuppressionEffect {
+            ticks,
+            cap_warned: false,
+            reset_idle: true,
+            diagnostic: Some(
+                "Active tool execution detected during idle timeout; \
+                 agent is actively running a tool — continuing monitoring"
+                    .to_owned(),
+            ),
+            suppressed: true,
+        },
     }
 }

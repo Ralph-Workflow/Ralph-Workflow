@@ -77,32 +77,6 @@ pub fn timeout_wrapper_scan_result(
     }
 }
 
-pub fn tailwind_scan_result(violations: &[String], read_errors: &[String]) -> ComplianceSummary {
-    if !read_errors.is_empty() {
-        return ComplianceSummary::new(
-            STATUS_ERROR,
-            format!(
-                "Failed to read {} Angular template file(s) during Tailwind 4 migration scan:\n{}",
-                read_errors.len(),
-                read_errors.join("\n")
-            ),
-        );
-    }
-
-    if violations.is_empty() {
-        ComplianceSummary::new(STATUS_PASS, String::new())
-    } else {
-        ComplianceSummary::new(
-            STATUS_WARNING,
-            format!(
-                "Found {} Tailwind 3-only class usage(s) in Angular templates that do not exist in Tailwind 4. Each affected component/file needs rework:\n{}",
-                violations.len(),
-                violations.join("\n")
-            ),
-        )
-    }
-}
-
 /// Trim leading and trailing ASCII whitespace (space, tab, carriage-return)
 /// from a byte slice.
 pub(crate) fn trim_ascii(b: &[u8]) -> &[u8] {

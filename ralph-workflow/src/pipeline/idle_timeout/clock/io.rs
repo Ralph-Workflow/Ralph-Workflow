@@ -60,7 +60,7 @@ pub mod inner {
             Self(FileActivityTracker::new())
         }
 
-        pub fn lock(&self) -> &FileActivityTracker {
+        pub fn tracker(&self) -> &FileActivityTracker {
             &self.0
         }
     }

@@ -34,7 +34,7 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 
 ## Lint Policy (Strict)
 - **`#[allow(...)]` macro — Forbidden.** Zero exceptions. Use `#[expect(..., reason = "...")]` only for external proc-macro output.
-- **`.expect()`/`.unwrap()` — Forbidden** except at: `test-helpers/src/lib.rs`, `xtask/src/main.rs`, `ralph-gui/src/main.rs`, boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`).
+- **`.expect()`/`.unwrap()` — Forbidden** except at: `test-helpers/src/lib.rs`, `xtask/src/main.rs`, boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`).
 - **Functional lints:** Never suppress. Don't fake a boundary module just to silence a lint.
 - Check compliance: `cargo xtask lsp-forbidden-allow-expect`
 - See `docs/agents/verification.md` for `#[allow]`/`#[expect]` enforcement; `docs/tooling/dylint.md` for boundary module definitions.
@@ -46,8 +46,6 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 |---------|--------|
 | Feature/bugfix | Use `test-driven-development` skill first |
 | Debugging | Use `systematic-debugging` skill first |
-| Angular/GUI | Use Angular MCP + `frontend-angular` skill |
-| Styling/visual | Use `frontend-design` skill |
 | Any pipeline/reducer change | Read architecture docs first |
 | Any test work | Read `docs/agents/testing-guide.md` |
 | Filesystem I/O | Read `docs/agents/workspace-trait.md` |
@@ -58,7 +56,6 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 ## Non-Negotiables
 - TDD required (failing test first)
 - Verification required before PR
-- GUI: Angular v21 + Tailwind (prefer)
 - No tech debt (prefer refactor)
 - No dead code (`#[allow(dead_code)]` forbidden)
 - Never weaken lint rules
@@ -291,7 +288,6 @@ These are forbidden in production workflow code and integration tests. Permitted
 |----------|--------------|
 | `test-helpers/src/lib.rs` | Wraps git2/libgit2 C API; cannot propagate `Result` without redesigning the harness |
 | `xtask/src/main.rs` | Top-level binary entry point; no caller to return `Result` to |
-| `ralph-gui/src/main.rs` | Tauri framework entry point; framework owns `main()` signature |
 | Boundary modules (`io/`, `runtime/`) | OS-level calls where failure is unrecoverable and `Result` propagation is architecturally impossible |
 
 Everywhere else: use `?`, `map_err`, `and_then`, or proper `Result` propagation. Finding `.expect()` outside these sites is a bug. Fix it now — it is a pre-existing issue.

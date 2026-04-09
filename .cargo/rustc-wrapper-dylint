@@ -24,6 +24,10 @@ dylint_libs="${DYLINT_LIBS:-}"
 toolchain="${RUSTUP_TOOLCHAIN:-}"
 
 if [ -z "$dylint_libs" ] || [ -z "$toolchain" ]; then
+  # Not a Dylint build — chain through sccache if available for compilation caching
+  if command -v sccache >/dev/null 2>&1; then
+    exec sccache "$real" "$@"
+  fi
   exec "$real" "$@"
 fi
 
