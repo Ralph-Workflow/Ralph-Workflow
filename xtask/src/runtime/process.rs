@@ -95,11 +95,12 @@ fn spawn_progress_thread(
 
     std::thread::spawn(move || {
         drain_reader_lines_lossy(stderr_pipe, |trimmed| {
-            if trimmed.starts_with("Compiling ")
-                || trimmed.starts_with("Checking ")
-                || trimmed.starts_with("Finished ")
-                || trimmed.starts_with("Blocking ")
-            {
+            // Only forward lines that are genuinely informative as real-time
+            // progress. "Compiling X" and "Checking X" are suppressed: on a
+            // cold cache they produce hundreds of lines per lane and flood the
+            // output, while conveying nothing actionable. "Finished" and
+            // "Blocking" are kept because they mark meaningful state changes.
+            if trimmed.starts_with("Finished ") || trimmed.starts_with("Blocking ") {
                 reporter.check_progress(&check_name, trimmed);
             }
         })

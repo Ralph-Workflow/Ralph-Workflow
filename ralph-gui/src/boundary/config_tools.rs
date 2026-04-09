@@ -163,6 +163,17 @@ fn build_tool_info(
     }
 }
 
+/// Read the model list for a tool when it is installed.
+///
+/// Falls back to built-in defaults when the binary does not report its models.
+fn read_installed_models(name: &str, binary: &str) -> Vec<String> {
+    if let Some(models) = config_process::read_model_list(binary) {
+        models
+    } else {
+        tool_default_models(name)
+    }
+}
+
 /// Probe a known CLI tool binary in the PATH.
 fn probe_tool(name: &str, binary: &str, description: &str) -> AgentToolInfo {
     let binary_location = config_process::probe_binary_location(binary);
@@ -170,11 +181,11 @@ fn probe_tool(name: &str, binary: &str, description: &str) -> AgentToolInfo {
     let version = installed
         .then(|| config_process::read_version_line(binary))
         .flatten();
-    let available_models = installed
-        .then(|| {
-            config_process::read_model_list(binary).unwrap_or_else(|| tool_default_models(name))
-        })
-        .unwrap_or_default();
+    let available_models = if installed {
+        read_installed_models(name, binary)
+    } else {
+        Vec::new()
+    };
     build_tool_info(
         name,
         binary,

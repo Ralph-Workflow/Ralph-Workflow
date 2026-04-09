@@ -136,7 +136,7 @@ fn test_chain_initialized_after_fix_drain_populates_agents_and_preserves_drain()
 
 #[test]
 fn test_timed_out_no_output_with_empty_agents_switches_agent_safely() {
-    // TimedOut(NoOutput) must not panic when agents=[] — the switch_to_next_agent
+    // TimedOut(NoResult) must not panic when agents=[] — the switch_to_next_agent
     // call simply keeps agent_index=0 (no agents to switch to).
     let state = state_with_fix_drain_and_empty_agents();
     assert!(state.agent_chain.agents.is_empty());
@@ -147,7 +147,7 @@ fn test_timed_out_no_output_with_empty_agents_switches_agent_safely() {
         PipelineEvent::agent_timed_out(
             AgentRole::Reviewer,
             agent,
-            TimeoutOutputKind::NoOutput,
+            TimeoutOutputKind::NoResult,
             None,
             None,
         ),

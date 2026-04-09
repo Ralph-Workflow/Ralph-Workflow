@@ -17,8 +17,8 @@ fn test_same_agent_retry_within_budget_does_increment() {
     // First retry (count becomes 1, which is < max) should increment
     let event = PipelineEvent::agent_timed_out(
         AgentRole::Developer,
-        "claude".to_string(),
-        TimeoutOutputKind::PartialOutput,
+        AgentName::from("claude"),
+        TimeoutOutputKind::PartialResult,
         Some(".agent/logs/developer_0.log".to_string()),
         None,
     );
@@ -386,28 +386,44 @@ fn test_old_checkpoint_loads_with_new_metrics_fields_defaulted() {
 // ============================================================================
 
 #[test]
-fn test_timeout_output_kind_no_output_serde_roundtrip() {
-    let original = TimeoutOutputKind::NoOutput;
-    let json = serde_json::to_string(&original).expect("serialize NoOutput");
-    assert_eq!(json, r#""NoOutput""#);
-    let restored: TimeoutOutputKind = serde_json::from_str(&json).expect("deserialize NoOutput");
+fn test_timeout_output_kind_no_result_serde_roundtrip() {
+    let original = TimeoutOutputKind::NoResult;
+    let json = serde_json::to_string(&original).expect("serialize NoResult");
+    assert_eq!(json, r#""NoResult""#);
+    let restored: TimeoutOutputKind = serde_json::from_str(&json).expect("deserialize NoResult");
     assert_eq!(restored, original);
 }
 
 #[test]
-fn test_timeout_output_kind_partial_output_serde_roundtrip() {
-    let original = TimeoutOutputKind::PartialOutput;
-    let json = serde_json::to_string(&original).expect("serialize PartialOutput");
-    assert_eq!(json, r#""PartialOutput""#);
+fn test_timeout_output_kind_partial_result_serde_roundtrip() {
+    let original = TimeoutOutputKind::PartialResult;
+    let json = serde_json::to_string(&original).expect("serialize PartialResult");
+    assert_eq!(json, r#""PartialResult""#);
     let restored: TimeoutOutputKind =
-        serde_json::from_str(&json).expect("deserialize PartialOutput");
+        serde_json::from_str(&json).expect("deserialize PartialResult");
     assert_eq!(restored, original);
 }
 
 #[test]
-fn test_timeout_output_kind_defaults_to_partial_output_when_missing() {
+fn test_timeout_output_kind_no_output_alias_deserializes_as_no_result() {
+    // Old checkpoints used "NoOutput"; the serde alias must map it to NoResult.
+    let restored: TimeoutOutputKind =
+        serde_json::from_str(r#""NoOutput""#).expect("deserialize old NoOutput alias");
+    assert_eq!(restored, TimeoutOutputKind::NoResult);
+}
+
+#[test]
+fn test_timeout_output_kind_partial_output_alias_deserializes_as_partial_result() {
+    // Old checkpoints used "PartialOutput"; the serde alias must map it to PartialResult.
+    let restored: TimeoutOutputKind =
+        serde_json::from_str(r#""PartialOutput""#).expect("deserialize old PartialOutput alias");
+    assert_eq!(restored, TimeoutOutputKind::PartialResult);
+}
+
+#[test]
+fn test_timeout_output_kind_defaults_to_partial_result_when_missing() {
     // When a TimedOut event is received without output_kind (old checkpoint),
-    // it should default to PartialOutput.
+    // it should default to PartialResult.
     #[derive(serde::Deserialize)]
     struct TimedOutWithoutOutputKind {
         // These fields are in the JSON but not needed for the test assertion.
@@ -422,5 +438,5 @@ fn test_timeout_output_kind_defaults_to_partial_output_when_missing() {
     let json = r#"{"role":"Developer","agent":"claude"}"#;
     let event: TimedOutWithoutOutputKind =
         serde_json::from_str(json).expect("deserialize without output_kind");
-    assert_eq!(event.output_kind, TimeoutOutputKind::PartialOutput);
+    assert_eq!(event.output_kind, TimeoutOutputKind::PartialResult);
 }

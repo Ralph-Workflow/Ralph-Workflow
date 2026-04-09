@@ -30,6 +30,11 @@ def main() -> int:
     env.setdefault("CARGO_TERM_QUIET", "true")
     env.setdefault("CARGO_TERM_PROGRESS_WHEN", "never")
 
+    # Dylint env inherits base env but adds RUSTFLAGS to match `cargo xtask verify`
+    # (--cap-lints=deny caps forbid→deny; -D warnings promotes all warns to errors).
+    dylint_env = dict(env)
+    dylint_env["RUSTFLAGS"] = "--cap-lints=deny -D warnings"
+
     clippy_command = [
         "cargo",
         "clippy",
@@ -39,11 +44,18 @@ def main() -> int:
         "--all-targets",
         "--keep-going",
     ]
+    # Consistent with `cargo xtask verify` dylint lane:
+    #   - --lib ralph_lints: use only the workspace lint library (excludes ralph_lints package itself)
+    #   - --workspace: check all workspace packages
+    #   - --keep-going: don't stop on first package failure
+    # Note: unlike xtask, we keep --all-targets for full IDE coverage; ralph-workflow
+    # binary-target warning escalation is acceptable in interactive use.
     dylint_command = [
         "cargo",
         "dylint",
         "-q",
-        "--all",
+        "--lib",
+        "ralph_lints",
         "--workspace",
         "--keep-going",
         "--",
@@ -57,7 +69,7 @@ def main() -> int:
     ]
 
     clippy_exit_code = run_check(clippy_command, env)
-    dylint_exit_code = run_check(dylint_command, env)
+    dylint_exit_code = run_check(dylint_command, dylint_env)
     xtask_exit_code = run_check(xtask_command, env)
     return clippy_exit_code or dylint_exit_code or xtask_exit_code
 

@@ -9,11 +9,16 @@ use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
 use crate::rendering::json_pretty::format_generic_json_for_display;
 use crate::runtime::streaming::{CancelAwareReceiverBufRead, StreamingLineReader};
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::pipeline::idle_timeout::SharedActivityTimestamp;
+
+/// Shared counter passed to parsers to signal active tool executions to the idle-timeout monitor.
+/// Non-zero = at least one tool is actively executing. Incremented on tool start, saturating-
+/// decremented on tool complete, reset to 0 on step/turn end.
+pub type ToolActivityTracker = Arc<AtomicU32>;
 
 type StdoutChunkResult = Result<Vec<u8>, std::io::Error>;
 type StdoutTx = std::sync::mpsc::SyncSender<StdoutChunkResult>;
@@ -84,11 +89,15 @@ fn run_claude_parser_stream(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     reader: StreamingLineReader<CancelAwareReceiverBufRead>,
+    tool_activity_tracker: Option<ToolActivityTracker>,
 ) -> Result<(), std::io::Error> {
     let mut p = crate::json_parser::ClaudeParser::new(*runtime.colors, runtime.config.verbosity)
         .with_display_name(cmd.display_name)
         .with_log_file(cmd.logfile)
         .with_show_streaming_metrics(runtime.config.show_streaming_metrics);
+    if let Some(tracker) = tool_activity_tracker {
+        p = p.with_tool_activity_tracker(tracker);
+    }
     p.parse_stream(reader, runtime.workspace)
 }
 
@@ -96,11 +105,15 @@ fn run_codex_parser_stream(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     reader: StreamingLineReader<CancelAwareReceiverBufRead>,
+    tool_activity_tracker: Option<ToolActivityTracker>,
 ) -> Result<(), std::io::Error> {
     let mut p = crate::json_parser::CodexParser::new(*runtime.colors, runtime.config.verbosity)
         .with_display_name(cmd.display_name)
         .with_log_file(cmd.logfile)
         .with_show_streaming_metrics(runtime.config.show_streaming_metrics);
+    if let Some(tracker) = tool_activity_tracker {
+        p = p.with_tool_activity_tracker(tracker);
+    }
     p.parse_stream(reader, runtime.workspace)
 }
 
@@ -108,7 +121,9 @@ fn run_gemini_parser_stream(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     reader: StreamingLineReader<CancelAwareReceiverBufRead>,
+    _tool_activity_tracker: Option<ToolActivityTracker>,
 ) -> Result<(), std::io::Error> {
+    // Gemini parser does not emit structured tool-lifecycle events; tracker is ignored.
     let mut p = crate::json_parser::GeminiParser::new(*runtime.colors, runtime.config.verbosity)
         .with_display_name(cmd.display_name)
         .with_log_file(cmd.logfile)
@@ -120,11 +135,15 @@ fn run_opencode_parser_stream(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     reader: StreamingLineReader<CancelAwareReceiverBufRead>,
+    tool_activity_tracker: Option<ToolActivityTracker>,
 ) -> Result<(), std::io::Error> {
     let mut p = crate::json_parser::OpenCodeParser::new(*runtime.colors, runtime.config.verbosity)
         .with_display_name(cmd.display_name)
         .with_log_file(cmd.logfile)
         .with_show_streaming_metrics(runtime.config.show_streaming_metrics);
+    if let Some(tracker) = tool_activity_tracker {
+        p = p.with_tool_activity_tracker(tracker);
+    }
     p.parse_stream(reader, runtime.workspace)
 }
 
@@ -132,12 +151,21 @@ fn run_typed_parser_stream(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     reader: StreamingLineReader<CancelAwareReceiverBufRead>,
+    tool_activity_tracker: Option<ToolActivityTracker>,
 ) -> Result<(), std::io::Error> {
     match cmd.parser_type {
-        JsonParserType::Claude => run_claude_parser_stream(cmd, runtime, reader),
-        JsonParserType::Codex => run_codex_parser_stream(cmd, runtime, reader),
-        JsonParserType::Gemini => run_gemini_parser_stream(cmd, runtime, reader),
-        JsonParserType::OpenCode => run_opencode_parser_stream(cmd, runtime, reader),
+        JsonParserType::Claude => {
+            run_claude_parser_stream(cmd, runtime, reader, tool_activity_tracker)
+        }
+        JsonParserType::Codex => {
+            run_codex_parser_stream(cmd, runtime, reader, tool_activity_tracker)
+        }
+        JsonParserType::Gemini => {
+            run_gemini_parser_stream(cmd, runtime, reader, tool_activity_tracker)
+        }
+        JsonParserType::OpenCode => {
+            run_opencode_parser_stream(cmd, runtime, reader, tool_activity_tracker)
+        }
         JsonParserType::Generic => run_generic_json_stream(cmd, runtime, reader),
     }
 }
@@ -153,6 +181,7 @@ pub(crate) fn stream_agent_output_from_handle(
     runtime: &PipelineRuntime<'_>,
     activity_timestamp: SharedActivityTimestamp,
     cancel: &Arc<AtomicBool>,
+    tool_activity_tracker: Option<ToolActivityTracker>,
 ) -> Result<(), std::io::Error> {
     let (tx, rx) = create_stdout_channel();
     let pump_handle = spawn_stdout_pump(stdout, activity_timestamp, tx, Arc::clone(cancel));
@@ -162,7 +191,7 @@ pub(crate) fn stream_agent_output_from_handle(
     let reader = StreamingLineReader::new(receiver_reader);
 
     let parse_result = if should_use_json_parser(cmd)? {
-        run_typed_parser_stream(cmd, runtime, reader)
+        run_typed_parser_stream(cmd, runtime, reader, tool_activity_tracker)
     } else {
         run_raw_lines_stream(cmd, runtime, reader)
     };

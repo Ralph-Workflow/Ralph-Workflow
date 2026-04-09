@@ -8,8 +8,8 @@
 use super::commit_logging::CommitLogSession;
 use crate::agents::AgentRegistry;
 use crate::files::llm_output_extraction::{
-    archive_xml_file_with_workspace, try_extract_xml_commit_document_with_trace, xml_paths,
-    CommitExtractionResult,
+    archive_xml_file_with_workspace, has_valid_xml_output,
+    try_extract_xml_commit_document_with_trace, xml_paths, CommitExtractionResult,
 };
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::TemplateContext;

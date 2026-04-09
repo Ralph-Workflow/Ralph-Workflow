@@ -299,6 +299,245 @@ fn extract_common_fields(obj: &serde_json::Map<String, serde_json::Value>) -> Ve
     .collect()
 }
 
+/// Normalize blank lines in tool output for display.
+///
+/// - Strips leading blank lines
+/// - Strips trailing blank lines
+/// - Collapses runs of consecutive blank lines to a single blank line
+///
+/// Non-blank content is preserved verbatim.
+#[must_use]
+pub fn normalize_blank_lines(s: &str) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| !l.trim().is_empty())
+        .unwrap_or(lines.len());
+    // rev().position() gives index from end; convert to index-from-start
+    let end = lines
+        .iter()
+        .rev()
+        .position(|l| !l.trim().is_empty())
+        .map(|i| lines.len() - i)
+        .unwrap_or(0);
+    if start >= end {
+        return String::new();
+    }
+    // scan tracks whether the previous line was blank; None short-circuits collapsed blanks
+    lines[start..end]
+        .iter()
+        .scan(false, |last_blank, line| {
+            let is_blank = line.trim().is_empty();
+            let keep = !is_blank || !*last_blank;
+            *last_blank = is_blank;
+            Some(keep.then_some(*line))
+        })
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Determine how many lines to show before truncation in multiline output.
+///
+/// Returns the count of leading lines that fit within both `max_lines` and
+/// `char_limit`. Lines from `[cutoff..]` will be summarised as "N more lines".
+#[must_use]
+pub fn determine_output_cutoff(lines: &[&str], max_lines: usize, char_limit: usize) -> usize {
+    lines
+        .iter()
+        .take(max_lines)
+        .scan(0usize, |prefix_len, line| {
+            if *prefix_len + line.len() > char_limit {
+                None // budget exceeded — stop here
+            } else {
+                *prefix_len += line.len() + 1; // +1 for the newline
+                Some(())
+            }
+        })
+        .count()
+}
+
+/// Format a duration in milliseconds for display.
+///
+/// Returns "Xms" for sub-second durations, "Xs" for one second and above.
+/// No decimal places — this is a "should I worry?" signal, not a profiler.
+#[must_use]
+pub fn format_duration_for_display(duration_ms: u64) -> String {
+    if duration_ms < 1000 {
+        format!("{duration_ms}ms")
+    } else {
+        format!("{}s", duration_ms / 1000)
+    }
+}
+
+/// Format a hash (or any identifier string) as a short parenthetical for display.
+///
+/// Returns:
+/// - `""` (empty) when hash is empty or shorter than 8 characters (placeholder / non-hash strings
+///   are suppressed so callers never produce meaningless `(...)` output)
+/// - `"(abcdef12...)"` when hash is >= 8 chars (first 8 chars + "...")
+#[must_use]
+pub fn format_short_hash(hash: &str) -> String {
+    if hash.len() < 8 {
+        return String::new();
+    }
+    let short = &hash[..8];
+    if hash.len() > 8 {
+        format!("({short}...)")
+    } else {
+        format!("({short})")
+    }
+}
+
+/// Format a dim continuation line with └─ indicator.
+///
+/// Used for tool input previews and other sub-details in the output.
+#[must_use]
+pub fn format_dim_continuation_line(
+    preview: &str,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    format!(
+        "{}[{}]{} {}  └─ {}{}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.dim(),
+        preview,
+        c.reset()
+    )
+}
+
+/// Format token counts for display in step-finish events.
+///
+/// Returns a string like "in:532 out:85 reasoning:24 cache:151680".
+#[must_use]
+pub fn format_token_counts(input: u64, output: u64, reasoning: u64, cache_read: u64) -> String {
+    if reasoning > 0 {
+        format!("in:{input} out:{output} reasoning:{reasoning} cache:{cache_read}")
+    } else if cache_read > 0 {
+        format!("in:{input} out:{output} cache:{cache_read}")
+    } else {
+        format!("in:{input} out:{output}")
+    }
+}
+
+/// Format a cost suffix for display in step-finish events.
+///
+/// Returns " · $0.0042" for non-zero cost, or empty string for zero cost.
+#[must_use]
+pub fn format_cost_suffix(cost: f64) -> String {
+    if cost > 0.0 {
+        format!(" \u{00b7} ${cost:.4}")
+    } else {
+        String::new()
+    }
+}
+
+/// Format a tokens string as a delimited suffix.
+///
+/// Returns " · in:532 out:85 ..." for non-empty token string, or empty string.
+#[must_use]
+pub fn format_tokens_suffix(tokens_str: &str) -> String {
+    if tokens_str.is_empty() {
+        String::new()
+    } else {
+        format!(" \u{00b7} {tokens_str}")
+    }
+}
+
+/// Format multiline tool output with blank-line normalization and a single truncation summary.
+///
+/// Strips leading/trailing blank lines, collapses interior blank runs, and emits at most
+/// one `...(N more lines)` summary at the end.
+#[must_use]
+pub fn format_tool_output_lines(
+    output: &str,
+    limit: usize,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    let normalized = normalize_blank_lines(output);
+    if normalized.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<&str> = normalized.lines().collect();
+    if lines.len() <= 1 {
+        format_single_line_tool_output(&normalized, limit, prefix, c)
+    } else {
+        format_multiline_tool_output(&lines, limit, prefix, c)
+    }
+}
+
+fn format_single_line_tool_output(
+    output: &str,
+    limit: usize,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    let preview = truncate_text(output, limit);
+    if preview.is_empty() {
+        return String::new();
+    }
+    format!(
+        "{}[{}]{} {}  └─ Output:{} {}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.cyan(),
+        c.reset(),
+        preview
+    )
+}
+
+fn format_multiline_tool_output_header(prefix: &str, c: crate::logger::Colors) -> String {
+    format!(
+        "{}[{}]{} {}  └─ Output:{}\n",
+        c.dim(),
+        prefix,
+        c.reset(),
+        c.cyan(),
+        c.reset()
+    )
+}
+
+fn format_tool_content_lines(shown: &[&str], indent: &str, c: crate::logger::Colors) -> String {
+    shown
+        .iter()
+        .map(|line| format!("{}{}{}{}\n", indent, c.dim(), line, c.reset()))
+        .collect()
+}
+
+fn format_tool_truncation_summary(
+    total: usize,
+    cutoff: usize,
+    indent: &str,
+    c: crate::logger::Colors,
+) -> String {
+    let remaining = total - cutoff;
+    if remaining == 0 {
+        String::new()
+    } else {
+        format!("{}{}...({remaining} more lines)\n", indent, c.dim())
+    }
+}
+
+fn format_multiline_tool_output(
+    lines: &[&str],
+    limit: usize,
+    prefix: &str,
+    c: crate::logger::Colors,
+) -> String {
+    use crate::config::truncation::MAX_OUTPUT_LINES;
+    let cutoff = determine_output_cutoff(lines, MAX_OUTPUT_LINES, limit);
+    let indent = format!("{}[{}]{}     ", c.dim(), prefix, c.reset());
+    let header = format_multiline_tool_output_header(prefix, c);
+    let shown = format_tool_content_lines(&lines[..cutoff], &indent, c);
+    let summary = format_tool_truncation_summary(lines.len(), cutoff, &indent, c);
+    format!("{header}{shown}{summary}")
+}
+
 /// Format an unknown JSON event for display in verbose/debug mode.
 ///
 /// This is a generic handler for unknown events that works across all parsers.

@@ -30,6 +30,7 @@ pub fn execute_subcommand(subcommand: Subcommand) -> ExitCode {
         Subcommand::LspForbidAllowExpect => run_lsp_forbid_allow_expect(),
         Subcommand::DylintReport => boundary::dylint_report::generate_dylint_report(),
         Subcommand::Coverage => boundary::coverage::run_coverage(),
+        Subcommand::CargoPassthrough { cmd, args } => run_cargo_passthrough(&cmd, &args),
     }
 }
 
@@ -44,9 +45,31 @@ fn handle_unknown() -> ExitCode {
     eprintln!("       cargo xtask lsp-forbidden-allow-expect");
     eprintln!("       cargo xtask dylint-report");
     eprintln!("       cargo xtask coverage");
-    eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
-    eprintln!("  --verbose, -v    Show detailed dylint output");
+    eprintln!("       cargo xtask test [cargo-test-args...]");
+    eprintln!("       cargo xtask build [cargo-build-args...]");
+    eprintln!("       cargo xtask clippy [cargo-clippy-args...]");
+    eprintln!("       cargo xtask fmt [cargo-fmt-args...]");
+    eprintln!("       cargo xtask check [cargo-check-args...]");
+    eprintln!("       cargo xtask bench [cargo-bench-args...]");
+    eprintln!();
+    eprintln!("All subcommands auto-dispatch to rw-build-server when reachable.");
+    eprintln!("Passthrough subcommands (test, build, clippy, fmt, check, bench)");
+    eprintln!("run `cargo <cmd> <args>` on the remote build server.");
     ExitCode::from(2)
+}
+
+fn run_cargo_passthrough(cmd: &str, args: &[String]) -> ExitCode {
+    let status = std::process::Command::new("cargo")
+        .arg(cmd)
+        .args(args)
+        .status();
+    match status {
+        Ok(s) => ExitCode::from(s.code().unwrap_or(1) as u8),
+        Err(err) => {
+            eprintln!("xtask error: failed to run cargo {cmd}: {err}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn run_lsp_forbid_allow_expect() -> ExitCode {
@@ -123,10 +146,23 @@ const DEFAULT_HELP: &str = r#"Usage: cargo xtask verify [--gui]
        cargo xtask dylint [--verbose]
        cargo xtask lsp-forbidden-allow-expect
        cargo xtask dylint-report
-       cargo xtask coverage"#;
+       cargo xtask coverage
+       cargo xtask test [cargo-test-args...]
+       cargo xtask build [cargo-build-args...]
+       cargo xtask clippy [cargo-clippy-args...]
+       cargo xtask fmt [cargo-fmt-args...]
+       cargo xtask check [cargo-check-args...]
+       cargo xtask bench [cargo-bench-args...]
+
+All subcommands auto-dispatch to rw-build-server when reachable.
+Passthrough subcommands (test, build, clippy, fmt, check, bench)
+run `cargo <cmd> <args>` on the remote build server."#;
 
 pub fn run_from_env() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
+    if let Some(code) = boundary::remote::try_run_remote(&args) {
+        return code;
+    }
     let subcommand = parse_subcommand(&args);
     execute_subcommand(subcommand)
 }

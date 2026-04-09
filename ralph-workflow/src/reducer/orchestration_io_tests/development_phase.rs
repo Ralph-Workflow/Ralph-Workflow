@@ -399,7 +399,7 @@ fn test_development_timeout_retry_does_not_use_xsd_retry_prompt_mode() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-a"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),

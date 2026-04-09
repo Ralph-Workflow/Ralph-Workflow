@@ -187,7 +187,7 @@ AI agents are completely isolated from git operations:
 Run the test to verify agent isolation:
 
 ```bash
-cargo test ralph_agents_dont_receive_git_commands_in_prompts
+cargo xtask test ralph_agents_dont_receive_git_commands_in_prompts
 ```
 
 ### What Agents Do
@@ -279,20 +279,20 @@ All git operations use libgit2 directly:
 
 ```bash
 # Test git helpers
-cargo test --lib git_helpers
+cargo xtask test --lib git_helpers
 
 # Test prompts
-cargo test --lib prompts
+cargo xtask test --lib prompts
 ```
 
 ### Integration Tests
 
 ```bash
 # Test git workflow
-cargo test --test git_workflow
+cargo xtask test --test git_workflow
 
 # Test full pipeline
-cargo test --test workflow_requirements
+cargo xtask test --test workflow_requirements
 ```
 
 ### Key Test Cases

@@ -17,34 +17,8 @@ pub(crate) use base::MonitorResult;
 use crate::executor::AgentChild;
 use crate::pipeline::idle_timeout::SharedActivityTimestamp;
 
-/// Default check interval for the idle monitor (30 seconds).
-const DEFAULT_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// Monitors activity and kills a process if idle timeout is exceeded.
-pub(crate) fn monitor_idle_timeout(
-    activity_timestamp: &SharedActivityTimestamp,
-    child: &std::sync::Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
-    timeout: std::time::Duration,
-    should_stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
-    executor: &std::sync::Arc<dyn crate::executor::ProcessExecutor>,
-) -> MonitorResult {
-    monitor_idle_timeout_with_interval_and_kill_config(
-        activity_timestamp,
-        None,
-        child,
-        should_stop,
-        executor,
-        MonitorConfig {
-            timeout,
-            check_interval: DEFAULT_CHECK_INTERVAL,
-            kill_config: crate::pipeline::idle_timeout::io::DEFAULT_KILL_CONFIG,
-            ..Default::default()
-        },
-    )
-}
-
-/// Like [`monitor_idle_timeout`] but with a configurable check interval.
-pub(crate) fn monitor_idle_timeout_with_interval(
+/// Like [`monitor_idle_timeout_with_interval_and_kill_config`] but with only timeout and check interval.
+pub fn monitor_idle_timeout_with_interval(
     activity_timestamp: &SharedActivityTimestamp,
     child: &std::sync::Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     timeout: std::time::Duration,
@@ -110,6 +84,9 @@ pub(crate) fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         required_idle_confirmations: config.required_idle_confirmations,
         check_child_processes: config.check_child_processes,
         completion_check: config.completion_check,
+        partial_completion_check: config.partial_completion_check,
+        tool_activity_check: config.tool_activity_check,
+        max_tool_suppression_ticks: config.max_tool_suppression_ticks,
     };
     run_monitor_loop(&params)
 }

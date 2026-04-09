@@ -308,6 +308,10 @@ fn active_ai_file_updates_prevent_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -380,6 +384,10 @@ fn log_only_activity_does_not_prevent_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -439,6 +447,10 @@ fn no_output_and_no_ai_files_times_out() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -522,6 +534,10 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -599,6 +615,10 @@ fn mixed_output_and_file_activity_prevents_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -681,6 +701,10 @@ fn workspace_source_file_update_prevents_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -756,6 +780,10 @@ fn only_excluded_workspace_files_still_produce_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -821,6 +849,10 @@ fn deep_nested_source_file_prevents_timeout() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -903,6 +935,10 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -973,6 +1009,10 @@ fn output_activity_during_file_scan_prevents_kill() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1051,6 +1091,10 @@ fn active_subprocess_prevents_idle_kill() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1136,6 +1180,10 @@ fn sleeping_subprocess_with_historical_cpu_still_times_out() {
                     required_idle_confirmations: 1,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1198,6 +1246,10 @@ fn active_flag_without_fresh_subprocess_progress_still_times_out() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1249,6 +1301,10 @@ fn no_active_subprocess_and_no_file_activity_times_out() {
                     required_idle_confirmations: 1,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1306,6 +1362,10 @@ fn stalled_subprocess_timeout_includes_child_status() {
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1369,6 +1429,10 @@ fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
                     required_idle_confirmations: 4,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1422,7 +1486,7 @@ fn child_status_at_timeout_survives_event_serde_round_trip() {
         let event = PipelineEvent::agent_timed_out(
             ralph_workflow::agents::AgentRole::Developer,
             "test-agent".into(),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some("/tmp/test.log".to_string()),
             Some(info),
         );
@@ -1489,6 +1553,10 @@ fn no_subprocess_timeout_has_none_child_status() {
                     required_idle_confirmations: 1,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1502,5 +1570,131 @@ fn no_subprocess_timeout_has_none_child_status() {
             } => {}
             other => panic!("expected TimedOut with child_status_at_timeout=None, got {other:?}"),
         }
+    });
+}
+
+/// Bug 3 regression: When a tool is actively executing (tool_activity_check returns true),
+/// the idle timeout is suppressed even with no stdout, no file activity, and no subprocesses.
+///
+/// This simulates the scenario where a long-running `write` tool call has started but has not
+/// yet produced any output or created the file — the monitor must NOT kill the process during
+/// this window.
+#[test]
+fn active_tool_execution_prevents_idle_timeout() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        // Child will exit after a short delay (simulating the tool finishing)
+        let (mock_child, child_running) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        // Tool is actively executing — no file or stdout activity, just a running tool.
+        let tool_active = Arc::new(AtomicBool::new(true));
+        let tool_active_for_check = Arc::clone(&tool_active);
+        let tool_activity_check: Arc<dyn Fn() -> bool + Send + Sync> =
+            Arc::new(move || tool_active_for_check.load(Ordering::Acquire));
+
+        // Stop the child after a short time (simulating tool completion + process exit)
+        let child_handle = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            child_running.store(false, Ordering::Release);
+        });
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop_for_monitor,
+                &executor,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(10),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
+                    check_child_processes: false,
+                    completion_check: None,
+                    partial_completion_check: None,
+                    tool_activity_check: Some(tool_activity_check),
+                    max_tool_suppression_ticks: 20,
+                },
+            )
+        });
+
+        child_handle.join().expect("child stopper thread panicked");
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        assert_eq!(
+            result,
+            MonitorResult::ProcessCompleted,
+            "active tool execution must suppress idle timeout; expected ProcessCompleted, got {result:?}"
+        );
+    });
+}
+
+/// Bug 3 regression: Once the tool-activity suppressor is cleared (tool finishes with no
+/// further file or stdout activity), the monitor resumes enforcing the idle timeout normally.
+///
+/// Verifies that the suppression is transient — a finished tool does not leave a stale flag
+/// that masks real idle periods.
+#[test]
+fn tool_completion_resumes_idle_timeout_enforcement() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        // Child never exits on its own — the monitor must kill it after tool finishes.
+        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        // Tool is initially active, then becomes inactive (simulating tool completion).
+        let tool_active = Arc::new(AtomicBool::new(true));
+        let tool_active_for_check = Arc::clone(&tool_active);
+        let tool_activity_check: Arc<dyn Fn() -> bool + Send + Sync> =
+            Arc::new(move || tool_active_for_check.load(Ordering::Acquire));
+
+        // Simulate tool completing after a short delay
+        let tool_active_for_stopper = Arc::clone(&tool_active);
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(30));
+            tool_active_for_stopper.store(false, Ordering::Release);
+        });
+
+        let result = monitor_idle_timeout_with_interval_and_kill_config(
+            &timestamp,
+            None,
+            &child,
+            &should_stop_for_monitor,
+            &executor,
+            MonitorConfig {
+                timeout: Duration::ZERO,
+                check_interval: Duration::from_millis(5),
+                kill_config: fast_kill_config(),
+                required_idle_confirmations: 1,
+                check_child_processes: false,
+                completion_check: None,
+                partial_completion_check: None,
+                tool_activity_check: Some(tool_activity_check),
+                max_tool_suppression_ticks: 20,
+            },
+        );
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "after tool completes and no further activity, idle timeout must fire; expected TimedOut, got {result:?}"
+        );
     });
 }

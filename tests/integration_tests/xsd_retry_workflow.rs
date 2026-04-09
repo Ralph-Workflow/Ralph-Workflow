@@ -461,7 +461,7 @@ fn test_fix_timeout_retry_recleans_fix_xml_from_fix_drain_without_review_issue_f
             PipelineEvent::agent_timed_out(
                 AgentRole::Reviewer,
                 "codex".into(),
-                ralph_workflow::reducer::event::TimeoutOutputKind::PartialOutput,
+                ralph_workflow::reducer::event::TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/reviewer_0.log".to_string()),
                 None,
             ),

@@ -15,6 +15,12 @@ pub struct OpenCodeParser {
     pub(crate) state: OpenCodeParserState,
     show_streaming_metrics: bool,
     printer: SharedPrinter,
+    /// Shared counter tracking active tool executions. Incremented when a tool_use event with
+    /// status "pending" arrives (new call starting). Saturating-decremented when status becomes
+    /// "completed" or "error". Hard-reset to 0 on "step_finish". "running" is a no-op (already
+    /// counted). Allows the idle-timeout monitor to avoid killing the agent during active tool
+    /// execution while correctly tracking concurrent calls.
+    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +60,44 @@ impl OpenCodeParser {
             state: OpenCodeParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
+            tool_activity_tracker: None,
+        }
+    }
+
+    /// Register a shared counter that the idle-timeout monitor polls to detect active tool
+    /// execution. Incremented on "pending" (new call starting), saturating-decremented on
+    /// "completed"/"error", hard-reset to 0 on "step_finish". "running" is a no-op.
+    pub(crate) fn with_tool_activity_tracker(
+        mut self,
+        tracker: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    ) -> Self {
+        self.tool_activity_tracker = Some(tracker);
+        self
+    }
+
+    pub(super) fn set_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.fetch_update(
+                std::sync::atomic::Ordering::Release,
+                std::sync::atomic::Ordering::Acquire,
+                |n| Some(n.saturating_add(1)),
+            ).ok();
+        }
+    }
+
+    pub(super) fn clear_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.fetch_update(
+                std::sync::atomic::Ordering::Release,
+                std::sync::atomic::Ordering::Acquire,
+                |n| Some(n.saturating_sub(1)),
+            ).ok();
+        }
+    }
+
+    pub(super) fn reset_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(0, std::sync::atomic::Ordering::Release);
         }
     }
 

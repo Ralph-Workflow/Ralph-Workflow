@@ -25,7 +25,7 @@ impl Template {
     #[must_use]
     pub fn new(content: &str) -> Self {
         Self {
-            content: content.to_string(),
+            content: strip_comments(content),
         }
     }
 }
@@ -44,6 +44,10 @@ impl fmt::Debug for Template {
 // =========================================================================
 // Template rendering runtime - imperative rendering logic.
 // =========================================================================
+
+fn strip_comments(content: &str) -> String {
+    crate::prompts::template_parsing::strip_comments_impl(content)
+}
 
 struct LiteralSegment {
     token: String,
@@ -940,5 +944,47 @@ mod tests {
         let result = render_loop_item(body, item, var_name, &variables);
 
         assert_eq!(result, "Age: 25");
+    }
+
+    #[test]
+    fn comment_only_line_is_removed() {
+        let t = Template::new("{# this is a comment #}\n");
+        assert_eq!(t.content, "");
+    }
+
+    #[test]
+    fn comment_at_start_stripped() {
+        let t = Template::new("{# header #}\nActual content");
+        assert_eq!(t.content, "Actual content");
+    }
+
+    #[test]
+    fn comment_inline_stripped() {
+        let t = Template::new("before {# mid #} after");
+        assert_eq!(t.content, "before  after");
+    }
+
+    #[test]
+    fn multi_line_comment_stripped() {
+        let t = Template::new("{# line1\nline2 #}\ncontent");
+        assert_eq!(t.content, "content");
+    }
+
+    #[test]
+    fn adjacent_comments_stripped() {
+        let t = Template::new("{# a #}\n{# b #}\ncontent");
+        assert_eq!(t.content, "content");
+    }
+
+    #[test]
+    fn no_comments_unchanged() {
+        let t = Template::new("hello {{ NAME }}");
+        assert_eq!(t.content, "hello {{ NAME }}");
+    }
+
+    #[test]
+    fn unclosed_comment_passed_through() {
+        let t = Template::new("{# unclosed");
+        assert_eq!(t.content, "{# unclosed");
     }
 }

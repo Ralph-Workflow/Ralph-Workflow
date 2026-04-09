@@ -16,7 +16,7 @@ After making changes that might affect performance, compare current benchmarks a
 
 ```bash
 # Run current benchmarks
-cargo test -p ralph-workflow --lib benchmarks -- --nocapture > current.txt
+cargo xtask test -p ralph-workflow --lib benchmarks -- --nocapture > current.txt
 
 # Compare with baseline
 diff docs/performance/baselines/combined-baseline.txt current.txt
@@ -28,15 +28,15 @@ When intentional performance improvements are made, update the baselines:
 
 ```bash
 # Update memory usage baseline
-cargo test -p ralph-workflow --lib benchmarks::memory_usage -- --nocapture \
+cargo xtask test -p ralph-workflow --lib benchmarks::memory_usage -- --nocapture \
   > docs/performance/baselines/memory-usage-baseline.txt
 
 # Update checkpoint serialization baseline
-cargo test -p ralph-workflow --lib benchmarks::checkpoint_serialization -- --nocapture \
+cargo xtask test -p ralph-workflow --lib benchmarks::checkpoint_serialization -- --nocapture \
   > docs/performance/baselines/checkpoint-serialization-baseline.txt
 
 # Update combined baseline
-cargo test -p ralph-workflow --lib benchmarks -- --nocapture \
+cargo xtask test -p ralph-workflow --lib benchmarks -- --nocapture \
   > docs/performance/baselines/combined-baseline.txt
 ```
 
@@ -93,7 +93,7 @@ These baselines can be integrated into CI to automatically detect regressions:
 
 ```bash
 # In CI pipeline
-cargo test -p ralph-workflow --lib benchmarks -- --nocapture > ci-benchmarks.txt
+cargo xtask test -p ralph-workflow --lib benchmarks -- --nocapture > ci-benchmarks.txt
 
 # Compare (allowing 10% variance)
 # Exit with error if regression detected beyond threshold

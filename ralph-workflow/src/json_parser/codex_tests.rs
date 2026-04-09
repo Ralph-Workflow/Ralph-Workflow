@@ -386,3 +386,106 @@ fn test_codex_reasoning_full_mode_in_place_updates() {
         "Expected accumulated reasoning content. Output:\n{output}"
     );
 }
+
+/// Regression: concurrent tool items must not clear each other's suppression.
+///
+/// With AtomicBool, the second ItemCompleted clears the flag even though the first item
+/// is still in flight. With AtomicU32, ItemStarted increments and ItemCompleted decrements,
+/// so after two ItemStarted + one ItemCompleted the counter is 1 (still active).
+#[test]
+fn test_codex_concurrent_tool_items_tracked_independently() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+
+    let tracker = Arc::new(AtomicU32::new(0));
+    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Normal)
+        .with_tool_activity_tracker(Arc::clone(&tracker));
+
+    // First tool item starts
+    let item_started_1 = r#"{"type":"item.started","item":{"type":"file_write","path":"/a.rs"}}"#;
+    parser.parse_event(item_started_1);
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        1,
+        "counter should be 1 after first ItemStarted"
+    );
+
+    // Second concurrent tool item starts
+    let item_started_2 = r#"{"type":"item.started","item":{"type":"file_write","path":"/b.rs"}}"#;
+    parser.parse_event(item_started_2);
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        2,
+        "counter should be 2 after second ItemStarted"
+    );
+
+    // First tool item completes — second is still in flight
+    let item_completed_1 =
+        r#"{"type":"item.completed","item":{"type":"file_change","id":"item_a","path":"/a.rs"}}"#;
+    parser.parse_event(item_completed_1);
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        1,
+        "counter should be 1 after first ItemCompleted: second item still in flight"
+    );
+
+    // Second tool item completes — now idle
+    let item_completed_2 =
+        r#"{"type":"item.completed","item":{"type":"file_change","id":"item_b","path":"/b.rs"}}"#;
+    parser.parse_event(item_completed_2);
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        0,
+        "counter should be 0 after both items complete"
+    );
+}
+
+/// TurnCompleted resets the counter to 0, even if ItemCompleted was never received.
+#[test]
+fn test_codex_turn_completed_hard_resets_tracker() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+
+    let tracker = Arc::new(AtomicU32::new(0));
+    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Normal)
+        .with_tool_activity_tracker(Arc::clone(&tracker));
+
+    // Two items start but neither completes (protocol anomaly)
+    parser.parse_event(r#"{"type":"item.started","item":{"type":"file_write","path":"/x.rs"}}"#);
+    parser.parse_event(r#"{"type":"item.started","item":{"type":"file_write","path":"/y.rs"}}"#);
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        2,
+        "counter should be 2 with two in-flight items"
+    );
+
+    // TurnCompleted hard-resets the counter
+    parser
+        .parse_event(r#"{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}"#);
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        0,
+        "TurnCompleted must hard-reset counter to 0"
+    );
+}
+
+/// Saturating-sub: clearing an already-zero counter must not underflow.
+#[test]
+fn test_codex_clear_on_zero_counter_does_not_underflow() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+
+    let tracker = Arc::new(AtomicU32::new(0));
+    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Normal)
+        .with_tool_activity_tracker(Arc::clone(&tracker));
+
+    // ItemCompleted on an already-zero counter must not wrap to u32::MAX
+    parser.parse_event(
+        r#"{"type":"item.completed","item":{"type":"file_change","id":"x","path":"/x.rs"}}"#,
+    );
+    assert_eq!(
+        tracker.load(Ordering::Acquire),
+        0,
+        "saturating_sub must keep counter at 0, not wrap to u32::MAX"
+    );
+}

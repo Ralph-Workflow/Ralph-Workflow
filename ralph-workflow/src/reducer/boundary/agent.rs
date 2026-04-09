@@ -41,7 +41,7 @@ fn completion_path_for_drain(drain: AgentDrain) -> Option<&'static Path> {
         AgentDrain::Review => Some(Path::new(xml_paths::ISSUES_XML)),
         AgentDrain::Fix => Some(Path::new(xml_paths::FIX_RESULT_XML)),
         AgentDrain::Commit => Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
-        AgentDrain::Analysis => None, // Analysis does not produce a structured output file
+        AgentDrain::Analysis => Some(Path::new(xml_paths::DEVELOPMENT_RESULT_XML)),
     }
 }
 

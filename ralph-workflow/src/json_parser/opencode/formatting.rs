@@ -112,11 +112,11 @@ impl OpenCodeParser {
             .map_or_else(String::new, Self::format_tokens_summary);
         let newline_prefix = self.compute_step_finish_newline_prefix(context);
         let (icon, color) = step_finish_icon_and_color(reason, context.colors);
-        let cost_suffix = format_cost_suffix(cost, &tokens_str);
+        let cost_suffix = format_cost_suffix(cost);
         let tokens_suffix = format_tokens_suffix(&tokens_str);
 
         format!(
-            "{}{}{}[{}]{} {}{} Step finished{} {}({}{}{}){}",
+            "{}{}{}[{}]{} {}{} Step finished{}  {}{}{}{}{}",
             context.text_flush_non_tty,
             newline_prefix,
             context.colors.dim(),
@@ -220,22 +220,22 @@ impl OpenCodeParser {
         prefix: &str,
         colors: crate::logger::Colors,
     ) -> String {
-        let snapshot = event
+        let snapshot_display = event
             .part
             .as_ref()
-            .and_then(|p| p.snapshot.as_ref())
-            .map(|s| format!("({s:.8}...)"))
+            .and_then(|p| p.snapshot.as_deref())
+            .map(crate::json_parser::types::format_short_hash)
+            .filter(|s| !s.is_empty())
+            .map(|s| format!(" {}{}{}", colors.dim(), s, colors.reset()))
             .unwrap_or_default();
         format!(
-            "{}[{}]{} {}Step started{} {}{}{}\n",
+            "{}[{}]{} {}Step started{}{}\n",
             colors.dim(),
             prefix,
             colors.reset(),
             colors.cyan(),
             colors.reset(),
-            colors.dim(),
-            snapshot,
-            colors.reset()
+            snapshot_display
         )
     }
 
@@ -401,6 +401,7 @@ impl OpenCodeParser {
         status: &str,
         prefix: &str,
         c: crate::logger::Colors,
+        duration: Option<&str>,
     ) -> String {
         // Status-specific icon and color based on ToolState variants from message-v2.ts
         // Statuses: "pending", "running", "completed", "error"
@@ -411,8 +412,12 @@ impl OpenCodeParser {
             _ => ('…', c.yellow()), // "pending" or unknown
         };
 
+        let duration_suffix = duration
+            .map(|d| format!("  {}({d}){}", c.dim(), c.reset()))
+            .unwrap_or_default();
+
         format!(
-            "{}[{}]{} {}Tool{}: {}{}{} {}{}{}\n",
+            "{}[{}]{} {}Tool{}: {}{}{} {}{}{}{}\n",
             c.dim(),
             prefix,
             c.reset(),
@@ -423,7 +428,8 @@ impl OpenCodeParser {
             c.reset(),
             color,
             icon,
-            c.reset()
+            c.reset(),
+            duration_suffix
         )
     }
 
@@ -433,21 +439,21 @@ impl OpenCodeParser {
         prefix: &str,
         c: crate::logger::Colors,
     ) -> String {
-        if let Some(t) = title {
-            let limit = self.verbosity.truncate_limit("text");
-            let preview = truncate_text(t, limit);
-            format!(
-                "{}[{}]{} {}  └─ {}{}\n",
-                c.dim(),
-                prefix,
-                c.reset(),
-                c.dim(),
-                preview,
-                c.reset()
-            )
-        } else {
-            String::new()
+        let Some(t) = title else { return String::new() };
+        if t.trim().is_empty() {
+            return String::new();
         }
+        let limit = self.verbosity.truncate_limit("text");
+        let preview = truncate_text(t, limit);
+        format!(
+            "{}[{}]{} {}  └─ {}{}\n",
+            c.dim(),
+            prefix,
+            c.reset(),
+            c.dim(),
+            preview,
+            c.reset()
+        )
     }
 
     fn format_tool_input_to_string(
@@ -545,10 +551,14 @@ impl OpenCodeParser {
                 .and_then(|s| s.status.as_deref())
                 .unwrap_or("pending");
             let title = part.state.as_ref().and_then(|s| s.title.as_deref());
+            let duration = part
+                .state
+                .as_ref()
+                .and_then(|s| compute_tool_duration(s, event.timestamp));
 
             format!(
                 "{}{}{}{}{}",
-                Self::format_tool_event_header(tool_name, status, prefix, c),
+                Self::format_tool_event_header(tool_name, status, prefix, c, duration.as_deref()),
                 self.format_tool_title_to_string(title, prefix, c),
                 self.format_tool_input_to_string(part, tool_name, prefix, c),
                 self.format_tool_error_to_string(part, status, prefix, c),
@@ -576,40 +586,12 @@ impl OpenCodeParser {
     }
 }
 
-fn format_token_counts(input: u64, output: u64, reasoning: u64, cache_read: u64) -> String {
-    if reasoning > 0 {
-        format!("in:{input} out:{output} reason:{reasoning} cache:{cache_read}")
-    } else if cache_read > 0 {
-        format!("in:{input} out:{output} cache:{cache_read}")
-    } else {
-        format!("in:{input} out:{output}")
-    }
-}
-
 fn step_finish_icon_and_color(reason: &str, colors: crate::logger::Colors) -> (char, &'static str) {
     let is_success = reason == "tool-calls" || reason == "end_turn";
     if is_success {
         (CHECK, colors.green())
     } else {
         (CROSS, colors.yellow())
-    }
-}
-
-fn format_cost_suffix(cost: f64, tokens_str: &str) -> String {
-    if cost > 0.0 && !tokens_str.is_empty() {
-        format!(", ${cost:.4}")
-    } else if cost > 0.0 {
-        format!("${cost:.4}")
-    } else {
-        String::new()
-    }
-}
-
-fn format_tokens_suffix(tokens_str: &str) -> String {
-    if tokens_str.is_empty() {
-        String::new()
-    } else {
-        format!(", {tokens_str}")
     }
 }
 
@@ -620,6 +602,7 @@ fn prepend_flush(flush: String, step_start_line: String) -> String {
         format!("{flush}\n{step_start_line}")
     }
 }
+
 
 #[cfg(debug_assertions)]
 fn debug_log_opencode_discontinuity(last_rendered: &str, sanitized: &str, suffix: &str) {
@@ -679,113 +662,27 @@ fn extract_error_from_event_error(err: &OpenCodeError) -> String {
         .unwrap_or_else(|| "Unknown error".to_string())
 }
 
-fn format_dim_continuation_line(preview: &str, prefix: &str, c: crate::logger::Colors) -> String {
-    format!(
-        "{}[{}]{} {}  └─ {}{}\n",
-        c.dim(),
-        prefix,
-        c.reset(),
-        c.dim(),
-        preview,
-        c.reset()
-    )
-}
+use crate::json_parser::types::format_tool_output_lines;
 
-fn format_tool_output_lines(
-    output: &str,
-    limit: usize,
-    prefix: &str,
-    c: crate::logger::Colors,
-) -> String {
-    let lines: Vec<&str> = output.lines().collect();
-    if lines.len() <= 1 {
-        return format_single_line_output(output, limit, prefix, c);
+fn duration_ms_for_status(
+    status: &str,
+    start: u64,
+    time: &OpenCodeTime,
+    event_ts: Option<u64>,
+) -> Option<u64> {
+    match status {
+        "completed" | "error" => time.end.map(|end| end.saturating_sub(start)),
+        "running" => event_ts.map(|ts| ts.saturating_sub(start)),
+        _ => None,
     }
-    format_multiline_output(&lines, limit, prefix, c)
 }
 
-fn format_single_line_output(
-    output: &str,
-    limit: usize,
-    prefix: &str,
-    c: crate::logger::Colors,
-) -> String {
-    let preview = crate::common::truncate_text(output, limit);
-    if preview.is_empty() {
-        return String::new();
-    }
-    format!(
-        "{}[{}]{} {}  └─ Output:{} {}\n",
-        c.dim(),
-        prefix,
-        c.reset(),
-        c.cyan(),
-        c.reset(),
-        preview
-    )
-}
-
-fn format_multiline_output(
-    lines: &[&str],
-    limit: usize,
-    prefix: &str,
-    c: crate::logger::Colors,
-) -> String {
-    use crate::config::truncation::MAX_OUTPUT_LINES;
-
-    let indent = format!("{}[{}]{}     ", c.dim(), prefix, c.reset());
-    let remaining = lines.len();
-    let prefix_sums: Vec<usize> = (0..lines.len())
-        .map(|i| lines[..i].iter().map(|l| l.len() + 1).sum())
-        .collect();
-
-    [
-        format!(
-            "{}[{}]{} {}  └─ Output:{}\n",
-            c.dim(),
-            prefix,
-            c.reset(),
-            c.cyan(),
-            c.reset()
-        ),
-        lines
-            .iter()
-            .enumerate()
-            .map(|(idx, line)| {
-                format_output_line(
-                    idx,
-                    line,
-                    &indent,
-                    &OutputLineCtx { prefix_sums: &prefix_sums, limit, remaining, max_lines: MAX_OUTPUT_LINES },
-                    c,
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(""),
-    ]
-    .join("")
-}
-
-struct OutputLineCtx<'a> {
-    prefix_sums: &'a [usize],
-    limit: usize,
-    remaining: usize,
-    max_lines: usize,
-}
-
-fn format_output_line(
-    idx: usize,
-    line: &str,
-    indent: &str,
-    ctx: &OutputLineCtx<'_>,
-    c: crate::logger::Colors,
-) -> String {
-    if idx >= ctx.max_lines || ctx.prefix_sums[idx] + line.len() > ctx.limit {
-        let more = ctx.remaining - idx;
-        format!("{}{}...({} more lines)\n", indent, c.dim(), more)
-    } else {
-        format!("{}{}{}{}\n", indent, c.dim(), line, c.reset())
-    }
+fn compute_tool_duration(state: &OpenCodeToolState, event_timestamp: Option<u64>) -> Option<String> {
+    let time = state.time.as_ref()?;
+    let start = time.start?;
+    let status = state.status.as_deref().unwrap_or("pending");
+    let ms = duration_ms_for_status(status, start, time, event_timestamp)?;
+    (ms > 0).then(|| crate::json_parser::types::format_duration_for_display(ms))
 }
 
 fn format_known_tool_input(

@@ -28,7 +28,7 @@ pub mod idle_timeout;
 pub mod logfile;
 mod prompt;
 pub mod timer;
-mod types;
+pub(crate) mod types;
 
 pub use prompt::{
     extract_error_identifier_from_logfile, extract_error_message_from_logfile, run_with_prompt,
@@ -36,6 +36,7 @@ pub use prompt::{
 };
 pub use timer::Timer;
 pub use types::AgentPhaseGuard;
+pub(crate) use types::CommandResult;
 
 // ===== Tests use the boundary Timer =====
 

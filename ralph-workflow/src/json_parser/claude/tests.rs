@@ -2,6 +2,137 @@
 
 // These tests exercise monitoring/test-only APIs; they require the `test-utils` feature.
 #[cfg(all(test, feature = "test-utils"))]
+mod tool_activity_tracker_boundary_tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    };
+
+    /// Bug 3 regression: MessageStop must NOT clear tool_active.
+    /// Claude Code executes the Write tool AFTER MessageStop; clearing at MessageStop
+    /// causes the idle-timeout monitor to kill the agent during tool execution.
+    /// Fix: clear tool_active at MessageStart (when tool result has been delivered).
+    #[test]
+    fn tool_active_not_cleared_at_message_stop_cleared_at_next_message_start() {
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        // 1. ContentBlockStart with ToolUse — must increment tracker.
+        // Events are wrapped in ClaudeEvent::StreamEvent; the outer type is "stream_event".
+        let cbs = concat!(
+            r#"{"type":"stream_event","event":{"type":"content_block_start","index":0,"#,
+            r#""content_block":{"type":"tool_use","id":"toolu_01","name":"Write","input":{}}}}"#
+        );
+        let _ = parser.parse_event(cbs);
+        assert!(
+            tracker.load(Ordering::Acquire) > 0,
+            "tool_active counter must be non-zero after ContentBlockStart+ToolUse"
+        );
+
+        // 2. MessageStop: tool submitted but NOT yet executed — tracker must stay non-zero
+        let message_stop = r#"{"type":"stream_event","event":{"type":"message_stop"}}"#;
+        let _ = parser.parse_event(message_stop);
+        assert!(
+            tracker.load(Ordering::Acquire) > 0,
+            "tool_active must remain non-zero after MessageStop; Write tool executes after this event"
+        );
+
+        // 3. MessageStart: tool result delivered — tracker must now be decremented to 0
+        let message_start = concat!(
+            r#"{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_02","type":"message","#,
+            r#""role":"assistant","content":[],"model":"claude-opus-4-6","#,
+            r#""stop_reason":null,"stop_sequence":null,"#,
+            r#""usage":{"input_tokens":10,"output_tokens":0}}}}"#
+        );
+        let _ = parser.parse_event(message_start);
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "tool_active counter must be 0 after MessageStart — tool result was delivered"
+        );
+    }
+
+    /// reset_tool_active() must hard-reset the counter to 0 regardless of its current value.
+    #[test]
+    fn reset_tool_active_sets_counter_to_zero() {
+        let tracker = Arc::new(AtomicU32::new(3));
+        let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        parser.reset_tool_active();
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "reset_tool_active must hard-reset the counter to 0"
+        );
+    }
+
+    /// reset_tool_active() must hard-reset to 0 even when called on a parser that has
+    /// processed a ContentBlockStart+ToolUse (counter > 0) without a matching MessageStart.
+    ///
+    /// This verifies the method is available for callers (e.g. cleanup code) to force-clear
+    /// a stuck counter. In production, stdout is open while tools execute; the counter is
+    /// normally cleared via MessageStart. The bounded cap in the monitor handles the stuck
+    /// case when the counter cannot be cleared normally.
+    #[test]
+    fn reset_tool_active_after_tool_start_without_message_start() {
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        // ContentBlockStart with ToolUse — increments counter
+        let cbs = concat!(
+            r#"{"type":"stream_event","event":{"type":"content_block_start","index":0,"#,
+            r#""content_block":{"type":"tool_use","id":"toolu_01","name":"Write","input":{}}}}"#
+        );
+        let _ = parser.parse_event(cbs);
+        assert!(
+            tracker.load(Ordering::Acquire) > 0,
+            "counter must be non-zero after ContentBlockStart+ToolUse"
+        );
+
+        // Hard-reset via reset_tool_active: simulates cleanup after abnormal stream end
+        parser.reset_tool_active();
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "reset_tool_active must hard-reset the counter to 0"
+        );
+    }
+
+    /// When no tool is in flight, MessageStop and MessageStart must leave tracker at 0.
+    #[test]
+    fn tracker_stays_false_when_no_tool_in_flight_across_message_boundary() {
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        let message_stop = r#"{"type":"stream_event","event":{"type":"message_stop"}}"#;
+        let _ = parser.parse_event(message_stop);
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "tracker must stay at 0 at MessageStop when no tool was in flight"
+        );
+
+        let message_start = concat!(
+            r#"{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_02","type":"message","#,
+            r#""role":"assistant","content":[],"model":"claude-opus-4-6","#,
+            r#""stop_reason":null,"stop_sequence":null,"#,
+            r#""usage":{"input_tokens":10,"output_tokens":0}}}}"#
+        );
+        let _ = parser.parse_event(message_start);
+        assert_eq!(
+            tracker.load(Ordering::Acquire),
+            0,
+            "tracker must stay at 0 at MessageStart when no tool was in flight"
+        );
+    }
+}
+
+#[cfg(all(test, feature = "test-utils"))]
 mod tests {
     use super::*;
     use crate::json_parser::printer::{SharedPrinter, TestPrinter};

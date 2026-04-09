@@ -145,7 +145,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-a"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -179,7 +179,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-a"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -245,7 +245,7 @@ fn test_internal_error_retries_same_agent_before_fallback_without_xsd_retry() {
 
 #[test]
 fn test_timed_out_partial_output_preserves_session_id_for_context_retry() {
-    // AC-1: PartialOutput timeout should preserve session ID for context reuse
+    // AC-1: PartialResult timeout should preserve session ID for context reuse
     let base_state = create_test_state();
     let state = PipelineState {
         agent_chain: base_state
@@ -265,13 +265,13 @@ fn test_timed_out_partial_output_preserves_session_id_for_context_retry() {
         Some("session-123".to_string())
     );
 
-    // Apply PartialOutput timeout - should preserve session for context reuse
+    // Apply PartialResult timeout - should preserve session for context reuse
     let new_state = reduce(
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-a"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -282,23 +282,23 @@ fn test_timed_out_partial_output_preserves_session_id_for_context_retry() {
         "Timeout retry should not set xsd_retry_pending (XSD retry is only for invalid XML)"
     );
 
-    // Session ID should be PRESERVED for TimeoutWithContext (PartialOutput)
+    // Session ID should be PRESERVED for TimeoutWithContext (PartialResult)
     assert_eq!(
         new_state.agent_chain.last_session_id,
         Some("session-123".to_string()),
-        "PartialOutput timeout should preserve session ID for context reuse"
+        "PartialResult timeout should preserve session ID for context reuse"
     );
 
     // Should set session reuse pending flag
     assert!(
         new_state.continuation.xsd_retry_session_reuse_pending,
-        "PartialOutput timeout should set xsd_retry_session_reuse_pending"
+        "PartialResult timeout should set xsd_retry_session_reuse_pending"
     );
 }
 
 #[test]
 fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
-    // AC-2: NoOutput timeout should clear session ID (immediate agent switch)
+    // AC-2: NoResult timeout should clear session ID (immediate agent switch)
     let base_state = create_test_state();
     let state = PipelineState {
         agent_chain: base_state
@@ -318,13 +318,13 @@ fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
         Some("session-123".to_string())
     );
 
-    // Apply NoOutput timeout - should clear session and switch agents immediately
+    // Apply NoResult timeout - should clear session and switch agents immediately
     let new_state = reduce(
         state,
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-a"),
-            TimeoutOutputKind::NoOutput,
+            TimeoutOutputKind::NoResult,
             None,
             None,
         ),
@@ -333,13 +333,13 @@ fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
     // Session ID should be CLEARED for NoOutput (immediate agent switch)
     assert_eq!(
         new_state.agent_chain.last_session_id, None,
-        "NoOutput timeout should clear session ID (immediate agent switch)"
+        "NoResult timeout should clear session ID (immediate agent switch)"
     );
 
     // Should NOT set session reuse pending flag
     assert!(
         !new_state.continuation.xsd_retry_session_reuse_pending,
-        "NoOutput timeout should not set xsd_retry_session_reuse_pending"
+        "NoResult timeout should not set xsd_retry_session_reuse_pending"
     );
 }
 
@@ -381,7 +381,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-b"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
@@ -409,7 +409,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
         PipelineEvent::agent_timed_out(
             AgentRole::Developer,
             AgentName::from("agent-b"),
-            TimeoutOutputKind::PartialOutput,
+            TimeoutOutputKind::PartialResult,
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),

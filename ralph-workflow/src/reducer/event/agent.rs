@@ -140,19 +140,19 @@ pub enum AgentEvent {
     /// Agent hit an idle timeout.
     ///
     /// Emitted as a fact; the reducer decides retry vs fallback based on `output_kind`.
-    /// `NoOutput` triggers immediate agent switch; `PartialOutput` uses the same-agent
+    /// `NoResult` triggers immediate agent switch; `PartialResult` uses the same-agent
     /// retry budget (same semantics as before this feature).
     TimedOut {
         /// The role being fulfilled.
         role: AgentRole,
         /// The agent that timed out.
         agent: AgentName,
-        /// Whether the agent produced any output before timing out.
+        /// Whether the agent produced a result file before timing out.
         #[serde(default = "default_timeout_output_kind")]
         output_kind: TimeoutOutputKind,
-        /// Path to the agent's logfile (for context extraction on `PartialOutput` retry).
+        /// Path to the agent's logfile (for context extraction on `PartialResult` retry).
         ///
-        /// When `output_kind` is `PartialOutput` and the agent has no session ID,
+        /// When `output_kind` is `PartialResult` and the agent has no session ID,
         /// this path is used to extract context for the retry prompt.
         #[serde(default)]
         logfile_path: Option<String>,

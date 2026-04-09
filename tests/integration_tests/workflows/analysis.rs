@@ -828,3 +828,292 @@ fn test_continuation_does_not_increment_iteration() {
         );
     });
 }
+
+/// Regression test for Bug 2 / Bug 1: When the analysis agent times out with NoResult
+/// (no output produced), the orchestrator must NOT proceed to XML extraction. Instead it
+/// should switch to the next agent and re-invoke the analysis agent with the new agent.
+///
+/// This is the corrected classification path — NoResult timeout means something went wrong
+/// with the agent invocation (auth failure, crash, etc.), not a valid completed result.
+#[test]
+fn test_analysis_no_result_timeout_switches_agent_not_extraction() {
+    with_default_timeout(|| {
+        use ralph_workflow::agents::AgentRole;
+        use ralph_workflow::reducer::event::TimeoutOutputKind;
+
+        // Given: Two analysis agents in the chain so we can observe the switch.
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state = reduce(state, PipelineEvent::planning_phase_completed());
+
+        // Developer chain
+        state = reduce(
+            state,
+            PipelineEvent::agent_chain_initialized(
+                AgentRole::Developer.into(),
+                vec!["dev-agent".into()],
+                vec![],
+                3,
+                1000,
+                2.0,
+                60_000,
+            ),
+        );
+        state = reduce(state, PipelineEvent::development_iteration_started(0));
+        state = reduce(
+            state,
+            PipelineEvent::development_continuation_context_cleaned(),
+        );
+        state = reduce(state, PipelineEvent::development_context_prepared(0));
+        state = reduce(state, PipelineEvent::development_prompt_prepared(0));
+        state = reduce(state, PipelineEvent::development_xml_cleaned(0));
+        state = reduce(state, PipelineEvent::development_agent_invoked(0));
+
+        // Analysis chain with two agents so we can detect the switch.
+        state = reduce(
+            state,
+            PipelineEvent::agent_chain_initialized(
+                AgentRole::Analysis.into(),
+                vec!["analysis-agent-1".into(), "analysis-agent-2".into()],
+                vec![],
+                3,
+                1000,
+                2.0,
+                60_000,
+            ),
+        );
+
+        let initial_agent = state
+            .agent_chain
+            .current_agent()
+            .map(String::from)
+            .unwrap_or_default();
+
+        // When: Analysis agent times out with NoResult (produced nothing — auth failure etc.)
+        state = reduce(
+            state,
+            PipelineEvent::agent_timed_out(
+                AgentRole::Analysis,
+                "analysis-agent-1".into(),
+                TimeoutOutputKind::NoResult,
+                None,
+                None,
+            ),
+        );
+
+        // Then: Agent chain must have switched — NoResult timeout causes immediate agent switch.
+        let current_agent = state
+            .agent_chain
+            .current_agent()
+            .map(String::from)
+            .unwrap_or_default();
+        assert_ne!(
+            current_agent, initial_agent,
+            "NoResult timeout on analysis agent must switch to next agent"
+        );
+
+        // And: Orchestrator must NOT produce ExtractDevelopmentXml — no valid result exists.
+        let effect = determine_next_effect(&state);
+        assert!(
+            !matches!(effect, Effect::ExtractDevelopmentXml { .. }),
+            "NoResult analysis timeout must not produce ExtractDevelopmentXml; got {effect:?}"
+        );
+
+        // And: The timeout metric must be incremented.
+        assert_eq!(
+            state.metrics.timeout_no_output_agent_switches_total, 1,
+            "NoResult analysis timeout must increment timeout_no_output_agent_switches_total"
+        );
+        // And: Retry budget must NOT be consumed.
+        assert_eq!(
+            state.continuation.same_agent_retry_count, 0,
+            "NoResult analysis timeout must not consume same-agent retry budget"
+        );
+    });
+}
+
+/// Regression test: When the analysis agent times out with PartialResult (some output
+/// produced but result file incomplete or malformed), the orchestrator must retry the
+/// same analysis agent rather than switching immediately or proceeding to extraction.
+///
+/// This is distinct from NoResult (which switches immediately) and from a successful
+/// invocation (which proceeds to extraction).
+#[test]
+fn test_analysis_partial_result_timeout_retries_same_agent() {
+    with_default_timeout(|| {
+        use ralph_workflow::agents::AgentRole;
+        use ralph_workflow::reducer::event::TimeoutOutputKind;
+
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state = reduce(state, PipelineEvent::planning_phase_completed());
+
+        state = reduce(
+            state,
+            PipelineEvent::agent_chain_initialized(
+                AgentRole::Developer.into(),
+                vec!["dev-agent".into()],
+                vec![],
+                3,
+                1000,
+                2.0,
+                60_000,
+            ),
+        );
+        state = reduce(state, PipelineEvent::development_iteration_started(0));
+        state = reduce(
+            state,
+            PipelineEvent::development_continuation_context_cleaned(),
+        );
+        state = reduce(state, PipelineEvent::development_context_prepared(0));
+        state = reduce(state, PipelineEvent::development_prompt_prepared(0));
+        state = reduce(state, PipelineEvent::development_xml_cleaned(0));
+        state = reduce(state, PipelineEvent::development_agent_invoked(0));
+
+        state = reduce(
+            state,
+            PipelineEvent::agent_chain_initialized(
+                AgentRole::Analysis.into(),
+                vec!["analysis-agent-1".into(), "analysis-agent-2".into()],
+                vec![],
+                3,
+                1000,
+                2.0,
+                60_000,
+            ),
+        );
+
+        let agent_before = state
+            .agent_chain
+            .current_agent()
+            .map(String::from)
+            .unwrap_or_default();
+
+        // When: Analysis agent times out with PartialResult (truncated or malformed output).
+        state = reduce(
+            state,
+            PipelineEvent::agent_timed_out(
+                AgentRole::Analysis,
+                "analysis-agent-1".into(),
+                TimeoutOutputKind::PartialResult,
+                Some(".agent/logs/analysis_0.log".to_string()),
+                None,
+            ),
+        );
+
+        // Then: Same agent must be retried (not switched).
+        let agent_after = state
+            .agent_chain
+            .current_agent()
+            .map(String::from)
+            .unwrap_or_default();
+        assert_eq!(
+            agent_after, agent_before,
+            "PartialResult timeout on analysis agent must retry same agent, not switch"
+        );
+
+        // And: Retry budget must be consumed (same_agent_retry_count incremented).
+        assert_eq!(
+            state.continuation.same_agent_retry_count, 1,
+            "PartialResult analysis timeout must consume one same-agent retry"
+        );
+        assert!(
+            state.continuation.same_agent_retry_pending,
+            "PartialResult analysis timeout must set same_agent_retry_pending"
+        );
+
+        // And: Orchestrator must NOT produce ExtractDevelopmentXml yet.
+        let effect = determine_next_effect(&state);
+        assert!(
+            !matches!(effect, Effect::ExtractDevelopmentXml { .. }),
+            "PartialResult analysis timeout must not produce ExtractDevelopmentXml; got {effect:?}"
+        );
+
+        // And: timeout_no_output_agent_switches_total must NOT be incremented for PartialResult.
+        assert_eq!(
+            state.metrics.timeout_no_output_agent_switches_total, 0,
+            "PartialResult timeout must not increment timeout_no_output_agent_switches_total"
+        );
+    });
+}
+
+/// Regression test: A completed analysis result (AnalysisAgentInvoked emitted after
+/// corrected classification of exit code 91 + valid XML) must flow to XML extraction —
+/// NOT to any timeout retry path.
+///
+/// This is the core of Bug 1: the analysis agent exits with code 91 (proprietary) but
+/// produced valid development_result.xml. After the fix, this is classified as
+/// InvocationSucceeded, emitting AnalysisAgentInvoked. The orchestrator must then
+/// produce ExtractDevelopmentXml, not any retry or agent-switch effect.
+#[test]
+fn test_completed_analysis_result_proceeds_to_extraction_not_timeout_retry() {
+    with_default_timeout(|| {
+        use ralph_workflow::agents::AgentRole;
+
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state = reduce(state, PipelineEvent::planning_phase_completed());
+
+        state = reduce(
+            state,
+            PipelineEvent::agent_chain_initialized(
+                AgentRole::Developer.into(),
+                vec!["dev-agent".into()],
+                vec![],
+                3,
+                1000,
+                2.0,
+                60_000,
+            ),
+        );
+        state = reduce(state, PipelineEvent::development_iteration_started(0));
+        state = reduce(
+            state,
+            PipelineEvent::development_continuation_context_cleaned(),
+        );
+        state = reduce(state, PipelineEvent::development_context_prepared(0));
+        state = reduce(state, PipelineEvent::development_prompt_prepared(0));
+        state = reduce(state, PipelineEvent::development_xml_cleaned(0));
+        state = reduce(state, PipelineEvent::development_agent_invoked(0));
+
+        state = reduce(
+            state,
+            PipelineEvent::agent_chain_initialized(
+                AgentRole::Analysis.into(),
+                vec!["analysis-agent".into()],
+                vec![],
+                3,
+                1000,
+                2.0,
+                60_000,
+            ),
+        );
+
+        // When: The analysis completes successfully (InvocationSucceeded because valid XML
+        // exists — this is what the corrected executor emits when exit code 91 + valid result).
+        // The boundary emits AnalysisAgentInvoked after a successful invocation.
+        state = reduce(
+            state,
+            PipelineEvent::Development(DevelopmentEvent::AnalysisAgentInvoked { iteration: 0 }),
+        );
+
+        // Then: Orchestrator must produce ExtractDevelopmentXml (not InvokeAnalysisAgent or
+        // any retry-related effect). The completed result takes priority.
+        let effect = determine_next_effect(&state);
+        assert!(
+            matches!(effect, Effect::ExtractDevelopmentXml { iteration: 0 }),
+            "completed analysis with valid result must produce ExtractDevelopmentXml; got {effect:?}"
+        );
+
+        // And: Retry metrics must not have been touched.
+        assert_eq!(
+            state.metrics.timeout_no_output_agent_switches_total, 0,
+            "completed analysis must not increment NoResult timeout switches"
+        );
+        assert_eq!(
+            state.metrics.same_agent_retry_attempts_total, 0,
+            "completed analysis must not increment same-agent retry attempts"
+        );
+        assert_eq!(
+            state.continuation.same_agent_retry_count, 0,
+            "completed analysis must not consume same-agent retry budget"
+        );
+    });
+}

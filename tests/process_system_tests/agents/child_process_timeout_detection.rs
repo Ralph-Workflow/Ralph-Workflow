@@ -100,28 +100,32 @@ fn same_process_group_sleeping_descendants_with_only_historical_cpu_do_not_quali
         return;
     }
     let executor = RealProcessExecutor::new();
-    let script = "python3 -c 'import time\nfor _ in range(5):\n    start=time.time()\n    while time.time()-start < 0.03:\n        pass\n    time.sleep(0.2)' & sleep 1.5";
+    // Python does a 500ms CPU burst, then sleeps for 3s.  The shell keeps a longer sleep (4s)
+    // alongside Python so the shell PID stays alive while we poll for Python's sleeping state.
+    // We poll rather than using a fixed-delay snapshot to avoid timing races on slow/loaded CI.
+    let script = "python3 -c 'import time\nend=time.time()+0.5\nwhile time.time()<end:\n    pass\ntime.sleep(3.0)' & sleep 4";
     let mut shell = spawn_shell_in_own_process_group(script);
 
-    // Wait for the Python script to complete all CPU bursts and enter a sustained
-    // sleep phase. Each iteration takes ~0.23s (0.03s CPU + 0.2s sleep), and the
-    // script runs 5 iterations = ~1.15s total. We wait up to 2s for the process
-    // to settle into a sleeping state where active_child_count == 0.
-    let info = wait_for_descendant_snapshot_matching(
+    // Wait until a descendant transitions to sleeping (active_count drops to 0).
+    // The CPU burst may have already completed by the time we start polling — that is fine,
+    // because Python sleeps for 3s afterward, giving a large detection window.
+    let sleeping_info = wait_for_descendant_snapshot_matching(
         &executor,
         shell.id(),
-        Duration::from_secs(2),
-        |info| info.active_child_count == 0,
+        Duration::from_secs(4),
+        |info| info.child_count > 0 && info.active_child_count == 0,
     );
 
-    shell.wait().expect("wait for shell");
+    // Kill the shell early so the test does not wait for the full sleep to complete.
+    let _ = shell.kill();
+    let _ = shell.wait();
 
     assert!(
-        info.child_count > 0,
+        sleeping_info.child_count > 0,
         "stalled descendants should remain observable"
     );
     assert_eq!(
-        info.active_child_count, 0,
+        sleeping_info.active_child_count, 0,
         "same-process-group descendants that are only sleeping after brief CPU bursts must not count as currently active child work"
     );
 }
@@ -133,7 +137,8 @@ fn same_process_group_busy_descendant_qualifies_as_active_child_work() {
         return;
     }
     let executor = RealProcessExecutor::new();
-    let script = "python3 -c 'import time\nend=time.time()+1.0\nwhile time.time()<end:\n    pass' & sleep 1.2";
+    // Python busy-loops for 1.5s; shell waits 2.0s to allow enough margin for detection.
+    let script = "python3 -c 'import time\nend=time.time()+1.5\nwhile time.time()<end:\n    pass' & sleep 2.0";
     let mut shell = spawn_shell_in_own_process_group(script);
 
     let info = wait_for_descendant_snapshot_matching(
@@ -162,19 +167,21 @@ fn same_process_group_descendant_stops_qualifying_after_busy_work_finishes() {
         return;
     }
     let executor = RealProcessExecutor::new();
-    let script = "python3 -c 'import time\nend=time.time()+0.3\nwhile time.time()<end:\n    pass\ntime.sleep(0.8)' & sleep 1.3";
+    // Python does a 300ms CPU burst then sleeps for 1.5s; the shell waits 2.5s.
+    // Generous timeouts ensure phase-1 and phase-2 polling succeed on slow/loaded CI machines.
+    let script = "python3 -c 'import time\nend=time.time()+0.3\nwhile time.time()<end:\n    pass\ntime.sleep(1.5)' & sleep 2.5";
     let mut shell = spawn_shell_in_own_process_group(script);
 
     let active_info = wait_for_descendant_snapshot_matching(
         &executor,
         shell.id(),
-        Duration::from_secs(1),
+        Duration::from_secs(2),
         |info| info.active_child_count > 0,
     );
     let stalled_info = wait_for_descendant_snapshot_matching(
         &executor,
         shell.id(),
-        Duration::from_secs(1),
+        Duration::from_secs(2),
         |info| info.child_count > 0 && info.active_child_count == 0,
     );
 

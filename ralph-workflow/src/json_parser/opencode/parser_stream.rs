@@ -18,9 +18,40 @@ impl OpenCodeParser {
         if output.is_empty() { None } else { Some(output) }
     }
 
+    /// Update the shared tool-activity counter based on the OpenCode event before dispatching.
+    ///
+    /// `step_finish` → hard-reset counter to 0 (step is definitively over).
+    /// `tool_use` with status "pending" → increment (new call starting).
+    /// `tool_use` with status "running" → no-op (already counted; avoid double-increment).
+    /// `tool_use` with status "completed"/"error" → saturating-decrement (call done).
+    /// All other events → no change.
+    fn apply_tool_activity_for_event(&self, event: &OpenCodeEvent) {
+        match event.event_type.as_str() {
+            "step_finish" => self.reset_tool_active(),
+            "tool_use" => self.apply_tool_use_activity(event),
+            _ => {}
+        }
+    }
+
+    fn apply_tool_use_activity(&self, event: &OpenCodeEvent) {
+        let status = event
+            .part
+            .as_ref()
+            .and_then(|p| p.state.as_ref())
+            .and_then(|s| s.status.as_deref())
+            .unwrap_or("pending");
+        match status {
+            "pending" => self.set_tool_active(),   // new call starting — increment
+            "running" => {}                         // status update, already counted — no-op
+            "completed" | "error" => self.clear_tool_active(), // call done — decrement
+            _ => {}
+        }
+    }
+
     fn dispatch_event(&self, event: &OpenCodeEvent, line: &str) -> String {
         let c = &self.colors;
         let prefix = &self.display_name;
+        self.apply_tool_activity_for_event(event);
         match event.event_type.as_str() {
             "step_start" => self.format_step_start_event(event),
             "step_finish" => self.format_step_finish_event(event),
@@ -354,6 +385,8 @@ impl OpenCodeParser {
                 &mut log_buffer,
             )?;
         }
+
+        self.reset_tool_active(); // hard-reset at stream end — no more tool events can arrive
 
         self.write_log_buffer_if_enabled(workspace, &log_buffer)?;
         self.persist_extracted_xml_artifacts(workspace)?;

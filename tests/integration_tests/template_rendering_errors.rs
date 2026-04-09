@@ -12,6 +12,9 @@ use ralph_workflow::agents::session::SessionDrain;
 use ralph_workflow::agents::AgentRole;
 use ralph_workflow::prompts::analysis::{generate_analysis_prompt, generate_fix_analysis_prompt};
 use ralph_workflow::prompts::template_variables::SessionCapabilities;
+use ralph_workflow::prompts::{
+    prompt_planning_xml_with_references, PromptContentReference, TemplateContext,
+};
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase, PlanningEvent};
@@ -38,6 +41,37 @@ fn test_planning_template_includes_guidance_and_checklist() {
         assert!(
             template.contains("PHASE"),
             "Planning template should document the multi-phase approach."
+        );
+    });
+}
+
+/// Test that rendered planning prompts contain no Jinja2 comment markers.
+///
+/// Verifies that `{# ... #}` comment blocks are stripped before the prompt
+/// is sent to the model, so the model never sees template authoring noise.
+#[test]
+fn test_rendered_planning_prompt_contains_no_comments() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test();
+        let template_context = TemplateContext::default();
+        let prompt_ref = PromptContentReference::inline("Test prompt".to_string());
+
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
+        let rendered = prompt_planning_xml_with_references(
+            &template_context,
+            &prompt_ref,
+            &workspace,
+            session_caps,
+        );
+
+        assert!(
+            !rendered.is_empty(),
+            "Rendered planning prompt must not be empty"
+        );
+        assert!(
+            !rendered.contains("{#"),
+            "Rendered planning prompt must not contain Jinja2 comment markers `{{#`"
         );
     });
 }

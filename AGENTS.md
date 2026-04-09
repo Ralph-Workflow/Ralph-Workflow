@@ -90,6 +90,7 @@ See `docs/tooling/dylint.md` for boundary module definitions.
 | Pipeline/reducer change | Read architecture docs first |
 | Any test work | `docs/agents/testing-guide.md` |
 | Filesystem I/O | `docs/agents/workspace-trait.md` |
+| Build/verify | Runs on `rw-build-server` by default; see `docs/tooling/remote-build.md` |
 
 ---
 
@@ -102,6 +103,7 @@ See `docs/tooling/dylint.md` for boundary module definitions.
 | Architecture | `docs/code-style/architecture.md`, `docs/architecture/event-loop-and-reducers.md` |
 | Dylint lints | `docs/tooling/dylint.md` |
 | Workspace trait | `docs/agents/workspace-trait.md` |
+| Remote build | `docs/tooling/remote-build.md` |
 
 ---
 
@@ -151,14 +153,20 @@ Run `docs/agents/verification.md`. **Fix ALL failures** — not just your own. N
 
 ### Metrics changes (iteration/retry/continuation/fallback logic)
 ```bash
-cargo test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
-cargo test -p ralph-workflow-tests --test integration_tests iteration_counter
-cargo test -p ralph-workflow-tests --test integration_tests continuation_budget
-cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
+# Metrics unit tests
+cargo xtask test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
+
+# Metrics integration tests
+cargo xtask test -p ralph-workflow-tests --test integration_tests iteration_counter
+cargo xtask test -p ralph-workflow-tests --test integration_tests continuation_budget
+cargo xtask test -p ralph-workflow-tests --test integration_tests summary_consistency
 ```
 
 ### Logging changes (per-run logging, event loop logging, log file paths)
 ```bash
-cargo test -p ralph-workflow-tests --test integration_tests logging_per_run
-cargo test -p ralph-workflow-tests --test integration_tests event_loop_trace_dump
+# Per-run logging infrastructure tests
+cargo xtask test -p ralph-workflow-tests --test integration_tests logging_per_run
+
+# Event loop trace dump tests
+cargo xtask test -p ralph-workflow-tests --test integration_tests event_loop_trace_dump
 ```

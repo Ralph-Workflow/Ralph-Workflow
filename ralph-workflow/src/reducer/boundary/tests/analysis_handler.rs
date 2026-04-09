@@ -1,7 +1,10 @@
 use super::common::TestFixture;
+use crate::executor::MockProcessExecutor;
 use crate::reducer::boundary::MainEffectHandler;
+use crate::reducer::event::{AgentEvent, PipelineEvent};
 use crate::reducer::state::{ContinuationState, PipelineState, SameAgentRetryReason};
 use crate::workspace::{MemoryWorkspace, Workspace};
+use std::sync::Arc;
 
 #[test]
 fn test_invoke_analysis_agent_gracefully_handles_missing_plan_and_diff() {
@@ -347,4 +350,119 @@ fn test_invoke_analysis_agent_uses_head_baseline_not_start_commit() {
 
     // GUARD: verify project git state unchanged
     test_helpers::assert_project_head_unchanged(&project_head_before);
+}
+
+/// Boundary regression: analysis drain must configure `completion_output_path` to
+/// `development_result.xml` so that the valid-result override works correctly.
+///
+/// Bug 2 root cause: Analysis drain returned `None` as the completion path, which bypassed
+/// the valid-result check in the executor. When the agent produced a valid result file,
+/// the timeout/error classification still saw no completion path and fell through to
+/// generic failure or timeout classification.
+///
+/// Proof strategy: configure the mock executor to return proprietary exit code 91 (a
+/// non-zero exit that is NOT a standard error, mimicking an agent that exited abnormally
+/// but completed its work). When `completion_output_path` is wired correctly, the
+/// executor finds the valid XML file and promotes the result to `InvocationSucceeded`
+/// regardless of the exit code. If the path were `None`, the valid-file check is skipped
+/// and the result would be `InvocationFailed`.
+#[test]
+fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result_xml() {
+    // Workspace contains a valid development_result.xml as the agent's output.
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(
+            ".agent/tmp/development_result.xml",
+            "<ralph-development-result>\
+             <ralph-status>completed</ralph-status>\
+             </ralph-development-result>",
+        );
+
+    // Mock returns exit code 91 — a proprietary exit that does not map to a
+    // standard error (no auth failure, no rate limit, no explicit timeout).
+    // Without a valid completion path the executor cannot detect the result file
+    // and would emit InvocationFailed. With the correct path it must emit
+    // InvocationSucceeded because the valid result file wins.
+    let executor = Arc::new(MockProcessExecutor::new().with_agent_result(
+        "claude",
+        Ok(crate::executor::AgentCommandResult::failure(91, "")),
+    ));
+
+    let workspace_arc = Arc::new(workspace.clone()) as Arc<dyn crate::workspace::Workspace>;
+    let colors = crate::logger::Colors { enabled: false };
+    let logger = crate::logger::Logger::new(colors);
+    let mut timer = crate::pipeline::Timer::new();
+    let config = crate::config::Config::default();
+    let registry = crate::agents::AgentRegistry::new().unwrap();
+    let template_context = crate::prompts::template_context::TemplateContext::default();
+    let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let cloud = crate::config::types::CloudConfig::disabled();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
+
+    let mut ctx = crate::phases::PhaseContext {
+        config: &config,
+        registry: &registry,
+        logger: &logger,
+        colors: &colors,
+        timer: &mut timer,
+        developer_agent: "claude",
+        reviewer_agent: "rev",
+        review_guidelines: None,
+        template_context: &template_context,
+        run_context: crate::checkpoint::RunContext::new(),
+        execution_history: crate::checkpoint::execution_history::ExecutionHistory::new(),
+        executor: executor.as_ref(),
+        executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
+        repo_root: std::path::Path::new("/mock/repo"),
+        workspace: &workspace,
+        workspace_arc: Arc::clone(&workspace_arc),
+        run_log_context: &run_log_context,
+        cloud_reporter: None,
+        cloud: &cloud,
+        env: &git_env,
+    };
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        phase: crate::reducer::event::PipelinePhase::Development,
+        iteration: 0,
+        ..PipelineState::initial(1, 0)
+    });
+
+    let result = handler
+        .invoke_analysis_agent(&mut ctx, 0)
+        .expect("invoke_analysis_agent should not fail");
+
+    // The key assertion: with a valid development_result.xml AND exit code 91, the
+    // additional_events must contain InvocationSucceeded — proving that
+    // completion_output_path was correctly wired to development_result.xml (not None).
+    //
+    // `build_agent_invocation_result` always puts InvocationStarted as the primary
+    // event and the actual execution result in additional_events. So we look there.
+    //
+    // If completion_output_path were None, the valid-result check would be skipped
+    // and exit code 91 would produce InvocationFailed instead.
+    let execution_event = result
+        .additional_events
+        .iter()
+        .find(|ev| {
+            matches!(
+                ev,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+                    | PipelineEvent::Agent(AgentEvent::InvocationFailed { .. })
+            )
+        })
+        .unwrap_or(&result.event);
+
+    assert!(
+        matches!(
+            execution_event,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+        ),
+        "analysis drain with valid development_result.xml and exit code 91 must produce \
+         InvocationSucceeded — completion_output_path must be wired to development_result.xml; \
+         got primary={:?} additional={:?}",
+        result.event,
+        result.additional_events
+    );
 }

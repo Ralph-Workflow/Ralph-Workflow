@@ -3,10 +3,24 @@
 ## Canonical command
 
 ```bash
+# Remote-first by default (recommended — no flags needed):
 cargo xtask verify
+
+# EMERGENCY ONLY — use ONLY when rw-build-server is confirmed unreachable
+# (network down, server offline). NEVER use to work around a test failure
+# or for convenience — that defeats the entire remote-first design.
+XTASK_LOCAL=1 cargo xtask verify
 ```
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
+
+`cargo xtask` is remote-first: on startup it checks whether the current working directory is under `/tmp` (already on a build server) or `XTASK_LOCAL=1` is set; if neither, it probes `rw-build-server` via SSH with a 5-second timeout, rsyncs the working tree (`--exclude=.git/` plus `.gitignore`-based filtering), initializes a minimal git repo on the remote (for libgit2/git-dependent tests), then re-executes the same subcommand on the remote and streams output to the local terminal. If the remote is unreachable, it prints a single warning and falls back to running locally. Exit codes are propagated correctly in both paths. This applies to **all** `cargo xtask` subcommands (verify, dylint, coverage, etc.).
+
+**`XTASK_LOCAL=1` is an emergency-only override** for when the remote is confirmed down (internet or SSH failure). Setting it for convenience or to work around test failures defeats the entire remote-first design and is never acceptable.
+
+For non-xtask commands (`cargo test`, `cargo build`, etc.), use `./scripts/remote/run.sh` — see `docs/tooling/remote-build.md`.
+
+**Note:** The remote machine runs Debian Linux (x86_64). `cargo xtask verify` produces no binary artifacts that need copy-back, so the macOS/Linux difference is transparent for the verification use case.
 
 If verification exposes a pre-existing failure, or if you discover any other pre-existing repo issue while working, it becomes fix-now work immediately. Do not defer it, work around it, or leave it for another contributor.
 
@@ -60,6 +74,8 @@ Low coverage on a module is a signal to ask *"do we understand the failure modes
 
 ## Reference: underlying commands
 
+> **Do not run these commands directly.** Use `cargo xtask verify` (which runs them all on the remote build server) or `cargo xtask <cmd>` for individual commands. Direct `cargo test` / `cargo clippy` / `cargo build` runs locally and overheats your laptop. See `docs/tooling/remote-build.md`.
+
 Run git rebase on main if on feature branch.
 
 ```bash
@@ -95,13 +111,13 @@ rg --pcre2 -n '#\[ignore\b(?!.*https://)' tests/ ralph-workflow/src/ --glob '*.r
 # All must return exit 1 (no matches) to pass.
 
 # Format check
-cargo fmt --all --check
+cargo xtask fmt --all --check
 
 # Lint core crates (ralph-workflow + ralph-workflow-tests + test-helpers) in a single invocation
 # Note: Enforces clippy::all plus explicit deny rules (unwrap_used, panic, indexing_slicing, etc.)
 # via #![deny(...)] and #![forbid(unsafe_code)] attributes in lib.rs and main.rs
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-server --all-targets --all-features -- -D warnings
+cargo xtask clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-server --all-targets --all-features -- -D warnings
 
 # Dead code that is only used by tests.
 # Runs lib-only with DEFAULT features (no test-utils, no #[cfg(test)] blocks).
@@ -110,7 +126,7 @@ cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-se
 #   2. Items behind #[cfg(feature = "test-utils")] unused by production code → dead_code fires
 # Limitation: pub items in public modules are never flagged by dead_code (Rust compiler
 # assumes they're external API). These MUST be placed behind #[cfg(feature = "test-utils")].
-cargo clippy -p ralph-workflow --lib -- -D warnings
+cargo xtask clippy -p ralph-workflow --lib -- -D warnings
 
 # Native checks (run in Phase 1 via `cargo xtask verify`):
 # audit-test-utils-used-in-tests — ensures every pub item behind
@@ -123,55 +139,55 @@ cargo clippy -p ralph-workflow --lib -- -D warnings
 # ralph-workflow → mcp-server. Implemented in xtask/src/boundary/checks.rs.
 
 # Lint xtask runner (runs in parallel group with separate target dir)
-cargo clippy -p xtask --all-targets -- -D warnings
+cargo xtask clippy -p xtask --all-targets -- -D warnings
 
 # Lint ralph-gui (runs in parallel group with separate target dir)
-cargo clippy -p ralph-gui --all-targets -- -D warnings
+cargo xtask clippy -p ralph-gui --all-targets -- -D warnings
 
-# Frontend install
-bun install --cwd ralph-gui/ui --frozen-lockfile
+# Frontend install (runs as part of cargo xtask verify --gui)
+# bun install --cwd ralph-gui/ui --frozen-lockfile
 
-# Frontend checks
-bun --cwd ralph-gui/ui run lint
-bun --cwd ralph-gui/ui run test
+# Frontend checks (runs as part of cargo xtask verify --gui)
+# bun --cwd ralph-gui/ui run lint
+# bun --cwd ralph-gui/ui run test
 
 # Unit tests
-cargo test -p xtask
-cargo test -p ralph-gui --lib
-cargo test -p ralph-workflow --lib --all-features
+cargo xtask test -p xtask
+cargo xtask test -p ralph-gui --lib
+cargo xtask test -p ralph-workflow --lib --all-features
 
 # mcp-server tests (Lane 3, always runs in core-cargo)
 cargo test -p mcp-server --lib
 cargo test -p mcp-server --tests
 
 # Drain/chain architecture changes (named chains, drain bindings, checkpoint drain metadata)
-cargo test -p ralph-workflow agents::config::file::tests
-cargo test -p ralph-workflow agents::registry::tests
-cargo test -p ralph-workflow agents::validation::tests
-cargo test -p ralph-workflow-tests --test integration_tests agent_chain_normalization
+cargo xtask test -p ralph-workflow agents::config::file::tests
+cargo xtask test -p ralph-workflow agents::registry::tests
+cargo xtask test -p ralph-workflow agents::validation::tests
+cargo xtask test -p ralph-workflow-tests --test integration_tests agent_chain_normalization
 
 # Default config template / registry wiring regressions
 # Keep the built-in `ralph-workflow/examples/agents.toml` template on the named chain + drain schema
 # and ensure `AgentRegistry::new()` consumes the same resolved drain bindings.
 
 # Integration tests
-cargo test -p ralph-workflow-tests --test integration_tests
+cargo xtask test -p ralph-workflow-tests --test integration_tests
 
 # Process system tests (parallel, manual only — not in CI)
-cargo test -p ralph-workflow-tests --test process-system-tests
+cargo xtask test -p ralph-workflow-tests --test process-system-tests
 
 # Timeout / child-process relevance changes
 # Run this focused process-topology check when changing idle-timeout suppression,
 # descendant relevance, or child-process observability logic.
-cargo test -p ralph-workflow-tests --test process-system-tests child_process_timeout_detection
+cargo xtask test -p ralph-workflow-tests --test process-system-tests child_process_timeout_detection
 
 # Memory safety verification (bounded growth, thread cleanup, Arc patterns)
-cargo test -p ralph-workflow-tests --test integration_tests memory_safety
-cargo test -p ralph-workflow --lib benchmarks
-cargo test -p ralph-workflow --lib executor::tests
+cargo xtask test -p ralph-workflow-tests --test integration_tests memory_safety
+cargo xtask test -p ralph-workflow --lib benchmarks
+cargo xtask test -p ralph-workflow --lib executor::tests
 
 # Per-run logging tests (when changing logging infrastructure)
-cargo test -p ralph-workflow-tests --test integration_tests logging_per_run
+cargo xtask test -p ralph-workflow-tests --test integration_tests logging_per_run
 
 # RFC-009 Phase 2: Brokered sessions / capability gate enforcement
 # These verify protocol-level capability denial for no-edit drains
@@ -181,13 +197,13 @@ cargo test -p ralph-workflow-tests --test integration_tests brokered_sessions
 cargo test -p ralph-workflow --lib prompts::snapshot_tests
 
 # Metrics regressions (when changing iteration/retry/continuation/fallback logic)
-cargo test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
-cargo test -p ralph-workflow-tests --test integration_tests iteration_counter
-cargo test -p ralph-workflow-tests --test integration_tests continuation_budget
-cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
+cargo xtask test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
+cargo xtask test -p ralph-workflow-tests --test integration_tests iteration_counter
+cargo xtask test -p ralph-workflow-tests --test integration_tests continuation_budget
+cargo xtask test -p ralph-workflow-tests --test integration_tests summary_consistency
 
-# Release build
-cargo build --release
+# Release build (runs as part of cargo xtask verify --gui)
+cargo xtask build --release
 
 # Custom lints (dylint) - all lints consolidated in ralph_lints
 #
@@ -195,12 +211,8 @@ cargo build --release
 # - The xtask dylint runner lints every workspace package except lint crates (e.g. *_lints).
 # - It keeps `ralph-workflow` on `--lib` only to avoid known binary-target warning escalation
 #   (`#![deny(warnings)]` in `ralph` binary).
-# - The Makefile automatically ensures nightly toolchain's cargo is used for driver builds,
-#   even when system cargo (Homebrew/apt) is stable.
 #
 # Recommended:
-make dylint
-# or:
 cargo xtask dylint
 ```
 

@@ -53,6 +53,43 @@ pub struct MonitorConfig {
     /// returns `MonitorResult::CompleteButWaiting` instead of treating the exit
     /// as a timeout, allowing the pipeline to advance as success.
     pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Optional callback to check if the output file exists (even if incomplete).
+    ///
+    /// When provided, returning `true` suppresses the idle-timeout kill,
+    /// signaling that the agent is actively writing output. This is distinct
+    /// from `completion_check` which requires VALID output. Use this to avoid
+    /// killing an agent that is mid-write of a large XML file.
+    ///
+    /// The suppression only resets the idle counter for one tick; if the file
+    /// never becomes valid XML, the timeout will eventually fire once stdout/stderr
+    /// activity also ceases for the required number of idle confirmations.
+    pub partial_completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Optional callback to check if an active tool execution is in progress.
+    ///
+    /// When provided, returning `true` suppresses the idle-timeout kill,
+    /// signaling that the agent has an active tool execution in progress
+    /// (e.g., a `write` tool call to create the output file). This is distinct
+    /// from `partial_completion_check` which only checks file existence.
+    ///
+    /// A running tool should suppress idle timeout even if:
+    /// - The output file doesn't exist yet (tool is still writing)
+    /// - No fresh stdout/stderr has been produced
+    ///
+    /// This allows the idle timeout to be suppressed during parser-observable
+    /// tool lifecycle events (tool-start, tool-running, tool-finish, etc.).
+    pub tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    /// Maximum number of consecutive ticks the tool-activity suppressor may fire
+    /// before it is bypassed to allow idle-timeout enforcement to proceed.
+    ///
+    /// A stuck AtomicU32 counter (due to a protocol anomaly, e.g., the agent sends
+    /// ContentBlockStart+ToolUse but stdout closes before the matching MessageStart
+    /// arrives) would otherwise suppress the idle timeout indefinitely. After this
+    /// many consecutive ticks, the suppressor is treated as inactive — the idle
+    /// confirmation counter resumes accumulating, and the timeout fires after
+    /// `required_idle_confirmations` additional ticks.
+    ///
+    /// Default: 20 (= 10 minutes at 30 s check interval). Set lower in tests.
+    pub max_tool_suppression_ticks: u32,
 }
 
 impl Default for MonitorConfig {
@@ -64,6 +101,9 @@ impl Default for MonitorConfig {
             required_idle_confirmations: 2,
             check_child_processes: true,
             completion_check: None,
+            partial_completion_check: None,
+            tool_activity_check: None,
+            max_tool_suppression_ticks: 20,
         }
     }
 }
@@ -140,6 +180,9 @@ pub(crate) struct MonitorParams<'a> {
     pub required_idle_confirmations: u32,
     pub check_child_processes: bool,
     pub completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    pub partial_completion_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    pub tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    pub max_tool_suppression_ticks: u32,
 }
 
 pub(crate) enum EnforcementStep {
@@ -178,6 +221,12 @@ pub(crate) struct MonitorLoopState {
     pub last_child_observation: Option<ChildProcessInfo>,
     pub last_child_info: Option<ChildProcessInfo>,
     pub child_startup_grace_available: bool,
+    /// Number of consecutive ticks the tool-activity suppressor has been active.
+    ///
+    /// Reset to 0 when: (a) the tool-activity check returns false, or (b)
+    /// `reset_idle()` is called (i.e., some other suppressor — file/child activity
+    /// — resets the idle state, meaning the agent IS making genuine progress).
+    pub consecutive_tool_suppression_ticks: u32,
 }
 
 impl MonitorLoopState {
@@ -189,6 +238,7 @@ impl MonitorLoopState {
             last_child_observation: None,
             last_child_info: None,
             child_startup_grace_available: true,
+            consecutive_tool_suppression_ticks: 0,
         }
     }
 
@@ -197,5 +247,36 @@ impl MonitorLoopState {
         self.last_child_observation = None;
         self.last_child_info = None;
         self.child_startup_grace_available = true;
+        self.consecutive_tool_suppression_ticks = 0;
+    }
+}
+
+/// Decision produced by the pure tool-suppression policy function.
+pub enum ToolSuppressionAction {
+    /// Tool check returned `false`; reset consecutive tick counter.
+    Inactive,
+    /// Tool is active but the consecutive-tick cap is exceeded; bypass suppressor.
+    CapExceeded { ticks: u32 },
+    /// Tool is active and within the cap; suppress the idle timeout for this tick.
+    Suppress { ticks: u32 },
+}
+
+/// Pure policy: determine what to do with the tool-activity suppressor for one tick.
+///
+/// No I/O, no mutations — takes inputs, returns a decision.
+#[must_use]
+pub fn evaluate_tool_suppression(
+    check_result: bool,
+    current_ticks: u32,
+    max_ticks: u32,
+) -> ToolSuppressionAction {
+    if !check_result {
+        return ToolSuppressionAction::Inactive;
+    }
+    let ticks = current_ticks.saturating_add(1);
+    if ticks > max_ticks {
+        ToolSuppressionAction::CapExceeded { ticks }
+    } else {
+        ToolSuppressionAction::Suppress { ticks }
     }
 }

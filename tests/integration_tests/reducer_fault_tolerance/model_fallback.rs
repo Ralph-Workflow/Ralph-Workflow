@@ -326,7 +326,7 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -357,7 +357,7 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -373,11 +373,11 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
     });
 }
 
-/// Test that `NoOutput` timeout clears session ID for immediate agent switch.
+/// Test that `NoResult` timeout clears session ID for immediate agent switch.
 ///
-/// When timeout produces no meaningful output (`NoOutput`), we switch agents
+/// When timeout produces no meaningful output (`NoResult`), we switch agents
 /// immediately and clear the session ID because the new agent will have its
-/// own session context. This is distinct from `PartialOutput` timeout which
+/// own session context. This is distinct from `PartialResult` timeout which
 /// preserves the session for context reuse with the same agent.
 #[test]
 fn test_timeout_no_output_clears_session_id() {
@@ -409,13 +409,13 @@ fn test_timeout_no_output_clears_session_id() {
             ..PipelineState::initial(5, 2)
         };
 
-        // Simulate NoOutput timeout - should switch agents immediately
+        // Simulate NoResult timeout - should switch agents immediately
         let new_state = ralph_workflow::reducer::state_reduction::reduce(
             state,
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::NoOutput,
+                TimeoutOutputKind::NoResult,
                 None,
                 None,
             ),
@@ -424,7 +424,7 @@ fn test_timeout_no_output_clears_session_id() {
         // Session ID should be cleared for NoOutput (immediate agent switch)
         assert!(
             new_state.agent_chain.last_session_id.is_none(),
-            "NoOutput timeout should clear session ID for immediate agent switch"
+            "NoResult timeout should clear session ID for immediate agent switch"
         );
     });
 }
@@ -454,7 +454,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -472,7 +472,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -524,7 +524,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -534,7 +534,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent1".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -550,7 +550,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent2".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -560,7 +560,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent2".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -576,7 +576,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent3".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),
@@ -586,7 +586,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
             PipelineEvent::agent_timed_out(
                 AgentRole::Developer,
                 "agent3".into(),
-                TimeoutOutputKind::PartialOutput,
+                TimeoutOutputKind::PartialResult,
                 Some(".agent/logs/developer_0.log".to_string()),
                 None,
             ),

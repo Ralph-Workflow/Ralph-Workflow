@@ -222,7 +222,7 @@ fn test_fallback_chain_advances_only_on_failure() {
             PipelineEvent::Agent(AgentEvent::TimedOut {
                 role: AgentRole::Developer,
                 agent: "primary-agent".into(),
-                output_kind: TimeoutOutputKind::NoOutput,
+                output_kind: TimeoutOutputKind::NoResult,
                 child_status_at_timeout: None,
                 logfile_path: None,
             }),

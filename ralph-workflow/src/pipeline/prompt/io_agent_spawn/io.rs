@@ -18,7 +18,7 @@ use crate::pipeline::idle_timeout::{
 use crate::pipeline::prompt::io_streaming;
 use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
 use crate::pipeline::prompt::SIGTERM_EXIT_CODE;
-use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
+use crate::pipeline::types::{CommandResult, IdleTimeoutCause, TimeoutContext};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,6 +47,7 @@ fn map_spawn_error_to_result(e: std::io::Error, argv0: &str) -> CommandResult {
         stderr: format!("{}: {} - {}", argv0, detail, e),
         session_id: None,
         child_status_at_timeout: None,
+        timeout_context: None,
     }
 }
 
@@ -96,6 +97,15 @@ fn make_completion_check(
     Some(std::sync::Arc::new(move || {
         has_valid_xml_output(workspace.as_ref(), &path)
     }))
+}
+
+fn make_partial_completion_check(
+    path: Option<&std::path::Path>,
+    workspace: &std::sync::Arc<dyn crate::workspace::Workspace>,
+) -> Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>> {
+    let path = path?.to_owned();
+    let workspace = std::sync::Arc::clone(workspace);
+    Some(std::sync::Arc::new(move || workspace.exists(&path)))
 }
 
 fn spawn_stdout_cancel_watcher(
@@ -389,7 +399,7 @@ fn resolve_final_exit_code(
     activity_timestamp: &crate::pipeline::idle_timeout::SharedActivityTimestamp,
     child_activity_suppression_info: Option<crate::executor::ChildProcessInfo>,
     runtime: &PipelineRuntime<'_>,
-) -> (i32, Option<crate::executor::ChildProcessInfo>) {
+) -> (i32, Option<crate::executor::ChildProcessInfo>, Option<TimeoutContext>) {
     let resolution =
         classify_monitor_result(monitor_result, exit_code, child_activity_suppression_info);
 
@@ -397,15 +407,22 @@ fn resolve_final_exit_code(
 
     match resolution {
         ExitCodeResolution::TimedOut {
-            escalated: _,
+            escalated,
             exit_code: _,
             child_status_at_timeout,
-        } => (SIGTERM_EXIT_CODE, child_status_at_timeout),
-        ExitCodeResolution::CompleteButWaiting => (0, None),
+        } => (
+            SIGTERM_EXIT_CODE,
+            child_status_at_timeout,
+            Some(TimeoutContext {
+                escalated,
+                child_status_at_timeout,
+            }),
+        ),
+        ExitCodeResolution::CompleteButWaiting => (0, None, None),
         ExitCodeResolution::ProcessCompleted {
             exit_code,
             child_activity_suppression_info: _,
-        } => (exit_code, None),
+        } => (exit_code, None, None),
     }
 }
 
@@ -549,6 +566,8 @@ fn create_shared_monitor_state(
 fn spawn_monitor_thread(
     state: SharedMonitorState,
     completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    partial_completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    tool_activity_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> std::thread::JoinHandle<MonitorResult> {
     use std::sync::atomic::Ordering;
     let SharedMonitorState {
@@ -573,6 +592,8 @@ fn spawn_monitor_thread(
                 check_interval: Duration::from_secs(30),
                 kill_config: DEFAULT_KILL_CONFIG,
                 completion_check,
+                partial_completion_check,
+                tool_activity_check,
                 ..MonitorConfig::default()
             },
             Some(&child_activity_suppressed_for_monitor),
@@ -609,13 +630,15 @@ fn build_spawned_agent_handles(
     stderr_cancel: Arc<std::sync::atomic::AtomicBool>,
     stderr_join_handle: Option<std::thread::JoinHandle<Result<String, std::io::Error>>>,
     completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    partial_completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    tool_activity_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> SpawnedAgentHandles {
     let child_shared = Arc::clone(&state.child_shared);
     let activity_timestamp = state.activity_timestamp.clone();
     let stdout_cancel = Arc::clone(&state.stdout_cancel);
     let monitor_should_stop = Arc::clone(&state.monitor_should_stop);
     let child_activity_suppressed = Arc::clone(&state.child_activity_suppressed);
-    let monitor_handle = Some(spawn_monitor_thread(state, completion_check));
+    let monitor_handle = Some(spawn_monitor_thread(state, completion_check, partial_completion_check, tool_activity_check));
     SpawnedAgentHandles {
         child_shared,
         activity_timestamp,
@@ -634,6 +657,8 @@ fn spawn_agent_with_monitoring(
     runtime: &PipelineRuntime<'_>,
     argv0: &str,
     completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    partial_completion_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
+    tool_activity_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> SpawnAgentResult {
     use std::sync::atomic::AtomicBool;
     let agent_handle = match runtime.executor.spawn_agent(&spawn_config) {
@@ -658,8 +683,14 @@ fn spawn_agent_with_monitoring(
         state.activity_timestamp.clone(),
         Arc::clone(&stderr_cancel),
     ));
-    let handles =
-        build_spawned_agent_handles(state, stderr_cancel, stderr_join_handle, completion_check);
+    let handles = build_spawned_agent_handles(
+        state,
+        stderr_cancel,
+        stderr_join_handle,
+        completion_check,
+        partial_completion_check,
+        tool_activity_check,
+    );
     Ok(Ok((handles, agent_handle.stdout)))
 }
 
@@ -680,6 +711,7 @@ fn stream_and_wait(
     handles: &mut SpawnedAgentHandles,
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
+    tool_activity_tracker: Option<crate::pipeline::prompt::io::streaming::ToolActivityTracker>,
 ) -> Result<(i32, String, Option<MonitorResult>), std::io::Error> {
     if let Err(e) = crate::pipeline::prompt::io::streaming::stream_agent_output_from_handle(
         stdout,
@@ -687,6 +719,7 @@ fn stream_and_wait(
         runtime,
         handles.activity_timestamp.clone(),
         &handles.stdout_cancel,
+        tool_activity_tracker,
     ) {
         cleanup_handles(handles, runtime);
         return Err(e);
@@ -728,7 +761,7 @@ fn finalize_result(
         .child_activity_suppressed
         .lock()
         .expect("child activity observer mutex poisoned");
-    let (final_exit_code, child_status) = resolve_final_exit_code(
+    let (final_exit_code, child_status, timeout_context) = resolve_final_exit_code(
         monitor_result,
         exit_code,
         &handles.activity_timestamp,
@@ -747,6 +780,7 @@ fn finalize_result(
         stderr: stderr_output,
         session_id,
         child_status_at_timeout: child_status,
+        timeout_context,
     }
 }
 
@@ -755,6 +789,8 @@ pub(crate) fn run_with_agent_spawn(
     runtime: &PipelineRuntime<'_>,
     anthropic_env_vars_to_sanitize: &[&str],
 ) -> Result<CommandResult, std::io::Error> {
+    use std::sync::atomic::Ordering;
+
     let parsed = parse_and_validate_argv(cmd)?;
     log_command_info(&parsed, cmd, runtime);
     let spawn_config =
@@ -762,13 +798,38 @@ pub(crate) fn run_with_agent_spawn(
     let argv0 = parsed.argv[0].clone();
     let completion_check =
         make_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
-    let (mut handles, stdout) =
-        match spawn_agent_with_monitoring(spawn_config, runtime, &argv0, completion_check)? {
-            Ok(pair) => pair,
-            Err(result) => return Ok(result),
-        };
+    let partial_completion_check =
+        make_partial_completion_check(cmd.completion_output_path, &runtime.workspace_arc);
+
+    // Shared counter: parsers increment when a tool item begins executing and decrement (or reset)
+    // when the item completes, errors, or the turn ends. Non-zero = at least one tool is active.
+    // The monitor reads it to suppress idle-timeout kills during long tool operations (e.g. file
+    // writes) that produce no stdout.
+    // Analysis assumption: development_result.xml is the completion artifact for both Analysis
+    // and Development drains; this tracker suppresses spurious kills during the write phase.
+    let tool_active = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let tool_active_for_check = Arc::clone(&tool_active);
+    let tool_activity_check: Option<std::sync::Arc<dyn Fn() -> bool + Send + Sync>> =
+        Some(Arc::new(move || {
+            tool_active_for_check.load(Ordering::Acquire) > 0
+        }));
+    let tool_activity_tracker: Option<
+        crate::pipeline::prompt::io::streaming::ToolActivityTracker,
+    > = Some(Arc::clone(&tool_active));
+
+    let (mut handles, stdout) = match spawn_agent_with_monitoring(
+        spawn_config,
+        runtime,
+        &argv0,
+        completion_check,
+        partial_completion_check,
+        tool_activity_check,
+    )? {
+        Ok(pair) => pair,
+        Err(result) => return Ok(result),
+    };
     let (exit_code, stderr_output, monitor_result_early) =
-        stream_and_wait(stdout, &mut handles, cmd, runtime)?;
+        stream_and_wait(stdout, &mut handles, cmd, runtime, tool_activity_tracker)?;
     Ok(finalize_result(
         &mut handles,
         exit_code,

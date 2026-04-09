@@ -10,6 +10,7 @@ mod event_sequence;
 mod finalization;
 mod fix_continuation;
 mod gitignore_entries;
+mod metrics;
 mod output_validation;
 mod prompt_permissions;
 mod proptest_reducers;

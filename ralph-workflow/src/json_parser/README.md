@@ -102,13 +102,13 @@ When implementing a new parser:
 Run tests with:
 ```bash
 # All JSON parser tests
-cargo test -p ralph-workflow json_parser::tests
+cargo xtask test -p ralph-workflow json_parser::tests
 
 # Streaming-specific tests
-cargo test -p ralph-workflow streaming
+cargo xtask test -p ralph-workflow streaming
 
 # Snapshot-as-delta detection tests
-cargo test -p ralph-workflow test_snapshot_as_delta
+cargo xtask test -p ralph-workflow test_snapshot_as_delta
 ```
 
 ## Streaming UX Guidelines

@@ -405,4 +405,292 @@ mod tests {
             "Output should also contain the Step B started line"
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Issue 1 regression: single truncation summary for tool output exceeding
+    // the line limit.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_opencode_tool_output_truncation_emits_single_summary() {
+        // Build output with 60 lines — well above MAX_OUTPUT_LINES (5).
+        let lines: Vec<String> = (1..=60).map(|i| format!("/path/file{i}.rs")).collect();
+        let output_content = lines.join("\n");
+        let output_json = serde_json::to_string(&output_content).unwrap();
+        let json = format!(
+            r#"{{"type":"tool_use","timestamp":1,"sessionID":"ses_test","part":{{"type":"tool","tool":"grep","state":{{"status":"completed","input":{{"pattern":"TODO"}},"output":{output_json}}}}}}}"#
+        );
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        if let Some(out) = parser.parse_event(&json) {
+            let more_count = out.matches("more lines").count();
+            assert!(
+                more_count <= 1,
+                "expected at most one 'more lines' summary, got {more_count}\noutput:\n{out}"
+            );
+            // Verify truncation actually happened — not all 60 lines should appear.
+            assert!(
+                !out.contains("/path/file60.rs"),
+                "expected output to be truncated but all lines were shown\noutput:\n{out}"
+            );
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Issue 2 regression: no blank └─ line for empty or whitespace-only title.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_opencode_tool_no_blank_continuation_line_for_empty_title() {
+        let json = r#"{"type":"tool_use","timestamp":1,"sessionID":"ses_test","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"ls"},"output":"file.txt","title":""}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        for line in out.lines() {
+            if line.contains("└─") {
+                let after_arrow = line.split_once("└─").map(|x| x.1).unwrap_or("");
+                assert!(
+                    !after_arrow.trim().is_empty(),
+                    "found blank continuation line: {line:?}\nfull output:\n{out}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_opencode_tool_no_blank_continuation_line_for_whitespace_title() {
+        let json = r#"{"type":"tool_use","timestamp":1,"sessionID":"ses_test","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"ls"},"output":"file.txt","title":"   "}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        for line in out.lines() {
+            if line.contains("└─") {
+                let after_arrow = line.split_once("└─").map(|x| x.1).unwrap_or("");
+                assert!(
+                    !after_arrow.trim().is_empty(),
+                    "found blank continuation line: {line:?}\nfull output:\n{out}"
+                );
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Issues 3 & 4 regression: step-finish uses "reasoning:" label (not
+    // "reason:") and · delimiter with cost.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_opencode_step_finish_reasoning_label_not_reason() {
+        // reasoning tokens = 24 → must appear as "reasoning:24", not "reason:24"
+        let json = r#"{"type":"step_finish","timestamp":1,"sessionID":"ses_test","part":{"type":"step-finish","reason":"tool-calls","cost":0.001,"tokens":{"input":532,"output":85,"reasoning":24,"cache":{"read":151680,"write":0}}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        assert!(
+            out.contains("reasoning:24"),
+            "step-finish must use 'reasoning:' label, got:\n{out}"
+        );
+        assert!(
+            !out.contains("reason:24"),
+            "step-finish must not use ambiguous 'reason:24' label, got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn test_opencode_step_finish_uses_middle_dot_delimiter() {
+        let json = r#"{"type":"step_finish","timestamp":1,"sessionID":"ses_test","part":{"type":"step-finish","reason":"end_turn","cost":0.005,"tokens":{"input":100,"output":50,"reasoning":0,"cache":{"read":0,"write":0}}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        // Must use · (U+00B7) as delimiter between token summary and cost.
+        assert!(
+            out.contains('\u{00b7}'),
+            "step-finish must use · (U+00B7) delimiter, got:\n{out}"
+        );
+        // Must show cost.
+        assert!(
+            out.contains("$0.0050"),
+            "step-finish must show cost, got:\n{out}"
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Issue 5 regression: step-started never shows (...) for short/empty snapshot.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_opencode_step_start_short_snapshot_no_ellipsis() {
+        // snapshot is only 3 chars — must not produce (...) or any parenthetical
+        let json = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"type":"step-start","snapshot":"abc"}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        assert!(
+            !out.contains("(...)"),
+            "step-started must not show (...) for short snapshot, got:\n{out}"
+        );
+        assert!(
+            !out.contains("(abc"),
+            "step-started must not show parenthetical for short snapshot, got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn test_opencode_step_start_no_snapshot_no_parenthetical() {
+        // no snapshot field at all — must not produce any parenthetical
+        let json = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"type":"step-start"}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        assert!(
+            !out.contains('('),
+            "step-started with no snapshot must have no parenthetical, got:\n{out}"
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Issue 6 regression: blank lines in tool output are normalized.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_opencode_tool_output_blank_lines_normalized() {
+        // Output with leading blank, trailing blank, and double interior blank.
+        let raw_output = "\n\nline1\n\n\nline2\n\n";
+        let output_json = serde_json::to_string(raw_output).unwrap();
+        let json = format!(
+            r#"{{"type":"tool_use","timestamp":1,"sessionID":"ses_test","part":{{"type":"tool","tool":"bash","state":{{"status":"completed","input":{{"command":"echo"}},"output":{output_json}}}}}}}"#
+        );
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(&json).unwrap_or_default();
+        // Content must be preserved.
+        assert!(out.contains("line1"), "output must contain line1, got:\n{out}");
+        assert!(out.contains("line2"), "output must contain line2, got:\n{out}");
+        // No three consecutive newlines (double-blank run).
+        assert!(
+            !out.contains("\n\n\n"),
+            "output must not contain consecutive blank lines, got:\n{out}"
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Issue 7 regression: duration shown for running and completed tools;
+    // pending tools show no duration.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_opencode_tool_completed_shows_duration() {
+        // start=1000, end=15000 → 14 000ms = 14s
+        let json = r#"{"type":"tool_use","timestamp":15000,"sessionID":"ses_test","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"npm test"},"output":"passed","time":{"start":1000,"end":15000}}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        assert!(
+            out.contains("14s"),
+            "completed tool must show duration '14s', got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn test_opencode_tool_running_shows_elapsed_duration() {
+        // start=1000, event timestamp=5000 → 4 000ms = 4s elapsed
+        let json = r#"{"type":"tool_use","timestamp":5000,"sessionID":"ses_test","part":{"type":"tool","tool":"bash","state":{"status":"running","input":{"command":"npm test"},"time":{"start":1000}}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        assert!(
+            out.contains("4s"),
+            "running tool must show elapsed duration '4s', got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn test_opencode_tool_pending_no_duration() {
+        // pending status, no time field → no duration
+        let json = r#"{"type":"tool_use","timestamp":1000,"sessionID":"ses_test","part":{"type":"tool","tool":"bash","state":{"status":"pending","input":{"command":"npm test"}}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        // Duration format is "(Xs)" or "(Xms)" — pending tools must show neither.
+        assert!(
+            !out.contains("(0ms)") && !out.contains("(0s)"),
+            "pending tool must not show zero duration, got:\n{out}"
+        );
+        // Should not contain any parenthetical with a time unit.
+        assert!(
+            !out.contains("ms)") && !out.contains("s)"),
+            "pending tool must show no duration at all, got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn test_opencode_tool_sub_second_duration_shows_ms() {
+        // start=1000, end=1500 → 500ms
+        let json = r#"{"type":"tool_use","timestamp":1500,"sessionID":"ses_test","part":{"type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"/tmp/x"},"output":"content","time":{"start":1000,"end":1500}}}}"#;
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+        let out = parser.parse_event(json).unwrap_or_default();
+        assert!(
+            out.contains("500ms"),
+            "sub-second completed tool must show duration '500ms', got:\n{out}"
+        );
+    }
+
+    /// Regression: tool_use "running" must not double-count an already-counted call.
+    ///
+    /// With AtomicBool, pending/running both called set_tool_active (idempotent). With AtomicU32,
+    /// "running" must be a no-op — only "pending" increments so the counter returns to 0 on
+    /// "completed".
+    #[test]
+    fn test_opencode_tool_use_pending_running_completed_single_count() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        // pending: new call starting — increment
+        parser.parse_event(r#"{"type":"tool_use","timestamp":1,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"pending","input":{"filePath":"/f"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 1, "counter should be 1 after pending");
+
+        // running: status update, already counted — no-op
+        parser.parse_event(r#"{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"running","input":{"filePath":"/f"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 1, "counter must stay at 1 for running (no-op)");
+
+        // completed: call done — decrement
+        parser.parse_event(r#"{"type":"tool_use","timestamp":3,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"filePath":"/f"},"output":"ok"}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 0, "counter should be 0 after completed");
+    }
+
+    /// step_finish hard-resets the counter to 0 regardless of the current count.
+    #[test]
+    fn test_opencode_step_finish_hard_resets_tracker() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        // Two tool calls start
+        parser.parse_event(r#"{"type":"tool_use","timestamp":1,"sessionID":"s","part":{"type":"tool","tool":"read","state":{"status":"pending","input":{"filePath":"/a"}}}}"#);
+        parser.parse_event(r#"{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","tool":"read","state":{"status":"pending","input":{"filePath":"/b"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 2, "counter should be 2 with two pending calls");
+
+        // step_finish hard-resets
+        parser.parse_event(r#"{"type":"step_finish","timestamp":3,"sessionID":"s","part":{"type":"step-finish","reason":"end_turn"}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 0, "step_finish must hard-reset counter to 0");
+    }
+
+    /// Concurrent tool calls: two pending + one completed = counter 1 (second still in flight).
+    #[test]
+    fn test_opencode_concurrent_tool_calls_tracked_independently() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let tracker = Arc::new(AtomicU32::new(0));
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_tool_activity_tracker(Arc::clone(&tracker));
+
+        parser.parse_event(r#"{"type":"tool_use","timestamp":1,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"pending","input":{"filePath":"/a"}}}}"#);
+        parser.parse_event(r#"{"type":"tool_use","timestamp":2,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"pending","input":{"filePath":"/b"}}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 2, "counter should be 2 with two concurrent calls");
+
+        // First call completes
+        parser.parse_event(r#"{"type":"tool_use","timestamp":3,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"filePath":"/a"},"output":"ok"}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 1, "counter should be 1 after first completes");
+
+        // Second call completes
+        parser.parse_event(r#"{"type":"tool_use","timestamp":4,"sessionID":"s","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"filePath":"/b"},"output":"ok"}}}"#);
+        assert_eq!(tracker.load(Ordering::Acquire), 0, "counter should be 0 after both complete");
+    }
 }

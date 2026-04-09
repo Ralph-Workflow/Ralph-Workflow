@@ -15,7 +15,10 @@ use super::health::HealthMonitor;
 #[cfg(feature = "test-utils")]
 use super::health::StreamingQualityMetrics;
 use super::terminal::TerminalMode;
-use super::types::{format_tool_input, format_unknown_json_event, ContentType};
+use super::types::{
+    format_cost_suffix, format_dim_continuation_line, format_token_counts, format_tokens_suffix,
+    format_tool_input, format_unknown_json_event, ContentType,
+};
 
 include!("opencode/event_types.rs");
 include!("opencode/parser_core.rs");

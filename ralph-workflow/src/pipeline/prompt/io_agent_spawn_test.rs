@@ -9,7 +9,7 @@ use crate::pipeline::prompt::io_stderr_collector::{
     cancel_and_join_stderr_collector, collect_stderr_with_cap_and_drain,
 };
 use crate::pipeline::prompt::runtime::{cleanup_after_agent_failure, terminate_child_best_effort};
-use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
+use crate::pipeline::types::{CommandResult, IdleTimeoutCause, TimeoutContext};
 use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
@@ -87,6 +87,7 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
                 stderr: format!("{}: {} - {}", argv[0], detail, e),
                 session_id: None,
                 child_status_at_timeout: None,
+                timeout_context: None,
             });
         }
     };
@@ -144,6 +145,18 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
     let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
         std::sync::Arc::clone(&runtime.executor_arc);
 
+    // Mirror production wiring: create a shared tool-activity counter so parser events (tool-start,
+    // tool-complete) suppress or resume the idle-timeout monitor during long tool operations.
+    // Non-zero = at least one tool is actively executing.
+    let tool_active = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let tool_active_for_check = Arc::clone(&tool_active);
+    let tool_activity_check: Option<Arc<dyn Fn() -> bool + Send + Sync>> =
+        Some(Arc::new(move || {
+            tool_active_for_check.load(std::sync::atomic::Ordering::Acquire) > 0
+        }));
+    let tool_activity_tracker: Option<crate::pipeline::prompt::io::streaming::ToolActivityTracker> =
+        Some(Arc::clone(&tool_active));
+
     let mut monitor_handle: Option<std::thread::JoinHandle<MonitorResult>> =
         Some(std::thread::spawn(move || {
             let result = monitor_idle_timeout_with_interval_and_kill_config_and_observer(
@@ -159,6 +172,10 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                     completion_check: None,
+
+                    partial_completion_check: None,
+                    tool_activity_check,
+                    max_tool_suppression_ticks: 20,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );
@@ -183,9 +200,14 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
     }));
 
     let activity_timestamp_for_timeout = activity_timestamp.clone();
-    if let Err(e) =
-        stream_agent_output_from_handle(stdout, cmd, runtime, activity_timestamp, &stdout_cancel)
-    {
+    if let Err(e) = stream_agent_output_from_handle(
+        stdout,
+        cmd,
+        runtime,
+        activity_timestamp,
+        &stdout_cancel,
+        tool_activity_tracker,
+    ) {
         cleanup_after_agent_failure(
             &child_shared,
             &monitor_should_stop,
@@ -245,7 +267,7 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
         .lock()
         .expect("child activity observer mutex poisoned");
 
-    let (final_exit_code, child_status) = match monitor_result {
+    let (final_exit_code, child_status, timeout_context) = match monitor_result {
         MonitorResult::TimedOut {
             escalated,
             child_status_at_timeout,
@@ -295,7 +317,14 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
                 escalation_msg,
                 child_msg
             ));
-            (super::SIGTERM_EXIT_CODE, child_status_at_timeout)
+            (
+                super::SIGTERM_EXIT_CODE,
+                child_status_at_timeout,
+                Some(TimeoutContext {
+                    escalated,
+                    child_status_at_timeout,
+                }),
+            )
         }
         MonitorResult::ProcessCompleted => {
             if let Some(info) = child_activity_suppression_info {
@@ -308,14 +337,14 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
                     info.descendant_pid_signature
                 ));
             }
-            (exit_code, None)
+            (exit_code, None, None)
         }
         MonitorResult::CompleteButWaiting => {
             runtime.logger.info(
                 "Agent output ready; process was idle-but-done and was forcibly terminated \
                  (complete-but-waiting). Treating as success.",
             );
-            (0, None)
+            (0, None, None)
         }
     };
 
@@ -327,5 +356,6 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
         stderr: stderr_output,
         session_id,
         child_status_at_timeout: child_status,
+        timeout_context,
     })
 }
