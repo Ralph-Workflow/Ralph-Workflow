@@ -10,6 +10,5 @@ pub mod isolation_policy;
 pub mod report;
 pub mod scan_policy;
 pub mod string_search;
-pub mod tailwind_policy;
 pub mod test_utils_scan;
 pub mod verify_policy;

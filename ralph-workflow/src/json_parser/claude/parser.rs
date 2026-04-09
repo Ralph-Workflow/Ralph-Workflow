@@ -12,7 +12,7 @@ use crate::json_parser::health::StreamingQualityMetrics;
 use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 use crate::json_parser::printer::Printable;
 use crate::json_parser::printer::StdoutPrinter;
-use crate::json_parser::types::{ContentBlock, ContentBlockDelta};
+use crate::json_parser::types::{ContentBlock, ContentBlockDelta, ToolActivityTracker};
 
 /// Claude event parser
 ///
@@ -26,12 +26,11 @@ pub struct ClaudeParser {
     state: ParserState,
     show_streaming_metrics: bool,
     printer: Rc<RefCell<dyn Printable>>,
-    /// Shared counter tracking active tool `ContentBlock`s in progress. Incremented when a
-    /// `ToolUse` block starts, saturating-decremented on `MessageStart` (tool result received) or
-    /// when the stream ends. Allows the idle-timeout monitor to avoid killing the agent during
-    /// long tool calls (e.g. `Write` tool executes after `MessageStop`, before `MessageStart`).
-    /// Correctly tracks concurrent parallel tool calls (multiple `ToolUse` blocks per message).
-    tool_activity_tracker: Option<std::sync::Arc<std::sync::atomic::AtomicU32>>,
+    /// Tracks active tool `ContentBlock`s in progress for idle-timeout suppression.
+    /// Incremented when a `ToolUse` block starts, saturating-decremented on `MessageStart`
+    /// (tool result received) or when the stream ends. Correctly tracks concurrent parallel
+    /// tool calls (multiple `ToolUse` blocks per message).
+    tool_activity_tracker: ToolActivityTracker,
 }
 
 impl ClaudeParser {
@@ -59,7 +58,7 @@ impl ClaudeParser {
             state: ParserState::new(verbose_warnings),
             show_streaming_metrics: false,
             printer,
-            tool_activity_tracker: None,
+            tool_activity_tracker: ToolActivityTracker::new(),
         }
     }
 
@@ -71,39 +70,8 @@ impl ClaudeParser {
         mut self,
         tracker: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ) -> Self {
-        self.tool_activity_tracker = Some(tracker);
+        self.tool_activity_tracker = ToolActivityTracker::with_tracker(tracker);
         self
-    }
-
-    fn set_tool_active(&self) {
-        if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.fetch_update(
-                std::sync::atomic::Ordering::Release,
-                std::sync::atomic::Ordering::Acquire,
-                |n| Some(n.saturating_add(1)),
-            ).ok();
-        }
-    }
-
-    fn clear_tool_active(&self) {
-        if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.fetch_update(
-                std::sync::atomic::Ordering::Release,
-                std::sync::atomic::Ordering::Acquire,
-                |n| Some(n.saturating_sub(1)),
-            ).ok();
-        }
-    }
-
-    /// Hard-reset the tool-activity counter to 0.
-    ///
-    /// Called at stream end (stdout EOF) to ensure the counter is 0 when the monitor
-    /// checks after the stream closes. Defense-in-depth: the bounded suppression cap
-    /// in the monitor handles the case where this races with the monitor.
-    fn reset_tool_active(&self) {
-        if let Some(ref tracker) = self.tool_activity_tracker {
-            tracker.store(0, std::sync::atomic::Ordering::Release);
-        }
     }
 
     pub(crate) const fn with_show_streaming_metrics(mut self, show: bool) -> Self {
@@ -315,7 +283,7 @@ impl ClaudeParser {
         // Tool result has been delivered — the prior tool's execution window is now complete.
         // Clearing here (rather than at MessageStop) ensures the idle-timeout suppressor stays
         // active while the Write tool (or any tool) executes between MessageStop and MessageStart.
-        self.clear_tool_active();
+        self.tool_activity_tracker.clear_active();
         let in_place_finalize = self
             .state
             .with_session_mut(|session| self.finalize_in_place_full_mode(session));
@@ -364,7 +332,7 @@ impl ClaudeParser {
         // A ToolUse content block means the agent is actively calling a tool — suppress
         // idle timeout for the duration. Other block types (Text, etc.) do not set the flag.
         if matches!(block, ContentBlock::ToolUse { .. }) {
-            self.set_tool_active();
+            self.tool_activity_tracker.set_active();
         }
         self.state.with_session_mut(|session| {
             session.on_content_block_start(index);
@@ -491,7 +459,7 @@ impl ClaudeParser {
         c: Colors,
         log_buffer: &[u8],
     ) -> std::io::Result<()> {
-        self.reset_tool_active(); // hard-reset at stream end — stdout is closed, no more tool events
+        self.tool_activity_tracker.reset(); // hard-reset at stream end — stdout is closed, no more tool events
         if let Some(log_path) = &self.log_path {
             workspace.append_bytes(log_path, log_buffer)?;
         }

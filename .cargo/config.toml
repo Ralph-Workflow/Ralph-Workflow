@@ -14,5 +14,22 @@ xtask = "run -p xtask --"
 #   "found crate ... compiled by an incompatible version of rustc"
 #
 # This wrapper only activates for Dylint builds and forces dependency builds to
-# use the same toolchain.
+# use the same toolchain. It also chains through sccache when available.
 rustc-wrapper = "./.cargo/rustc-wrapper-dylint"
+
+# Cranelift codegen backend (NOT enabled):
+# Cranelift provides 2-4x faster codegen than LLVM for dev/test builds.
+# The `codegen-backend` profile key requires nightly Cargo (`cargo-features =
+# ["codegen-backend"]` in Cargo.toml), but both local dev (Homebrew cargo
+# 1.92.0) and rw-build-server (cargo 1.93.1) use stable Cargo. Enabling it
+# would require all build environments to switch to `rustup run nightly cargo`,
+# which changes the build workflow. The Cranelift rustc component is installed
+# (nightly-2026-02-04) and ready — revisit when stable Cargo ships
+# `codegen-backend` support or when the project switches to nightly Cargo.
+
+# Mold linker for faster linking on Linux (rw-build-server).
+# Mold provides 3-10x faster linking than the default ld/lld.
+# Only applies on x86_64 Linux — macOS builds use the platform default linker.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

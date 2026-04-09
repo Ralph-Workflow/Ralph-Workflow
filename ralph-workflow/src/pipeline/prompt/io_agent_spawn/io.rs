@@ -13,7 +13,7 @@ use crate::pipeline::idle_timeout::KillConfig;
 use crate::pipeline::idle_timeout::{
     monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
     new_file_activity_tracker, time_since_activity, FileActivityConfig, MonitorConfig,
-    MonitorResult, StderrActivityTracker, DEFAULT_KILL_CONFIG, IDLE_TIMEOUT_SECS,
+    ActivityTrackingReader, MonitorResult, DEFAULT_KILL_CONFIG, IDLE_TIMEOUT_SECS,
 };
 use crate::pipeline::prompt::io_streaming;
 use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
@@ -615,7 +615,7 @@ fn spawn_stderr_collector_thread(
 ) -> std::thread::JoinHandle<Result<String, std::io::Error>> {
     std::thread::spawn(move || -> Result<String, std::io::Error> {
         const STDERR_MAX_BYTES: usize = 512 * 1024;
-        let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
+        let tracked_stderr = ActivityTrackingReader::new(stderr, stderr_activity_timestamp);
         let reader = std::io::BufReader::new(tracked_stderr);
         super::io_stderr_collector::collect_stderr_with_cap_and_drain(
             reader,

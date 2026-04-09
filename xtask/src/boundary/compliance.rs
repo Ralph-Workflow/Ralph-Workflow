@@ -1,16 +1,10 @@
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use aho_corasick::AhoCorasick;
 
 use crate::domain::compliance::{
     extract_test_name, find_fn_line_idx, find_function_end_bytes, find_opening_brace_in_lines,
-    shell_script_scan_result, tailwind_scan_result, timeout_wrapper_scan_result, trim_ascii,
-    ComplianceSummary,
-};
-use crate::domain::tailwind_policy::{
-    extract_tailwind_token, normalize_tailwind_candidate, tailwind_candidate_matches_rule,
-    REMOVED_TAILWIND4_ANGULAR_CLASSES,
+    shell_script_scan_result, timeout_wrapper_scan_result, trim_ascii, ComplianceSummary,
 };
 use crate::io::scanner::LineIndex;
 use crate::runtime::verify::{CheckStatus, NativeCheckResult};
@@ -88,35 +82,6 @@ fn run_timeout_wrapper_scan(test_dir: &Path) -> NativeCheckResult {
     let (violations, read_errors) = scan_timeout_wrapper_files(&files, &ac);
 
     compliance_summary_to_native(timeout_wrapper_scan_result(&violations, &read_errors))
-}
-
-pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckResult {
-    match tailwind_removed_class_summary(repo_root) {
-        Ok(summary) => compliance_summary_to_native(summary),
-        Err(error) => NativeCheckResult {
-            status: CheckStatus::Error,
-            message: error,
-        },
-    }
-}
-
-fn tailwind_removed_class_summary(repo_root: &Path) -> Result<ComplianceSummary, String> {
-    let template_dir = repo_root.join("ralph-gui/ui/src");
-
-    if !template_dir.exists() {
-        return Ok(tailwind_scan_result(&[], &[]));
-    }
-
-    let ac = AhoCorasick::new(
-        REMOVED_TAILWIND4_ANGULAR_CLASSES
-            .iter()
-            .map(|pattern| pattern.literal),
-    )
-    .expect("valid Tailwind migration patterns");
-
-    let (violations, read_errors) =
-        collect_tailwind_template_violations(&template_dir, repo_root, &ac)?;
-    Ok(tailwind_scan_result(&violations, &read_errors))
 }
 
 /// Scans test files (excluding system_tests) for direct git commit operations and
@@ -265,42 +230,6 @@ fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn collect_tailwind_template_violations(
-    template_dir: &Path,
-    repo_root: &Path,
-    ac: &AhoCorasick,
-) -> Result<(Vec<String>, Vec<String>), String> {
-    let mut files = Vec::new();
-    crate::io::scanner::collect_files_with_glob(template_dir, "*.html", &mut files).map_err(
-        |error| {
-            format!(
-                "Failed to walk Angular template directory {}: {error}",
-                template_dir.display()
-            )
-        },
-    )?;
-    files.sort();
-
-    let (violations, read_errors) = files.into_iter().fold(
-        (Vec::new(), Vec::new()),
-        |(mut violations, mut read_errors), file_path| {
-            match std::fs::read(&file_path) {
-                Ok(content) => {
-                    violations.extend(collect_removed_tailwind4_violations(
-                        &file_path, repo_root, &content, ac,
-                    ));
-                }
-                Err(error) => {
-                    read_errors.push(format!("{}: read error: {error}", file_path.display()));
-                }
-            }
-            (violations, read_errors)
-        },
-    );
-
-    Ok((violations, read_errors))
-}
-
 fn scan_timeout_wrapper_files(files: &[PathBuf], ac: &AhoCorasick) -> (Vec<String>, Vec<String>) {
     let mut violations = Vec::new();
     let mut read_errors = Vec::new();
@@ -322,68 +251,6 @@ fn should_skip_file(path: &Path) -> bool {
         .unwrap_or_default();
 
     matches!(file_name, "_TEMPLATE.rs" | "compliance_check.rs" | "mod.rs")
-}
-
-fn collect_removed_tailwind4_violations(
-    file_path: &Path,
-    repo_root: &Path,
-    content: &[u8],
-    ac: &AhoCorasick,
-) -> Vec<String> {
-    collect_tailwind_violations(file_path, repo_root, content, ac)
-}
-
-fn build_tailwind_violation(
-    file_path: &Path,
-    repo_root: &Path,
-    content: &[u8],
-    mat: &aho_corasick::Match,
-    line_idx: &LineIndex,
-) -> Option<(String, String)> {
-    let rule = &REMOVED_TAILWIND4_ANGULAR_CLASSES[mat.pattern().as_usize()];
-    let line_number = line_idx.line_number(mat.start()) + 1;
-    let line_start = line_idx.line_start(mat.start());
-    let line_bytes = line_idx.extract_line(content, mat.start());
-    let local_offset = mat.start().saturating_sub(line_start);
-    let token = extract_tailwind_token(line_bytes, local_offset)?;
-
-    let candidate = normalize_tailwind_candidate(&token);
-    if !tailwind_candidate_matches_rule(candidate, rule) {
-        return None;
-    }
-
-    let dedupe_key = format!("{line_number}:{candidate}");
-    let display_path = file_path.strip_prefix(repo_root).unwrap_or(file_path);
-    let violation = format!(
-        "{}:{}: Tailwind 3-only class '{}' does not exist in Tailwind 4; replace it with '{}'. This component/file needs rework. Look up the current Tailwind CSS v4 documentation and upgrade guide before changing it.",
-        display_path.display(),
-        line_number,
-        candidate,
-        rule.replacement,
-    );
-
-    Some((dedupe_key, violation))
-}
-
-fn collect_tailwind_violations(
-    file_path: &Path,
-    repo_root: &Path,
-    content: &[u8],
-    ac: &AhoCorasick,
-) -> Vec<String> {
-    let line_idx = LineIndex::new(content);
-    let mut seen = HashSet::new();
-
-    ac.find_iter(content)
-        .filter_map(|mat| build_tailwind_violation(file_path, repo_root, content, &mat, &line_idx))
-        .filter_map(|(dedupe_key, violation)| {
-            if seen.insert(dedupe_key) {
-                Some(violation)
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 /// Scan a single file using Aho-Corasick O(n+m+z) to find all `#[test]`,

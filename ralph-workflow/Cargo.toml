@@ -31,18 +31,18 @@ hardened-resume = []
 
 [dependencies]
 # CLI argument parsing
-clap = { version = "4.4", features = ["derive", "env"] }
+clap = { workspace = true, features = ["env"] }
 clap_complete = "4.4"
 
 # JSON parsing with serde (100x faster than jq spawns)
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # SHA-256 checksums for checkpoint validation
-sha2 = "0.10"
+sha2 = { workspace = true }
 
 # Date/time handling
-chrono = "0.4"
+chrono = { workspace = true }
 
 # Environment and process management
 which = "6.0"
@@ -55,25 +55,25 @@ dirs = "5.0"
 
 # Error handling
 thiserror = "2.0"
-anyhow = "1.0"
+anyhow = { workspace = true }
 
 # TOML parsing for agent configuration files
 toml = "0.8"
 
 # Regex for pattern matching
-regex = "1.10"
+regex = { workspace = true }
 
 # Parse shell-like command strings (quotes/escapes) into argv
 shell-words = "1.1"
 
 # Tempfile for creating temporary directories
-tempfile = "3.10"
+tempfile = { workspace = true }
 
 # Signal handling for cleanup on Ctrl+C
 ctrlc = "3.4"
 
 # Git library for direct git operations (bypasses CLI)
-git2 = "0.18"
+git2 = { workspace = true }
 
 # File system monitoring for PROMPT.md protection
 notify = "6.1"
@@ -110,9 +110,9 @@ mcp-server = { path = "../mcp-server" }
 
 [dev-dependencies]
 # Testing utilities
-tempfile = "3.10"
+tempfile = { workspace = true }
 test-helpers = { path = "../test-helpers" }
 # Serial test execution for tests that modify global state (env vars)
-serial_test = "3"
+serial_test = { workspace = true }
 mockito = "1.7"
 proptest = "1"

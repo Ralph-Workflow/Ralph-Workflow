@@ -21,7 +21,7 @@ else
     PLATFORM := unknown
 endif
 
-.PHONY: all build release test clean install install-debug uninstall check fmt lint dylint dylint-verbose help build-gui install-gui install-gui-local
+.PHONY: all build release test clean install install-debug uninstall check fmt lint dylint dylint-verbose help
 
 # Default target
 all: build
@@ -56,10 +56,8 @@ install: release
 	mkdir -p $(INSTALL_BIN)
 	install -m 755 target/release/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME)
 	echo "Installed: $(INSTALL_BIN)/$(BINARY_NAME)"
-	$(MAKE) install-gui
 	echo ""
 	echo "Installation complete! Run 'ralph --help' to get started."
-	echo "GUI: Run 'ralph-gui' to launch the desktop application."
 
 # Install to user's local bin (no sudo needed)
 install-local:
@@ -101,7 +99,6 @@ lint:
 	$(CARGO) clippy -p ralph-workflow-tests $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p test-helpers $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p xtask $(CARGO_FLAGS) --all-targets -- -D warnings
-	$(CARGO) clippy -p ralph-gui $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p mcp-server $(CARGO_FLAGS) --all-targets -- -D warnings
 	echo "Lint check passed"
 
@@ -346,26 +343,6 @@ ci:
 	$(CARGO) xtask verify
 	echo "All CI checks passed"
 
-# GUI targets
-# Build the Angular frontend and Tauri GUI binary
-build-gui:
-	cd ralph-gui/ui && bun install && bun run build
-	$(CARGO) build -p ralph-gui $(RELEASE_FLAGS)
-	echo "GUI build complete: target/release/ralph-gui"
-
-# Install GUI binary only (requires build-gui first)
-install-gui:
-	@echo "Installing ralph-gui to $(INSTALL_BIN)..."
-	mkdir -p $(INSTALL_BIN)
-	install -m 755 target/release/ralph-gui $(INSTALL_BIN)/ralph-gui
-	echo "Installed: $(INSTALL_BIN)/ralph-gui"
-	echo ""
-	echo "GUI installation complete! Run 'ralph-gui' to launch the GUI."
-
-# Install GUI to user's local bin (no sudo needed)
-install-gui-local:
-	$(MAKE) install-gui INSTALL_ROOT=$(HOME)/.local
-
 # Build documentation
 doc:
 	$(CARGO) doc --no-deps --open
@@ -402,11 +379,6 @@ help:
 	echo "  version       Print version information"
 	echo "  help          Show this help"
 	echo ""
-	echo "GUI targets:"
-	echo "  build-gui       Build the Angular frontend and Tauri GUI binary"
-	echo "  install-gui     Install GUI binary only (requires build-gui first)"
-	echo "  install-gui-local Install GUI to ~/.local/bin (no sudo needed)"
-	echo ""
 	echo "Environment variables:"
 	echo "  INSTALL_ROOT  Installation prefix (default: /usr/local)"
 	echo ""
@@ -414,4 +386,3 @@ help:
 	echo "  make release && sudo make install"
 	echo "  make install-local"
 	echo "  INSTALL_ROOT=/opt make install"
-	echo "  make build-gui && sudo make install-gui"

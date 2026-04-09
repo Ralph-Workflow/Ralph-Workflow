@@ -40,9 +40,6 @@ pub struct CheckGroups<'a> {
     pub fmt: &'a [CommandSpec],
     pub core_cargo: &'a [CommandSpec],
     pub xtask_cargo: &'a [CommandSpec],
-    pub gui_cargo: &'a [CommandSpec],
-    pub frontend_install: &'a [CommandSpec],
-    pub frontend_post_install: &'a [CommandSpec],
     pub release: &'a [CommandSpec],
 }
 
@@ -52,9 +49,6 @@ pub(crate) fn all_required_checks() -> Vec<&'static CommandSpec> {
         .iter()
         .chain(CORE_CARGO_CHECKS.iter())
         .chain(XTASK_CARGO_CHECKS.iter())
-        .chain(GUI_CARGO_CHECKS.iter())
-        .chain(FRONTEND_INSTALL_CHECKS.iter())
-        .chain(FRONTEND_POST_INSTALL_CHECKS.iter())
         .chain(RELEASE_CHECKS.iter())
         .collect()
 }
@@ -65,9 +59,6 @@ fn all_group_checks(groups: &CheckGroups<'_>) -> Vec<CommandSpec> {
         .iter()
         .chain(groups.core_cargo.iter())
         .chain(groups.xtask_cargo.iter())
-        .chain(groups.gui_cargo.iter())
-        .chain(groups.frontend_install.iter())
-        .chain(groups.frontend_post_install.iter())
         .chain(groups.release.iter())
         .cloned()
         .collect()
@@ -138,12 +129,7 @@ fn check_remaining_lanes(
 }
 
 fn drain_secondary_lanes(lane_results: &LaneResults) -> Result<VerifyReport> {
-    if let Some(report) = drain_lane_order(&[
-        lane_results.xtask(),
-        lane_results.gui(),
-        lane_results.frontend(),
-        lane_results.release(),
-    ])? {
+    if let Some(report) = drain_lane_order(&[lane_results.xtask(), lane_results.release()])? {
         return Ok(report);
     }
     Ok(VerifyReport {
@@ -418,8 +404,6 @@ struct LaneResults {
     scan: Mutex<Option<Result<VerifyReport>>>,
     fmt: Mutex<Option<Result<VerifyReport>>>,
     xtask: Mutex<Option<Result<VerifyReport>>>,
-    gui: Mutex<Option<Result<VerifyReport>>>,
-    frontend: Mutex<Option<Result<VerifyReport>>>,
     release: Mutex<Option<Result<VerifyReport>>>,
 }
 
@@ -429,8 +413,6 @@ impl LaneResults {
             scan: Mutex::new(None),
             fmt: Mutex::new(None),
             xtask: Mutex::new(None),
-            gui: Mutex::new(None),
-            frontend: Mutex::new(None),
             release: Mutex::new(None),
         }
     }
@@ -445,14 +427,6 @@ impl LaneResults {
 
     fn xtask(&self) -> &Mutex<Option<Result<VerifyReport>>> {
         &self.xtask
-    }
-
-    fn gui(&self) -> &Mutex<Option<Result<VerifyReport>>> {
-        &self.gui
-    }
-
-    fn frontend(&self) -> &Mutex<Option<Result<VerifyReport>>> {
-        &self.frontend
     }
 
     fn release(&self) -> &Mutex<Option<Result<VerifyReport>>> {
@@ -527,25 +501,6 @@ fn run_parallel_lanes(
         spawn_group_lane(
             s,
             Arc::clone(&runner),
-            GroupLaneContext::new(reporter, cancel, lane_results.gui()),
-            LaneSpec::new(groups.gui_cargo, "gui-cargo", FailurePriority::GuiCargo),
-        );
-
-        if !groups.frontend_install.is_empty() || !groups.frontend_post_install.is_empty() {
-            spawn_frontend_lane(
-                s,
-                Arc::clone(&runner),
-                reporter,
-                cancel,
-                groups.frontend_install,
-                groups.frontend_post_install,
-                lane_results.frontend(),
-            );
-        }
-
-        spawn_group_lane(
-            s,
-            Arc::clone(&runner),
             GroupLaneContext::new(reporter, cancel, lane_results.release()),
             LaneSpec::new(groups.release, "release", FailurePriority::Release),
         );
@@ -575,85 +530,6 @@ fn drain_lane_order(
     }
 
     Ok(None)
-}
-
-fn spawn_frontend_lane<'scope, 'env>(
-    scope: &'scope std::thread::Scope<'scope, 'env>,
-    runner: Arc<dyn CommandRunner>,
-    reporter: &'scope dyn ProgressReporter,
-    cancel: &'scope CancellationState,
-    install: &'scope [CommandSpec],
-    post_install: &'scope [CommandSpec],
-    result: &'scope Mutex<Option<Result<VerifyReport>>>,
-) {
-    scope.spawn(move || {
-        let lane_start = Instant::now();
-        let install_report = run_checks_cancellable(
-            runner.as_ref(),
-            install,
-            reporter,
-            cancel,
-            FailurePriority::Frontend,
-        );
-        match &install_report {
-            Ok(report) if report.exit == VerifyExitCode::Success => {}
-            _ => {
-                *result.lock().unwrap() = Some(install_report);
-                reporter.lane_finished("frontend", lane_start.elapsed());
-                return;
-            }
-        }
-
-        if post_install.is_empty() || cancel.should_cancel(FailurePriority::Frontend) {
-            *result.lock().unwrap() = Some(install_report);
-            reporter.lane_finished("frontend", lane_start.elapsed());
-            return;
-        }
-
-        let sub_results: Vec<Result<VerifyReport>> = std::thread::scope(|sub_s| {
-            let handles: Vec<_> = post_install
-                .iter()
-                .map(|spec| {
-                    let runner = Arc::clone(&runner);
-                    sub_s.spawn(move || {
-                        run_checks_cancellable(
-                            runner.as_ref(),
-                            std::slice::from_ref(spec),
-                            reporter,
-                            cancel,
-                            FailurePriority::Frontend,
-                        )
-                    })
-                })
-                .collect();
-            handles
-                .into_iter()
-                .map(|h| h.join().expect("frontend sub-thread panicked"))
-                .collect()
-        });
-
-        for sub_result in sub_results {
-            match &sub_result {
-                Ok(report) if report.exit == VerifyExitCode::Failure => {
-                    *result.lock().unwrap() = Some(sub_result);
-                    reporter.lane_finished("frontend", lane_start.elapsed());
-                    return;
-                }
-                Err(_) => {
-                    *result.lock().unwrap() = Some(sub_result);
-                    reporter.lane_finished("frontend", lane_start.elapsed());
-                    return;
-                }
-                _ => {}
-            }
-        }
-
-        *result.lock().unwrap() = Some(Ok(VerifyReport {
-            exit: VerifyExitCode::Success,
-            failure: None,
-        }));
-        reporter.lane_finished("frontend", lane_start.elapsed());
-    });
 }
 
 fn drain_lane_failure(
@@ -703,7 +579,14 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "test-ralph-workflow-lib",
         program: "cargo",
-        args: &["test", "-p", "ralph-workflow", "--lib", "--all-features"],
+        args: &[
+            "nextest",
+            "run",
+            "-p",
+            "ralph-workflow",
+            "--lib",
+            "--all-features",
+        ],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -711,11 +594,16 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
         name: "test-integration",
         program: "cargo",
         args: &[
-            "test",
+            "nextest",
+            "run",
             "-p",
             "ralph-workflow-tests",
             "--test",
-            "integration_tests",
+            "integration_tests_agent_core",
+            "--test",
+            "integration_tests_reducer",
+            "--test",
+            "integration_tests_workflow",
         ],
         success_exit_codes: &[0],
         extra_env: &[],
@@ -768,84 +656,9 @@ pub const XTASK_CARGO_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "test-xtask",
         program: "cargo",
-        args: &["test", "-p", "xtask"],
+        args: &["nextest", "run", "-p", "xtask"],
         success_exit_codes: &[0],
         extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
-    },
-];
-
-pub const GUI_CARGO_CHECKS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "clippy-ralph-gui",
-        program: "cargo",
-        args: &[
-            "clippy",
-            "-p",
-            "ralph-gui",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
-    },
-    CommandSpec {
-        name: "test-ralph-gui-lib",
-        program: "cargo",
-        args: &["test", "-p", "ralph-gui", "--lib"],
-        success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
-    },
-];
-
-pub const FRONTEND_INSTALL_CHECKS: &[CommandSpec] = &[CommandSpec {
-    name: "ralph-gui-frontend-install",
-    program: "bun",
-    args: &["install", "--cwd", "ralph-gui/ui", "--frozen-lockfile"],
-    success_exit_codes: &[0],
-    extra_env: &[],
-}];
-
-pub const FRONTEND_POST_INSTALL_CHECKS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "ralph-gui-frontend-lint",
-        program: "bun",
-        args: &["run", "--cwd", "ralph-gui/ui", "lint"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "ralph-gui-frontend-test",
-        program: "bun",
-        args: &["run", "--cwd", "ralph-gui/ui", "test"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-];
-
-#[cfg(test)]
-pub const FRONTEND_CHECKS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "ralph-gui-frontend-install",
-        program: "bun",
-        args: &["install", "--cwd", "ralph-gui/ui", "--frozen-lockfile"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "ralph-gui-frontend-lint",
-        program: "bun",
-        args: &["run", "--cwd", "ralph-gui/ui", "lint"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "ralph-gui-frontend-test",
-        program: "bun",
-        args: &["run", "--cwd", "ralph-gui/ui", "test"],
-        success_exit_codes: &[0],
-        extra_env: &[],
     },
 ];
 
@@ -863,7 +676,7 @@ pub const DYLINT_CHECKS: &[CommandSpec] = &[CommandSpec {
 pub const RELEASE_BUILD_CHECKS: &[CommandSpec] = &[CommandSpec {
     name: "release-build",
     program: "cargo",
-    args: &["build", "--release"],
+    args: &["build", "--profile", "release-verify"],
     success_exit_codes: &[0],
     extra_env: &[("CARGO_TARGET_DIR", "target/release-parallel-verify")],
 }];
@@ -873,7 +686,7 @@ pub const RELEASE_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "release-build",
         program: "cargo",
-        args: &["build", "--release"],
+        args: &["build", "--profile", "release-verify"],
         success_exit_codes: &[0],
         extra_env: &[("CARGO_TARGET_DIR", "target/release-parallel-verify")],
     },

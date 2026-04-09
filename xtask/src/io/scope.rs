@@ -30,18 +30,6 @@ pub enum CheckScope {
     },
 }
 
-const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui/src", "ralph-workflow/src"];
-const RALPH_GUI_BUILD_EXTRA_GLOBS: &[ScopeGlob] = &[
-    ScopeGlob {
-        dir: "ralph-gui/capabilities",
-        pattern: "*",
-    },
-    ScopeGlob {
-        dir: "ralph-gui/icons",
-        pattern: "*",
-    },
-];
-const RALPH_GUI_BUILD_EXTRA_FILES: &[&str] = &["ralph-gui/build.rs", "ralph-gui/tauri.conf.json"];
 const FMT_CHECK_SCOPE_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "ralph-workflow/src",
@@ -59,12 +47,8 @@ const FMT_CHECK_SCOPE_GLOBS: &[ScopeGlob] = &[
         dir: "test-helpers/src",
         pattern: "*.rs",
     },
-    ScopeGlob {
-        dir: "ralph-gui/src",
-        pattern: "*.rs",
-    },
 ];
-const FMT_CHECK_SCOPE_FILES: &[&str] = &["ralph-gui/build.rs"];
+const FMT_CHECK_SCOPE_FILES: &[&str] = &[];
 const RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "templates/prompts",
@@ -124,21 +108,6 @@ const DYLINT_SCOPE_FILES: &[&str] = &[
     "lints/ralph_lints/dylint-link",
     "lints/ralph_lints/rustc-nightly",
 ];
-const RALPH_GUI_FRONTEND_INSTALL_FILES: &[&str] =
-    &["ralph-gui/ui/package.json", "ralph-gui/ui/bun.lock"];
-const RALPH_GUI_FRONTEND_CHECK_FILES: &[&str] = &[
-    "ralph-gui/ui/package.json",
-    "ralph-gui/ui/bun.lock",
-    "ralph-gui/ui/tsconfig.json",
-    "ralph-gui/ui/tsconfig.node.json",
-    "ralph-gui/ui/vite.config.ts",
-    "ralph-gui/ui/eslint.config.mjs",
-    "ralph-gui/ui/index.html",
-];
-const RALPH_GUI_FRONTEND_SRC_GLOBS: &[ScopeGlob] = &[ScopeGlob {
-    dir: "ralph-gui/ui/src",
-    pattern: "*",
-}];
 const FORBIDDEN_ALLOW_EXPECT_SCOPE_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "ralph-workflow/src",
@@ -157,15 +126,11 @@ const FORBIDDEN_ALLOW_EXPECT_SCOPE_GLOBS: &[ScopeGlob] = &[
         pattern: "*.rs",
     },
     ScopeGlob {
-        dir: "ralph-gui/src",
-        pattern: "*.rs",
-    },
-    ScopeGlob {
         dir: "lints",
         pattern: "*.rs",
     },
 ];
-const FORBIDDEN_ALLOW_EXPECT_SCOPE_FILES: &[&str] = &["ralph-gui/build.rs"];
+const FORBIDDEN_ALLOW_EXPECT_SCOPE_FILES: &[&str] = &[];
 pub const SCOPE_HASH_VERSION: &[u8] = b"scope-v2";
 pub const NATIVE_SCAN_HASH_VERSION: &[u8] = b"native-scan-v2";
 pub const NATIVE_REQUIRED_HASH_VERSION: &[u8] = b"native-required-v1";
@@ -205,7 +170,6 @@ pub fn scope_memo_key(scope: &CheckScope) -> String {
 pub fn scope_for(check_name: &str) -> CheckScope {
     scope_for_special_checks(check_name)
         .or_else(|| scope_for_clippy_checks(check_name))
-        .or_else(|| scope_for_gui_checks(check_name))
         .or_else(|| scope_for_integration_checks(check_name))
         .unwrap_or(CheckScope::Build(&[
             "ralph-workflow/src",
@@ -249,27 +213,6 @@ fn scope_for_clippy_checks(check_name: &str) -> Option<CheckScope> {
             files: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES,
         }),
         "clippy-xtask" | "test-xtask" => Some(CheckScope::Build(&["xtask/src"])),
-        _ => None,
-    }
-}
-
-fn scope_for_gui_checks(check_name: &str) -> Option<CheckScope> {
-    match check_name {
-        "clippy-ralph-gui" | "test-ralph-gui-lib" => Some(CheckScope::BuildWithExtras {
-            dirs: RALPH_GUI_RUST_SCOPE_DIRS,
-            globs: RALPH_GUI_BUILD_EXTRA_GLOBS,
-            files: RALPH_GUI_BUILD_EXTRA_FILES,
-        }),
-        "ralph-gui-frontend-install" => Some(CheckScope::Patterns {
-            globs: &[],
-            files: RALPH_GUI_FRONTEND_INSTALL_FILES,
-            include_lock: false,
-        }),
-        "ralph-gui-frontend-lint" | "ralph-gui-frontend-test" => Some(CheckScope::Patterns {
-            globs: RALPH_GUI_FRONTEND_SRC_GLOBS,
-            files: RALPH_GUI_FRONTEND_CHECK_FILES,
-            include_lock: false,
-        }),
         _ => None,
     }
 }

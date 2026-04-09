@@ -1,8 +1,0 @@
-@media (prefers-reduced-motion: reduce) {
-  .animate-fade-in {
-    animation: none;
-  }
-  .animate-fade-in-delayed {
-    animation: none;
-  }
-}

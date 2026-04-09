@@ -4,9 +4,20 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+# Split into 3 targets for parallel compilation and faster incremental rebuilds.
+# Each target is a separate Cargo compilation unit — editing a test in one
+# target does NOT recompile the other two.
 [[test]]
-name = "integration_tests"
-path = "integration_tests/main.rs"
+name = "integration_tests_reducer"
+path = "integration_tests_reducer/main.rs"
+
+[[test]]
+name = "integration_tests_workflow"
+path = "integration_tests_workflow/main.rs"
+
+[[test]]
+name = "integration_tests_agent_core"
+path = "integration_tests_agent_core/main.rs"
 
 [[test]]
 name = "system_tests"
@@ -17,19 +28,19 @@ name = "process-system-tests"
 path = "process_system_tests/main.rs"
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+anyhow = { workspace = true }
+clap = { workspace = true }
 ralph-workflow = { path = "../ralph-workflow", features = ["test-utils"] }
 mcp-server = { path = "../mcp-server" }
-serde_json = "1"
+serde_json = { workspace = true }
 test-helpers = { path = "../test-helpers" }
-tempfile = "3.10"
+tempfile = { workspace = true }
 predicates = "3"
-git2 = "0.18"
-sha2 = "0.10"
-regex = "1.10"
-serial_test = "3.0"
-chrono = "0.4"
+git2 = { workspace = true }
+sha2 = { workspace = true }
+regex = { workspace = true }
+serial_test = { workspace = true }
+chrono = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

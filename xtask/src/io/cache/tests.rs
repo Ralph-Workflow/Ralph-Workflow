@@ -92,27 +92,9 @@ fn make_spec(name: &'static str) -> CommandSpec {
     }
 }
 
-fn make_zero_exit_spec(name: &'static str) -> CommandSpec {
-    CommandSpec {
-        name,
-        program: "npm",
-        args: &[],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    }
-}
-
 fn success_output() -> CommandOutput {
     CommandOutput {
         exit_code: 1, // exit 1 = no matches = success for rg checks
-        stdout: String::new(),
-        stderr: String::new(),
-    }
-}
-
-fn zero_exit_success_output() -> CommandOutput {
-    CommandOutput {
-        exit_code: 0,
         stdout: String::new(),
         stderr: String::new(),
     }
@@ -123,15 +105,6 @@ fn failure_output() -> CommandOutput {
         exit_code: 0, // exit 0 = matches found = failure for rg checks
         stdout: "match found".to_string(),
         stderr: String::new(),
-    }
-}
-
-fn allowed_frontend_warning_output() -> CommandOutput {
-    CommandOutput {
-        exit_code: 0,
-        stdout: String::new(),
-        stderr: "Warning: An update to Configuration inside a test was not wrapped in act(...)\n"
-            .to_string(),
     }
 }
 
@@ -291,58 +264,6 @@ fn test_caching_runner_does_not_cache_failures() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
-#[test]
-fn test_caching_runner_caches_allowed_frontend_test_warning_output() {
-    let tmp = unique_test_dir("xtask-cache-test-frontend-warning-cache");
-    let _ = std::fs::create_dir_all(&tmp);
-
-    let spec = make_zero_exit_spec("ralph-gui-frontend-test");
-
-    let (inner, count) = CountingRunner::new(allowed_frontend_warning_output());
-    let runner = CachingCommandRunner::new(inner, tmp.clone());
-
-    let first = runner.run(&spec).unwrap();
-    let second = runner.run(&spec).unwrap();
-
-    assert_eq!(
-        first.exit_code, 0,
-        "frontend test output must still be returned"
-    );
-    assert_eq!(
-        second.exit_code, 0,
-        "cache hit must preserve the original frontend test output"
-    );
-    assert_eq!(
-        count.load(Ordering::SeqCst),
-        1,
-        "allowed frontend test warning output must be cached after the first run"
-    );
-
-    let _ = std::fs::remove_dir_all(&tmp);
-}
-
-#[test]
-fn test_caching_runner_does_not_cache_allowed_frontend_warning_for_other_checks() {
-    let tmp = unique_test_dir("xtask-cache-test-non-frontend-warning");
-    let _ = std::fs::create_dir_all(&tmp);
-
-    let spec = make_zero_exit_spec("some-other-check");
-
-    let (inner, count) = CountingRunner::new(allowed_frontend_warning_output());
-    let runner = CachingCommandRunner::new(inner, tmp.clone());
-
-    let _ = runner.run(&spec).unwrap();
-    let _ = runner.run(&spec).unwrap();
-
-    assert_eq!(
-        count.load(Ordering::SeqCst),
-        2,
-        "the allowed warning exception must stay limited to the frontend test check"
-    );
-
-    let _ = std::fs::remove_dir_all(&tmp);
-}
-
 // ── Granular scope tests ──────────────────────────────────────────────────
 
 #[test]
@@ -390,70 +311,6 @@ fn test_scope_for_clippy_xtask_is_granular() {
 fn test_scope_for_test_xtask_is_granular() {
     let key = scope_memo_key(&scope_for("test-xtask"));
     assert_eq!(key, "b:xtask/src");
-}
-
-#[test]
-fn test_scope_for_clippy_ralph_gui_is_granular() {
-    match scope_for("clippy-ralph-gui") {
-        CheckScope::BuildWithExtras { dirs, globs, files } => {
-            assert_eq!(dirs, &["ralph-gui/src", "ralph-workflow/src"]);
-            assert!(
-                files.contains(&"ralph-gui/build.rs"),
-                "GUI verify scope must track build.rs as stable Rust-owned input"
-            );
-            assert!(
-                globs
-                    .iter()
-                    .any(|glob| glob.dir == "ralph-gui/capabilities" && glob.pattern == "*"),
-                "GUI verify scope must track Tauri capabilities watched by build.rs"
-            );
-            assert!(
-                globs
-                    .iter()
-                    .any(|glob| glob.dir == "ralph-gui/icons" && glob.pattern == "*"),
-                "GUI verify scope must track Tauri icons watched by build.rs"
-            );
-            assert!(
-                files.contains(&"ralph-gui/tauri.conf.json"),
-                "GUI verify scope must track tauri.conf.json watched by build.rs"
-            );
-        }
-        CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
-            panic!("clippy-ralph-gui must use BuildWithExtras scope")
-        }
-    }
-}
-
-#[test]
-fn test_scope_for_test_ralph_gui_lib_is_granular() {
-    match scope_for("test-ralph-gui-lib") {
-        CheckScope::BuildWithExtras { dirs, globs, files } => {
-            assert_eq!(dirs, &["ralph-gui/src", "ralph-workflow/src"]);
-            assert!(
-                files.contains(&"ralph-gui/build.rs"),
-                "GUI lib test scope must track build.rs as stable Rust-owned input"
-            );
-            assert!(
-                globs
-                    .iter()
-                    .any(|glob| glob.dir == "ralph-gui/capabilities" && glob.pattern == "*"),
-                "GUI lib test scope must track Tauri capabilities watched by build.rs"
-            );
-            assert!(
-                globs
-                    .iter()
-                    .any(|glob| glob.dir == "ralph-gui/icons" && glob.pattern == "*"),
-                "GUI lib test scope must track Tauri icons watched by build.rs"
-            );
-            assert!(
-                files.contains(&"ralph-gui/tauri.conf.json"),
-                "GUI lib test scope must track tauri.conf.json watched by build.rs"
-            );
-        }
-        CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
-            panic!("test-ralph-gui-lib must use BuildWithExtras scope")
-        }
-    }
 }
 
 #[test]
@@ -536,16 +393,7 @@ fn test_scope_for_fmt_check_uses_directories_not_build() {
                     .any(|glob| glob.dir == "test-helpers/src" && glob.pattern == "*.rs"),
                 "fmt-check must scan test-helpers/src"
             );
-            assert!(
-                globs
-                    .iter()
-                    .any(|glob| glob.dir == "ralph-gui/src" && glob.pattern == "*.rs"),
-                "fmt-check must scan stable GUI Rust sources without traversing transient frontend trees"
-            );
-            assert!(
-                files.contains(&"ralph-gui/build.rs"),
-                "fmt-check must scan GUI build.rs because cargo fmt --all --check formats it"
-            );
+            assert!(files.is_empty(), "fmt-check should have no extra files");
             assert!(!include_lock, "fmt-check should not depend on Cargo.lock");
         }
         CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::BuildWithExtras { .. } => {
@@ -589,18 +437,12 @@ fn test_scope_for_forbidden_allow_expect_scan_covers_all_scanned_rust_trees() {
             assert!(
                 globs
                     .iter()
-                    .any(|glob| glob.dir == "ralph-gui/src" && glob.pattern == "*.rs"),
-                "forbidden allow/expect scan must cover stable GUI Rust sources"
-            );
-            assert!(
-                globs
-                    .iter()
                     .any(|glob| glob.dir == "lints" && glob.pattern == "*.rs"),
                 "forbidden allow/expect scan must cover lints"
             );
             assert!(
-                files.contains(&"ralph-gui/build.rs"),
-                "forbidden allow/expect scan must cover ralph-gui/build.rs"
+                files.is_empty(),
+                "forbidden allow/expect scan should have no extra files"
             );
             assert!(
                 !include_lock,
@@ -1539,219 +1381,6 @@ fn test_release_build_scope_tracks_transitive_compile_time_dependencies() {
     assert_ne!(
         hash_before, hash_after,
         "release-build scope must track transitive compile-time dependencies (embedded prompts)"
-    );
-
-    let _ = std::fs::remove_dir_all(&tmp);
-}
-
-#[test]
-fn test_frontend_scope_is_independent_of_xtask_scope() {
-    let tmp = unique_test_dir("xtask-cache-test-frontend-xtask-independence");
-    let _ = std::fs::remove_dir_all(&tmp);
-    let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
-    let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
-    let _ = std::fs::create_dir_all(tmp.join("target"));
-
-    std::fs::write(
-        tmp.join("Cargo.toml"),
-        b"[workspace]\nmembers = [\"xtask\"]\n",
-    )
-    .unwrap();
-    std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
-    std::fs::write(
-        tmp.join("xtask/Cargo.toml"),
-        b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
-    )
-    .unwrap();
-    std::fs::write(tmp.join("xtask/src/main.rs"), b"fn main() {}\n").unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/package.json"),
-        b"{\"name\":\"ralph-workflow-ui\"}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/bun.lock"),
-        b"{\"lockfileVersion\":1}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/tsconfig.json"),
-        b"{\"compilerOptions\":{}}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/tsconfig.node.json"),
-        b"{\"compilerOptions\":{}}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/vite.config.ts"),
-        b"export default {};\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/eslint.config.mjs"),
-        b"export default [];\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/index.html"),
-        b"<div id=\"app\"></div>\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/src/App.tsx"),
-        b"export function App() { return <div>one</div>; }\n",
-    )
-    .unwrap();
-
-    let xtask_spec = make_zero_exit_spec("clippy-xtask");
-    let frontend_spec = make_zero_exit_spec("ralph-gui-frontend-test");
-
-    // First run: populate both caches.
-    let (inner_xtask, xtask_count) = CountingRunner::new(zero_exit_success_output());
-    let runner_xtask = CachingCommandRunner::new(inner_xtask, tmp.clone());
-    let _ = runner_xtask.run(&xtask_spec).unwrap();
-    runner_xtask.flush();
-    assert_eq!(
-        xtask_count.load(Ordering::SeqCst),
-        1,
-        "first xtask call must invoke inner runner"
-    );
-
-    let (inner_frontend, frontend_count) = CountingRunner::new(zero_exit_success_output());
-    let runner_frontend = CachingCommandRunner::new(inner_frontend, tmp.clone());
-    let _ = runner_frontend.run(&frontend_spec).unwrap();
-    runner_frontend.flush();
-    assert_eq!(
-        frontend_count.load(Ordering::SeqCst),
-        1,
-        "first frontend call must invoke inner runner"
-    );
-
-    // Change only frontend files (use different byte length to ensure fingerprint
-    // recomputation even on filesystems with 1-second mtime granularity).
-    std::fs::write(
-        tmp.join("ralph-gui/ui/src/App.tsx"),
-        b"export function App() { return <div>updated-content</div>; }\n",
-    )
-    .unwrap();
-
-    // Re-run frontend: must invalidate because frontend files changed.
-    let (inner_frontend2, frontend_count2) = CountingRunner::new(zero_exit_success_output());
-    let runner_frontend2 = CachingCommandRunner::new(inner_frontend2, tmp.clone());
-    let _ = runner_frontend2.run(&frontend_spec).unwrap();
-    assert_eq!(
-        frontend_count2.load(Ordering::SeqCst),
-        1,
-        "frontend edits must invalidate the frontend scope"
-    );
-
-    // Re-run xtask: must NOT invalidate because xtask files unchanged.
-    let (inner_xtask2, xtask_count2) = CountingRunner::new(zero_exit_success_output());
-    let runner_xtask2 = CachingCommandRunner::new(inner_xtask2, tmp.clone());
-    let _ = runner_xtask2.run(&xtask_spec).unwrap();
-    assert_eq!(
-        xtask_count2.load(Ordering::SeqCst),
-        0,
-        "frontend-only edits should not invalidate unchanged xtask scope fingerprints when xtask inputs can be rehashed"
-    );
-
-    let (inner_frontend3, frontend_count3) = CountingRunner::new(zero_exit_success_output());
-    let runner_frontend3 = CachingCommandRunner::new(inner_frontend3, tmp.clone());
-    let _ = runner_frontend3.run(&frontend_spec).unwrap();
-    assert_eq!(
-        frontend_count3.load(Ordering::SeqCst),
-        1,
-        "frontend edits must still invalidate the affected frontend scope"
-    );
-
-    let _ = std::fs::remove_dir_all(&tmp);
-}
-
-#[test]
-fn test_frontend_cache_invalidates_when_xtask_verifier_definition_changes() {
-    let tmp = unique_test_dir("xtask-cache-test-verifier-definition");
-    let _ = std::fs::remove_dir_all(&tmp);
-    let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
-    let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
-    let _ = std::fs::create_dir_all(tmp.join("target"));
-
-    std::fs::write(
-        tmp.join("Cargo.toml"),
-        b"[workspace]\nmembers = [\"xtask\"]\n",
-    )
-    .unwrap();
-    std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
-    std::fs::write(
-        tmp.join("xtask/Cargo.toml"),
-        b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
-    )
-    .unwrap();
-    std::fs::write(tmp.join("xtask/src/main.rs"), b"fn main() {}\n").unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/package.json"),
-        b"{\"name\":\"ralph-workflow-ui\"}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/bun.lock"),
-        b"{\"lockfileVersion\":1}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/tsconfig.json"),
-        b"{\"compilerOptions\":{}}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/tsconfig.node.json"),
-        b"{\"compilerOptions\":{}}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/vite.config.ts"),
-        b"export default {};\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/eslint.config.mjs"),
-        b"export default [];\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/index.html"),
-        b"<div id=\"app\"></div>\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-gui/ui/src/App.tsx"),
-        b"export function App() { return <div>one</div>; }\n",
-    )
-    .unwrap();
-
-    let spec = make_zero_exit_spec("ralph-gui-frontend-test");
-
-    let (inner_first, first_count) = CountingRunner::new(zero_exit_success_output());
-    let runner_first = CachingCommandRunner::new(inner_first, tmp.clone());
-    let _ = runner_first.run(&spec).unwrap();
-    runner_first.flush();
-    assert_eq!(first_count.load(Ordering::SeqCst), 1);
-
-    std::fs::write(
-        tmp.join("xtask/src/main.rs"),
-        b"fn main() { println!(\"verifier changed\"); }\n",
-    )
-    .unwrap();
-
-    let (inner_second, second_count) = CountingRunner::new(zero_exit_success_output());
-    let runner_second = CachingCommandRunner::new(inner_second, tmp.clone());
-    let _ = runner_second.run(&spec).unwrap();
-
-    assert_eq!(
-        second_count.load(Ordering::SeqCst),
-        1,
-        "changes to xtask verifier code must invalidate cached command successes even when the command scope is unchanged"
     );
 
     let _ = std::fs::remove_dir_all(&tmp);

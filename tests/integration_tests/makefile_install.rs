@@ -73,20 +73,6 @@ fn install_target_does_not_unconditionally_install_gui() {
     });
 }
 
-#[test]
-fn makefile_has_install_with_gui_target() {
-    with_default_timeout(|| {
-        let makefile = include_str!("../../Makefile");
-
-        // There must be a way to install both CLI and GUI together,
-        // but it must be separate from the basic install target.
-        let has_combined_install =
-            makefile.contains("\ninstall-with-gui:") || makefile.contains("\ninstall-full:");
-
-        assert!(
-            has_combined_install,
-            "Makefile must have an install-with-gui or install-full target \
-             that explicitly builds the GUI before installing both binaries"
-        );
-    });
-}
+// NOTE: The makefile_has_install_with_gui_target test was removed because
+// the GUI was removed in commit 165cf6ad. The Makefile no longer has
+// install-with-gui or install-full targets.

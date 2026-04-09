@@ -662,46 +662,48 @@ fn mixed_output_and_file_activity_prevents_timeout() {
 }
 
 #[test]
-fn workspace_source_file_update_prevents_timeout() {
+fn workspace_source_file_outside_agent_dir_does_not_prevent_timeout() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
         let timeout = Duration::from_millis(50);
         wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
-        let should_stop_for_monitor = Arc::clone(&should_stop);
 
-        let workspace = Arc::new(ReadDirCountingWorkspace::new(
+        // A recently modified file outside .agent/ should NOT suppress the idle timeout.
+        // Only files within .agent/ (AI-generated output) are scanned for activity.
+        let workspace: Arc<dyn Workspace> = Arc::new(ReadDirCountingWorkspace::new(
             MemoryWorkspace::new_test().with_file("src/lib.rs", "fn main() {}"),
         ));
-        let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
 
         let file_activity_config = Some(FileActivityConfig {
             tracker: new_file_activity_tracker(),
-            workspace: workspace_dyn,
+            workspace,
         });
 
-        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let (mock_child, controller) = MockAgentChild::new_running(0);
         let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
         let executor_impl = Arc::new(MockProcessExecutor::new());
-        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
 
-        let handle = thread::spawn(move || {
+        let monitor_handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
                 &timestamp,
                 file_activity_config.as_ref(),
                 &child,
-                &should_stop_for_monitor,
-                &executor,
+                &should_stop,
+                &executor_dyn,
                 MonitorConfig {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
-                    check_child_processes: true,
+                    check_child_processes: false,
                     completion_check: None,
-
                     partial_completion_check: None,
                     tool_activity_check: None,
                     max_tool_suppression_ticks: 20,
@@ -709,30 +711,19 @@ fn workspace_source_file_update_prevents_timeout() {
             )
         });
 
-        // Wait for monitor to perform at least one file activity scan.
-        for _ in 0..100_000 {
-            if workspace.read_dir_calls() > 0 {
-                break;
-            }
-            std::thread::yield_now();
-        }
+        let result = monitor_handle.join().expect("monitor thread panicked");
 
         assert!(
-            workspace.read_dir_calls() > 0,
-            "monitor should scan workspace to evaluate file-activity gating"
-        );
-        should_stop.store(true, Ordering::Release);
-
-        let result = handle.join().expect("monitor thread panicked");
-        assert_eq!(
-            result,
-            MonitorResult::ProcessCompleted,
-            "recently modified src/lib.rs should prevent timeout"
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "workspace file outside .agent/ must not suppress idle timeout"
         );
 
+        let kill_calls = executor_impl.execute_calls_for("kill");
         assert!(
-            executor_impl.execute_calls_for("kill").is_empty(),
-            "workspace source file activity should prevent kill signals"
+            kill_calls
+                .iter()
+                .any(|(_, args, _, _)| args.iter().any(|a| a == "-TERM")),
+            "timeout enforcement should send SIGTERM via kill"
         );
     });
 }
@@ -806,7 +797,7 @@ fn only_excluded_workspace_files_still_produce_timeout() {
 }
 
 #[test]
-fn deep_nested_source_file_prevents_timeout() {
+fn agent_nested_file_prevents_timeout() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
         let timeout = Duration::from_millis(50);
@@ -815,12 +806,11 @@ fn deep_nested_source_file_prevents_timeout() {
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop_for_monitor = Arc::clone(&should_stop);
 
-        // File at depth 4: workspace_root/crate/src/pipeline/idle_timeout/file.rs
+        // File within .agent/ directory — the file activity scanner checks .agent/
+        // for recently modified AI-generated files.
         let workspace = Arc::new(ReadDirCountingWorkspace::new(
-            MemoryWorkspace::new_test().with_file(
-                "ralph-workflow/src/pipeline/idle_timeout/file_activity.rs",
-                "// recent edit",
-            ),
+            MemoryWorkspace::new_test()
+                .with_file(".agent/PLAN.md", "# Plan\n\nStep 1: implement feature"),
         ));
         let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
 
@@ -847,9 +837,8 @@ fn deep_nested_source_file_prevents_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
-                    check_child_processes: true,
+                    check_child_processes: false,
                     completion_check: None,
-
                     partial_completion_check: None,
                     tool_activity_check: None,
                     max_tool_suppression_ticks: 20,
@@ -875,32 +864,29 @@ fn deep_nested_source_file_prevents_timeout() {
         assert_eq!(
             result,
             MonitorResult::ProcessCompleted,
-            "recently modified deep source file should prevent timeout"
+            "recently modified .agent/ file should prevent timeout"
         );
 
         assert!(
             executor_impl.execute_calls_for("kill").is_empty(),
-            "deep file activity should prevent kill signals"
+            ".agent/ file activity should prevent kill signals"
         );
     });
 }
 
 #[test]
-fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
-    // Scenario: a fresh source file is present when the monitor starts.
-    // Without the fix (age < timeout, no last_file_activity), the monitor kills the
-    // process when the file ages past the timeout window (~timeout ms after test start).
-    // With the fix (age <= timeout + widened window, plus last_file_activity tracking),
-    // the monitor never kills during the observation window.
+fn confirmed_agent_file_activity_prevents_kill_on_subsequent_check() {
+    // Scenario: a fresh .agent/ file is present when the monitor starts.
+    // The file activity scanner detects it and suppresses the idle timeout.
+    // The file remains "fresh" relative to the widened window + last_file_activity
+    // tracking, preventing redundant re-scans and false kills.
     with_default_timeout(|| {
         let timeout = Duration::from_millis(80);
 
-        // Fresh file: mtime = now, so age starts at ~0ms and grows during the test.
-        // Without the fix, once file age > timeout (80ms), the monitor kills.
-        // With the fix, the file is continuously detected (age <= widened window)
-        // and last_file_activity prevents redundant re-scans.
+        // Fresh .agent/ file: mtime = now, so age starts at ~0ms and grows.
+        // The file activity scanner checks .agent/ for AI-generated files.
         let workspace: Arc<dyn Workspace> =
-            Arc::new(MemoryWorkspace::new_test().with_file("src/lib.rs", "fn main() {}"));
+            Arc::new(MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Plan\n\nStep 1"));
 
         let timestamp = new_activity_timestamp();
         // Make output appear idle by waiting past timeout.
@@ -933,9 +919,8 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
-                    check_child_processes: true,
+                    check_child_processes: false,
                     completion_check: None,
-
                     partial_completion_check: None,
                     tool_activity_check: None,
                     max_tool_suppression_ticks: 20,
@@ -944,7 +929,7 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
         });
 
         // Run for 3× timeout: long enough for the file to age past the bare timeout
-        // window (which would cause a kill without the fix).
+        // window (which would cause a kill without proper windowed detection).
         std::thread::sleep(timeout * 3);
 
         // Signal the monitor to stop cleanly.
@@ -954,11 +939,11 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
         assert_eq!(
             result,
             MonitorResult::ProcessCompleted,
-            "monitor must not kill while source file was recently modified"
+            "monitor must not kill while .agent/ file was recently modified"
         );
         assert!(
             executor_impl.execute_calls_for("kill").is_empty(),
-            "no kill signals should be sent when file activity is continuously detected"
+            "no kill signals should be sent when .agent/ file activity is continuously detected"
         );
     });
 }
@@ -971,10 +956,11 @@ fn output_activity_during_file_scan_prevents_kill() {
     with_default_timeout(|| {
         let timeout = Duration::from_millis(80);
 
-        // Empty workspace - file scan always returns false.
+        // Workspace with .agent/ dir but no AI-generated files — file scan returns false
+        // but read_dir IS called (so the gate can intercept it).
         let gate = Arc::new(ReadDirGate::new());
         let workspace: Arc<dyn Workspace> = Arc::new(ReadDirCountingWorkspace::with_gate(
-            MemoryWorkspace::new_test(),
+            MemoryWorkspace::new_test().with_file(".agent/checkpoint.json", "{}"),
             Arc::clone(&gate),
         ));
 

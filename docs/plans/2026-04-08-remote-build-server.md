@@ -181,16 +181,13 @@ curl -fsSL https://bun.sh/install | bash
 # dylint (pinned to 3.5.1 to match local)
 cargo install cargo-dylint dylint-link --version 3.5.1
 
-# Optional: mold linker (significantly faster linking on Linux)
-sudo apt-get install -y mold
-# Add to ~/.cargo/config.toml on remote:
-# [target.x86_64-unknown-linux-gnu]
-# linker = "clang"
-# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# mold linker (3-10x faster linking on Linux)
+# Configured automatically via .cargo/config.toml [target.x86_64-unknown-linux-gnu]
+sudo apt-get install -y mold clang
 
-# Optional: sccache (cache across clean target/ wipes)
-cargo install sccache
-# Add to ~/.bashrc: export RUSTC_WRAPPER=sccache
+# sccache (cache across clean target/ wipes)
+# Chained automatically via .cargo/rustc-wrapper-dylint when available on PATH
+cargo install sccache --locked
 
 # No need to create a working directory — the remote path is computed
 # automatically as /tmp/rw-<hash> and created by rsync on first sync.

@@ -19,9 +19,7 @@ pub enum FailurePriority {
     Fmt = 1,
     CoreCargo = 2,
     XtaskCargo = 3,
-    GuiCargo = 4,
-    Frontend = 5,
-    Release = 6,
+    Release = 4,
 }
 
 pub struct CancellationState {

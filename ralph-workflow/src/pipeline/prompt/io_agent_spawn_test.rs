@@ -1,7 +1,7 @@
 use crate::common::{format_argv_for_log, split_command, truncate_text};
 use crate::pipeline::idle_timeout::{
     monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
-    time_since_activity, MonitorResult, StderrActivityTracker,
+    time_since_activity, ActivityTrackingReader, MonitorResult,
 };
 use crate::pipeline::prompt::io::streaming::stream_agent_output_from_handle;
 use crate::pipeline::prompt::io_process_wait::wait_for_completion_and_collect_stderr;
@@ -190,7 +190,7 @@ pub(crate) fn run_with_agent_spawn_with_monitor_config(
     let stderr_cancel_for_thread = Arc::clone(&stderr_cancel);
     let mut stderr_join_handle = Some(std::thread::spawn(move || -> io::Result<String> {
         const STDERR_MAX_BYTES: usize = 512 * 1024;
-        let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
+        let tracked_stderr = ActivityTrackingReader::new(stderr, stderr_activity_timestamp);
         let reader = BufReader::new(tracked_stderr);
         collect_stderr_with_cap_and_drain(
             reader,

@@ -105,10 +105,6 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
         run: crate::boundary::compliance::check_no_shell_scripts,
     },
     NativeCheck {
-        name: "tailwind4-removed-angular-classes",
-        run: crate::boundary::compliance::check_tailwind4_removed_angular_classes,
-    },
-    NativeCheck {
         name: "test-utils-items-used-in-tests",
         run: crate::boundary::test_utils_usage::check_test_utils_items_used_in_tests,
     },
