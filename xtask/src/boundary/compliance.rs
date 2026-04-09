@@ -29,10 +29,17 @@ const CHECK_STATUS_MAPPING: [CheckStatus; 3] =
 /// migration is a regression.  Returns `Error` if any `.sh` file is found,
 /// listing the offending paths.  Returns `Pass` when the directories do not
 /// exist (e.g. in unit-test environments with fake repo paths).
+///
+/// `scripts/remote/` is excluded from the scan because it contains intentional
+/// thin SSH wrappers for the remote build server workflow.
 pub fn check_no_shell_scripts(repo_root: &Path) -> NativeCheckResult {
     let scan_dirs = ["scripts", "tests/integration_tests"];
     let scan_paths: Vec<PathBuf> = scan_dirs.iter().map(|rel| repo_root.join(rel)).collect();
-    let (found, walk_errors) = crate::io::shell_scripts::scan_for_shell_scripts(&scan_paths);
+    // scripts/remote/ contains intentional SSH thin wrappers; exclude from the
+    // migration-regression scan.
+    let excluded = vec![repo_root.join("scripts/remote")];
+    let (found, walk_errors) =
+        crate::io::shell_scripts::scan_for_shell_scripts(&scan_paths, &excluded);
 
     compliance_summary_to_native(shell_script_scan_result(&found, &walk_errors))
 }

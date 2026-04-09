@@ -118,6 +118,56 @@ fn test_check_no_shell_scripts_errors_on_unreadable_directory() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn test_check_no_shell_scripts_pass_for_scripts_remote_sh_files() {
+    // scripts/remote/ is intentionally excluded from the migration-regression scan.
+    let dir = make_temp_dir("sh-in-remote");
+    fs::create_dir_all(dir.join("scripts/remote")).unwrap();
+    write_file(
+        &dir,
+        "scripts/remote/run.sh",
+        "#!/usr/bin/env bash\nexec \"$@\"",
+    );
+
+    let result = check_no_shell_scripts(&dir);
+    assert_eq!(
+        result.status,
+        CheckStatus::Pass,
+        "scripts/remote/ should be excluded from scan; message: {}",
+        result.message
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn test_check_no_shell_scripts_error_for_sh_outside_remote_subdir() {
+    // A .sh file directly under scripts/ (outside remote/) is still a regression.
+    let dir = make_temp_dir("sh-scripts-root");
+    fs::create_dir_all(dir.join("scripts/remote")).unwrap();
+    write_file(&dir, "scripts/legacy.sh", "#!/bin/bash\necho hi");
+    write_file(
+        &dir,
+        "scripts/remote/run.sh",
+        "#!/usr/bin/env bash\nexec \"$@\"",
+    );
+
+    let result = check_no_shell_scripts(&dir);
+    assert_eq!(result.status, CheckStatus::Error);
+    assert!(
+        result.message.contains("legacy.sh"),
+        "message must flag legacy.sh: {}",
+        result.message
+    );
+    assert!(
+        !result.message.contains("run.sh"),
+        "message must NOT flag scripts/remote/run.sh: {}",
+        result.message
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 // ── check_timeout_wrappers tests ──────────────────────────────────────────
 
 #[test]

@@ -51,6 +51,7 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 | Any pipeline/reducer change | Read architecture docs first |
 | Any test work | Read `docs/agents/testing-guide.md` |
 | Filesystem I/O | Read `docs/agents/workspace-trait.md` |
+| Build/verify | Runs on `rw-build-server` by default; see `docs/tooling/remote-build.md` |
 
 ---
 
@@ -71,6 +72,7 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 | Testing guide | `docs/agents/testing-guide.md` |
 | Architecture | `docs/code-style/architecture.md`, `docs/architecture/event-loop-and-reducers.md` |
 | Dylint lints | `docs/tooling/dylint.md` |
+| Remote build | `docs/tooling/remote-build.md` |
 
 ---
 
@@ -358,12 +360,12 @@ When changing iteration/retry/continuation/fallback logic, run the metrics tests
 
 ```bash
 # Metrics unit tests
-cargo test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
+cargo xtask test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
 
 # Metrics integration tests
-cargo test -p ralph-workflow-tests --test integration_tests iteration_counter
-cargo test -p ralph-workflow-tests --test integration_tests continuation_budget
-cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
+cargo xtask test -p ralph-workflow-tests --test integration_tests iteration_counter
+cargo xtask test -p ralph-workflow-tests --test integration_tests continuation_budget
+cargo xtask test -p ralph-workflow-tests --test integration_tests summary_consistency
 ```
 
 ### Additional verification for logging changes
@@ -372,10 +374,10 @@ When changing per-run logging infrastructure, event loop logging, or log file pa
 
 ```bash
 # Per-run logging infrastructure tests
-cargo test -p ralph-workflow-tests --test integration_tests logging_per_run
+cargo xtask test -p ralph-workflow-tests --test integration_tests logging_per_run
 
 # Event loop trace dump tests
-cargo test -p ralph-workflow-tests --test integration_tests event_loop_trace_dump
+cargo xtask test -p ralph-workflow-tests --test integration_tests event_loop_trace_dump
 ```
 
 All tests must pass with no ERROR/WARNING diagnostics (informational output is acceptable).

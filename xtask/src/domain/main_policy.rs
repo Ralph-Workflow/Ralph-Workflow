@@ -4,7 +4,7 @@
 //! determining which subcommand to execute. No I/O, no process spawning.
 
 /// Represents a subcommand to execute.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Subcommand {
     /// Run all verification checks.
     Verify { include_gui: bool },
@@ -16,6 +16,8 @@ pub enum Subcommand {
     DylintReport,
     /// Run coverage.
     Coverage,
+    /// Passthrough: run `cargo <cmd> <args>` on the remote build server.
+    CargoPassthrough { cmd: String, args: Vec<String> },
     /// Show help.
     Help { subcommand: Option<&'static str> },
     /// Unknown subcommand - show usage.
@@ -71,6 +73,12 @@ pub fn parse_subcommand(args: &[String]) -> Subcommand {
                 };
             }
             Subcommand::Coverage
+        }
+        Some(cmd @ ("test" | "build" | "clippy" | "fmt" | "check" | "bench")) => {
+            Subcommand::CargoPassthrough {
+                cmd: cmd.to_string(),
+                args: args[1..].to_vec(),
+            }
         }
         _ => Subcommand::Unknown,
     }

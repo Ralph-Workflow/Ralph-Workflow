@@ -40,7 +40,7 @@ Established by benchmarks in `ralph-workflow/src/benchmarks/`:
 
 **Baseline Measurement:** Run benchmarks with `--nocapture` to see detailed output:
 ```bash
-cargo test -p ralph-workflow benchmarks -- --nocapture
+cargo xtask test -p ralph-workflow benchmarks -- --nocapture
 ```
 
 ## Arc Usage Patterns
@@ -260,7 +260,7 @@ Modules:
 - `memory_usage.rs` - Memory growth patterns and stability
 - `checkpoint_serialization.rs` - Serialization performance and size
 
-Run with: `cargo test -p ralph-workflow benchmarks -- --nocapture`
+Run with: `cargo xtask test -p ralph-workflow benchmarks -- --nocapture`
 
 ### 3. Verification
 

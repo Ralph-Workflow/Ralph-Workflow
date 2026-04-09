@@ -77,6 +77,17 @@ struct DylintPlan {
 fn prepare_dylint_plan(verbose: bool) -> Result<DylintPlan, ExitCode> {
     let dylint_env = prepare_dylint_env(verbose)?;
     let toolchain = bootstrap_toolchain(&dylint_env, verbose).ok_or(failure_code())?;
+
+    // Regenerate lints/ralph_lints/rustc-nightly as a thin shell wrapper that
+    // calls the discovered nightly rustc by absolute path.  This file is
+    // gitignored and platform-specific: syncing a macOS binary to a Linux
+    // build server (or vice versa) would break the lint library build.
+    let repo_root = std::env::current_dir().map_err(|_| failure_code())?;
+    if !create_rustc_nightly_wrapper(&repo_root, &toolchain.nightly_rustc) {
+        eprintln!("error: failed to write lints/ralph_lints/rustc-nightly wrapper");
+        return Err(failure_code());
+    }
+
     let (wrapper_path, path_env) = setup_wrapper(&dylint_env, &toolchain).ok_or(failure_code())?;
 
     ensure_cargo_dylint_available(&path_env, &toolchain, &dylint_env, verbose)?;
@@ -353,7 +364,7 @@ fn setup_wrapper(
         .map(|existing| {
             format!(
                 "{}:{}:{}:{}",
-                wrapper_path.to_string_lossy(),
+                wrapper_dir.to_string_lossy(),
                 nightly_bin_dir.to_string_lossy(),
                 cargo_bin_str,
                 existing
@@ -362,7 +373,7 @@ fn setup_wrapper(
         .unwrap_or_else(|_| {
             format!(
                 "{}:{}:{}",
-                wrapper_path.to_string_lossy(),
+                wrapper_dir.to_string_lossy(),
                 nightly_bin_dir.to_string_lossy(),
                 cargo_bin_str
             )
@@ -425,4 +436,31 @@ fn run_cargo_dylint_install(
         );
     }
     success
+}
+
+/// Write `lints/ralph_lints/rustc-nightly` as a thin shell script that delegates
+/// to `nightly_rustc` by absolute path.
+///
+/// `lints/ralph_lints/.cargo/config.toml` sets `build.rustc = "./rustc-nightly"`.
+/// `cargo-dylint` unsets `RUSTC` before the library build, so cargo falls back
+/// to that config.  The committed file was a macOS ARM64 binary; we regenerate
+/// it at runtime so the correct platform binary is always used.
+fn create_rustc_nightly_wrapper(repo_root: &std::path::Path, nightly_rustc: &str) -> bool {
+    let wrapper_path = repo_root.join("lints/ralph_lints/rustc-nightly");
+    let script = format!("#!/usr/bin/env sh\nexec {nightly_rustc} \"$@\"\n");
+    if std::fs::write(&wrapper_path, &script).is_err() {
+        return false;
+    }
+    set_executable(&wrapper_path)
+}
+
+#[cfg(unix)]
+fn set_executable(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).is_ok()
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &std::path::Path) -> bool {
+    true
 }

@@ -521,16 +521,16 @@ session.on_text_delta(0, "   ");
 
 ```bash
 # All streaming tests
-cargo test -p ralph-workflow streaming
+cargo xtask test -p ralph-workflow streaming
 
 # Snapshot detection tests
-cargo test -p ralph-workflow test_snapshot
+cargo xtask test -p ralph-workflow test_snapshot
 
 # Delta display tests
-cargo test -p ralph-workflow delta_display
+cargo xtask test -p ralph-workflow delta_display
 
 # Full parser integration
-cargo test -p ralph-workflow json_parser::tests
+cargo xtask test -p ralph-workflow json_parser::tests
 ```
 
 ---

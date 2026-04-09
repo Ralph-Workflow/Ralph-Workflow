@@ -231,16 +231,16 @@ Run performance regression tests to verify optimizations:
 
 ```bash
 # All regression tests
-cargo test --lib benchmarks::regression_tests
+cargo xtask test --lib benchmarks::regression_tests
 
 # Memory footprint
-cargo test --lib regression_test_execution_step_memory_footprint
+cargo xtask test --lib regression_test_execution_step_memory_footprint
 
 # String pool sharing
-cargo test --lib regression_test_string_pool_sharing
+cargo xtask test --lib regression_test_string_pool_sharing
 
 # Serialization performance (with performance ceilings enabled)
-RALPH_WORKFLOW_PERF_CEILINGS=1 cargo test --lib regression_test_serialization_performance
+RALPH_WORKFLOW_PERF_CEILINGS=1 cargo xtask test --lib regression_test_serialization_performance
 ```
 
 ### Benchmarks
@@ -249,16 +249,16 @@ Run benchmarks to measure current performance:
 
 ```bash
 # All benchmarks (measurement only, not pass/fail)
-cargo test --lib benchmarks -- --nocapture
+cargo xtask test --lib benchmarks -- --nocapture
 
 # Memory usage benchmarks
-cargo test --lib benchmarks::memory_usage -- --nocapture
+cargo xtask test --lib benchmarks::memory_usage -- --nocapture
 
 # Serialization benchmarks
-cargo test --lib benchmarks::checkpoint_serialization -- --nocapture
+cargo xtask test --lib benchmarks::checkpoint_serialization -- --nocapture
 
 # Baseline validation
-cargo test --lib benchmarks::baselines::tests
+cargo xtask test --lib benchmarks::baselines::tests
 ```
 
 ### Verification
@@ -267,14 +267,14 @@ Before committing performance changes, run full verification:
 
 ```bash
 # Format and lint
-cargo fmt --all --check
-cargo clippy -p ralph-workflow --lib --all-features -- -D warnings
+cargo xtask fmt --all --check
+cargo xtask clippy -p ralph-workflow --lib --all-features -- -D warnings
 
 # Unit tests
-cargo test -p ralph-workflow --lib --all-features
+cargo xtask test -p ralph-workflow --lib --all-features
 
 # Integration tests (if available)
-cargo test -p ralph-workflow-tests
+cargo xtask test -p ralph-workflow-tests
 
 # Full verification suite (includes memory safety and performance regression)
 cargo xtask verify
@@ -344,10 +344,10 @@ heaptrack cargo test --release
 
 ```bash
 # Before optimization
-cargo test --lib benchmarks -- --nocapture > before.txt
+cargo xtask test --lib benchmarks -- --nocapture > before.txt
 
 # After optimization
-cargo test --lib benchmarks -- --nocapture > after.txt
+cargo xtask test --lib benchmarks -- --nocapture > after.txt
 
 # Compare results
 diff -u before.txt after.txt

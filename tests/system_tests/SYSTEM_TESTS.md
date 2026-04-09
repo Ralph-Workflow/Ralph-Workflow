@@ -50,17 +50,17 @@ System tests are **NOT** appropriate for:
 > - Tests creating real git repositories
 > - Potentially slow tests on disk
 >
-> **For CI/PR verification, always use:** `cargo test -p ralph-workflow-tests`
+> **For CI/PR verification, always use:** `cargo xtask test -p ralph-workflow-tests`
 
 ```bash
 # Run system tests (not part of CI)
-cargo test -p ralph-workflow-tests --test git2-system-tests
+cargo xtask test -p ralph-workflow-tests --test git2-system-tests
 
 # Run with verbose output
-cargo test -p ralph-workflow-tests --test git2-system-tests -- --nocapture
+cargo xtask test -p ralph-workflow-tests --test git2-system-tests -- --nocapture
 
 # Run specific test module
-cargo test -p ralph-workflow-tests --test git2-system-tests -- rebase::edge_cases
+cargo xtask test -p ralph-workflow-tests --test git2-system-tests -- rebase::edge_cases
 ```
 
 ## NOT Allowed
