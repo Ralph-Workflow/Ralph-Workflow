@@ -244,11 +244,17 @@ impl RealAppEffectHandler {
         user_name: Option<&str>,
         user_email: Option<&str>,
     ) -> AppEffectResult {
-        let workspace_root = self.workspace_root.as_ref().expect(
-            "Cannot execute git commit: workspace root is not set. \
-             RealAppEffectHandler must be constructed with `with_workspace_root(root)` \
-             when git commit effects are needed.",
-        );
+        let workspace_root = match self.workspace_root.as_ref() {
+            Some(root) => root,
+            None => {
+                return AppEffectResult::Error(
+                    "Cannot execute git commit: workspace root is not set. \
+                     RealAppEffectHandler must be constructed with `with_workspace_root(root)` \
+                     when git commit effects are needed."
+                        .to_string(),
+                );
+            }
+        };
         match crate::git_helpers::git_commit_in_repo(
             workspace_root,
             message,
@@ -433,6 +439,79 @@ impl AppEffectHandler for RealAppEffectHandler {
             | AppEffect::LogSuccess { message: _ }
             | AppEffect::LogWarn { message: _ }
             | AppEffect::LogError { message: _ } => AppEffectResult::Ok,
+        }
+    }
+}
+
+#[cfg(test)]
+mod workspace_root_guard_tests {
+    use super::*;
+
+    fn handler_without_root() -> RealAppEffectHandler {
+        RealAppEffectHandler::new()
+    }
+
+    #[test]
+    fn git_get_repo_root_fails_with_clear_error_when_workspace_root_not_set() {
+        let handler = handler_without_root();
+        match handler.execute_git_get_repo_root() {
+            AppEffectResult::Error(msg) => {
+                assert!(
+                    msg.contains("workspace root is not set"),
+                    "Error message must mention workspace root: got {msg:?}"
+                );
+                assert!(
+                    msg.contains("with_workspace_root"),
+                    "Error message must mention constructor: got {msg:?}"
+                );
+            }
+            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn git_get_head_oid_fails_with_clear_error_when_workspace_root_not_set() {
+        let handler = handler_without_root();
+        match handler.execute_git_get_head_oid() {
+            AppEffectResult::Error(msg) => {
+                assert!(
+                    msg.contains("workspace root is not set"),
+                    "Error message must mention workspace root: got {msg:?}"
+                );
+            }
+            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn git_diff_fails_with_clear_error_when_workspace_root_not_set() {
+        let handler = handler_without_root();
+        match handler.execute_git_diff() {
+            AppEffectResult::Error(msg) => {
+                assert!(
+                    msg.contains("workspace root is not set"),
+                    "Error message must mention workspace root: got {msg:?}"
+                );
+            }
+            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn git_commit_fails_with_clear_error_when_workspace_root_not_set() {
+        let handler = handler_without_root();
+        match handler.execute_git_commit("test message", None, None) {
+            AppEffectResult::Error(msg) => {
+                assert!(
+                    msg.contains("workspace root is not set"),
+                    "Error message must mention workspace root: got {msg:?}"
+                );
+                assert!(
+                    msg.contains("with_workspace_root"),
+                    "Error message must mention constructor: got {msg:?}"
+                );
+            }
+            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
         }
     }
 }
