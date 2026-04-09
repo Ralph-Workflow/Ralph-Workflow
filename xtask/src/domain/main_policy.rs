@@ -7,7 +7,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Subcommand {
     /// Run all verification checks.
-    Verify { include_gui: bool },
+    Verify,
     /// Run custom dylint lints.
     Dylint { verbose: bool },
     /// Emit LSP diagnostics for forbidden allow/expect.
@@ -37,8 +37,7 @@ pub fn parse_subcommand(args: &[String]) -> Subcommand {
                     subcommand: Some("verify"),
                 };
             }
-            let include_gui = args.contains(&"--gui".to_string());
-            Subcommand::Verify { include_gui }
+            Subcommand::Verify
         }
         Some("dylint") => {
             if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {

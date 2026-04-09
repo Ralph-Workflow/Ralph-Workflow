@@ -14,8 +14,7 @@ use crate::runtime::process::RealRunner;
 use crate::runtime::verify;
 use crate::runtime::verify::{
     CheckGroups, NativeCheck, ProgressReporter, VerifyExitCode, CORE_CARGO_CHECKS, DYLINT_CHECKS,
-    FMT_CHECKS, FRONTEND_INSTALL_CHECKS, FRONTEND_POST_INSTALL_CHECKS, GUI_CARGO_CHECKS,
-    NATIVE_REQUIRED_CHECKS, RELEASE_BUILD_CHECKS, XTASK_CARGO_CHECKS,
+    FMT_CHECKS, NATIVE_REQUIRED_CHECKS, RELEASE_BUILD_CHECKS, XTASK_CARGO_CHECKS,
 };
 
 /// Execute a subcommand.
@@ -25,7 +24,7 @@ pub fn execute_subcommand(subcommand: Subcommand) -> ExitCode {
     match subcommand {
         Subcommand::Help { subcommand } => handle_help(subcommand),
         Subcommand::Unknown => handle_unknown(),
-        Subcommand::Verify { include_gui } => execute_verify(include_gui),
+        Subcommand::Verify => execute_verify(),
         Subcommand::Dylint { verbose } => boundary::dylint::run_dylint(verbose),
         Subcommand::LspForbidAllowExpect => run_lsp_forbid_allow_expect(),
         Subcommand::DylintReport => boundary::dylint_report::generate_dylint_report(),
@@ -40,7 +39,7 @@ fn handle_help(subcommand: Option<&'static str>) -> ExitCode {
 }
 
 fn handle_unknown() -> ExitCode {
-    eprintln!("Usage: cargo xtask verify [--gui]");
+    eprintln!("Usage: cargo xtask verify");
     eprintln!("       cargo xtask dylint [--verbose]");
     eprintln!("       cargo xtask lsp-forbidden-allow-expect");
     eprintln!("       cargo xtask dylint-report");
@@ -115,12 +114,9 @@ fn print_help(subcommand: Option<&'static str>) {
     eprintln!("{help_text}");
 }
 
-const VERIFY_HELP: &str = r#"Usage: cargo xtask verify [--gui]
+const VERIFY_HELP: &str = r#"Usage: cargo xtask verify
 
-Run all verification checks for the repository.
-
-Options:
-  --gui    Also run GUI cargo, Angular frontend, and release build checks"#;
+Run all verification checks for the repository."#;
 
 const DYLINT_HELP: &str = r#"Usage: cargo xtask dylint [--verbose]
   --verbose, -v    Show detailed dylint output"#;
@@ -142,7 +138,7 @@ Runs in sequence:
 Coverage is diagnostic only — exit is always 0 regardless of result.
 This command is NOT a build gate."#;
 
-const DEFAULT_HELP: &str = r#"Usage: cargo xtask verify [--gui]
+const DEFAULT_HELP: &str = r#"Usage: cargo xtask verify
        cargo xtask dylint [--verbose]
        cargo xtask lsp-forbidden-allow-expect
        cargo xtask dylint-report
@@ -167,19 +163,21 @@ pub fn run_from_env() -> ExitCode {
     execute_subcommand(subcommand)
 }
 
-fn execute_verify(include_gui: bool) -> ExitCode {
+fn execute_verify() -> ExitCode {
     use crate::runtime::verify::StderrProgressReporter;
 
-    let total_checks = compute_total_checks(include_gui);
+    let total_checks = compute_total_checks();
     let reporter: Arc<dyn ProgressReporter> = Arc::new(StderrProgressReporter::new(total_checks));
     let (runner, repo_root) = build_runner(Arc::clone(&reporter));
     eprintln!("=== cargo xtask verify ===");
     let start = std::time::Instant::now();
-    match run_verify_phases(
+    match run_verify_or_exit(
         Arc::clone(&runner),
         repo_root.as_path(),
-        include_gui,
+        NATIVE_REQUIRED_CHECKS,
+        &verify_groups(),
         &reporter,
+        true,
     ) {
         Err(code) => code,
         Ok(report) => {
@@ -200,50 +198,14 @@ fn report_and_finalize(
     finalize_verify(report, total_checks, elapsed)
 }
 
-fn run_verify_phases(
-    runner: Arc<CachingCommandRunner>,
-    repo_root: &Path,
-    include_gui: bool,
-    reporter: &Arc<dyn ProgressReporter>,
-) -> Result<verify::VerifyReport, ExitCode> {
-    let backend_report = run_verify_or_exit(
-        Arc::clone(&runner),
-        repo_root,
-        NATIVE_REQUIRED_CHECKS,
-        &backend_groups(),
-        reporter,
-        true,
-    )?;
-    if backend_report.exit == VerifyExitCode::Success && include_gui {
-        run_verify_or_exit(
-            Arc::clone(&runner),
-            repo_root,
-            &[],
-            &gui_groups(),
-            reporter,
-            false,
-        )
-    } else {
-        Ok(backend_report)
-    }
-}
-
-fn compute_total_checks(include_gui: bool) -> usize {
-    let backend_checks = NATIVE_REQUIRED_CHECKS.len()
+fn compute_total_checks() -> usize {
+    NATIVE_REQUIRED_CHECKS.len()
         + 1
         + FMT_CHECKS.len()
         + CORE_CARGO_CHECKS.len()
         + XTASK_CARGO_CHECKS.len()
-        + DYLINT_CHECKS.len();
-    let gui_checks = if include_gui {
-        GUI_CARGO_CHECKS.len()
-            + FRONTEND_INSTALL_CHECKS.len()
-            + FRONTEND_POST_INSTALL_CHECKS.len()
-            + RELEASE_BUILD_CHECKS.len()
-    } else {
-        0
-    };
-    backend_checks + gui_checks
+        + DYLINT_CHECKS.len()
+        + RELEASE_BUILD_CHECKS.len()
 }
 
 fn build_runner(reporter: Arc<dyn ProgressReporter>) -> (Arc<CachingCommandRunner>, PathBuf) {
@@ -253,27 +215,12 @@ fn build_runner(reporter: Arc<dyn ProgressReporter>) -> (Arc<CachingCommandRunne
     (runner, repo_root)
 }
 
-fn backend_groups() -> CheckGroups<'static> {
+fn verify_groups() -> CheckGroups<'static> {
     CheckGroups {
         fmt: FMT_CHECKS,
         core_cargo: CORE_CARGO_CHECKS,
         xtask_cargo: XTASK_CARGO_CHECKS,
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: DYLINT_CHECKS,
-    }
-}
-
-fn gui_groups() -> CheckGroups<'static> {
-    CheckGroups {
-        fmt: &[],
-        core_cargo: &[],
-        xtask_cargo: &[],
-        gui_cargo: GUI_CARGO_CHECKS,
-        frontend_install: FRONTEND_INSTALL_CHECKS,
-        frontend_post_install: FRONTEND_POST_INSTALL_CHECKS,
-        release: RELEASE_BUILD_CHECKS,
     }
 }
 
@@ -368,7 +315,7 @@ fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
 }
 
 fn is_test_check(check_name: &str) -> bool {
-    check_name.starts_with("test-") || check_name == "ralph-gui-frontend-test"
+    check_name.starts_with("test-")
 }
 
 #[cfg(test)]
@@ -378,29 +325,6 @@ mod tests {
     use crate::runtime::verify::{types::CheckFailure, CheckStatus, VerifyExitCode, VerifyReport};
     use std::io::Cursor;
     use std::process::ExitCode;
-
-    #[test]
-    fn test_failure_guidance_emitted_for_frontend_test_failures() {
-        let report = VerifyReport {
-            exit: VerifyExitCode::Failure,
-            failure: Some(CheckFailure {
-                name: "ralph-gui-frontend-test",
-                status: CheckStatus::Error,
-                exit_code: 1,
-                stdout: String::new(),
-                stderr: String::new(),
-            }),
-        };
-
-        let guidance = failure_guidance_message(&report)
-            .expect("frontend test failures should emit urgent guidance");
-
-        assert!(guidance.contains("MUST be fixed NOW"));
-        assert!(guidance.contains("OVERRIDES the current prompt"));
-        assert!(guidance.contains("There is no such thing as a pre-existing test failure"));
-        assert!(guidance.contains("either the test is implemented wrong"));
-        assert!(guidance.contains("YOU MUST REFACTOR"));
-    }
 
     #[test]
     fn test_failure_guidance_emitted_for_cargo_test_failures() {

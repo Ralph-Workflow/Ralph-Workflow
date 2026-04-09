@@ -1,7 +1,6 @@
 //! Tests for compliance checking functions.
 
 use super::*;
-use aho_corasick::AhoCorasick;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -581,65 +580,3 @@ fn test_check_timeout_wrappers_reports_read_errors_separately() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-#[test]
-fn test_collect_removed_tailwind4_violations_reports_removed_class() {
-    let dir = make_temp_dir("tailwind4-helper");
-    let file_path = dir.join("ralph-gui/ui/src/components/example/example.component.html");
-    fs::create_dir_all(file_path.parent().unwrap()).unwrap();
-    let content = r#"<div class="flex flex-shrink-0">Example</div>"#;
-    fs::write(&file_path, content).unwrap();
-
-    let ac = AhoCorasick::new(
-        REMOVED_TAILWIND4_ANGULAR_CLASSES
-            .iter()
-            .map(|pattern| pattern.literal),
-    )
-    .unwrap();
-
-    let violations =
-        collect_removed_tailwind4_violations(&file_path, &dir, content.as_bytes(), &ac);
-
-    assert_eq!(violations.len(), 1);
-    assert!(violations[0].contains("flex-shrink-0"));
-    assert!(violations[0].contains("shrink-0"));
-
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn test_check_tailwind4_removed_angular_classes_warns_on_tailwind3_only_class() {
-    let dir = make_temp_dir("tailwind4-removed-class");
-    write_file(
-        &dir,
-        "ralph-gui/ui/src/app/components/example/example.component.html",
-        r#"<div class="flex items-center flex-shrink-0">Example</div>"#,
-    );
-
-    let result = check_tailwind4_removed_angular_classes(&dir);
-
-    assert_eq!(result.status, CheckStatus::Warning, "{}", result.message);
-    assert!(
-        result.message.contains("flex-shrink-0"),
-        "message must mention the removed Tailwind 3 class: {}",
-        result.message
-    );
-    assert!(
-        result.message.contains("shrink-0"),
-        "message must mention the Tailwind 4 replacement: {}",
-        result.message
-    );
-    assert!(
-        result.message.contains("needs rework"),
-        "message must tell the user the component/file needs rework: {}",
-        result.message
-    );
-    assert!(
-        result
-            .message
-            .contains("Tailwind CSS v4 documentation and upgrade guide"),
-        "message must direct the user to current Tailwind v4 docs: {}",
-        result.message
-    );
-
-    let _ = fs::remove_dir_all(&dir);
-}

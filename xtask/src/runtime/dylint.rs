@@ -406,17 +406,10 @@ fn read_workspace_package_names(cargo_bin: &std::path::Path) -> std::io::Result<
         .collect()
 }
 
-/// GUI packages require native system libraries (GTK/glib on Linux) that are
-/// not available on headless build servers.  They are excluded from dylint by
-/// default; the `--gui` flag re-includes them when the full desktop environment
-/// is available.
-const GUI_CRATES: &[&str] = &["ralph-gui"];
-
 fn build_dylint_package_args(package_names: &[String]) -> Vec<String> {
     let mut filtered_names = package_names
         .iter()
         .filter(|name| !name.ends_with(LINT_CRATE_SUFFIX))
-        .filter(|name| !GUI_CRATES.contains(&name.as_str()))
         .cloned()
         .collect::<Vec<_>>();
 
@@ -588,7 +581,6 @@ mod tests {
             "test-helpers".to_string(),
             "xtask".to_string(),
             "tests".to_string(),
-            "ralph-gui".to_string(),
             "ralph_lints".to_string(),
         ];
 
@@ -606,7 +598,7 @@ mod tests {
                 "-p",
                 "xtask",
             ],
-            "dylint should target all workspace packages except lint crates and GUI crates"
+            "dylint should target all workspace packages except lint crates"
         );
     }
 

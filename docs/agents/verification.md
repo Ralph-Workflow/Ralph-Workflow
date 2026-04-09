@@ -35,16 +35,14 @@ If verification exposes a pre-existing failure, or if you discover any other pre
   - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
   - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
   - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
-  - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify)
-  - Lane 6: Frontend (bun install, lint, test — independent of cargo)
-  - Lane 7: Release (release build, dylint — target/release-parallel-verify)
+  - Lane 5: Release (dylint — target/release-parallel-verify)
 
-Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
+Result priority: scan > fmt > core_cargo > xtask > release.
 
 On an unchanged tree, `cargo xtask verify` may reuse cached clean results for eligible lanes, including the serial native checks and the native scan lane. This does not weaken the contract: each cache key includes the relevant source inputs plus the `xtask` implementation inputs for that verifier, so any relevant source or verifier change invalidates the warm-run shortcut and the check runs again.
 Warm runs also persist per-file content fingerprints in `target/xtask-verify-cache.json`, allowing a fresh `cargo xtask verify` process to reuse unchanged digests instead of rereading every scoped file byte before deciding on cache hits. There is no fixed cross-machine runtime target, but unchanged warm runs should spend noticeably less time in cache-eligibility work than cold runs because the preparation step shares those hashes across all lanes up front.
 
-The release lane is intentionally narrower than the full workspace: `release-build` runs `cargo build --release` against workspace default members, so warm-cache reuse should survive edits under `tests/` while still invalidating on changes to `ralph-workflow`, `test-helpers`, `xtask`, manifests, or lockfiles.
+The release lane is intentionally narrower than the full workspace: `release-build` runs `cargo build --profile release-verify` (thin LTO) against workspace default members, so warm-cache reuse should survive edits under `tests/` while still invalidating on changes to `ralph-workflow`, `test-helpers`, `xtask`, manifests, or lockfiles. The `release-verify` profile inherits from `release` but uses thin LTO instead of full LTO, significantly reducing verification build time while still catching the same link errors.
 
 ---
 
@@ -120,19 +118,8 @@ cargo xtask clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --a
 # Lint xtask runner (runs in parallel group with separate target dir)
 cargo xtask clippy -p xtask --all-targets -- -D warnings
 
-# Lint ralph-gui (runs in parallel group with separate target dir)
-cargo xtask clippy -p ralph-gui --all-targets -- -D warnings
-
-# Frontend install (runs as part of cargo xtask verify --gui)
-# bun install --cwd ralph-gui/ui --frozen-lockfile
-
-# Frontend checks (runs as part of cargo xtask verify --gui)
-# bun --cwd ralph-gui/ui run lint
-# bun --cwd ralph-gui/ui run test
-
 # Unit tests
 cargo xtask test -p xtask
-cargo xtask test -p ralph-gui --lib
 cargo xtask test -p ralph-workflow --lib --all-features
 
 # Drain/chain architecture changes (named chains, drain bindings, checkpoint drain metadata)
@@ -171,7 +158,8 @@ cargo xtask test -p ralph-workflow-tests --test integration_tests continuation_b
 cargo xtask test -p ralph-workflow-tests --test integration_tests summary_consistency
 
 # Release build (runs as part of cargo xtask verify --gui)
-cargo xtask build --release
+# Uses --profile release-verify (thin LTO) for faster verification
+cargo xtask build --profile release-verify
 
 # Custom lints (dylint) - all lints consolidated in ralph_lints
 #

@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -616,24 +616,6 @@ fn test_xtask_cargo_checks_run_in_stable_order() {
 }
 
 #[test]
-fn test_gui_cargo_checks_run_in_stable_order() {
-    let runner = std::sync::Arc::new(RecordingRunner::default());
-    let report = verify(
-        runner.clone(),
-        std::path::Path::new("/fake"),
-        &[],
-        GUI_CARGO_CHECKS,
-    )
-    .expect("verify should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Success);
-    assert_eq!(
-        runner.ran(),
-        vec!["clippy-ralph-gui", "test-ralph-gui-lib",]
-    );
-}
-
-#[test]
 fn test_clippy_core_uses_multi_package_invocation() {
     let clippy_core = CORE_CARGO_CHECKS
         .iter()
@@ -676,40 +658,6 @@ fn test_xtask_checks_use_separate_target_dir() {
 }
 
 #[test]
-fn test_gui_cargo_checks_use_separate_target_dir() {
-    for spec in GUI_CARGO_CHECKS {
-        let has_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
-        assert!(
-            has_target_dir,
-            "gui check '{}' must set CARGO_TARGET_DIR for parallel execution",
-            spec.name
-        );
-    }
-}
-
-#[test]
-fn test_frontend_checks_run_in_stable_order() {
-    let runner = std::sync::Arc::new(RecordingRunner::default());
-    let report = verify(
-        runner.clone(),
-        std::path::Path::new("/fake"),
-        &[],
-        FRONTEND_CHECKS,
-    )
-    .expect("verify should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Success);
-    assert_eq!(
-        runner.ran(),
-        vec![
-            "ralph-gui-frontend-install",
-            "ralph-gui-frontend-lint",
-            "ralph-gui-frontend-test",
-        ]
-    );
-}
-
-#[test]
 fn test_release_checks_run_in_stable_order() {
     let runner = std::sync::Arc::new(RecordingRunner::default());
     let report = verify(
@@ -732,7 +680,7 @@ fn test_release_build_uses_workspace_default_members() {
         .expect("RELEASE_CHECKS must include release-build");
 
     assert_eq!(release_build.program, "cargo");
-    assert_eq!(release_build.args, ["build", "--release"]);
+    assert_eq!(release_build.args, ["build", "--profile", "release-verify"]);
     assert!(
         !release_build.args.contains(&"--workspace"),
         "release-build must stay scoped to workspace default members so unrelated tests/ edits do not invalidate its verify cache"
@@ -765,112 +713,6 @@ fn test_required_checks_do_not_invoke_shell_scripts() {
             spec.args
         );
     }
-}
-
-#[test]
-fn test_clippy_ralph_gui_check_is_in_required_checks() {
-    assert!(
-        all_required_checks()
-            .iter()
-            .any(|c| c.name == "clippy-ralph-gui"),
-        "checks must include clippy-ralph-gui to lint the GUI crate"
-    );
-}
-
-#[test]
-fn test_ralph_gui_lib_test_check_is_in_required_checks() {
-    assert!(
-        all_required_checks()
-            .iter()
-            .any(|c| c.name == "test-ralph-gui-lib"),
-        "checks must include test-ralph-gui-lib to run GUI crate unit tests"
-    );
-}
-
-#[test]
-fn test_ralph_gui_frontend_lint_check_is_in_required_checks() {
-    assert!(
-        all_required_checks()
-            .iter()
-            .any(|c| c.name == "ralph-gui-frontend-lint"),
-        "checks must include ralph-gui-frontend-lint to enforce TypeScript strict rules"
-    );
-}
-
-#[test]
-fn test_ralph_gui_frontend_install_check_runs_before_lint() {
-    let install_index = FRONTEND_CHECKS
-        .iter()
-        .position(|c| c.name == "ralph-gui-frontend-install")
-        .expect("FRONTEND_CHECKS must include ralph-gui-frontend-install");
-    let lint_index = FRONTEND_CHECKS
-        .iter()
-        .position(|c| c.name == "ralph-gui-frontend-lint")
-        .expect("FRONTEND_CHECKS must include ralph-gui-frontend-lint");
-
-    assert!(
-        install_index < lint_index,
-        "frontend install must run before frontend lint"
-    );
-}
-
-#[test]
-fn test_ralph_gui_frontend_install_uses_bun_with_frozen_lockfile() {
-    let spec = FRONTEND_CHECKS
-        .iter()
-        .find(|c| c.name == "ralph-gui-frontend-install")
-        .expect("FRONTEND_CHECKS must include ralph-gui-frontend-install");
-
-    assert_eq!(spec.program, "bun");
-    assert_eq!(
-        spec.args,
-        ["install", "--cwd", "ralph-gui/ui", "--frozen-lockfile"],
-        "frontend install must use bun with the checked-in bun.lock"
-    );
-    assert!(
-        spec.extra_env.is_empty(),
-        "bun install should not rely on npm production env overrides"
-    );
-}
-
-#[test]
-fn test_ralph_gui_frontend_test_check_is_in_required_checks() {
-    assert!(
-        all_required_checks()
-            .iter()
-            .any(|c| c.name == "ralph-gui-frontend-test"),
-        "checks must include ralph-gui-frontend-test to run vitest component tests"
-    );
-}
-
-#[test]
-fn test_ralph_gui_frontend_lint_runs_bun_script_from_ui_dir() {
-    let spec = FRONTEND_POST_INSTALL_CHECKS
-        .iter()
-        .find(|c| c.name == "ralph-gui-frontend-lint")
-        .expect("FRONTEND_POST_INSTALL_CHECKS must include ralph-gui-frontend-lint");
-
-    assert_eq!(spec.program, "bun");
-    assert_eq!(
-        spec.args,
-        ["run", "--cwd", "ralph-gui/ui", "lint"],
-        "frontend lint must execute the package.json lint script from the Angular UI workspace"
-    );
-}
-
-#[test]
-fn test_ralph_gui_frontend_test_runs_bun_script_from_ui_dir() {
-    let spec = FRONTEND_POST_INSTALL_CHECKS
-        .iter()
-        .find(|c| c.name == "ralph-gui-frontend-test")
-        .expect("FRONTEND_POST_INSTALL_CHECKS must include ralph-gui-frontend-test");
-
-    assert_eq!(spec.program, "bun");
-    assert_eq!(
-        spec.args,
-        ["run", "--cwd", "ralph-gui/ui", "test"],
-        "frontend test must execute the package.json test script from the Angular UI workspace"
-    );
 }
 
 #[test]
@@ -956,9 +798,6 @@ fn test_verify_fast_emits_autogenerated_info_message() {
         fmt: &[],
         core_cargo: &[],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
 
@@ -1050,65 +889,6 @@ fn test_ralph_workflow_lib_rs_does_not_use_crate_wide_large_stack_frames_allow()
 }
 
 #[test]
-fn test_tailwind4_removed_angular_classes_check_is_in_native_required_checks() {
-    assert!(
-        NATIVE_REQUIRED_CHECKS
-            .iter()
-            .any(|c| c.name == "tailwind4-removed-angular-classes"),
-        "NATIVE_REQUIRED_CHECKS must include the Tailwind 4 Angular class migration guard"
-    );
-}
-
-#[test]
-fn test_verify_surfaces_tailwind4_removed_angular_class_warning() {
-    let unique = format!(
-        "xtask-tailwind4-warning-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system time should be after epoch")
-            .as_nanos()
-    );
-    let repo_root = std::env::temp_dir().join(unique);
-    let template = repo_root.join("ralph-gui/ui/src/app/components/example/example.component.html");
-    std::fs::create_dir_all(template.parent().expect("template parent"))
-        .expect("create template dir");
-    std::fs::write(
-        &template,
-        r#"<div class="flex items-center flex-shrink-0">Example</div>"#,
-    )
-    .expect("write template");
-
-    let runner = std::sync::Arc::new(RecordingRunner::default());
-    let report =
-        verify(runner, &repo_root, NATIVE_REQUIRED_CHECKS, &[]).expect("verify should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Failure);
-    let failure = report.failure.expect("expected failure details");
-    assert_eq!(failure.name, "tailwind4-removed-angular-classes");
-    assert_eq!(failure.status, CheckStatus::Warning);
-    assert!(
-        failure.stdout.contains("flex-shrink-0"),
-        "warning output must include the outdated class: {}",
-        failure.stdout
-    );
-    assert!(
-        failure.stdout.contains("needs rework"),
-        "warning output must include the rework guidance: {}",
-        failure.stdout
-    );
-    assert!(
-        failure
-            .stdout
-            .contains("Tailwind CSS v4 documentation and upgrade guide"),
-        "warning output must point the engineer to current Tailwind v4 docs: {}",
-        failure.stdout
-    );
-
-    fs::remove_dir_all(&repo_root).expect("remove temp repo root");
-}
-
-#[test]
 fn test_audit_ignore_has_url_check_is_in_native_scan_checks() {
     // TDD anchor: audit-ignore-has-url is now a native NegativeLookahead scan check.
     assert!(
@@ -1183,16 +963,12 @@ fn test_required_checks_contain_no_rg_entries() {
 
 fn test_groups<'a>(
     core_cargo: &'a [CommandSpec],
-    frontend: &'a [CommandSpec],
     release: &'a [CommandSpec],
 ) -> CheckGroups<'a> {
     CheckGroups {
         fmt: &[],
         core_cargo,
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: frontend,
-        frontend_post_install: &[],
         release,
     }
 }
@@ -1204,9 +980,6 @@ fn test_verify_fast_runs_all_required_checks() {
         fmt: FMT_CHECKS,
         core_cargo: CORE_CARGO_CHECKS,
         xtask_cargo: XTASK_CARGO_CHECKS,
-        gui_cargo: GUI_CARGO_CHECKS,
-        frontend_install: FRONTEND_INSTALL_CHECKS,
-        frontend_post_install: FRONTEND_POST_INSTALL_CHECKS,
         release: RELEASE_CHECKS,
     };
     let report = verify_fast(
@@ -1241,9 +1014,6 @@ fn test_verify_fast_uses_runner_native_scan_path() {
         fmt: &[],
         core_cargo: &[check("cargo-a")],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
 
@@ -1276,9 +1046,6 @@ fn test_verify_fast_uses_runner_native_check_path() {
         fmt: &[],
         core_cargo: &[check("cargo-a")],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
 
@@ -1313,9 +1080,6 @@ fn test_verify_fast_prepares_runner_before_starting_checks() {
         fmt: FMT_CHECKS,
         core_cargo: &[],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
 
@@ -1376,9 +1140,6 @@ fn test_verify_fast_continues_uncached_when_prepare_for_verify_fails() {
             fmt: &[check("fmt-check")],
             core_cargo: &[check("clippy-core")],
             xtask_cargo: &[],
-            gui_cargo: &[],
-            frontend_install: &[],
-            frontend_post_install: &[],
             release: &[],
         },
         &reporter,
@@ -1420,7 +1181,7 @@ fn test_verify_fast_stops_on_first_cargo_failure() {
         stderr: "error: clippy failure".to_string(),
     }]));
 
-    let groups = test_groups(CORE_CARGO_CHECKS, &[], &[]);
+    let groups = test_groups(CORE_CARGO_CHECKS, &[]);
     let report = verify_fast(
         runner.clone(),
         std::path::Path::new("/fake"),
@@ -1447,9 +1208,6 @@ fn test_verify_fast_stops_on_fmt_failure() {
         fmt: FMT_CHECKS,
         core_cargo: &[],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
     let report = verify_fast(
@@ -1794,9 +1552,6 @@ fn test_total_check_count_matches_reporter_constructor_expectation() {
         + FMT_CHECKS.len()
         + CORE_CARGO_CHECKS.len()
         + XTASK_CARGO_CHECKS.len()
-        + GUI_CARGO_CHECKS.len()
-        + FRONTEND_INSTALL_CHECKS.len()
-        + FRONTEND_POST_INSTALL_CHECKS.len()
         + RELEASE_CHECKS.len();
     assert!(
         expected_total > 0,
@@ -1823,23 +1578,6 @@ fn test_react_act_warning_fails_checks_by_default() {
         report.failure.expect("failure must be present").status,
         CheckStatus::Warning
     );
-}
-
-#[test]
-fn test_react_act_warning_is_allowed_only_for_frontend_test_check() {
-    let runner = FakeRunner::new([CommandOutput {
-        exit_code: 0,
-        stdout: String::new(),
-        stderr: "Warning: An update to Configuration inside a test was not wrapped in act(...)\n"
-            .to_string(),
-    }]);
-    let report = run_checks(
-        &runner,
-        &[check("ralph-gui-frontend-test")],
-        &NoopProgressReporter,
-    )
-    .unwrap();
-    assert_eq!(report.exit, VerifyExitCode::Success);
 }
 
 #[test]
@@ -1922,62 +1660,6 @@ fn test_required_checks_include_parent_test_commands() {
 // ── TDD tests for parallel group execution ──────────────────────────────
 
 #[test]
-fn test_verify_fast_runs_frontend_and_cargo_concurrently() {
-    // Use a ByNameRunner that records thread IDs to prove concurrency.
-    use std::sync::Arc;
-    use std::thread::ThreadId;
-
-    #[derive(Debug, Default)]
-    struct ThreadTrackingRunner {
-        threads: Mutex<HashMap<&'static str, ThreadId>>,
-    }
-
-    impl CommandRunner for ThreadTrackingRunner {
-        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.threads
-                .lock()
-                .unwrap()
-                .insert(spec.name, std::thread::current().id());
-            // Small sleep to increase chance of overlap visibility
-            std::thread::sleep(Duration::from_millis(10));
-            Ok(CommandOutput {
-                exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
-                stdout: String::new(),
-                stderr: String::new(),
-            })
-        }
-    }
-
-    let runner = Arc::new(ThreadTrackingRunner::default());
-
-    let cargo_checks: &[CommandSpec] = &[check("cargo-a")];
-    let frontend_checks: &[CommandSpec] = &[check("frontend-a")];
-
-    let groups = test_groups(cargo_checks, frontend_checks, &[]);
-    let report = verify_fast(
-        runner.clone(),
-        std::path::Path::new("/fake"),
-        &[],
-        &groups,
-        &NoopProgressReporter,
-    )
-    .expect("verify_fast should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Success);
-
-    let threads = runner.threads.lock().unwrap();
-    let cargo_thread = threads.get("cargo-a").expect("cargo-a must have run");
-    let frontend_thread = threads.get("frontend-a").expect("frontend-a must have run");
-
-    // The cargo debug group runs on the main thread, frontend on a spawned thread.
-    // They must run on different threads to prove concurrency.
-    assert_ne!(
-        cargo_thread, frontend_thread,
-        "cargo and frontend checks must run on different threads (proving concurrency)"
-    );
-}
-
-#[test]
 fn test_verify_fast_failure_in_cargo_cancels_other_groups() {
     // When the cargo group fails, the cancellation flag should be set,
     // preventing remaining checks in other groups from running.
@@ -1992,14 +1674,6 @@ fn test_verify_fast_failure_in_cargo_cancels_other_groups() {
                 },
             )
             .with_output(
-                "frontend-a",
-                CommandOutput {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
-            )
-            .with_output(
                 "release-a",
                 CommandOutput {
                     exit_code: 0,
@@ -2010,10 +1684,9 @@ fn test_verify_fast_failure_in_cargo_cancels_other_groups() {
     );
 
     let cargo_checks: &[CommandSpec] = &[check("cargo-fails")];
-    let frontend_checks: &[CommandSpec] = &[check("frontend-a")];
     let release_checks: &[CommandSpec] = &[check("release-a")];
 
-    let groups = test_groups(cargo_checks, frontend_checks, release_checks);
+    let groups = test_groups(cargo_checks, release_checks);
     let report = verify_fast(
         runner.clone(),
         std::path::Path::new("/fake"),
@@ -2029,68 +1702,11 @@ fn test_verify_fast_failure_in_cargo_cancels_other_groups() {
 }
 
 #[test]
-fn test_verify_fast_reports_frontend_failure_when_cargo_succeeds() {
-    let runner = std::sync::Arc::new(
-        ByNameRunner::default()
-            .with_output(
-                "cargo-ok",
-                CommandOutput {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
-            )
-            .with_output(
-                "frontend-fails",
-                CommandOutput {
-                    exit_code: 1,
-                    stdout: String::new(),
-                    stderr: "error: lint failure".to_string(),
-                },
-            )
-            .with_output(
-                "release-ok",
-                CommandOutput {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
-            ),
-    );
-
-    let cargo_checks: &[CommandSpec] = &[check("cargo-ok")];
-    let frontend_checks: &[CommandSpec] = &[check("frontend-fails")];
-    let release_checks: &[CommandSpec] = &[check("release-ok")];
-
-    let groups = test_groups(cargo_checks, frontend_checks, release_checks);
-    let report = verify_fast(
-        runner.clone(),
-        std::path::Path::new("/fake"),
-        &[],
-        &groups,
-        &NoopProgressReporter,
-    )
-    .expect("verify_fast should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Failure);
-    let failure = report.failure.expect("expected failure");
-    assert_eq!(failure.name, "frontend-fails");
-}
-
-#[test]
 fn test_verify_fast_reports_release_failure_when_others_succeed() {
     let runner = std::sync::Arc::new(
         ByNameRunner::default()
             .with_output(
                 "cargo-ok",
-                CommandOutput {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
-            )
-            .with_output(
-                "frontend-ok",
                 CommandOutput {
                     exit_code: 0,
                     stdout: String::new(),
@@ -2108,10 +1724,9 @@ fn test_verify_fast_reports_release_failure_when_others_succeed() {
     );
 
     let cargo_checks: &[CommandSpec] = &[check("cargo-ok")];
-    let frontend_checks: &[CommandSpec] = &[check("frontend-ok")];
     let release_checks: &[CommandSpec] = &[check("release-fails")];
 
-    let groups = test_groups(cargo_checks, frontend_checks, release_checks);
+    let groups = test_groups(cargo_checks, release_checks);
     let report = verify_fast(
         runner.clone(),
         std::path::Path::new("/fake"),
@@ -2124,47 +1739,6 @@ fn test_verify_fast_reports_release_failure_when_others_succeed() {
     assert_eq!(report.exit, VerifyExitCode::Failure);
     let failure = report.failure.expect("expected failure");
     assert_eq!(failure.name, "release-fails");
-}
-
-#[test]
-fn test_verify_fast_cargo_failure_takes_priority_over_frontend_failure() {
-    // When both cargo and frontend fail, cargo failure is reported (highest priority).
-    let runner = std::sync::Arc::new(
-        ByNameRunner::default()
-            .with_output(
-                "cargo-fails",
-                CommandOutput {
-                    exit_code: 1,
-                    stdout: String::new(),
-                    stderr: "error: cargo".to_string(),
-                },
-            )
-            .with_output(
-                "frontend-fails",
-                CommandOutput {
-                    exit_code: 1,
-                    stdout: String::new(),
-                    stderr: "error: frontend".to_string(),
-                },
-            ),
-    );
-
-    let cargo_checks: &[CommandSpec] = &[check("cargo-fails")];
-    let frontend_checks: &[CommandSpec] = &[check("frontend-fails")];
-
-    let groups = test_groups(cargo_checks, frontend_checks, &[]);
-    let report = verify_fast(
-        runner.clone(),
-        std::path::Path::new("/fake"),
-        &[],
-        &groups,
-        &NoopProgressReporter,
-    )
-    .expect("verify_fast should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Failure);
-    let failure = report.failure.expect("expected failure");
-    assert_eq!(failure.name, "cargo-fails");
 }
 
 #[test]
@@ -2187,9 +1761,6 @@ fn test_all_required_checks_returns_union_of_all_groups() {
     let expected_count = FMT_CHECKS.len()
         + CORE_CARGO_CHECKS.len()
         + XTASK_CARGO_CHECKS.len()
-        + GUI_CARGO_CHECKS.len()
-        + FRONTEND_INSTALL_CHECKS.len()
-        + FRONTEND_POST_INSTALL_CHECKS.len()
         + RELEASE_CHECKS.len();
     assert_eq!(
         all.len(),
@@ -2232,7 +1803,7 @@ fn test_verify_fast_runs_scan_concurrently_with_cargo_groups() {
     let reporter = RecordingProgressReporter::default();
     let cargo_checks: &[CommandSpec] = &[check("cargo-a")];
 
-    let groups = test_groups(cargo_checks, &[], &[]);
+    let groups = test_groups(cargo_checks, &[]);
     let report = verify_fast(
         runner.clone(),
         std::path::Path::new("/fake"),
@@ -2305,9 +1876,6 @@ fn test_verify_fast_fmt_check_runs_parallel_to_clippy() {
         fmt: fmt_checks,
         core_cargo: cargo_checks,
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
     let report = verify_fast(
@@ -2345,9 +1913,6 @@ fn test_verify_fast_scan_failure_cancels_cargo_groups() {
         fmt: &[],
         core_cargo: &[],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
     // With empty groups and a valid repo root, scan should pass (no violations).
@@ -2393,9 +1958,6 @@ fn test_verify_fast_fmt_failure_takes_priority_over_cargo_failure() {
         fmt: fmt_checks,
         core_cargo: cargo_checks,
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
     let report = verify_fast(
@@ -2428,172 +1990,6 @@ fn test_fmt_checks_constant_contains_fmt_check() {
     assert!(FMT_CHECKS[0].args.contains(&"--check"));
 }
 
-// ── TDD tests for frontend sub-parallelism ──────────────────────────────
-
-#[test]
-fn test_frontend_install_checks_contains_only_install() {
-    assert_eq!(FRONTEND_INSTALL_CHECKS.len(), 1);
-    assert_eq!(
-        FRONTEND_INSTALL_CHECKS[0].name,
-        "ralph-gui-frontend-install"
-    );
-}
-
-#[test]
-fn test_frontend_post_install_checks_contains_lint_and_test() {
-    assert_eq!(FRONTEND_POST_INSTALL_CHECKS.len(), 2);
-    let names: Vec<&str> = FRONTEND_POST_INSTALL_CHECKS
-        .iter()
-        .map(|c| c.name)
-        .collect();
-    assert!(names.contains(&"ralph-gui-frontend-lint"));
-    assert!(names.contains(&"ralph-gui-frontend-test"));
-}
-
-#[test]
-fn test_frontend_checks_equals_install_plus_post_install() {
-    let combined: Vec<&str> = FRONTEND_INSTALL_CHECKS
-        .iter()
-        .chain(FRONTEND_POST_INSTALL_CHECKS.iter())
-        .map(|c| c.name)
-        .collect();
-    let legacy: Vec<&str> = FRONTEND_CHECKS.iter().map(|c| c.name).collect();
-    assert_eq!(combined, legacy);
-}
-
-#[test]
-fn test_verify_fast_frontend_lint_and_test_run_in_parallel_after_install() {
-    use std::sync::Arc;
-    use std::thread::ThreadId;
-
-    #[derive(Debug, Default)]
-    struct TimedRunner {
-        threads: Mutex<HashMap<&'static str, ThreadId>>,
-        start_times: Mutex<HashMap<&'static str, Instant>>,
-        end_times: Mutex<HashMap<&'static str, Instant>>,
-    }
-
-    impl CommandRunner for TimedRunner {
-        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.threads
-                .lock()
-                .unwrap()
-                .insert(spec.name, std::thread::current().id());
-            self.start_times
-                .lock()
-                .unwrap()
-                .insert(spec.name, Instant::now());
-            // Lint and test sleep long enough to prove overlap.
-            if spec.name.contains("lint") || spec.name.contains("test") {
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            self.end_times
-                .lock()
-                .unwrap()
-                .insert(spec.name, Instant::now());
-            Ok(CommandOutput {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            })
-        }
-    }
-
-    let runner = Arc::new(TimedRunner::default());
-    let install: &[CommandSpec] = &[check("ralph-gui-frontend-install")];
-    let post_install: &[CommandSpec] = &[
-        check("ralph-gui-frontend-lint"),
-        check("ralph-gui-frontend-test"),
-    ];
-
-    let groups = CheckGroups {
-        fmt: &[],
-        core_cargo: &[],
-        xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: install,
-        frontend_post_install: post_install,
-        release: &[],
-    };
-
-    let report = verify_fast(
-        runner.clone(),
-        std::path::Path::new("/fake"),
-        &[],
-        &groups,
-        &NoopProgressReporter,
-    )
-    .expect("verify_fast should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Success);
-
-    // Lint and test must run on different threads (proving sub-parallelism).
-    let threads = runner.threads.lock().unwrap();
-    let lint_thread = threads
-        .get("ralph-gui-frontend-lint")
-        .expect("lint must have run");
-    let test_thread = threads
-        .get("ralph-gui-frontend-test")
-        .expect("test must have run");
-    assert_ne!(
-        lint_thread, test_thread,
-        "frontend lint and test must run on different threads (proving parallelism)"
-    );
-
-    // Both must have started before either finished (proving concurrency).
-    let starts = runner.start_times.lock().unwrap();
-    let ends = runner.end_times.lock().unwrap();
-    let lint_start = starts["ralph-gui-frontend-lint"];
-    let test_start = starts["ralph-gui-frontend-test"];
-    let lint_end = ends["ralph-gui-frontend-lint"];
-    let test_end = ends["ralph-gui-frontend-test"];
-    assert!(
-        lint_start < test_end && test_start < lint_end,
-        "lint and test must overlap in time (both started before either finished)"
-    );
-}
-
-#[test]
-fn test_verify_fast_frontend_install_failure_skips_post_install() {
-    let runner = std::sync::Arc::new(ByNameRunner::default().with_output(
-        "ralph-gui-frontend-install",
-        CommandOutput {
-            exit_code: 1,
-            stdout: String::new(),
-            stderr: "error: npm ci failed".to_string(),
-        },
-    ));
-
-    let install: &[CommandSpec] = &[check("ralph-gui-frontend-install")];
-    let post_install: &[CommandSpec] = &[
-        check("ralph-gui-frontend-lint"),
-        check("ralph-gui-frontend-test"),
-    ];
-
-    let groups = CheckGroups {
-        fmt: &[],
-        core_cargo: &[],
-        xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: install,
-        frontend_post_install: post_install,
-        release: &[],
-    };
-
-    let report = verify_fast(
-        runner,
-        std::path::Path::new("/fake"),
-        &[],
-        &groups,
-        &NoopProgressReporter,
-    )
-    .expect("verify_fast should not error");
-
-    assert_eq!(report.exit, VerifyExitCode::Failure);
-    let failure = report.failure.expect("expected failure");
-    assert_eq!(failure.name, "ralph-gui-frontend-install");
-}
-
 // ── TDD tests for per-lane timing reporting ─────────────────────────────
 
 #[test]
@@ -2619,9 +2015,6 @@ fn test_verify_fast_reports_lane_timing() {
         fmt: FMT_CHECKS,
         core_cargo: CORE_CARGO_CHECKS,
         xtask_cargo: XTASK_CARGO_CHECKS,
-        gui_cargo: GUI_CARGO_CHECKS,
-        frontend_install: FRONTEND_INSTALL_CHECKS,
-        frontend_post_install: FRONTEND_POST_INSTALL_CHECKS,
         release: RELEASE_CHECKS,
     };
 
@@ -2642,8 +2035,6 @@ fn test_verify_fast_reports_lane_timing() {
         "fmt",
         "core-cargo",
         "xtask-cargo",
-        "gui-cargo",
-        "frontend",
         "release",
     ];
     for lane_name in &expected_lanes {
@@ -2661,8 +2052,8 @@ fn test_noop_reporter_lane_finished_does_not_panic() {
 
 #[test]
 fn test_stderr_reporter_formats_lane_finished() {
-    let s = StderrProgressReporter::fmt_lane_finished("frontend", Duration::from_millis(1234));
-    assert!(s.starts_with("  lane done: frontend ("));
+    let s = StderrProgressReporter::fmt_lane_finished("release", Duration::from_millis(1234));
+    assert!(s.starts_with("  lane done: release ("));
     assert!(s.ends_with(')'));
 }
 
@@ -2735,9 +2126,6 @@ fn test_forbidden_allow_expect_scan_failure_includes_policy_in_output() {
         fmt: &[],
         core_cargo: &[],
         xtask_cargo: &[],
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: &[],
     };
 

@@ -255,7 +255,6 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
             "tests",
             "xtask/src",
             "test-helpers/src",
-            "ralph-gui",
             "lints",
         ],
         include_glob: "*.rs",

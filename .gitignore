@@ -58,8 +58,3 @@ lints/*/Cargo.lock
 # Must not be synced across platforms (macOS binary != Linux binary).
 lints/*/rustc-nightly
 
-# Ralph GUI frontend build artifacts
-ralph-gui/ui/node_modules/
-ralph-gui/ui/dist/
-ralph-gui/ui/coverage/
-ralph-gui/ui/e2e-results/
