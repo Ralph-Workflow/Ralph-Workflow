@@ -54,18 +54,68 @@ pub trait HostSession: Send + Sync {
 
 /// Workspace file operations.
 ///
-/// This trait abstracts the Workspace trait from ralph-workflow.
+/// This trait abstracts the Workspace trait from ralph-workflow. Implementations
+/// are provided by the host application and are called by `mcp-server` only after
+/// all access control checks have passed (tool filter, access mode, root_dir boundary,
+/// and capability check). Implementations do NOT need to re-enforce these checks.
+///
+/// ## Error Semantics
+///
+/// All methods that can fail return `Result<_, String>`. The `String` error is converted
+/// to a `ToolError::ExecutionError` by the dispatch layer and returned to the client as
+/// a JSON-RPC error with code `-32000`. Implementations should return descriptive error
+/// messages that are safe to surface to the MCP client.
+///
+/// ## Path Handling
+///
+/// All paths passed to adapter methods have already been validated against `root_dir`.
+/// Paths are passed as-is from the MCP client request after root_dir boundary enforcement.
+/// Implementations should treat them as relative to the workspace root.
+///
+/// ## Implementing this Trait
+///
+/// Implementors must provide a consistent view of the workspace across calls.
+/// `exists()` returning `true` must guarantee that `read()` succeeds for the same path
+/// within a single request/response cycle (absent external mutation).
 pub trait WorkspaceAdapter: Send + Sync {
-    /// Read a file's contents.
+    /// Read a file's complete contents as a UTF-8 string.
+    ///
+    /// ## Errors
+    ///
+    /// Returns `Err(String)` if the file does not exist, cannot be read,
+    /// or its contents are not valid UTF-8. The error message is returned
+    /// to the MCP client as a `ToolError::ExecutionError` (JSON-RPC code `-32000`).
     fn read(&self, path: &Path) -> Result<String, String>;
 
-    /// Write content to a file.
+    /// Write content to a file, creating it if it does not exist.
+    ///
+    /// ## Side Effects
+    ///
+    /// Creates the file and any required parent directories. Overwrites existing content.
+    ///
+    /// ## Errors
+    ///
+    /// Returns `Err(String)` if the file cannot be written (e.g., permission denied,
+    /// disk full, path traversal blocked). The error is returned to the MCP client as
+    /// a `ToolError::ExecutionError` (JSON-RPC code `-32000`).
     fn write(&self, path: &Path, content: &str) -> Result<(), String>;
 
-    /// Check if a path exists.
+    /// Check if a path exists in the workspace.
+    ///
+    /// Returns `true` if the path exists (as a file or directory), `false` otherwise.
+    /// Must not panic; treat all I/O errors as `false`.
     fn exists(&self, path: &Path) -> bool;
 
-    /// Read directory entries.
+    /// Read directory entries at the given path.
+    ///
+    /// Returns a flat list of immediate children. Does not recurse into subdirectories
+    /// unless the implementation chooses to. Each entry indicates whether it is a
+    /// directory or file via [`DirEntry::is_dir`].
+    ///
+    /// ## Errors
+    ///
+    /// Returns `Err(String)` if the path does not exist, is not a directory,
+    /// or cannot be read. The error is returned as `ToolError::ExecutionError`.
     fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>, String>;
 }
 

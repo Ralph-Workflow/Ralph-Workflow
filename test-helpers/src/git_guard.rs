@@ -132,6 +132,57 @@ pub fn temp_dir_outside_git(prefix: &str) -> TempDir {
     crate::boundary::temp_dir_outside_git_impl(prefix)
 }
 
+/// RAII guard that asserts the project repository HEAD OID has not changed when dropped.
+///
+/// Instantiate at the start of every integration test that might affect git state.
+/// On construction, captures the HEAD OID of the project repository.
+/// On drop, panics with a clear `POLICY VIOLATION` message if HEAD has changed.
+///
+/// # Policy
+///
+/// Tests MUST NOT commit to the project repository. This guard enforces that
+/// invariant structurally without using environment variables or feature flags.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// # use test_helpers::git_guard::ProjectHeadGuard;
+/// #[test]
+/// fn my_integration_test() {
+///     let _guard = ProjectHeadGuard::capture();
+///     // ... test body ...
+///     // On drop, guard asserts HEAD has not changed.
+/// }
+/// ```
+///
+/// # Panics
+///
+/// Panics on drop if the project HEAD OID has changed since construction.
+/// This is intentional: a changed HEAD means a test mutated real git state.
+pub struct ProjectHeadGuard {
+    before_head: Option<String>,
+}
+
+impl ProjectHeadGuard {
+    /// Capture the current project HEAD OID.
+    ///
+    /// Returns a guard that will assert HEAD has not changed when dropped.
+    /// If the project HEAD cannot be determined (e.g., running outside a git repo),
+    /// the guard is created but will not assert on drop.
+    #[must_use]
+    pub fn capture() -> Self {
+        Self {
+            before_head: crate::boundary::capture_project_head_oid(),
+        }
+    }
+}
+
+impl Drop for ProjectHeadGuard {
+    fn drop(&mut self) {
+        crate::assert_project_head_unchanged(&self.before_head);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

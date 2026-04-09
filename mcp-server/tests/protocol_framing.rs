@@ -6,7 +6,7 @@
 use mcp_server::dispatch::access::{AccessDecision, McpCapability};
 use mcp_server::dispatch::host::DirEntry;
 use mcp_server::io::access::McpServerConfig;
-use mcp_server::io::fake::FakeTransport;
+use mcp_server::io::fake::{FakeTransport, FakeTransportPair};
 use mcp_server::io::McpStream;
 use mcp_server::io::{McpServer, ServerState};
 use mcp_server::protocol::JsonRpcRequest;
@@ -351,6 +351,122 @@ fn test_large_payload_framing() {
     assert_eq!(
         parsed_content, large_string,
         "Parsed payload content must match original exactly"
+    );
+}
+
+/// Test that FakeTransportPair drives a full initialize → tools/list exchange in-process.
+///
+/// This test proves the full bidirectional transport layer works correctly:
+/// - Client injects requests into the pair's shared queues
+/// - Server reads from the queue, processes the request, writes response
+/// - Client reads back the response
+///
+/// No real OS sockets, filesystem, or processes are used. This is a deterministic
+/// in-process test of the full protocol framing + JSON-RPC dispatch chain.
+#[test]
+fn fake_transport_pair_drives_initialize_and_tools_list_exchange() {
+    let server = make_server();
+
+    // Create a bidirectional pair: client side injects requests, server side implements McpStream
+    let mut pair = FakeTransportPair::new();
+
+    // Step 1: Client injects initialize request
+    let init_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "clientInfo": { "name": "fake-transport-test-client", "version": "1.0" }
+        })),
+        id: Some(serde_json::json!(1)),
+    };
+    pair.client.inject_request(init_request);
+
+    // Step 2: Server reads the initialize request and handles it
+    let req = pair
+        .server
+        .read_request()
+        .expect("server transport must not error")
+        .expect("server must receive the initialize request");
+
+    let (init_resp, state) = server.handle_request(req, ServerState::Uninitialized);
+    let init_resp = init_resp.expect("initialize must produce a response");
+
+    // Step 3: Server writes response back to client via pair
+    pair.server
+        .write_response(&init_resp)
+        .expect("server must write response without error");
+
+    // Step 4: Client reads the initialize response
+    let client_init_resp = pair
+        .client
+        .read_response()
+        .expect("client must receive initialize response");
+
+    assert!(
+        client_init_resp.result.is_some(),
+        "initialize must succeed, got error: {:?}",
+        client_init_resp.error
+    );
+    assert_eq!(state, ServerState::Ready);
+    let result = client_init_resp.result.unwrap();
+    assert_eq!(
+        result["protocolVersion"], "2024-11-05",
+        "protocolVersion must match"
+    );
+    assert_eq!(
+        result["serverInfo"]["name"], "ralph-mcp",
+        "serverInfo.name must be 'ralph-mcp'"
+    );
+
+    // Step 5: Client injects tools/list request
+    let list_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(2)),
+    };
+    pair.client.inject_request(list_request);
+
+    // Step 6: Server reads tools/list and handles it
+    let req = pair
+        .server
+        .read_request()
+        .expect("server transport must not error")
+        .expect("server must receive tools/list request");
+
+    let (list_resp, _) = server.handle_request(req, state);
+    let list_resp = list_resp.expect("tools/list must produce a response");
+
+    // Step 7: Server writes response
+    pair.server
+        .write_response(&list_resp)
+        .expect("server must write tools/list response");
+
+    // Step 8: Client reads tools/list response
+    let client_list_resp = pair
+        .client
+        .read_response()
+        .expect("client must receive tools/list response");
+
+    assert!(
+        client_list_resp.result.is_some(),
+        "tools/list must succeed, got error: {:?}",
+        client_list_resp.error
+    );
+    let result = client_list_resp.result.unwrap();
+    let tools = result["tools"].as_array().expect("tools must be an array");
+    // Empty registry — no tools registered in make_server() — so list must be empty
+    assert_eq!(
+        tools.len(),
+        0,
+        "empty registry must return empty tools list, got: {tools:#?}"
+    );
+
+    // Verify no pending responses remain (clean queue state)
+    assert!(
+        !pair.client.has_pending_responses(),
+        "no responses should remain in client queue after all reads"
     );
 }
 
