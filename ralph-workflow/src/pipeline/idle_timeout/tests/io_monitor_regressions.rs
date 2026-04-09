@@ -98,6 +98,7 @@ fn monitor_releases_child_lock_between_sigterm_checks_so_caller_can_access_child
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         }
@@ -182,6 +183,7 @@ fn monitor_reports_timeout_even_if_sigkill_confirmation_times_out() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         }
@@ -274,6 +276,7 @@ fn monitor_treats_try_wait_errors_as_status_unknown_and_continues_enforcement() 
 
             partial_completion_check: None,
             tool_activity_check: None,
+            max_tool_suppression_ticks: 20,
         },
     );
 
@@ -331,6 +334,7 @@ fn monitor_escalates_to_sigkill_when_sigterm_ignored() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         }
@@ -405,6 +409,7 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         }
@@ -477,6 +482,7 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             );
             let _ = tx.send(result);

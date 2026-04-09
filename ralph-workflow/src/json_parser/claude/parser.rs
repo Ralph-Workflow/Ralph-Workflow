@@ -95,6 +95,17 @@ impl ClaudeParser {
         }
     }
 
+    /// Hard-reset the tool-activity counter to 0.
+    ///
+    /// Called at stream end (stdout EOF) to ensure the counter is 0 when the monitor
+    /// checks after the stream closes. Defense-in-depth: the bounded suppression cap
+    /// in the monitor handles the case where this races with the monitor.
+    fn reset_tool_active(&self) {
+        if let Some(ref tracker) = self.tool_activity_tracker {
+            tracker.store(0, std::sync::atomic::Ordering::Release);
+        }
+    }
+
     pub(crate) const fn with_show_streaming_metrics(mut self, show: bool) -> Self {
         self.show_streaming_metrics = show;
         self
@@ -480,6 +491,7 @@ impl ClaudeParser {
         c: Colors,
         log_buffer: &[u8],
     ) -> std::io::Result<()> {
+        self.reset_tool_active(); // hard-reset at stream end — stdout is closed, no more tool events
         if let Some(log_path) = &self.log_path {
             workspace.append_bytes(log_path, log_buffer)?;
         }

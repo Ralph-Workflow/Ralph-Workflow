@@ -82,6 +82,7 @@ fn partial_completion_check_true_suppresses_idle_timeout() {
         completion_check: None,
         partial_completion_check: Some(partial_completion_check),
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -133,6 +134,7 @@ fn partial_completion_check_false_allows_idle_timeout_to_fire() {
         completion_check: None,
         partial_completion_check: Some(partial_completion_check),
         tool_activity_check: None,
+        max_tool_suppression_ticks: 20,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -196,6 +198,8 @@ fn tool_activity_check_suppresses_idle_timeout_even_without_file() {
         completion_check: None,
         partial_completion_check: Some(partial_completion_check),
         tool_activity_check: Some(tool_activity_check),
+        // child exits at 200ms with 5ms check_interval = 40 ticks; cap must be > 40
+        max_tool_suppression_ticks: 200,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -258,6 +262,7 @@ fn tool_activity_check_clears_and_timeout_fires_after_tool_finishes() {
         completion_check: None,
         partial_completion_check: Some(partial_completion_check),
         tool_activity_check: Some(tool_activity_check),
+        max_tool_suppression_ticks: 20,
     };
 
     let handle = std::thread::spawn(move || {

@@ -1,5 +1,43 @@
 use super::*;
 
+/// A test-only stdout reader that emits pre-baked events then blocks until `unblock` is set.
+///
+/// Simulates a real agent's stdout: events flow while the process is active, then stdout
+/// stays open (blocking) until the process exits. Only returns EOF after `unblock` fires.
+///
+/// This models the real agent lifecycle: if a tool is executing, stdout remains open because
+/// the agent will write the tool-result event when it finishes. `reset_tool_active()` at
+/// stream end is called only after this reader returns EOF — i.e., only after process exit.
+struct BlockingEventsReader {
+    cursor: Cursor<Vec<u8>>,
+    unblock: Arc<AtomicBool>,
+}
+
+impl BlockingEventsReader {
+    fn new(data: Vec<u8>, unblock: Arc<AtomicBool>) -> Self {
+        Self {
+            cursor: Cursor::new(data),
+            unblock,
+        }
+    }
+}
+
+impl Read for BlockingEventsReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.cursor.read(buf)?;
+        if n > 0 {
+            return Ok(n);
+        }
+        // Events exhausted — block until unblock signal (process exit simulation).
+        // In real agents, stdout stays open as long as the process is alive; EOF only
+        // occurs when the process exits and its stdout file descriptor is closed.
+        while !self.unblock.load(Ordering::Acquire) {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        Ok(0) // EOF after process exit
+    }
+}
+
 #[test]
 #[cfg(unix)]
 fn test_run_with_agent_spawn_does_not_hang_when_stdout_closes_early_and_idle_timeout_triggers() {
@@ -1170,6 +1208,7 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
     #[derive(Debug)]
     struct CodexToolStartExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     impl crate::executor::AgentChild for CodexToolStartChild {
@@ -1224,8 +1263,10 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
             // After this line, stdout closes (EOF). The child keeps running so the monitor
             // can observe the tool_active flag before the process exits.
             let codex_item_started = b"{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/test.xml\"}}\n";
-            let stdout =
-                Box::new(Cursor::new(codex_item_started.to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                codex_item_started.to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(CodexToolStartChild {
                 still_running: Arc::clone(&self.still_running),
@@ -1245,8 +1286,10 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(CodexToolStartExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -1278,12 +1321,16 @@ fn test_codex_item_started_event_suppresses_idle_timeout() {
     };
 
     // Stop the child shortly after the parser has had time to process the item.started event
-    // and set tool_active = true. With the tool-activity suppressor engaged, the idle monitor
-    // (timeout = ZERO) should not kill the process.
+    // and set tool_active = true. The stopper also unblocks the reader (simulating stdout
+    // closing when the process exits) so that reset_tool_active() is called AFTER the child
+    // has already exited. With the tool-activity suppressor engaged during streaming (stdout
+    // open), and the child exiting before the monitor fires, idle timeout must not kill.
     let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
         still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -1496,6 +1543,7 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
     #[derive(Debug)]
     struct ClaudeToolStartExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     #[derive(Debug)]
@@ -1557,8 +1605,10 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
                 r#"{"type":"stream_event","event":{"type":"message_stop"}}"#,
                 "\n"
             );
-            let stdout =
-                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                events.as_bytes().to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(ClaudeToolStartChild {
                 still_running: Arc::clone(&self.still_running),
@@ -1578,8 +1628,10 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(ClaudeToolStartExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -1610,11 +1662,15 @@ fn test_claude_content_block_start_tool_use_suppresses_idle_timeout_until_exit()
     };
 
     // Stop the child after parser has processed ContentBlockStart+MessageStop events.
-    // With the fix, tool_active remains true after MessageStop, suppressing the monitor.
+    // The stopper also unblocks the reader (simulating stdout closing on process exit)
+    // so that reset_tool_active() is called only AFTER the child has already exited.
+    // While stdout is open (reader blocking), tool_active > 0 suppresses the monitor.
     let still_running_stopper = Arc::clone(&still_running);
+    let unblock_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(300));
         still_running_stopper.store(false, Ordering::Release);
+        unblock_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -1666,6 +1722,7 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
     #[derive(Debug)]
     struct OpenCodeToolStartExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     #[derive(Debug)]
@@ -1720,8 +1777,10 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
             // After this line, stdout closes (EOF). The child keeps running so the monitor
             // can observe the tool_active flag before the process exits.
             let tool_use_pending = b"{\"type\":\"tool_use\",\"timestamp\":1234,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-1\",\"tool\":\"write\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/test.xml\"}}}}\n";
-            let stdout =
-                Box::new(Cursor::new(tool_use_pending.to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                tool_use_pending.to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(OpenCodeToolStartChild {
                 still_running: Arc::clone(&self.still_running),
@@ -1741,8 +1800,10 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(OpenCodeToolStartExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -1774,12 +1835,15 @@ fn test_opencode_tool_use_pending_event_suppresses_idle_timeout() {
     };
 
     // Stop the child shortly after the parser has had time to process the tool_use event
-    // and set tool_active = true. With the tool-activity suppressor engaged, the idle monitor
-    // (timeout = ZERO) should not kill the process.
+    // and set tool_active = true. The stopper also unblocks the reader (simulating stdout
+    // closing on process exit) so that reset_tool_active() is called AFTER the child exits.
+    // While stdout is open (reader blocking), tool_active > 0 suppresses the monitor.
     let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
         still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -1992,6 +2056,7 @@ fn test_codex_concurrent_tool_items_first_complete_does_not_clear_suppressor() {
     #[derive(Debug)]
     struct ConcurrentToolExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     #[derive(Debug)]
@@ -2052,8 +2117,10 @@ fn test_codex_concurrent_tool_items_first_complete_does_not_clear_suppressor() {
                 "{\"type\":\"item.started\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/tool-b.xml\"}}\n",
                 "{\"type\":\"item.completed\",\"item\":{\"type\":\"file_write\",\"path\":\"/tmp/tool-a.xml\"}}\n",
             );
-            let stdout =
-                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                events.as_bytes().to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(ConcurrentToolChild {
                 still_running: Arc::clone(&self.still_running),
@@ -2073,8 +2140,10 @@ fn test_codex_concurrent_tool_items_first_complete_does_not_clear_suppressor() {
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(ConcurrentToolExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -2107,10 +2176,14 @@ fn test_codex_concurrent_tool_items_first_complete_does_not_clear_suppressor() {
 
     // Stop the child after the parser has had time to process all events and the monitor has
     // had time to observe counter = 1 (suppressor still active after first item.completed).
+    // The stopper also unblocks the reader (simulating stdout closing on process exit)
+    // so reset_tool_active() fires only AFTER the child has exited.
     let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
         still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(
@@ -2172,6 +2245,7 @@ fn test_opencode_concurrent_tool_calls_first_complete_does_not_clear_suppressor(
     #[derive(Debug)]
     struct OpenCodeConcurrentExecutor {
         still_running: Arc<AtomicBool>,
+        unblock: Arc<AtomicBool>,
     }
 
     #[derive(Debug)]
@@ -2232,8 +2306,10 @@ fn test_opencode_concurrent_tool_calls_first_complete_does_not_clear_suppressor(
                 "{\"type\":\"tool_use\",\"timestamp\":1001,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-B\",\"tool\":\"read\",\"state\":{\"status\":\"pending\",\"input\":{\"filePath\":\"/tmp/b.xml\"}}}}\n",
                 "{\"type\":\"tool_use\",\"timestamp\":1002,\"sessionID\":\"sess-1\",\"part\":{\"type\":\"tool_use\",\"callID\":\"call-A\",\"tool\":\"write\",\"state\":{\"status\":\"completed\",\"output\":\"ok\"}}}\n",
             );
-            let stdout =
-                Box::new(Cursor::new(events.as_bytes().to_vec())) as Box<dyn io::Read + Send>;
+            let stdout = Box::new(BlockingEventsReader::new(
+                events.as_bytes().to_vec(),
+                Arc::clone(&self.unblock),
+            )) as Box<dyn io::Read + Send>;
             let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
             let inner: Box<dyn crate::executor::AgentChild> = Box::new(OpenCodeConcurrentChild {
                 still_running: Arc::clone(&self.still_running),
@@ -2253,8 +2329,10 @@ fn test_opencode_concurrent_tool_calls_first_complete_does_not_clear_suppressor(
     let mut timer = Timer::new();
 
     let still_running = Arc::new(AtomicBool::new(true));
+    let unblock = Arc::new(AtomicBool::new(false));
     let executor = Arc::new(OpenCodeConcurrentExecutor {
         still_running: Arc::clone(&still_running),
+        unblock: Arc::clone(&unblock),
     });
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
 
@@ -2287,10 +2365,14 @@ fn test_opencode_concurrent_tool_calls_first_complete_does_not_clear_suppressor(
 
     // Stop the child after the parser has had time to process all events and the monitor has
     // had time to observe counter = 1 (suppressor still active after first tool_use{completed}).
+    // The stopper also unblocks the reader (simulating stdout closing on process exit)
+    // so reset_tool_active() fires only AFTER the child has exited.
     let still_running_for_stopper = Arc::clone(&still_running);
+    let unblock_for_stopper = Arc::clone(&unblock);
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(200));
         still_running_for_stopper.store(false, Ordering::Release);
+        unblock_for_stopper.store(true, Ordering::Release);
     });
 
     let result = run_with_agent_spawn_with_monitor_config(

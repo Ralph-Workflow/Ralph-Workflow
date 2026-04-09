@@ -389,6 +389,8 @@ impl OpenCodeParser {
             )?;
         }
 
+        self.reset_tool_active(); // hard-reset at stream end — no more tool events can arrive
+
         self.write_log_buffer_if_enabled(workspace, &log_buffer)?;
         self.persist_extracted_xml_artifacts(workspace)?;
         self.write_monitor_warning_if_needed(&monitor)?;

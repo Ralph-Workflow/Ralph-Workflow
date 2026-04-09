@@ -311,6 +311,7 @@ fn active_ai_file_updates_prevent_timeout() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -386,6 +387,7 @@ fn log_only_activity_does_not_prevent_timeout() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -448,6 +450,7 @@ fn no_output_and_no_ai_files_times_out() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -534,6 +537,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -614,6 +618,7 @@ fn mixed_output_and_file_activity_prevents_timeout() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -699,6 +704,7 @@ fn workspace_source_file_update_prevents_timeout() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -777,6 +783,7 @@ fn only_excluded_workspace_files_still_produce_timeout() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -845,6 +852,7 @@ fn deep_nested_source_file_prevents_timeout() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -930,6 +938,7 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1003,6 +1012,7 @@ fn output_activity_during_file_scan_prevents_kill() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1084,6 +1094,7 @@ fn active_subprocess_prevents_idle_kill() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1172,6 +1183,7 @@ fn sleeping_subprocess_with_historical_cpu_still_times_out() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1237,6 +1249,7 @@ fn active_flag_without_fresh_subprocess_progress_still_times_out() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1291,6 +1304,7 @@ fn no_active_subprocess_and_no_file_activity_times_out() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1351,6 +1365,7 @@ fn stalled_subprocess_timeout_includes_child_status() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1417,6 +1432,7 @@ fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1540,6 +1556,7 @@ fn no_subprocess_timeout_has_none_child_status() {
 
                     partial_completion_check: None,
                     tool_activity_check: None,
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1606,6 +1623,7 @@ fn active_tool_execution_prevents_idle_timeout() {
                     completion_check: None,
                     partial_completion_check: None,
                     tool_activity_check: Some(tool_activity_check),
+                    max_tool_suppression_ticks: 20,
                 },
             )
         });
@@ -1670,6 +1688,7 @@ fn tool_completion_resumes_idle_timeout_enforcement() {
                 completion_check: None,
                 partial_completion_check: None,
                 tool_activity_check: Some(tool_activity_check),
+                max_tool_suppression_ticks: 20,
             },
         );
 

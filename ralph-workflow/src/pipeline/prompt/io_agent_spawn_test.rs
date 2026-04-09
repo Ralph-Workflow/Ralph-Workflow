@@ -175,6 +175,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
 
                     partial_completion_check: None,
                     tool_activity_check,
+                    max_tool_suppression_ticks: 20,
                 },
                 Some(&child_activity_suppressed_for_monitor),
             );
