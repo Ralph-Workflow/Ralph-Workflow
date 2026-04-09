@@ -7,7 +7,10 @@ use crate::json_parser::delta_display::{
     sanitize_for_display, DeltaRenderer, TextDeltaRenderer, ThinkingDeltaRenderer,
 };
 use crate::json_parser::terminal::TerminalMode;
-use crate::json_parser::types::{format_tool_input, CodexItem, CodexUsage, ContentType};
+use crate::json_parser::types::{
+    format_dim_continuation_line, format_token_counts, format_tokens_suffix, format_tool_input,
+    CodexItem, CodexUsage, ContentType,
+};
 use crate::logger::{CHECK, CROSS};
 
 #[cfg(any(test, debug_assertions))]
@@ -140,16 +143,25 @@ pub fn handle_thread_started(ctx: &EventHandlerContext<'_>, thread_id: Option<St
     ctx.streaming_session
         .borrow_mut()
         .set_current_message_id(Some(tid.clone()));
+    let hash_display = crate::json_parser::types::format_short_hash(&tid);
+    let hash_suffix = if hash_display.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " {}{}{}",
+            ctx.colors.dim(),
+            hash_display,
+            ctx.colors.reset()
+        )
+    };
     format!(
-        "{}[{}]{} {}Thread started{} {}({:.8}...){}\n",
+        "{}[{}]{} {}Thread started{}{}\n",
         ctx.colors.dim(),
         ctx.display_name,
         ctx.colors.reset(),
         ctx.colors.cyan(),
         ctx.colors.reset(),
-        ctx.colors.dim(),
-        tid,
-        ctx.colors.reset()
+        hash_suffix
     )
 }
 
@@ -189,8 +201,10 @@ pub fn handle_turn_completed(ctx: &EventHandlerContext<'_>, usage: Option<CodexU
     } else {
         String::new()
     };
+    let tokens_str = format_token_counts(input, output, 0, 0);
+    let tokens_suffix = format_tokens_suffix(&tokens_str);
     format!(
-        "{}{}[{}]{} {}{} Turn completed{} {}(in:{} out:{}){}\n",
+        "{}{}[{}]{} {}{} Turn completed{}{}{}{}\n",
         completion,
         ctx.colors.dim(),
         ctx.display_name,
@@ -199,8 +213,7 @@ pub fn handle_turn_completed(ctx: &EventHandlerContext<'_>, usage: Option<CodexU
         CHECK,
         ctx.colors.reset(),
         ctx.colors.dim(),
-        input,
-        output,
+        tokens_suffix,
         ctx.colors.reset()
     )
 }
@@ -264,22 +277,6 @@ pub fn handle_file_io_started(
     )
 }
 
-fn format_mcp_tool_input_preview(ctx: &EventHandlerContext<'_>, preview: &str) -> String {
-    match ctx.terminal_mode {
-        TerminalMode::Full | TerminalMode::Basic => format!(
-            "{}[{}]{} {}  \u{2514}\u{2500} {}{}{}\n",
-            ctx.colors.dim(),
-            ctx.display_name,
-            ctx.colors.reset(),
-            ctx.colors.dim(),
-            ctx.colors.reset(),
-            preview,
-            ctx.colors.reset()
-        ),
-        TerminalMode::None => format!("[{}]   \u{2514}\u{2500} {}\n", ctx.display_name, preview),
-    }
-}
-
 fn maybe_format_mcp_tool_input(
     ctx: &EventHandlerContext<'_>,
     arguments: Option<&serde_json::Value>,
@@ -293,7 +290,13 @@ fn maybe_format_mcp_tool_input(
             if preview.is_empty() {
                 String::new()
             } else {
-                format_mcp_tool_input_preview(ctx, &preview)
+                // TerminalMode::None must not emit ANSI codes even when colors are enabled.
+                match ctx.terminal_mode {
+                    TerminalMode::None => {
+                        format!("[{}]   \u{2514}\u{2500} {}\n", ctx.display_name, preview)
+                    }
+                    _ => format_dim_continuation_line(&preview, ctx.display_name, *ctx.colors),
+                }
             }
         })
 }

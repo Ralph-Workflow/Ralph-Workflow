@@ -6,3 +6,4 @@ pub mod coverage;
 pub mod dylint;
 pub mod dylint_report;
 pub mod lsp_diagnostics;
+pub mod remote;

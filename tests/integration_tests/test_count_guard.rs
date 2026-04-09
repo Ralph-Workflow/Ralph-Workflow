@@ -677,13 +677,9 @@ fn parse_module_declarations(contents: &str) -> Vec<&str> {
             if trimmed.starts_with("//") || !trimmed.contains(';') {
                 return None;
             }
-            let declaration = if let Some(rest) = trimmed.strip_prefix("mod ") {
-                rest
-            } else if let Some(rest) = trimmed.strip_prefix("pub mod ") {
-                rest
-            } else {
-                return None;
-            };
+            let declaration = trimmed
+                .strip_prefix("mod ")
+                .or_else(|| trimmed.strip_prefix("pub mod "))?;
             let name = declaration
                 .split(|ch: char| ch == ';' || ch.is_whitespace())
                 .next()

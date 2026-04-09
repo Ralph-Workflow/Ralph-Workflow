@@ -10,8 +10,7 @@ If anything here conflicts with `AGENTS.md`, follow the stricter rule.
 3. Build and run the fast test path:
 
 ```bash
-cargo build
-cargo test -p ralph-workflow --lib --all-features
+cargo xtask test -p ralph-workflow --lib --all-features
 ```
 
 ## Source of Truth (Read These First)

@@ -49,6 +49,7 @@
 pub mod bfs;
 pub mod command;
 mod executor_trait;
+#[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(any(test, feature = "test-utils"))]
 mod mock;

@@ -310,7 +310,7 @@ Rather than testing unsafe code directly, tests verify **observable behavior**:
 All 6 unsafe code safety tests pass:
 
 ```bash
-cargo test -p ralph-workflow --lib executor::tests::safety --quiet
+cargo xtask test -p ralph-workflow --lib executor::tests::safety --quiet
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured
 ```
 
@@ -380,10 +380,10 @@ To detect performance regressions, run benchmarks before/after changes:
 
 ```bash
 # Capture baseline
-cargo test -p ralph-workflow --lib benchmarks -- --nocapture > baseline.txt
+cargo xtask test -p ralph-workflow --lib benchmarks -- --nocapture > baseline.txt
 
 # After changes, compare
-cargo test -p ralph-workflow --lib benchmarks -- --nocapture > current.txt
+cargo xtask test -p ralph-workflow --lib benchmarks -- --nocapture > current.txt
 diff baseline.txt current.txt
 ```
 
@@ -405,16 +405,16 @@ All memory safety tests can be verified with:
 cargo xtask verify
 
 # Individual test suites
-cargo test -p ralph-workflow-tests --test integration_tests memory_safety::bounded_growth
-cargo test -p ralph-workflow-tests --test integration_tests memory_safety::thread_lifecycle
-cargo test -p ralph-workflow-tests --test integration_tests memory_safety::arc_patterns
-cargo test -p ralph-workflow-tests --test integration_tests memory_safety::channel_bounds
+cargo xtask test -p ralph-workflow-tests --test integration_tests memory_safety::bounded_growth
+cargo xtask test -p ralph-workflow-tests --test integration_tests memory_safety::thread_lifecycle
+cargo xtask test -p ralph-workflow-tests --test integration_tests memory_safety::arc_patterns
+cargo xtask test -p ralph-workflow-tests --test integration_tests memory_safety::channel_bounds
 
 # Benchmark tests (informational)
-cargo test -p ralph-workflow --lib benchmarks -- --nocapture
+cargo xtask test -p ralph-workflow --lib benchmarks -- --nocapture
 
 # Unsafe code behavioral verification
-cargo test -p ralph-workflow --lib executor::tests::safety
+cargo xtask test -p ralph-workflow --lib executor::tests::safety
 ```
 
 **Expected result:** tests pass with **no ERROR/WARNING diagnostics** (informational output is acceptable)

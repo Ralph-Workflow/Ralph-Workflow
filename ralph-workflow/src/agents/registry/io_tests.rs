@@ -556,12 +556,18 @@ fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings
     let registry = registry.apply_unified_config(&unified).unwrap();
 
     assert_eq!(
-        registry.available_fallbacks_for_drain(crate::agents::AgentDrain::Review),
-        vec!["claude"]
+        registry
+            .resolved_drain(crate::agents::AgentDrain::Review)
+            .map(|b| b.agents.as_slice())
+            .unwrap_or_default(),
+        &["claude"]
     );
     assert_eq!(
-        registry.available_fallbacks_for_drain(crate::agents::AgentDrain::Fix),
-        vec!["codex"]
+        registry
+            .resolved_drain(crate::agents::AgentDrain::Fix)
+            .map(|b| b.agents.as_slice())
+            .unwrap_or_default(),
+        &["codex"]
     );
 }
 

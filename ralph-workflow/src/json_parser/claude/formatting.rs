@@ -223,16 +223,9 @@ impl ClaudeParser {
         let limit = self.verbosity.truncate_limit("tool_input");
         let preview = truncate_text(&input_str, limit);
         if !preview.is_empty() {
-            let _ = writeln!(
-                out,
-                "{}[{}]{} {}  └─ {}{}",
-                colors.dim(),
-                prefix,
-                colors.reset(),
-                colors.dim(),
-                preview,
-                colors.reset()
-            );
+            out.push_str(&crate::json_parser::types::format_dim_continuation_line(
+                &preview, prefix, colors,
+            ));
         }
     }
 
@@ -286,16 +279,8 @@ impl ClaudeParser {
             other => other.to_string(),
         };
         let limit = self.verbosity.truncate_limit("tool_result");
-        let preview = truncate_text(&content_str, limit);
-        let _ = writeln!(
-            out,
-            "{}[{}]{} {}Result:{} {}",
-            colors.dim(),
-            prefix,
-            colors.reset(),
-            colors.dim(),
-            colors.reset(),
-            preview
+        out.push_str(
+            &crate::json_parser::types::format_tool_output_lines(&content_str, limit, prefix, colors),
         );
     }
 

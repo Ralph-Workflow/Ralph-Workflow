@@ -130,6 +130,13 @@ pub fn rustup_exists() -> bool {
 
 /// Discover the nightly toolchain name.
 pub fn discover_nightly_toolchain() -> Option<String> {
+    // Prefer the active toolchain as resolved by rust-toolchain.toml.
+    // This ensures the pinned nightly version is used when one is specified.
+    if let Some(active) = active_nightly_toolchain() {
+        return Some(active);
+    }
+
+    // Fall back to scanning the installed toolchain list.
     let output = Command::new("rustup")
         .args(["toolchain", "list"])
         .output()
@@ -144,6 +151,16 @@ pub fn discover_nightly_toolchain() -> Option<String> {
         .lines()
         .find(|l| l.contains("nightly"))
         .map(|l| l.split_whitespace().next().unwrap_or("nightly").to_string())
+}
+
+fn active_nightly_toolchain() -> Option<String> {
+    let output = Command::new("rustup")
+        .args(["show", "active-toolchain"])
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&output.stdout);
+    let toolchain = s.split_whitespace().next()?;
+    toolchain.contains("nightly").then(|| toolchain.to_string())
 }
 
 /// Install rustup using curl or wget.
@@ -317,15 +334,22 @@ pub fn create_cargo_wrapper(
 
 /// Check if cargo-dylint is installed.
 pub fn cargo_dylint_installed(path_env: &str, nightly_toolchain: &str, cargo_home: &str) -> bool {
-    Command::new("cargo")
+    let output = Command::new("cargo")
         .args(["dylint", "--version"])
         .env("PATH", path_env)
         .env("RUSTUP_TOOLCHAIN", nightly_toolchain)
         .env("CARGO_HOME", cargo_home)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .output();
+    matches!(output, Ok(ref o) if o.status.success()
+        && String::from_utf8_lossy(&o.stdout).contains(CARGO_DYLINT_VERSION))
 }
+
+/// Pinned cargo-dylint / dylint-link version.
+///
+/// This must match the version installed on developer machines.  Changing it
+/// here without updating local installs will cause a mismatch between the lint
+/// binary format and the driver, producing cryptic link errors.
+pub const CARGO_DYLINT_VERSION: &str = "3.5.1";
 
 /// Install cargo-dylint.
 pub fn install_cargo_dylint(
@@ -334,7 +358,13 @@ pub fn install_cargo_dylint(
     nightly_toolchain: &str,
 ) -> std::io::Result<bool> {
     Command::new("cargo")
-        .args(["install", "cargo-dylint", "dylint-link"])
+        .args([
+            "install",
+            "cargo-dylint",
+            "dylint-link",
+            "--version",
+            CARGO_DYLINT_VERSION,
+        ])
         .env("PATH", path_env)
         .env("CARGO_HOME", cargo_home)
         .env("RUSTUP_TOOLCHAIN", nightly_toolchain)
@@ -376,10 +406,17 @@ fn read_workspace_package_names(cargo_bin: &std::path::Path) -> std::io::Result<
         .collect()
 }
 
+/// GUI packages require native system libraries (GTK/glib on Linux) that are
+/// not available on headless build servers.  They are excluded from dylint by
+/// default; the `--gui` flag re-includes them when the full desktop environment
+/// is available.
+const GUI_CRATES: &[&str] = &["ralph-gui"];
+
 fn build_dylint_package_args(package_names: &[String]) -> Vec<String> {
     let mut filtered_names = package_names
         .iter()
         .filter(|name| !name.ends_with(LINT_CRATE_SUFFIX))
+        .filter(|name| !GUI_CRATES.contains(&name.as_str()))
         .cloned()
         .collect::<Vec<_>>();
 
@@ -561,8 +598,6 @@ mod tests {
             args,
             vec![
                 "-p",
-                "ralph-gui",
-                "-p",
                 "ralph-workflow",
                 "-p",
                 "test-helpers",
@@ -571,7 +606,7 @@ mod tests {
                 "-p",
                 "xtask",
             ],
-            "dylint should target all workspace packages except lint crates"
+            "dylint should target all workspace packages except lint crates and GUI crates"
         );
     }
 

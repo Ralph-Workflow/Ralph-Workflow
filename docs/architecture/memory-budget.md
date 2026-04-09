@@ -249,8 +249,8 @@ Run verification:
 cargo xtask verify
 
 # Individual test suites
-cargo test -p ralph-workflow-tests memory_safety
-cargo test -p ralph-workflow benchmarks -- --nocapture
+cargo xtask test -p ralph-workflow-tests memory_safety
+cargo xtask test -p ralph-workflow benchmarks -- --nocapture
 ```
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable).

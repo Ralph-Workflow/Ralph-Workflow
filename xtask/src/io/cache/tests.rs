@@ -1629,10 +1629,11 @@ fn test_frontend_scope_is_independent_of_xtask_scope() {
         "first frontend call must invoke inner runner"
     );
 
-    // Change only frontend files.
+    // Change only frontend files (use different byte length to ensure fingerprint
+    // recomputation even on filesystems with 1-second mtime granularity).
     std::fs::write(
         tmp.join("ralph-gui/ui/src/App.tsx"),
-        b"export function App() { return <div>two</div>; }\n",
+        b"export function App() { return <div>updated-content</div>; }\n",
     )
     .unwrap();
 

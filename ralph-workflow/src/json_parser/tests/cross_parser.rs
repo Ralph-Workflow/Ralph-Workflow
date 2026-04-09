@@ -73,3 +73,63 @@ fn test_debug_verbosity_is_recognized() {
     // Debug mode should be detectable via is_debug()
     assert!(debug_parser.verbosity.is_debug());
 }
+
+/// Claude Code tool_result_block produces at most one "more lines" summary.
+#[test]
+fn test_claude_tool_result_single_truncation_summary() {
+    // Build a 60-line tool result
+    let lines: Vec<String> = (1..=60).map(|i| format!("/path/file{i}.rs")).collect();
+    let result_content = lines.join("\n");
+    // Craft a tool_result message event with the multiline content
+    let result_json = serde_json::to_string(&result_content).unwrap();
+    let json = format!(
+        r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_result","content":{result_json}}}]}}}}"#
+    );
+    let parser = ClaudeParser::new(Colors { enabled: false }, Verbosity::Normal);
+    if let Some(out) = parser.parse_event(&json) {
+        let more_count = out.matches("more lines").count();
+        assert!(
+            more_count <= 1,
+            "expected at most one 'more lines' summary, got {more_count}\noutput:\n{out}"
+        );
+    }
+}
+
+/// OpenCode tool output produces at most one "more lines" summary (shared truncation logic).
+#[test]
+fn test_opencode_tool_output_single_truncation_summary() {
+    let lines: Vec<String> = (1..=60).map(|i| format!("/path/file{i}.rs")).collect();
+    let output_content = lines.join("\n");
+    let output_json = serde_json::to_string(&output_content).unwrap();
+    let json = format!(
+        r#"{{"type":"tool_use","timestamp":1,"sessionID":"ses","part":{{"type":"tool","tool":"grep","state":{{"status":"completed","input":{{"pattern":"TODO"}},"output":{output_json}}}}}}}"#
+    );
+    let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+    if let Some(out) = parser.parse_event(&json) {
+        let more_count = out.matches("more lines").count();
+        assert!(
+            more_count <= 1,
+            "OpenCode: expected at most one 'more lines' summary, got {more_count}\noutput:\n{out}"
+        );
+    }
+}
+
+/// Codex turn_completed uses middle-dot token format consistent with OpenCode step-finish.
+#[test]
+fn test_codex_turn_completed_uses_shared_token_format() {
+    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Normal);
+    let json =
+        r#"{"type":"response.completed","response":{"usage":{"input_tokens":100,"output_tokens":50}}}"#;
+    if let Some(out) = parser.parse_event(json) {
+        // Should use "in:100" label (not parenthetical "(in:100)")
+        assert!(
+            out.contains("in:100"),
+            "turn_completed should use shared token format with in: label, got: {out}"
+        );
+        // Must not use old parenthetical format "(in:100 out:50)"
+        assert!(
+            !out.contains("(in:"),
+            "turn_completed must not use old parenthetical format, got: {out}"
+        );
+    }
+}

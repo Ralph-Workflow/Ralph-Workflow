@@ -29,11 +29,11 @@ resource management, and monitoring for the Ralph pipeline.
 cargo xtask verify
 
 # Long-running pipeline tests (10k+ iterations)
-cargo test -p ralph-workflow-tests --test integration_tests \
+cargo xtask test -p ralph-workflow-tests --test integration_tests \
     memory_safety::long_running_pipeline
 
 # Performance baseline verification
-cargo test -p ralph-workflow-tests --test integration_tests \
+cargo xtask test -p ralph-workflow-tests --test integration_tests \
     memory_safety::bounded_growth::test_execution_history_heap_size_within_baseline
 ```
 

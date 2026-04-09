@@ -46,11 +46,11 @@ Each fixture should be a valid NDJSON file matching the Claude CLI stream event 
 
 ```bash
 # Run all deduplication integration tests
-cargo test --test deduplication_integration_tests
+cargo xtask test --test deduplication_integration_tests
 
 # Run with output
-cargo test --test deduplication_integration_tests -- --nocapture
+cargo xtask test --test deduplication_integration_tests -- --nocapture
 
 # Run specific test
-cargo test test_no_duplicate_renders_in_all_logs -- --nocapture
+cargo xtask test test_no_duplicate_renders_in_all_logs -- --nocapture
 ```
