@@ -11,8 +11,17 @@ use std::path::{Path, PathBuf};
 ///
 /// Returns the resolved repository root path, or an error if the current (or
 /// overridden) directory is not inside a git repository.
+///
+/// Uses the current working directory as the workspace root for the effect handler.
+/// This is the correct default because `ralph-workflow` is always invoked from the
+/// command line in a directory that IS the workspace (or a subdirectory of it).
 pub fn discover_repo_root(working_dir_override: Option<&Path>) -> anyhow::Result<PathBuf> {
-    let mut h = crate::app::runtime_factory::create_effect_handler();
+    let cwd = std::env::current_dir()
+        .map_err(|e| anyhow::anyhow!("Failed to get current directory: {e}"))?;
+    let workspace_dir = working_dir_override.unwrap_or(&cwd);
+    let mut h = crate::app::runtime_factory::create_effect_handler_with_workspace(
+        workspace_dir.to_path_buf(),
+    );
     if let Some(dir) = working_dir_override {
         set_current_dir_effect(&mut h, dir)?;
     }

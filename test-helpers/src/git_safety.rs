@@ -39,6 +39,31 @@ pub fn assert_not_real_git_repo(path: &std::path::Path) {
     crate::boundary::assert_not_real_git_repo_impl(path);
 }
 
+/// Fail-fast guardrail: panic if a workspace root value is `None`.
+///
+/// This catches the class of bugs where `RealAppEffectHandler` (or any handler)
+/// is constructed without a workspace root, which later causes "workspace root
+/// is not set" errors deep in git or file operations.
+///
+/// Call this at test entry points that create effect handlers to verify the
+/// workspace root is properly initialized before any operations are attempted.
+///
+/// # Panics
+///
+/// Panics with a clear policy message if `workspace_root` is `None`.
+#[track_caller]
+pub fn assert_effect_handler_has_workspace_root(workspace_root: Option<&std::path::Path>) {
+    if workspace_root.is_none() {
+        panic!(
+            "WORKSPACE ROOT POLICY VIOLATION: effect handler was constructed without a \
+             workspace root. All effect handlers used in tests must have a workspace root \
+             set — either via with_workspace_root(path) or via new() (which defaults to \
+             cwd). A missing workspace root causes 'workspace root is not set' errors \
+             in git and file operations. See test-helpers/src/git_safety.rs for policy.",
+        );
+    }
+}
+
 /// Fail-fast guardrail: panic immediately with a policy error if `path` is
 /// inside the project git repository.
 ///

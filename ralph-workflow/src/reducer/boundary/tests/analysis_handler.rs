@@ -421,6 +421,8 @@ fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: crate::agents::session::AuditTrail::new(),
     };
 
     let mut handler = MainEffectHandler::new(PipelineState {

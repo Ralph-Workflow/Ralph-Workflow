@@ -80,8 +80,12 @@ pub fn run_with_config(
     config: crate::config::Config,
     registry: AgentRegistry,
 ) -> anyhow::Result<()> {
-    // Use real path resolver and effect handler by default
-    let mut handler = RealAppEffectHandler::new();
+    // Use current working directory as workspace root. When ralph-workflow is invoked
+    // from the command line, the cwd IS the workspace (or a subdirectory of it).
+    // RealAppEffectHandler::new() defaults to cwd, so the fallback is safe.
+    let mut handler = std::env::current_dir()
+        .map(RealAppEffectHandler::with_workspace_root)
+        .unwrap_or_else(|_| RealAppEffectHandler::new());
     run_with_config_and_resolver(
         args,
         executor,

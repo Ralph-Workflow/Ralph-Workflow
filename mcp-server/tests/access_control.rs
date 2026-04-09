@@ -1417,3 +1417,191 @@ fn tools_list_returns_real_registered_names() {
         returned_names
     );
 }
+
+// ---------------------------------------------------------------------------
+// Workflow signal capability classification tests
+// ---------------------------------------------------------------------------
+// Verifies that workflow signal capabilities (ArtifactSubmit, RunReportProgress,
+// WorkspaceCoordination) are classified as non-mutating and allowed in ReadOnly mode.
+
+fn make_workflow_signal_tool(
+    name: &str,
+    capability: McpCapability,
+    counter: &Arc<AtomicU32>,
+) -> ToolRegistry {
+    let c = Arc::clone(counter);
+    let handler: ToolHandler = Arc::new(
+        move |_session: &dyn mcp_server::HostSession,
+              _workspace: &dyn mcp_server::WorkspaceAdapter,
+              _params: serde_json::Value|
+              -> Result<ToolResult, mcp_server::ToolError> {
+            c.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::success(vec![ToolContent::text(
+                r#"{"ok":true}"#.to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: name.to_string(),
+            description: format!("Workflow signal tool: {}", name),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: capability,
+        is_mutating: None, // Derived from capability — must be non-mutating
+    };
+    ToolRegistry::new(vec![(metadata, handler)])
+}
+
+/// report_progress (RunReportProgress capability) is allowed in ReadOnly mode.
+#[test]
+fn report_progress_allowed_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry = make_workflow_signal_tool(
+        "report_progress",
+        McpCapability::RunReportProgress,
+        &counter,
+    );
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(&server, state, "report_progress", serde_json::json!({}));
+
+    assert!(
+        response.error.is_none(),
+        "report_progress must be allowed in ReadOnly mode (non-mutating workflow signal), got error: {:?}",
+        response.error
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "report_progress handler must be called exactly once"
+    );
+}
+
+/// declare_complete (ArtifactSubmit capability) is allowed in ReadOnly mode.
+#[test]
+fn declare_complete_allowed_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry =
+        make_workflow_signal_tool("declare_complete", McpCapability::ArtifactSubmit, &counter);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(&server, state, "declare_complete", serde_json::json!({}));
+
+    assert!(
+        response.error.is_none(),
+        "declare_complete must be allowed in ReadOnly mode (non-mutating workflow signal), got error: {:?}",
+        response.error
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "declare_complete handler must be called exactly once"
+    );
+}
+
+/// coordinate (WorkspaceCoordination capability) is allowed in ReadOnly mode.
+#[test]
+fn coordinate_allowed_in_readonly() {
+    let counter = Arc::new(AtomicU32::new(0));
+    let session = Arc::new(ApprovedSession) as Arc<dyn mcp_server::HostSession>;
+    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
+    let registry =
+        make_workflow_signal_tool("coordinate", McpCapability::WorkspaceCoordination, &counter);
+    let config = McpServerConfig::new(PathBuf::from("/tmp"))
+        .with_access_mode(mcp_server::dispatch::access::AccessMode::ReadOnly);
+    let server = make_test_server(session, workspace, registry, config);
+    let state = initialize_server(&server);
+
+    let response = call_tool(&server, state, "coordinate", serde_json::json!({}));
+
+    assert!(
+        response.error.is_none(),
+        "coordinate must be allowed in ReadOnly mode (non-mutating workflow signal), got error: {:?}",
+        response.error
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "coordinate handler must be called exactly once"
+    );
+}
+
+/// Verify is_read() classification for all workflow signal capabilities.
+#[test]
+fn workflow_signal_capabilities_are_classified_as_read() {
+    assert!(
+        McpCapability::ArtifactSubmit.is_read(),
+        "ArtifactSubmit must be classified as read (non-mutating workflow signal)"
+    );
+    assert!(
+        McpCapability::RunReportProgress.is_read(),
+        "RunReportProgress must be classified as read (non-mutating workflow signal)"
+    );
+    assert!(
+        McpCapability::WorkspaceCoordination.is_read(),
+        "WorkspaceCoordination must be classified as read (non-mutating workflow signal)"
+    );
+}
+
+/// Verify is_read() correctly excludes mutating capabilities.
+#[test]
+fn mutating_capabilities_are_not_classified_as_read() {
+    assert!(
+        !McpCapability::FileWrite.is_read(),
+        "FileWrite must NOT be classified as read"
+    );
+    assert!(
+        !McpCapability::WorkspaceWriteEphemeral.is_read(),
+        "WorkspaceWriteEphemeral must NOT be classified as read"
+    );
+    assert!(
+        !McpCapability::GitWrite.is_read(),
+        "GitWrite must NOT be classified as read"
+    );
+    assert!(
+        !McpCapability::ProcessExec.is_read(),
+        "ProcessExec must NOT be classified as read"
+    );
+    assert!(
+        !McpCapability::ProcessExecBounded.is_read(),
+        "ProcessExecBounded must NOT be classified as read"
+    );
+}
+
+/// Verify AccessMode::allows() is consistent with is_read() for workflow signals.
+#[test]
+fn access_mode_allows_workflow_signals_in_readonly() {
+    use mcp_server::dispatch::access::AccessMode;
+
+    assert!(
+        AccessMode::ReadOnly.allows(McpCapability::ArtifactSubmit),
+        "ReadOnly mode must allow ArtifactSubmit"
+    );
+    assert!(
+        AccessMode::ReadOnly.allows(McpCapability::RunReportProgress),
+        "ReadOnly mode must allow RunReportProgress"
+    );
+    assert!(
+        AccessMode::ReadOnly.allows(McpCapability::WorkspaceCoordination),
+        "ReadOnly mode must allow WorkspaceCoordination"
+    );
+    assert!(
+        !AccessMode::ReadOnly.allows(McpCapability::FileWrite),
+        "ReadOnly mode must NOT allow FileWrite"
+    );
+    assert!(
+        !AccessMode::ReadOnly.allows(McpCapability::ProcessExec),
+        "ReadOnly mode must NOT allow ProcessExec"
+    );
+}

@@ -540,6 +540,79 @@ mod tests {
         super::tree_has_entries(&tree)
     }
 
+    /// Regression test: the policy guard in `check_repo_not_project_repo` must
+    /// fire when the repo root equals the project root. This prevents the
+    /// historical bug where tests created real commits ("feat: add new file
+    /// flow") in the development repository, reverting developer changes.
+    ///
+    /// The guard identifies the project root by looking for `CLAUDE.md` and
+    /// `PROMPT.md` marker files, then panics if `repo_root` is at or under
+    /// that path.
+    #[test]
+    fn policy_violation_fires_on_project_repo_commit_attempt() {
+        let project_root = super::find_project_root_containing_markers();
+        let Some(project_root) = project_root else {
+            // Cannot locate project root (e.g. on remote build server) — skip.
+            return;
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::assert_not_project_repo_for_commit(&project_root);
+        }));
+
+        assert!(
+            result.is_err(),
+            "assert_not_project_repo_for_commit must panic when given the project \
+             repo root — this guard prevents the historical 'feat: add new file flow' \
+             bug where tests mutated the development repository"
+        );
+
+        // Verify the panic message references the policy violation.
+        let panic_msg = result
+            .unwrap_err()
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            panic_msg.contains("POLICY VIOLATION"),
+            "panic message must contain 'POLICY VIOLATION', got: {}",
+            panic_msg
+        );
+    }
+
+    /// A subdirectory of the project root must also be rejected — the policy
+    /// guard uses `starts_with` to catch nested paths.
+    #[test]
+    fn policy_violation_fires_on_project_subdirectory() {
+        let project_root = super::find_project_root_containing_markers();
+        let Some(project_root) = project_root else {
+            return;
+        };
+
+        let subdirectory = project_root.join("some-nested-path");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::check_repo_not_project_repo(&subdirectory, &project_root);
+        }));
+
+        assert!(
+            result.is_err(),
+            "check_repo_not_project_repo must panic for paths under the project root"
+        );
+    }
+
+    /// A temp directory must NOT trigger the policy guard — isolated repos are safe.
+    #[test]
+    fn policy_guard_allows_temp_directory() {
+        let project_root = super::find_project_root_containing_markers();
+        let Some(project_root) = project_root else {
+            return;
+        };
+
+        let temp_dir = tempfile::TempDir::new().expect("create temp dir");
+        // Must not panic.
+        super::check_repo_not_project_repo(temp_dir.path(), &project_root);
+    }
+
     #[test]
     fn tree_has_entries_returns_false_for_empty_tree() {
         assert!(!tree_has_entries_for_paths(&[]));

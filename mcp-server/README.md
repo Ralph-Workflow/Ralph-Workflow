@@ -575,6 +575,30 @@ The following tools are registered in Ralph's MCP server. Each tool's contract:
 | `coordinate` | `ArtifactSubmit` | `ReadOnly` | Yes | No (coordination state only) |
 | `read_env` | `EnvRead` | `ReadOnly` | Yes | No |
 
+## Standalone Principle
+
+`mcp-server` is designed to be usable without `ralph-workflow`. A third-party application
+can depend on `mcp-server` directly and host a fully functional MCP server by implementing
+the three adapter traits (`HostSession`, `WorkspaceAdapter`, `AuditSink`).
+
+**Dependency isolation:** `mcp-server/Cargo.toml` has **zero dependency on `ralph-workflow`**.
+The dependency arrow is strictly one-directional: `ralph-workflow` → `mcp-server`. This is
+enforced at CI time by `cargo xtask verify` (the `dependency-isolation-mcp-server` native check).
+
+**What belongs in `mcp-server`:**
+- Protocol framing and dispatch (JSON-RPC / MCP request-response handling)
+- Server lifecycle and transport plumbing (socket, stdio)
+- Access control model (AccessMode, ToolFilter, root_dir boundary)
+- Typed capability model (McpCapability, capability gating)
+- Adapter trait definitions (HostSession, WorkspaceAdapter, AuditSink)
+- Audit record types and dispatch
+
+**What stays in `ralph-workflow`:**
+- Adapter trait implementations (RalphHostSessionAdapter, RalphWorkspaceAdapter, etc.)
+- Tool handler implementations that depend on ralph-workflow domain types
+- Session/drain management and pipeline integration
+- Reducer/orchestrator domain logic
+
 ## Protocol Versioning
 
 Current: `2024-11-05`

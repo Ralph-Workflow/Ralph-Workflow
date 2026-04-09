@@ -119,7 +119,7 @@ fn sync_to_remote(repo_root: &str, remote_root: &str) -> bool {
         .args([
             "-az",
             "--delete",
-            "--exclude=.git/",
+            "--exclude=.git",
             "--filter=:- .gitignore",
             &format!("{repo_root}/"),
             &format!("rw-build-server:{remote_root}/"),
@@ -130,16 +130,17 @@ fn sync_to_remote(repo_root: &str, remote_root: &str) -> bool {
 }
 
 fn ensure_remote_git_repo(remote_root: &str) {
-    // The synced directory has no .git/ (excluded from rsync).
-    // Tests that call libgit2 or `git rev-parse` need a valid git repo.
-    // Initialize a minimal one if not already present, then commit all
-    // synced files so HEAD is valid and git_diff / git_snapshot work.
+    // The synced directory may contain a stale .git file (worktree marker)
+    // from the local checkout. Remove it so we can init a real repo.
+    // Then initialize a minimal git repo for tests that need libgit2.
     let script = format!(
         "cd {remote_root} && \
-         git rev-parse --git-dir >/dev/null 2>&1 || \
-         (git init -q && \
-          git config user.email build@remote && \
-          git config user.name Build); \
+         if [ -f .git ]; then rm .git; fi && \
+         if [ ! -d .git ]; then \
+           git init -q && \
+           git config user.email build@remote && \
+           git config user.name Build; \
+         fi && \
          git add -A -q 2>/dev/null; \
          git commit -q --allow-empty -m sync 2>/dev/null || true"
     );

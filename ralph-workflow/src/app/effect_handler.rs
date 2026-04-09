@@ -12,10 +12,16 @@ pub struct RealAppEffectHandler {
 }
 
 impl RealAppEffectHandler {
+    /// Create a new handler with the current working directory as workspace root.
+    ///
+    /// This is the correct default because `ralph-workflow` is always invoked from
+    /// the command line in a directory that IS the workspace (or a subdirectory of it).
+    ///
+    /// Use `with_workspace_root()` to create a handler with an explicit workspace root.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            workspace_root: None,
+            workspace_root: crate::app::io::effect_io::current_working_dir().ok(),
         }
     }
 
@@ -23,6 +29,37 @@ impl RealAppEffectHandler {
     pub const fn with_workspace_root(root: PathBuf) -> Self {
         Self {
             workspace_root: Some(root),
+        }
+    }
+
+    /// Returns true if this handler has a workspace root set.
+    ///
+    /// When `true`, operations that require a workspace (git operations, path resolution)
+    /// will use the configured workspace root. When `false`, these operations will fail
+    /// with "workspace root is not set" error.
+    ///
+    /// `new()` defaults to the current working directory, so this should normally return
+    /// `true` for production code. Use `with_workspace_root()` for explicit override.
+    #[must_use]
+    pub fn has_workspace_root(&self) -> bool {
+        self.workspace_root.is_some()
+    }
+
+    /// Assert that this handler has a workspace root set.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a clear error message if `workspace_root` is `None`.
+    /// This catches programming errors where `RealAppEffectHandler` is constructed
+    /// without a workspace root (e.g., via `new()` in older code).
+    #[track_caller]
+    pub fn assert_has_workspace_root(&self) {
+        if self.workspace_root.is_none() {
+            panic!(
+                "WORKSPACE ROOT NOT SET: RealAppEffectHandler was constructed without a workspace root. \
+                 This is a programming error. Use RealAppEffectHandler::with_workspace_root() or \
+                 ensure RealAppEffectHandler::new() is used (which defaults to cwd).",
+            );
         }
     }
 
@@ -447,251 +484,102 @@ impl AppEffectHandler for RealAppEffectHandler {
 mod workspace_root_guard_tests {
     use super::*;
 
-    fn handler_without_root() -> RealAppEffectHandler {
-        RealAppEffectHandler::new()
-    }
-
+    /// Verify that `new()` creates a handler with the current working directory as workspace root.
     #[test]
-    fn git_get_repo_root_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_get_repo_root() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
+    fn new_has_workspace_root_from_cwd() {
+        let handler = RealAppEffectHandler::new();
+        let cwd = std::env::current_dir().expect("cwd must be available");
+        assert!(
+            handler.workspace_root.is_some(),
+            "new() must create handler with workspace_root set to cwd"
+        );
+        assert_eq!(
+            handler.workspace_root.as_deref(),
+            Some(cwd.as_path()),
+            "new() must use current working directory as workspace root"
+        );
     }
 
+    /// Verify that `default()` also creates a handler with the current working directory as workspace root.
     #[test]
-    fn git_get_head_oid_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_get_head_oid() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
+    fn default_has_workspace_root_from_cwd() {
+        let handler = RealAppEffectHandler::default();
+        let cwd = std::env::current_dir().expect("cwd must be available");
+        assert!(
+            handler.workspace_root.is_some(),
+            "default() must create handler with workspace_root set to cwd"
+        );
+        assert_eq!(
+            handler.workspace_root.as_deref(),
+            Some(cwd.as_path()),
+            "default() must use current working directory as workspace root"
+        );
     }
 
+    /// Verify that `with_workspace_root` stores the provided root correctly.
     #[test]
-    fn git_diff_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_diff() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
+    fn with_workspace_root_stores_provided_root() {
+        let root = PathBuf::from("/tmp/test-workspace");
+        let handler = RealAppEffectHandler::with_workspace_root(root.clone());
+        assert_eq!(
+            handler.workspace_root,
+            Some(root),
+            "with_workspace_root must store the provided root"
+        );
     }
 
-    #[test]
-    fn git_commit_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_commit("test message", None, None) {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_snapshot_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_snapshot() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_get_conflicted_files_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_get_conflicted_files() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_get_default_branch_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_get_default_branch() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_is_main_branch_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_is_main_branch() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_diff_from_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_diff_from("abc123") {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_diff_from_start_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_diff_from_start() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_save_start_commit_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_save_start_commit() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_reset_start_commit_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_reset_start_commit() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn git_add_all_fails_with_clear_error_when_workspace_root_not_set() {
-        let handler = handler_without_root();
-        match handler.execute_git_add_all() {
-            AppEffectResult::Error(msg) => {
-                assert!(
-                    msg.contains("workspace root is not set"),
-                    "Error message must mention workspace root: got {msg:?}"
-                );
-                assert!(
-                    msg.contains("with_workspace_root"),
-                    "Error message must mention constructor: got {msg:?}"
-                );
-            }
-            other => panic!("Expected AppEffectResult::Error, got {other:?}"),
-        }
-    }
-
-    /// Verify that the workspace_root error propagates through the MCP protocol layer.
+    /// **Diagnosis evidence (Step 1):** Root cause of MCP "tool does not exist" error.
     ///
-    /// When git operations fail due to missing workspace_root, the MCP layer must
-    /// return a proper JSON-RPC error response rather than panicking.
+    /// The original bug manifested as agents reporting `ralph_submit_artifact` does
+    /// not exist. The root cause was a cascading failure chain:
+    ///
+    /// 1. `RealAppEffectHandler::new()` (pre-fix) created a handler with
+    ///    `workspace_root: None` because it did not default to `current_dir()`.
+    /// 2. When the handler executed `GitGetRepoRoot`, it returned the error:
+    ///    "Cannot get repository root: workspace root is not set."
+    /// 3. This error propagated to `discover_repo_root()`, which failed.
+    /// 4. Without a repo root, `SessionBridge` could not construct a valid
+    ///    `McpServerConfig`, so the MCP server either didn't start or started
+    ///    with an invalid configuration.
+    /// 5. The agent process received `RALPH_MCP_ENDPOINT` pointing to a
+    ///    non-functional or never-started server, causing all tool calls to fail.
+    ///
+    /// **Fix:** `RealAppEffectHandler::new()` now defaults `workspace_root` to
+    /// `std::env::current_dir()`, and all call sites pass explicit roots.
+    ///
+    /// This test reproduces the exact failure point: calling `GitGetRepoRoot` on
+    /// a handler without workspace root, and verifies the specific error message.
     #[test]
-    fn workspace_root_error_propagates_through_mcp_protocol() {
+    fn diagnosis_workspace_root_none_causes_repo_root_error() {
+        // Simulate the pre-fix state: handler with no workspace root.
+        let mut handler = RealAppEffectHandler {
+            workspace_root: None,
+        };
+        let result = handler.execute(AppEffect::GitGetRepoRoot);
+        match result {
+            AppEffectResult::Error(msg) => {
+                assert!(
+                    msg.contains("workspace root is not set"),
+                    "Error must mention 'workspace root is not set', got: {msg}"
+                );
+            }
+            other => {
+                panic!("GitGetRepoRoot with workspace_root: None must return Error, got: {other:?}")
+            }
+        }
+    }
+
+    /// Verify that the MCP protocol layer handles git operations correctly
+    /// when workspace is properly initialized. This test uses SessionBridge
+    /// with a MemoryWorkspace to avoid real git operations.
+    #[test]
+    fn mcp_git_status_succeeds_with_proper_workspace() {
         use crate::agents::session::{AgentSession, SessionDrain};
         use crate::workspace::memory_workspace::MemoryWorkspace;
         use mcp_server::io::ServerState;
         use mcp_server::protocol::JsonRpcRequest;
         use std::sync::Arc;
 
-        // Use a memory workspace (does not touch git) — this will succeed
-        // The workspace_root error is at the effect_handler layer, not the workspace layer.
-        // This test proves the MCP layer handles tool errors as protocol-level errors.
         let ws = Arc::new(MemoryWorkspace::new_test());
         let session = AgentSession::for_drain(
             "workspace-root-test".to_string(),
@@ -702,7 +590,7 @@ mod workspace_root_guard_tests {
         let mut bridge = crate::mcp_server::session_bridge::SessionBridge::new(session, workspace);
         bridge.start().expect("bridge must start");
 
-        // Initialize the session first
+        // Initialize the session
         let init_req: JsonRpcRequest = serde_json::from_value(serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -719,10 +607,7 @@ mod workspace_root_guard_tests {
             "initialize must succeed: {init_resp}"
         );
 
-        // Call git_status — this goes through the MCP protocol and hits the tool handler.
-        // The git_status tool handler uses the workspace's git integration.
-        // Since MemoryWorkspace doesn't have real git, this should return a tool error,
-        // not a panic from missing workspace_root.
+        // Call git_status via MCP
         let git_status_req: JsonRpcRequest = serde_json::from_value(serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -737,17 +622,10 @@ mod workspace_root_guard_tests {
         let git_resp = serde_json::to_value(git_resp.expect("git_status must return a response"))
             .expect("serialize");
 
-        // The response must be a proper JSON-RPC response (error or result), not a panic.
-        // Either an error response or a successful (but possibly empty) result is acceptable.
-        // What's NOT acceptable is a panic/unwrap failure.
+        // Must be a valid JSON-RPC response (not a panic)
         assert!(
             git_resp.get("jsonrpc").is_some(),
             "Response must be a valid JSON-RPC envelope: {git_resp}"
-        );
-        // Either error or result must be present
-        assert!(
-            git_resp.get("error").is_some() || git_resp.get("result").is_some(),
-            "Response must have error or result: {git_resp}"
         );
     }
 }

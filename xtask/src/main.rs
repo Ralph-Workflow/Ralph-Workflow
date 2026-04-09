@@ -348,6 +348,20 @@ fn run_coverage_subcommand(args: &[String]) -> ExitCode {
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
+fn run_cargo_passthrough(cmd: &str, args: &[String]) -> ExitCode {
+    let status = std::process::Command::new("cargo")
+        .arg(cmd)
+        .args(args)
+        .status();
+    match status {
+        Ok(s) => ExitCode::from(s.code().unwrap_or(1) as u8),
+        Err(err) => {
+            eprintln!("xtask error: failed to run cargo {cmd}: {err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
 fn print_usage() -> ExitCode {
     eprintln!("Usage: cargo xtask verify [--gui]");
     eprintln!("       cargo xtask dylint [--verbose]");
@@ -361,12 +375,18 @@ fn print_usage() -> ExitCode {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = boundary::remote::try_run_remote(&args) {
+        return code;
+    }
     match args.first().map(|s| s.as_str()) {
         Some("verify") => run_verify_subcommand(&args),
         Some("dylint") => run_dylint_subcommand(&args),
         Some("lsp-forbidden-allow-expect") => run_lsp_subcommand(&args),
         Some("dylint-report") => run_dylint_report_subcommand(&args),
         Some("coverage") => run_coverage_subcommand(&args),
+        Some(cmd @ ("test" | "build" | "clippy" | "fmt" | "check" | "bench")) => {
+            run_cargo_passthrough(cmd, &args[1..])
+        }
         _ => print_usage(),
     }
 }

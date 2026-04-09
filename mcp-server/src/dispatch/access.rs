@@ -172,7 +172,12 @@ impl McpCapability {
         )
     }
 
-    /// Returns true if this capability represents a read operation.
+    /// Returns true if this capability represents a read or non-mutating operation.
+    ///
+    /// Workflow signal capabilities (`ArtifactSubmit`, `RunReportProgress`,
+    /// `WorkspaceCoordination`) are classified as non-mutating because they do not
+    /// modify the filesystem, git state, or process environment. They are safe to
+    /// invoke in `ReadOnly` mode.
     pub fn is_read(&self) -> bool {
         matches!(
             self,
@@ -181,6 +186,9 @@ impl McpCapability {
                 | McpCapability::GitRead
                 | McpCapability::GitStatusRead
                 | McpCapability::EnvRead
+                | McpCapability::ArtifactSubmit
+                | McpCapability::RunReportProgress
+                | McpCapability::WorkspaceCoordination
         )
     }
 

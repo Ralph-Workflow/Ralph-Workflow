@@ -720,6 +720,115 @@ mod unix_tests {
     }
 
     // =========================================================================
+    // Test 9b: artifact submission persists to workspace (state transition)
+    // =========================================================================
+
+    /// Verifies that a successful `ralph_submit_artifact` call actually writes
+    /// the artifact to the workspace, which is the mechanism that triggers the
+    /// workflow state transition on the next event loop tick.
+    ///
+    /// This strengthens Step-5 coverage: we assert not only the "accepted" MCP
+    /// response and audit record, but also that the artifact envelope is
+    /// readable from the workspace — proving the data path that the reducer
+    /// polls to detect completion.
+    #[test]
+    fn test_submit_artifact_persists_to_workspace_for_state_transition() {
+        let ws = Arc::new(MemoryWorkspace::new_test());
+        assert_no_real_git_mutations(ws.root());
+        let ws_check: Arc<dyn Workspace> = Arc::clone(&ws) as Arc<dyn Workspace>;
+        let mut bridge = start_bridge(
+            "e2e-artifact-persist",
+            SessionDrain::Development,
+            ws as Arc<dyn Workspace>,
+        );
+        let mut stream = connect(&bridge);
+        initialize(&mut stream);
+
+        // Verify no artifact exists before submission.
+        let before = ws_check
+            .read_artifact_json("plan")
+            .expect("read_artifact_json must not error");
+        assert!(
+            before.is_none(),
+            "workspace must not contain a plan artifact before submission"
+        );
+
+        let valid_plan = serde_json::json!({
+            "summary": {
+                "context": "State transition verification test",
+                "scope_items": [
+                    {"text": "Verify workspace persistence"},
+                    {"text": "Confirm state transition readiness"},
+                    {"text": "Assert reducer can read artifact"}
+                ]
+            },
+            "steps": [
+                {
+                    "number": 1,
+                    "title": "Verify persistence",
+                    "content": "Assert the artifact is written to the workspace"
+                }
+            ],
+            "critical_files": {
+                "primary_files": [
+                    {"path": "src/lib.rs", "action": "modify"}
+                ]
+            },
+            "risks_mitigations": [
+                {"risk": "None", "mitigation": "Covered by this test"}
+            ],
+            "verification_strategy": [
+                {"method": "cargo test", "expected_outcome": "All tests pass"}
+            ]
+        });
+
+        send(
+            &mut stream,
+            &serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "ralph_submit_artifact",
+                    "arguments": {
+                        "artifact_type": "plan",
+                        "content": serde_json::to_string(&valid_plan).expect("serialize plan")
+                    }
+                },
+                "id": 20
+            }),
+        );
+        let response = recv(&mut stream);
+        assert!(
+            response.get("error").is_none(),
+            "submission must succeed: {response:#?}"
+        );
+
+        // THE KEY ASSERTION: verify the artifact was persisted to the workspace.
+        // This is what the reducer polls on the next event loop tick to detect
+        // that an agent has completed its phase.
+        let after = ws_check
+            .read_artifact_json("plan")
+            .expect("read_artifact_json must not error");
+        assert!(
+            after.is_some(),
+            "workspace must contain the plan artifact after submission — this is \
+             the state transition trigger the reducer reads on the next tick"
+        );
+        let envelope = after.expect("verified Some above");
+        assert_eq!(
+            envelope.artifact_type, "plan",
+            "persisted artifact must be of type 'plan'"
+        );
+
+        // Verify audit record was emitted (defense in depth).
+        let audit_records = bridge.drain_audit_records();
+        assert!(
+            !audit_records.is_empty(),
+            "audit trail must not be empty after artifact submission"
+        );
+    }
+
+    // =========================================================================
     // Test 10: all 15 tools are present in tools/list for Development drain
     // =========================================================================
 

@@ -109,8 +109,10 @@ pub fn create_git_helpers_boundary() -> GitHelpers {
     crate::app::runtime_factory::create_git_helpers()
 }
 
-pub fn create_effect_handler_boundary() -> crate::app::effect_handler::RealAppEffectHandler {
-    crate::app::runtime_factory::create_effect_handler()
+pub fn create_effect_handler_boundary(
+    repo_root: &std::path::Path,
+) -> crate::app::effect_handler::RealAppEffectHandler {
+    crate::app::runtime_factory::create_effect_handler_with_workspace(repo_root.to_path_buf())
 }
 
 pub fn setup_agent_phase_for_workspace_boundary(
@@ -212,11 +214,15 @@ pub fn handle_repo_commands_boundary(
             config.user_templates_dir().cloned(),
         );
 
-        // Extract handler once to avoid borrow conflicts
+        // Extract handler once to avoid borrow conflicts.
+        // Uses repo_root from params as the workspace root since ralph-workflow
+        // is always invoked from the workspace directory.
         let handler: &mut dyn crate::app::effect::AppEffectHandler = if let Some(h) = app_handler {
             h
         } else {
-            &mut crate::app::runtime_factory::create_effect_handler()
+            &mut crate::app::runtime_factory::create_effect_handler_with_workspace(
+                repo_root.to_path_buf(),
+            )
         };
 
         let generation_outcome = crate::app::plumbing::handle_generate_commit_msg(
