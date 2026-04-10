@@ -83,7 +83,7 @@ let config = McpServerConfig::new("/home/user/docs")
     .with_access_mode(AccessMode::ReadOnly);
 ```
 
-**ReadOnly + Allowlist config** (locked-down consumer exposing only specific tools):
+**Read-only documentation assistant** (locked-down consumer exposing only file-browsing tools):
 
 ```rust
 use mcp_server::io::access::McpServerConfig;
@@ -91,14 +91,19 @@ use mcp_server::dispatch::access::{AccessMode, ToolFilter};
 
 let config = McpServerConfig::new("/home/user/docs")
     .with_access_mode(AccessMode::ReadOnly)
-    .with_tool_filter(ToolFilter::Allowlist(vec!["read_file".into()]));
+    .with_tool_filter(ToolFilter::Allowlist(vec![
+        "read_file".into(),
+        "list_directory".into(),
+        "search_files".into(),
+    ]));
 ```
 
-This configuration exposes exactly one tool (`read_file`) and rejects all mutations.
-Even if a mutating tool were added to the allowlist, `ReadOnly` mode would still block it —
-the two checks are independent and both must pass.
+This configuration exposes exactly three tools (`read_file`, `list_directory`, `search_files`)
+and rejects all other tool calls as `ToolNotAllowed`. Even if a mutating tool were added to
+the allowlist, `ReadOnly` mode would still block it independently — the two checks are
+applied in sequence and both must pass.
 
-**ReadWrite config** (for full workflow orchestration):
+**Sandboxed development assistant** (permissive host with one dangerous tool blocked):
 
 ```rust
 use mcp_server::io::access::McpServerConfig;
@@ -109,6 +114,21 @@ let config = McpServerConfig::new("/home/user/project")
     .with_tool_filter(ToolFilter::Blocklist(vec![
         "exec".to_string()
     ]));
+```
+
+This configuration allows all registered tools except `exec` (process execution).
+The blocklist rejects only the listed tools; all others are dispatched normally subject
+to access mode and path boundary checks.
+
+**ReadWrite config** (for full workflow orchestration with all tools enabled):
+
+```rust
+use mcp_server::io::access::McpServerConfig;
+use mcp_server::dispatch::access::AccessMode;
+
+let config = McpServerConfig::new("/home/user/project")
+    .with_access_mode(AccessMode::ReadWrite);
+// ToolFilter defaults to Blocklist([]) — all tools are accessible.
 ```
 
 ## Access Control Model
