@@ -165,9 +165,10 @@ const DEFAULT_HELP: &str = r#"Usage: cargo xtask verify
        cargo xtask check [cargo-check-args...]
        cargo xtask bench [cargo-bench-args...]
 
-All subcommands auto-dispatch to rw-build-server when reachable.
+All subcommands auto-dispatch to the least-loaded build server
+(rw-build-server or rw-build-server-2) when reachable.
 Passthrough subcommands (test, build, clippy, fmt, check, bench)
-run `cargo <cmd> <args>` on the remote build server."#;
+run `cargo <cmd> <args>` on the selected remote build server."#;
 
 pub fn run_from_env() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
