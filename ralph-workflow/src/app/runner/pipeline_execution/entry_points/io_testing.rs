@@ -86,6 +86,12 @@ pub fn run_with_config(
     let mut handler = std::env::current_dir()
         .map(RealAppEffectHandler::with_workspace_root)
         .unwrap_or_else(|_| RealAppEffectHandler::new());
+
+    // Fail-fast: workspace root must be set before any git/file operations.
+    // If cwd is unavailable AND new() also fails, this catches it immediately
+    // rather than letting it fail deep in git operations with a confusing message.
+    handler.assert_has_workspace_root();
+
     run_with_config_and_resolver(
         args,
         executor,

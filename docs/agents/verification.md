@@ -155,8 +155,13 @@ cargo xtask test -p ralph-workflow-tests --test integration_tests agent_chain_no
 # Keep the built-in `ralph-workflow/examples/agents.toml` template on the named chain + drain schema
 # and ensure `AgentRegistry::new()` consumes the same resolved drain bindings.
 
-# Integration tests
-cargo xtask test -p ralph-workflow-tests --test integration_tests
+# Integration tests (split into three parallel binaries)
+cargo xtask test -p ralph-workflow-tests --test integration_tests_agent_core
+cargo xtask test -p ralph-workflow-tests --test integration_tests_reducer
+cargo xtask test -p ralph-workflow-tests --test integration_tests_workflow
+
+# MCP-specific integration tests (within integration_tests_workflow binary)
+cargo xtask test -p ralph-workflow-tests --test integration_tests_workflow mcp
 
 # Process system tests (parallel, manual only — not in CI)
 cargo xtask test -p ralph-workflow-tests --test process-system-tests

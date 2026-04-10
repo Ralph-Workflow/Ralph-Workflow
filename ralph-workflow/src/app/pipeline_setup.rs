@@ -317,6 +317,11 @@ pub fn run_pipeline_with_handler_boundary(
         early_repo_root.clone(),
     );
 
+    // Fail-fast: workspace root must be set before any git/file operations.
+    // This is a safety net — create_effect_handler_with_workspace always sets
+    // the root, but assert early to surface any future regressions.
+    handler.assert_has_workspace_root();
+
     let workspace: Arc<dyn Workspace> =
         Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root.clone()));
 

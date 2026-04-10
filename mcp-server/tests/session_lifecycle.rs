@@ -232,6 +232,112 @@ fn test_state_persists_across_requests() {
 }
 
 #[test]
+fn test_tools_call_before_initialize_returns_not_initialized_error() {
+    let server = make_server();
+
+    // Attempt tools/call before initialize
+    let call_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({"name": "read_file", "arguments": {"path": "/tmp/x"}})),
+        id: Some(serde_json::json!(1)),
+    };
+
+    let (response, state) = server.handle_request(call_request, ServerState::Uninitialized);
+    let response = response.expect("tools/call must return a response even when not initialized");
+
+    // Must return an error, not silently succeed
+    assert!(
+        response.error.is_some(),
+        "tools/call before initialize must return an error"
+    );
+    let error = response.error.as_ref().unwrap();
+    // Error code -32001 is NotInitialized per MCP spec
+    assert_eq!(
+        error.code, -32001,
+        "Error code must be -32001 (NotInitialized), got: {}",
+        error.code
+    );
+
+    // State must remain Uninitialized
+    assert_eq!(state, ServerState::Uninitialized);
+}
+
+#[test]
+fn test_tools_list_before_initialize_returns_not_initialized_error() {
+    let server = make_server();
+
+    let list_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(1)),
+    };
+
+    let (response, state) = server.handle_request(list_request, ServerState::Uninitialized);
+    let response = response.expect("tools/list must return a response even when not initialized");
+
+    assert!(
+        response.error.is_some(),
+        "tools/list before initialize must return an error"
+    );
+    let error = response.error.as_ref().unwrap();
+    assert_eq!(
+        error.code, -32001,
+        "Error code must be -32001 (NotInitialized), got: {}",
+        error.code
+    );
+    assert_eq!(state, ServerState::Uninitialized);
+}
+
+#[test]
+fn test_dispatch_succeeds_only_after_initialize() {
+    let server = make_server();
+
+    // Before initialize: tools/list must fail
+    let list_before = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(1)),
+    };
+    let (resp_before, state) = server.handle_request(list_before, ServerState::Uninitialized);
+    let resp_before = resp_before.expect("must return response");
+    assert!(
+        resp_before.error.is_some(),
+        "tools/list must fail before initialize"
+    );
+
+    // Initialize
+    let init = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "initialize".to_string(),
+        params: Some(serde_json::json!({"protocolVersion": "2024-11-05"})),
+        id: Some(serde_json::json!(2)),
+    };
+    let (_, state) = server.handle_request(init, state);
+    assert_eq!(state, ServerState::Ready);
+
+    // After initialize: tools/list must succeed
+    let list_after = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/list".to_string(),
+        params: None,
+        id: Some(serde_json::json!(3)),
+    };
+    let (resp_after, _) = server.handle_request(list_after, state);
+    let resp_after = resp_after.expect("must return response");
+    assert!(
+        resp_after.result.is_some(),
+        "tools/list must succeed after initialize"
+    );
+    assert!(
+        resp_after.error.is_none(),
+        "tools/list must not have error after initialize"
+    );
+}
+
+#[test]
 fn test_socket_cleanup_on_shutdown() {
     let session = Arc::new(MockSession) as Arc<dyn mcp_server::HostSession>;
     let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;

@@ -153,7 +153,15 @@ impl SessionBridge {
         }
 
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+        self.spawn_server_thread(ready_tx);
+        wait_for_socket_ready(ready_rx)?;
 
+        self.started = true;
+        Ok(())
+    }
+
+    /// Spawn the MCP server thread with cloned state.
+    fn spawn_server_thread(&self, ready_tx: mpsc::Sender<Result<(), String>>) {
         let socket_path = self.socket_path.clone();
         let session = Arc::clone(&self.session);
         let workspace = Arc::clone(&self.workspace);
@@ -165,21 +173,9 @@ impl SessionBridge {
         std::thread::spawn(move || {
             let server = McpServer::new(session, config, workspace, registry, audit_sink);
             if let Err(e) = run_server(server, socket_path, shutdown_flag, ready_tx) {
-                eprintln!("MCP server error: {}", e);
+                tracing::error!(error = %e, "MCP server error");
             }
         });
-
-        // Wait for the socket to be bound before returning.
-        // The spawned thread signals via ready_tx once UnixSocketTransport::new() completes.
-        ready_rx
-            .recv_timeout(Duration::from_secs(5))
-            .map_err(|_| {
-                SessionBridgeError::Transport("socket bind timed out after 5s".to_string())
-            })?
-            .map_err(SessionBridgeError::Transport)?;
-
-        self.started = true;
-        Ok(())
     }
 
     /// Start the session bridge with an audit sink.
@@ -253,6 +249,16 @@ impl Drop for SessionBridge {
     }
 }
 
+/// Wait for the server thread to signal that the socket is bound.
+fn wait_for_socket_ready(
+    ready_rx: mpsc::Receiver<Result<(), String>>,
+) -> Result<(), SessionBridgeError> {
+    ready_rx
+        .recv_timeout(Duration::from_secs(5))
+        .map_err(|_| SessionBridgeError::Transport("socket bind timed out after 5s".to_string()))?
+        .map_err(SessionBridgeError::Transport)
+}
+
 /// Build a unique socket path for a session.
 ///
 /// Includes the process ID to prevent collisions when multiple test binaries
@@ -277,7 +283,7 @@ fn classify_read(result: Result<Option<JsonRpcRequest>, TransportError>) -> Read
         Ok(None) => ReadClass::Eof,
         Ok(Some(req)) => ReadClass::Request(req),
         Err(e) => {
-            eprintln!("MCP read error: {}", e);
+            tracing::warn!(error = %e, "MCP read error");
             ReadClass::Error
         }
     }
@@ -325,6 +331,28 @@ enum AcceptOutcome {
 /// Each new client connection MUST start from `ServerState::Uninitialized` so that
 /// the initialize handshake is enforced for every connection. The state is NOT
 /// carried across connections — accumulated state from previous connections is discarded.
+/// Handle a new client connection: reset state and run initialize handshake.
+fn handle_new_connection(
+    mut stream: McpStreamImpl,
+    server: &McpServer,
+    shutdown_flag: &Arc<AtomicBool>,
+) -> ServerState {
+    tracing::debug!("MCP server accepted client connection — resetting to Uninitialized");
+    handle_connection(
+        server,
+        &mut stream,
+        shutdown_flag,
+        ServerState::Uninitialized,
+    )
+}
+
+/// Log and sleep on transport accept error.
+fn handle_accept_error(e: String) {
+    tracing::warn!(error = %e, "MCP transport error in accept");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+}
+
+/// Execute accept action. Returns outcome to signal loop continuation and updated state.
 fn execute_accept_action(
     cls: AcceptClass,
     server: &McpServer,
@@ -332,16 +360,8 @@ fn execute_accept_action(
     state: ServerState,
 ) -> (AcceptOutcome, ServerState) {
     match cls {
-        AcceptClass::Connection(mut stream) => {
-            // Each new connection must complete the initialize handshake, regardless of
-            // what state the server was in after the previous connection.
-            // The `state` parameter is intentionally ignored — always use Uninitialized.
-            let new_state = handle_connection(
-                server,
-                &mut stream,
-                shutdown_flag,
-                ServerState::Uninitialized,
-            );
+        AcceptClass::Connection(stream) => {
+            let new_state = handle_new_connection(stream, server, shutdown_flag);
             (AcceptOutcome::Continue, new_state)
         }
         AcceptClass::NoConnection => {
@@ -350,8 +370,7 @@ fn execute_accept_action(
         }
         AcceptClass::Shutdown => (AcceptOutcome::Exit, state),
         AcceptClass::Error(e) => {
-            eprintln!("MCP transport error in accept: {}", e);
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            handle_accept_error(e);
             (AcceptOutcome::Continue, state)
         }
     }
@@ -406,8 +425,12 @@ fn run_server(
     shutdown_flag: Arc<AtomicBool>,
     ready_tx: mpsc::Sender<Result<(), String>>,
 ) -> Result<(), SessionBridgeError> {
-    let mut listener = UnixSocketTransport::new(socket_path, Arc::clone(&shutdown_flag))
-        .map_err(|e| SessionBridgeError::Transport(e.to_string()))?;
+    tracing::debug!(socket = %socket_path.display(), "MCP server binding socket");
+    let mut listener =
+        UnixSocketTransport::new(socket_path, Arc::clone(&shutdown_flag)).map_err(|e| {
+            tracing::error!(error = %e, "MCP socket bind failed");
+            SessionBridgeError::Transport(e.to_string())
+        })?;
     // Signal that the socket is bound and ready to accept connections.
     let _ = ready_tx.send(Ok(()));
     let state = ServerState::Uninitialized;

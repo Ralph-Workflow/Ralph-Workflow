@@ -151,6 +151,24 @@ fn build_initialize_result(
     }
 }
 
+/// Run initialize policy: negotiate version, build result, return response + state.
+/// This is a pure function with no I/O effects — all wiring (tracing, response
+/// translation) happens at the boundary caller site.
+fn run_initialize_policy(
+    version: String,
+    request_id: serde_json::Value,
+    server_info: &ServerInfo,
+) -> (Option<JsonRpcResponse>, ServerState) {
+    let result = build_initialize_result(version, server_info.clone());
+    (
+        Some(JsonRpcResponse::success(
+            serde_json::to_value(result).unwrap(),
+            request_id,
+        )),
+        ServerState::Ready,
+    )
+}
+
 /// Parse tools/call params or return error response.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -418,6 +436,7 @@ impl McpServer {
         };
 
         let target = route_dispatch(request.method.as_str(), state == ServerState::Ready);
+        tracing::debug!(method = %request.method, ?target, "MCP dispatching request");
         self.route_to_target(target, request, request_id, state)
     }
 
@@ -451,15 +470,14 @@ impl McpServer {
                 return (Some(response), st);
             }
         };
+
         let version = negotiate_protocol_version(params.protocol_version);
-        let result = build_initialize_result(version, self.server_info.clone());
-        (
-            Some(JsonRpcResponse::success(
-                serde_json::to_value(result).unwrap(),
-                request_id,
-            )),
-            ServerState::Ready,
-        )
+        let (response, st) = run_initialize_policy(version, request_id, &self.server_info);
+        tracing::debug!(
+            session_id = %self.session.session_id(),
+            "MCP initialize handshake complete — server transitioning to Ready"
+        );
+        (response, st)
     }
 
     fn handle_ping(

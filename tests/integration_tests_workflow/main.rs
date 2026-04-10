@@ -102,6 +102,12 @@ mod template_rendering_errors;
 #[path = "../integration_tests/template_validation_jsx.rs"]
 mod template_validation_jsx;
 
+// MCP server behavioral tests
+#[path = "../integration_tests/mcp_artifact_reducer_parity.rs"]
+mod mcp_artifact_reducer_parity;
+#[path = "../integration_tests/mcp_behavioral.rs"]
+mod mcp_behavioral;
+
 // Dylint makefile
 #[path = "../integration_tests/dylint_target.rs"]
 mod dylint_target;

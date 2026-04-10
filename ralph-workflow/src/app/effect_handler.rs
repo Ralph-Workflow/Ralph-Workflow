@@ -20,8 +20,17 @@ impl RealAppEffectHandler {
     /// Use `with_workspace_root()` to create a handler with an explicit workspace root.
     #[must_use]
     pub fn new() -> Self {
+        let workspace_root = crate::app::io::effect_io::current_working_dir();
+        if let Err(ref e) = workspace_root {
+            eprintln!(
+                "WARNING: RealAppEffectHandler::new() could not determine cwd: {}. \
+                 Git operations will fail with 'workspace root is not set'. \
+                 Use RealAppEffectHandler::with_workspace_root() for explicit override.",
+                e
+            );
+        }
         Self {
-            workspace_root: crate::app::io::effect_io::current_working_dir().ok(),
+            workspace_root: workspace_root.ok(),
         }
     }
 
@@ -627,5 +636,27 @@ mod workspace_root_guard_tests {
             git_resp.get("jsonrpc").is_some(),
             "Response must be a valid JSON-RPC envelope: {git_resp}"
         );
+    }
+
+    /// Verify that `assert_has_workspace_root()` panics when `workspace_root` is `None`.
+    ///
+    /// This is the regression test for the workspace root detection requirement:
+    /// the fail-fast guard must panic immediately with a clear message rather than
+    /// letting the `None` propagate to a git operation deep in the stack.
+    #[test]
+    #[should_panic(expected = "WORKSPACE ROOT NOT SET")]
+    fn assert_has_workspace_root_panics_when_none() {
+        let handler = RealAppEffectHandler {
+            workspace_root: None,
+        };
+        handler.assert_has_workspace_root();
+    }
+
+    /// Verify that `assert_has_workspace_root()` does NOT panic when root is set.
+    #[test]
+    fn assert_has_workspace_root_passes_when_set() {
+        let handler = RealAppEffectHandler::with_workspace_root(PathBuf::from("/tmp/test-ws"));
+        // Must not panic
+        handler.assert_has_workspace_root();
     }
 }

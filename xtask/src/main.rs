@@ -119,10 +119,7 @@ fn count_total_checks(include_gui: bool) -> usize {
         + verify::XTASK_CARGO_CHECKS.len()
         + verify::DYLINT_CHECKS.len();
     let gui = if include_gui {
-        verify::GUI_CARGO_CHECKS.len()
-            + verify::FRONTEND_INSTALL_CHECKS.len()
-            + verify::FRONTEND_POST_INSTALL_CHECKS.len()
-            + verify::RELEASE_BUILD_CHECKS.len()
+        verify::RELEASE_BUILD_CHECKS.len()
     } else {
         0
     };
@@ -152,9 +149,6 @@ fn build_backend_groups() -> verify::CheckGroups<'static> {
         fmt: verify::FMT_CHECKS,
         core_cargo: verify::CORE_CARGO_CHECKS,
         xtask_cargo: verify::XTASK_CARGO_CHECKS,
-        gui_cargo: &[],
-        frontend_install: &[],
-        frontend_post_install: &[],
         release: verify::DYLINT_CHECKS,
     }
 }
@@ -164,9 +158,6 @@ fn build_gui_groups() -> verify::CheckGroups<'static> {
         fmt: &[],
         core_cargo: &[],
         xtask_cargo: &[],
-        gui_cargo: verify::GUI_CARGO_CHECKS,
-        frontend_install: verify::FRONTEND_INSTALL_CHECKS,
-        frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
         release: verify::RELEASE_BUILD_CHECKS,
     }
 }

@@ -63,6 +63,10 @@ mod reducer_agent_fallback;
 #[path = "../integration_tests/reducer_effect_invariants.rs"]
 mod reducer_effect_invariants;
 
+// Lifecycle event removal regression
+#[path = "../integration_tests/lifecycle_event_removal_regression.rs"]
+mod lifecycle_event_removal_regression;
+
 // Recovery and fault tolerance
 #[path = "../integration_tests/awaiting_dev_fix_recovery/mod.rs"]
 mod awaiting_dev_fix_recovery;

@@ -904,6 +904,136 @@ mod unix_tests {
     }
 
     // =========================================================================
+    // Test 12b: Multiple concurrent sessions get independent tool lists
+    // =========================================================================
+
+    #[test]
+    fn multiple_concurrent_sessions_get_independent_tool_lists() {
+        let ws = Arc::new(MemoryWorkspace::new_test());
+        assert_no_real_git_mutations(ws.root());
+
+        // Start two bridges with different drains — both should work independently
+        let bridge1 = start_bridge(
+            "e2e-concurrent-1",
+            SessionDrain::Development,
+            Arc::clone(&ws) as Arc<dyn Workspace>,
+        );
+        let bridge2 = start_bridge(
+            "e2e-concurrent-2",
+            SessionDrain::Planning,
+            Arc::clone(&ws) as Arc<dyn Workspace>,
+        );
+
+        let mut conn1 = connect(&bridge1);
+        let mut conn2 = connect(&bridge2);
+
+        // Both should initialize successfully
+        let init1 = initialize(&mut conn1);
+        let init2 = initialize(&mut conn2);
+        assert!(
+            init1.get("error").is_none(),
+            "session 1 initialize must succeed: {init1}"
+        );
+        assert!(
+            init2.get("error").is_none(),
+            "session 2 initialize must succeed: {init2}"
+        );
+
+        // Both should list tools
+        send(
+            &mut conn1,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2}),
+        );
+        send(
+            &mut conn2,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2}),
+        );
+        let list1 = recv(&mut conn1);
+        let list2 = recv(&mut conn2);
+
+        let names1: Vec<&str> = list1["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        let names2: Vec<&str> = list2["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+
+        assert!(
+            names1.contains(&"ralph_submit_artifact"),
+            "session 1 must include ralph_submit_artifact: {names1:?}"
+        );
+        assert!(
+            names2.contains(&"ralph_submit_artifact"),
+            "session 2 must include ralph_submit_artifact: {names2:?}"
+        );
+    }
+
+    // =========================================================================
+    // Test 12c: Reconnection uses fresh state (initialize required again)
+    // =========================================================================
+
+    #[test]
+    fn reconnection_requires_fresh_initialize() {
+        let ws = Arc::new(MemoryWorkspace::new_test());
+        assert_no_real_git_mutations(ws.root());
+        let bridge = start_bridge(
+            "e2e-reconnect",
+            SessionDrain::Development,
+            ws as Arc<dyn Workspace>,
+        );
+
+        // First connection: initialize and list tools
+        let mut conn1 = connect(&bridge);
+        initialize(&mut conn1);
+        send(
+            &mut conn1,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2}),
+        );
+        let list1 = recv(&mut conn1);
+        assert!(
+            list1.get("error").is_none(),
+            "first connection tools/list must succeed"
+        );
+
+        // Simulate reconnection: create a new connection to the same bridge.
+        // The server resets to Uninitialized per-connection, so tools/list
+        // without initialize must return NotInitialized error.
+        let mut conn2 = connect(&bridge);
+        send(
+            &mut conn2,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 3}),
+        );
+        let list2 = recv(&mut conn2);
+        assert!(
+            list2.get("error").is_some(),
+            "reconnected session without initialize must get error: {list2}"
+        );
+        let error_code = list2["error"]["code"].as_i64().unwrap_or(0);
+        assert_eq!(
+            error_code, -32001,
+            "error must be NotInitialized (-32001), got: {error_code}"
+        );
+
+        // After re-initializing, tools/list works again
+        initialize(&mut conn2);
+        send(
+            &mut conn2,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 4}),
+        );
+        let list3 = recv(&mut conn2);
+        assert!(
+            list3.get("error").is_none(),
+            "re-initialized connection tools/list must succeed: {list3}"
+        );
+    }
+
+    // =========================================================================
     // Test 12: Fix drain can write to a file in a TempDir-backed workspace
     //
     // Proves that the write path works with a real filesystem workspace (WorkspaceFs)

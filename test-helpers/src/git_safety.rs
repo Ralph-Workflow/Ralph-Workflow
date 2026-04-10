@@ -79,3 +79,145 @@ pub fn assert_effect_handler_has_workspace_root(workspace_root: Option<&std::pat
 pub fn assert_in_isolated_temp_repo(path: &std::path::Path) {
     crate::boundary::assert_in_isolated_temp_repo_impl(path);
 }
+
+#[cfg(test)]
+mod tests {
+    /// Sentinel test: scan integration/system test source files for patterns that
+    /// indicate real (non-isolated) git commit operations.
+    ///
+    /// This catches tests that accidentally call `git commit` via `Command::new`
+    /// outside of the guarded `test-helpers/src/boundary` module, which would
+    /// mutate real repository state.
+    #[test]
+    fn sentinel_no_unguarded_git_commit_in_tests() {
+        use std::path::Path;
+
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let repo_root = manifest_dir
+            .parent()
+            .expect("test-helpers must be inside repo");
+
+        let test_dirs = [
+            repo_root.join("tests").join("integration_tests"),
+            repo_root.join("tests").join("integration_tests_agent_core"),
+            repo_root.join("tests").join("integration_tests_reducer"),
+            repo_root.join("tests").join("integration_tests_workflow"),
+            // process_system_tests and deduplication_integration_tests are also
+            // scanned to catch raw git-commit calls that would mutate real state.
+            // Note: tests/system_tests/git/ is intentionally excluded here — that
+            // directory tests git hook enforcement and necessarily exercises commit
+            // operations in isolated temp repos (guarded by assert_in_isolated_temp_repo).
+            repo_root.join("tests").join("process_system_tests"),
+            repo_root
+                .join("tests")
+                .join("deduplication_integration_tests"),
+            // Also scan inline #[cfg(test)] blocks in the ralph-workflow and
+            // mcp-server crates.  Production code in these crates uses the git2
+            // library (never Command::new("git")), so the patterns below only
+            // fire on shell-invocation patterns that would bypass safety helpers.
+            repo_root.join("ralph-workflow").join("src"),
+            repo_root.join("mcp-server").join("src"),
+            // External test files in the mcp-server crate (integration/standalone tests).
+            repo_root.join("mcp-server").join("tests"),
+        ];
+
+        // Forbidden patterns in test source: raw git invocations that bypass the
+        // guarded helpers in test-helpers/src/boundary.
+        //
+        // Patterns cover the most common shell-dispatch forms:
+        //   commit  – create a new commit (highest risk: mutates project history)
+        //   push    – push commits to a remote (data loss risk, affects shared state)
+        //   reset   – potentially destroy uncommitted work or move HEAD
+        //   add     – stage files (prerequisite for unauthorized commits)
+        //   checkout – switch branches (could discard local changes)
+        //   branch  – create/delete branches (affects repo structure)
+        //   merge   – merge branches (could cause conflicts)
+        //   clean   – remove untracked files (irreversible data loss)
+        //   stash   – stash changes (hides work, could be lost)
+        //
+        // Only Command-dispatch patterns are listed here.  git2 library calls
+        // (e.g., repo.commit()) are permitted in production code paths and in
+        // test-helpers/src/boundary (which itself enforces mutation guards).
+        let forbidden_patterns: &[&str] = &[
+            // commit
+            ".arg(\"commit\")",
+            ".args([\"commit\"",
+            ".args(&[\"commit\"",
+            // push
+            ".arg(\"push\")",
+            ".args([\"push\"",
+            ".args(&[\"push\"",
+            // reset
+            ".arg(\"reset\")",
+            ".args([\"reset\"",
+            ".args(&[\"reset\"",
+            // add
+            ".arg(\"add\")",
+            ".args([\"add\"",
+            ".args(&[\"add\"",
+            // checkout
+            ".arg(\"checkout\")",
+            ".args([\"checkout\"",
+            ".args(&[\"checkout\"",
+            // branch
+            ".arg(\"branch\")",
+            ".args([\"branch\"",
+            ".args(&[\"branch\"",
+            // merge
+            ".arg(\"merge\")",
+            ".args([\"merge\"",
+            ".args(&[\"merge\"",
+            // clean
+            ".arg(\"clean\")",
+            ".args([\"clean\"",
+            ".args(&[\"clean\"",
+            // stash
+            ".arg(\"stash\")",
+            ".args([\"stash\"",
+            ".args(&[\"stash\"",
+        ];
+
+        let mut violations = Vec::new();
+
+        for dir in &test_dirs {
+            if !dir.exists() {
+                continue;
+            }
+            scan_dir_for_forbidden_patterns(dir, forbidden_patterns, &mut violations);
+        }
+
+        assert!(
+            violations.is_empty(),
+            "GIT SAFETY SENTINEL VIOLATION: found unguarded git commit patterns in test code:\n{}",
+            violations.join("\n")
+        );
+    }
+
+    fn scan_dir_for_forbidden_patterns(
+        dir: &std::path::Path,
+        patterns: &[&str],
+        violations: &mut Vec<String>,
+    ) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_dir_for_forbidden_patterns(&path, patterns, violations);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                for pattern in patterns {
+                    if content.contains(pattern) {
+                        violations.push(format!("  {} contains '{}'", path.display(), pattern));
+                    }
+                }
+            }
+        }
+    }
+}

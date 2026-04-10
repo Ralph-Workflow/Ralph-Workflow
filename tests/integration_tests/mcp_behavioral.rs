@@ -509,7 +509,143 @@ fn consumer_can_submit_artifact_through_mcp() {
 }
 
 // ============================================================================
-// Test 8: consumer_gets_tool_not_found_for_unknown_tool
+// Test 8: concurrent_agents_get_independent_sessions
+// ============================================================================
+
+/// Verify that multiple concurrent agents can each connect, initialize, and list
+/// tools independently without interfering with each other.
+#[test]
+fn concurrent_agents_get_independent_sessions() {
+    with_default_timeout(|| {
+        let _guard = ProjectHeadGuard::capture();
+        let ws = Arc::new(MemoryWorkspace::new_test());
+
+        let bridge1 = start_bridge(
+            "mcp-concurrent-1",
+            SessionDrain::Development,
+            Arc::clone(&ws),
+        );
+        let bridge2 = start_bridge("mcp-concurrent-2", SessionDrain::Planning, Arc::clone(&ws));
+
+        let mut conn1 = connect(&bridge1);
+        let mut conn2 = connect(&bridge2);
+
+        // Both initialize successfully
+        let init1 = initialize(&mut conn1);
+        let init2 = initialize(&mut conn2);
+        assert!(
+            init1.get("error").is_none(),
+            "agent 1 must initialize: {init1}"
+        );
+        assert!(
+            init2.get("error").is_none(),
+            "agent 2 must initialize: {init2}"
+        );
+
+        // Both can list tools
+        send_msg(
+            &mut conn1,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2}),
+        );
+        send_msg(
+            &mut conn2,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2}),
+        );
+        let list1 = recv_msg(&mut conn1);
+        let list2 = recv_msg(&mut conn2);
+
+        assert!(
+            list1.get("error").is_none(),
+            "agent 1 tools/list must succeed"
+        );
+        assert!(
+            list2.get("error").is_none(),
+            "agent 2 tools/list must succeed"
+        );
+
+        let names1: Vec<&str> = list1["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        let names2: Vec<&str> = list2["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+
+        assert!(
+            names1.contains(&"ralph_submit_artifact"),
+            "agent 1 must see ralph_submit_artifact: {names1:?}"
+        );
+        assert!(
+            names2.contains(&"ralph_submit_artifact"),
+            "agent 2 must see ralph_submit_artifact: {names2:?}"
+        );
+    });
+}
+
+// ============================================================================
+// Test 9: reconnection_requires_fresh_initialize
+// ============================================================================
+
+/// Verify that after a simulated disconnect (new connection), the server requires
+/// a fresh initialize handshake before accepting any tool calls.
+#[test]
+fn reconnection_requires_fresh_initialize() {
+    with_default_timeout(|| {
+        let _guard = ProjectHeadGuard::capture();
+        let ws = Arc::new(MemoryWorkspace::new_test());
+        let bridge = start_bridge("mcp-reconnect", SessionDrain::Development, ws);
+
+        // First connection works normally
+        let mut conn1 = connect(&bridge);
+        initialize(&mut conn1);
+        send_msg(
+            &mut conn1,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 2}),
+        );
+        let list1 = recv_msg(&mut conn1);
+        assert!(
+            list1.get("error").is_none(),
+            "first connection must list tools"
+        );
+
+        // Simulated reconnection: new connection without initialize
+        let mut conn2 = connect(&bridge);
+        send_msg(
+            &mut conn2,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 3}),
+        );
+        let list2 = recv_msg(&mut conn2);
+        assert!(
+            list2.get("error").is_some(),
+            "reconnection without initialize must fail: {list2}"
+        );
+        assert_eq!(
+            list2["error"]["code"].as_i64().unwrap_or(0),
+            -32001,
+            "error must be NotInitialized (-32001)"
+        );
+
+        // Re-initialize on second connection works
+        initialize(&mut conn2);
+        send_msg(
+            &mut conn2,
+            &serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 4}),
+        );
+        let list3 = recv_msg(&mut conn2);
+        assert!(
+            list3.get("error").is_none(),
+            "re-initialized connection must work: {list3}"
+        );
+    });
+}
+
+// ============================================================================
+// Test 10: consumer_gets_tool_not_found_for_unknown_tool
 // ============================================================================
 
 /// Verify that calling an unknown tool returns a JSON-RPC error with code -32601.
