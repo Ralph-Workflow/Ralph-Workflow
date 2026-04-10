@@ -3,82 +3,71 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-/// Compute the sleep duration for one poll interval.
-/// Returns `None` if the deadline has already passed.
-pub(crate) fn compute_sleep_slice(
-    poll_interval: Duration,
+/// Policy decision for one sleep-step iteration.
+#[derive(Debug, Clone, Copy)]
+enum SleepStepPolicy {
+    /// Stop sleeping — return the given value.
+    Stop(bool),
+    /// Continue sleeping for this duration.
+    Continue { slice: Duration },
+}
+
+/// Pure: determine the policy for this sleep-step iteration.
+///
+/// Takes the raw inputs and returns a policy decision, keeping all branching
+/// logic in the pure layer so the boundary stays thin.
+fn compute_sleep_policy(
+    should_stop: bool,
+    now: std::time::Instant,
     deadline: std::time::Instant,
-) -> Option<Duration> {
-    let now = std::time::Instant::now();
-    if now >= deadline {
-        return None;
+    poll_interval: Duration,
+) -> SleepStepPolicy {
+    if should_stop {
+        SleepStepPolicy::Stop(true)
+    } else if now >= deadline {
+        SleepStepPolicy::Stop(false)
+    } else {
+        let remaining = deadline.saturating_duration_since(now);
+        let slice = poll_interval.min(remaining);
+        SleepStepPolicy::Continue { slice }
     }
-    let remaining = deadline.saturating_duration_since(now);
-    Some(poll_interval.min(remaining))
 }
 
-/// Outcome of one sleep step.
-pub(crate) enum SleepStepOutcome {
-    /// should_stop was set; should stop polling.
-    Stop,
-    /// Deadline was reached; check should_stop before continuing.
-    DeadlineReached,
-    /// Slept for the poll interval; continue polling.
-    Slept,
-}
-
-/// Pure: determine the outcome of one sleep step given current state.
-pub(crate) fn sleep_step_outcome(
+/// One iteration of the sleep-poll loop.
+///
+/// Gathers inputs, calls pure policy, executes the sleep effect.
+/// Returns `Some(stopped)` to exit the loop, `None` to continue polling.
+fn sleep_poll_step(
     should_stop: &std::sync::atomic::AtomicBool,
-    poll_interval: Duration,
     deadline: std::time::Instant,
-) -> SleepStepOutcome {
-    // Check should_stop FIRST — if it is set, return Stop immediately,
-    // even when the deadline has also been reached. This ensures that a
-    // should_stop signal is never missed because we happened to hit the
-    // deadline on the same iteration.
-    if should_stop.load(Ordering::Acquire) {
-        return SleepStepOutcome::Stop;
-    }
-    match compute_sleep_slice(poll_interval, deadline) {
-        None => SleepStepOutcome::DeadlineReached,
-        Some(_) => SleepStepOutcome::Slept,
-    }
-}
-
-/// Pure: determine whether to stop when deadline is reached.
-/// Encapsulates the policy decision for the DeadlineReached case.
-pub(crate) fn deadline_reached_should_stop(should_stop: &std::sync::atomic::AtomicBool) -> bool {
-    // Re-check should_stop when deadline is reached: if it was set
-    // during the deadline window, honor it and return true (stop).
-    should_stop.load(Ordering::Acquire)
-}
-
-/// Pure: process one sleep iteration, returning the decision.
-/// Returns None to continue looping, Some(true) to stop because should_stop was set,
-/// Some(false) to stop because deadline was reached.
-fn process_sleep_iteration(
-    should_stop: &std::sync::atomic::AtomicBool,
     poll_interval: Duration,
-    deadline: std::time::Instant,
 ) -> Option<bool> {
-    match sleep_step_outcome(should_stop, poll_interval, deadline) {
-        SleepStepOutcome::Stop => Some(true),
-        SleepStepOutcome::DeadlineReached => Some(deadline_reached_should_stop(should_stop)),
-        SleepStepOutcome::Slept => None,
+    let stop_flag = should_stop.load(Ordering::Acquire);
+    let now = std::time::Instant::now();
+    match compute_sleep_policy(stop_flag, now, deadline, poll_interval) {
+        SleepStepPolicy::Stop(ret) => Some(ret),
+        SleepStepPolicy::Continue { slice } => {
+            std::thread::sleep(slice);
+            None
+        }
     }
 }
 
 /// Sleep until the next check interval or until should_stop is set.
 /// Returns `true` if should_stop was set, `false` if the check interval elapsed.
-pub(crate) fn sleep_until_next_check_or_stop(
+///
+/// Polls `should_stop` every `poll_interval` (capped at 100ms) and sleeps
+/// between polls so the thread does not busy-wait.
+///
+/// Thin boundary: delegates each iteration to [`sleep_poll_step`].
+pub fn sleep_until_next_check_or_stop(
     should_stop: &std::sync::atomic::AtomicBool,
     check_interval: Duration,
 ) -> bool {
     let poll_interval = check_interval.min(Duration::from_millis(100));
     let deadline = std::time::Instant::now() + check_interval;
     loop {
-        if let Some(result) = process_sleep_iteration(should_stop, poll_interval, deadline) {
+        if let Some(result) = sleep_poll_step(should_stop, deadline, poll_interval) {
             return result;
         }
     }

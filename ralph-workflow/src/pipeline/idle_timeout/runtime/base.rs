@@ -196,12 +196,12 @@ pub(crate) struct MonitorParams<'a> {
     pub max_tool_suppression_ticks: u32,
 }
 
-pub(crate) enum EnforcementStep {
+pub(super) enum EnforcementStep {
     ReturnResult(MonitorResult),
     Continue,
 }
 
-pub(crate) enum KillResultContinuation {
+pub(super) enum KillResultContinuation {
     TimedOut { escalated: bool },
     AwaitingExit(TimeoutEnforcementState),
     ProcessCompleted,
@@ -214,7 +214,7 @@ pub(crate) enum MonitorLoopAction {
     Continue,
 }
 
-pub(crate) enum IdleConfirmedAction {
+pub(super) enum IdleConfirmedAction {
     /// Not enough idle confirmations yet; continue polling.
     Continue,
     /// Child already exited or completion check passed; return the given action.

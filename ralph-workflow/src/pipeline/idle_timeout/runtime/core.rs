@@ -168,7 +168,7 @@ fn run_reaper_thread(
 // Enforcement continuation
 // ============================================================================
 
-pub(crate) enum TimeoutEnforcementContinuation {
+enum TimeoutEnforcementContinuation {
     Exited,
     HardCapReached,
     Continue(TimeoutEnforcementState),
@@ -241,7 +241,7 @@ fn apply_kill_result(
     }
 }
 
-pub(crate) fn kill_child_and_apply(
+fn kill_child_and_apply(
     child_id: u32,
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
@@ -273,9 +273,7 @@ pub(crate) fn kill_child_and_apply(
 // ============================================================================
 
 /// Pure: check if the completion callback returns true.
-pub(crate) fn completion_check_passes(
-    completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>,
-) -> bool {
+fn completion_check_passes(completion_check: Option<&Arc<dyn Fn() -> bool + Send + Sync>>) -> bool {
     completion_check.is_some_and(|c| c())
 }
 
@@ -467,7 +465,7 @@ fn is_first_active_child(
     previous_observation.is_none() && grace_available && info.has_currently_active_children()
 }
 
-pub(crate) fn handle_child_with_children(
+fn handle_child_with_children(
     child_pid: u32,
     info: ChildProcessInfo,
     s: &mut MonitorLoopState,
@@ -655,7 +653,7 @@ fn check_timeout_suppressors(
 }
 
 #[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
-pub(crate) fn handle_timeout_exceeded(
+fn handle_timeout_exceeded(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
@@ -682,7 +680,7 @@ fn log_idle_progress(consecutive: u32, required: u32) {
 
 /// Compute the idle-confirmed policy — pure function, no side effects.
 /// Encapsulates all branching so `handle_idle_confirmed` stays thin.
-pub(crate) fn compute_idle_confirmed_action(
+fn compute_idle_confirmed_action(
     params: &MonitorParams<'_>,
     s: &MonitorLoopState,
 ) -> IdleConfirmedAction {
@@ -704,7 +702,7 @@ pub(crate) fn compute_idle_confirmed_action(
     IdleConfirmedAction::KillAndReturn(child_id)
 }
 
-pub(crate) fn handle_idle_confirmed(
+fn handle_idle_confirmed(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
@@ -733,7 +731,7 @@ pub(crate) fn handle_idle_confirmed(
 
 /// Handle the enforcement phase - pure policy part.
 /// Returns the enforcement continuation result.
-pub(crate) fn handle_enforcement_phase(
+fn handle_enforcement_phase(
     state: TimeoutEnforcementState,
     last_child_info: Option<ChildProcessInfo>,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
@@ -770,7 +768,7 @@ pub(crate) fn handle_enforcement_phase(
 }
 
 /// Thin boundary: dispatch to enforcement phase handler.
-pub(crate) fn dispatch_enforcement_phase(
+fn dispatch_enforcement_phase(
     params: &MonitorParams<'_>,
     s: &mut MonitorLoopState,
 ) -> MonitorLoopAction {
@@ -820,7 +818,7 @@ fn enforcement_step_to_action(step: EnforcementStep) -> MonitorLoopAction {
 
 /// Policy decision for one enforcement tick — pure, no side effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TickPolicy {
+enum TickPolicy {
     /// Completion check passed proactively; return immediately with CompleteButWaiting.
     CompletionReady,
     /// Child already exited; return immediately with ProcessCompleted.
@@ -893,7 +891,7 @@ fn tick_policy_from_checks(
 }
 
 /// Compute the policy decision for this tick — thin boundary.
-pub(crate) fn compute_tick_policy(
+fn compute_tick_policy(
     timeout_triggered: bool,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
     activity_timestamp: &SharedActivityTimestamp,

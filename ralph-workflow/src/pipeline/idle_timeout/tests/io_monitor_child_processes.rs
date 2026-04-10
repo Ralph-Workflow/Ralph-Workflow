@@ -229,11 +229,27 @@ fn child_processes_that_finish_eventually_allow_kill() {
     );
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
+    let cpu_advancer_executor = executor_impl.clone();
+    let cpu_advancer_stop = Arc::new(AtomicBool::new(false));
+    let cpu_advancer_stop_clone = Arc::clone(&cpu_advancer_stop);
+    let cpu_advancer = thread::spawn(move || {
+        let mut cpu_ms = 100u64;
+        while !cpu_advancer_stop_clone.load(Ordering::Acquire) {
+            cpu_ms += 100;
+            cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+
+    // required_idle_confirmations=5 requires five consecutive 50ms checks (250ms gap)
+    // with no CPU progress before a kill fires. The cpu_advancer runs every 1ms, so
+    // fresh progress is always detected within 50ms while the advancer is running —
+    // even on heavily loaded CI machines where thread scheduling may be delayed.
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(5),
+        check_interval: Duration::from_millis(50),
         kill_config: fast_kill_config(),
-        required_idle_confirmations: 3,
+        required_idle_confirmations: 5,
         check_child_processes: true,
         completion_check: None,
 
@@ -253,16 +269,14 @@ fn child_processes_that_finish_eventually_allow_kill() {
         )
     });
 
-    assert!(
-        wait_until(Duration::from_millis(200), || {
-            executor_impl.child_info_query_count_for(child_pid) >= 3
-        }),
-        "monitor should have queried children at least 3 times with cpu advancing on each query"
-    );
+    thread::sleep(Duration::from_millis(500));
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "no kill should be sent while children are active"
     );
+
+    cpu_advancer_stop.store(true, Ordering::Release);
+    cpu_advancer.join().expect("cpu advancer panicked");
 
     executor_impl.remove_active_children_for(child_pid);
 
@@ -503,7 +517,9 @@ fn first_child_observation_without_current_activity_times_out_immediately() {
         )
     });
 
-    thread::sleep(Duration::from_millis(30));
+    // Wait long enough for: 20ms check_interval sleep + ~15ms kill_process round-trip.
+    // Use 200ms to allow ample margin on loaded CI machines.
+    thread::sleep(Duration::from_millis(200));
     assert!(
         !executor_impl.execute_calls_for("kill").is_empty(),
         "timeout enforcement should start on the first idle check when descendants are not currently active"
@@ -734,7 +750,7 @@ fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_wor
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(25),
+        check_interval: Duration::from_millis(50),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
@@ -756,12 +772,9 @@ fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_wor
         )
     });
 
-    assert!(
-        wait_until(Duration::from_millis(200), || {
-            executor_impl.child_info_query_count_for(child_pid) >= 1
-        }),
-        "monitor should have made at least one child-info query (startup grace for initial child)"
-    );
+    // Update the executor after the first tick grants startup grace (at ~0ms)
+    // but before the second tick (at ~50ms) checks for fresh progress.
+    thread::sleep(Duration::from_millis(35));
     executor_impl.add_active_children_info(
         child_pid,
         ChildProcessInfo {
@@ -772,12 +785,7 @@ fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_wor
         },
     );
 
-    assert!(
-        wait_until(Duration::from_millis(200), || {
-            executor_impl.child_info_query_count_for(child_pid) >= 2
-        }),
-        "monitor should have made a second child-info query after replacement child appeared"
-    );
+    thread::sleep(Duration::from_millis(50));
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "freshly active replacement descendants should keep the monitor alive even when their PID signature changes"

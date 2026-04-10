@@ -1,28 +1,45 @@
 //! Remote build server dispatch.
 //!
 //! When `cargo xtask` is invoked outside of `/tmp` (i.e. not already on a
-//! build server), this module probes `rw-build-server` via SSH and, if
-//! reachable, syncs the working tree and re-executes the same subcommand
-//! there.  Falls back to local execution when the server is unreachable.
+//! build server), this module probes `rw-build-server` and `rw-build-server-2`
+//! via SSH in parallel and, if either is reachable, selects the one with the
+//! lower 1-minute load average, then syncs the working tree and re-executes
+//! the same subcommand there.  Falls back to local execution when both servers
+//! are unreachable.
+//!
+//! # Server selection
+//!
+//! Both build servers are probed concurrently (`ConnectTimeout=5`).  The server
+//! with the lower 1-minute load average (from `/proc/loadavg`) is selected.
+//! When loads are within `0.1` of each other they are treated as equivalent and
+//! one is chosen pseudo-randomly using sub-second system time.  If only one
+//! server responds it is used unconditionally.
 //!
 //! # Skip conditions
 //!
 //! - CWD starts with `/tmp` — already running on a build server.
-//! - `XTASK_LOCAL=1` — **emergency fallback only**: use ONLY when `rw-build-server`
-//!   is confirmed unreachable (network down, server offline).  Never set this to
-//!   work around a test failure or for convenience — that defeats the entire
-//!   remote-first design.
+//! - `XTASK_LOCAL=1` — **emergency fallback only**: use ONLY when both
+//!   build servers are confirmed unreachable (network down, servers offline).
+//!   Never set this to work around a test failure or for convenience — that
+//!   defeats the entire remote-first design.
 //!
 //! # Remote root path
 //!
-//! `/tmp/rw-<first-16-hex-chars of SHA-256(git-root + hostname)>`.
-//! The hash makes the path unique per (local repo, machine) pair and stable
-//! across invocations, so incremental rsyncs are cheap.
+//! `/tmp/rw-<first-16-hex-chars of SHA-256(git-root + hostname + server)>`.
+//! The hash makes the path unique per (local repo, machine, server) triple and
+//! stable across invocations, so incremental rsyncs are cheap and each server
+//! maintains its own independent incremental build cache.
 
+// `pick_server` lives in `crate::domain::server_selection` because it is a
+// pure function with no I/O — exactly what the domain layer is for.  The
+// boundary module (this file) owns all I/O: SSH, rsync, hostname, threading.
+use crate::domain::server_selection::pick_server;
 use sha2::{Digest, Sha256};
 use std::process::{Command, ExitCode, Stdio};
 
-/// Attempt to dispatch to the remote build server.
+const SERVERS: [&str; 2] = ["rw-build-server", "rw-build-server-2"];
+
+/// Attempt to dispatch to the least-loaded remote build server.
 ///
 /// Returns `Some(exit_code)` if the command ran (or failed to sync) on the
 /// remote, meaning the caller should propagate that code and not execute
@@ -36,24 +53,30 @@ pub fn try_run_remote(args: &[String]) -> Option<ExitCode> {
 }
 
 fn probe_and_execute(repo_root: &str, args: &[String]) -> Option<ExitCode> {
-    if !probe_server() {
-        eprintln!("[remote-build] rw-build-server unreachable, running locally");
+    let Some(server) = select_server() else {
+        eprintln!("[remote-build] no build server reachable, running locally");
         return None;
-    }
-    let remote_root = compute_remote_root(repo_root)?;
-    execute_on_remote(repo_root, &remote_root, args)
+    };
+    eprintln!("[remote-build] selected server: {server}");
+    let remote_root = compute_remote_root(repo_root, &server)?;
+    execute_on_remote(&server, repo_root, &remote_root, args)
 }
 
-fn execute_on_remote(repo_root: &str, remote_root: &str, args: &[String]) -> Option<ExitCode> {
+fn execute_on_remote(
+    server: &str,
+    repo_root: &str,
+    remote_root: &str,
+    args: &[String],
+) -> Option<ExitCode> {
     // Kill any stale cargo/rustc processes from a previous interrupted run
     // that would otherwise hold file locks or race on target/ artifacts.
-    kill_stale_processes(remote_root);
-    eprintln!("[remote-build] syncing to rw-build-server:{remote_root}...");
-    if !sync_to_remote(repo_root, remote_root) {
+    kill_stale_processes(server, remote_root);
+    eprintln!("[remote-build] syncing to {server}:{remote_root}...");
+    if !sync_to_remote(server, repo_root, remote_root) {
         eprintln!("[remote-build] rsync failed");
         return Some(ExitCode::from(1));
     }
-    ensure_remote_git_repo(remote_root);
+    ensure_remote_git_repo(server, remote_root);
     let args_str = args.join(" ");
     eprintln!("[remote-build] running: cargo xtask {args_str}");
     // Disable incremental compilation on the remote to avoid fragile
@@ -61,7 +84,7 @@ fn execute_on_remote(repo_root: &str, remote_root: &str, args: &[String]) -> Opt
     // lane I/O removes intermediate files mid-build.
     let status = Command::new("ssh")
         .arg("-t")
-        .arg("rw-build-server")
+        .arg(server)
         .arg(format!(
             "cd {remote_root} && CARGO_INCREMENTAL=0 cargo xtask {args_str}"
         ))
@@ -89,25 +112,67 @@ fn git_repo_root() -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn probe_server() -> bool {
-    Command::new("ssh")
+/// Queries `/proc/loadavg` on the remote server and returns the 1-minute load
+/// average, or `None` if the server is unreachable or the output cannot be
+/// parsed.
+fn query_server_load(server: &str) -> Option<f32> {
+    let output = Command::new("ssh")
         .args([
             "-o",
             "ConnectTimeout=5",
             "-o",
             "BatchMode=yes",
-            "rw-build-server",
-            "exit",
-            "0",
+            server,
+            "cat /proc/loadavg",
         ])
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .split_whitespace()
+        .next()?
+        .parse::<f32>()
+        .ok()
 }
 
-fn compute_remote_root(repo_root: &str) -> Option<String> {
+/// Probes all [`SERVERS`] in parallel, then delegates to [`pick_server`].
+///
+/// Returns the name of the selected server, or `None` if all servers are
+/// unreachable.
+fn select_server() -> Option<String> {
+    let handles: Vec<_> = SERVERS
+        .iter()
+        .map(|&server| {
+            let s = server.to_string();
+            std::thread::spawn(move || {
+                let load = query_server_load(&s);
+                (s, load)
+            })
+        })
+        .collect();
+    let loads: Vec<(String, Option<f32>)> =
+        handles.into_iter().filter_map(|h| h.join().ok()).collect();
+    let load_refs: Vec<(&str, Option<f32>)> = loads
+        .iter()
+        .map(|(name, load)| (name.as_str(), *load))
+        .collect();
+    let tiebreak = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    pick_server(&load_refs, tiebreak).map(String::from)
+}
+
+/// Computes the stable remote root path for a given (repo, machine, server) triple.
+///
+/// The hash incorporates the server name so each server has its own independent
+/// `/tmp/rw-<hash>` path, preserving incremental build caches when switching
+/// between servers.
+fn compute_remote_root(repo_root: &str, server: &str) -> Option<String> {
     let hostname_output = Command::new("hostname")
         .stderr(Stdio::null())
         .output()
@@ -116,13 +181,13 @@ fn compute_remote_root(repo_root: &str) -> Option<String> {
     let hostname = String::from_utf8_lossy(&hostname_output.stdout)
         .trim()
         .to_string();
-    let input = format!("{repo_root}{hostname}");
+    let input = format!("{repo_root}{hostname}{server}");
     let hash = Sha256::digest(input.as_bytes());
     let hex: String = hash[..8].iter().map(|b| format!("{b:02x}")).collect();
     Some(format!("/tmp/rw-{hex}"))
 }
 
-fn sync_to_remote(repo_root: &str, remote_root: &str) -> bool {
+fn sync_to_remote(server: &str, repo_root: &str, remote_root: &str) -> bool {
     Command::new("rsync")
         .args([
             "-az",
@@ -130,14 +195,14 @@ fn sync_to_remote(repo_root: &str, remote_root: &str) -> bool {
             "--exclude=.git",
             "--filter=:- .gitignore",
             &format!("{repo_root}/"),
-            &format!("rw-build-server:{remote_root}/"),
+            &format!("{server}:{remote_root}/"),
         ])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
 }
 
-fn kill_stale_processes(remote_root: &str) {
+fn kill_stale_processes(server: &str, remote_root: &str) {
     // When an SSH session terminates abruptly (timeout, network drop), cargo
     // and rustc child processes on the remote keep running.  A subsequent rsync
     // + build then races against stale processes that hold open file descriptors
@@ -178,14 +243,14 @@ fn kill_stale_processes(remote_root: &str) {
          true"
     );
     let _ = Command::new("ssh")
-        .arg("rw-build-server")
+        .arg(server)
         .arg(script)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
 }
 
-fn ensure_remote_git_repo(remote_root: &str) {
+fn ensure_remote_git_repo(server: &str, remote_root: &str) {
     // The synced directory has no .git/ (excluded from rsync), but a worktree
     // `.git` *file* (containing `gitdir: /local/path/...`) may survive the
     // rsync because `--exclude=.git/` only matches the directory form.
@@ -207,7 +272,7 @@ fn ensure_remote_git_repo(remote_root: &str) {
          git commit -q --allow-empty -m sync 2>/dev/null || true"
     );
     let _ = Command::new("ssh")
-        .arg("rw-build-server")
+        .arg(server)
         .arg(script)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
