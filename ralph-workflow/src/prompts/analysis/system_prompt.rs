@@ -6,52 +6,8 @@
 // The analysis agent verifies code changes against the plan. It may run
 // verification commands and explore the codebase as needed.
 
-/// Generate analysis agent prompt.
-///
-/// The analysis agent receives the PLAN.md content and git diff. It verifies
-/// whether the changes satisfy the plan requirements.
-///
-/// # Arguments
-///
-/// * `plan_content` - The implementation plan (PLAN.md content)
-/// * `diff_content` - The git diff since HEAD (working-tree vs. last commit; may be empty)
-/// * `workspace` - Workspace for resolving absolute paths
-///
-/// # Returns
-///
-/// Returns the complete prompt for the analysis agent.
-pub fn generate_analysis_prompt(
-    plan_content: &str,
-    diff_content: &str,
-    is_continuation: bool,
-    workspace: &dyn crate::workspace::Workspace,
-) -> String {
-    use crate::prompts::content_reference::{DiffContentReference, PlanContentReference};
-    use crate::prompts::partials::get_shared_partials;
-    use crate::prompts::template_context::TemplateContext;
-    use crate::prompts::template_engine::Template;
-    use std::collections::HashMap;
-    use std::path::Path;
-
-    let plan_ref = PlanContentReference::from_plan(
-        plan_content.to_string(),
-        Path::new(".agent/PLAN.md"),
-        Some(Path::new(".agent/tmp/plan.xml")),
-    );
-    let diff_ref = DiffContentReference::from_diff(
-        diff_content.to_string(),
-        "",
-        Path::new(".agent/DIFF.backup"),
-    );
-
-    let partials = get_shared_partials();
-    let context = TemplateContext::default();
-    let template_content = context
-        .registry()
-        .get_template("analysis_system_prompt")
-        .unwrap_or_else(|_| include_str!("../templates/analysis_system_prompt.txt").to_string());
-
-    let required_output = if is_continuation {
+fn analysis_required_output(is_continuation: bool) -> &'static str {
+    if is_continuation {
         r#"<ralph-development-result>
   <ralph-status>completed|partial|failed</ralph-status>
   <ralph-summary>Brief factual summary of what was implemented vs planned</ralph-summary>
@@ -72,9 +28,31 @@ pub fn generate_analysis_prompt(
   <ralph-files-changed>Optional list of modified files (from DIFF)</ralph-files-changed>
   <ralph-next-steps>comprehensive, detailed, ordered checklist of remaining work that should resolve the remaining plan when completed, including remaining non-plan follow-up work uncovered during verification and any failed verification commands or checks (optional when status is completed)</ralph-next-steps>
 </ralph-development-result>"#
-    };
+    }
+}
 
-    let variables = HashMap::from([
+fn analysis_common_variables(
+    plan_content: &str,
+    diff_content: &str,
+    is_continuation: bool,
+    workspace: &dyn crate::workspace::Workspace,
+) -> std::collections::HashMap<&'static str, String> {
+    use crate::prompts::content_reference::{DiffContentReference, PlanContentReference};
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    let plan_ref = PlanContentReference::from_plan(
+        plan_content.to_string(),
+        Path::new(".agent/PLAN.md"),
+        Some(Path::new(".agent/tmp/plan.xml")),
+    );
+    let diff_ref = DiffContentReference::from_diff(
+        diff_content.to_string(),
+        "",
+        Path::new(".agent/DIFF.backup"),
+    );
+
+    HashMap::from([
         ("PLAN", plan_ref.render_for_template()),
         (
             "DIFF",
@@ -90,14 +68,47 @@ pub fn generate_analysis_prompt(
             "DEVELOPMENT_RESULT_XSD_PATH",
             workspace.absolute_str(".agent/tmp/development_result.xsd"),
         ),
-        ("REQUIRED_OUTPUT_XML", required_output.to_string()),
-    ]);
+        (
+            "REQUIRED_OUTPUT_XML",
+            analysis_required_output(is_continuation).to_string(),
+        ),
+    ])
+}
+
+/// Generate analysis agent prompt.
+///
+/// The analysis agent receives the PLAN.md content and git diff. It verifies
+/// whether the changes satisfy the plan requirements.
+pub fn generate_analysis_prompt(
+    plan_content: &str,
+    diff_content: &str,
+    is_continuation: bool,
+    workspace: &dyn crate::workspace::Workspace,
+) -> String {
+    use crate::prompts::partials::get_shared_partials;
+    use crate::prompts::template_context::TemplateContext;
+    use crate::prompts::template_engine::Template;
+
+    let partials = get_shared_partials();
+    let context = TemplateContext::default();
+    let template_content = context
+        .registry()
+        .get_template("analysis_system_prompt")
+        .unwrap_or_else(|_| include_str!("../templates/analysis_system_prompt.txt").to_string());
+    let variables =
+        analysis_common_variables(plan_content, diff_content, is_continuation, workspace);
 
     Template::new(&template_content)
         .render_with_partials(&variables, &partials)
         .unwrap_or_else(|_| {
-            let plan = plan_ref.render_for_template();
-            let diff = diff_ref.render_for_template();
+            let plan = variables
+                .get("PLAN")
+                .cloned()
+                .unwrap_or_else(|| plan_content.to_string());
+            let diff = variables
+                .get("DIFF")
+                .cloned()
+                .unwrap_or_else(|| diff_content.to_string());
             let out = workspace.absolute_str(".agent/tmp/development_result.xml");
             let xsd = workspace.absolute_str(".agent/tmp/development_result.xsd");
             format!(

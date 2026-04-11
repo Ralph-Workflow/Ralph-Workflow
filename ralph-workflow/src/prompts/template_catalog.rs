@@ -119,6 +119,15 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
                 deprecated: false,
             },
         ),
+        (
+            "fix_analysis_system_prompt",
+            EmbeddedTemplate {
+                name: "fix_analysis_system_prompt",
+                content: include_str!("templates/fix_analysis_system_prompt.txt"),
+                description: "Independent analysis agent system prompt for verifying fix output against review issues",
+                deprecated: false,
+            },
+        ),
         // Developer Templates
         (
             "developer_iteration_xml",

@@ -44,6 +44,54 @@ fn test_invoke_analysis_agent_gracefully_handles_missing_plan_and_diff() {
 }
 
 #[test]
+fn test_invoke_analysis_agent_xsd_retry_uses_existing_xsd_retry_template() {
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/tmp/development_result.xml", "<invalid xml")
+        .with_file(
+            ".agent/tmp/development_xsd_error.txt",
+            "missing closing tag",
+        );
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let mut ctx = fixture.ctx();
+    ctx.developer_agent = "claude";
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        phase: crate::reducer::event::PipelinePhase::Development,
+        iteration: 0,
+        continuation: ContinuationState {
+            xsd_retry_pending: true,
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(1, 0)
+    });
+
+    handler
+        .invoke_analysis_agent(&mut ctx, 0)
+        .expect("invoke_analysis_agent should succeed");
+
+    let calls = fixture.executor.agent_calls();
+    assert_eq!(calls.len(), 1);
+    let prompt = &calls[0].prompt;
+    assert!(
+        prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"),
+        "expected existing XSD retry template, got: {prompt}"
+    );
+    assert!(
+        prompt.contains("THIS IS A SUBMISSION-FIX-ONLY RETRY"),
+        "expected XML-only retry guardrail, got: {prompt}"
+    );
+
+    let last_output = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/last_output.xml"))
+        .expect("last_output.xml should be materialized for analysis XSD retry");
+    assert_eq!(last_output, "<invalid xml");
+}
+
+#[test]
 fn test_invoke_analysis_agent_same_agent_retry_timeout_with_context_includes_context_file_guidance()
 {
     let timeout_context_file_path = ".agent/tmp/timeout-context-analysis_1.md";
