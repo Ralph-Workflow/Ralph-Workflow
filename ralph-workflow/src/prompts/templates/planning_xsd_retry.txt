@@ -60,7 +60,7 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY
 The validation error is in JSON directive format:
 {"code": "MISSING_FIELD", "field_path": "summary.scope_items", "next_actions": ["add at least 3 scope_items to summary"]}
 
-You MUST call `ralph_submit_artifact` with artifact_type="plan" and corrected
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and corrected
 JSON content. Follow every instruction in the `next_actions` array exactly.
 
 You MUST NOT:
@@ -86,5 +86,5 @@ COMMON MISTAKES TO FIX
 6. Each risks_mitigations entry MUST have both "risk" and "mitigation"
 7. Each verification_strategy entry MUST have both "method" and "expected_outcome"
 
-Resubmit your corrected JSON via `ralph_submit_artifact`.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.
 DO NOT do any other work.

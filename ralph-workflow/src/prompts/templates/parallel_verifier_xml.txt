@@ -45,7 +45,7 @@ For each work unit, evaluate:
 
 ## OUTPUT FORMAT
 
-Call `ralph_submit_artifact` with artifact_type="verdict" and content as a
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="verdict" and content as a
 JSON string:
 
 For "accept" decision:
@@ -141,4 +141,4 @@ DECISION GUIDANCE
 - Parallel execution is no longer beneficial
 - Complexity exceeds parallelization benefit
 
-Submit your verdict via `ralph_submit_artifact`.
+Submit your verdict via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.

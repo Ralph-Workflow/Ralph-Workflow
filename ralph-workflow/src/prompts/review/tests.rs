@@ -163,7 +163,7 @@ fn test_planning_prompt_has_validation_checklist() {
     let partials = crate::prompts::partials::get_shared_partials();
     let template_content = include_str!("../templates/planning_xml.txt");
     let template = crate::prompts::Template::new(template_content);
-    let variables = std::collections::HashMap::from([
+    let base_variables = std::collections::HashMap::from([
         ("PROMPT", "test prompt".to_string()),
         (
             "PLAN_XML_PATH",
@@ -174,9 +174,25 @@ fn test_planning_prompt_has_validation_checklist() {
             workspace.absolute_str(".agent/tmp/plan.xsd"),
         ),
     ]);
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Planning);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Planning);
+    let variables: std::collections::HashMap<String, String> = base_variables
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(
+            crate::prompts::template_variables::capability_template_variables(
+                &capabilities,
+                &policy_flags,
+            ),
+        )
+        .collect();
+    let variables_ref: std::collections::HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     let result = template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_default();
 
     // Must have explicit required sections

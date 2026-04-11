@@ -58,7 +58,7 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY
 The validation error is in JSON directive format:
 {"code": "INVALID_VALUE", "field_path": "status", "next_actions": ["set status to all_issues_addressed, issues_remain, or no_issues_found"]}
 
-You MUST call `ralph_submit_artifact` with artifact_type="fix_result" and
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="fix_result" and
 corrected JSON content. Follow every instruction in the `next_actions` array
 exactly.
 
@@ -81,5 +81,5 @@ COMMON MISTAKES TO FIX
 2. Invalid status value (must be: all_issues_addressed, issues_remain, or no_issues_found)
 3. Malformed JSON structure
 
-Resubmit your corrected JSON via `ralph_submit_artifact`.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.
 DO NOT do any other work.

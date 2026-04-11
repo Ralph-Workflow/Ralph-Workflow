@@ -100,7 +100,7 @@ VALIDATION AND COMPLETION DISCIPLINE:
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
-Call `ralph_submit_artifact` with artifact_type="fix_result" and content as a
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="fix_result" and content as a
 JSON string:
 {
   "status": "all_issues_addressed",

@@ -131,7 +131,7 @@ Fixes #42
 
 ## OUTPUT FORMAT
 
-Call `ralph_submit_artifact` with artifact_type="commit_message" and content
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="commit_message" and content
 as a JSON string:
 
 Simple format:

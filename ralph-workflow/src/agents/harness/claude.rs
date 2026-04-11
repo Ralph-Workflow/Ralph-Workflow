@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use crate::agents::harness::{AgentHarness, ClaudeCodeSettings, HarnessConfig};
 use crate::agents::session::AgentSession;
+use crate::agents::tool_manifest::visible_mcp_tool_names;
 
 /// Harness for Claude Code agent.
 pub struct ClaudeHarness;
@@ -40,23 +41,10 @@ impl AgentHarness for ClaudeHarness {
                 },
             )]),
             permissions: ClaudePermissions {
-                allow: vec![
-                    "mcp__ralph__ralph_submit_artifact".to_string(),
-                    "mcp__ralph__read_file".to_string(),
-                    "mcp__ralph__write_file".to_string(),
-                    "mcp__ralph__list_directory".to_string(),
-                    "mcp__ralph__list_directory_recursive".to_string(),
-                    "mcp__ralph__search_files".to_string(),
-                    "mcp__ralph__git_status".to_string(),
-                    "mcp__ralph__git_diff".to_string(),
-                    "mcp__ralph__git_log".to_string(),
-                    "mcp__ralph__git_show".to_string(),
-                    "mcp__ralph__exec".to_string(),
-                    "mcp__ralph__report_progress".to_string(),
-                    "mcp__ralph__declare_complete".to_string(),
-                    "mcp__ralph__read_env".to_string(),
-                    "mcp__ralph__coordinate".to_string(),
-                ],
+                allow: visible_mcp_tool_names(session.capabilities())
+                    .into_iter()
+                    .map(|tool| format!("mcp__ralph__{tool}"))
+                    .collect(),
                 deny: vec![
                     "Edit".to_string(),
                     "Write".to_string(),
@@ -99,6 +87,27 @@ mod tests {
                 assert!(json.contains("\"ralph\""));
                 assert!(json.contains("--mcp-proxy"));
                 assert!(json.contains("RALPH_MCP_ENDPOINT"));
+            }
+            _ => panic!("Expected ClaudeCode variant"),
+        }
+    }
+
+    #[test]
+    fn test_generate_claude_settings_uses_session_manifest() {
+        let session = crate::agents::session::AgentSession::for_drain(
+            "planning-run".to_string(),
+            crate::agents::session::SessionDrain::Planning,
+            1,
+        );
+        let harness = ClaudeHarness;
+        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        match config {
+            HarnessConfig::ClaudeCode(json) => {
+                assert!(json.contains("mcp__ralph__ralph_submit_artifact"));
+                assert!(!json.contains("mcp__ralph__report_progress"));
+                assert!(!json.contains("mcp__ralph__read_env"));
+                assert!(!json.contains("mcp__ralph__write_file"));
+                assert!(!json.contains("mcp__ralph__exec"));
             }
             _ => panic!("Expected ClaudeCode variant"),
         }

@@ -38,7 +38,7 @@ ERROR: {{XSD_ERROR}}
 The validation error is in JSON directive format:
 {"code": "INVALID_VALUE", "field_path": "status", "next_actions": ["set status to partial or failed"]}
 
-You MUST call `ralph_submit_artifact` with artifact_type="development_result"
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result"
 and corrected JSON content. Follow every instruction in the `next_actions`
 array exactly.
 
@@ -56,4 +56,4 @@ Keep the output focused on why the full plan was not completed.
 Include an ordered, actionable recovery checklist that finishes the remaining plan.
 
 Do not modify repository files or do new implementation work in this retry.
-Resubmit your corrected JSON via `ralph_submit_artifact`.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.

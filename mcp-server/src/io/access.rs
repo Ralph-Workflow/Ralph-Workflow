@@ -272,6 +272,8 @@ pub struct EnforcementContext<'a> {
     pub config: &'a McpServerConfig,
     /// Tool name being dispatched.
     pub tool_name: &'a str,
+    /// Whether the tool exists in the registry.
+    pub tool_exists: bool,
     /// Capability required for the tool.
     pub required_capability: Option<McpCapability>,
     /// Session for capability checks (called only at step 4, after earlier checks pass).
@@ -294,12 +296,19 @@ impl<'a> EnforcementContext<'a> {
         Self {
             config,
             tool_name,
+            tool_exists: true,
             required_capability: None,
             session: &NoOpHostSession,
             path: None,
             is_mutating: false,
             audit_sink,
         }
+    }
+
+    /// Set whether this tool exists in the registry.
+    pub fn with_tool_exists(mut self, tool_exists: bool) -> Self {
+        self.tool_exists = tool_exists;
+        self
     }
 
     /// Set the capability required for this tool.
@@ -343,6 +352,7 @@ impl<'a> EnforcementContext<'a> {
 
         let params = crate::dispatch::access::EnforcementParams {
             tool_name: self.tool_name,
+            tool_exists: self.tool_exists,
             tool_filter: &self.config.tool_filter,
             is_mutating: self.is_mutating,
             access_mode: &self.config.access_mode,

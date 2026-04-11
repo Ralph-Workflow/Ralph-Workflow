@@ -107,18 +107,30 @@ fn apply_claude_writes_session_scoped_settings_and_env() {
         ".agent/tmp/harness/{}/claude/settings.local.json",
         session.session_id.as_str()
     );
+    let expected_mcp_path = format!(
+        ".agent/tmp/harness/{}/claude/mcp.json",
+        session.session_id.as_str()
+    );
     assert_eq!(
         result.config_path.as_deref(),
         Some(expected_config_path.as_str())
     );
     assert!(ws.was_written(&expected_config_path));
+    assert!(ws.was_written(&expected_mcp_path));
     assert!(!ws.was_written(CLAUDE_SETTINGS_LOCAL));
 
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
-    assert_eq!(result.extra_cmd_args.len(), 2);
-    assert_eq!(result.extra_cmd_args[0], "--settings");
-    assert!(result.extra_cmd_args[1].contains(&format!(
+    assert_eq!(result.extra_cmd_args.len(), 6);
+    assert_eq!(result.extra_cmd_args[0], "--tools");
+    assert_eq!(result.extra_cmd_args[1], "''");
+    assert_eq!(result.extra_cmd_args[2], "--settings");
+    assert!(result.extra_cmd_args[3].contains(&format!(
         ".agent/tmp/harness/{}/claude/settings.local.json",
+        session.session_id.as_str()
+    )));
+    assert_eq!(result.extra_cmd_args[4], "--mcp-config");
+    assert!(result.extra_cmd_args[5].contains(&format!(
+        ".agent/tmp/harness/{}/claude/mcp.json",
         session.session_id.as_str()
     )));
 
@@ -128,6 +140,12 @@ fn apply_claude_writes_session_scoped_settings_and_env() {
     assert!(content.contains("mcpServers"));
     assert!(content.contains("permissions"));
     assert!(content.contains("--mcp-proxy"));
+
+    let mcp_content = ws
+        .read(Path::new(&expected_mcp_path))
+        .expect("read mcp config");
+    assert!(mcp_content.contains("mcpServers"));
+    assert!(mcp_content.contains("--mcp-proxy"));
 }
 
 #[test]
@@ -221,17 +239,30 @@ fn apply_claude_injects_settings_arg() {
         .expect("should succeed");
 
     let extra = &result.extra_cmd_args;
-    assert_eq!(extra.len(), 2, "Claude harness should append flag and path");
-    assert_eq!(extra[0], "--settings");
+    assert_eq!(
+        extra.len(),
+        6,
+        "Claude harness should append tools disable + settings + mcp config"
+    );
+    assert_eq!(extra[0], "--tools");
+    assert_eq!(extra[1], "''");
+    assert_eq!(extra[2], "--settings");
     assert!(
-        extra[1].contains(&format!(
+        extra[3].contains(&format!(
             ".agent/tmp/harness/{}/claude/settings.local.json",
             session.session_id.as_str()
         )),
         "escaped path should point to session config"
     );
-    assert!(extra[1].starts_with('\''), "settings arg must be quoted");
-    assert!(extra[1].ends_with('\''), "settings arg must be quoted");
+    assert!(extra[3].starts_with('\''), "settings arg must be quoted");
+    assert!(extra[3].ends_with('\''), "settings arg must be quoted");
+    assert_eq!(extra[4], "--mcp-config");
+    assert!(extra[5].contains(&format!(
+        ".agent/tmp/harness/{}/claude/mcp.json",
+        session.session_id.as_str()
+    )));
+    assert!(extra[5].starts_with('\''), "mcp config arg must be quoted");
+    assert!(extra[5].ends_with('\''), "mcp config arg must be quoted");
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
 }
 
@@ -782,8 +813,11 @@ fn round_trip_detect_and_apply() {
                     .expect("should succeed");
                 assert!(result.config_path.is_some());
                 assert!(result.extra_env_vars.is_empty());
-                assert_eq!(result.extra_cmd_args.len(), 2);
-                assert_eq!(result.extra_cmd_args[0], "--settings");
+                assert_eq!(result.extra_cmd_args.len(), 6);
+                assert_eq!(result.extra_cmd_args[0], "--tools");
+                assert_eq!(result.extra_cmd_args[1], "''");
+                assert_eq!(result.extra_cmd_args[2], "--settings");
+                assert_eq!(result.extra_cmd_args[4], "--mcp-config");
             }
             AgentType::Unknown => {
                 assert!(apply_harness_config(agent_type, &session, TEST_ENDPOINT, &ws).is_err());

@@ -64,7 +64,7 @@ If work unit B depends on work unit A's output:
 - Sequential ordering is enforced through the dependency graph
 - Independent units should have empty "dependencies" arrays
 
-You MUST submit your plan via the `ralph_submit_artifact` MCP tool.
+You MUST submit your plan via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool.
 - Not submitting the plan is a FAILURE.
 - No files may be created/modified/deleted
 - Allowed operations: any non-mutating tools (for example file reads/search/listing and image analysis)
@@ -161,7 +161,7 @@ Quick validation before output:
 PHASE 5: SUBMIT STRUCTURED PLAN
 ═══════════════════════════════════════════════════════════════════════════════
 
-Call `ralph_submit_artifact` with artifact_type="plan" and content as a JSON
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON
 string conforming to the plan schema.
 
 Required sections:

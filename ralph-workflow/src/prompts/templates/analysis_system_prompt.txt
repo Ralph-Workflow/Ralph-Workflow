@@ -42,7 +42,7 @@ You are NOT allowed to:
 - Fix any issues you find (only report them)
 
 EXCEPTION:
-- You MUST submit your analysis via the `ralph_submit_artifact` MCP tool
+- You MUST submit your analysis via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool
   with artifact_type="development_result".
 
 Submitting your analysis is MANDATORY. Failing to submit is a FAILURE.
@@ -161,7 +161,7 @@ was available.
 REQUIRED OUTPUT
 ───────────────────────────────────────────────────────────────────────────────
 
-Call `ralph_submit_artifact` with artifact_type="development_result" and
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result" and
 content as a JSON string:
 {
   "status": "completed|partial|failed",

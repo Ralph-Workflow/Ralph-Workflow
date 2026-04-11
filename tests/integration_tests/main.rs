@@ -51,6 +51,15 @@
 //!
 //! Tests requiring real git/filesystem operations are in `tests/system_tests/`.
 //! See `tests/system_tests/SYSTEM_TESTS.md` for those guidelines.
+//!
+//! # Git Mutation Safety Policy
+//!
+//! **POLICY: All integration tests that interact with git state MUST instantiate a
+//! `test_helpers::GitMutationGuard` at the top of the test function.** The guard detects
+//! any mutation to the project repository's HEAD during the test and panics with a clear
+//! violation message if HEAD changes. Tests that use `MemoryWorkspace` exclusively do not
+//! need the guard (they cannot touch real git state), but tests that call git operations
+//! MUST hold one for their entire duration.
 
 mod agent_chain_normalization;
 mod agent_spawn_errors;

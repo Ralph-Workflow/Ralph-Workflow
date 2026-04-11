@@ -1,16 +1,16 @@
-//! Stdio-to-Unix-socket MCP proxy for Claude Code integration.
+//! Stdio-to-localhost-TCP MCP proxy for Claude Code integration.
 //!
 //! Claude Code can only connect to MCP servers via stdio transport (spawning a
-//! child process). Ralph's MCP server runs on a Unix socket. This module
+//! child process). Ralph's MCP server runs on a localhost TCP endpoint. This module
 //! provides a thin proxy that bridges the two: it reads Content-Length framed
-//! JSON-RPC messages from stdin, forwards them to the Unix socket, and relays
+//! JSON-RPC messages from stdin, forwards them to the TCP endpoint, and relays
 //! responses back to stdout.
 //!
 //! This is a boundary module — mutation and imperative loops are allowed here.
 
 use anyhow::{Context, Result};
 use std::io::Write;
-use std::os::unix::net::UnixStream;
+use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -158,7 +158,7 @@ fn relay_body(body: Vec<u8>, writer: &mut impl Write, shutdown: &AtomicBool, lab
 /// Spawn the stdin→socket relay thread.
 pub(crate) fn spawn_stdin_thread<R>(
     reader: R,
-    socket_writer: UnixStream,
+    socket_writer: TcpStream,
     shutdown: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<Result<()>>
 where
@@ -178,7 +178,7 @@ where
 
 /// Spawn the socket→stdout relay thread.
 pub(crate) fn spawn_socket_thread<W>(
-    socket_reader: UnixStream,
+    socket_reader: TcpStream,
     writer: W,
     shutdown: Arc<AtomicBool>,
 ) -> std::thread::JoinHandle<Result<()>>
@@ -201,7 +201,7 @@ where
 pub(crate) fn run_proxy_inner<R, W>(
     reader: R,
     writer: W,
-    socket: UnixStream,
+    socket: TcpStream,
     shutdown: Arc<AtomicBool>,
 ) -> Result<()>
 where
@@ -225,24 +225,24 @@ where
     stdin_result.and(socket_result)
 }
 
-/// Resolve the socket path from RALPH_MCP_ENDPOINT env var.
+/// Resolve the TCP address from RALPH_MCP_ENDPOINT env var.
 fn resolve_socket_path() -> Result<String> {
     let endpoint = std::env::var("RALPH_MCP_ENDPOINT")
         .context("RALPH_MCP_ENDPOINT environment variable not set")?;
     Ok(endpoint
-        .strip_prefix("unix://")
+        .strip_prefix("tcp://")
         .unwrap_or(&endpoint)
         .to_string())
 }
 
-/// Attempt a single connection to the socket.
-fn attempt_connection(socket_path: &str) -> std::io::Result<UnixStream> {
-    UnixStream::connect(socket_path)
+/// Attempt a single connection to the TCP endpoint.
+fn attempt_connection(socket_path: &str) -> std::io::Result<TcpStream> {
+    TcpStream::connect(socket_path)
 }
 
 /// Outcome of the connection retry loop.
 enum ConnectOutcome {
-    Connected(UnixStream),
+    Connected(TcpStream),
     Exhausted {
         last_err: std::io::Error,
         attempts: usize,
@@ -250,10 +250,19 @@ enum ConnectOutcome {
 }
 
 /// Maximum number of connection attempts before giving up.
-const MAX_CONNECT_ATTEMPTS: usize = 5;
+///
+/// Providers do substantial startup work before they even begin custom MCP
+/// connection attempts (settings/plugins/skills/MCP config resolution). A
+/// half-second retry budget is far too short for real unattended runs.
+const MAX_CONNECT_ATTEMPTS: usize = 61;
 
 /// Sleep duration between connection attempts in milliseconds.
 const CONNECT_RETRY_SLEEP_MS: u64 = 100;
+
+#[cfg(test)]
+fn connect_retry_budget_ms() -> u64 {
+    (MAX_CONNECT_ATTEMPTS.saturating_sub(1) as u64) * CONNECT_RETRY_SLEEP_MS
+}
 
 /// Sleep for the retry interval between connection attempts.
 ///
@@ -279,7 +288,7 @@ fn run_connection_loop(socket_path: &str) -> ConnectOutcome {
     fn attempt_with_retries(
         socket_path: &str,
         remaining: usize,
-    ) -> Result<UnixStream, std::io::Error> {
+    ) -> Result<TcpStream, std::io::Error> {
         debug_assert!(
             remaining > 0,
             "attempt_with_retries called with 0 remaining"
@@ -309,11 +318,11 @@ fn run_connection_loop(socket_path: &str) -> ConnectOutcome {
     }
 }
 
-/// Run a stdio-to-Unix-socket MCP proxy.
+/// Run a stdio-to-localhost-TCP MCP proxy.
 ///
 /// This is spawned by Claude Code as an MCP server child process.
 /// It reads JSON-RPC messages from stdin and forwards them to the
-/// Unix socket at `RALPH_MCP_ENDPOINT`, then forwards responses back to stdout.
+/// localhost TCP endpoint at `RALPH_MCP_ENDPOINT`, then forwards responses back to stdout.
 ///
 /// Uses Content-Length framing (same as MCP protocol).
 pub fn run_mcp_proxy() -> Result<()> {
@@ -333,7 +342,7 @@ pub fn run_mcp_proxy() -> Result<()> {
                 socket_path, attempts, last_err
             );
             Err(anyhow::anyhow!(
-                "Failed to connect to MCP socket at {}: {}",
+                "Failed to connect to MCP endpoint at {}: {}",
                 socket_path,
                 last_err
             ))
@@ -438,16 +447,23 @@ mod tests {
     #[test]
     fn proxy_routes_messages_between_stdio_and_socket() {
         use std::io::Write;
-        use std::os::unix::net::UnixStream;
+        use std::net::{TcpListener, TcpStream};
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
         use std::thread;
         use std::time::Duration;
 
-        // Create two UnixStream pairs: one for fake stdin/stdout, one for socket
-        let (agent_stdin, proxy_in) = UnixStream::pair().unwrap();
-        let (proxy_out, agent_stdout) = UnixStream::pair().unwrap();
-        let (socket_a, socket_b) = UnixStream::pair().unwrap();
+        fn tcp_pair() -> (TcpStream, TcpStream) {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let addr = listener.local_addr().unwrap();
+            let client = TcpStream::connect(addr).unwrap();
+            let (server, _) = listener.accept().unwrap();
+            (client, server)
+        }
+
+        let (agent_stdin, proxy_in) = tcp_pair();
+        let (proxy_out, agent_stdout) = tcp_pair();
+        let (socket_a, socket_b) = tcp_pair();
 
         // Make sockets non-blocking so reads don't hang forever
         proxy_in.set_read_timeout(Some(Duration::from_secs(5))).ok();
@@ -510,15 +526,23 @@ mod tests {
     #[test]
     fn proxy_shuts_down_on_stdin_eof() {
         use std::io::Write;
-        use std::os::unix::net::UnixStream;
+        use std::net::{TcpListener, TcpStream};
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
         use std::thread;
         use std::time::Duration;
 
-        let (stdin_end, proxy_in) = UnixStream::pair().unwrap();
-        let (proxy_out, stdout_end) = UnixStream::pair().unwrap();
-        let (socket_a, socket_b) = UnixStream::pair().unwrap();
+        fn tcp_pair() -> (TcpStream, TcpStream) {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let addr = listener.local_addr().unwrap();
+            let client = TcpStream::connect(addr).unwrap();
+            let (server, _) = listener.accept().unwrap();
+            (client, server)
+        }
+
+        let (stdin_end, proxy_in) = tcp_pair();
+        let (proxy_out, stdout_end) = tcp_pair();
+        let (socket_a, socket_b) = tcp_pair();
 
         proxy_in.set_read_timeout(Some(Duration::from_secs(2))).ok();
         proxy_out
@@ -565,5 +589,14 @@ mod tests {
         let _ = dummy_handle.join();
         shutdown.store(true, Ordering::Release);
         drop(stdout_end);
+    }
+
+    #[test]
+    fn mcp_proxy_connection_retry_budget_covers_provider_startup_delay() {
+        assert!(
+            super::connect_retry_budget_ms() >= 5_000,
+            "retry budget must allow real provider startup, got {}ms",
+            super::connect_retry_budget_ms()
+        );
     }
 }

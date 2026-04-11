@@ -6,6 +6,21 @@
 use std::collections::HashMap;
 
 use crate::agents::session::{Capability, CapabilitySet, PolicyFlag, PolicyFlagSet};
+use crate::agents::tool_manifest::visible_mcp_tool_names;
+
+const SUBMIT_ARTIFACT_TOOL: &str = "ralph_submit_artifact";
+const DECLARE_COMPLETE_TOOL: &str = "declare_complete";
+const COORDINATE_TOOL: &str = "coordinate";
+const REPORT_PROGRESS_TOOL: &str = "report_progress";
+const WRITE_FILE_TOOL: &str = "write_file";
+const LIST_DIRECTORY_TOOL: &str = "list_directory";
+const LIST_DIRECTORY_RECURSIVE_TOOL: &str = "list_directory_recursive";
+const SEARCH_FILES_TOOL: &str = "search_files";
+const EXEC_TOOL: &str = "exec";
+const GIT_STATUS_TOOL: &str = "git_status";
+const GIT_DIFF_TOOL: &str = "git_diff";
+const GIT_LOG_TOOL: &str = "git_log";
+const GIT_SHOW_TOOL: &str = "git_show";
 
 /// Bundled session capability parameters for prompt generation.
 ///
@@ -125,6 +140,8 @@ pub fn default_caps_and_flags_for_drain(
 /// | `HAS_MCP_WRITE` | `capabilities.contains(WorkspaceWriteTracked|WorkspaceWriteEphemeral)` | MCP write tools available |
 /// | `HAS_MCP_EXEC` | `capabilities.contains(ProcessExecBounded)` | MCP exec tool available |
 /// | `HAS_MCP_GIT` | `capabilities.contains(GitStatusRead|GitDiffRead|GitWrite)` | MCP git tools available |
+/// | `SUBMIT_ARTIFACT_TOOL_NAME` | Session-resolved tool name | Prompt-safe artifact submission tool reference |
+/// | `DECLARE_COMPLETE_TOOL_NAME` | Session-resolved tool name | Prompt-safe completion tool reference |
 #[must_use]
 pub fn capability_template_variables(
     capabilities: &CapabilitySet,
@@ -179,6 +196,41 @@ pub fn capability_template_variables(
         ("HAS_MCP_EXEC".to_string(), bool_to_string(has_mcp_exec)),
         ("HAS_MCP_GIT".to_string(), bool_to_string(has_mcp_git)),
     ];
+    let mcp_tool_name_vars = [
+        tool_name_var(
+            capabilities,
+            "SUBMIT_ARTIFACT_TOOL_NAME",
+            SUBMIT_ARTIFACT_TOOL,
+        ),
+        tool_name_var(
+            capabilities,
+            "DECLARE_COMPLETE_TOOL_NAME",
+            DECLARE_COMPLETE_TOOL,
+        ),
+        tool_name_var(capabilities, "COORDINATE_TOOL_NAME", COORDINATE_TOOL),
+        tool_name_var(
+            capabilities,
+            "REPORT_PROGRESS_TOOL_NAME",
+            REPORT_PROGRESS_TOOL,
+        ),
+        tool_name_var(capabilities, "WRITE_FILE_TOOL_NAME", WRITE_FILE_TOOL),
+        tool_name_var(
+            capabilities,
+            "LIST_DIRECTORY_TOOL_NAME",
+            LIST_DIRECTORY_TOOL,
+        ),
+        tool_name_var(
+            capabilities,
+            "LIST_DIRECTORY_RECURSIVE_TOOL_NAME",
+            LIST_DIRECTORY_RECURSIVE_TOOL,
+        ),
+        tool_name_var(capabilities, "SEARCH_FILES_TOOL_NAME", SEARCH_FILES_TOOL),
+        tool_name_var(capabilities, "EXEC_TOOL_NAME", EXEC_TOOL),
+        tool_name_var(capabilities, "GIT_STATUS_TOOL_NAME", GIT_STATUS_TOOL),
+        tool_name_var(capabilities, "GIT_DIFF_TOOL_NAME", GIT_DIFF_TOOL),
+        tool_name_var(capabilities, "GIT_LOG_TOOL_NAME", GIT_LOG_TOOL),
+        tool_name_var(capabilities, "GIT_SHOW_TOOL_NAME", GIT_SHOW_TOOL),
+    ];
 
     // Capability summary for human-readable display
     let summary_var = (
@@ -192,6 +244,7 @@ pub fn capability_template_variables(
             .into_iter()
             .chain(policy_vars)
             .chain(mcp_vars)
+            .chain(mcp_tool_name_vars)
             .chain(std::iter::once(summary_var)),
     )
 }
@@ -264,56 +317,26 @@ fn format_capability_summary(capabilities: &CapabilitySet, policy_flags: &Policy
 /// agent is allowed to use in this session, for display in the
 /// `_mcp_tools.txt` partial.
 fn format_mcp_tools_list(capabilities: &CapabilitySet) -> String {
-    // Base tools always available
-    let base_tools = vec![
-        "read_file",
-        "list_directory",
-        "list_directory_recursive",
-        "search_files",
-        "ralph_submit_artifact",
-        "report_progress",
-        "read_env",
-        "declare_complete",
-        "coordinate",
-    ];
+    visible_mcp_tool_names(capabilities).join(", ")
+}
 
-    // Conditionally available tools built via functional chain
-    let git_read_tools: Vec<&str> = if capabilities.contains(Capability::GitStatusRead) {
-        vec!["git_status", "git_log", "git_show"]
-    } else {
-        vec![]
-    };
-    let git_diff_tool: Vec<&str> = if capabilities.contains(Capability::GitDiffRead) {
-        vec!["git_diff"]
-    } else {
-        vec![]
-    };
-    let write_tool: Vec<&str> = if capabilities.contains(Capability::WorkspaceWriteTracked) {
-        vec!["write_file"]
-    } else {
-        vec![]
-    };
-    let git_write_tool: Vec<&str> = if capabilities.contains(Capability::GitWrite) {
-        vec!["ralph_git_commit"]
-    } else {
-        vec![]
-    };
-    let exec_tool: Vec<&str> = if capabilities.contains(Capability::ProcessExecBounded) {
-        vec!["exec"]
-    } else {
-        vec![]
-    };
-
-    let all_tools: Vec<&str> = base_tools
+fn visible_tool_name(capabilities: &CapabilitySet, tool_name: &str) -> String {
+    visible_mcp_tool_names(capabilities)
         .into_iter()
-        .chain(git_read_tools)
-        .chain(git_diff_tool)
-        .chain(write_tool)
-        .chain(git_write_tool)
-        .chain(exec_tool)
-        .collect();
+        .find(|candidate| *candidate == tool_name)
+        .map(str::to_string)
+        .unwrap_or_default()
+}
 
-    all_tools.join(", ")
+fn tool_name_var(
+    capabilities: &CapabilitySet,
+    variable_name: &str,
+    tool_name: &str,
+) -> (String, String) {
+    (
+        variable_name.to_string(),
+        visible_tool_name(capabilities, tool_name),
+    )
 }
 
 #[cfg(test)]
@@ -561,12 +584,14 @@ mod tests {
         let vars = capability_template_variables(&caps, &flags);
 
         let mcp_list = vars.get("MCP_TOOLS_LIST").unwrap();
-        // Commit has git write, git read, no write_file, no exec
-        assert!(mcp_list.contains("ralph_git_commit"));
+        // Commit has git read and workflow/artifact tools, but no dedicated MCP git-write tool.
+        assert!(!mcp_list.contains("ralph_git_commit"));
         assert!(mcp_list.contains("git_status"));
         assert!(mcp_list.contains("git_diff"));
         assert!(mcp_list.contains("git_log"));
         assert!(mcp_list.contains("git_show"));
+        assert!(mcp_list.contains("report_progress"));
+        assert!(!mcp_list.contains("read_env"));
         // No write_file (only WorkspaceWriteEphemeral, not WorkspaceWriteTracked)
         assert!(!mcp_list.contains("write_file"));
         // No exec
@@ -687,5 +712,74 @@ mod tests {
         assert!(mcp_list.contains("git_status"));
         assert!(mcp_list.contains("git_diff"));
         assert!(!mcp_list.contains("ralph_git_commit"));
+    }
+
+    #[test]
+    fn test_mcp_tools_list_matches_visible_manifest_for_all_drains() {
+        for drain in [
+            SessionDrain::Planning,
+            SessionDrain::Analysis,
+            SessionDrain::Review,
+            SessionDrain::Development,
+            SessionDrain::Fix,
+            SessionDrain::Commit,
+        ] {
+            let caps = CapabilitySet::defaults_for_drain(drain);
+            let flags = PolicyFlagSet::defaults_for_drain(drain);
+            let vars = capability_template_variables(&caps, &flags);
+            let mcp_list = vars
+                .get("MCP_TOOLS_LIST")
+                .expect("MCP_TOOLS_LIST must be present");
+            let rendered: Vec<&str> = if mcp_list.is_empty() {
+                vec![]
+            } else {
+                mcp_list.split(", ").collect()
+            };
+
+            assert_eq!(
+                rendered,
+                visible_mcp_tool_names(&caps),
+                "Prompt MCP tool list must match manifest for {:?}",
+                drain
+            );
+        }
+    }
+
+    #[test]
+    fn test_prompt_tool_name_vars_resolve_from_manifest() {
+        let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
+        let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Development);
+        let vars = capability_template_variables(&caps, &flags);
+
+        assert_eq!(
+            vars.get("SUBMIT_ARTIFACT_TOOL_NAME").map(String::as_str),
+            Some("ralph_submit_artifact")
+        );
+        assert_eq!(
+            vars.get("DECLARE_COMPLETE_TOOL_NAME").map(String::as_str),
+            Some("declare_complete")
+        );
+        assert_eq!(
+            vars.get("WRITE_FILE_TOOL_NAME").map(String::as_str),
+            Some("write_file")
+        );
+        assert_eq!(vars.get("EXEC_TOOL_NAME").map(String::as_str), Some("exec"));
+    }
+
+    #[test]
+    fn test_prompt_tool_name_vars_are_empty_when_tool_not_visible() {
+        let caps = CapabilitySet::defaults_for_drain(SessionDrain::Planning);
+        let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Planning);
+        let vars = capability_template_variables(&caps, &flags);
+
+        assert_eq!(
+            vars.get("WRITE_FILE_TOOL_NAME").map(String::as_str),
+            Some("")
+        );
+        assert_eq!(vars.get("EXEC_TOOL_NAME").map(String::as_str), Some(""));
+        assert_eq!(
+            vars.get("SUBMIT_ARTIFACT_TOOL_NAME").map(String::as_str),
+            Some("ralph_submit_artifact")
+        );
     }
 }

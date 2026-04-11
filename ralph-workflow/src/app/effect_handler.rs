@@ -659,4 +659,63 @@ mod workspace_root_guard_tests {
         // Must not panic
         handler.assert_has_workspace_root();
     }
+
+    /// Verify that all workspace-root-dependent git effects return an error containing
+    /// "workspace root is not set" when `workspace_root` is `None`.
+    ///
+    /// This test pins the exact error message contract so that callers that match on
+    /// the error string can reliably detect the unconfigured-workspace condition.
+    ///
+    /// The following variants do NOT check workspace_root and are intentionally excluded:
+    /// - `GitRequireRepo` — calls a global git helper unrelated to root discovery
+    /// - `GitContinueRebase` — deferred to executor injection
+    /// - `GitAbortRebase` — deferred to executor injection
+    /// - `GitRebaseOnto` — deferred to executor injection
+    #[test]
+    fn workspace_root_dependent_git_effects_fail_with_workspace_not_set_message_when_root_is_none()
+    {
+        let mut handler = RealAppEffectHandler {
+            workspace_root: None,
+        };
+
+        let root_dependent_effects = [
+            AppEffect::GitGetRepoRoot,
+            AppEffect::GitGetHeadOid,
+            AppEffect::GitDiff,
+            AppEffect::GitDiffFrom {
+                start_oid: "abc123".to_string(),
+            },
+            AppEffect::GitDiffFromStart,
+            AppEffect::GitSnapshot,
+            AppEffect::GitAddAll,
+            AppEffect::GitCommit {
+                message: "test".to_string(),
+                user_name: None,
+                user_email: None,
+            },
+            AppEffect::GitSaveStartCommit,
+            AppEffect::GitResetStartCommit,
+            AppEffect::GitGetConflictedFiles,
+            AppEffect::GitGetDefaultBranch,
+            AppEffect::GitIsMainBranch,
+        ];
+
+        for effect in root_dependent_effects {
+            let effect_name = format!("{effect:?}");
+            let result = handler.execute(effect);
+            match result {
+                AppEffectResult::Error(msg) => {
+                    assert!(
+                        msg.contains("workspace root is not set"),
+                        "Effect {effect_name} must include 'workspace root is not set' in error, got: {msg}"
+                    );
+                }
+                other => {
+                    panic!(
+                        "Effect {effect_name} with workspace_root: None must return Error, got: {other:?}"
+                    );
+                }
+            }
+        }
+    }
 }

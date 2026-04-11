@@ -65,7 +65,7 @@ IMPLEMENTATION PLAN
 RESULT SUBMISSION
 ═══════════════════════════════════════════════════════════════════════════════
 
-When done, call `ralph_submit_artifact` with artifact_type="development_result"
+When done, call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result"
 and content as a JSON string:
 {
   "status": "completed",

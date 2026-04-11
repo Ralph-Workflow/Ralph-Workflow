@@ -36,7 +36,7 @@ Generate a commit message for the following diff.
 
 1. Analyze the diff below
 2. Write a clear, specific commit message following conventional commit format
-3. Submit via `ralph_submit_artifact` with artifact_type="commit_message"
+3. Submit via `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="commit_message"
 
 ## Commit Format
 
@@ -46,7 +46,7 @@ Body: Optional - only if needed for context
 
 ## Required Output Format
 
-Call `ralph_submit_artifact` with artifact_type="commit_message" and content:
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="commit_message" and content:
 {
   "subject": "type(scope): description",
   "body": "Optional body text here."
@@ -73,4 +73,4 @@ IMPORTANT:
 
 {{DIFF}}
 
-## Submit your commit message via `ralph_submit_artifact` now.
+## Submit your commit message via `{{SUBMIT_ARTIFACT_TOOL_NAME}}` now.

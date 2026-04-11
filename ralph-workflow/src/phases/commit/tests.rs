@@ -41,7 +41,8 @@ mod tests {
     fn test_truncate_diff_very_small_limit() {
         let _cloud = crate::config::types::CloudConfig::disabled();
         // Diff must exceed the limit (80) to trigger truncation.
-        let diff = "diff --git a/src/main.rs b/src/main.rs\n+change with enough content here to exceed\n";
+        let diff =
+            "diff --git a/src/main.rs b/src/main.rs\n+change with enough content here to exceed\n";
         let truncated = truncate_diff_if_large(diff, 80);
 
         assert!(truncated.len() <= 80 + 200);
@@ -308,5 +309,18 @@ mod tests {
                 }
             )] if template_name == "commit_message_xml"
         ));
+    }
+
+    #[test]
+    fn test_commit_submission_retry_prompt_requires_resubmission_not_plain_output() {
+        let base_prompt = "Base commit prompt";
+
+        let retry =
+            commit_submission_retry_prompt(base_prompt, "mcp__ralph__ralph_submit_artifact");
+
+        assert!(retry.contains("Base commit prompt"));
+        assert!(retry.contains("mcp__ralph__ralph_submit_artifact"));
+        assert!(retry.contains("Do NOT print the commit message"));
+        assert!(retry.contains("submit the artifact"));
     }
 }

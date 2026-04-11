@@ -847,10 +847,11 @@ fn mcp_write_file_succeeds_in_readwrite_session() {
     });
 }
 
-/// Verify that `write_file` is rejected in a ReadOnly (Planning) session.
+/// Verify that `write_file` is rejected in a Planning session.
 ///
-/// write_file is a mutating operation. ReadOnly mode must block it before any
-/// capability check. The error code must be ReadOnlyMode.
+/// Planning sessions no longer advertise `write_file` at all. The session manifest
+/// blocks it before dispatch, so the user-visible denial becomes `ToolNotAllowed`
+/// rather than a later `ReadOnlyMode` dispatch failure.
 #[test]
 fn mcp_write_file_rejected_in_readonly_session() {
     with_default_timeout(|| {
@@ -894,25 +895,25 @@ fn mcp_write_file_rejected_in_readonly_session() {
         let error = response.error.unwrap();
         assert_eq!(
             error.code, -32000,
-            "ReadOnly denial must use code -32000, got: {}",
+            "Planning denial must use code -32000, got: {}",
             error.code
         );
 
-        // Error data must contain ReadOnlyMode code
+        // Error data must contain ToolNotAllowed code
         let data_str = serde_json::to_string(&error.data.unwrap_or_default()).unwrap_or_default();
         assert!(
-            data_str.contains("ReadOnlyMode"),
-            "Error data must contain 'ReadOnlyMode' code, got: {data_str}"
+            data_str.contains("ToolNotAllowed"),
+            "Error data must contain 'ToolNotAllowed' code, got: {data_str}"
         );
 
         bridge.shutdown();
     });
 }
 
-/// Verify that `exec` is rejected in a ReadOnly (Planning) session.
+/// Verify that `exec` is rejected in a Planning session.
 ///
-/// exec is a mutating operation (ProcessExecBounded). ReadOnly mode must block it
-/// before any capability check. The error code must be ReadOnlyMode.
+/// Planning sessions never advertise `exec`, so the MCP layer rejects it via the
+/// session allowlist before ReadOnly dispatch checks are reached.
 #[test]
 fn mcp_exec_rejected_in_readonly_session() {
     with_default_timeout(|| {
@@ -955,14 +956,14 @@ fn mcp_exec_rejected_in_readonly_session() {
         let error = response.error.unwrap();
         assert_eq!(
             error.code, -32000,
-            "ReadOnly denial must use code -32000, got: {}",
+            "Planning denial must use code -32000, got: {}",
             error.code
         );
 
         let data_str = serde_json::to_string(&error.data.unwrap_or_default()).unwrap_or_default();
         assert!(
-            data_str.contains("ReadOnlyMode"),
-            "Error data must contain 'ReadOnlyMode' code, got: {data_str}"
+            data_str.contains("ToolNotAllowed"),
+            "Error data must contain 'ToolNotAllowed' code, got: {data_str}"
         );
 
         bridge.shutdown();

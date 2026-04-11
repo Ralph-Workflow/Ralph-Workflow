@@ -120,20 +120,16 @@ pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
 fn assert_start_agent_phase_not_in_project_repo(repo_root: &std::path::Path) -> io::Result<()> {
     // Detect project root from the test binary's executable path.
     // Walk up until we find a directory containing .git.
-    let project_root = std::env::current_exe()
-        .ok()
-        .and_then(|exe| {
-            let start = exe.parent()?.to_path_buf();
-            std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
-                .find(|p| p.join(".git").exists())
-        });
+    let project_root = std::env::current_exe().ok().and_then(|exe| {
+        let start = exe.parent()?.to_path_buf();
+        std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
+            .find(|p| p.join(".git").exists())
+    });
     let Some(project) = project_root else {
         return Ok(());
     };
-    let repo_abs =
-        std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
-    let project_abs =
-        std::fs::canonicalize(&project).unwrap_or_else(|_| project.clone());
+    let repo_abs = std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let project_abs = std::fs::canonicalize(&project).unwrap_or_else(|_| project.clone());
     if repo_abs == project_abs || repo_abs.starts_with(&project_abs) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -506,15 +502,34 @@ pub fn verify_wrapper_cleaned(repo_root: &Path) -> Vec<String> {
 }
 
 pub fn marker_exists_with_workspace(workspace: &dyn Workspace) -> bool {
-    workspace.exists(Path::new(".git/ralph/no_agent_commit"))
+    workspace_marker_path(workspace).map_or_else(
+        || workspace.exists(Path::new(".git/ralph/no_agent_commit")),
+        |path| path.exists(),
+    )
 }
 
 pub fn create_marker_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
-    workspace.write(Path::new(".git/ralph/no_agent_commit"), "")
+    workspace_marker_path(workspace).map_or_else(
+        || workspace.write(Path::new(".git/ralph/no_agent_commit"), ""),
+        |path| {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, "")
+        },
+    )
 }
 
 pub fn remove_marker_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
-    workspace.remove_if_exists(Path::new(".git/ralph/no_agent_commit"))
+    workspace_marker_path(workspace).map_or_else(
+        || workspace.remove_if_exists(Path::new(".git/ralph/no_agent_commit")),
+        |path| {
+            if path.exists() {
+                fs::remove_file(path)?;
+            }
+            Ok(())
+        },
+    )
 }
 
 pub fn cleanup_orphaned_marker_with_workspace(
@@ -532,24 +547,52 @@ pub fn cleanup_orphaned_marker_with_workspace(
 }
 
 fn detect_and_remove_orphaned_markers(workspace: &dyn Workspace) -> io::Result<(bool, bool)> {
-    let marker_path = Path::new(".git/ralph/no_agent_commit");
-    let legacy_marker_path = Path::new(".no_agent_commit");
-
-    let removed_marker = if workspace.exists(marker_path) {
-        workspace.remove(marker_path)?;
-        true
-    } else {
-        false
-    };
-
-    let removed_legacy_marker = if workspace.exists(legacy_marker_path) {
-        workspace.remove(legacy_marker_path)?;
-        true
-    } else {
-        false
-    };
+    let removed_marker = remove_marker_for_workspace(workspace)?;
+    let removed_legacy_marker = remove_legacy_marker_for_workspace(workspace)?;
 
     Ok((removed_marker, removed_legacy_marker))
+}
+
+fn workspace_marker_path(workspace: &dyn Workspace) -> Option<PathBuf> {
+    resolve_protection_scope_from(workspace.root())
+        .ok()
+        .map(|scope| marker_path_from_ralph_dir(&scope.ralph_dir))
+}
+
+fn remove_marker_for_workspace(workspace: &dyn Workspace) -> io::Result<bool> {
+    workspace_marker_path(workspace).map_or_else(
+        || remove_workspace_relative_marker(workspace),
+        remove_fs_marker_if_present,
+    )
+}
+
+fn remove_workspace_relative_marker(workspace: &dyn Workspace) -> io::Result<bool> {
+    let marker_path = Path::new(".git/ralph/no_agent_commit");
+    if workspace.exists(marker_path) {
+        workspace.remove(marker_path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn remove_fs_marker_if_present(path: PathBuf) -> io::Result<bool> {
+    if path.exists() {
+        fs::remove_file(path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn remove_legacy_marker_for_workspace(workspace: &dyn Workspace) -> io::Result<bool> {
+    let legacy_marker_path = Path::new(".no_agent_commit");
+    if workspace.exists(legacy_marker_path) {
+        workspace.remove(legacy_marker_path)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 fn validate_git_binary(real_git: &Path, git_path_str: &str) -> io::Result<()> {
@@ -719,4 +762,48 @@ fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Resu
 
     helpers.wrapper_dir = Some(wrapper_dir_path);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace::WorkspaceFs;
+
+    fn init_repo_with_commit(path: &Path) -> git2::Repository {
+        let repo = git2::Repository::init(path).expect("repo should initialize");
+        let mut index = repo.index().expect("index should open");
+        let tree_oid = index.write_tree().expect("tree should write");
+        let tree = repo.find_tree(tree_oid).expect("tree should load");
+        let sig = git2::Signature::now("test", "test@test.com").expect("signature should build");
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .expect("initial commit should succeed");
+        drop(tree);
+        drop(index);
+        repo
+    }
+
+    #[test]
+    fn create_marker_with_workspace_writes_to_linked_worktree_git_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir should be created");
+        let main_repo = init_repo_with_commit(tmp.path());
+        let wt_path = tmp.path().join("wt-test");
+        let _worktree = main_repo
+            .worktree("wt-test", &wt_path, None)
+            .expect("worktree should be created");
+        let wt_repo = git2::Repository::open(&wt_path).expect("worktree repo should open");
+
+        let workspace = WorkspaceFs::new(wt_path.clone());
+
+        create_marker_with_workspace(&workspace)
+            .expect("linked worktree marker creation should succeed");
+
+        assert!(
+            wt_repo.path().join("ralph/no_agent_commit").exists(),
+            "marker should be written inside the active worktree git dir"
+        );
+        assert!(
+            wt_path.join(".git").is_file(),
+            "linked worktree should still use a .git file indirection"
+        );
+    }
 }

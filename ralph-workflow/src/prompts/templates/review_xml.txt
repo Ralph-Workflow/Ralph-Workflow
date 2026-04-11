@@ -35,7 +35,7 @@ CRITICAL CONSTRAINTS
 4. DO NOT run the implementation - only analyze the code
 5. If you have code review skills/tools available, USE THEM
 6. Focus ONLY on the changed files shown in the diff below
-7. YOU MUST submit your findings via `ralph_submit_artifact` - THIS IS NOT OPTIONAL
+7. YOU MUST submit your findings via `{{SUBMIT_ARTIFACT_TOOL_NAME}}` - THIS IS NOT OPTIONAL
 
 ═══════════════════════════════════════════════════════════════════════════════
 CONTEXT
@@ -141,7 +141,7 @@ Parallel review guidance:
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
-Call `ralph_submit_artifact` with artifact_type="issues" and content as a
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="issues" and content as a
 JSON string:
 
 If issues found:

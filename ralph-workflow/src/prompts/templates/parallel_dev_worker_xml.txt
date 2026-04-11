@@ -130,7 +130,7 @@ Quick validation before output:
 PHASE 5: SUBMIT STRUCTURED PLAN
 ═══════════════════════════════════════════════════════════════════════════════
 
-Call `ralph_submit_artifact` with artifact_type="plan" and content as a JSON
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON
 string conforming to the plan schema. See the plan JSON format for required
 fields.
 

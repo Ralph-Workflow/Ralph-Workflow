@@ -229,23 +229,42 @@ fn apply_claude_harness(
     let merged = merge_claude_settings(&existing, &ralph_value);
     let merged_str = serde_json::to_string_pretty(&merged)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let merged_mcp_config = serde_json::json!({
+        "mcpServers": merged
+            .get("mcpServers")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}))
+    });
+    let merged_mcp_str = serde_json::to_string_pretty(&merged_mcp_config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
     let session_id = session.session_id.as_str();
     let harness_dir = format!(".agent/tmp/harness/{session_id}/claude");
     let config_path = format!("{harness_dir}/settings.local.json");
+    let mcp_config_path = format!("{harness_dir}/mcp.json");
     let harness_dir_path = Path::new(&harness_dir);
 
     workspace.remove_dir_all_if_exists(harness_dir_path)?;
     workspace.create_dir_all(harness_dir_path)?;
     workspace.write(Path::new(&config_path), &merged_str)?;
+    workspace.write(Path::new(&mcp_config_path), &merged_mcp_str)?;
 
     let absolute_path = workspace.root().join(&config_path);
     let escaped_settings = shell_escape_posix(absolute_path.to_string_lossy().as_ref());
+    let absolute_mcp_path = workspace.root().join(&mcp_config_path);
+    let escaped_mcp_config = shell_escape_posix(absolute_mcp_path.to_string_lossy().as_ref());
 
     Ok(HarnessApplyResult {
         extra_env_vars: HashMap::new(),
         config_path: Some(config_path),
-        extra_cmd_args: vec!["--settings".to_string(), escaped_settings],
+        extra_cmd_args: vec![
+            "--tools".to_string(),
+            "''".to_string(),
+            "--settings".to_string(),
+            escaped_settings,
+            "--mcp-config".to_string(),
+            escaped_mcp_config,
+        ],
     })
 }
 

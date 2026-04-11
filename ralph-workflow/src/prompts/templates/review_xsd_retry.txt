@@ -63,7 +63,7 @@ CRITICAL INSTRUCTIONS - FIX XML ONLY
 The validation error is in JSON directive format:
 {"code": "MISSING_FIELD", "field_path": "issues[0].severity", "next_actions": ["add severity field with value Critical, High, Medium, or Low"]}
 
-You MUST call `ralph_submit_artifact` with artifact_type="issues" and corrected
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="issues" and corrected
 JSON content. Follow every instruction in the `next_actions` array exactly.
 
 You MUST NOT:
@@ -86,5 +86,5 @@ COMMON MISTAKES TO FIX
 3. Missing or empty description
 4. Malformed JSON structure
 
-Resubmit your corrected JSON via `ralph_submit_artifact`.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.
 DO NOT DO any other work.

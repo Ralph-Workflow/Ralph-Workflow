@@ -27,7 +27,7 @@ pub fn prompt_plan(prompt_content: Option<&str>) -> String {
     let template_content = include_str!("../templates/planning_xml.txt");
     let template = Template::new(template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
-    let variables = HashMap::from([
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_md.to_string()),
         (
             "PLAN_XML_PATH",
@@ -38,9 +38,25 @@ pub fn prompt_plan(prompt_content: Option<&str>) -> String {
             workspace.absolute_str(".agent/tmp/plan.xsd"),
         ),
     ]);
+    let caps = crate::agents::session::CapabilitySet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Planning,
+    );
+    let flags = crate::agents::session::PolicyFlagSet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Planning,
+    );
+    let capability_vars = capability_template_variables(&caps, &flags);
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             // Embedded fallback template (XML format)
             format!(

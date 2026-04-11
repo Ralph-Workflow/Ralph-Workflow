@@ -23,7 +23,6 @@ use crate::io::access::McpServerConfig;
 use crate::io::transport::{McpStream, McpStreamImpl, TransportError, UnixSocketTransport};
 use crate::io::{McpServer, ServerState};
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -70,8 +69,8 @@ pub struct SessionBridge {
     registry: ToolRegistry,
     /// Server configuration.
     config: McpServerConfig,
-    /// Unix socket path for agent connections.
-    socket_path: PathBuf,
+    /// Endpoint URI for agent connections.
+    endpoint_uri: String,
     /// Flag indicating if the bridge has been started.
     started: bool,
     /// Shared shutdown flag. Set to true to signal the MCP server to shutdown.
@@ -91,8 +90,7 @@ impl SessionBridge {
         workspace: Arc<dyn WorkspaceAdapter>,
         registry: ToolRegistry,
     ) -> Self {
-        let nonce = SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let socket_path = build_socket_path(nonce);
+        let _nonce = SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed);
         let shutdown_flag = Arc::new(AtomicBool::new(false));
 
         Self {
@@ -100,7 +98,7 @@ impl SessionBridge {
             workspace,
             registry,
             config,
-            socket_path,
+            endpoint_uri: String::new(),
             started: false,
             shutdown_flag,
             audit_sink: None,
@@ -112,17 +110,12 @@ impl SessionBridge {
         self.session.session_id()
     }
 
-    /// Get the Unix socket path for agent connections.
-    pub fn socket_path(&self) -> &PathBuf {
-        &self.socket_path
-    }
-
     /// Get the MCP endpoint URI for passing to agents.
     ///
-    /// Returns a URI like `unix:///path/to/socket` that agents can use
+    /// Returns a URI like `tcp://127.0.0.1:12345` that agents can use
     /// to connect to the MCP server.
     pub fn endpoint_uri(&self) -> String {
-        format!("unix://{}", self.socket_path.display())
+        self.endpoint_uri.clone()
     }
 
     /// Get the environment variable name for the MCP endpoint.
@@ -152,17 +145,16 @@ impl SessionBridge {
             return Err(SessionBridgeError::AlreadyStarted);
         }
 
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<String, String>>();
         self.spawn_server_thread(ready_tx);
-        wait_for_socket_ready(ready_rx)?;
+        self.endpoint_uri = wait_for_socket_ready(ready_rx)?;
 
         self.started = true;
         Ok(())
     }
 
     /// Spawn the MCP server thread with cloned state.
-    fn spawn_server_thread(&self, ready_tx: mpsc::Sender<Result<(), String>>) {
-        let socket_path = self.socket_path.clone();
+    fn spawn_server_thread(&self, ready_tx: mpsc::Sender<Result<String, String>>) {
         let session = Arc::clone(&self.session);
         let workspace = Arc::clone(&self.workspace);
         let registry = self.registry.clone();
@@ -172,7 +164,7 @@ impl SessionBridge {
 
         std::thread::spawn(move || {
             let server = McpServer::new(session, config, workspace, registry, audit_sink);
-            if let Err(e) = run_server(server, socket_path, shutdown_flag, ready_tx) {
+            if let Err(e) = run_server(server, shutdown_flag, ready_tx) {
                 tracing::error!(error = %e, "MCP server error");
             }
         });
@@ -227,7 +219,7 @@ impl Clone for SessionBridge {
             workspace: Arc::clone(&self.workspace),
             registry: self.registry.clone(),
             config: self.config.clone(),
-            socket_path: self.socket_path.clone(),
+            endpoint_uri: self.endpoint_uri.clone(),
             started: false, // Cloned bridges start in unstarted state
             shutdown_flag: Arc::clone(&self.shutdown_flag),
             audit_sink: self.audit_sink.clone(),
@@ -241,34 +233,17 @@ impl Drop for SessionBridge {
         if self.started {
             self.shutdown();
         }
-        // Clean up the socket file. This is safe because:
-        // 1. If started, the shutdown signal will cause the listener to close
-        //    before the socket file is removed.
-        // 2. If not started, there's no listener using the socket.
-        let _ = std::fs::remove_file(&self.socket_path);
     }
 }
 
 /// Wait for the server thread to signal that the socket is bound.
 fn wait_for_socket_ready(
-    ready_rx: mpsc::Receiver<Result<(), String>>,
-) -> Result<(), SessionBridgeError> {
+    ready_rx: mpsc::Receiver<Result<String, String>>,
+) -> Result<String, SessionBridgeError> {
     ready_rx
         .recv_timeout(Duration::from_secs(5))
         .map_err(|_| SessionBridgeError::Transport("socket bind timed out after 5s".to_string()))?
         .map_err(SessionBridgeError::Transport)
-}
-
-/// Build a unique socket path for a session.
-///
-/// Includes the process ID to prevent collisions when multiple test binaries
-/// run concurrently (each binary has its own `SOCKET_COUNTER` starting at 0,
-/// so PID disambiguation is required for uniqueness across processes).
-fn build_socket_path(nonce: usize) -> PathBuf {
-    let socket_dir = std::env::temp_dir().join("ralph-mcp");
-    let _ = std::fs::create_dir_all(&socket_dir);
-    let pid = std::process::id();
-    socket_dir.join(format!("session-{}-{}.sock", pid, nonce))
 }
 
 /// Pure: check shutdown flag.
@@ -421,18 +396,15 @@ fn handle_connection(
 /// Run server loop.
 fn run_server(
     server: McpServer,
-    socket_path: PathBuf,
     shutdown_flag: Arc<AtomicBool>,
-    ready_tx: mpsc::Sender<Result<(), String>>,
+    ready_tx: mpsc::Sender<Result<String, String>>,
 ) -> Result<(), SessionBridgeError> {
-    tracing::debug!(socket = %socket_path.display(), "MCP server binding socket");
-    let mut listener =
-        UnixSocketTransport::new(socket_path, Arc::clone(&shutdown_flag)).map_err(|e| {
-            tracing::error!(error = %e, "MCP socket bind failed");
-            SessionBridgeError::Transport(e.to_string())
-        })?;
-    // Signal that the socket is bound and ready to accept connections.
-    let _ = ready_tx.send(Ok(()));
+    let mut listener = UnixSocketTransport::new(Arc::clone(&shutdown_flag)).map_err(|e| {
+        tracing::error!(error = %e, "MCP tcp bind failed");
+        SessionBridgeError::Transport(e.to_string())
+    })?;
+    let endpoint_uri = format!("tcp://{}", listener.local_addr());
+    let _ = ready_tx.send(Ok(endpoint_uri));
     let state = ServerState::Uninitialized;
     run_server_loop(&mut listener, &server, &shutdown_flag, state)
 }
@@ -493,31 +465,16 @@ mod tests {
     }
 
     #[test]
-    fn test_socket_path_format() {
-        let path = build_socket_path(12345);
-        let path_str = path.display().to_string();
-        let pid = std::process::id();
-        assert!(path_str.contains("ralph-mcp"));
-        // Socket path includes PID to prevent collisions across concurrent test binaries.
-        assert!(
-            path_str.contains(&format!("session-{}-12345", pid)),
-            "socket path must include pid-nonce format, got: {}",
-            path_str
-        );
-        assert!(path_str.ends_with(".sock"));
-    }
-
-    #[test]
     fn test_endpoint_uri() {
         let session = Arc::new(TestSession) as Arc<dyn HostSession>;
         let workspace = Arc::new(TestWorkspace) as Arc<dyn WorkspaceAdapter>;
         let registry = ToolRegistry::new(vec![]);
         let config = McpServerConfig::new(std::env::temp_dir());
-        let bridge = SessionBridge::new(session, config, workspace, registry);
+        let mut bridge = SessionBridge::new(session, config, workspace, registry);
+        bridge.start().expect("bridge should start");
 
         let uri = bridge.endpoint_uri();
-        assert!(uri.starts_with("unix://"));
-        assert!(uri.ends_with(".sock"));
+        assert!(uri.starts_with("tcp://127.0.0.1:"));
     }
 
     #[test]

@@ -47,7 +47,12 @@ pub fn generate_commit_message(
         ));
     }
 
-    let (prompt, substitution_log) =
+    let agent_config = registry
+        .resolve_config(commit_agent)
+        .ok_or_else(|| anyhow::anyhow!("Agent not found: {commit_agent}"))?;
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
+
+    let (raw_prompt, substitution_log) =
         build_commit_prompt(template_context, &model_safe_diff, workspace);
     if !substitution_log.is_complete() {
         return Err(anyhow::anyhow!(
@@ -56,48 +61,28 @@ pub fn generate_commit_message(
         ));
     }
 
-    let agent_config = registry
-        .resolve_config(commit_agent)
-        .ok_or_else(|| anyhow::anyhow!("Agent not found: {commit_agent}"))?;
-
     let base_cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
-    // Start MCP bridge so the agent can submit artifacts via ralph_submit_artifact
-    let session = crate::agents::session::AgentSession::for_drain(
-        unique_commit_plumbing_run_id("cps"),
-        crate::agents::session::SessionDrain::Commit,
-        1,
-    );
-    let harness_session = session.clone();
-    let bridge = start_mcp_bridge(session, std::sync::Arc::clone(workspace_arc))
-        .map_err(|e| anyhow::anyhow!(
-            "MCP bridge startup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
-            commit_agent,
-            e
-        ))?;
-    let mcp_env: std::collections::HashMap<String, String> = std::collections::HashMap::from([(
-        bridge.endpoint_env_var().to_string(),
-        bridge.endpoint_uri(),
-    )]);
+    let mcp = start_commit_mcp_context(unique_commit_plumbing_run_id("cps"), workspace_arc)?;
+    let harness_session = mcp.session.clone();
+    let mcp_env = endpoint_env_or_fail(
+        crate::mcp_server::session_bridge::MCP_ENDPOINT_ENV,
+        &mcp.endpoint_uri,
+        commit_agent,
+    )?;
 
-    // Apply harness configuration if MCP bridge started successfully
-    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
-    let (harness_env, harness_extra_cmd_args) = if !mcp_env.is_empty() {
-        let result = crate::agents::harness::applicator::apply_harness_config(
-            agent_type,
-            &harness_session,
-            &bridge.endpoint_uri(),
-            workspace,
-        )
-        .map_err(|e| anyhow::anyhow!(
-            "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
-            commit_agent,
-            e
-        ))?;
-        (result.extra_env_vars, result.extra_cmd_args)
-    } else {
-        (std::collections::HashMap::new(), Vec::new())
-    };
+    let result = crate::agents::harness::applicator::apply_harness_config(
+        agent_type,
+        &harness_session,
+        &mcp.endpoint_uri,
+        workspace,
+    )
+    .map_err(|e| anyhow::anyhow!(
+        "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
+        commit_agent,
+        e
+    ))?;
+    let (harness_env, harness_extra_cmd_args) = (result.extra_env_vars, result.extra_cmd_args);
 
     // Merge agent env vars with MCP env vars and harness env vars
     let merged_env: std::collections::HashMap<String, String> = agent_config
@@ -119,6 +104,14 @@ pub fn generate_commit_message(
         attempt,
     );
     let cmd_str = append_extra_cmd_args(&base_cmd_str, &harness_extra_cmd_args);
+    let prompt = crate::agents::tool_manifest::rewrite_prompt_mcp_tool_names(
+        &raw_prompt,
+        harness_session.capabilities(),
+        matches!(
+            agent_type,
+            crate::agents::harness::applicator::AgentType::Claude
+        ),
+    );
     let prompt_cmd = PromptCommand {
         label: commit_agent,
         display_name: commit_agent,
@@ -177,7 +170,36 @@ struct CommitAgentContext<'a> {
     model_safe_diff: &'a str,
     registry: &'a AgentRegistry,
     workspace: &'a dyn Workspace,
-    workspace_arc: &'a std::sync::Arc<dyn Workspace>,
+    mcp: &'a CommitMcpContext,
+}
+
+struct CommitMcpContext {
+    _bridge: crate::mcp_server::session_bridge::SessionBridge,
+    session: crate::agents::session::AgentSession,
+    endpoint_uri: String,
+}
+
+fn start_commit_mcp_context(
+    run_id: String,
+    workspace_arc: &std::sync::Arc<dyn Workspace>,
+) -> anyhow::Result<CommitMcpContext> {
+    let session = crate::agents::session::AgentSession::for_drain(
+        run_id,
+        crate::agents::session::SessionDrain::Commit,
+        1,
+    );
+    let bridge = start_mcp_bridge(session.clone(), std::sync::Arc::clone(workspace_arc)).map_err(
+        |e| anyhow::anyhow!(
+            "MCP bridge startup failed for commit run '{}': {}. MCP is mandatory and execution was aborted.",
+            session.run_id,
+            e
+        ),
+    )?;
+    Ok(CommitMcpContext {
+        endpoint_uri: bridge.endpoint_uri(),
+        _bridge: bridge,
+        session,
+    })
 }
 
 fn try_single_commit_agent(
@@ -190,8 +212,12 @@ fn try_single_commit_agent(
     let model_safe_diff = ctx.model_safe_diff;
     let registry = ctx.registry;
     let workspace = ctx.workspace;
-    let workspace_arc = ctx.workspace_arc;
-    let (prompt, substitution_log) =
+    let mcp = ctx.mcp;
+    let Some(agent_config) = registry.resolve_config(commit_agent) else {
+        return TryAgentResult::Skip(Some(anyhow::anyhow!("Agent not found: {commit_agent}")));
+    };
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
+    let (raw_prompt, substitution_log) =
         build_commit_prompt(template_context, model_safe_diff, workspace);
     if !substitution_log.is_complete() {
         return TryAgentResult::Skip(Some(anyhow::anyhow!(
@@ -199,55 +225,34 @@ fn try_single_commit_agent(
             substitution_log.unsubstituted
         )));
     }
-
-    let Some(agent_config) = registry.resolve_config(commit_agent) else {
-        return TryAgentResult::Skip(Some(anyhow::anyhow!("Agent not found: {commit_agent}")));
-    };
     let base_cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
-    // Start MCP bridge so the agent can submit artifacts via ralph_submit_artifact
-    let session = crate::agents::session::AgentSession::for_drain(
-        unique_commit_plumbing_run_id(&format!("cp{agent_index}")),
-        crate::agents::session::SessionDrain::Commit,
-        1,
-    );
-    let harness_session = session.clone();
-    let bridge = match start_mcp_bridge(session, std::sync::Arc::clone(workspace_arc)) {
-        Ok(b) => b,
-        Err(e) => {
-            return TryAgentResult::Fatal(anyhow::anyhow!(
-                "MCP bridge startup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
-                commit_agent,
-                e
-            ));
-        }
+    let harness_session = mcp.session.clone();
+    let mcp_env = match endpoint_env_or_fail(
+        crate::mcp_server::session_bridge::MCP_ENDPOINT_ENV,
+        &mcp.endpoint_uri,
+        commit_agent,
+    ) {
+        Ok(env) => env,
+        Err(err) => return TryAgentResult::Fatal(err),
     };
-    let mcp_env: std::collections::HashMap<String, String> = std::collections::HashMap::from([(
-        bridge.endpoint_env_var().to_string(),
-        bridge.endpoint_uri(),
-    )]);
 
-    // Apply harness configuration if MCP bridge started successfully
-    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
-    let (harness_env, harness_extra_cmd_args) = if !mcp_env.is_empty() {
+    let (harness_env, harness_extra_cmd_args) =
         match crate::agents::harness::applicator::apply_harness_config(
             agent_type,
             &harness_session,
-            &bridge.endpoint_uri(),
+            &mcp.endpoint_uri,
             workspace,
         ) {
             Ok(result) => (result.extra_env_vars, result.extra_cmd_args),
             Err(e) => {
                 return TryAgentResult::Fatal(anyhow::anyhow!(
-                    "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
-                    commit_agent,
-                    e
-                ));
+                "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
+                commit_agent,
+                e
+            ));
             }
-        }
-    } else {
-        (std::collections::HashMap::new(), Vec::new())
-    };
+        };
 
     // Merge agent env vars with MCP env vars and harness env vars
     let merged_env: std::collections::HashMap<String, String> = agent_config
@@ -269,6 +274,22 @@ fn try_single_commit_agent(
         attempt,
     );
     let cmd_str = append_extra_cmd_args(&base_cmd_str, &harness_extra_cmd_args);
+    let prompt = crate::agents::tool_manifest::rewrite_prompt_mcp_tool_names(
+        &raw_prompt,
+        harness_session.capabilities(),
+        matches!(
+            agent_type,
+            crate::agents::harness::applicator::AgentType::Claude
+        ),
+    );
+    let submit_tool_name = if matches!(
+        agent_type,
+        crate::agents::harness::applicator::AgentType::Claude
+    ) {
+        "mcp__ralph__ralph_submit_artifact"
+    } else {
+        "ralph_submit_artifact"
+    };
     let prompt_cmd = PromptCommand {
         label: commit_agent,
         display_name: commit_agent,
@@ -295,14 +316,34 @@ fn try_single_commit_agent(
         return TryAgentResult::Skip(Some(anyhow::anyhow!("Authentication error detected")));
     }
 
-    if had_error
-        && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML))
-    {
-        return TryAgentResult::Skip(Some(anyhow::anyhow!(
-            "Agent {} failed with exit code {}",
-            commit_agent,
-            result.exit_code
-        )));
+    if had_error && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML)) {
+        let retry_prompt = commit_submission_retry_prompt(&prompt, submit_tool_name);
+        let retry_cmd = PromptCommand {
+            label: commit_agent,
+            display_name: commit_agent,
+            cmd_str: &cmd_str,
+            prompt: &retry_prompt,
+            log_prefix,
+            model_index: Some(model_index),
+            attempt: Some(attempt),
+            logfile: &logfile,
+            parser_type: agent_config.json_parser,
+            env_vars: &merged_env,
+            completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+        };
+        let retry_result = match run_with_prompt(&retry_cmd, runtime) {
+            Ok(r) => r,
+            Err(e) => return TryAgentResult::Skip(Some(e.into())),
+        };
+        if retry_result.exit_code != 0
+            && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML))
+        {
+            return TryAgentResult::Skip(Some(anyhow::anyhow!(
+                "Agent {} failed with exit code {} after submission retry",
+                commit_agent,
+                retry_result.exit_code
+            )));
+        }
     }
 
     let extraction = extract_commit_message_from_file_with_workspace(workspace);
@@ -325,7 +366,53 @@ fn try_single_commit_agent(
         }
         CommitExtractionOutcome::InvalidXml(detail)
         | CommitExtractionOutcome::MissingFile(detail) => {
-            TryAgentResult::Skip(Some(anyhow::anyhow!(detail)))
+            let retry_prompt = commit_submission_retry_prompt(&prompt, submit_tool_name);
+            let retry_cmd = PromptCommand {
+                label: commit_agent,
+                display_name: commit_agent,
+                cmd_str: &cmd_str,
+                prompt: &retry_prompt,
+                log_prefix,
+                model_index: Some(model_index),
+                attempt: Some(attempt),
+                logfile: &logfile,
+                parser_type: agent_config.json_parser,
+                env_vars: &merged_env,
+                completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+            };
+            match run_with_prompt(&retry_cmd, runtime) {
+                Ok(_) => match extract_commit_message_from_file_with_workspace(workspace) {
+                    CommitExtractionOutcome::Valid {
+                        extracted,
+                        files: _,
+                        ..
+                    } => {
+                        archive_xml_file_with_workspace(
+                            workspace,
+                            Path::new(xml_paths::COMMIT_MESSAGE_XML),
+                        );
+                        TryAgentResult::Success(CommitMessageResult {
+                            outcome: CommitMessageOutcome::Message(extracted.into_message()),
+                        })
+                    }
+                    CommitExtractionOutcome::Skipped(reason) => {
+                        archive_xml_file_with_workspace(
+                            workspace,
+                            Path::new(xml_paths::COMMIT_MESSAGE_XML),
+                        );
+                        TryAgentResult::Success(CommitMessageResult {
+                            outcome: CommitMessageOutcome::Skipped { reason },
+                        })
+                    }
+                    CommitExtractionOutcome::InvalidXml(retry_detail)
+                    | CommitExtractionOutcome::MissingFile(retry_detail) => {
+                        TryAgentResult::Skip(Some(anyhow::anyhow!(
+                            "{detail}; submission retry also failed: {retry_detail}"
+                        )))
+                    }
+                },
+                Err(err) => TryAgentResult::Skip(Some(err.into())),
+            }
         }
     }
 }
@@ -377,6 +464,8 @@ pub fn generate_commit_message_with_chain(
 
     use std::ops::ControlFlow;
 
+    let mcp = start_commit_mcp_context(unique_commit_plumbing_run_id("cp"), workspace_arc)?;
+
     let fold_result = agents.iter().enumerate().try_fold(
         None::<anyhow::Error>,
         |last_err, (agent_index, commit_agent)| {
@@ -385,7 +474,7 @@ pub fn generate_commit_message_with_chain(
                 model_safe_diff: &model_safe_diff,
                 registry,
                 workspace,
-                workspace_arc,
+                mcp: &mcp,
             };
             match try_single_commit_agent(agent_index, commit_agent, &ctx, runtime) {
                 TryAgentResult::Success(result) => ControlFlow::Break(Ok(result)),
@@ -412,9 +501,29 @@ fn append_extra_cmd_args(cmd: &str, extra_args: &[String]) -> String {
     }
 }
 
+fn endpoint_env_or_fail(
+    endpoint_env_var: &str,
+    endpoint_uri: &str,
+    commit_agent: &str,
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    if endpoint_uri.is_empty() {
+        Err(anyhow::anyhow!(
+            "MCP endpoint missing for commit agent '{}'. MCP is mandatory and execution was aborted.",
+            commit_agent
+        ))
+    } else {
+        Ok(std::collections::HashMap::from([(
+            endpoint_env_var.to_string(),
+            endpoint_uri.to_string(),
+        )]))
+    }
+}
+
 #[cfg(test)]
 mod append_extra_cmd_args_tests {
     use super::*;
+    use crate::workspace::memory_workspace::MemoryWorkspace;
+    use std::sync::Arc;
 
     #[test]
     fn append_extra_cmd_args_noop() {
@@ -428,5 +537,43 @@ mod append_extra_cmd_args_tests {
             append_extra_cmd_args("claude", &args),
             "claude --settings '/tmp/cache'"
         );
+    }
+
+    #[test]
+    fn endpoint_env_or_fail_rejects_empty_endpoint() {
+        let err = endpoint_env_or_fail("RALPH_MCP_ENDPOINT", "", "commit-agent")
+            .expect_err("empty endpoint must fail closed");
+        assert!(
+            err.to_string()
+                .contains("MCP endpoint missing for commit agent 'commit-agent'"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn endpoint_env_or_fail_builds_endpoint_env() {
+        let env = endpoint_env_or_fail(
+            "RALPH_MCP_ENDPOINT",
+            "unix:///tmp/ralph.sock",
+            "commit-agent",
+        )
+        .expect("non-empty endpoint should build env");
+        assert_eq!(
+            env.get("RALPH_MCP_ENDPOINT").map(String::as_str),
+            Some("unix:///tmp/ralph.sock")
+        );
+    }
+
+    #[test]
+    fn start_commit_mcp_context_builds_commit_session_and_endpoint() {
+        let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new_test());
+
+        let ctx = start_commit_mcp_context("commit-run".to_string(), &workspace)
+            .expect("shared commit MCP context must start");
+
+        assert_eq!(ctx.session.run_id, "commit-run");
+        assert_eq!(ctx.session.drain.as_str(), "commit");
+        assert!(ctx.endpoint_uri.starts_with("unix://"));
+        assert!(!ctx.endpoint_uri.is_empty());
     }
 }

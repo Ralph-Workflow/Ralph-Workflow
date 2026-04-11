@@ -18,12 +18,14 @@
 //! agent connections.
 
 use crate::agents::session::{AgentSession, AuditRecord as RalphAuditRecord, AuditTrail};
+use crate::agents::tool_manifest::visible_mcp_tool_names_owned;
 use crate::mcp_server::capability_mapping::drain_to_access_mode;
 use crate::mcp_server::tool_bridge::{
     build_ralph_tool_registry, RalphAuditSinkAdapter, RalphHostSessionAdapter,
     RalphWorkspaceAdapter,
 };
 use crate::workspace::Workspace;
+use mcp_server::dispatch::access::ToolFilter;
 use mcp_server::io::access::McpServerConfig;
 use mcp_server::io::SessionBridge as McpSessionBridge;
 use mcp_server::io::{McpServer, ServerState};
@@ -92,11 +94,13 @@ impl SessionBridge {
         // Derive the access mode from the session's drain — per RFC-009:
         // Planning/Analysis/Review/Fix → ReadOnly; Development/Commit → ReadWrite.
         let access_mode = drain_to_access_mode(session_arc.drain);
+        let visible_tools = visible_mcp_tool_names_owned(session_arc.capabilities());
 
         // Create config with workspace root and session ID for audit correlation
         let config = McpServerConfig::new(workspace.root().to_path_buf())
             .with_session_id(session_arc.session_id.as_str().to_string())
-            .with_access_mode(access_mode);
+            .with_access_mode(access_mode)
+            .with_tool_filter(ToolFilter::Allowlist(visible_tools));
 
         // Create the inner session bridge (audit sink passed at start() time)
         let inner = McpSessionBridge::new(host, config, ws, registry);
@@ -150,14 +154,9 @@ impl SessionBridge {
         new_records
     }
 
-    /// Get the Unix socket path for agent connections.
-    pub fn socket_path(&self) -> &PathBuf {
-        self.inner.socket_path()
-    }
-
     /// Get the MCP endpoint URI for passing to agents.
     ///
-    /// Returns a URI like `unix:///path/to/socket` that agents can use
+    /// Returns a URI like `tcp://127.0.0.1:12345` that agents can use
     /// to connect to the MCP server.
     pub fn endpoint_uri(&self) -> String {
         self.inner.endpoint_uri()
@@ -211,9 +210,11 @@ impl SessionBridge {
         let host = Arc::new(RalphHostSessionAdapter::new(Arc::clone(&self.session)));
         let ws = Arc::new(RalphWorkspaceAdapter::new(Arc::clone(&self.workspace)));
         let access_mode = drain_to_access_mode(self.session.drain);
+        let visible_tools = visible_mcp_tool_names_owned(self.session.capabilities());
         let config = McpServerConfig::new(self.workspace.root().to_path_buf())
             .with_session_id(self.session.session_id.as_str().to_string())
-            .with_access_mode(access_mode);
+            .with_access_mode(access_mode)
+            .with_tool_filter(ToolFilter::Allowlist(visible_tools));
 
         McpServer::new(host, config, ws, registry, Some(self.audit_adapter.clone()))
     }
@@ -296,20 +297,11 @@ mod tests {
     }
 
     #[test]
-    fn test_socket_path_format() {
-        let bridge = SessionBridge::new(unique_session(), test_workspace());
-        let path = bridge.socket_path();
-        let path_str = path.display().to_string();
-        assert!(path_str.contains("ralph-mcp"));
-        assert!(path_str.ends_with(".sock"));
-    }
-
-    #[test]
     fn test_endpoint_uri() {
-        let bridge = SessionBridge::new(unique_session(), test_workspace());
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        bridge.start().expect("bridge should start");
         let uri = bridge.endpoint_uri();
-        assert!(uri.starts_with("unix://"));
-        assert!(uri.ends_with(".sock"));
+        assert!(uri.starts_with("tcp://127.0.0.1:"));
     }
 
     #[test]
@@ -477,6 +469,81 @@ mod tests {
         assert!(
             tool_names.contains(&"ralph_submit_artifact"),
             "tools/list must include 'ralph_submit_artifact'; registered tools: {tool_names:?}"
+        );
+    }
+
+    #[test]
+    fn test_tools_list_matches_session_manifest_for_all_drains() {
+        use crate::agents::tool_manifest::visible_mcp_tool_names;
+        use std::collections::BTreeSet;
+
+        for drain in [
+            crate::agents::session::SessionDrain::Planning,
+            crate::agents::session::SessionDrain::Analysis,
+            crate::agents::session::SessionDrain::Review,
+            crate::agents::session::SessionDrain::Development,
+            crate::agents::session::SessionDrain::Fix,
+            crate::agents::session::SessionDrain::Commit,
+        ] {
+            let session = crate::agents::session::AgentSession::for_drain(
+                format!("manifest-{drain:?}"),
+                drain,
+                0,
+            );
+            let expected = visible_mcp_tool_names(session.capabilities());
+
+            let mut bridge = SessionBridge::new(session, test_workspace());
+            bridge.start().expect("bridge should start");
+
+            let init_req: JsonRpcRequest = serde_json::from_value(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05"},
+                "id": 1
+            }))
+            .expect("initialize request is valid JSON-RPC");
+            let (_, state) = bridge.handle_request_in_process(init_req, ServerState::Uninitialized);
+
+            let list_req: JsonRpcRequest = serde_json::from_value(serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "tools/list",
+                "id": 2
+            }))
+            .expect("tools/list request is valid JSON-RPC");
+            let (list_resp, _) = bridge.handle_request_in_process(list_req, state);
+            let list_resp = serde_json::to_value(list_resp.expect("tools/list response"))
+                .expect("serialize tools/list");
+            let tools = list_resp["result"]["tools"]
+                .as_array()
+                .expect("tools/list result must contain a 'tools' array");
+            let actual: BTreeSet<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+            let expected: BTreeSet<&str> = expected.into_iter().collect();
+
+            assert_eq!(
+                actual, expected,
+                "tools/list must match the session manifest for {:?}",
+                drain
+            );
+        }
+    }
+
+    #[test]
+    fn test_started_bridge_accepts_raw_unix_connection() {
+        use std::net::TcpStream;
+
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        bridge.start().expect("bridge should start");
+
+        let addr = bridge
+            .endpoint_uri()
+            .strip_prefix("tcp://")
+            .expect("endpoint must be tcp")
+            .to_string();
+
+        let connect_result = TcpStream::connect(addr);
+        assert!(
+            connect_result.is_ok(),
+            "started bridge must accept raw TCP connections, got: {connect_result:?}"
         );
     }
 }

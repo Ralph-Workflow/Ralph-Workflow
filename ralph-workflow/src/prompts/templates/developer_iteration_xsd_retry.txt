@@ -60,7 +60,7 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY
 The validation error is in JSON directive format:
 {"code": "MISSING_FIELD", "field_path": "status", "next_actions": ["set status to completed, partial, or failed"]}
 
-You MUST call `ralph_submit_artifact` with artifact_type="development_result"
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result"
 and corrected JSON content. Follow every instruction in the `next_actions`
 array exactly.
 
@@ -83,5 +83,5 @@ COMMON MISTAKES TO FIX
 2. Invalid status value (must be: completed, partial, or failed)
 3. Missing or malformed continuation object for partial status
 
-Resubmit your corrected JSON via `ralph_submit_artifact`.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.
 DO NOT do any other work.

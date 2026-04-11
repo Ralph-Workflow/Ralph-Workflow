@@ -35,13 +35,29 @@ pub fn prompt_developer_iteration(
 
     let template_content = include_str!("../templates/developer_iteration_xml.txt");
     let template = Template::new(template_content);
-    let variables = HashMap::from([
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_content.to_string()),
         ("PLAN", plan_content.to_string()),
     ]);
+    let caps = crate::agents::session::CapabilitySet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Development,
+    );
+    let flags = crate::agents::session::PolicyFlagSet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Development,
+    );
+    let capability_vars = capability_template_variables(&caps, &flags);
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             // Embedded fallback template (XML format)
             format!(

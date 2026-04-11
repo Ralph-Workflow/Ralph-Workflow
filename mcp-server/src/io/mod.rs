@@ -45,26 +45,35 @@ use std::sync::Arc;
 /// The host session capability check is deferred until step 4 of the enforcement chain
 /// (after tool filter, access mode, and path checks), ensuring the host is never
 /// consulted when earlier checks deny.
-pub fn check_tool_enforcement(
-    config: &crate::io::access::McpServerConfig,
-    tool_name: &str,
-    path: Option<&Path>,
+/// Bundled inputs for [`check_tool_enforcement`].
+///
+/// This keeps the boundary helper within clippy's argument limit while preserving
+/// explicit naming for each enforcement input.
+pub struct ToolEnforcementRequest<'a> {
+    config: &'a crate::io::access::McpServerConfig,
+    tool_name: &'a str,
+    path: Option<&'a Path>,
+    tool_exists: bool,
     is_mutating: bool,
     required_capability: Option<crate::dispatch::access::McpCapability>,
-    session: &dyn HostSession,
-    audit_sink: &dyn AuditSink,
-) -> AccessDecision {
+    session: &'a dyn HostSession,
+    audit_sink: &'a dyn AuditSink,
+}
+
+/// Check tool enforcement using the provided boundary inputs.
+pub fn check_tool_enforcement(request: ToolEnforcementRequest<'_>) -> AccessDecision {
     // Thin wiring: directly construct EnforcementContext with all inputs.
     // The capability check is deferred until EnforcementContext::check() evaluates
     // the enforcement chain - the host is only consulted after earlier checks pass.
     let ctx = crate::io::access::EnforcementContext {
-        config,
-        tool_name,
-        path,
-        is_mutating,
-        required_capability,
-        session,
-        audit_sink,
+        config: request.config,
+        tool_name: request.tool_name,
+        tool_exists: request.tool_exists,
+        path: request.path,
+        is_mutating: request.is_mutating,
+        required_capability: request.required_capability,
+        session: request.session,
+        audit_sink: request.audit_sink,
     };
     ctx.check()
 }
@@ -234,15 +243,16 @@ fn check_enforcement(
     // to check_tool_enforcement, which passes them to EnforcementContext. The capability
     // check (step 4) only calls the host AFTER tool filter, access mode, and path checks
     // have all passed. This ensures the host is never consulted when earlier checks deny.
-    match check_tool_enforcement(
-        params.config,
-        params.name,
-        path_for_check,
+    match check_tool_enforcement(ToolEnforcementRequest {
+        config: params.config,
+        tool_name: params.name,
+        path: path_for_check,
+        tool_exists: required_capability.is_some(),
         is_mutating,
         required_capability,
-        params.session,
-        params.audit_sink,
-    ) {
+        session: params.session,
+        audit_sink: params.audit_sink,
+    }) {
         AccessDecision::Allow => Ok(()),
         AccessDecision::Deny { reason, code } => Err(Box::new((
             JsonRpcResponse::error(
@@ -499,7 +509,7 @@ impl McpServer {
         request_id: serde_json::Value,
         state: ServerState,
     ) -> (Option<JsonRpcResponse>, ServerState) {
-        let tools = self.registry.list_tools();
+        let tools = self.registry.list_tools_filtered(&self.config.tool_filter);
         (
             Some(JsonRpcResponse::success(
                 serde_json::json!({ "tools": tools }),
@@ -559,8 +569,10 @@ mod tests {
     use super::*;
     use crate::dispatch::access::{AccessDecision, McpCapability};
     use crate::dispatch::host::DirEntry;
-    use crate::dispatch::ToolRegistry;
+    use crate::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
+    use crate::protocol::{ToolContent, ToolDefinition, ToolResult};
     use std::path::Path;
+    use std::sync::Arc;
 
     struct MockSession;
     impl HostSession for MockSession {
@@ -648,5 +660,76 @@ mod tests {
         let (response, _) = server.handle_request(request, state);
         let response = response.expect("tools/list should return a response");
         assert!(response.result.is_some());
+    }
+
+    #[test]
+    fn test_tools_list_respects_tool_filter() {
+        let session = Arc::new(MockSession) as Arc<dyn HostSession>;
+        let workspace = Arc::new(MockWorkspace) as Arc<dyn WorkspaceAdapter>;
+        let handler: ToolHandler = Arc::new(|_, _, _| {
+            Ok(ToolResult {
+                content: vec![ToolContent::text("ok")],
+                is_error: Some(false),
+            })
+        });
+        let registry = ToolRegistry::new(vec![
+            (
+                ToolMetadata {
+                    definition: ToolDefinition {
+                        name: "read_file".to_string(),
+                        description: "read".to_string(),
+                        input_schema: serde_json::json!({"type": "object"}),
+                    },
+                    required_capability: McpCapability::WorkspaceRead,
+                    is_mutating: None,
+                },
+                Arc::clone(&handler),
+            ),
+            (
+                ToolMetadata {
+                    definition: ToolDefinition {
+                        name: "write_file".to_string(),
+                        description: "write".to_string(),
+                        input_schema: serde_json::json!({"type": "object"}),
+                    },
+                    required_capability: McpCapability::WorkspaceWriteTracked,
+                    is_mutating: None,
+                },
+                handler,
+            ),
+        ]);
+        let config = crate::io::access::McpServerConfig::new(std::env::temp_dir())
+            .with_tool_filter(crate::dispatch::access::ToolFilter::Allowlist(vec![
+                "read_file".to_string(),
+            ]));
+        let server = McpServer::new(session, config, workspace, registry, None);
+
+        let init_request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "initialize".to_string(),
+            params: Some(serde_json::json!({ "protocolVersion": "2024-11-05" })),
+            id: Some(serde_json::json!(1)),
+        };
+        let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            method: "tools/list".to_string(),
+            params: None,
+            id: Some(serde_json::json!(2)),
+        };
+
+        let (response, _) = server.handle_request(request, state);
+        let response = response.expect("tools/list should return a response");
+        let result = response.result.expect("tools/list should return result");
+        let tool_names: Vec<&str> = result
+            .get("tools")
+            .and_then(|tools| tools.as_array())
+            .expect("tools/list result should contain array")
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(|name| name.as_str()))
+            .collect();
+
+        assert_eq!(tool_names, vec!["read_file"]);
     }
 }

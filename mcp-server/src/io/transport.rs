@@ -24,8 +24,7 @@
 
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::net::{SocketAddr, UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -123,45 +122,33 @@ impl McpStream for StdioTransport {
 // Unix Socket Transport
 // ---------------------------------------------------------------------------
 
-/// Unix socket MCP transport for local agent connections.
+/// TCP MCP transport for local agent connections.
 ///
-/// Creates a non-blocking Unix domain socket server. Each accepted connection
+/// Creates a non-blocking localhost TCP server. Each accepted connection
 /// gets its own `McpStream` for reading/writing JSON-RPC messages.
 pub struct UnixSocketTransport {
-    listener: UnixListener,
-    socket_path: PathBuf,
+    listener: TcpListener,
+    local_addr: SocketAddr,
     shutdown_flag: Arc<AtomicBool>,
 }
 
 impl UnixSocketTransport {
-    /// Create a new Unix socket transport at the given path.
-    ///
-    /// # Arguments
-    ///
-    /// * `socket_path` - Path for the Unix socket
-    /// * `shutdown_flag` - Atomic flag to signal shutdown
-    pub fn new(
-        socket_path: PathBuf,
-        shutdown_flag: Arc<AtomicBool>,
-    ) -> Result<Self, TransportError> {
-        // Remove existing socket file if present
-        if socket_path.exists() {
-            std::fs::remove_file(&socket_path)?;
-        }
-
-        let listener = UnixListener::bind(&socket_path)?;
+    /// Create a new localhost TCP transport on an ephemeral port.
+    pub fn new(shutdown_flag: Arc<AtomicBool>) -> Result<Self, TransportError> {
+        let listener = TcpListener::bind(("127.0.0.1", 0))?;
         listener.set_nonblocking(true)?;
+        let local_addr = listener.local_addr()?;
 
         Ok(Self {
             listener,
-            socket_path,
+            local_addr,
             shutdown_flag,
         })
     }
 
-    /// Get the socket path.
-    pub fn socket_path(&self) -> &PathBuf {
-        &self.socket_path
+    /// Get the bound local address.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
     /// Accept a new client connection.
@@ -184,17 +171,17 @@ impl UnixSocketTransport {
     }
 }
 
-/// Concrete McpStream implementation for Unix sockets.
+/// Concrete McpStream implementation for local TCP sockets.
 pub struct McpStreamImpl {
-    stream: UnixStream,
+    stream: TcpStream,
 }
 
 unsafe impl Send for McpStreamImpl {}
 unsafe impl Sync for McpStreamImpl {}
 
 impl McpStreamImpl {
-    /// Create a new MCP stream from a Unix stream.
-    pub fn new(stream: UnixStream) -> Self {
+    /// Create a new MCP stream from a TCP stream.
+    pub fn new(stream: TcpStream) -> Self {
         Self { stream }
     }
 
@@ -314,12 +301,12 @@ fn write_framed_jsonrpc<W: Write>(
     Ok(())
 }
 
-/// Read a framed JSON-RPC message from a Unix stream.
+/// Read a framed JSON-RPC message from a TCP stream.
 ///
-/// UnixStream doesn't implement BufRead, so we read byte-by-byte until we have
+/// TcpStream doesn't implement BufRead, so we read byte-by-byte until we have
 /// the complete headers, then read the body.
 fn read_framed_jsonrpc_from_stream(
-    stream: &mut UnixStream,
+    stream: &mut TcpStream,
 ) -> Result<Option<JsonRpcRequest>, TransportError> {
     let header_bytes = read_headers_until_blank_line(stream)?;
     if header_bytes.is_empty() {
@@ -335,7 +322,7 @@ fn read_framed_jsonrpc_from_stream(
 ///
 /// Returns Ok(Some(byte)) on success, Ok(None) on EOF, or error on failure.
 /// This helper is used by read_headers_until_blank_line to read byte-by-byte.
-fn read_one_byte(stream: &mut UnixStream) -> Result<Option<u8>, TransportError> {
+fn read_one_byte(stream: &mut TcpStream) -> Result<Option<u8>, TransportError> {
     let mut buf = [0u8; 1];
     match stream.read(&mut buf) {
         Ok(0) => Ok(None), // EOF
@@ -395,7 +382,7 @@ fn append_header_line(header: &mut Vec<u8>, line: &[u8]) -> Result<(), Transport
 ///
 /// This avoids BufReader which can have unexpected behavior with non-blocking
 /// Unix sockets when the stream is empty.
-fn read_headers_until_blank_line(stream: &mut UnixStream) -> Result<Vec<u8>, TransportError> {
+fn read_headers_until_blank_line(stream: &mut TcpStream) -> Result<Vec<u8>, TransportError> {
     let mut header = Vec::new();
     loop {
         let byte = read_one_byte(stream)?.ok_or(TransportError::ConnectionClosed)?;
@@ -436,7 +423,7 @@ fn parse_content_length_from_bytes(header_bytes: &[u8]) -> Result<usize, Transpo
 /// Uses `read_exact` semantics to ensure all `content_length` bytes are read.
 /// If fewer bytes are available, returns `ConnectionClosed`.
 fn read_body_from_stream(
-    stream: &mut UnixStream,
+    stream: &mut TcpStream,
     content_length: usize,
 ) -> Result<Vec<u8>, TransportError> {
     if content_length > MAX_BODY_BYTES {
@@ -457,9 +444,9 @@ fn read_body_from_stream(
     Ok(body)
 }
 
-/// Write a framed JSON-RPC response to a Unix stream.
+/// Write a framed JSON-RPC response to a TCP stream.
 fn write_framed_jsonrpc_to_stream(
-    stream: &mut UnixStream,
+    stream: &mut TcpStream,
     response: &JsonRpcResponse,
 ) -> Result<(), TransportError> {
     let body = serde_json::to_vec(response)?;
@@ -470,31 +457,6 @@ fn write_framed_jsonrpc_to_stream(
     stream.flush()?;
 
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Socket Path Helpers
-// ---------------------------------------------------------------------------
-
-/// Prepare a socket path in the temp directory.
-///
-/// Creates the directory structure if needed.
-pub fn prepare_socket_path(session_id: &str, nonce: u64) -> PathBuf {
-    let temp_dir = std::env::temp_dir();
-    let socket_dir = temp_dir.join("ralph-mcp");
-    std::fs::create_dir_all(&socket_dir).ok();
-    socket_dir.join(format!("{}-{}.sock", session_id, nonce))
-}
-
-/// Bind a non-blocking Unix listener and return it with the path.
-pub fn bind_nonblocking_listener(path: &PathBuf) -> Result<UnixListener, TransportError> {
-    if path.exists() {
-        std::fs::remove_file(path)?;
-    }
-
-    let listener = UnixListener::bind(path)?;
-    listener.set_nonblocking(true)?;
-    Ok(listener)
 }
 
 #[cfg(test)]
@@ -530,11 +492,11 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_socket_path() {
-        let path = prepare_socket_path("test-session", 12345);
-        assert!(path.to_string_lossy().contains("ralph-mcp"));
-        assert!(path.to_string_lossy().contains("test-session"));
-        assert!(path.to_string_lossy().ends_with(".sock"));
+    fn tcp_transport_binds_localhost_ephemeral_port() {
+        let transport = UnixSocketTransport::new(Arc::new(AtomicBool::new(false)))
+            .expect("transport should bind localhost tcp");
+        assert_eq!(transport.local_addr().ip().to_string(), "127.0.0.1");
+        assert!(transport.local_addr().port() > 0);
     }
 
     #[test]

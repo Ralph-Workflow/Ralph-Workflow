@@ -97,6 +97,7 @@ mod registry;
 mod retry_timer;
 pub mod runtime;
 pub mod session;
+pub(crate) mod tool_manifest;
 pub mod validation;
 
 use std::sync::Arc;

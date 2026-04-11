@@ -201,6 +201,12 @@ fn run_agent_execution(
     inputs: AgentRunInputs<'_>,
 ) -> Result<crate::reducer::event::PipelineEvent> {
     let (agent_config, base_cmd) = resolve_agent_config_and_cmd(ctx, state, &inputs)?;
+    let agent_type = detect_agent_type(&agent_config.cmd);
+    let effective_prompt = rewrite_prompt_mcp_tool_names_for_agent(
+        inputs.effective_prompt,
+        inputs.session,
+        agent_type,
+    );
     let (cmd_str, merged_env) = apply_mcp_harness_to_cmd(ctx, &inputs, &agent_config, base_cmd)?;
     if let Some(denied) = check_command_policy(ctx, &cmd_str, &inputs) {
         return Ok(denied);
@@ -209,6 +215,7 @@ fn run_agent_execution(
     execute_with_config(
         ctx,
         &inputs,
+        &effective_prompt,
         &cmd_str,
         &merged_env,
         model_index,
@@ -266,9 +273,13 @@ fn apply_harness_if_needed(
     agent_config: &crate::agents::config::AgentConfig,
     mcp_env_vars: &mut std::collections::HashMap<String, String>,
 ) -> Result<Vec<String>> {
-    let Some(endpoint) = inputs.mcp_endpoint else {
-        return Ok(Vec::new());
-    };
+    let endpoint = inputs.mcp_endpoint.ok_or_else(|| {
+        anyhow::anyhow!(
+            "MCP endpoint missing for agent '{}' (session {}). MCP is mandatory and execution was aborted.",
+            inputs.effective_agent,
+            inputs.session.session_id
+        )
+    })?;
     let agent_type = detect_agent_type(&agent_config.cmd);
     match apply_harness_config(agent_type, inputs.session, endpoint, ctx.workspace) {
         Ok(harness_result) => {
@@ -294,6 +305,27 @@ fn build_mcp_base_env(mcp_endpoint: Option<&str>) -> std::collections::HashMap<S
         vars.insert(MCP_ENDPOINT_ENV.to_string(), endpoint.to_string());
         vars
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_mcp_base_env;
+    use super::MCP_ENDPOINT_ENV;
+
+    #[test]
+    fn build_mcp_base_env_is_empty_without_endpoint() {
+        let env = build_mcp_base_env(None);
+        assert!(env.is_empty());
+    }
+
+    #[test]
+    fn build_mcp_base_env_includes_endpoint_when_present() {
+        let env = build_mcp_base_env(Some("unix:///tmp/ralph.sock"));
+        assert_eq!(
+            env.get(MCP_ENDPOINT_ENV).map(String::as_str),
+            Some("unix:///tmp/ralph.sock")
+        );
+    }
 }
 
 fn append_extra_args(
@@ -347,6 +379,7 @@ fn check_command_policy(
 fn execute_with_config(
     ctx: &mut PhaseContext<'_>,
     inputs: &AgentRunInputs<'_>,
+    effective_prompt: &str,
     cmd_str: &str,
     merged_env: &std::collections::HashMap<String, String>,
     model_index: usize,
@@ -358,7 +391,7 @@ fn execute_with_config(
         cmd_str,
         parser_type,
         env_vars: merged_env,
-        prompt: inputs.effective_prompt,
+        prompt: effective_prompt,
         display_name: inputs.effective_agent,
         log_prefix: "agent",
         model_index,
@@ -383,6 +416,21 @@ fn execute_with_config(
         },
     )?;
     Ok(event)
+}
+
+fn rewrite_prompt_mcp_tool_names_for_agent(
+    prompt: &str,
+    session: &AgentSession,
+    agent_type: crate::agents::harness::applicator::AgentType,
+) -> String {
+    crate::agents::tool_manifest::rewrite_prompt_mcp_tool_names(
+        prompt,
+        session.capabilities(),
+        matches!(
+            agent_type,
+            crate::agents::harness::applicator::AgentType::Claude
+        ),
+    )
 }
 
 fn build_agent_invocation_result(

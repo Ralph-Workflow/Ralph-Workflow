@@ -199,3 +199,15 @@ fn stderr_contains_auth_error(stderr: &str) -> bool {
         || lower.contains("unauthorized")
         || lower.contains("permission denied")
 }
+
+fn commit_submission_retry_prompt(base_prompt: &str, submit_tool_name: &str) -> String {
+    format!(
+        "{base_prompt}\n\n## Submission Retry (MANDATORY)\n\
+You already analyzed the diff and produced the commit payload, but Ralph did not receive a submitted artifact.\n\
+Do NOT print the commit message or JSON to stdout again.\n\
+Do NOT summarize your answer in plain text.\n\
+Call `{submit_tool_name}` now to submit the commit artifact.\n\
+If you already generated the JSON/content, reuse it exactly and submit it now.\n\
+Only if the tool is genuinely unavailable after trying should you explain that specific tool failure."
+    )
+}

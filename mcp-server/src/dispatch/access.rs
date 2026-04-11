@@ -477,8 +477,12 @@ pub enum EnforcementCheck {
 }
 
 /// Pure policy: check if tool is allowed by filter.
-pub fn policy_tool_allowed(tool_name: &str, filter: &ToolFilter) -> Option<AccessDeniedCode> {
-    if filter.allows(tool_name) {
+pub fn policy_tool_allowed(
+    tool_name: &str,
+    tool_exists: bool,
+    filter: &ToolFilter,
+) -> Option<AccessDeniedCode> {
+    if !tool_exists || filter.allows(tool_name) {
         None
     } else {
         Some(AccessDeniedCode::ToolNotAllowed)
@@ -655,6 +659,8 @@ pub fn denial_reason_path_outside_root(
 pub struct EnforcementParams<'a> {
     /// Tool name being dispatched.
     pub tool_name: &'a str,
+    /// Whether the tool exists in the registry.
+    pub tool_exists: bool,
     /// Active tool filter (Allowlist or Blocklist).
     pub tool_filter: &'a ToolFilter,
     /// Whether the tool is a mutating operation.
@@ -685,7 +691,9 @@ pub struct EnforcementParams<'a> {
 /// 4. Capability (host session denied the required capability) — only called if earlier checks pass
 pub fn evaluate_enforcement_pure(params: &EnforcementParams) -> EnforcementCheck {
     // Check tool filter (priority 1)
-    if let Some(code) = policy_tool_allowed(params.tool_name, params.tool_filter) {
+    if let Some(code) =
+        policy_tool_allowed(params.tool_name, params.tool_exists, params.tool_filter)
+    {
         let reason = denial_reason_tool_not_allowed(params.tool_name);
         return EnforcementCheck::Deny { code, reason };
     }

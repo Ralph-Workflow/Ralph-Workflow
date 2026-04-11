@@ -17,7 +17,7 @@
 //! checks `session.check_capability(required_capability)`. If denied, the tool
 //! returns a capability error without invoking the handler.
 
-use crate::dispatch::access::{AccessDecision, McpCapability};
+use crate::dispatch::access::{AccessDecision, McpCapability, ToolFilter};
 use crate::dispatch::host::{HostSession, WorkspaceAdapter};
 use crate::protocol::{ToolContent, ToolDefinition, ToolResult};
 use serde_json::Value;
@@ -119,6 +119,15 @@ impl ToolRegistry {
     pub fn list_tools(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
+            .map(|(meta, _)| meta.definition.clone())
+            .collect()
+    }
+
+    /// List registered tools visible through the active tool filter.
+    pub fn list_tools_filtered(&self, tool_filter: &ToolFilter) -> Vec<ToolDefinition> {
+        self.tools
+            .values()
+            .filter(|(meta, _)| tool_filter.allows(meta.definition.name.as_str()))
             .map(|(meta, _)| meta.definition.clone())
             .collect()
     }

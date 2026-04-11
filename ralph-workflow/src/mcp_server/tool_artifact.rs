@@ -381,8 +381,10 @@ fn validate_and_dispatch_artifact(
 ///
 /// # Access Mode
 ///
-/// ReadWrite only. This tool writes to the workspace `.agent/` directory and
-/// triggers a workflow state transition; it is not available in ReadOnly mode.
+/// ReadOnly-safe: YES — `ArtifactSubmit` is classified as non-mutating by
+/// `capability_is_mutating()`, so this tool is available in ReadOnly mode (e.g., Planning drain).
+/// Artifact submission is a workflow coordination signal; all drain types (Planning, Development,
+/// Fix, Analysis, Review, Commit) include `ArtifactSubmit` in their default capability set.
 ///
 /// # Request Shape
 ///
@@ -721,9 +723,14 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Verify that Planning session can submit artifacts.
+    ///
+    /// `ArtifactSubmit` is classified as a non-mutating capability (workflow coordination
+    /// signal), so it is allowed in ReadOnly mode (Planning drain). The Planning agent's
+    /// job is to write and submit a plan — blocking this would break the workflow.
     #[test]
-    fn test_submit_artifact_capability_denied_for_planning() {
-        // Planning session should have ArtifactSubmit
+    fn submit_artifact_allowed_for_planning_session() {
+        // Planning session should have ArtifactSubmit (non-mutating coordination signal)
         let session = AgentSession::for_drain("test-run".to_string(), SessionDrain::Planning, 1);
         let workspace = test_workspace();
 

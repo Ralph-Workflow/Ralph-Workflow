@@ -161,11 +161,8 @@ fn start_mcp_bridge_for_session(
         )
     })?;
     let uri = bridge.endpoint_uri();
-    ctx.logger.info(&format!(
-        "RFC-009 MCP endpoint prepared: {} (socket: {})",
-        uri,
-        bridge.socket_path().display()
-    ));
+    ctx.logger
+        .info(&format!("RFC-009 MCP endpoint prepared: {}", uri));
     Ok((bridge, Some(uri)))
 }
 

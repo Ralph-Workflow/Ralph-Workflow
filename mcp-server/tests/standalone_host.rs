@@ -527,10 +527,29 @@ fn test_allowlist_blocks_unlisted_tool() {
     let session = InMemorySession::new("allowlist-session")
         .with_capabilities(&[McpCapability::WorkspaceRead]);
     let workspace = InMemoryWorkspace::new(root).with_file("test.txt", "content");
+    let handler: ToolHandler = Arc::new(
+        |_session: &dyn mcp_server::HostSession,
+         _workspace: &dyn mcp_server::WorkspaceAdapter,
+         _params: serde_json::Value|
+         -> Result<ToolResult, mcp_server::ToolError> {
+            Ok(ToolResult::success(vec![ToolContent::text(
+                "git status".to_string(),
+            )]))
+        },
+    );
+    let metadata = ToolMetadata {
+        definition: ToolDefinition {
+            name: "git_status".to_string(),
+            description: "Get git status".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        required_capability: McpCapability::GitStatusRead,
+        is_mutating: None,
+    };
 
     let session_arc = Arc::new(session) as Arc<dyn mcp_server::HostSession>;
     let workspace_arc = Arc::new(workspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let registry = ToolRegistry::new(vec![]);
+    let registry = ToolRegistry::new(vec![(metadata, handler)]);
 
     // Create audit sink to verify denial generates audit record
     let audit_sink = Arc::new(TestAuditSink::new());
