@@ -11,15 +11,17 @@
 //!
 //! # Endpoint Management
 //!
-//! The session bridge creates a Unix socket endpoint for each session.
+//! The session bridge creates a TCP loopback endpoint for each session.
 //! The endpoint path is passed to the agent via the `RALPH_MCP_ENDPOINT` environment variable.
 //!
-//! The MCP server runs in a background thread and listens on the Unix socket for
+//! The MCP server runs in a background thread and listens on the loopback TCP endpoint for
 //! agent connections.
 
 use crate::agents::session::{AgentSession, AuditRecord as RalphAuditRecord, AuditTrail};
 use crate::agents::tool_manifest::visible_mcp_tool_names_owned;
-use crate::mcp_server::capability_mapping::drain_to_access_mode;
+use crate::mcp_server::capability_mapping::{
+    drain_class_for_session, drain_to_access_mode, drain_to_policy_mode,
+};
 use crate::mcp_server::tool_bridge::{
     build_ralph_tool_registry, RalphAuditSinkAdapter, RalphHostSessionAdapter,
     RalphWorkspaceAdapter,
@@ -27,14 +29,15 @@ use crate::mcp_server::tool_bridge::{
 use crate::workspace::Workspace;
 use mcp_server::dispatch::access::ToolFilter;
 use mcp_server::io::access::McpServerConfig;
-use mcp_server::io::SessionBridge as McpSessionBridge;
-use mcp_server::io::{McpServer, ServerState};
+use mcp_server::io::{ControlCommand, ControlError};
+use mcp_server::io::{EndpointLease, McpServer, ServerState, SessionBridge as McpSessionBridge};
 use mcp_server::protocol::{JsonRpcRequest, JsonRpcResponse};
-use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
 pub const MCP_ENDPOINT_ENV: &str = "RALPH_MCP_ENDPOINT";
+pub const MCP_GENERATION_ENV: &str = "RALPH_MCP_GENERATION";
+pub const MCP_RUN_ID_ENV: &str = "RALPH_MCP_RUN_ID";
 
 /// Errors that can occur during session bridge operations.
 #[derive(Error, Debug)]
@@ -68,7 +71,6 @@ pub struct SessionBridge {
     audit_adapter: Arc<RalphAuditSinkAdapter>,
     /// Cached view of audit records for backward-compatible API.
     cached_audit: AuditTrail,
-    test_started: bool,
 }
 
 impl SessionBridge {
@@ -97,10 +99,16 @@ impl SessionBridge {
         let visible_tools = visible_mcp_tool_names_owned(session_arc.capabilities());
 
         // Create config with workspace root and session ID for audit correlation
+        let policy_mode = drain_to_policy_mode(session_arc.drain);
         let config = McpServerConfig::new(workspace.root().to_path_buf())
             .with_session_id(session_arc.session_id.as_str().to_string())
             .with_access_mode(access_mode)
-            .with_tool_filter(ToolFilter::Allowlist(visible_tools));
+            .with_policy_mode(policy_mode)
+            .with_drain(session_arc.drain.as_str().to_string())
+            .with_drain_class(drain_class_for_session(session_arc.drain))
+            .with_tool_filter(ToolFilter::Allowlist(visible_tools))
+            .with_run_id(session_arc.run_id.clone())
+            .with_generation(1);
 
         // Create the inner session bridge (audit sink passed at start() time)
         let inner = McpSessionBridge::new(host, config, ws, registry);
@@ -111,7 +119,6 @@ impl SessionBridge {
             inner,
             audit_adapter,
             cached_audit: AuditTrail::new(),
-            test_started: false,
         }
     }
 
@@ -162,6 +169,11 @@ impl SessionBridge {
         self.inner.endpoint_uri()
     }
 
+    /// Get the latest endpoint lease published by the MCP server.
+    pub fn endpoint_lease(&self) -> Option<EndpointLease> {
+        self.inner.endpoint_lease()
+    }
+
     /// Get the environment variable name for the MCP endpoint.
     pub fn endpoint_env_var(&self) -> &'static str {
         MCP_ENDPOINT_ENV
@@ -169,9 +181,6 @@ impl SessionBridge {
 
     /// Check if the bridge has been started.
     pub fn is_started(&self) -> bool {
-        if self.test_started {
-            return true;
-        }
         self.inner.is_started()
     }
 
@@ -182,15 +191,10 @@ impl SessionBridge {
 
     /// Start the session bridge and MCP server.
     ///
-    /// This spawns a background thread that binds the Unix socket and runs the MCP server.
-    /// The thread signals readiness after the socket is bound, so callers can connect
+    /// This spawns a background thread that binds the TCP loopback endpoint and runs the MCP server.
+    /// The thread signals readiness after the endpoint is bound, so callers can connect
     /// immediately after start() returns without timing races.
     pub fn start(&mut self) -> Result<(), SessionBridgeError> {
-        if should_use_in_process_bridge(self.workspace.root()) {
-            self.test_started = true;
-            return Ok(());
-        }
-
         self.inner
             .start_with_audit_sink(self.audit_adapter.clone())
             .map_err(|e| SessionBridgeError::Transport(e.to_string()))
@@ -200,8 +204,18 @@ impl SessionBridge {
     ///
     /// This signals the MCP server to shutdown and waits for the server thread to finish.
     pub fn shutdown(&mut self) {
-        self.test_started = false;
         self.inner.shutdown();
+    }
+
+    /// Send a private control command through the orchestrator-only control channel.
+    ///
+    /// This path never traverses MCP tool dispatch and always includes the per-run
+    /// 256-character policy challenge held in bridge memory.
+    pub fn send_private_control_command(
+        &self,
+        command: ControlCommand,
+    ) -> Result<(), ControlError> {
+        self.inner.send_control_command(command)
     }
 
     fn build_in_process_server(&self) -> McpServer {
@@ -210,11 +224,18 @@ impl SessionBridge {
         let host = Arc::new(RalphHostSessionAdapter::new(Arc::clone(&self.session)));
         let ws = Arc::new(RalphWorkspaceAdapter::new(Arc::clone(&self.workspace)));
         let access_mode = drain_to_access_mode(self.session.drain);
+        let drain_class = drain_class_for_session(self.session.drain);
         let visible_tools = visible_mcp_tool_names_owned(self.session.capabilities());
+        let policy_mode = drain_to_policy_mode(self.session.drain);
         let config = McpServerConfig::new(self.workspace.root().to_path_buf())
             .with_session_id(self.session.session_id.as_str().to_string())
             .with_access_mode(access_mode)
-            .with_tool_filter(ToolFilter::Allowlist(visible_tools));
+            .with_policy_mode(policy_mode)
+            .with_drain(self.session.drain.as_str().to_string())
+            .with_drain_class(drain_class)
+            .with_tool_filter(ToolFilter::Allowlist(visible_tools))
+            .with_run_id(self.session.run_id.clone())
+            .with_generation(1);
 
         McpServer::new(host, config, ws, registry, Some(self.audit_adapter.clone()))
     }
@@ -241,7 +262,6 @@ impl Clone for SessionBridge {
             inner: self.inner.clone(),
             audit_adapter: Arc::clone(&self.audit_adapter),
             cached_audit: self.cached_audit.clone(),
-            test_started: false,
         }
     }
 }
@@ -254,32 +274,11 @@ impl Drop for SessionBridge {
     }
 }
 
-fn should_use_in_process_bridge(workspace_root: &std::path::Path) -> bool {
-    let workspace_root = workspace_root.to_string_lossy();
-    let is_test_workspace = std::path::Path::new(workspace_root.as_ref())
-        .starts_with(std::env::temp_dir())
-        || workspace_root.starts_with("/test/")
-        || workspace_root.starts_with("/mock/");
-    let runs_under_test_binary = std::env::current_exe()
-        .ok()
-        .and_then(|path| {
-            path.file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .map(|name| {
-            name.starts_with("integration_tests-")
-                || name.starts_with("ralph_workflow-")
-                || name.starts_with("mcp_server-")
-        })
-        .unwrap_or(false);
-
-    is_test_workspace && runs_under_test_binary
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::workspace::memory_workspace::MemoryWorkspace;
+    use crate::workspace::WorkspaceFs;
     use mcp_server::dispatch::access::AuditSink;
     use mcp_server::dispatch::access::{AccessDecision, McpCapability};
     use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
@@ -296,12 +295,31 @@ mod tests {
         Arc::new(MemoryWorkspace::new_test())
     }
 
+    fn socket_workspace() -> Arc<dyn Workspace> {
+        Arc::new(WorkspaceFs::new(std::path::PathBuf::from("/")))
+    }
+
     #[test]
     fn test_endpoint_uri() {
         let mut bridge = SessionBridge::new(unique_session(), test_workspace());
         bridge.start().expect("bridge should start");
         let uri = bridge.endpoint_uri();
         assert!(uri.starts_with("tcp://127.0.0.1:"));
+    }
+
+    #[test]
+    fn test_start_publishes_tcp_endpoint_lease() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        bridge.start().expect("bridge should start");
+
+        let lease = bridge
+            .endpoint_lease()
+            .expect("start must publish an active endpoint lease");
+        assert!(
+            lease.endpoint.starts_with("tcp://127.0.0.1:"),
+            "lease endpoint must be TCP loopback, got: {}",
+            lease.endpoint
+        );
     }
 
     #[test]
@@ -421,7 +439,7 @@ mod tests {
 
     /// Verify that `ralph_submit_artifact` is reachable via the MCP protocol.
     ///
-    /// This test exercises the full initialize → tools/list flow over the Unix socket
+    /// This test exercises the full initialize → tools/list flow over the deterministic
     /// transport to confirm that `ralph_submit_artifact` appears in the tool list returned
     /// by the server, proving the tool registry is wired correctly end-to-end.
     #[test]
@@ -528,22 +546,66 @@ mod tests {
     }
 
     #[test]
-    fn test_started_bridge_accepts_raw_unix_connection() {
+    fn test_started_bridge_accepts_raw_tcp_connection() {
         use std::net::TcpStream;
 
         let mut bridge = SessionBridge::new(unique_session(), test_workspace());
         bridge.start().expect("bridge should start");
 
-        let addr = bridge
-            .endpoint_uri()
-            .strip_prefix("tcp://")
-            .expect("endpoint must be tcp")
-            .to_string();
+        let uri = bridge.endpoint_uri();
+        if let Some(addr) = uri.strip_prefix("tcp://") {
+            let connect_result = TcpStream::connect(addr.to_string());
+            assert!(
+                connect_result.is_ok(),
+                "started bridge must accept raw TCP connections, got: {connect_result:?}"
+            );
+        }
+    }
 
-        let connect_result = TcpStream::connect(addr);
+    #[test]
+    fn test_orchestrator_private_control_heartbeat_ack_succeeds() {
+        use mcp_server::io::ControlCommand;
+
+        let mut bridge = SessionBridge::new(unique_session(), socket_workspace());
+        bridge.start().expect("bridge should start");
+
+        let result = bridge.send_private_control_command(ControlCommand::HeartbeatAck);
         assert!(
-            connect_result.is_ok(),
-            "started bridge must accept raw TCP connections, got: {connect_result:?}"
+            result.is_ok(),
+            "orchestrator private control command should succeed over non-MCP channel"
+        );
+    }
+
+    #[test]
+    fn test_private_control_method_is_denied_from_mcp_namespace() {
+        let mut bridge = SessionBridge::new(unique_session(), socket_workspace());
+        bridge.start().expect("bridge should start");
+
+        let init_req: JsonRpcRequest = serde_json::from_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05"},
+            "id": 1
+        }))
+        .expect("initialize request is valid JSON-RPC");
+        let (_, state) = bridge.handle_request_in_process(init_req, ServerState::Uninitialized);
+
+        let private_req: JsonRpcRequest = serde_json::from_value(serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "private/control",
+            "params": {"command": "shutdown"},
+            "id": 2
+        }))
+        .expect("private method request is valid JSON-RPC");
+
+        let (response, _) = bridge.handle_request_in_process(private_req, state);
+        let response = response.expect("unknown method should still produce a response");
+        let error = response
+            .error
+            .expect("unknown private method must return JSON-RPC error");
+        assert_eq!(
+            error.code, -32601,
+            "private control method must stay off MCP surface"
         );
     }
 }

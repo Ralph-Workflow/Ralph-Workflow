@@ -1,6 +1,9 @@
 use super::MainEffectHandler;
+#[path = "agent_prepare.rs"]
+mod agent_prepare;
+use self::agent_prepare::prepare_agent_invocation;
 use crate::agents::config::should_use_yolo_mode;
-use crate::agents::harness::applicator::{apply_harness_config, detect_agent_type};
+use crate::agents::harness::applicator::{apply_harness_config_with_lease, detect_agent_type};
 use crate::agents::session::{
     audit::{
         persist_audit_trail, persist_session_handshake, record_command_check,
@@ -13,7 +16,9 @@ use crate::agents::session::{
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
-use crate::mcp_server::session_bridge::{SessionBridge, MCP_ENDPOINT_ENV};
+use crate::mcp_server::session_bridge::{
+    SessionBridge, MCP_ENDPOINT_ENV, MCP_GENERATION_ENV, MCP_RUN_ID_ENV,
+};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -27,6 +32,7 @@ use crate::reducer::fault_tolerant_executor::{
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use mcp_server::io::transport::EndpointLease;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -58,59 +64,46 @@ impl MainEffectHandler {
     where
         F: FnOnce(&AgentSession) -> String,
     {
-        let in_dev_fix = self.state.phase == PipelinePhase::AwaitingDevFix;
-        let effective_agent = resolve_effective_agent(&self.state, in_dev_fix, agent);
-        let model_name = resolve_model_name(&self.state, in_dev_fix);
-        log_agent_invocation_start(ctx, &self.state, &effective_agent, model_name);
-        let (logfile, attempt) =
-            prepare_agent_logfile(ctx, in_dev_fix, &self.state, role, &effective_agent)?;
-
-        let session = create_and_store_agent_session(ctx, drain, attempt, &self.state);
-        persist_session_handshake_to_workspace(ctx, &session);
-        build_and_merge_audit_trail(ctx, &session);
-
-        let effective_prompt = resolve_effective_prompt_for_invocation(
-            &self.state,
-            drain,
-            role,
-            &session,
-            prompt_generator,
-        );
-        let session_id = resolve_session_id(&self.state, in_dev_fix);
-        let execution_start = SystemTime::now();
-        let (mut session_bridge, mcp_endpoint) = start_mcp_bridge_for_session(ctx, &session)?;
-        let completion_output_path = completion_path_for_drain(drain);
+        let mut prepared =
+            prepare_agent_invocation(self, ctx, drain, role, agent, model, prompt_generator)?;
         let event = run_agent_execution(
             ctx,
             &self.state,
-            drain,
+            prepared.drain,
             AgentRunInputs {
-                in_dev_fix,
-                role,
-                model,
-                model_name,
-                effective_agent: &effective_agent,
-                effective_prompt: &effective_prompt,
-                attempt,
-                logfile: &logfile,
-                session: &session,
-                mcp_endpoint: mcp_endpoint.as_deref(),
-                completion_output_path,
+                in_dev_fix: prepared.in_dev_fix,
+                role: prepared.role,
+                model: prepared.model.as_deref(),
+                model_name: prepared.model_name.as_ref(),
+                effective_agent: prepared.effective_agent.as_str(),
+                effective_prompt: prepared.effective_prompt.as_str(),
+                attempt: prepared.attempt,
+                logfile: prepared.logfile.as_str(),
+                session: &prepared.session,
+                mcp_endpoint: prepared.mcp_endpoint.as_deref(),
+                mcp_lease: prepared.lease.clone(),
+                completion_output_path: prepared.completion_output_path,
             },
         );
 
-        drain_and_merge_mcp_audit_records(ctx, &mut session_bridge);
-        record_execution_telemetry_if_needed(ctx, &session, &event, execution_start, role);
-        persist_audit_trail_to_workspace(ctx, &session);
+        drain_and_merge_mcp_audit_records(ctx, &mut prepared.session_bridge);
+        record_execution_telemetry_if_needed(
+            ctx,
+            &prepared.session,
+            &event,
+            prepared.execution_start,
+            prepared.role,
+        );
+        persist_audit_trail_to_workspace(ctx, &prepared.session);
 
         let event = event?;
         Ok(build_agent_invocation_result(
             &self.state,
             event,
-            session_id,
-            role,
-            &effective_agent,
-            model_name,
+            prepared.session_id.as_deref(),
+            prepared.role,
+            prepared.effective_agent.as_str(),
+            prepared.model_name.as_ref(),
         ))
     }
 
@@ -191,6 +184,7 @@ struct AgentRunInputs<'a> {
     /// MCP endpoint URI for RFC-009 agent-MCP communication.
     /// When Some, passed to agent via RALPH_MCP_ENDPOINT env var.
     mcp_endpoint: Option<&'a str>,
+    mcp_lease: Option<EndpointLease>,
     completion_output_path: Option<&'a Path>,
 }
 
@@ -259,7 +253,7 @@ fn apply_mcp_harness_to_cmd(
     agent_config: &crate::agents::config::AgentConfig,
     base_cmd: String,
 ) -> Result<(String, std::collections::HashMap<String, String>)> {
-    let mut mcp_env_vars = build_mcp_base_env(inputs.mcp_endpoint);
+    let mut mcp_env_vars = build_mcp_base_env(inputs.mcp_endpoint, inputs.mcp_lease.as_ref());
     let extra_cmd_args = apply_harness_if_needed(ctx, inputs, agent_config, &mut mcp_env_vars)?;
     let cmd_str = append_extra_args(ctx, base_cmd, extra_cmd_args);
     let mut merged_env = agent_config.env_vars.clone();
@@ -280,8 +274,19 @@ fn apply_harness_if_needed(
             inputs.session.session_id
         )
     })?;
+    require_tcp_mcp_endpoint(
+        endpoint,
+        inputs.effective_agent,
+        inputs.session.session_id.as_str(),
+    )?;
     let agent_type = detect_agent_type(&agent_config.cmd);
-    match apply_harness_config(agent_type, inputs.session, endpoint, ctx.workspace) {
+    match apply_harness_config_with_lease(
+        agent_type,
+        inputs.session,
+        endpoint,
+        ctx.workspace,
+        inputs.mcp_lease.as_ref(),
+    ) {
         Ok(harness_result) => {
             ctx.logger.info(&format!(
                 "RFC-009 harness applied for {:?}: {} extra env var(s){}",
@@ -299,31 +304,86 @@ fn apply_harness_if_needed(
     }
 }
 
-fn build_mcp_base_env(mcp_endpoint: Option<&str>) -> std::collections::HashMap<String, String> {
-    mcp_endpoint.map_or_else(std::collections::HashMap::new, |endpoint| {
-        let mut vars = std::collections::HashMap::new();
+fn require_tcp_mcp_endpoint(endpoint: &str, agent: &str, session_id: &str) -> Result<()> {
+    if endpoint.starts_with("tcp://") {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "MCP endpoint for agent '{}' (session {}) must be tcp://, got '{}'. MCP is mandatory and execution was aborted.",
+            agent,
+            session_id,
+            endpoint
+        ))
+    }
+}
+
+fn build_mcp_base_env(
+    mcp_endpoint: Option<&str>,
+    lease: Option<&EndpointLease>,
+) -> std::collections::HashMap<String, String> {
+    let mut vars = std::collections::HashMap::new();
+    if let Some(endpoint) = mcp_endpoint {
         vars.insert(MCP_ENDPOINT_ENV.to_string(), endpoint.to_string());
-        vars
-    })
+    }
+    if let Some(lease) = lease {
+        vars.insert(MCP_GENERATION_ENV.to_string(), lease.generation.to_string());
+        vars.insert(MCP_RUN_ID_ENV.to_string(), lease.run_id.clone());
+    }
+    vars
 }
 
 #[cfg(test)]
 mod tests {
-    use super::build_mcp_base_env;
-    use super::MCP_ENDPOINT_ENV;
+    use super::{
+        build_mcp_base_env, require_tcp_mcp_endpoint, EndpointLease, MCP_ENDPOINT_ENV,
+        MCP_GENERATION_ENV, MCP_RUN_ID_ENV,
+    };
 
     #[test]
     fn build_mcp_base_env_is_empty_without_endpoint() {
-        let env = build_mcp_base_env(None);
+        let env = build_mcp_base_env(None, None);
         assert!(env.is_empty());
     }
 
     #[test]
     fn build_mcp_base_env_includes_endpoint_when_present() {
-        let env = build_mcp_base_env(Some("unix:///tmp/ralph.sock"));
+        let env = build_mcp_base_env(Some("tcp://127.0.0.1:42001"), None);
         assert_eq!(
             env.get(MCP_ENDPOINT_ENV).map(String::as_str),
-            Some("unix:///tmp/ralph.sock")
+            Some("tcp://127.0.0.1:42001")
+        );
+    }
+
+    #[test]
+    fn build_mcp_base_env_includes_generation_and_run_id() {
+        let lease = EndpointLease::new(
+            "tcp://127.0.0.1:1234".into(),
+            "run-123".into(),
+            5,
+            std::time::SystemTime::UNIX_EPOCH,
+        );
+        let env = build_mcp_base_env(Some("tcp://127.0.0.1:1234"), Some(&lease));
+        assert_eq!(
+            env.get(MCP_ENDPOINT_ENV).map(String::as_str),
+            Some("tcp://127.0.0.1:1234")
+        );
+        assert_eq!(env.get(MCP_GENERATION_ENV).map(String::as_str), Some("5"));
+        assert_eq!(env.get(MCP_RUN_ID_ENV).map(String::as_str), Some("run-123"));
+    }
+
+    #[test]
+    fn require_tcp_mcp_endpoint_accepts_tcp() {
+        let result = require_tcp_mcp_endpoint("tcp://127.0.0.1:1234", "agent-a", "session-a");
+        assert!(result.is_ok(), "tcp endpoint must be accepted");
+    }
+
+    #[test]
+    fn require_tcp_mcp_endpoint_rejects_unix() {
+        let err = require_tcp_mcp_endpoint("unix:///tmp/ralph.sock", "agent-a", "session-a")
+            .expect_err("unix endpoint must be rejected");
+        assert!(
+            err.to_string().contains("must be tcp://"),
+            "unexpected error: {err}"
         );
     }
 }

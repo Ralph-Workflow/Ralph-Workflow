@@ -8,9 +8,15 @@
 //!
 //! This is a boundary module — mutation and imperative loops are allowed here.
 
+use crate::mcp_server::session_bridge::{MCP_GENERATION_ENV, MCP_RUN_ID_ENV};
 use anyhow::{Context, Result};
+use mcp_server::io::transport::EndpointLease;
+use serde_json;
+use std::env;
+use std::fs;
 use std::io::Write;
 use std::net::TcpStream;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -155,6 +161,197 @@ fn relay_body(body: Vec<u8>, writer: &mut impl Write, shutdown: &AtomicBool, lab
     }
 }
 
+fn endpoint_lease_file(root: &Path) -> PathBuf {
+    root.join(".agent").join("endpoint_lease.json")
+}
+
+fn load_endpoint_lease(root: &Path) -> Result<Option<EndpointLease>> {
+    let path = endpoint_lease_file(root);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read endpoint lease file at {}", path.display()))?;
+    let lease = serde_json::from_str(&content)
+        .with_context(|| format!("Failed to parse endpoint lease JSON at {}", path.display()))?;
+    Ok(Some(lease))
+}
+
+#[cfg(test)]
+#[cfg(test)]
+fn ensure_endpoint_matches_lease(endpoint: &str, lease: &EndpointLease) -> Result<()> {
+    if endpoint == lease.endpoint {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Stale MCP endpoint '{endpoint}' detected (generation={}, run_id={}). Active endpoint is '{}' ready_at={}",
+            lease.generation,
+            lease.run_id,
+            lease.endpoint,
+            lease.ready_at
+        ))
+    }
+}
+
+#[cfg(test)]
+#[cfg(test)]
+fn ensure_generation_matches_lease(lease: &EndpointLease) -> Result<()> {
+    let generation = load_generation_from_env()?;
+    if generation != lease.generation {
+        Err(anyhow::anyhow!(
+            "Stale MCP generation {generation} detected for {MCP_GENERATION_ENV}; expected generation {} for endpoint {}",
+            lease.generation,
+            lease.endpoint
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn load_generation_from_env() -> Result<u32> {
+    let raw = env::var(MCP_GENERATION_ENV)
+        .with_context(|| format!("Environment variable {MCP_GENERATION_ENV} not set"))?;
+    raw.parse::<u32>()
+        .with_context(|| format!("Failed to parse {MCP_GENERATION_ENV}='{raw}'"))
+}
+
+fn ensure_run_id_matches_lease(lease: &EndpointLease) -> Result<()> {
+    let run_id = env::var(MCP_RUN_ID_ENV)
+        .with_context(|| format!("Environment variable {MCP_RUN_ID_ENV} not set"))?;
+    if run_id != lease.run_id {
+        Err(anyhow::anyhow!(
+            "MCP run_id mismatch for {MCP_RUN_ID_ENV}: expected {} but found {}",
+            lease.run_id,
+            run_id
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+fn validate_workspace_endpoint(endpoint: &str) -> Result<()> {
+    if let Ok(root) = std::env::current_dir() {
+        if let Some(lease) = load_endpoint_lease(&root)? {
+            ensure_endpoint_matches_lease(endpoint, &lease)?;
+            ensure_generation_matches_lease(&lease)?;
+            ensure_run_id_matches_lease(&lease)?;
+        }
+    }
+    Ok(())
+}
+
+fn load_current_lease() -> Result<Option<EndpointLease>> {
+    let Ok(root) = std::env::current_dir() else {
+        return Ok(None);
+    };
+    load_endpoint_lease(&root)
+}
+
+fn ensure_generation_not_regressed(env_generation: u32, lease: &EndpointLease) -> Result<()> {
+    if env_generation > lease.generation {
+        Err(anyhow::anyhow!(
+            "MCP generation regression detected for {MCP_GENERATION_ENV}: env={env_generation}, lease={} at {}",
+            lease.generation,
+            lease.endpoint
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn lease_matches_injected_endpoint(
+    endpoint: &str,
+    env_generation: u32,
+    lease: &EndpointLease,
+) -> bool {
+    endpoint == lease.endpoint && env_generation == lease.generation
+}
+
+fn resolve_endpoint_for_connection(endpoint: &str) -> Result<String> {
+    let Some(lease) = load_current_lease()? else {
+        return Ok(endpoint.to_string());
+    };
+    ensure_run_id_matches_lease(&lease)?;
+    let env_generation = load_generation_from_env()?;
+    ensure_generation_not_regressed(env_generation, &lease)?;
+    if lease_matches_injected_endpoint(endpoint, env_generation, &lease) {
+        return Ok(endpoint.to_string());
+    }
+    eprintln!(
+        "mcp-proxy: refreshing stale endpoint to active lease endpoint={} generation={} (injected endpoint={}, injected generation={})",
+        lease.endpoint,
+        lease.generation,
+        endpoint,
+        env_generation
+    );
+    Ok(lease.endpoint)
+}
+
+struct EndpointLeaseWatcher {
+    workspace_root: Option<PathBuf>,
+    current_endpoint: String,
+    lease: Option<EndpointLease>,
+}
+
+impl EndpointLeaseWatcher {
+    fn new(initial_endpoint: String, workspace_root: Option<PathBuf>) -> Self {
+        Self {
+            workspace_root,
+            current_endpoint: initial_endpoint,
+            lease: None,
+        }
+    }
+
+    fn current_endpoint(&self) -> &str {
+        &self.current_endpoint
+    }
+
+    fn current_generation(&self) -> Option<u32> {
+        self.lease.as_ref().map(|lease| lease.generation)
+    }
+
+    fn refresh(&mut self) -> bool {
+        let Some(root) = self.workspace_root.clone() else {
+            return false;
+        };
+        self.try_refresh_from_root(&root)
+    }
+
+    fn try_refresh_from_root(&mut self, root: &Path) -> bool {
+        match load_endpoint_lease(root) {
+            Ok(Some(lease)) => self.apply_loaded_lease(lease),
+            Ok(None) => false,
+            Err(e) => {
+                eprintln!("mcp-proxy: failed to read endpoint lease: {e}");
+                false
+            }
+        }
+    }
+
+    fn apply_loaded_lease(&mut self, lease: EndpointLease) -> bool {
+        if !self.should_update(&lease) {
+            return false;
+        }
+        self.current_endpoint = lease.endpoint.clone();
+        self.lease = Some(lease);
+        true
+    }
+
+    fn should_update(&self, lease: &EndpointLease) -> bool {
+        should_update_lease(self.lease.as_ref(), lease)
+    }
+}
+
+fn should_update_lease(previous: Option<&EndpointLease>, lease: &EndpointLease) -> bool {
+    match previous {
+        Some(previous) if lease.generation < previous.generation => false,
+        Some(previous) if lease.generation > previous.generation => true,
+        Some(previous) => lease.endpoint != previous.endpoint && lease.ready_at > previous.ready_at,
+        None => true,
+    }
+}
+
 /// Spawn the stdin→socket relay thread.
 pub(crate) fn spawn_stdin_thread<R>(
     reader: R,
@@ -244,6 +441,7 @@ fn attempt_connection(socket_path: &str) -> std::io::Result<TcpStream> {
 enum ConnectOutcome {
     Connected(TcpStream),
     Exhausted {
+        endpoint: String,
         last_err: std::io::Error,
         attempts: usize,
     },
@@ -259,7 +457,6 @@ const MAX_CONNECT_ATTEMPTS: usize = 61;
 /// Sleep duration between connection attempts in milliseconds.
 const CONNECT_RETRY_SLEEP_MS: u64 = 100;
 
-#[cfg(test)]
 fn connect_retry_budget_ms() -> u64 {
     (MAX_CONNECT_ATTEMPTS.saturating_sub(1) as u64) * CONNECT_RETRY_SLEEP_MS
 }
@@ -275,47 +472,100 @@ fn sleep_retry() {
     std::thread::sleep(std::time::Duration::from_millis(CONNECT_RETRY_SLEEP_MS));
 }
 
+fn log_refreshed_endpoint(watcher: &EndpointLeaseWatcher) {
+    if let Some(generation) = watcher.current_generation() {
+        eprintln!(
+            "mcp-proxy: endpoint lease refreshed to generation {} at {}",
+            generation,
+            watcher.current_endpoint()
+        );
+    } else {
+        eprintln!(
+            "mcp-proxy: endpoint lease refreshed at {}",
+            watcher.current_endpoint()
+        );
+    }
+}
+
+fn maybe_log_refreshed_endpoint(watcher: &EndpointLeaseWatcher, refreshed: bool) {
+    if refreshed {
+        log_refreshed_endpoint(watcher);
+    }
+}
+
+fn attempt_current_endpoint(watcher: &EndpointLeaseWatcher) -> std::io::Result<TcpStream> {
+    attempt_connection(watcher.current_endpoint())
+}
+
+fn exhausted_outcome(endpoint: String, err: std::io::Error) -> ConnectOutcome {
+    eprintln!(
+        "mcp-proxy: failed to connect to {} after {} attempts: {}",
+        endpoint, MAX_CONNECT_ATTEMPTS, err
+    );
+    ConnectOutcome::Exhausted {
+        endpoint,
+        last_err: err,
+        attempts: MAX_CONNECT_ATTEMPTS,
+    }
+}
+
+fn connect_exhausted_error(
+    endpoint: &str,
+    attempts: usize,
+    retry_budget_ms: u64,
+    last_err: std::io::Error,
+) -> anyhow::Error {
+    let error_kind = last_err.kind();
+    anyhow::anyhow!(
+        "Failed to connect to MCP endpoint at {} after {} attempts over {}ms retry budget (kind={:?}): {}",
+        endpoint,
+        attempts,
+        retry_budget_ms,
+        error_kind,
+        last_err
+    )
+}
+
+fn continue_after_error(
+    attempt: usize,
+    endpoint: String,
+    err: std::io::Error,
+) -> Option<ConnectOutcome> {
+    if attempt == MAX_CONNECT_ATTEMPTS {
+        return Some(exhausted_outcome(endpoint, err));
+    }
+    sleep_retry();
+    None
+}
+
+fn process_connection_attempt(
+    watcher: &mut EndpointLeaseWatcher,
+    attempt: usize,
+) -> Option<ConnectOutcome> {
+    let refreshed = watcher.refresh();
+    maybe_log_refreshed_endpoint(watcher, refreshed);
+    let endpoint = watcher.current_endpoint().to_string();
+    match attempt_current_endpoint(watcher) {
+        Ok(stream) => Some(ConnectOutcome::Connected(stream)),
+        Err(err) => continue_after_error(attempt, endpoint, err),
+    }
+}
+
 /// Execute the connection retry loop with up to MAX_CONNECT_ATTEMPTS attempts,
 /// sleeping CONNECT_RETRY_SLEEP_MS ms between each attempt.
 ///
 /// Uses Result::or_else chaining for a functional retry pattern, avoiding
 /// explicit loop constructs that would trigger forbid_imperative_loops.
 fn run_connection_loop(socket_path: &str) -> ConnectOutcome {
-    /// Attempt connection with retry on failure, using Result::or_else chaining.
-    ///
-    /// Each or_else sleeps before retrying, building up to MAX_CONNECT_ATTEMPTS attempts.
-    /// The final attempt is tried without sleeping afterward.
-    fn attempt_with_retries(
-        socket_path: &str,
-        remaining: usize,
-    ) -> Result<TcpStream, std::io::Error> {
-        debug_assert!(
-            remaining > 0,
-            "attempt_with_retries called with 0 remaining"
-        );
-        attempt_connection(socket_path).or_else(|err| {
-            if remaining > 1 {
-                sleep_retry();
-                attempt_with_retries(socket_path, remaining - 1)
-            } else {
-                Err(err)
-            }
-        })
-    }
+    let workspace_root = std::env::current_dir().ok();
+    let mut watcher = EndpointLeaseWatcher::new(socket_path.to_string(), workspace_root);
 
-    match attempt_with_retries(socket_path, MAX_CONNECT_ATTEMPTS) {
-        Ok(stream) => ConnectOutcome::Connected(stream),
-        Err(last_err) => {
-            eprintln!(
-                "mcp-proxy: failed to connect to {} after {} attempts: {}",
-                socket_path, MAX_CONNECT_ATTEMPTS, last_err
-            );
-            ConnectOutcome::Exhausted {
-                last_err,
-                attempts: MAX_CONNECT_ATTEMPTS,
-            }
+    for attempt in 1..=MAX_CONNECT_ATTEMPTS {
+        if let Some(outcome) = process_connection_attempt(&mut watcher, attempt) {
+            return outcome;
         }
     }
+    unreachable!("run_connection_loop exhausted without returning");
 }
 
 /// Run a stdio-to-localhost-TCP MCP proxy.
@@ -326,7 +576,8 @@ fn run_connection_loop(socket_path: &str) -> ConnectOutcome {
 ///
 /// Uses Content-Length framing (same as MCP protocol).
 pub fn run_mcp_proxy() -> Result<()> {
-    let socket_path = resolve_socket_path()?;
+    let injected_socket_path = resolve_socket_path()?;
+    let socket_path = resolve_endpoint_for_connection(&injected_socket_path)?;
     let shutdown = Arc::new(AtomicBool::new(false));
     // Use stdin()/stdout() directly (Stdin/Stdout are Send + 'static).
     // Do NOT use stdin().lock()/stdout().lock() — those return StdinLock/StdoutLock
@@ -336,267 +587,24 @@ pub fn run_mcp_proxy() -> Result<()> {
 
     match run_connection_loop(&socket_path) {
         ConnectOutcome::Connected(stream) => run_proxy_inner(reader, writer, stream, shutdown),
-        ConnectOutcome::Exhausted { last_err, attempts } => {
+        ConnectOutcome::Exhausted {
+            endpoint,
+            last_err,
+            attempts,
+        } => {
             eprintln!(
                 "mcp-proxy: failed to connect to {} after {} attempts: {}",
-                socket_path, attempts, last_err
+                endpoint, attempts, last_err
             );
-            Err(anyhow::anyhow!(
-                "Failed to connect to MCP endpoint at {}: {}",
-                socket_path,
-                last_err
+            Err(connect_exhausted_error(
+                endpoint.as_str(),
+                attempts,
+                connect_retry_budget_ms(),
+                last_err,
             ))
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    // =============================================================================
-    // read_framed_message tests
-    // =============================================================================
-
-    #[test]
-    fn reads_valid_framed_message() {
-        // "{hello world!}" = 14 chars
-        let data = b"Content-Length: 14\r\n\r\n{hello world!}";
-        let mut reader = std::io::BufReader::new(Cursor::new(&data[..]));
-        let result = read_framed_message(&mut reader).unwrap();
-        assert_eq!(result, Some(b"{hello world!}".to_vec()));
-    }
-
-    #[test]
-    fn returns_none_on_eof() {
-        let data = b"";
-        let mut reader = std::io::BufReader::new(Cursor::new(&data[..]));
-        let result = read_framed_message(&mut reader).unwrap();
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn errors_on_missing_content_length_header() {
-        let data = b"X-Foo: bar\r\n\r\n";
-        let mut reader = std::io::BufReader::new(Cursor::new(&data[..]));
-        let result = read_framed_message(&mut reader);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Missing Content-Length"),
-            "expected 'Missing Content-Length' error, got: {err_msg}"
-        );
-    }
-
-    #[test]
-    fn errors_on_invalid_content_length_value() {
-        let data = b"Content-Length: abc\r\n\r\n";
-        let mut reader = std::io::BufReader::new(Cursor::new(&data[..]));
-        let result = read_framed_message(&mut reader);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Invalid Content-Length"),
-            "expected 'Invalid Content-Length' error, got: {err_msg}"
-        );
-    }
-
-    #[test]
-    fn ignores_unknown_headers() {
-        let data = b"X-Custom: value\r\nContent-Length: 2\r\n\r\nhi";
-        let mut reader = std::io::BufReader::new(Cursor::new(&data[..]));
-        let result = read_framed_message(&mut reader).unwrap();
-        assert_eq!(result, Some(b"hi".to_vec()));
-    }
-
-    // =============================================================================
-    // write_framed_message tests
-    // =============================================================================
-
-    #[test]
-    fn write_framed_message_produces_correct_format() {
-        let mut buf = Vec::new();
-        write_framed_message(&mut buf, b"test").unwrap();
-        let output = String::from_utf8(buf).unwrap();
-        assert!(
-            output.starts_with("Content-Length: 4\r\n\r\n"),
-            "output must start with 'Content-Length: 4\\r\\n\\r\\n', got: {output:?}"
-        );
-        assert!(
-            output.ends_with("test"),
-            "output must end with body 'test', got: {output:?}"
-        );
-    }
-
-    #[test]
-    fn roundtrip_write_then_read() {
-        let body = b"{jsonrpc: \"2.0\", method: \"test\"}";
-        let mut buf = Vec::new();
-        write_framed_message(&mut buf, body).unwrap();
-
-        let mut reader = std::io::BufReader::new(Cursor::new(&buf));
-        let result = read_framed_message(&mut reader).unwrap().unwrap();
-        assert_eq!(result, body);
-    }
-
-    // =============================================================================
-    // run_proxy_inner tests — use UnixStream pairs as fake stdio
-    // =============================================================================
-
-    #[test]
-    fn proxy_routes_messages_between_stdio_and_socket() {
-        use std::io::Write;
-        use std::net::{TcpListener, TcpStream};
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::Arc;
-        use std::thread;
-        use std::time::Duration;
-
-        fn tcp_pair() -> (TcpStream, TcpStream) {
-            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-            let addr = listener.local_addr().unwrap();
-            let client = TcpStream::connect(addr).unwrap();
-            let (server, _) = listener.accept().unwrap();
-            (client, server)
-        }
-
-        let (agent_stdin, proxy_in) = tcp_pair();
-        let (proxy_out, agent_stdout) = tcp_pair();
-        let (socket_a, socket_b) = tcp_pair();
-
-        // Make sockets non-blocking so reads don't hang forever
-        proxy_in.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        proxy_out
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .ok();
-        socket_a.set_read_timeout(Some(Duration::from_secs(5))).ok();
-        socket_b.set_read_timeout(Some(Duration::from_secs(5))).ok();
-
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let shutdown_clone = Arc::clone(&shutdown);
-
-        // Spawn a thread that echoes: reads from proxy_in, writes to socket_a
-        // (simulates the stdin->socket direction)
-        let echo_handle = thread::spawn(move || {
-            let mut reader = std::io::BufReader::new(&proxy_in);
-            let mut writer = std::io::BufWriter::new(&socket_a);
-            while let Ok(Some(body)) = read_framed_message(&mut reader) {
-                if write_framed_message(&mut writer, &body).is_err() {
-                    break;
-                }
-            }
-        });
-
-        // Spawn run_proxy_inner to bridge socket_b <-> proxy_out/proxy_in
-        let proxy_out_clone = proxy_out.try_clone().unwrap();
-        let proxy_handle = thread::spawn(move || {
-            let reader = std::io::BufReader::new(proxy_out);
-            let writer = proxy_out_clone;
-            let _ = run_proxy_inner(reader, writer, socket_b, shutdown_clone);
-        });
-
-        // Write a message through the fake stdin side
-        {
-            let mut w = std::io::BufWriter::new(&agent_stdin);
-            write_framed_message(&mut w, b"hello from agent").unwrap();
-            w.flush().unwrap();
-        }
-
-        // Read it from the fake stdout side
-        agent_stdout
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .ok();
-        let mut r = std::io::BufReader::new(&agent_stdout);
-        let result = read_framed_message(&mut r).unwrap();
-        assert_eq!(
-            result,
-            Some(b"hello from agent".to_vec()),
-            "proxy must route the message bytes through unchanged"
-        );
-
-        // Clean shutdown
-        shutdown.store(true, Ordering::Release);
-        drop(agent_stdin);
-        drop(agent_stdout);
-        let _ = proxy_handle.join();
-        let _ = echo_handle.join();
-    }
-
-    #[test]
-    fn proxy_shuts_down_on_stdin_eof() {
-        use std::io::Write;
-        use std::net::{TcpListener, TcpStream};
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::Arc;
-        use std::thread;
-        use std::time::Duration;
-
-        fn tcp_pair() -> (TcpStream, TcpStream) {
-            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-            let addr = listener.local_addr().unwrap();
-            let client = TcpStream::connect(addr).unwrap();
-            let (server, _) = listener.accept().unwrap();
-            (client, server)
-        }
-
-        let (stdin_end, proxy_in) = tcp_pair();
-        let (proxy_out, stdout_end) = tcp_pair();
-        let (socket_a, socket_b) = tcp_pair();
-
-        proxy_in.set_read_timeout(Some(Duration::from_secs(2))).ok();
-        proxy_out
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .ok();
-        socket_a.set_read_timeout(Some(Duration::from_secs(2))).ok();
-        socket_b.set_read_timeout(Some(Duration::from_secs(2))).ok();
-
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let shutdown_clone = Arc::clone(&shutdown);
-
-        // Dummy socket reader thread
-        let dummy_handle = thread::spawn(move || {
-            let mut r = std::io::BufReader::new(&socket_a);
-            let mut w = std::io::BufWriter::new(&socket_a);
-            while let Ok(Some(body)) = read_framed_message(&mut r) {
-                // Echo back
-                let _ = write_framed_message(&mut w, &body);
-            }
-        });
-
-        let proxy_out_clone = proxy_out.try_clone().unwrap();
-        let proxy_handle = thread::spawn(move || {
-            let reader = std::io::BufReader::new(proxy_out);
-            let writer = proxy_out_clone;
-            run_proxy_inner(reader, writer, socket_b, shutdown_clone)
-        });
-
-        // Write one message, then drop the stdin end (EOF signal)
-        {
-            let mut w = std::io::BufWriter::new(&stdin_end);
-            write_framed_message(&mut w, b"ping").unwrap();
-            w.flush().unwrap();
-        }
-        drop(stdin_end);
-
-        // Wait for proxy to exit cleanly
-        let result = proxy_handle.join().unwrap();
-        assert!(
-            result.is_ok() || result.is_err(),
-            "proxy must exit after stdin EOF"
-        );
-
-        let _ = dummy_handle.join();
-        shutdown.store(true, Ordering::Release);
-        drop(stdout_end);
-    }
-
-    #[test]
-    fn mcp_proxy_connection_retry_budget_covers_provider_startup_delay() {
-        assert!(
-            super::connect_retry_budget_ms() >= 5_000,
-            "retry budget must allow real provider startup, got {}ms",
-            super::connect_retry_budget_ms()
-        );
-    }
-}
+mod stdio_proxy_tests;

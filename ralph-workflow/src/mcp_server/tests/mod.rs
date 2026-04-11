@@ -5,7 +5,7 @@
 //! - `capability_tests` - Tests for capability enforcement per tool
 //! - `blacklist_tests` - Tests for command blacklist enforcement
 //! - `snapshot_tests` - Snapshot tests for protocol messages
-//! - `e2e_socket_behavior` - End-to-end behavioral tests over real Unix sockets
+//! - `e2e_socket_behavior` - End-to-end behavioral tests over real TCP loopback sockets
 //! - `integration` - Integration-level acceptance tests for adapter wiring
 
 mod blacklist_tests;

@@ -29,6 +29,9 @@ impl mcp_server::HostSession for ApprovedSession {
     fn session_id(&self) -> &str {
         "approved-session"
     }
+    fn run_id(&self) -> &str {
+        "approved-run"
+    }
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }
@@ -39,6 +42,9 @@ struct ReadOnlySession;
 impl mcp_server::HostSession for ReadOnlySession {
     fn session_id(&self) -> &str {
         "readonly-session"
+    }
+    fn run_id(&self) -> &str {
+        "readonly-run"
     }
     fn check_capability(&self, cap: McpCapability) -> AccessDecision {
         if cap == McpCapability::WorkspaceRead {

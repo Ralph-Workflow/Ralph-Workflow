@@ -16,7 +16,7 @@
 //!
 //! # Relation to other test files
 //!
-//! - `e2e_socket_behavior` — proves the same paths over real Unix sockets
+//! - `e2e_socket_behavior` — proves the same paths over real TCP loopback sockets
 //! - `capability_tests` — unit-level capability mapping per session drain
 //! - `tool_tests` — handler-level unit tests
 //!
@@ -98,7 +98,7 @@ fn tools_call_request(id: i64, name: &str, arguments: serde_json::Value) -> Json
 /// Build a `McpServer` using real ralph-workflow adapter implementations.
 ///
 /// This replicates the wiring that `SessionBridge::start()` performs, but
-/// without the Unix socket transport. Useful for testing the adapter stack
+/// without the TCP loopback transport. Useful for testing the adapter stack
 /// in isolation.
 fn build_ralph_mcp_server(session: Arc<AgentSession>, workspace: Arc<dyn Workspace>) -> McpServer {
     let root_dir = workspace.root().to_path_buf();

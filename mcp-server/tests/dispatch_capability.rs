@@ -22,6 +22,9 @@ impl mcp_server::HostSession for ApprovedSession {
     fn session_id(&self) -> &str {
         "approved-session"
     }
+    fn run_id(&self) -> &str {
+        "approved-run"
+    }
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }
@@ -31,6 +34,9 @@ struct DeniedSession;
 impl mcp_server::HostSession for DeniedSession {
     fn session_id(&self) -> &str {
         "denied-session"
+    }
+    fn run_id(&self) -> &str {
+        "denied-run"
     }
     fn check_capability(&self, cap: McpCapability) -> AccessDecision {
         if cap == McpCapability::WorkspaceRead {
@@ -72,6 +78,9 @@ impl CountingSession {
 impl mcp_server::HostSession for CountingSession {
     fn session_id(&self) -> &str {
         "counting-session"
+    }
+    fn run_id(&self) -> &str {
+        "counting-run"
     }
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         self.count.fetch_add(1, Ordering::SeqCst);
@@ -729,9 +738,9 @@ fn test_tool_filter_fires_before_capability_check() {
 
 /// Verify that check_capability is called exactly once per tool dispatch.
 ///
-/// The capability check is the 4th step in the enforcement chain (after tool filter,
-/// access mode, and path checks). When all earlier checks pass, the host's
-/// check_capability should be invoked exactly once for the tool's required capability.
+/// The pre-dispatch enforcement gate is the single authoritative capability decision
+/// point. Once a request is admitted, the registry executes the handler through a
+/// pre-authorized session wrapper and does not call the host capability hook again.
 #[test]
 fn test_capability_check_invoked_exactly_once_per_dispatch() {
     let counting_session = CountingSession::new();
@@ -768,21 +777,14 @@ fn test_capability_check_invoked_exactly_once_per_dispatch() {
         "Tool call should succeed with granted capability"
     );
 
-    // check_capability is called twice per dispatch:
-    // 1. In check_enforcement via the capability closure (step 4 of enforcement chain)
-    // 2. In registry.dispatch() when the tool handler is invoked
+    // check_capability is called exactly once per dispatch at the enforcement boundary.
     let final_count = counting_session.get_count();
     assert_eq!(
         final_count - initial_count,
-        2,
-        "check_capability should be invoked twice per dispatch (in enforcement and dispatch layers), got {} additional calls",
+        1,
+        "check_capability should be invoked exactly once per dispatch at the enforcement boundary, got {} additional calls",
         final_count - initial_count
     );
-
-    // Now check that check_capability was called exactly once during dispatch
-    // We use a separate call to get_count since we can't easily access the CountingSession
-    // from outside. But we verified above that a direct call works.
-    // The actual assertion is done via the get_count method below.
 }
 
 /// Verify that check_capability is invoked exactly once when a capability-denied error occurs.

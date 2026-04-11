@@ -114,7 +114,28 @@ fn plan_phase_contract_chain_sample_to_reducer_state() {
 
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
-    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: crate::reducer::event::PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        commit_diff_prepared: true,
+        commit_diff_empty: false,
+        commit_diff_content_id_sha256: Some("id".to_string()),
+        prompt_permissions: crate::reducer::state::PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        agent_chain: crate::reducer::state::AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            crate::agents::AgentRole::Commit,
+        ),
+        ..PipelineState::initial(1, 0)
+    };
     let handler = MainEffectHandler::new(state.clone());
 
     let result = handler
@@ -165,7 +186,28 @@ fn development_phase_contract_chain_sample_to_reducer_state() {
 
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
-    let state = PipelineState::initial(1, 0);
+    let state = PipelineState {
+        phase: crate::reducer::event::PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        commit_diff_prepared: true,
+        commit_diff_empty: false,
+        commit_diff_content_id_sha256: Some("id".to_string()),
+        prompt_permissions: crate::reducer::state::PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        agent_chain: crate::reducer::state::AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            crate::agents::AgentRole::Commit,
+        ),
+        ..PipelineState::initial(1, 0)
+    };
     let handler = MainEffectHandler::new(state.clone());
 
     let result = handler.validate_development_xml(&ctx, 0);
@@ -309,10 +351,12 @@ fn commit_phase_contract_chain_sample_to_reducer_state() {
     let reduced = reduce(state, result.event);
     let outcome = reduced
         .commit_validated_outcome
+        .clone()
         .expect("reducer must persist commit validated outcome");
     assert_eq!(outcome.attempt, 1);
     let message = outcome
         .message
+        .clone()
         .expect("validated commit outcome should include message");
     assert!(
         message.contains(&expected_subject),

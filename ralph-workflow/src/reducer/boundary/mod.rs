@@ -741,7 +741,10 @@ impl MainEffectHandler {
                 message,
                 files,
                 excluded_files,
-            } => Self::create_commit(ctx, message, &files, &excluded_files),
+            } => {
+                self.assert_create_commit_boundary_invariants(&message);
+                Self::create_commit(ctx, message, &files, &excluded_files)
+            }
             Effect::SkipCommit { reason } => Ok(Self::skip_commit(ctx, reason)),
             Effect::CheckResidualFiles { pass } => Self::check_residual_files(ctx, pass),
             Effect::CheckUncommittedChangesBeforeTermination => {

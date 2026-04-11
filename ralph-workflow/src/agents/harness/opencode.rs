@@ -2,7 +2,7 @@
 //!
 //! Generates MCP server configuration for OpenCode CLI.
 //! The MCP server entry tells OpenCode to spawn `ralph --mcp-proxy` which
-//! bridges stdio to Ralph's Unix socket MCP server.
+//! bridges stdio to Ralph's TCP loopback MCP server.
 
 use crate::agents::harness::{AgentHarness, HarnessConfig};
 use crate::agents::session::AgentSession;
@@ -49,7 +49,7 @@ mod tests {
             1,
         );
         let harness = OpenCodeHarness;
-        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        let config = harness.generate(&session, "tcp://127.0.0.1:42000");
         match config {
             HarnessConfig::OpenCode(json) => {
                 assert!(json.contains("\"mcp\""));

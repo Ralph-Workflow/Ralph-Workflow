@@ -36,7 +36,7 @@ mod tests {
             1,
         );
         let harness = AiderHarness;
-        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        let config = harness.generate(&session, "tcp://127.0.0.1:42000");
         match config {
             HarnessConfig::Aider(args) => {
                 assert!(args.contains(&"--no-commit".to_string()));

@@ -38,7 +38,7 @@ mod tests {
             1,
         );
         let harness = CodexHarness;
-        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        let config = harness.generate(&session, "tcp://127.0.0.1:42000");
         match config {
             HarnessConfig::Codex(toml) => {
                 assert!(toml.contains("[mcp_servers.ralph]"));

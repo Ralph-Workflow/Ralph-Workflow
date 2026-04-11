@@ -98,6 +98,15 @@ impl SessionDrain {
     }
 }
 
+/// Correlation metadata attached to audit records.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditCorrelation {
+    pub run_id: Option<String>,
+    pub generation: Option<u32>,
+    pub drain: Option<String>,
+    pub policy_mode: Option<String>,
+}
+
 impl fmt::Display for SessionDrain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
@@ -484,6 +493,12 @@ pub struct AuditRecord {
     /// Recorded for development and fix drain effects.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_status: Option<String>,
+    /// Optional runtime event classification (heartbeat/mode transition, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
+    /// Optional correlation metadata from MCP runtime (run/generation/drain/mode).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation: Option<AuditCorrelation>,
 }
 
 impl AuditRecord {
@@ -503,6 +518,8 @@ impl AuditRecord {
             description,
             duration_ms: None,
             result_status: None,
+            event_type: None,
+            correlation: None,
         }
     }
 
@@ -524,6 +541,8 @@ impl AuditRecord {
             description,
             duration_ms: Some(duration_ms),
             result_status: Some(result_status),
+            event_type: None,
+            correlation: None,
         }
     }
 }

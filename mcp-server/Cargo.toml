@@ -30,6 +30,9 @@ anyhow = "1.0"
 # Logging
 tracing = "0.1"
 
+# Random utilities for policy challenge generation
+rand = { version = "0.8", features = ["std"] }
+
 # Bytes handling for transport framing
 bytes = "1"
 

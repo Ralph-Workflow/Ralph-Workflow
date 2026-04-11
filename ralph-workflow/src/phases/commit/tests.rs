@@ -322,5 +322,9 @@ mod tests {
         assert!(retry.contains("mcp__ralph__ralph_submit_artifact"));
         assert!(retry.contains("Do NOT print the commit message"));
         assert!(retry.contains("submit the artifact"));
+        assert!(
+            retry.contains("Do NOT run git commit"),
+            "retry prompt must preserve orchestrator-owned commit execution boundary"
+        );
     }
 }

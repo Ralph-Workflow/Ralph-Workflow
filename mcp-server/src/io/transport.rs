@@ -8,7 +8,7 @@
 //! | Type | Description |
 //! |------|-------------|
 //! | [`StdioTransport`] | Reads from stdin, writes to stdout (for Claude Code) |
-//! | [`UnixSocketTransport`] | Unix domain socket server for local agents |
+//! | [`TcpLoopbackTransport`] | TCP loopback server for local agents |
 //! | [`McpStream`] | Per-connection stream after accept |
 //!
 //! # Framing Protocol
@@ -23,11 +23,13 @@
 //! The JSON body is a JSON-RPC 2.0 request or response object.
 
 use crate::protocol::{JsonRpcRequest, JsonRpcResponse};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// Errors that can occur during MCP transport operations.
@@ -72,6 +74,50 @@ pub enum TransportError {
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 
+/// Metadata for the currently bound MCP endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EndpointLease {
+    /// Endpoint URI (e.g., tcp://127.0.0.1:12345)
+    pub endpoint: String,
+    /// Run identifier associated with this lease.
+    pub run_id: String,
+    /// Monotonically increasing generation counter.
+    pub generation: u32,
+    /// UTC ready timestamp as seconds since UNIX_EPOCH.
+    pub ready_at: u64,
+}
+
+impl EndpointLease {
+    /// Create a new lease with the given parameters.
+    pub fn new(endpoint: String, run_id: String, generation: u32, ready_at: SystemTime) -> Self {
+        let ready_at = ready_at
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Self {
+            endpoint,
+            run_id,
+            generation,
+            ready_at,
+        }
+    }
+
+    /// Return the ready timestamp as `SystemTime`.
+    pub fn ready_at_system_time(&self) -> SystemTime {
+        UNIX_EPOCH + Duration::from_secs(self.ready_at)
+    }
+}
+
+impl fmt::Display for EndpointLease {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} (run_id={}, generation={}, ready_at={})",
+            self.endpoint, self.run_id, self.generation, self.ready_at
+        )
+    }
+}
+
 /// Trait for MCP transport streams.
 ///
 /// Implementors handle reading JSON-RPC requests and writing responses
@@ -92,7 +138,7 @@ pub trait McpStream: Send + Sync {
 /// MCP transport using stdin/stdout.
 ///
 /// Used when Ralph is spawned as a child process by Claude Code.
-/// Claude Code only supports stdio transport, not Unix sockets.
+/// Claude Code only supports stdio transport, not direct TCP listener connections.
 pub struct StdioTransport {
     reader: BufReader<std::io::Stdin>,
     writer: std::io::Stdout,
@@ -119,20 +165,36 @@ impl McpStream for StdioTransport {
 }
 
 // ---------------------------------------------------------------------------
-// Unix Socket Transport
+// TCP Loopback Transport
 // ---------------------------------------------------------------------------
 
 /// TCP MCP transport for local agent connections.
 ///
 /// Creates a non-blocking localhost TCP server. Each accepted connection
 /// gets its own `McpStream` for reading/writing JSON-RPC messages.
-pub struct UnixSocketTransport {
+pub struct TcpLoopbackTransport {
     listener: TcpListener,
     local_addr: SocketAddr,
     shutdown_flag: Arc<AtomicBool>,
 }
 
-impl UnixSocketTransport {
+impl TcpLoopbackTransport {
+    fn normalize_accept_result(
+        result: Result<(TcpStream, SocketAddr), std::io::Error>,
+    ) -> Result<Option<TcpStream>, TransportError> {
+        result
+            .map(|(stream, _)| Some(stream))
+            .or_else(|error| match error.kind() {
+                std::io::ErrorKind::WouldBlock => Ok(None),
+                _ => Err(error.into()),
+            })
+    }
+
+    fn finalize_accepted_stream(stream: TcpStream) -> Result<McpStreamImpl, TransportError> {
+        stream.set_read_timeout(Some(Duration::from_millis(500)))?;
+        Ok(McpStreamImpl::new(stream))
+    }
+
     /// Create a new localhost TCP transport on an ephemeral port.
     pub fn new(shutdown_flag: Arc<AtomicBool>) -> Result<Self, TransportError> {
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
@@ -160,14 +222,8 @@ impl UnixSocketTransport {
             return Err(TransportError::Shutdown);
         }
 
-        match self.listener.accept() {
-            Ok((stream, _)) => {
-                stream.set_read_timeout(Some(Duration::from_millis(500)))?;
-                Ok(Some(McpStreamImpl::new(stream)))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        let accepted = Self::normalize_accept_result(self.listener.accept())?;
+        accepted.map(Self::finalize_accepted_stream).transpose()
     }
 }
 
@@ -381,7 +437,7 @@ fn append_header_line(header: &mut Vec<u8>, line: &[u8]) -> Result<(), Transport
 /// Read headers until blank line by reading byte-by-byte.
 ///
 /// This avoids BufReader which can have unexpected behavior with non-blocking
-/// Unix sockets when the stream is empty.
+/// local TCP streams when the stream is empty.
 fn read_headers_until_blank_line(stream: &mut TcpStream) -> Result<Vec<u8>, TransportError> {
     let mut header = Vec::new();
     loop {
@@ -493,7 +549,7 @@ mod tests {
 
     #[test]
     fn tcp_transport_binds_localhost_ephemeral_port() {
-        let transport = UnixSocketTransport::new(Arc::new(AtomicBool::new(false)))
+        let transport = TcpLoopbackTransport::new(Arc::new(AtomicBool::new(false)))
             .expect("transport should bind localhost tcp");
         assert_eq!(transport.local_addr().ip().to_string(), "127.0.0.1");
         assert!(transport.local_addr().port() > 0);

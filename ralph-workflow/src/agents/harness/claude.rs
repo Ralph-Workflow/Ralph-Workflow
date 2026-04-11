@@ -79,7 +79,7 @@ mod tests {
             1,
         );
         let harness = ClaudeHarness;
-        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        let config = harness.generate(&session, "tcp://127.0.0.1:42000");
         match config {
             HarnessConfig::ClaudeCode(json) => {
                 assert!(json.contains("mcpServers"));
@@ -100,7 +100,7 @@ mod tests {
             1,
         );
         let harness = ClaudeHarness;
-        let config = harness.generate(&session, "unix:///tmp/ralph-mcp/test.sock");
+        let config = harness.generate(&session, "tcp://127.0.0.1:42000");
         match config {
             HarnessConfig::ClaudeCode(json) => {
                 assert!(json.contains("mcp__ralph__ralph_submit_artifact"));

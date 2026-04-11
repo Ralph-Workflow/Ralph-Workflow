@@ -7,7 +7,7 @@ use mcp_server::dispatch::access::{AccessDecision, McpCapability};
 use mcp_server::dispatch::host::DirEntry;
 use mcp_server::dispatch::ToolRegistry;
 use mcp_server::io::access::McpServerConfig;
-use mcp_server::io::{session_bridge::SessionBridge, McpServer, ServerState};
+use mcp_server::io::{McpServer, ServerState};
 use mcp_server::protocol::JsonRpcRequest;
 use std::path::Path;
 use std::sync::Arc;
@@ -20,6 +20,9 @@ struct MockSession;
 impl mcp_server::HostSession for MockSession {
     fn session_id(&self) -> &str {
         "test-session"
+    }
+    fn run_id(&self) -> &str {
+        "test-run"
     }
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
@@ -334,40 +337,5 @@ fn test_dispatch_succeeds_only_after_initialize() {
     assert!(
         resp_after.error.is_none(),
         "tools/list must not have error after initialize"
-    );
-}
-
-#[test]
-fn test_socket_cleanup_on_shutdown() {
-    let session = Arc::new(MockSession) as Arc<dyn mcp_server::HostSession>;
-    let workspace = Arc::new(MockWorkspace) as Arc<dyn mcp_server::WorkspaceAdapter>;
-    let config = McpServerConfig::new(std::env::temp_dir());
-    let registry = ToolRegistry::new(vec![]);
-
-    let socket_path = {
-        let bridge = SessionBridge::new(session, config, workspace, registry);
-        let socket_path = bridge.socket_path().clone();
-
-        std::fs::write(&socket_path, b"placeholder socket file")
-            .expect("test should be able to create placeholder socket file");
-        assert!(
-            socket_path.exists(),
-            "Socket path should exist before shutdown cleanup"
-        );
-        assert!(!bridge.is_shutdown(), "Bridge should start un-shutdown");
-
-        bridge.shutdown();
-
-        assert!(
-            bridge.is_shutdown(),
-            "Shutdown should set the bridge shutdown flag"
-        );
-
-        socket_path
-    };
-
-    assert!(
-        !socket_path.exists(),
-        "Socket file should be removed when the bridge is dropped"
     );
 }

@@ -276,6 +276,150 @@ impl std::fmt::Display for AccessMode {
     }
 }
 
+/// Runtime policy mode that determines which operation classes are allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum PolicyMode {
+    /// Developer drain with full read/write capability.
+    Dev,
+    /// Fixer drain that is allowed to read and write for quick fixes.
+    Fixer,
+    /// Commit drain that is read-only except for artifact submission.
+    Commit,
+    /// Generic read-only drain (non-dev/fixer).
+    ReadOnly,
+}
+
+impl PolicyMode {
+    const VARIANT_COUNT: usize = 4;
+
+    fn as_index(&self) -> usize {
+        match self {
+            PolicyMode::Dev => 0,
+            PolicyMode::Fixer => 1,
+            PolicyMode::Commit => 2,
+            PolicyMode::ReadOnly => 3,
+        }
+    }
+
+    /// Returns the `AccessMode` that best matches this policy.
+    pub fn access_mode(&self) -> AccessMode {
+        match self {
+            PolicyMode::Dev | PolicyMode::Fixer => AccessMode::ReadWrite,
+            PolicyMode::Commit | PolicyMode::ReadOnly => AccessMode::ReadOnly,
+        }
+    }
+
+    /// Parse policy mode from orchestrator control value.
+    pub fn try_from_str(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "dev" | "development" => Some(PolicyMode::Dev),
+            "fixer" | "fix" => Some(PolicyMode::Fixer),
+            "commit" => Some(PolicyMode::Commit),
+            "readonly" | "read_only" | "read-only" | "planning" | "review" | "analysis" => {
+                Some(PolicyMode::ReadOnly)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for PolicyMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PolicyMode::Dev => write!(f, "PolicyMode::Dev"),
+            PolicyMode::Fixer => write!(f, "PolicyMode::Fixer"),
+            PolicyMode::Commit => write!(f, "PolicyMode::Commit"),
+            PolicyMode::ReadOnly => write!(f, "PolicyMode::ReadOnly"),
+        }
+    }
+}
+
+/// Classes of operations used by the policy matrix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum OperationClass {
+    /// Non-mutating read operations (workspace reads, git status, etc.).
+    Read,
+    /// Generic writes (files, env, exec, ephemeral writes).
+    Write,
+    /// Tracked edits (editing existing tracked files).
+    Edit,
+    /// Artifact submission and workflow coordination signals.
+    SubmitArtifact,
+    /// Git commit or other git write operations.
+    GitCommit,
+}
+
+impl OperationClass {
+    const VARIANT_COUNT: usize = 5;
+
+    fn as_index(&self) -> usize {
+        match self {
+            OperationClass::Read => 0,
+            OperationClass::Write => 1,
+            OperationClass::Edit => 2,
+            OperationClass::SubmitArtifact => 3,
+            OperationClass::GitCommit => 4,
+        }
+    }
+
+    /// Determine the operation class for a capability, falling back to mutating vs read-only.
+    pub fn classify(capability: Option<McpCapability>, is_mutating: bool) -> Self {
+        match capability {
+            Some(McpCapability::ArtifactSubmit) => OperationClass::SubmitArtifact,
+            Some(McpCapability::GitWrite) => OperationClass::GitCommit,
+            Some(McpCapability::WorkspaceWriteTracked) => OperationClass::Edit,
+            Some(McpCapability::WorkspaceWriteEphemeral)
+            | Some(McpCapability::WorkspaceWriteAny)
+            | Some(McpCapability::FileWrite)
+            | Some(McpCapability::EnvWrite)
+            | Some(McpCapability::ProcessExec)
+            | Some(McpCapability::ProcessExecBounded)
+            | Some(McpCapability::ProcessExecUnbounded) => OperationClass::Write,
+            Some(cap) if cap.is_read() => OperationClass::Read,
+            _ if is_mutating => OperationClass::Write,
+            _ => OperationClass::Read,
+        }
+    }
+}
+
+impl std::fmt::Display for OperationClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OperationClass::Read => write!(f, "Read"),
+            OperationClass::Write => write!(f, "Write"),
+            OperationClass::Edit => write!(f, "Edit"),
+            OperationClass::SubmitArtifact => write!(f, "SubmitArtifact"),
+            OperationClass::GitCommit => write!(f, "GitCommit"),
+        }
+    }
+}
+
+/// Explicit policy matrix indexed by (mode, operation class).
+const POLICY_MATRIX: [[bool; OperationClass::VARIANT_COUNT]; PolicyMode::VARIANT_COUNT] = [
+    // Dev — everything allowed
+    [true, true, true, true, true],
+    // Fixer — same permissive behavior as dev
+    [true, true, true, true, true],
+    // Commit — read + artifact submission only
+    [true, false, false, true, false],
+    // ReadOnly drains — strictly read-only
+    [true, false, false, false, false],
+];
+
+/// Returns the denial reason when a policy matrix entry blocks an operation.
+fn policy_denial_reason(mode: PolicyMode, class: OperationClass) -> String {
+    format!("{} denies {} operations", mode, class)
+}
+
+/// Check whether the policy mode allows the given operation class.
+pub fn policy_operation_allowed(mode: PolicyMode, class: OperationClass) -> Option<String> {
+    if POLICY_MATRIX[mode.as_index()][class.as_index()] {
+        None
+    } else {
+        Some(policy_denial_reason(mode, class))
+    }
+}
+
 /// Tool filter controlling which registered tools can be dispatched.
 ///
 /// Tool filter is checked by `mcp-server` at dispatch time, before capability checks
@@ -764,6 +908,30 @@ mod tests {
         assert!(
             !policy_path_within_root(&non_normalized, &canonical_root),
             "non-normalized traversal path must not pass root boundary checks"
+        );
+    }
+
+    #[test]
+    fn commit_policy_matrix_is_artifact_only() {
+        assert_eq!(
+            policy_operation_allowed(PolicyMode::Commit, OperationClass::SubmitArtifact),
+            None,
+            "commit mode must allow artifact submission"
+        );
+        assert_eq!(
+            policy_operation_allowed(PolicyMode::Commit, OperationClass::Write),
+            Some("PolicyMode::Commit denies Write operations".to_string()),
+            "commit mode must deny generic writes"
+        );
+        assert_eq!(
+            policy_operation_allowed(PolicyMode::Commit, OperationClass::Edit),
+            Some("PolicyMode::Commit denies Edit operations".to_string()),
+            "commit mode must deny tracked edits"
+        );
+        assert_eq!(
+            policy_operation_allowed(PolicyMode::Commit, OperationClass::GitCommit),
+            Some("PolicyMode::Commit denies GitCommit operations".to_string()),
+            "commit mode must deny git writes"
         );
     }
 }

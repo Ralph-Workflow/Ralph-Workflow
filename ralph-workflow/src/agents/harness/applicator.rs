@@ -19,6 +19,7 @@ use crate::agents::harness::{
 };
 use crate::agents::session::AgentSession;
 use crate::workspace::Workspace;
+use mcp_server::io::EndpointLease;
 
 /// Recognised agent executable types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,11 +97,21 @@ pub fn apply_harness_config(
     mcp_endpoint: &str,
     workspace: &dyn Workspace,
 ) -> std::io::Result<HarnessApplyResult> {
+    apply_harness_config_with_lease(agent_type, session, mcp_endpoint, workspace, None)
+}
+
+pub fn apply_harness_config_with_lease(
+    agent_type: AgentType,
+    session: &AgentSession,
+    mcp_endpoint: &str,
+    workspace: &dyn Workspace,
+    lease: Option<&EndpointLease>,
+) -> std::io::Result<HarnessApplyResult> {
     match agent_type {
         AgentType::Claude => apply_claude_harness(session, mcp_endpoint, workspace),
         AgentType::OpenCode => apply_opencode_harness(session, mcp_endpoint, workspace),
         AgentType::Aider => apply_aider_harness(session, mcp_endpoint, workspace),
-        AgentType::Codex => apply_codex_harness(session, mcp_endpoint, workspace),
+        AgentType::Codex => apply_codex_harness(session, mcp_endpoint, workspace, lease),
         AgentType::Unknown => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "MCP harness setup failed: unknown agent type is not allowed",
@@ -157,6 +168,7 @@ fn apply_codex_harness(
     session: &AgentSession,
     mcp_endpoint: &str,
     workspace: &dyn Workspace,
+    lease: Option<&EndpointLease>,
 ) -> std::io::Result<HarnessApplyResult> {
     let harness_dir = harness_dir_for(session);
     let config = CodexHarness.generate(session, mcp_endpoint);
@@ -164,7 +176,7 @@ fn apply_codex_harness(
     let config_path = format!("{harness_dir}/config.toml");
     write_config(workspace, &harness_dir, &config_path, &content)?;
 
-    let extra_cmd_args = build_codex_override_args(session, mcp_endpoint);
+    let extra_cmd_args = build_codex_override_args(session, mcp_endpoint, lease);
 
     Ok(HarnessApplyResult {
         extra_env_vars: HashMap::new(),
@@ -181,14 +193,18 @@ fn apply_codex_harness(
 /// for the config.toml; both must use the same resolved path so that the -c
 /// overrides (which take precedence over the config file) do not regress to a
 /// PATH-dependent bare `"ralph"`.
-fn build_codex_override_args(session: &AgentSession, mcp_endpoint: &str) -> Vec<String> {
+fn build_codex_override_args(
+    session: &AgentSession,
+    mcp_endpoint: &str,
+    lease: Option<&EndpointLease>,
+) -> Vec<String> {
     // Resolve the absolute path to the ralph binary. Falls back to bare "ralph"
     // if current_exe() cannot be determined (mirrors CodexHarness::generate).
     let ralph_command = std::env::current_exe()
         .ok()
         .and_then(|p| p.to_str().map(String::from))
         .unwrap_or_else(|| "ralph".to_string());
-    let overrides = [
+    let mut overrides = vec![
         format!("mcp_servers.ralph.command=\"{ralph_command}\""),
         "mcp_servers.ralph.args=[\"--mcp-proxy\"]".to_string(),
         format!("mcp_servers.ralph.env.RALPH_MCP_ENDPOINT=\"{mcp_endpoint}\""),
@@ -197,6 +213,16 @@ fn build_codex_override_args(session: &AgentSession, mcp_endpoint: &str) -> Vec<
             session.session_id
         ),
     ];
+    if let Some(lease) = lease {
+        overrides.push(format!(
+            "mcp_servers.ralph.env.RALPH_MCP_GENERATION=\"{}\"",
+            lease.generation
+        ));
+        overrides.push(format!(
+            "mcp_servers.ralph.env.RALPH_MCP_RUN_ID=\"{}\"",
+            lease.run_id
+        ));
+    }
     overrides
         .into_iter()
         .flat_map(|v| ["-c".to_string(), shell_escape_posix(v.as_str())])
@@ -208,6 +234,112 @@ fn harness_dir_for(session: &AgentSession) -> String {
     format!(".agent/tmp/harness/{}", session.session_id.as_str())
 }
 
+struct ClaudeHarnessFiles {
+    config_path: String,
+    mcp_config_path: String,
+    merged_settings: String,
+    merged_mcp: String,
+}
+
+fn parse_claude_json(value: &str) -> std::io::Result<serde_json::Value> {
+    serde_json::from_str(value).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+fn pretty_json(value: &serde_json::Value) -> std::io::Result<String> {
+    serde_json::to_string_pretty(value)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+fn read_existing_claude_settings(workspace: &dyn Workspace) -> serde_json::Value {
+    workspace
+        .read(Path::new(CLAUDE_SETTINGS_LOCAL))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+fn build_harness_paths(session: &AgentSession) -> (String, String) {
+    let session_id = session.session_id.as_str();
+    let harness_dir = format!(".agent/tmp/harness/{session_id}/claude");
+    (
+        format!("{harness_dir}/settings.local.json"),
+        format!("{harness_dir}/mcp.json"),
+    )
+}
+
+fn merged_mcp_servers_json(merged: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "mcpServers": merged
+            .get("mcpServers")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}))
+    })
+}
+
+fn load_and_merge_claude_settings(
+    mcp_endpoint: &str,
+    session: &AgentSession,
+    workspace: &dyn Workspace,
+) -> std::io::Result<ClaudeHarnessFiles> {
+    let config = ClaudeHarness.generate(session, mcp_endpoint);
+    let ralph_settings_json = harness_config_content(&config);
+    let ralph_value = parse_claude_json(ralph_settings_json.as_str())?;
+    let existing = read_existing_claude_settings(workspace);
+
+    let merged = merge_claude_settings(&existing, &ralph_value);
+    let merged_settings = pretty_json(&merged)?;
+    let merged_mcp = pretty_json(&merged_mcp_servers_json(&merged))?;
+    let (config_path, mcp_config_path) = build_harness_paths(session);
+    Ok(ClaudeHarnessFiles {
+        config_path,
+        mcp_config_path,
+        merged_settings,
+        merged_mcp,
+    })
+}
+
+fn persist_claude_harness_files(
+    workspace: &dyn Workspace,
+    files: &ClaudeHarnessFiles,
+) -> std::io::Result<()> {
+    let harness_dir = Path::new(&files.config_path).parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "missing harness dir")
+    })?;
+    workspace.remove_dir_all_if_exists(harness_dir)?;
+    workspace.create_dir_all(harness_dir)?;
+    workspace.write(
+        Path::new(&files.config_path),
+        files.merged_settings.as_str(),
+    )?;
+    workspace.write(Path::new(&files.mcp_config_path), files.merged_mcp.as_str())?;
+    Ok(())
+}
+
+fn claude_harness_cmd_args(workspace: &dyn Workspace, files: &ClaudeHarnessFiles) -> Vec<String> {
+    let escaped_settings = shell_escape_posix(
+        workspace
+            .root()
+            .join(files.config_path.as_str())
+            .to_string_lossy()
+            .as_ref(),
+    );
+    let escaped_mcp_config = shell_escape_posix(
+        workspace
+            .root()
+            .join(files.mcp_config_path.as_str())
+            .to_string_lossy()
+            .as_ref(),
+    );
+    vec![
+        "--tools".to_string(),
+        "''".to_string(),
+        "--settings".to_string(),
+        escaped_settings,
+        "--mcp-config".to_string(),
+        escaped_mcp_config,
+    ]
+}
+
 /// Apply Claude Code harness by writing a session-scoped config and injecting it
 /// through Claude's `--settings` flag, leaving the user's real config untouched.
 fn apply_claude_harness(
@@ -215,56 +347,13 @@ fn apply_claude_harness(
     mcp_endpoint: &str,
     workspace: &dyn Workspace,
 ) -> std::io::Result<HarnessApplyResult> {
-    let config = ClaudeHarness.generate(session, mcp_endpoint);
-    let ralph_settings_json = harness_config_content(&config);
-    let ralph_value: serde_json::Value = serde_json::from_str(&ralph_settings_json)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-    let existing = workspace
-        .read(Path::new(CLAUDE_SETTINGS_LOCAL))
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-
-    let merged = merge_claude_settings(&existing, &ralph_value);
-    let merged_str = serde_json::to_string_pretty(&merged)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    let merged_mcp_config = serde_json::json!({
-        "mcpServers": merged
-            .get("mcpServers")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}))
-    });
-    let merged_mcp_str = serde_json::to_string_pretty(&merged_mcp_config)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-    let session_id = session.session_id.as_str();
-    let harness_dir = format!(".agent/tmp/harness/{session_id}/claude");
-    let config_path = format!("{harness_dir}/settings.local.json");
-    let mcp_config_path = format!("{harness_dir}/mcp.json");
-    let harness_dir_path = Path::new(&harness_dir);
-
-    workspace.remove_dir_all_if_exists(harness_dir_path)?;
-    workspace.create_dir_all(harness_dir_path)?;
-    workspace.write(Path::new(&config_path), &merged_str)?;
-    workspace.write(Path::new(&mcp_config_path), &merged_mcp_str)?;
-
-    let absolute_path = workspace.root().join(&config_path);
-    let escaped_settings = shell_escape_posix(absolute_path.to_string_lossy().as_ref());
-    let absolute_mcp_path = workspace.root().join(&mcp_config_path);
-    let escaped_mcp_config = shell_escape_posix(absolute_mcp_path.to_string_lossy().as_ref());
+    let files = load_and_merge_claude_settings(mcp_endpoint, session, workspace)?;
+    persist_claude_harness_files(workspace, &files)?;
 
     Ok(HarnessApplyResult {
         extra_env_vars: HashMap::new(),
-        config_path: Some(config_path),
-        extra_cmd_args: vec![
-            "--tools".to_string(),
-            "''".to_string(),
-            "--settings".to_string(),
-            escaped_settings,
-            "--mcp-config".to_string(),
-            escaped_mcp_config,
-        ],
+        config_path: Some(files.config_path.clone()),
+        extra_cmd_args: claude_harness_cmd_args(workspace, &files),
     })
 }
 

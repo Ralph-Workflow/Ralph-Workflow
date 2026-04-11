@@ -1,7 +1,7 @@
 //! End-to-end behavioral tests for MCP protocol behavior.
 //!
 //! These tests exercise the same `SessionBridge` protocol surface that agents
-//! use, but through an in-process harness instead of real Unix sockets so the
+//! use, but through an in-process harness instead of real TCP sockets so the
 //! suite remains deterministic under sandboxed test execution.
 //!
 //! Behavioral contracts verified here:
@@ -478,7 +478,7 @@ mod unix_tests {
     // =============================================================================
     // Test 10: OpenCode connects directly to socket, initializes, and lists tools.
     //
-    // OpenCode uses a direct Unix socket connection to Ralph's MCP server
+    // OpenCode uses a direct TCP loopback connection to Ralph's MCP server
     // (no proxy). This test verifies the same observable contract as the CCS
     // test but via direct socket, confirming no consumer-specific protocol
     // divergence.
@@ -541,7 +541,7 @@ mod unix_tests {
     // =============================================================================
     // Test 11: Codex connects directly to socket, initializes, and lists tools.
     //
-    // Codex uses a direct Unix socket connection to Ralph's MCP server (no proxy).
+    // Codex uses a direct TCP loopback connection to Ralph's MCP server (no proxy).
     // This test verifies that Codex can initialize a session and receive the full
     // tool list. Git tools (git_status, etc.) are verified by unit tests
     // using MemoryWorkspace — they must not be tested with real git in e2e tests
@@ -636,7 +636,7 @@ mod unix_tests {
                 "context": "End-to-end MCP submit artifact test",
                 "scope_items": [
                     {"text": "Verify ralph_submit_artifact is callable end-to-end"},
-                    {"text": "Confirm full Unix socket round-trip works"},
+                    {"text": "Confirm full TCP loopback round-trip works"},
                     {"text": "Assert accepted: true in response"}
                 ]
             },
@@ -644,7 +644,7 @@ mod unix_tests {
                 {
                     "number": 1,
                     "title": "Test step",
-                    "content": "Assert the tool is reachable via the Unix socket"
+                    "content": "Assert the tool is reachable via the TCP loopback endpoint"
                 }
             ],
             "critical_files": {

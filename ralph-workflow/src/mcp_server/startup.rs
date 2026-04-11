@@ -8,7 +8,11 @@ use crate::mcp_server::capability_mapping::drain_to_access_mode;
 use crate::mcp_server::session_bridge::{SessionBridge, SessionBridgeError};
 use crate::workspace::Workspace;
 use mcp_server::dispatch::access::AccessMode;
+use mcp_server::io::heartbeat::HeartbeatPolicy;
+pub use mcp_server::io::{ControlCommand, ControlError};
+use std::env;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Start an MCP server for the given agent session.
 ///
@@ -18,15 +22,41 @@ use std::sync::Arc;
 ///
 /// # Errors
 ///
-/// Returns `SessionBridgeError` if the Unix socket cannot be bound or the
+/// Returns `SessionBridgeError` if the TCP loopback endpoint cannot be bound or the
 /// server thread fails to start.
 pub fn start_mcp_server_for_session(
     session: AgentSession,
     workspace: Arc<dyn Workspace>,
 ) -> Result<SessionBridge, SessionBridgeError> {
     let mut bridge = SessionBridge::new(session, workspace);
+    let _policy = heartbeat_policy_from_env();
     bridge.start()?;
     Ok(bridge)
+}
+
+fn heartbeat_policy_from_env() -> HeartbeatPolicy {
+    const DEFAULT_INTERVAL_MS: u64 = 2000;
+    const DEFAULT_MISSES: u32 = 3;
+    const DEFAULT_RECONNECT_MS: u64 = 10000;
+
+    let interval = env::var("RALPH_MCP_HEARTBEAT_INTERVAL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_INTERVAL_MS);
+    let misses = env::var("RALPH_MCP_HEARTBEAT_MISSES")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_MISSES);
+    let reconnect_ms = env::var("RALPH_MCP_HEARTBEAT_RECONNECT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_RECONNECT_MS);
+
+    HeartbeatPolicy::new(
+        Duration::from_millis(interval),
+        misses.max(1),
+        Duration::from_millis(reconnect_ms),
+    )
 }
 
 /// Pure mapping: determine the MCP `AccessMode` for a session drain.
@@ -83,10 +113,10 @@ mod tests {
     }
 
     #[test]
-    fn commit_drain_is_read_write() {
+    fn commit_drain_is_read_only() {
         assert_eq!(
             access_mode_for_drain(SessionDrain::Commit),
-            AccessMode::ReadWrite
+            AccessMode::ReadOnly
         );
     }
 }

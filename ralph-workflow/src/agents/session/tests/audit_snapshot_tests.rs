@@ -22,6 +22,11 @@ mod tests {
             command: None,
             duration_ms: None,
             result_status: None,
+            run_id: None,
+            generation: None,
+            drain: None,
+            policy_mode: None,
+            event_type: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -54,6 +59,11 @@ mod tests {
             command: None,
             duration_ms: None,
             result_status: None,
+            run_id: None,
+            generation: None,
+            drain: None,
+            policy_mode: None,
+            event_type: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -83,6 +93,11 @@ mod tests {
             command: None,
             duration_ms: None,
             result_status: None,
+            run_id: None,
+            generation: None,
+            drain: None,
+            policy_mode: None,
+            event_type: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -109,6 +124,11 @@ mod tests {
             command: Some("git commit -m \"fix\"".to_string()),
             duration_ms: None,
             result_status: None,
+            run_id: None,
+            generation: None,
+            drain: None,
+            policy_mode: None,
+            event_type: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -139,6 +159,11 @@ mod tests {
             command: None,
             duration_ms: None,
             result_status: None,
+            run_id: None,
+            generation: None,
+            drain: None,
+            policy_mode: None,
+            event_type: None,
         };
 
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -166,6 +191,11 @@ mod tests {
                 command: None,
                 duration_ms: None,
                 result_status: None,
+                run_id: None,
+                generation: None,
+                drain: None,
+                policy_mode: None,
+                event_type: None,
             },
             PersistedAuditRecord {
                 session_id: "test-run-planning-1".to_string(),
@@ -178,6 +208,11 @@ mod tests {
                 command: None,
                 duration_ms: None,
                 result_status: None,
+                run_id: None,
+                generation: None,
+                drain: None,
+                policy_mode: None,
+                event_type: None,
             },
         ];
 

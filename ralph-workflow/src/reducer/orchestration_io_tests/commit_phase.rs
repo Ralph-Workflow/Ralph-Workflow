@@ -442,6 +442,68 @@ fn test_commit_xml_validated_excluded_files_propagate_to_create_commit_effect() 
 }
 
 #[test]
+fn test_submitted_commit_artifact_routes_to_orchestrator_owned_create_commit() {
+    // This state mirrors the reducer after `ralph_submit_artifact` has been consumed
+    // and validated into commit_validated_outcome.
+    let state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        commit_prompt_prepared: true,
+        commit_required_files_cleaned: true,
+        commit_agent_invoked: true,
+        commit_diff_prepared: true,
+        commit_diff_empty: false,
+        commit_diff_content_id_sha256: Some("id".to_string()),
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: artifact-owned message".to_string()),
+            reason: None,
+        }),
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        prompt_permissions: crate::reducer::state::PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..create_test_state()
+    };
+
+    let effect = determine_next_effect(&state);
+    assert!(
+        matches!(effect, Effect::ApplyCommitMessageOutcome),
+        "submitted commit artifacts must be applied by orchestrator effect flow, got {effect:?}"
+    );
+
+    let state = reduce(
+        state,
+        PipelineEvent::commit_message_generated("feat: artifact-owned message".to_string(), 1),
+    );
+    let effect = determine_next_effect(&state);
+    assert!(
+        matches!(effect, Effect::ArchiveCommitXml),
+        "orchestrator must archive commit output before CreateCommit, got {effect:?}"
+    );
+
+    let state = reduce(state, PipelineEvent::commit_xml_archived(1));
+    let effect = determine_next_effect(&state);
+    assert!(
+        matches!(
+            effect,
+            Effect::CreateCommit { ref message, .. } if message == "feat: artifact-owned message"
+        ),
+        "CreateCommit must remain orchestrator-owned after artifact submit path, got {effect:?}"
+    );
+}
+
+#[test]
 fn test_commit_generation_started_clears_selected_files() {
     let state = PipelineState {
         phase: PipelinePhase::CommitMessage,

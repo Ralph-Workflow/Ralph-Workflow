@@ -23,6 +23,9 @@ impl mcp_server::HostSession for MockSession {
     fn session_id(&self) -> &str {
         "test-session"
     }
+    fn run_id(&self) -> &str {
+        "test-run"
+    }
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }

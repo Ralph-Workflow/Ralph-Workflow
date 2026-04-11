@@ -1,4 +1,5 @@
 use crate::agents::session::{Capability, CapabilitySet};
+use itertools::Itertools;
 use regex::Regex;
 
 const CLAUDE_MCP_TOOL_PREFIX: &str = "mcp__ralph__";
@@ -70,11 +71,9 @@ pub(crate) fn rewrite_prompt_mcp_tool_names(
         return prompt.to_string();
     }
 
-    let mut tool_names: Vec<&'static str> = visible_mcp_tool_names(capabilities);
-    tool_names.sort_by_key(|tool_name| std::cmp::Reverse(tool_name.len()));
-
-    tool_names
+    visible_mcp_tool_names(capabilities)
         .into_iter()
+        .sorted_by_key(|tool_name| std::cmp::Reverse(tool_name.len()))
         .fold(prompt.to_string(), |acc, tool_name| {
             let pattern = Regex::new(&format!(r"\b{}\b", regex::escape(tool_name)))
                 .expect("tool name regex should compile");

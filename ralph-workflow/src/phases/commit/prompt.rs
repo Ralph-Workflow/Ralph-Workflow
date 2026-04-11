@@ -206,7 +206,9 @@ fn commit_submission_retry_prompt(base_prompt: &str, submit_tool_name: &str) -> 
 You already analyzed the diff and produced the commit payload, but Ralph did not receive a submitted artifact.\n\
 Do NOT print the commit message or JSON to stdout again.\n\
 Do NOT summarize your answer in plain text.\n\
+Do NOT run git commit or any repository-writing command yourself; commit execution is orchestrator-owned.\n\
 Call `{submit_tool_name}` now to submit the commit artifact.\n\
+Call `{submit_tool_name}` now to submit the artifact.\n\
 If you already generated the JSON/content, reuse it exactly and submit it now.\n\
 Only if the tool is genuinely unavailable after trying should you explain that specific tool failure."
     )

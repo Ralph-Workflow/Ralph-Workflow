@@ -19,13 +19,21 @@ fn session_for_drain(drain: SessionDrain) -> AgentSession {
 
 /// Execute an effect with the given session active and return the result.
 fn execute_with_session(effect: Effect, session: AgentSession) -> anyhow::Result<EffectResult> {
+    execute_with_session_and_state(effect, session, PipelineState::initial(1, 0))
+}
+
+fn execute_with_session_and_state(
+    effect: Effect,
+    session: AgentSession,
+    state: PipelineState,
+) -> anyhow::Result<EffectResult> {
     let workspace = MemoryWorkspace::new_test();
     let mut fixture = TestFixture::with_workspace(workspace);
     let mut ctx = fixture.ctx();
     ctx.active_session = Some(session);
     ctx.audit_trail = crate::agents::session::AuditTrail::new();
 
-    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    let mut handler = MainEffectHandler::new(state);
     handler.execute(effect, &mut ctx)
 }
 
@@ -229,7 +237,16 @@ fn commit_drain_allows_create() {
         excluded_files: vec![],
     };
 
-    let result = execute_with_session(effect, session);
+    let state = PipelineState {
+        phase: crate::reducer::event::PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generated {
+            message: "test".to_string(),
+        },
+        commit_xml_archived: true,
+        ..PipelineState::initial(1, 0)
+    };
+
+    let result = execute_with_session_and_state(effect, session, state);
 
     // Should NOT be CapabilityDenied - commit can create commits
     if let Ok(result) = result {

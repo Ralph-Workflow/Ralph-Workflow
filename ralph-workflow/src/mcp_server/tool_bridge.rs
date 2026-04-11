@@ -54,6 +54,10 @@ impl HostSession for RalphHostSessionAdapter {
         self.session.session_id.as_str()
     }
 
+    fn run_id(&self) -> &str {
+        self.session.run_id.as_str()
+    }
+
     fn check_capability(&self, cap: McpCapability) -> AccessDecision {
         // Thin wiring: gather inputs and delegate to pure policy
         let ephemeral = self

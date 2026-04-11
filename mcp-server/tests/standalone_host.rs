@@ -25,7 +25,7 @@
 //!     v
 //! McpServer (from mcp-server crate)
 //!     |
-//!     +-- SessionBridge for Unix socket transport
+//!     +-- SessionBridge for TCP loopback transport
 //! ```
 //!
 //! # Test Coverage
@@ -154,6 +154,10 @@ impl InMemorySession {
 
 impl mcp_server::HostSession for InMemorySession {
     fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    fn run_id(&self) -> &str {
         &self.session_id
     }
 
@@ -703,7 +707,7 @@ fn send_framed_request(connection: &mut TestConnection, request: serde_json::Val
 /// This test exercises ALL 9 required assertions from the standalone E2E test plan:
 ///
 /// 1. Start McpServer with ReadWrite, Blocklist([]) and register an echo tool
-/// 2. Connect via UnixSocketTransport using SessionBridge
+/// 2. Connect via TCP loopback transport using SessionBridge
 /// 3. Verify initialize returns successful response with protocol version
 /// 4. Verify tools/list shows the echo tool in the list
 /// 5. Verify tools/call for the echo tool returns expected content
@@ -1754,7 +1758,7 @@ fn test_audit_sink_receives_allow_decision() {
 /// End-to-end protocol roundtrip using in-memory FakeTransport.
 ///
 /// Proves the full protocol stack works without ralph-workflow dependency and
-/// without a real Unix socket:
+/// without a real TCP socket listener:
 ///
 /// 1. Create McpServer with fake InMemorySession and InMemoryWorkspace
 /// 2. Drive requests through FakeTransport (inject request → handle → read response)

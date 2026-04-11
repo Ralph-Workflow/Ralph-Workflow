@@ -58,6 +58,10 @@ impl mcp_server::HostSession for AlwaysAllowSession {
         "standalone-test-session"
     }
 
+    fn run_id(&self) -> &str {
+        "standalone-test-run"
+    }
+
     fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
         AccessDecision::Allow
     }
@@ -69,6 +73,10 @@ struct AlwaysDenySession;
 impl mcp_server::HostSession for AlwaysDenySession {
     fn session_id(&self) -> &str {
         "deny-session"
+    }
+
+    fn run_id(&self) -> &str {
+        "deny-run"
     }
 
     fn check_capability(&self, cap: McpCapability) -> AccessDecision {

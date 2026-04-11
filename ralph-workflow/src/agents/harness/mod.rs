@@ -23,7 +23,10 @@ pub mod codex;
 pub mod opencode;
 
 pub use aider::AiderHarness;
-pub use applicator::{apply_harness_config, detect_agent_type, AgentType, HarnessApplyResult};
+pub use applicator::{
+    apply_harness_config, apply_harness_config_with_lease, detect_agent_type, AgentType,
+    HarnessApplyResult,
+};
 pub use claude::ClaudeHarness;
 pub use codex::CodexHarness;
 pub use opencode::OpenCodeHarness;

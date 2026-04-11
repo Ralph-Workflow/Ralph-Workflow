@@ -226,6 +226,9 @@ mod tests {
         fn session_id(&self) -> &str {
             "mock-session"
         }
+        fn run_id(&self) -> &str {
+            "mock-run"
+        }
         fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
             AccessDecision::Allow
         }

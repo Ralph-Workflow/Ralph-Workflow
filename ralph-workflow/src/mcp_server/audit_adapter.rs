@@ -6,11 +6,13 @@
 //! seconds, `capability: Capability`, `outcome: PolicyOutcome`, `description: String`).
 
 use crate::agents::session::{
-    AgentSessionId, AuditRecord as RalphAuditRecord, Capability, PolicyOutcome,
+    AgentSessionId, AuditCorrelation, AuditRecord as RalphAuditRecord, Capability, PolicyOutcome,
 };
 use crate::mcp_server::capability_mapping::lookup_ralph_capability;
 use mcp_server::dispatch::access::{AccessDecision, AuditSink};
-use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
+use mcp_server::dispatch::audit::{
+    AuditEventType as McpAuditEventType, AuditRecord as McpAuditRecord,
+};
 use std::sync::Mutex;
 
 /// Policy: convert McpAuditRecord decision to Ralph PolicyOutcome.
@@ -52,36 +54,75 @@ impl Default for RalphAuditSinkAdapter {
     }
 }
 
+fn resolve_audit_capability(record: &McpAuditRecord) -> Capability {
+    record
+        .capability
+        .and_then(lookup_ralph_capability)
+        .unwrap_or(Capability::WorkspaceRead)
+}
+
+fn event_type_label(event_type: McpAuditEventType) -> &'static str {
+    match event_type {
+        McpAuditEventType::Tool => "tool",
+        McpAuditEventType::Denial => "denial",
+        McpAuditEventType::ModeTransition => "mode_transition",
+        McpAuditEventType::Heartbeat => "heartbeat",
+        McpAuditEventType::SelfTermination => "self_termination",
+    }
+}
+
+fn default_description(record: &McpAuditRecord) -> String {
+    if record.decision.is_allowed() {
+        format!("MCP tool '{}' executed successfully", record.tool_name)
+    } else {
+        format!(
+            "MCP tool '{}' access denied: {}",
+            record.tool_name,
+            record.decision.to_error_string()
+        )
+    }
+}
+
+fn resolve_description(record: &McpAuditRecord) -> String {
+    record
+        .metadata
+        .details
+        .clone()
+        .unwrap_or_else(|| default_description(record))
+}
+
+fn resolve_correlation(record: &McpAuditRecord) -> Option<AuditCorrelation> {
+    let corr = record.metadata.correlation.clone();
+    let policy_mode = corr.policy_mode.map(|mode| format!("{:?}", mode));
+    (corr.run_id.is_some()
+        || corr.generation.is_some()
+        || corr.drain.is_some()
+        || policy_mode.is_some())
+    .then_some(AuditCorrelation {
+        run_id: corr.run_id,
+        generation: corr.generation,
+        drain: corr.drain,
+        policy_mode,
+    })
+}
+
+fn to_ralph_record(record: &McpAuditRecord) -> RalphAuditRecord {
+    RalphAuditRecord {
+        event_type: Some(event_type_label(record.metadata.event_type).to_string()),
+        correlation: resolve_correlation(record),
+        ..RalphAuditRecord::new(
+            AgentSessionId::from_string(record.session_id.clone()),
+            record.timestamp_nanos / 1_000_000_000,
+            resolve_audit_capability(record),
+            outcome_from_decision(&record.decision),
+            resolve_description(record),
+        )
+    }
+}
+
 impl AuditSink for RalphAuditSinkAdapter {
     fn emit(&self, record: McpAuditRecord) {
-        let capability = record
-            .capability
-            .and_then(lookup_ralph_capability)
-            .unwrap_or(Capability::WorkspaceRead);
-
-        // Convert nanoseconds timestamp to seconds
-        let timestamp_secs = record.timestamp_nanos / 1_000_000_000;
-
-        // Build description from tool name and decision
-        let description = if record.decision.is_allowed() {
-            format!("MCP tool '{}' executed successfully", record.tool_name)
-        } else {
-            format!(
-                "MCP tool '{}' access denied: {}",
-                record.tool_name,
-                record.decision.to_error_string()
-            )
-        };
-
-        let ralph_record = RalphAuditRecord::new(
-            AgentSessionId::from_string(record.session_id.clone()),
-            timestamp_secs,
-            capability,
-            outcome_from_decision(&record.decision),
-            description,
-        );
-
-        self.records.lock().unwrap().push(ralph_record);
+        self.records.lock().unwrap().push(to_ralph_record(&record));
     }
 
     fn flush(&self) {
@@ -92,8 +133,9 @@ impl AuditSink for RalphAuditSinkAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcp_server::dispatch::access::{AccessDecision, McpCapability};
+    use mcp_server::dispatch::access::{AccessDecision, McpCapability, PolicyMode};
     use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
+    use mcp_server::dispatch::audit::{AuditCorrelation as McpAuditCorrelation, AuditMetadata};
 
     #[test]
     fn test_drain_records_non_empty() {
@@ -173,5 +215,37 @@ mod tests {
         // Second drain is empty
         let second = adapter.drain_records();
         assert!(second.is_empty());
+    }
+
+    #[test]
+    fn test_emit_includes_correlation_and_event_type() {
+        let adapter = RalphAuditSinkAdapter::new();
+        let mut record = McpAuditRecord::new(
+            "session-1".to_string(),
+            "heartbeat".to_string(),
+            AccessDecision::Allow,
+        )
+        .with_capability(McpCapability::WorkspaceRead);
+
+        record.metadata = AuditMetadata {
+            event_type: McpAuditEventType::Heartbeat,
+            details: Some("grace window".to_string()),
+            correlation: McpAuditCorrelation {
+                run_id: Some("run-abc".to_string()),
+                generation: Some(5),
+                drain: Some("development".to_string()),
+                policy_mode: Some(PolicyMode::Dev),
+            },
+        };
+
+        adapter.emit(record);
+
+        let drained = adapter.drain_records();
+        assert_eq!(drained.len(), 1);
+        let r = &drained[0];
+        assert_eq!(r.event_type.as_deref(), Some("heartbeat"));
+        let corr = r.correlation.as_ref().expect("correlation present");
+        assert_eq!(corr.run_id.as_deref(), Some("run-abc"));
+        assert_eq!(corr.drain.as_deref(), Some("development"));
     }
 }

@@ -25,7 +25,9 @@
 
 use crate::agents::session::{AgentSessionId, AuditRecord, AuditTrail, Capability, PolicyOutcome};
 use crate::workspace::Workspace;
+use anyhow;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::path::Path;
 
 /// Record type for audit entries.
@@ -38,6 +40,14 @@ pub enum AuditRecordType {
     CommandCheck,
     /// A capability injection into prompt template variables.
     CapabilityInjection,
+    /// Mode transition or policy change event.
+    ModeTransition,
+    /// Heartbeat status event (grace window, warning).
+    Heartbeat,
+    /// Self-termination triggered by heartbeat loss.
+    SelfTermination,
+    /// Policy denial emitted from the MCP enforcement layer.
+    PolicyDenial,
 }
 
 /// Extended audit record with type information for persistence.
@@ -55,6 +65,21 @@ pub struct PersistedAuditRecord {
     pub outcome: String,
     /// Human-readable description of what was attempted.
     pub description: String,
+    /// Optional run identifier for this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// Optional MCP generation counter for this event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation: Option<u32>,
+    /// Optional session drain identifier (planning/development/etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drain: Option<String>,
+    /// Optional policy mode label associated with this event.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy_mode: Option<String>,
+    /// Optional string describing the source event type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
     /// The effect name for capability checks (optional).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effect_name: Option<String>,
@@ -79,13 +104,38 @@ impl From<&AuditRecord> for PersistedAuditRecord {
             PolicyOutcome::ApprovedWithRestriction { .. } => "approved_with_restriction",
         };
 
+        let event_type = record.event_type.clone();
+        let record_type = match event_type.as_deref() {
+            Some("mode_transition") => AuditRecordType::ModeTransition,
+            Some("heartbeat") => AuditRecordType::Heartbeat,
+            Some("self_termination") => AuditRecordType::SelfTermination,
+            Some("denial") => AuditRecordType::PolicyDenial,
+            _ => AuditRecordType::CapabilityCheck,
+        };
+
+        let (run_id, generation, drain, policy_mode) = if let Some(corr) = &record.correlation {
+            (
+                corr.run_id.clone(),
+                corr.generation,
+                corr.drain.clone(),
+                corr.policy_mode.clone(),
+            )
+        } else {
+            (None, None, None, None)
+        };
+
         Self {
             session_id: record.session_id.as_str().to_string(),
             timestamp: record.timestamp,
-            record_type: AuditRecordType::CapabilityCheck,
+            record_type,
             capability: record.capability.identifier().to_string(),
             outcome: outcome_str.to_string(),
             description: record.description.clone(),
+            run_id,
+            generation,
+            drain,
+            policy_mode,
+            event_type,
             effect_name: None,
             command: None,
             // Telemetry fields are populated from the AuditRecord when available
@@ -121,6 +171,13 @@ pub fn record_effect_check(
     capabilities_checked: &[Capability],
     outcome: &PolicyOutcome,
 ) -> AuditTrail {
+    fn with_event_type(record: AuditRecord, event_type: &str) -> AuditRecord {
+        AuditRecord {
+            event_type: Some(event_type.to_string()),
+            ..record
+        }
+    }
+
     // Create one record per capability checked
     let new_records: Vec<AuditRecord> = capabilities_checked
         .iter()
@@ -154,12 +211,15 @@ pub fn record_effect_check(
                 }
             };
 
-            AuditRecord::new(
-                session_id.clone(),
-                timestamp,
-                *cap,
-                outcome.clone(),
-                description,
+            with_event_type(
+                AuditRecord::new(
+                    session_id.clone(),
+                    timestamp,
+                    *cap,
+                    outcome.clone(),
+                    description,
+                ),
+                "capability_check",
             )
         })
         .collect();
@@ -218,13 +278,16 @@ pub fn record_command_check(
         }
     };
 
-    let record = AuditRecord::new(
-        session_id.clone(),
-        timestamp,
-        capability,
-        outcome.clone(),
-        description,
-    );
+    let record = AuditRecord {
+        event_type: Some("command_check".to_string()),
+        ..AuditRecord::new(
+            session_id.clone(),
+            timestamp,
+            capability,
+            outcome.clone(),
+            description,
+        )
+    };
 
     AuditTrail::from_records(
         trail
@@ -271,15 +334,18 @@ pub fn record_execution_telemetry(
     );
     let outcome = PolicyOutcome::Approved;
 
-    let record = AuditRecord::with_telemetry(
-        session_id.clone(),
-        timestamp,
-        capability,
-        outcome,
-        description,
-        duration_ms,
-        result_status.to_string(),
-    );
+    let record = AuditRecord {
+        event_type: Some("execution_telemetry".to_string()),
+        ..AuditRecord::with_telemetry(
+            session_id.clone(),
+            timestamp,
+            capability,
+            outcome,
+            description,
+            duration_ms,
+            result_status.to_string(),
+        )
+    };
 
     AuditTrail::from_records(
         trail
@@ -399,6 +465,11 @@ pub fn persist_session_handshake(
         ),
         effect_name: None,
         command: None,
+        run_id: None,
+        generation: None,
+        drain: Some(drain.to_string()),
+        policy_mode: None,
+        event_type: Some("handshake".to_string()),
         // Telemetry fields not applicable for handshake records
         duration_ms: None,
         result_status: None,
@@ -422,10 +493,31 @@ pub fn persist_session_handshake(
     Ok(())
 }
 
+/// Persist the latest MCP endpoint lease to `.agent/endpoint_lease.json`.
+pub fn persist_endpoint_lease(
+    workspace: &dyn Workspace,
+    lease: &impl Serialize,
+) -> anyhow::Result<()> {
+    let lease_dir = Path::new(".agent");
+    workspace
+        .create_dir_all(lease_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create lease directory: {}", e))?;
+
+    let lease_path = lease_dir.join("endpoint_lease.json");
+    let content = serde_json::to_string(lease)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize endpoint lease: {}", e))?;
+
+    workspace
+        .write(&lease_path, &content)
+        .map_err(|e| anyhow::anyhow!("Failed to write endpoint lease: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::session::{Capability, SessionDrain};
+    use crate::agents::session::{AuditCorrelation, Capability, SessionDrain};
 
     fn test_session_id() -> AgentSessionId {
         AgentSessionId::new("test-run", &SessionDrain::Planning, 1)
@@ -585,6 +677,34 @@ mod tests {
         let persisted: PersistedAuditRecord = (&record).into();
 
         assert_eq!(persisted.outcome, "approved_with_restriction");
+    }
+
+    #[test]
+    fn persisted_audit_record_uses_correlation_metadata() {
+        let session_id = test_session_id();
+        let mut record = AuditRecord::new(
+            session_id.clone(),
+            test_timestamp(),
+            Capability::WorkspaceRead,
+            PolicyOutcome::Approved,
+            "heartbeat event".to_string(),
+        );
+        record.event_type = Some("heartbeat".to_string());
+        record.correlation = Some(AuditCorrelation {
+            run_id: Some("run-123".to_string()),
+            generation: Some(7),
+            drain: Some("development".to_string()),
+            policy_mode: Some("Dev".to_string()),
+        });
+
+        let persisted: PersistedAuditRecord = (&record).into();
+
+        assert_eq!(persisted.run_id.as_deref(), Some("run-123"));
+        assert_eq!(persisted.generation, Some(7));
+        assert_eq!(persisted.drain.as_deref(), Some("development"));
+        assert_eq!(persisted.policy_mode.as_deref(), Some("Dev"));
+        assert_eq!(persisted.event_type.as_deref(), Some("heartbeat"));
+        assert_eq!(persisted.record_type, AuditRecordType::Heartbeat);
     }
 
     #[test]

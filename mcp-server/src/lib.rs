@@ -404,12 +404,12 @@ pub mod protocol;
 
 // Re-exports from dispatch (pure types)
 pub use dispatch::access::{
-    AccessDecision, AccessDeniedCode, AuditSink, McpCapability, NoOpAuditSink,
+    AccessDecision, AccessDeniedCode, AuditSink, McpCapability, NoOpAuditSink, OperationClass,
+    PolicyMode,
 };
 pub use dispatch::{DirEntry, HostSession, ToolError, ToolRegistry, WorkspaceAdapter};
 
-// Re-exports from io (boundary types - McpServer lives in io module)
-// Note: McpServer and ServerState are available at mcp_server::io::McpServer and mcp_server::io::ServerState
+// Boundary types remain under `mcp_server::io::*`.
 
 // Re-exports from protocol (pure types)
 pub use protocol::{

@@ -511,6 +511,12 @@ fn endpoint_env_or_fail(
             "MCP endpoint missing for commit agent '{}'. MCP is mandatory and execution was aborted.",
             commit_agent
         ))
+    } else if !endpoint_uri.starts_with("tcp://") {
+        Err(anyhow::anyhow!(
+            "MCP endpoint for commit agent '{}' must be tcp://, got '{}'. MCP is mandatory and execution was aborted.",
+            commit_agent,
+            endpoint_uri
+        ))
     } else {
         Ok(std::collections::HashMap::from([(
             endpoint_env_var.to_string(),
@@ -522,7 +528,7 @@ fn endpoint_env_or_fail(
 #[cfg(test)]
 mod append_extra_cmd_args_tests {
     use super::*;
-    use crate::workspace::memory_workspace::MemoryWorkspace;
+    use crate::workspace::WorkspaceFs;
     use std::sync::Arc;
 
     #[test]
@@ -554,26 +560,45 @@ mod append_extra_cmd_args_tests {
     fn endpoint_env_or_fail_builds_endpoint_env() {
         let env = endpoint_env_or_fail(
             "RALPH_MCP_ENDPOINT",
-            "unix:///tmp/ralph.sock",
+            "tcp://127.0.0.1:47001",
             "commit-agent",
         )
         .expect("non-empty endpoint should build env");
         assert_eq!(
             env.get("RALPH_MCP_ENDPOINT").map(String::as_str),
-            Some("unix:///tmp/ralph.sock")
+            Some("tcp://127.0.0.1:47001")
+        );
+    }
+
+    #[test]
+    fn endpoint_env_or_fail_rejects_unix_endpoint() {
+        let err = endpoint_env_or_fail(
+            "RALPH_MCP_ENDPOINT",
+            "unix:///tmp/ralph.sock",
+            "commit-agent",
+        )
+        .expect_err("unix endpoint must be rejected");
+        assert!(
+            err.to_string().contains("must be tcp://"),
+            "unexpected error: {err}"
         );
     }
 
     #[test]
     fn start_commit_mcp_context_builds_commit_session_and_endpoint() {
-        let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new_test());
+        let root = std::path::PathBuf::from("/");
+        let workspace: Arc<dyn Workspace> = Arc::new(WorkspaceFs::new(root));
 
         let ctx = start_commit_mcp_context("commit-run".to_string(), &workspace)
             .expect("shared commit MCP context must start");
 
         assert_eq!(ctx.session.run_id, "commit-run");
         assert_eq!(ctx.session.drain.as_str(), "commit");
-        assert!(ctx.endpoint_uri.starts_with("unix://"));
         assert!(!ctx.endpoint_uri.is_empty());
+        assert!(
+            ctx.endpoint_uri.starts_with("tcp://127.0.0.1:"),
+            "unexpected endpoint URI: {}",
+            ctx.endpoint_uri
+        );
     }
 }

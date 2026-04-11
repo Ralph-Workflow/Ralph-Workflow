@@ -7,25 +7,44 @@
 //! to pure domain policy helpers.
 
 use crate::agents::session::{Capability, PolicyOutcome, SessionDrain};
-use mcp_server::dispatch::access::{AccessDecision, AccessDeniedCode, AccessMode, McpCapability};
+use mcp_server::dispatch::access::{
+    AccessDecision, AccessDeniedCode, AccessMode, McpCapability, PolicyMode,
+};
+use mcp_server::io::access::DrainClass;
 
 // ---------------------------------------------------------------------------
 // Drain-to-access-mode mapping
 // ---------------------------------------------------------------------------
 
 /// Pure mapping: determine the MCP `AccessMode` for a session drain.
-///
-/// Per RFC-009: Planning/Analysis/Review/Fix drains operate in ReadOnly mode —
-/// no write mutations are permitted via MCP during these phases. Development and
-/// Commit drains receive ReadWrite access so they can modify workspace files.
 pub(crate) fn drain_to_access_mode(drain: SessionDrain) -> AccessMode {
+    if drain_class_for_session(drain).allows_write() {
+        AccessMode::ReadWrite
+    } else {
+        AccessMode::ReadOnly
+    }
+}
+
+/// Map a session drain to the corresponding runtime policy mode.
+pub(crate) fn drain_to_policy_mode(drain: SessionDrain) -> PolicyMode {
     match drain {
+        SessionDrain::Development => PolicyMode::Dev,
+        SessionDrain::Fix => PolicyMode::Fixer,
+        SessionDrain::Commit => PolicyMode::Commit,
         SessionDrain::Planning | SessionDrain::Analysis | SessionDrain::Review => {
-            AccessMode::ReadOnly
+            PolicyMode::ReadOnly
         }
-        SessionDrain::Fix | SessionDrain::Development | SessionDrain::Commit => {
-            AccessMode::ReadWrite
-        }
+    }
+}
+
+/// Classify a session drain into a drain class for capability defaults.
+pub(crate) fn drain_class_for_session(drain: SessionDrain) -> DrainClass {
+    match drain {
+        SessionDrain::Planning => DrainClass::Planning,
+        SessionDrain::Development => DrainClass::Dev,
+        SessionDrain::Analysis | SessionDrain::Review => DrainClass::Review,
+        SessionDrain::Fix => DrainClass::Fixer,
+        SessionDrain::Commit => DrainClass::Commit,
     }
 }
 
@@ -189,5 +208,47 @@ pub(crate) fn check_mcp_capability_policy(
             ),
             code: AccessDeniedCode::CapabilityDenied,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mcp_server::dispatch::access::AccessMode;
+
+    #[test]
+    fn commit_drain_is_read_only() {
+        assert_eq!(
+            AccessMode::ReadOnly,
+            drain_to_access_mode(SessionDrain::Commit)
+        );
+    }
+
+    #[test]
+    fn drain_classification_matches_expectations() {
+        assert_eq!(
+            DrainClass::Planning,
+            drain_class_for_session(SessionDrain::Planning)
+        );
+        assert_eq!(
+            DrainClass::Dev,
+            drain_class_for_session(SessionDrain::Development)
+        );
+        assert_eq!(
+            DrainClass::Review,
+            drain_class_for_session(SessionDrain::Review)
+        );
+        assert_eq!(
+            DrainClass::Review,
+            drain_class_for_session(SessionDrain::Analysis)
+        );
+        assert_eq!(
+            DrainClass::Fixer,
+            drain_class_for_session(SessionDrain::Fix)
+        );
+        assert_eq!(
+            DrainClass::Commit,
+            drain_class_for_session(SessionDrain::Commit)
+        );
     }
 }

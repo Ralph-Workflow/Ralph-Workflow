@@ -42,6 +42,9 @@ pub trait HostSession: Send + Sync {
     /// Get the session identifier.
     fn session_id(&self) -> &str;
 
+    /// Get the run identifier associated with this session.
+    fn run_id(&self) -> &str;
+
     /// Check if the session has a specific capability.
     ///
     /// The MCP server calls this method after passing its own pre-dispatch checks

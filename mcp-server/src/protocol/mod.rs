@@ -14,7 +14,7 @@
 //!
 //! ## Connection Lifecycle
 //!
-//! 1. Client connects (via stdio or Unix socket)
+//! 1. Client connects (via stdio or TCP loopback endpoint)
 //! 2. Client sends `initialize` request
 //! 3. Server responds with `InitializeResult` containing capabilities
 //! 4. Client sends `ping` or tool requests

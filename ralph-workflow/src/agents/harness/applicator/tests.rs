@@ -1,19 +1,21 @@
 //! Tests for the harness applicator module
 
 use crate::agents::harness::applicator::{
-    apply_harness_config, detect_agent_type, merge_claude_settings, AgentType,
-    CLAUDE_SETTINGS_LOCAL,
+    apply_harness_config, build_codex_override_args, detect_agent_type, merge_claude_settings,
+    AgentType, CLAUDE_SETTINGS_LOCAL,
 };
 use crate::agents::session::{AgentSession, SessionDrain};
 use crate::workspace::{memory_workspace::MemoryWorkspace, Workspace};
+use mcp_server::io::transport::EndpointLease;
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::SystemTime;
 
 fn test_session() -> AgentSession {
     AgentSession::for_drain("test-run".to_string(), SessionDrain::Development, 1)
 }
 
-const TEST_ENDPOINT: &str = "unix:///tmp/ralph-mcp/test.sock";
+const TEST_ENDPOINT: &str = "tcp://127.0.0.1:42000";
 
 // -----------------------------------------------------------------------
 // detect_agent_type
@@ -264,6 +266,27 @@ fn apply_claude_injects_settings_arg() {
     assert!(extra[5].starts_with('\''), "mcp config arg must be quoted");
     assert!(extra[5].ends_with('\''), "mcp config arg must be quoted");
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
+}
+
+#[test]
+fn build_codex_override_args_includes_generation_and_run_id() {
+    let session = test_session();
+    let lease = EndpointLease::new(
+        TEST_ENDPOINT.to_string(),
+        "codex-run".to_string(),
+        8,
+        SystemTime::UNIX_EPOCH,
+    );
+    let args = build_codex_override_args(&session, TEST_ENDPOINT, Some(&lease));
+    let joined = args.join(" ");
+    assert!(
+        joined.contains("RALPH_MCP_GENERATION"),
+        "expected CLI overrides to include generation"
+    );
+    assert!(
+        joined.contains("RALPH_MCP_RUN_ID"),
+        "expected CLI overrides to include run id"
+    );
 }
 
 #[test]
@@ -764,9 +787,13 @@ fn apply_ccs_agent_gets_mcp_config() {
         "CCS agent must get config path"
     );
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
-    assert_eq!(result.extra_cmd_args.len(), 2);
-    assert_eq!(result.extra_cmd_args[0], "--settings");
-    assert!(result.extra_cmd_args[1].contains(".agent/tmp/harness"));
+    assert_eq!(result.extra_cmd_args.len(), 6);
+    assert_eq!(result.extra_cmd_args[0], "--tools");
+    assert_eq!(result.extra_cmd_args[1], "''");
+    assert_eq!(result.extra_cmd_args[2], "--settings");
+    assert!(result.extra_cmd_args[3].contains(".agent/tmp/harness"));
+    assert_eq!(result.extra_cmd_args[4], "--mcp-config");
+    assert!(result.extra_cmd_args[5].contains(".agent/tmp/harness"));
     assert!(
         !ws.was_written(CLAUDE_SETTINGS_LOCAL),
         "CCS harness must not mutate project .claude/settings.local.json"

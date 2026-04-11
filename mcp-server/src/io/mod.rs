@@ -11,22 +11,34 @@
 //! # Module Structure
 //!
 //! - [`access`] - Access control types that require I/O (SystemTime, Mutex, std::fs)
-//! - [`transport`] - Content-Length framed JSON-RPC transport for stdio and Unix sockets
-//! - [`session_bridge`] - MCP server lifecycle management with Unix socket transport
+//! - [`transport`] - Content-Length framed JSON-RPC transport for stdio and TCP loopback
+//! - [`session_bridge`] - MCP server lifecycle management with TCP loopback transport
 //! - [`fake`] - In-memory fake transport for deterministic testing
 //! - [`McpServer`] - MCP server state and request handling
 
 pub mod access;
+/// Module that implements the private control channel used by the orchestrator.
+pub mod control;
+pub mod heartbeat;
 pub mod session_bridge;
 pub mod transport;
 
 // fake module is always available for testing utilities
 pub mod fake;
 
+pub use access::{DrainClass, McpServerConfig};
+pub use control::{ControlCommand, ControlError, ControlReceiver, ControlSender};
+pub use heartbeat::HeartbeatPolicy;
 pub use session_bridge::{SessionBridge, SessionBridgeError, MCP_ENDPOINT_ENV};
-pub use transport::{McpStream, StdioTransport, TransportError, UnixSocketTransport};
+pub use transport::{
+    EndpointLease, McpStream, StdioTransport, TcpLoopbackTransport, TransportError,
+};
 
-use crate::dispatch::access::{AccessDecision, AuditSink, NoOpAuditSink};
+use crate::dispatch::access::{
+    policy_operation_allowed, AccessDecision, AccessDeniedCode, AuditSink, McpCapability,
+    NoOpAuditSink, OperationClass, PolicyMode,
+};
+use crate::dispatch::audit::{AuditCorrelation, AuditEventType, AuditMetadata, AuditRecord};
 use crate::dispatch::{
     route_dispatch, DispatchTarget, HostSession, ToolError, ToolRegistry, WorkspaceAdapter,
 };
@@ -36,6 +48,7 @@ use crate::protocol::{
 };
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 /// Check tool enforcement - boundary function that creates and checks EnforcementContext.
 ///
@@ -115,6 +128,7 @@ pub struct McpServer {
     registry: ToolRegistry,
     server_info: ServerInfo,
     audit_sink: Arc<dyn AuditSink>,
+    runtime_policy_mode: Arc<RwLock<PolicyMode>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +231,65 @@ struct CheckEnforcementParams<'a> {
     audit_sink: &'a dyn AuditSink,
 }
 
+fn effective_drain_label(config: &crate::io::access::McpServerConfig) -> String {
+    config
+        .drain
+        .clone()
+        .unwrap_or_else(|| match config.drain_class {
+            crate::io::access::DrainClass::Dev => "development".to_string(),
+            crate::io::access::DrainClass::Fixer => "fixer".to_string(),
+            crate::io::access::DrainClass::Commit => "commit".to_string(),
+            crate::io::access::DrainClass::Planning => "planning".to_string(),
+            crate::io::access::DrainClass::Review => "review".to_string(),
+            crate::io::access::DrainClass::Analysis => "analysis".to_string(),
+            crate::io::access::DrainClass::Unknown => "unknown".to_string(),
+        })
+}
+
+fn access_denied_payload(
+    config: &crate::io::access::McpServerConfig,
+    required_capability: Option<McpCapability>,
+    is_mutating: bool,
+    reason: String,
+    code: AccessDeniedCode,
+) -> serde_json::Value {
+    let mode = config.policy_mode.unwrap_or(match config.access_mode {
+        crate::dispatch::access::AccessMode::ReadOnly => PolicyMode::ReadOnly,
+        crate::dispatch::access::AccessMode::ReadWrite => PolicyMode::Dev,
+    });
+    let drain = effective_drain_label(config);
+    let op_class = OperationClass::classify(required_capability, is_mutating);
+
+    serde_json::json!({
+        "reason": reason,
+        "code": code,
+        "mode": mode,
+        "drain": drain,
+        "opClass": op_class,
+    })
+}
+
+fn effective_denial_reason(
+    config: &crate::io::access::McpServerConfig,
+    required_capability: Option<McpCapability>,
+    is_mutating: bool,
+    code: AccessDeniedCode,
+    fallback_reason: String,
+) -> String {
+    let mode = config.policy_mode.unwrap_or(match config.access_mode {
+        crate::dispatch::access::AccessMode::ReadOnly => PolicyMode::ReadOnly,
+        crate::dispatch::access::AccessMode::ReadWrite => PolicyMode::Dev,
+    });
+    let op_class = OperationClass::classify(required_capability, is_mutating);
+
+    match code {
+        AccessDeniedCode::ReadOnlyMode => {
+            policy_operation_allowed(mode, op_class).unwrap_or(fallback_reason)
+        }
+        _ => fallback_reason,
+    }
+}
+
 /// Check enforcement or return error response.
 ///
 /// Looks up tool metadata from the registry to determine `is_mutating` and
@@ -254,16 +327,48 @@ fn check_enforcement(
         audit_sink: params.audit_sink,
     }) {
         AccessDecision::Allow => Ok(()),
-        AccessDecision::Deny { reason, code } => Err(Box::new((
-            JsonRpcResponse::error(
-                JsonRpcError::tool_error_with_data(
-                    format!("Access denied: {}", reason),
-                    serde_json::json!({ "reason": reason, "code": code }),
+        AccessDecision::Deny { reason, code } => {
+            let reason = effective_denial_reason(
+                params.config,
+                required_capability,
+                is_mutating,
+                code,
+                reason,
+            );
+            let data = access_denied_payload(
+                params.config,
+                required_capability,
+                is_mutating,
+                reason.clone(),
+                code,
+            );
+
+            Err(Box::new((
+                JsonRpcResponse::error(
+                    JsonRpcError::tool_error_with_data(format!("Access denied: {}", reason), data),
+                    params.request_id,
                 ),
-                params.request_id,
-            ),
-            params.state,
-        ))),
+                params.state,
+            )))
+        }
+    }
+}
+
+struct PreAuthorizedSession<'a> {
+    session: &'a dyn HostSession,
+}
+
+impl HostSession for PreAuthorizedSession<'_> {
+    fn session_id(&self) -> &str {
+        self.session.session_id()
+    }
+
+    fn run_id(&self) -> &str {
+        self.session.run_id()
+    }
+
+    fn check_capability(&self, _cap: McpCapability) -> AccessDecision {
+        AccessDecision::Allow
     }
 }
 
@@ -288,8 +393,9 @@ fn dispatch_tool(
     state: ServerState,
 ) -> Result<(JsonRpcResponse, ServerState), Box<(JsonRpcResponse, ServerState)>> {
     let request_id_inner = request_id.clone();
+    let preauthorized_session = PreAuthorizedSession { session };
     registry
-        .dispatch(name, arguments, session, workspace)
+        .dispatch(name, arguments, &preauthorized_session, workspace)
         .map(move |result| {
             (
                 JsonRpcResponse::success(serde_json::to_value(result).unwrap(), request_id),
@@ -388,6 +494,10 @@ impl McpServer {
         registry: ToolRegistry,
         audit_sink: Option<Arc<dyn AuditSink>>,
     ) -> Self {
+        let initial_policy_mode = config.policy_mode.unwrap_or(match config.access_mode {
+            crate::dispatch::access::AccessMode::ReadWrite => PolicyMode::Dev,
+            crate::dispatch::access::AccessMode::ReadOnly => PolicyMode::ReadOnly,
+        });
         Self {
             session,
             config,
@@ -398,7 +508,130 @@ impl McpServer {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
             audit_sink: audit_sink.unwrap_or_else(|| Arc::new(NoOpAuditSink)),
+            runtime_policy_mode: Arc::new(RwLock::new(initial_policy_mode)),
         }
+    }
+
+    /// Return the currently active runtime policy mode.
+    pub fn active_policy_mode(&self) -> PolicyMode {
+        *self
+            .runtime_policy_mode
+            .read()
+            .expect("runtime policy mode lock poisoned")
+    }
+
+    /// Switch runtime policy mode atomically.
+    pub fn switch_policy_mode(&self, mode: PolicyMode) {
+        *self
+            .runtime_policy_mode
+            .write()
+            .expect("runtime policy mode lock poisoned") = mode;
+    }
+
+    /// Emit structured mode transition audit event.
+    pub fn emit_mode_transition_audit(
+        &self,
+        old_mode: PolicyMode,
+        new_mode: PolicyMode,
+        requester_id: &str,
+        requester_context: Option<&str>,
+        transition_index: u64,
+    ) {
+        let correlation = AuditCorrelation {
+            run_id: self.config.run_id.clone(),
+            generation: self.config.generation,
+            drain: self.config.drain.clone(),
+            policy_mode: Some(new_mode),
+        };
+        let details = serde_json::json!({
+            "event": "mode_transition",
+            "old_mode": format!("{:?}", old_mode),
+            "new_mode": format!("{:?}", new_mode),
+            "requester_id": requester_id,
+            "requester_context": requester_context,
+            "transition_index": transition_index,
+        })
+        .to_string();
+        let session_id = self
+            .config
+            .session_id
+            .clone()
+            .unwrap_or_else(|| self.session.session_id().to_string());
+        let record = AuditRecord::new(
+            session_id,
+            "private/control.mode_switch".to_string(),
+            AccessDecision::Allow,
+        )
+        .with_metadata(AuditMetadata {
+            event_type: AuditEventType::ModeTransition,
+            details: Some(details),
+            correlation,
+        });
+        self.audit_sink.emit(record);
+    }
+
+    /// Emit structured heartbeat status audit event.
+    ///
+    /// Called when the heartbeat monitor reports a state change (healthy, grace window, etc.).
+    pub fn emit_heartbeat_audit(&self, status: &str, misses: Option<u32>, deadline: Option<u64>) {
+        let correlation = AuditCorrelation {
+            run_id: self.config.run_id.clone(),
+            generation: self.config.generation,
+            drain: self.config.drain.clone(),
+            policy_mode: Some(self.active_policy_mode()),
+        };
+        let details = serde_json::json!({
+            "event": "heartbeat",
+            "status": status,
+            "misses": misses,
+            "deadline": deadline,
+        })
+        .to_string();
+        let session_id = self
+            .config
+            .session_id
+            .clone()
+            .unwrap_or_else(|| self.session.session_id().to_string());
+        let record = AuditRecord::new(session_id, "heartbeat".to_string(), AccessDecision::Allow)
+            .with_metadata(AuditMetadata {
+                event_type: AuditEventType::Heartbeat,
+                details: Some(details),
+                correlation,
+            });
+        self.audit_sink.emit(record);
+    }
+
+    /// Emit structured self-termination audit event.
+    ///
+    /// Called when the server terminates due to heartbeat loss.
+    pub fn emit_self_termination_audit(&self, reason: &str) {
+        let correlation = AuditCorrelation {
+            run_id: self.config.run_id.clone(),
+            generation: self.config.generation,
+            drain: self.config.drain.clone(),
+            policy_mode: Some(self.active_policy_mode()),
+        };
+        let details = serde_json::json!({
+            "event": "self_termination",
+            "reason": reason,
+        })
+        .to_string();
+        let session_id = self
+            .config
+            .session_id
+            .clone()
+            .unwrap_or_else(|| self.session.session_id().to_string());
+        let record = AuditRecord::new(
+            session_id,
+            "self_termination".to_string(),
+            AccessDecision::Allow,
+        )
+        .with_metadata(AuditMetadata {
+            event_type: AuditEventType::SelfTermination,
+            details: Some(details),
+            correlation,
+        });
+        self.audit_sink.emit(record);
     }
 
     /// Handle an incoming JSON-RPC request (thin wiring).
@@ -525,11 +758,16 @@ impl McpServer {
         request_id: serde_json::Value,
         state: ServerState,
     ) -> (Option<JsonRpcResponse>, ServerState) {
+        let mut runtime_config = self.config.clone();
+        let active_policy_mode = self.active_policy_mode();
+        runtime_config.policy_mode = Some(active_policy_mode);
+        runtime_config.access_mode = active_policy_mode.access_mode();
+
         // Chain: parse -> check enforcement (with capability check) -> dispatch
         let result =
             parse_tools_call_params(request.params, request_id.clone(), state).and_then(|params| {
                 check_enforcement(CheckEnforcementParams {
-                    config: &self.config,
+                    config: &runtime_config,
                     registry: &self.registry,
                     session: self.session.as_ref(),
                     name: &params.name,
@@ -565,171 +803,4 @@ impl McpServer {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dispatch::access::{AccessDecision, McpCapability};
-    use crate::dispatch::host::DirEntry;
-    use crate::dispatch::{ToolHandler, ToolMetadata, ToolRegistry};
-    use crate::protocol::{ToolContent, ToolDefinition, ToolResult};
-    use std::path::Path;
-    use std::sync::Arc;
-
-    struct MockSession;
-    impl HostSession for MockSession {
-        fn session_id(&self) -> &str {
-            "test-session"
-        }
-        fn check_capability(&self, cap: McpCapability) -> AccessDecision {
-            if cap == McpCapability::WorkspaceRead {
-                AccessDecision::Allow
-            } else {
-                AccessDecision::Deny {
-                    reason: format!("Missing capability: {}", cap),
-                    code: crate::dispatch::access::AccessDeniedCode::CapabilityDenied,
-                }
-            }
-        }
-    }
-
-    struct MockWorkspace;
-    impl WorkspaceAdapter for MockWorkspace {
-        fn read(&self, _path: &Path) -> Result<String, String> {
-            Ok("test content".to_string())
-        }
-        fn write(&self, _path: &Path, _content: &str) -> Result<(), String> {
-            Ok(())
-        }
-        fn exists(&self, _path: &Path) -> bool {
-            true
-        }
-        fn read_dir(&self, _path: &Path) -> Result<Vec<DirEntry>, String> {
-            Ok(vec![])
-        }
-    }
-
-    #[test]
-    fn test_server_initialization() {
-        let session = Arc::new(MockSession) as Arc<dyn HostSession>;
-        let workspace = Arc::new(MockWorkspace) as Arc<dyn WorkspaceAdapter>;
-        let registry = ToolRegistry::new(vec![]);
-        let config = crate::io::access::McpServerConfig::new(std::env::temp_dir());
-        let server = McpServer::new(session, config, workspace, registry, None);
-
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: "initialize".to_string(),
-            params: Some(serde_json::json!({
-                "protocolVersion": "2024-11-05",
-                "clientInfo": { "name": "test", "version": "1.0" }
-            })),
-            id: Some(serde_json::json!(1)),
-        };
-
-        let (response, state) = server.handle_request(request, ServerState::Uninitialized);
-        let response = response.expect("initialize should return a response");
-        assert!(response.result.is_some());
-        assert!(response.error.is_none());
-        assert_eq!(state, ServerState::Ready);
-    }
-
-    #[test]
-    fn test_tools_list() {
-        let session = Arc::new(MockSession) as Arc<dyn HostSession>;
-        let workspace = Arc::new(MockWorkspace) as Arc<dyn WorkspaceAdapter>;
-        let registry = ToolRegistry::new(vec![]);
-        let config = crate::io::access::McpServerConfig::new(std::env::temp_dir());
-        let server = McpServer::new(session, config, workspace, registry, None);
-
-        // Initialize first
-        let init_request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: "initialize".to_string(),
-            params: Some(serde_json::json!({ "protocolVersion": "2024-11-05" })),
-            id: Some(serde_json::json!(1)),
-        };
-        let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
-
-        // List tools
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: "tools/list".to_string(),
-            params: None,
-            id: Some(serde_json::json!(2)),
-        };
-
-        let (response, _) = server.handle_request(request, state);
-        let response = response.expect("tools/list should return a response");
-        assert!(response.result.is_some());
-    }
-
-    #[test]
-    fn test_tools_list_respects_tool_filter() {
-        let session = Arc::new(MockSession) as Arc<dyn HostSession>;
-        let workspace = Arc::new(MockWorkspace) as Arc<dyn WorkspaceAdapter>;
-        let handler: ToolHandler = Arc::new(|_, _, _| {
-            Ok(ToolResult {
-                content: vec![ToolContent::text("ok")],
-                is_error: Some(false),
-            })
-        });
-        let registry = ToolRegistry::new(vec![
-            (
-                ToolMetadata {
-                    definition: ToolDefinition {
-                        name: "read_file".to_string(),
-                        description: "read".to_string(),
-                        input_schema: serde_json::json!({"type": "object"}),
-                    },
-                    required_capability: McpCapability::WorkspaceRead,
-                    is_mutating: None,
-                },
-                Arc::clone(&handler),
-            ),
-            (
-                ToolMetadata {
-                    definition: ToolDefinition {
-                        name: "write_file".to_string(),
-                        description: "write".to_string(),
-                        input_schema: serde_json::json!({"type": "object"}),
-                    },
-                    required_capability: McpCapability::WorkspaceWriteTracked,
-                    is_mutating: None,
-                },
-                handler,
-            ),
-        ]);
-        let config = crate::io::access::McpServerConfig::new(std::env::temp_dir())
-            .with_tool_filter(crate::dispatch::access::ToolFilter::Allowlist(vec![
-                "read_file".to_string(),
-            ]));
-        let server = McpServer::new(session, config, workspace, registry, None);
-
-        let init_request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: "initialize".to_string(),
-            params: Some(serde_json::json!({ "protocolVersion": "2024-11-05" })),
-            id: Some(serde_json::json!(1)),
-        };
-        let (_, state) = server.handle_request(init_request, ServerState::Uninitialized);
-
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: "tools/list".to_string(),
-            params: None,
-            id: Some(serde_json::json!(2)),
-        };
-
-        let (response, _) = server.handle_request(request, state);
-        let response = response.expect("tools/list should return a response");
-        let result = response.result.expect("tools/list should return result");
-        let tool_names: Vec<&str> = result
-            .get("tools")
-            .and_then(|tools| tools.as_array())
-            .expect("tools/list result should contain array")
-            .iter()
-            .filter_map(|tool| tool.get("name").and_then(|name| name.as_str()))
-            .collect();
-
-        assert_eq!(tool_names, vec!["read_file"]);
-    }
-}
+mod tests;
