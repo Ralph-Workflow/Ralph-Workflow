@@ -20,25 +20,26 @@ The intended target flow is:
 ```text
 plan -> dev -> analysis
              ├── back to dev
-             └── forward to either plan or review
+             └── on successful cycle completion: commit, then continue to either plan or review
 
 plan -> parallel planner -> [ralph orchestrator invokes multi dev agents] -> analysis
-                                     └── back to planning (if an agent fails; parallel planner is an implementation detail, not a replanning agent)
+                                     ├── back to planning (if an agent fails; parallel planner is an implementation detail, not a replanning agent)
+                                     └── on successful cycle completion: commit, then continue to either plan or review
 
 review -> fix -> analysis
               ├── back to fix
-              └── forward to either plan, review, or commit depending on remaining work and cycle policy
+              └── on successful cycle completion: commit, then continue according to remaining work and cycle policy
 ```
 
 More precisely:
 
 - **Planning** produces the work plan for the current development cycle. Planning can produce either a sequential plan (single work unit) or a parallel plan (multiple `work_units[]` declared). A parallel plan routes through the **parallel planner** — an implementation detail that generates the per-agent work unit specs (unit_id, description, edit_area, allowed_directories, dependencies) — and then the Ralph orchestrator takes those specs and invokes the configured number of development agents concurrently. If a concurrent agent fails, routing goes back to the **normal planner** for reassessment, not to the parallel planner. The orchestrator interprets the planning artifact's structure — not a config flag — to determine whether parallel invocation is warranted.
 - **Development** performs implementation work for that cycle, either sequentially (single agent) or concurrently (multiple agents invoked by the Ralph orchestrator after the parallel planner generates per-agent assignments).
-- **Analysis after development** decides whether the development work needs another dev attempt, another planning cycle, or progression into review.
+- **Analysis after development** decides whether the development work needs another dev attempt or another planning cycle, or whether the current development iteration completed successfully and must pass through **Commit** before the next review or planning cycle begins.
 - **Review** inspects the resulting changes for the current review cycle.
 - **Fix** addresses findings from review.
-- **Analysis after fix** decides whether the fix needs another fix attempt, another planning/development cycle, another review pass, or progression toward commit.
-- **Commit** is only reached when the preceding analysis decision says the current work is ready to be finalized.
+- **Analysis after fix** decides whether the fix needs another fix attempt, another planning/development cycle, another review pass, or whether the current review/fix iteration completed successfully and must pass through **Commit** before the next cycle begins.
+- **Commit** is a checkpoint after every successful completed development or review iteration, not only a terminal finalization step.
 
 That explicit decision structure is the core of this proposal. The rest of the document exists to make that flow enforceable.
 
@@ -345,6 +346,14 @@ max_dev_continuations = 3
 max_fix_continuations = 10
 loop_detection_threshold = 100
 
+The cycle budgets count **completed cycles**, not internal retries or loopbacks:
+
+- one **development cycle** is `planning -> development -> analysis`, followed by the mandatory commit checkpoint before the next planning or review cycle starts
+- one **review cycle** is `review -> fix -> analysis`, followed by the mandatory commit checkpoint before the next review cycle or finalization starts
+- `analysis -> development` stays inside the current development cycle and does **not** increment `max_development_cycles`
+- `analysis -> fix` and fix continuations stay inside the current review cycle and do **not** increment `max_review_cycles`
+- the development/review counters advance only after the successful post-commit transition, matching the current pipeline lifecycle docs
+
 [artifact_acceptance]
 require_current_run_identity = true
 require_current_drain_identity = true
@@ -419,7 +428,7 @@ planning -> development -> analysis
 analysis after development decides one of:
 - development   (needs more implementation work in the same cycle)
 - planning      (the plan itself must be revised before more implementation)
-- review        (development work for this cycle is ready for review)
+- review        (development work for this cycle is ready for review after the successful iteration is checkpointed via commit)
 
 review -> fix -> analysis
 
@@ -427,10 +436,10 @@ analysis after fix decides one of:
 - fix           (the attempted fix is incomplete or incorrect)
 - planning      (review/fix findings imply the current plan is wrong or incomplete)
 - review        (run another review pass on the updated result)
-- commit        (review/fix work is accepted and ready to finalize)
+- commit        (the successful iteration is checkpointed and can either finalize or hand off to the next cycle)
 ```
 
-This is the behavior the documented policy contract must describe clearly while reducers continue to implement the actual runtime sequencing.
+Any successful analysis outcome that completes the current development or review iteration must route through commit before the next cycle starts. In other words, `planning -> development -> analysis` is one development cycle and `review -> fix -> analysis` is one review cycle; loopbacks such as `analysis -> development` or `analysis -> fix` remain inside the current cycle and do not increase the cycle counter. This is the behavior the documented policy contract must describe clearly while reducers continue to implement the actual runtime sequencing.
 
 ### Phase model: explicit embedded decision points first
 
@@ -592,8 +601,8 @@ The normalized output should also include canonical phase ownership and worker-l
 **Key changes:**
 
 - keep analysis embedded inside `Development` and `Review`, but make its decision outcomes typed and reducer-visible
-- allow analysis-after-development to route to development, planning, or review
-- allow analysis-after-fix to route to fix, planning, review, or commit message
+- allow analysis-after-development to route to development, planning, or a successful-cycle handoff that goes through commit before review or replanning continues
+- allow analysis-after-fix to route to fix, planning, review, or commit message, with successful completed review iterations always checkpointed through commit first
 - ensure session drain identity survives normalization, retries, continuations, and resume
 - make normalization reject impossible combinations instead of silently repairing them
 - define the typed analysis decision taxonomy with named outcomes: `needs_more_work` (loop back to current phase), `needs_replanning` (route to planning), `ready_for_review` (route to review, post-development), `ready_to_commit` (route to commit message, post-fix), `needs_another_review` (route back to review, post-fix) — these names are the canonical vocabulary; they must appear in `artifacts.toml` and in the validation rules
@@ -826,8 +835,8 @@ Validated startup state
   └── no hidden drain inference remains
 
 Runtime orchestration
-  ├── planning -> development (with analysis decision step)
-  ├── review (with fix + analysis decision steps) -> commit_message
+  ├── planning -> development (with analysis decision step and commit on successful cycle completion)
+  ├── review (with fix + analysis decision steps and commit on successful cycle completion) -> commit_message
   ├── final_validation -> finalizing -> complete
   ├── awaiting_dev_fix preserves recovery semantics
   └── retries/continuations preserve or validate drain identity
@@ -858,8 +867,8 @@ This proposal succeeds when all of the following are true:
 - every built-in drain is declared explicitly or through explicit TOML inheritance
 - startup validation rejects partial or ambiguous drain definitions
 - planning, development, analysis, review, fix, and commit each have distinct validated drain contracts even when analysis/fix remain embedded in top-level phases
-- the target flow `planning -> development -> analysis` and `review -> fix -> analysis` is declared explicitly in documented policy and docs
-- analysis can explicitly decide whether work returns to development, planning, review, fix, or commit based on context
+- the target flow `planning -> development -> analysis` and `review -> fix -> analysis` is declared explicitly in documented policy and docs, with commit as the checkpoint after every successful completed iteration
+- analysis can explicitly decide whether work returns to development, planning, review, fix, or a successful-cycle commit handoff based on context
 - drain normalization never changes a run into a different drain silently
 - retry and continuation logic cannot cross drains without a declared transition
 - runtime completion no longer depends on legacy temp-file paths
