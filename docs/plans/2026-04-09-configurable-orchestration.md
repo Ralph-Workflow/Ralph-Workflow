@@ -22,6 +22,9 @@ plan -> dev -> analysis
              ├── back to dev
              └── forward to either plan or review
 
+plan -> parallel planner -> [ralph orchestrator invokes multi dev agents] -> analysis
+                                     └── back to planning (if an agent fails; parallel planner is an implementation detail, not a replanning agent)
+
 review -> fix -> analysis
               ├── back to fix
               └── forward to either plan, review, or commit depending on remaining work and cycle policy
@@ -29,8 +32,8 @@ review -> fix -> analysis
 
 More precisely:
 
-- **Planning** produces the work plan for the current development cycle.
-- **Development** performs implementation work for that cycle.
+- **Planning** produces the work plan for the current development cycle. Planning can produce either a sequential plan (single work unit) or a parallel plan (multiple `work_units[]` declared). A parallel plan routes through the **parallel planner** — an implementation detail that generates the per-agent work unit specs (unit_id, description, edit_area, allowed_directories, dependencies) — and then the Ralph orchestrator takes those specs and invokes the configured number of development agents concurrently. If a concurrent agent fails, routing goes back to the **normal planner** for reassessment, not to the parallel planner. The orchestrator interprets the planning artifact's structure — not a config flag — to determine whether parallel invocation is warranted.
+- **Development** performs implementation work for that cycle, either sequentially (single agent) or concurrently (multiple agents invoked by the Ralph orchestrator after the parallel planner generates per-agent assignments).
 - **Analysis after development** decides whether the development work needs another dev attempt, another planning cycle, or progression into review.
 - **Review** inspects the resulting changes for the current review cycle.
 - **Fix** addresses findings from review.
@@ -99,6 +102,13 @@ That behavior was meant to be convenient, but after the MCP migration it became 
 
 This is the opposite of what we want for orchestration safety.
 
+The current resolution logic uses a **three-tier fallback chain** for any drain not explicitly bound in TOML:
+1. **Drain-specific chain name** — looks for a chain whose name exactly matches the drain (e.g., a chain named `"planning"` for the planning drain).
+2. **Sibling drain** — copies the binding from the sibling drain if it has already been resolved. The hardcoded sibling relationships are: `planning` ↔ `development`, `review` ↔ `fix`, `commit` ← `review` or `fix`, `analysis` ← `development` or `planning`.
+3. **Legacy role-family chain name** — looks for a chain named after the legacy role family: `"developer"` backs `planning`, `development`, and `analysis`; `"reviewer"` backs `review`, `fix`, and `commit`.
+
+The third tier is the most dangerous. A config that defines only a chain named `"developer"` will silently resolve all three of `planning`, `development`, and `analysis` to that same chain — which is the exact class of wrong-chain routing bug this proposal targets. The `forbid_sibling_drain_inference = true` flag in the proposed `[orchestration]` config block must disable tiers 2 and 3.
+
 ### B. Drain identity, role identity, and session identity are not strict enough
 
 The runtime now has three distinct concepts:
@@ -114,6 +124,11 @@ Today those concepts are still partially collapsed together:
 - normalization logic repairs mismatches at runtime instead of rejecting impossible states earlier
 
 That makes the system tolerant of corrupted or incomplete state when it should be precise.
+
+The two concrete collapses are:
+
+1. **Planning and Analysis collapse into the Developer role.** Both `planning` and `analysis` drains map to the same broad role as `development` in the current model. This means a session started for planning can be identity-equivalent to a development session — despite planning being read-only and development being write-capable. Normalization cannot distinguish them by role alone.
+2. **Fix collapses into the Analysis role.** The `fix` drain maps to the same broad role as `analysis` even though fix is write-capable and analysis is read-only. A session identity check that relies on role cannot tell "agent doing fix work" from "agent doing analysis work." Phase 3 must add explicit role variants for planning and fix to break these collapses.
 
 ### C. MCP is primary, but the runtime still behaves like compatibility mode
 
@@ -156,6 +171,19 @@ Success means:
 - artifact expectations are validated against phase definitions
 - configuration cannot silently degrade into a different drain than the one the user intended
 
+### Goal 3: Eliminate the XSD/XML compatibility layer entirely
+
+The codebase currently contains a substantial legacy XML extraction and validation infrastructure (`ralph-workflow/src/files/llm_output_extraction/`) that pre-dates MCP. Every phase boundary still touches this infrastructure for completion detection, retry handling, output validation, and prompt rendering.
+
+This proposal targets full removal of that compatibility layer. Success means:
+
+- no phase completion decision depends on XSD schema validation
+- no artifact accepted by the orchestrator is an XML file parsed through the legacy extractor
+- the XSD schema files (`.xsd`) and XML validation/extraction modules exist only as migration scaffolding and are deleted once artifact-only paths are confirmed working
+- no runtime codepath says "try artifact first, fall back to XML" — the fallback is gone
+
+This is not optional cleanup. The dual-mode infrastructure is what allows phases to behave correctly in some configurations while silently regressing in others. Removing it closes the class of bugs where an orchestration fix in the artifact path is undermined by a surviving legacy path.
+
 ---
 
 ## 5) Non-goals
@@ -166,6 +194,7 @@ This proposal does **not** attempt to:
 - make reducers or effect handlers dynamically programmable
 - allow arbitrary runtime-defined phases without Rust types
 - preserve compatibility with the legacy output pipeline indefinitely
+
 
 The new design is intentionally stricter than the old one.
 
@@ -179,14 +208,14 @@ The new design is intentionally stricter than the old one.
 2. **Every built-in drain must be explicit.**
    Hidden drain inheritance is no longer acceptable. If inheritance exists, it must be declared in TOML and validated.
 
-3. **Phase and drain identity are first-class contracts.**
-   Phase, drain, role, policy mode, drain class, artifact type, and worker context must agree.
+3. **System invariants are enforced by the runtime; users only configure chains.**
+   The built-in drain semantics (which drain is read-only, which is write-capable, which maps to which policy mode, which artifact type it produces) are hardcoded system invariants. They are enforced by the runtime, not configured by users. Users only decide *which agent chain* backs each drain. The `require_explicit_drain_bindings` flag ensures users always make that choice explicitly; the system enforces everything else.
 
 4. **Reject invalid orchestration up front.**
    Startup validation is cheaper than debugging a run that invoked the wrong agent.
 
-5. **TOML is the orchestration source of truth; Rust is the enforcement engine.**
-   TOML declares what the workflow should do, including phase flow, decision points, fan-out, merge behavior, and prompt contracts. Rust validates that declaration and refuses impossible combinations.
+5. **TOML documents and validates policy; reducers still own runtime decisions.**
+   TOML should make orchestration contracts visible and testable, but reducer/orchestrator code remains the authority for runtime phase transitions, retry ordering, continuation semantics, recovery escalation, and termination behavior. Rust may consume normalized policy, but it must not delegate core state-machine ownership to user-overridable config.
 
 6. **Policy must live outside `ralph-workflow`.**
    The end state is a standalone `ralph-workflow-policy` crate that owns orchestration policy types, TOML schemas, prompt contracts, prompt texts, template assets, templating logic, and validation rules without depending on `ralph-workflow` at all.
@@ -196,6 +225,9 @@ The new design is intentionally stricter than the old one.
 
 8. **Parallel execution must be explicitly scoped.**
    If orchestration launches parallel workers, each worker must declare its namespace, allowed directory scope, artifact scope, and completion contract up front.
+
+9. **Parallel execution is driven by the planning artifact, not by config flags.**
+   If the planning artifact declares `work_units[]` (parallel plan elements), the orchestrator invokes multiple development agents concurrently. If the artifact is sequential, the orchestrator invokes a single agent. Users do not enable or disable parallelism via a config flag — the plan declares what the work is, and the orchestrator enacts it.
 
 
 ---
@@ -227,142 +259,107 @@ Hard rule:
 
 - `ralph-workflow-policy` must have **no dependency** on `ralph-workflow`
 - `ralph-workflow` may depend on `ralph-workflow-policy`
-- prompt definitions, prompt texts, template assets, templating logic, TOML schemas, normalized flow contracts, and validation logic belong to `ralph-workflow-policy`
+- TOML schemas, normalized policy types, and validation logic belong to `ralph-workflow-policy`
 - reducer/runtime execution belongs to `ralph-workflow`
-- `ralph-workflow` may consume prompt outputs from the policy crate, but it must not own the canonical template source
+- prompt assets and prompt rendering should move only after their current dependencies on `PhaseContext`, capability mapping, and runtime-only prompt assembly are untangled; that extraction is a later hardening step, not a prerequisite for fixing drain resolution or orchestration correctness
 
-That separation prevents circular dependency, prevents runtime code from quietly redefining policy, and makes orchestration behavior testable without booting the whole workflow engine.
+That separation prevents circular dependency, keeps normalization/validation testable without booting the whole workflow engine, and avoids forcing runtime-heavy prompt assembly into a crate boundary before its dependencies are understood.
 
 At the user/project level, the policy crate still materializes the same contract shape:
 
 ```text
 .agent/
-  ├── agents.toml          WHO   — chain definitions and drain bindings
-  ├── pipeline.toml        WHEN  — phase order, retry policy, transitions, invariants
-  └── artifacts.toml       WHAT  — prompt templates, artifact contracts, validation rules
+  ├── agents.toml          USER   — chain definitions and drain bindings (simple)
+  ├── pipeline.toml        INTERNAL — documented phase/drain contracts, budgets, and validated invariants (system-defined; not user-overridable control flow)
+  └── artifacts.toml       INTERNAL — artifact acceptance contracts and prompt/artifact metadata per drain (system-defined)
 ```
+
+The `agents.toml` model is already correct and does not change: users define chains and bind them to drains. That is all a user needs to understand.
+
+What this proposal should extract first is the **policy surface around** the reducer — explicit drain bindings, documented phase/drain relationships, continuation budgets, artifact acceptance rules, and parallel-work constraints. Reducer-owned sequencing remains in Rust until the phase model, recovery semantics, and artifact identity model are stable enough to externalize safely.
+
+The `agents.toml` example below shows the INTERNAL system metadata per drain (role, policy_mode, drain_class, artifact_type). Users do not write these — the runtime enforces them. Users only set `chain` per drain. The example is included to make the internal contract visible, not to show user-facing config.
 
 ### `agents.toml`: explicit drain contracts
 
-Instead of treating drain bindings as a loose map from drain name to chain name, make each drain a typed contract.
-
 Example:
 
 ```toml
-[agent_chains]
-planner = ["claude"]
-developer = ["opencode/minimax/m2-5"]
-reviewer = ["codex"]
-fixer = ["opencode/openai/gpt-5.2"]
-committer = ["claude"]
+# INTERNAL SYSTEM METADATA — do not edit
+# These fields are enforced by the runtime per built-in drain.
+# Users only configure `chain`.
 
 [agent_drains.planning]
-chain = "planner"
-role = "planning"
-policy_mode = "read_only"
-drain_class = "planning"
-artifact_type = "plan"
+chain = "planner"         # ← USER CONFIGURES THIS ONLY
 
 [agent_drains.development]
 chain = "developer"
-role = "development"
-policy_mode = "dev"
-drain_class = "dev"
-artifact_type = "development_result"
 
 [agent_drains.analysis]
 chain = "reviewer"
-role = "analysis"
-policy_mode = "read_only"
-drain_class = "review"
-artifact_type = "analysis_report"
 
 [agent_drains.review]
 chain = "reviewer"
-role = "review"
-policy_mode = "read_only"
-drain_class = "review"
-artifact_type = "issues"
 
 [agent_drains.fix]
 chain = "fixer"
-role = "fix"
-policy_mode = "fixer"
-drain_class = "fixer"
-artifact_type = "fix_result"
 
 [agent_drains.commit]
 chain = "committer"
-role = "commit"
-policy_mode = "commit"
-drain_class = "commit"
-artifact_type = "commit_message"
 ```
 
-The important change is that TOML no longer says only “planning uses chain X.” It says what planning **is**.
+The internal metadata (role, policy_mode, drain_class, artifact_type) is shown to make the drain contract visible, but users only configure `chain` per drain. The system enforces that planning is read-only, fix is write-capable, analysis produces a decision artifact, and so on — users cannot misconfigure these invariants, only override which chain backs them.
 
 ### `pipeline.toml`: phase transitions and orchestration rules
 
-This file holds the actual flow contract, including the analysis decision points that were missing from the previous draft.
+This file should start as a **validated contract snapshot**, not as a new runtime source of truth. The runtime already knows the real sequencing today and enforces it in reducer/orchestration code. The purpose of `pipeline.toml` is to make that contract visible, testable, and internally normalized without pretending that users can safely override phase transitions, recovery ordering, or termination behavior before those semantics are disentangled from the reducer.
 
 This file holds:
 
-- phase order
-- allowed transition graph
-- retry strategy
-- continuation strategy
-- recovery policy
-- phase-level artifact expectations
-- whether a phase is read-only or write-capable
-- parallel worker definitions and namespace restrictions
+- top-level reducer-visible phases
+- embedded drain-owned decision points inside those phases
+- continuation / retry / loop-detection budgets
+- artifact acceptance expectations
+- documented parallel-dispatch constraints derived from planning artifacts
+- invariants that config validation must enforce before startup succeeds
 
 Example:
 
 ```toml
-[phases]
-sequence = ["planning", "development", "analysis", "review", "fix", "commit"]
-internal_states = ["awaiting_dev_fix", "final_validation", "finalization"]
+[top_level_phases]
+sequence = ["planning", "development", "review", "commit_message", "final_validation", "finalizing"]
+recovery_phase = "awaiting_dev_fix"
 
-[phase_drain_map]
-planning = "planning"
-development = "development"
-analysis = "analysis"
-review = "review"
-fix = "fix"
-commit = "commit"
+[embedded_decision_points]
+development = ["analysis"]
+review = ["fix", "analysis"]
 
-[transitions]
-planning = ["development"]
-development = ["analysis", "awaiting_dev_fix"]
-analysis = ["development", "planning", "review", "fix", "commit", "awaiting_dev_fix"]
-review = ["fix", "analysis", "commit", "awaiting_dev_fix"]
-fix = ["analysis", "awaiting_dev_fix"]
-commit = ["final_validation", "awaiting_dev_fix"]
+[decision_routes]
+development_analysis = ["development", "planning", "review"]
+fix_analysis = ["fix", "planning", "review", "commit_message"]
 
-[cycle_policy]
+[budgets]
 max_development_cycles = 5
 max_review_cycles = 2
 max_dev_continuations = 3
 max_fix_continuations = 10
 loop_detection_threshold = 100
 
-[orchestration]
-same_drain_resume_only = true
+[artifact_acceptance]
+require_current_run_identity = true
+require_current_drain_identity = true
+require_current_namespace_when_present = true
+
+[validation]
 require_explicit_drain_bindings = true
 forbid_sibling_drain_inference = true
-analysis_controls_phase_progression = true
-planning_reentry_allowed_from_analysis = true
-review_reentry_allowed_from_analysis = true
+preserve_reducer_priority_order = true
 
-[parallel_workers.plan_shards]
-enabled = true
-parent_drain = "planning"
-worker_role = "planning"
-max_workers = 4
-namespace_mode = "required"
-artifact_namespace = "plan_shards"
-directory_scope = ["src/", "tests/", "docs/"]
-merge_strategy = "planning_synthesis"
+[parallel_execution]
+source = "planning_artifact_work_units"
+require_namespaces = true
+require_directory_scopes = true
+dispatch_remains_runtime_owned = true
 ```
 
 ### `artifacts.toml`: prompt and artifact contracts
@@ -382,6 +379,12 @@ submission_mode = "mcp_artifact"
 prompt_template = "developer_iteration.txt"
 continuation_template = "developer_iteration_continuation.txt"
 artifact_type = "development_result"
+submission_mode = "mcp_artifact"
+
+[analysis]
+prompt_template = "analysis.txt"
+artifact_type = "analysis_decision"
+required_decision_outcomes = ["needs_more_work", "needs_replanning", "ready_for_review", "ready_to_commit", "needs_another_review"]
 submission_mode = "mcp_artifact"
 
 [review]
@@ -427,18 +430,31 @@ analysis after fix decides one of:
 - commit        (review/fix work is accepted and ready to finalize)
 ```
 
-This is the behavior the orchestration config must encode and the reducers must eventually implement directly.
+This is the behavior the documented policy contract must describe clearly while reducers continue to implement the actual runtime sequencing.
+
+### Phase model: explicit embedded decision points first
+
+The current codebase does **not** model `analysis` or `fix` as top-level `PipelinePhase` variants. They are embedded, drain-owned steps inside `Development` and `Review`, with separate drain/capability behavior but shared top-level phase routing. That means the safe near-term plan is:
+
+- keep `analysis` explicit as a **decision point** inside `Development` and `Review`
+- keep `fix` explicit as a **write-capable subflow** inside `Review`
+- make analysis outcomes typed and reducer-visible without first splitting the global phase enum
+
+This preserves the current lifecycle invariants around `CommitMessage`, `FinalValidation`, `Finalizing`, and `AwaitingDevFix`, while still fixing the real bug source: ambiguous drain identity and hidden fallback behavior.
+
+A future RFC may still decide to promote `analysis` and/or `fix` into first-class top-level phases, but that should happen only after commit/finalization/recovery semantics are redesigned with the full state machine in view. It is too invasive to treat as a prerequisite for this plan.
 
 ### Multi-agent and parallel worker contracts
 
-Parallel execution must be declared explicitly rather than being improvised at runtime.
+Parallel execution must be explicit and scope-checked, but the current architecture already has the right ownership split: the **planning artifact** describes work units, and Rust validates and dispatches them deterministically.
 
-There are two related features here:
+That means the plan should not introduce a separate top-level `parallel_planner` state machine node. Instead:
 
-1. **Scoped parallel workers** — workers limited by namespace, directory scope, and merge strategy.
-2. **Multi-agent phase execution** — a phase may declare that multiple agents should run concurrently, but only after a dedicated multi-agent planner produces precise assignments for each worker.
+1. the planning artifact remains the place where parallelizable `work_units[]` are declared
+2. policy/config declares the constraints under which those work units may fan out
+3. Rust validates namespace, directory scope, merge compatibility, and worker count before dispatch
 
-Each worker definition should specify:
+Each worker contract should still specify:
 
 - the parent drain that is allowed to launch it
 - the worker role it uses
@@ -448,48 +464,8 @@ Each worker definition should specify:
 - the directory scope the worker may touch, if any
 - the artifact namespace it may submit into
 - the merge strategy that rejoins worker output into the parent drain
-- the planner prompt/template that produces per-agent assignments
 
-Example:
-
-```toml
-[multi_agent.planning]
-enabled = true
-default_agents = 5
-max_agents = 20
-planner_prompt_template = "multi_agent_planning.txt"
-assignment_artifact_type = "multi_agent_plan"
-merge_strategy = "planning_synthesis"
-
-[multi_agent.planning.agent_pool]
-allowed_agents = ["claude", "codex", "opencode/minimax/m2-5", "opencode/openai/gpt-5.2"]
-
-[parallel_workers.plan_shards]
-parent_drain = "planning"
-worker_role = "planning"
-worker_source = "multi_agent.planning"
-namespace_mode = "required"
-namespace_prefix = "plan_worker"
-artifact_namespace = "plan_shards"
-directory_scope = ["src/", "tests/", "docs/"]
-```
-
-Example fix batch worker:
-
-```toml
-[parallel_workers.fix_batches]
-enabled = true
-parent_drain = "fix"
-worker_role = "fix"
-max_workers = 3
-namespace_mode = "required"
-namespace_prefix = "fix_batch"
-directory_scope = ["src/features/payments/", "tests/payments/"]
-artifact_namespace = "fix_batches"
-merge_strategy = "fix_synthesis"
-```
-
-This gives Ralph enough information to validate that a worker restricted to `src/features/payments/` cannot accidentally claim authority over the whole repository, and that a planner cannot request more concurrent workers than policy allows.
+But those contracts should be applied to planner-produced work units, not to a second planner layer that duplicates existing planning semantics.
 
 Namespacing is required to be more than a label. The namespace contract must include:
 
@@ -497,28 +473,26 @@ Namespacing is required to be more than a label. The namespace contract must inc
 - a declared artifact namespace that cannot collide with parent-drain artifacts
 - canonicalized directory scopes with overlap detection after path normalization
 - a merge target that is compatible with the worker artifact type and parent drain
-- a per-agent assignment generated by the multi-agent planner so each concurrent agent gets precise instructions rather than a shared vague prompt
+- a per-agent assignment generated by the planning artifact so each concurrent agent gets precise instructions rather than a shared vague prompt
 
 ### Multi-agent planner requirement
 
-If a phase configures more than one concurrent agent, Ralph must first invoke a **multi-agent planner** for that phase.
+If a phase uses more than one concurrent agent, the **planning artifact itself** must already contain distinct worker assignments or work units precise enough for Rust to validate and dispatch.
 
-That planner is a new feature with a new prompt contract. Its responsibilities are:
+That means the requirement is not “add a second planner stage,” but rather:
 
-- inspect the parent phase goal and current artifact context
-- decide whether parallel fan-out is appropriate
-- assign each worker a precise objective, scope, namespace, and artifact target
-- prevent duplicated effort across workers
-- define how worker outputs are merged back into the parent phase
+- the planning phase must emit precise assignment data when it requests fan-out
+- Rust must reject vague or overlapping work units at validation time
+- merge behavior must remain deterministic and runtime-owned
 
-This is important because “run 5 agents” is not a plan. The orchestration contract must force a planning step that turns a phase-level goal into 5 concrete worker assignments.
+This is important because “run 5 agents” is not a plan. But adding another planner node would duplicate responsibilities the planning artifact already owns.
 
 The initial limits should be:
 
 - **default concurrent agents:** 5
 - **current hard maximum:** 20
 
-Those limits should live in TOML and be validated.
+Those limits should live in validated policy/config and be enforced by Rust before any fan-out is dispatched.
 
 ---
 
@@ -537,42 +511,29 @@ At startup, Ralph should reject config when any of the following are true:
 5. a read-only drain is configured with a write-capable session policy
 6. a write-capable drain is configured without the capabilities its phase requires
 7. a phase expects one artifact type while the bound drain declares another
-8. a transition graph allows an impossible phase jump
-9. retry or continuation policy would switch to a different drain without an explicit transition
+8. the documented policy contract contradicts the reducer-owned phase graph or termination lifecycle
+9. retry or continuation policy would switch to a different drain or phase in a way the reducer does not support explicitly
 10. any config relies on implicit sibling-drain inference
 11. phase, drain, and internal-state identifiers are not mapped canonically
-12. `analysis` is configured but cannot act as an explicit decision point between development/review/fix/planning/commit
-13. the configured transition graph does not allow the target flow `planning -> development -> analysis` and `review -> fix -> analysis`
-14. cycle policy and transition policy disagree about whether analysis may send work back to planning or review
-15. a parallel worker is enabled for a drain that is not allowed to launch parallel work
+12. the `analysis` drain's declared artifact type does not define the decision outcomes the runtime needs in order to validate embedded routing
+13. the documented decision routes do not allow the target flow `planning -> development -> analysis` and `review -> fix -> analysis`
+14. cycle policy and decision-route policy disagree about whether analysis may send work back to planning or review
+15. a parallel worker contract is declared for a drain that is not allowed to launch parallel work
 16. a phase requests more than the configured default/current maximum concurrent agents
-17. multi-agent fan-out is enabled but no multi-agent planner prompt/artifact contract is defined
+17. multi-agent fan-out is enabled but the planning artifact contract cannot produce precise, non-overlapping worker assignments
 18. a parallel worker lacks a required namespace while using directory restrictions
 19. two parallel worker definitions can write to overlapping canonical directory scopes without an explicit merge strategy
 20. a parallel worker can submit artifacts outside its declared namespace
 21. the policy crate depends on `ralph-workflow` or imports runtime-only orchestration logic
 22. prompt texts, template assets, or templating logic remain owned by `ralph-workflow` instead of `ralph-workflow-policy`
 23. a config contains unknown keys, alias identifiers, or mixed naming forms that normalize to the same canonical identifier
-24. multiple concurrent workers can receive overlapping assignment scopes from the multi-agent planner without an explicit override policy
+24. multiple concurrent workers can receive overlapping assignment scopes from the planning artifact without an explicit override policy
 
-### Explicit inheritance, if we keep any inheritance at all
+### Explicit bindings first, explicit inheritance only if absolutely necessary
 
-If convenience inheritance remains, it must be declarative and visible.
+The safest near-term model is still: **every built-in drain gets an explicit chain binding**. That directly removes the current sibling/legacy fallback ambiguity.
 
-Example:
-
-```toml
-[agent_drains.analysis]
-inherits_chain_from = "review"
-role = "analysis"
-policy_mode = "read_only"
-drain_class = "review"
-artifact_type = "analysis_report"
-```
-
-That is acceptable because it is reviewable and validation can explain it.
-
-What is no longer acceptable is hidden runtime behavior like:
+If convenience inheritance survives at all, it must be declarative, field-scoped, and visible in normalized output. What is no longer acceptable is hidden runtime behavior like:
 
 - “analysis inherits from development if present”
 - “commit inherits from review or fix automatically”
@@ -592,7 +553,7 @@ fix       -> chain=fixer     role=fix        policy=fixer       class=fixer     
 
 Tests can snapshot this matrix and fail loudly when a drain begins resolving to an unexpected chain or policy.
 
-The normalized output should also include canonical phase ownership and worker-launch permissions so reviewers can see, in one place, whether a drain is resumable, whether it can spawn parallel workers, which artifact namespace it owns, and whether it requires a multi-agent planner before fan-out.
+The normalized output should also include canonical phase ownership and worker-launch permissions so reviewers can see, in one place, whether a drain is resumable, whether it can spawn parallel workers, which artifact namespace it owns, and which planning-artifact constraints must be satisfied before fan-out.
 
 ---
 
@@ -611,7 +572,8 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Primary files:**
 
-- `ralph-workflow-policy/src/...`
+**Note:** `ralph-workflow-policy` does not exist yet — it is created in Phase 4. All config type changes in Phases 1–3 land in `ralph-workflow/src/config/`. Phase 4 migrates them into the new crate.
+
 - `ralph-workflow/src/config/unified/types.rs`
 - `ralph-workflow/src/config/validation/mod.rs`
 - `ralph-workflow/src/config/unified/io_tests/`
@@ -623,15 +585,41 @@ The normalized output should also include canonical phase ownership and worker-l
 
 ---
 
-### Phase 2: Make analysis a first-class orchestration decision point
+### Phase 2: Make analysis outcomes explicit within the existing phase model
 
-**Goal:** stop treating analysis as an implicit side effect and make it the explicit control point that decides whether work loops back or moves forward.
+**Goal:** stop treating analysis as an opaque side effect and make it the explicit decision point that decides whether work loops back or moves forward, without first rewriting the top-level `PipelinePhase` enum.
 
 **Key changes:**
 
-- model analysis as an explicit orchestration phase/drain with typed decision outcomes
+- keep analysis embedded inside `Development` and `Review`, but make its decision outcomes typed and reducer-visible
 - allow analysis-after-development to route to development, planning, or review
-- allow analysis-after-fix to route to fix, planning, review, or commit
+- allow analysis-after-fix to route to fix, planning, review, or commit message
+- ensure session drain identity survives normalization, retries, continuations, and resume
+- make normalization reject impossible combinations instead of silently repairing them
+- define the typed analysis decision taxonomy with named outcomes: `needs_more_work` (loop back to current phase), `needs_replanning` (route to planning), `ready_for_review` (route to review, post-development), `ready_to_commit` (route to commit message, post-fix), `needs_another_review` (route back to review, post-fix) — these names are the canonical vocabulary; they must appear in `artifacts.toml` and in the validation rules
+
+**Primary files:**
+
+- `ralph-workflow/src/agents/session/mod.rs`
+- `ralph-workflow/src/mcp_server/capability_mapping.rs`
+- `ralph-workflow/src/reducer/boundary/agent.rs`
+- `ralph-workflow/src/reducer/boundary/planning.rs`
+- `ralph-workflow/src/reducer/boundary/run_fix.rs`
+
+**Risk:** medium
+
+**Why second:** the biggest missing concept in the current proposal was the actual decision flow. Analysis has to become the explicit branch point before anything else will stay understandable, but it does not need to become a top-level phase yet.
+
+---
+
+### Phase 3: Remove lossy drain-to-role compatibility mappings
+
+**Goal:** stop treating distinct drains as interchangeable because compatibility adapters erase drain identity too early.
+
+**Key changes:**
+
+- remove or narrow lossy drain-to-role compatibility mappings where session/runtime code currently collapses distinct drains
+- keep access mode, policy mode, and drain class keyed on drain identity
 - ensure session drain identity survives normalization, retries, continuations, and resume
 - make normalization reject impossible combinations instead of silently repairing them
 
@@ -645,51 +633,50 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Risk:** medium
 
-**Why second:** the biggest missing concept in the current proposal was the actual decision flow. Analysis has to become the explicit branch point before anything else will stay understandable.
+**Why third:** once config is strict and analysis outcomes are explicit, runtime identity must match them exactly or retries/continuations will still drift into the wrong drain.
 
 ---
 
-### Phase 3: Separate drain identity from broad role families
+### Phase 4: Extract `ralph-workflow-policy` as a standalone crate
 
-**Goal:** stop treating planning/development and review/fix as interchangeable because they sit in the same broad role bucket.
+**Goal:** move orchestration policy types, TOML schemas, and validation rules out of `ralph-workflow` into a new `ralph-workflow-policy` crate with no dependency on `ralph-workflow`, while deferring prompt rendering/assets that still depend on runtime context.
 
 **Key changes:**
 
-- add explicit role variants for planning and fix where needed
-- ensure session drain identity survives normalization, retries, continuations, and resume
-- make normalization reject impossible combinations instead of silently repairing them
+- create the `ralph-workflow-policy` crate with no dependency on `ralph-workflow`
+- migrate config types, TOML schema definitions, and validation rules from `ralph-workflow/src/config/` into `ralph-workflow-policy/src/`
+- update `ralph-workflow` to consume policy types and rendered prompt interfaces from `ralph-workflow-policy`
+- verify the dependency direction: `ralph-workflow` depends on `ralph-workflow-policy`, never the reverse
+- explicitly defer prompt assets / rendering code that still depends on `PhaseContext`, capability gates, or runtime-only prompt assembly until a later extraction step
 
 **Primary files:**
 
-- `ralph-workflow/src/agents/session/mod.rs`
-- `ralph-workflow/src/mcp_server/capability_mapping.rs`
-- `ralph-workflow/src/reducer/boundary/agent.rs`
-- `ralph-workflow/src/reducer/boundary/planning.rs`
-- `ralph-workflow/src/reducer/boundary/run_fix.rs`
+- `ralph-workflow-policy/` (new crate — all files)
+- `ralph-workflow/src/config/` (files that migrate out)
+- `ralph-workflow/Cargo.toml` (add dependency on policy crate)
+- `Cargo.toml` workspace (add new crate member)
 
-**Risk:** medium
+**Risk:** medium — touches the workspace structure and import boundaries
 
-**Why third:** once config is strict and analysis is explicit, runtime identity must match it exactly.
+**Why here:** Phases 1–3 establish correct semantics within `ralph-workflow`. Phase 4 then extracts the policy surface that is already stable enough to stand alone.
 
 ---
 
-### Phase 4: Add namespaced parallel worker orchestration and multi-agent planning
+### Phase 5: Add namespaced parallel worker orchestration around planning-artifact work units
 
-**Goal:** support scoped parallel execution while keeping TOML as the authority on worker count, assignment strategy, and merge behavior.
+**Goal:** Parallel execution is first-class and driven by the planning artifact's work-unit structure, with Rust validating and dispatching those work units deterministically.
 
 **Key changes:**
 
-- add typed multi-agent phase definitions with `default_agents = 5` and `max_agents = 20`
-- require a dedicated multi-agent planner prompt/template before any multi-agent fan-out occurs
-- store the planner output as a typed artifact that assigns each worker a precise task, namespace, and scope
-- require namespaced parallel worker definitions for any directory-restricted worker
-- validate that worker counts, namespaces, assignment scopes, and merge strategies are coherent
-- freeze a fully normalized worker contract at startup so runtime cannot reinterpret namespace, chain, prompt, or path scope later
+- the orchestrator interprets `work_units[]` in the planning artifact
+- if parallel work is declared, the planning artifact must already contain per-agent work unit specs (unit_id, description, edit_area, allowed_directories, dependencies)
+- the Ralph orchestrator validates those specs, then invokes the configured number of development agents concurrently
+- no separate `parallel_planner` phase or config flag is needed — the plan artifact is the control plane, and Rust remains the validator/dispatcher
+- worker namespace and directory scope contracts still apply to concurrent invocations
+- if a concurrent agent fails, routing goes back to the normal planning/reassessment path, not to a second planner layer
 
 **Primary files:**
 
-- `ralph-workflow-policy/src/...`
-- `ralph-workflow-policy/prompt assets ...`
 - `ralph-workflow/src/config/unified/types.rs`
 - `ralph-workflow/src/config/validation/mod.rs`
 - `ralph-workflow/src/reducer/orchestration/`
@@ -697,13 +684,37 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Risk:** medium
 
-**Why fourth:** once analysis flow is explicit, the next biggest source of ambiguity is uncontrolled parallelism. Multi-agent work must be planned before it is executed.
+**Why fifth:** once analysis flow is explicit, the next biggest source of ambiguity is uncontrolled parallelism. Multi-agent work must be validated before it is executed, but that validation belongs in Rust, not in an extra planner state machine.
 
 ---
 
-### Phase 5: Move orchestration to artifact-only completion and retry handling
+### Phase 6: Add reducer-visible artifact acceptance identity
 
-**Goal:** remove the remaining legacy completion-path assumptions from runtime control flow.
+**Goal:** make artifact acceptance stricter than artifact presence before deleting any legacy fallback path.
+
+**Key changes:**
+
+- add reducer-visible artifact identity checks for run, attempt, drain, artifact type, and namespace where applicable
+- reject stale or wrongly tagged artifacts even if a file exists
+- make completion and retry logic depend on accepted artifact identity rather than raw file presence
+- preserve current reducer-owned retry/continuation ordering while strengthening acceptance semantics
+
+**Primary files:**
+
+- `ralph-workflow/src/reducer/state/`
+- `ralph-workflow/src/reducer/boundary/json_artifact.rs`
+- `ralph-workflow/src/workspace.rs`
+- `ralph-workflow/src/reducer/orchestration/`
+
+**Risk:** medium
+
+**Why sixth:** deleting XML fallback before artifact identity is strong enough would just replace one class of ambiguity with another.
+
+---
+
+### Phase 7: Move orchestration to artifact-only completion and retry handling
+
+**Goal:** remove the remaining legacy completion-path assumptions from runtime control flow after artifact acceptance is strong enough to stand on its own.
 
 **Key changes:**
 
@@ -722,11 +733,11 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Risk:** medium to high
 
-**Why fifth:** strict drain routing still is not enough if runtime completion logic can drift into legacy behavior.
+**Why seventh:** strict drain routing still is not enough if runtime completion logic can drift into legacy behavior.
 
 ---
 
-### Phase 6: Replace compatibility-era prompt and artifact wiring
+### Phase 8: Replace compatibility-era prompt and artifact wiring
 
 **Goal:** ensure every phase prompt and artifact contract describes MCP submission only, and that prompt ownership lives entirely in `ralph-workflow-policy`.
 
@@ -748,11 +759,11 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Risk:** medium
 
-**Why sixth:** by this point runtime behavior is strict enough that prompt and doc cleanup can align to the same contract.
+**Why eighth:** by this point runtime behavior is strict enough that prompt and doc cleanup can align to the same contract.
 
 ---
 
-### Phase 7: Rule-table orchestration with invariant checks
+### Phase 9: Rule-table orchestration with invariant checks
 
 **Goal:** keep cross-cutting orchestration logic explicit and testable.
 
@@ -783,7 +794,8 @@ The updated design is not just additive. It should delete compatibility layers.
 ### Remove from runtime
 
 - legacy output-file completion checks
-- compatibility extraction/validation/rendering paths under `src/files/llm_output_extraction/` that exist only for the old flow
+- the entire `ralph-workflow/src/files/llm_output_extraction/` compatibility module: XSD schema files, XML extraction and validation logic, XML rendering, and all legacy output-file parsers — this infrastructure exists solely for the pre-MCP flow and must be deleted, not left dormant
+- all dual-mode boundary code that dispatches to XML extraction as a fallback after checking for a JSON artifact
 - retry cleanup aimed at legacy temp-file artifacts
 - dual-mode boundary logic that says “artifact first, legacy fallback second”
 
@@ -800,26 +812,24 @@ The updated design is not just additive. It should delete compatibility layers.
 ```text
 ralph-workflow-policy crate
   ├── agents.toml schema      explicit drain contracts
-  ├── pipeline.toml schema    transitions + retry/continuation policy
+  ├── pipeline.toml schema    documented phase/drain contracts + validated budgets
   ├── artifacts.toml schema   prompt and artifact requirements
   ├── prompt contract types
-  ├── prompt texts / template assets
-  ├── prompt rendering / templating
   └── normalized policy model
 
 Validated startup state
   ├── every built-in drain bound explicitly
   ├── every drain has a valid role/policy/class combination
   ├── every phase expects a declared artifact type
-  ├── analysis is declared as an explicit decision point
+  ├── analysis is declared as an explicit embedded decision point
   ├── every parallel worker has a namespace + directory scope contract
   └── no hidden drain inference remains
 
 Runtime orchestration
-  ├── planning -> development -> analysis
-  ├── analysis decides loop-back vs forward progression
-  ├── review -> fix -> analysis
-  ├── parallel workers run only inside declared namespaces
+  ├── planning -> development (with analysis decision step)
+  ├── review (with fix + analysis decision steps) -> commit_message
+  ├── final_validation -> finalizing -> complete
+  ├── awaiting_dev_fix preserves recovery semantics
   └── retries/continuations preserve or validate drain identity
 ```
 
@@ -829,13 +839,15 @@ What changes after this plan ships:
 |---|---|
 | Missing drain bindings silently inherit from siblings | Missing drain bindings fail validation immediately |
 | Planning can drift into the wrong chain | Planning has an explicit contract and invariant tests |
-| Analysis is implicit and hard to reason about | Analysis is a first-class decision point with explicit outgoing transitions |
-| Fix and review are loosely coupled | Fix is a separate drain contract with separate policy validation |
+| Analysis is implicit and hard to reason about | Analysis is an explicit embedded decision point with typed outcomes |
+| Fix and review are loosely coupled | Fix keeps its own drain contract and policy validation without requiring a new top-level phase |
 | Completion depends on legacy temp files | Completion depends on artifact submission state |
 | Prompt/template naming still reflects the old flow | Prompt and artifact contracts reflect MCP-only behavior |
-| Parallel workers can overreach when spawned ad hoc | Parallel workers are declared, namespaced, and scope-validated |
-| Multi-agent fan-out is vague and untestable | Multi-agent fan-out requires a planner artifact with precise per-agent assignments |
+| Parallel workers can overreach when spawned ad hoc | Parallel workers are namespaced, scope-validated, and dispatched only from validated work units |
+| Multi-agent fan-out is vague and untestable | Multi-agent fan-out requires precise planning-artifact assignments before Rust dispatches workers |
 | Config changes can accidentally alter orchestration | Config changes are normalized and rejected if unsafe |
+| XSD/XML compatibility layer still active in all phase boundaries | XSD/XML infrastructure deleted; all completion and retry logic reads artifact state only |
+| Parallel execution requires guesswork or ad hoc worker spawning | Parallelism is driven by the planning artifact's `work_units[]` structure; no extra planner phase is introduced |
 
 ---
 
@@ -845,17 +857,17 @@ This proposal succeeds when all of the following are true:
 
 - every built-in drain is declared explicitly or through explicit TOML inheritance
 - startup validation rejects partial or ambiguous drain definitions
-- planning, development, analysis, review, fix, and commit each have distinct validated contracts
-- the target flow `planning -> development -> analysis` and `review -> fix -> analysis` is declared explicitly in config and docs
+- planning, development, analysis, review, fix, and commit each have distinct validated drain contracts even when analysis/fix remain embedded in top-level phases
+- the target flow `planning -> development -> analysis` and `review -> fix -> analysis` is declared explicitly in documented policy and docs
 - analysis can explicitly decide whether work returns to development, planning, review, fix, or commit based on context
 - drain normalization never changes a run into a different drain silently
 - retry and continuation logic cannot cross drains without a declared transition
 - runtime completion no longer depends on legacy temp-file paths
 - prompts and artifact routing are MCP-only
-- parallel execution is available only through declared worker contracts
-- multi-agent fan-out is available only when TOML enables it and provides a multi-agent planner contract
+- parallel execution is triggered by the planning artifact's `work_units[]` declaration; the orchestrator validates this structure and invokes the correct number of concurrent development agents without introducing a second planner phase
+- multi-agent fan-out is available only when validated policy allows it and the planning artifact provides precise worker assignments
 - namespaced workers cannot submit artifacts or modify files outside their declared scope
-- each concurrent agent receives a precise planner-generated assignment rather than a shared generic prompt
+- each concurrent agent receives a precise planning-artifact assignment rather than a shared generic prompt
 - orchestration TOML, prompt contracts, prompt texts, template assets, templating logic, and normalized policy types live in `ralph-workflow-policy`, not `ralph-workflow`
 - `ralph-workflow-policy` has no dependency on `ralph-workflow`
 - legacy structured-output references are removed from runtime code and from this proposal
@@ -863,22 +875,26 @@ This proposal succeeds when all of the following are true:
 - regression tests exist for stale or wrongly tagged artifacts being rejected for the current run/attempt/drain/namespace
 - regression tests exist for analysis sending work to the wrong next phase
 - regression tests exist for parallel workers escaping their namespace or directory scope
-- regression tests exist proving that enabling multi-agent execution in TOML changes orchestration behavior only through the multi-agent planner path
+- regression tests exist proving that enabling multi-agent execution changes orchestration behavior only through validated planning-artifact work units
 - regression tests exist for per-agent assignment generation so workers do not receive overlapping or vague instructions
 - a config author can understand exactly why a drain resolved the way it did from validation output alone
+- analysis produces typed, named decision outcomes (`needs_more_work`, `needs_replanning`, `ready_for_review`, `ready_to_commit`, `needs_another_review`) that are declared in `artifacts.toml`, validated against documented decision routes at startup, and are the only mechanism by which embedded analysis steps advance or loop work
+- the `ralph-workflow/src/files/llm_output_extraction/` XSD schema files and XML extraction/validation modules are deleted; no phase boundary references them
+- no runtime codepath contains a dual-mode branch of the form "check artifact, fall back to XML" — the XML fallback is gone
 
 ---
 
 ## 13) Recommended implementation order
 
 1. **Strict drain contracts and validation**
-2. **Explicit analysis decision flow**
+2. **Explicit analysis decision flow (including typed decision taxonomy)**
 3. **Drain/role/session identity separation**
 4. **Standalone `ralph-workflow-policy` crate extraction**
-5. **Namespaced parallel worker contracts and multi-agent planner**
-6. **Artifact-only completion and retry logic**
-7. **Prompt/artifact contract cleanup**
-8. **Rule-table hardening and invariant coverage**
+5. **Namespaced parallel worker contracts around planning-artifact work units**
+6. **Reducer-visible artifact acceptance identity**
+7. **Artifact-only completion and retry logic**
+8. **Prompt/artifact contract cleanup**
+9. **Rule-table hardening and invariant coverage**
 
 That order fixes the buggiest behavior first, then removes the compatibility paths that allowed the bugs to hide.
 
@@ -887,10 +903,10 @@ That order fixes the buggiest behavior first, then removes the compatibility pat
 Before implementation begins, the follow-up execution plan should preserve these non-negotiable invariants:
 
 - **Canonical identifiers only.** `development` and `dev`, or `fix` and `fixer`, must not be treated as interchangeable names in user config.
-- **Single source of authority per concept.** If `pipeline.toml` owns whether a phase is read-only or parallel-capable, `agents.toml` must reference that fact rather than redefining it.
+- **Single source of authority per concept.** If documented policy records whether a drain is parallel-capable, the reducer must still remain the authority on runtime sequencing and termination semantics.
 - **Artifact acceptance is stricter than artifact presence.** A phase completes only when Ralph accepts an artifact matching the current run, attempt, drain, artifact type, and namespace.
 - **Analysis owns branch decisions.** Development and fix phases do work; analysis decides whether that work loops back, requires replanning, or moves forward.
-- **Multi-agent execution requires preplanned assignments.** If more than one concurrent agent is launched, the multi-agent planner must have emitted distinct worker assignments first.
+- **Multi-agent execution requires preplanned assignments.** If more than one concurrent agent is launched, the planning artifact must have emitted distinct worker assignments first.
 - **Policy is standalone.** `ralph-workflow-policy` may not depend on `ralph-workflow`, import reducer code, or own runtime-only orchestration behavior.
 - **Prompts are policy assets.** Prompt texts, template files, and templating behavior belong to `ralph-workflow-policy`, not `ralph-workflow`.
 - **Config normalization is one-time, startup-only.** Runtime logic may consume normalized config, but may not silently repair invalid config after validation.
