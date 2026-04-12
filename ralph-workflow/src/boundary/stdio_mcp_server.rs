@@ -60,23 +60,42 @@ fn run_server_loop(server: McpServer) -> Result<()> {
     let mut state = ServerState::Uninitialized;
 
     loop {
-        let maybe_request = McpStream::read_request(&mut stream)
-            .map_err(|e| anyhow!("transport read error: {e}"))?;
+        let maybe_request = read_stdio_request(&mut stream)?;
         let Some(request) = maybe_request else {
             return Ok(());
         };
 
-        let (response, next_state) = server.handle_request(request, state);
-        state = next_state;
-
-        if let Some(payload) = response {
-            McpStream::write_response(&mut stream, &payload)
-                .map_err(|e| anyhow!("transport write error: {e}"))?;
-        }
-        if state == ServerState::Shutdown {
+        let (response, next_state) = process_stdio_request(&server, request, state);
+        write_stdio_response(&mut stream, response)?;
+        if next_state == ServerState::Shutdown {
             return Ok(());
         }
+        state = next_state;
     }
+}
+
+fn read_stdio_request(
+    stream: &mut StdioTransport,
+) -> Result<Option<mcp_server::protocol::JsonRpcRequest>> {
+    McpStream::read_request(stream).map_err(|e| anyhow!("transport read error: {e}"))
+}
+
+fn process_stdio_request(
+    server: &McpServer,
+    request: mcp_server::protocol::JsonRpcRequest,
+    state: ServerState,
+) -> (Option<mcp_server::JsonRpcResponse>, ServerState) {
+    server.handle_request(request, state)
+}
+
+fn write_stdio_response(
+    stream: &mut StdioTransport,
+    response: Option<mcp_server::JsonRpcResponse>,
+) -> Result<()> {
+    response.into_iter().try_for_each(|payload| {
+        McpStream::write_response(stream, &payload)
+            .map_err(|e| anyhow!("transport write error: {e}"))
+    })
 }
 
 fn build_session_from_env() -> Result<AgentSession> {

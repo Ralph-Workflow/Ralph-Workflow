@@ -27,19 +27,19 @@ use crate::mcp_server::tool_bridge::{
     RalphWorkspaceAdapter,
 };
 use crate::workspace::Workspace;
+#[path = "../mcp_session_bridge_http.rs"]
+mod session_bridge_http;
+use self::session_bridge_http::run_http_gateway;
 use mcp_server::dispatch::access::ToolFilter;
 use mcp_server::io::access::McpServerConfig;
 use mcp_server::io::{ControlCommand, ControlError};
 use mcp_server::io::{EndpointLease, McpServer, ServerState, SessionBridge as McpSessionBridge};
 use mcp_server::protocol::{JsonRpcRequest, JsonRpcResponse};
-use serde_json::json;
-use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 use thiserror::Error;
 
 pub const MCP_ENDPOINT_ENV: &str = "RALPH_MCP_ENDPOINT";
@@ -344,131 +344,6 @@ impl Clone for SessionBridge {
     }
 }
 
-fn run_http_gateway(
-    listener: TcpListener,
-    shutdown: Arc<AtomicBool>,
-    session: Arc<AgentSession>,
-    workspace: Arc<dyn Workspace>,
-    audit_adapter: Arc<RalphAuditSinkAdapter>,
-) {
-    let server = build_in_process_server(session, workspace, audit_adapter);
-    let mut state = ServerState::Uninitialized;
-
-    while !shutdown.load(Ordering::SeqCst) {
-        match listener.accept() {
-            Ok((mut stream, _addr)) => {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
-                handle_http_connection(&server, &mut state, &mut stream);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(20));
-            }
-            Err(_) => break,
-        }
-    }
-}
-
-fn handle_http_connection(
-    server: &McpServer,
-    state: &mut ServerState,
-    stream: &mut std::net::TcpStream,
-) {
-    let mut buffer = Vec::new();
-    let mut chunk = [0u8; 1024];
-    let mut header_end = None;
-
-    while header_end.is_none() {
-        match stream.read(&mut chunk) {
-            Ok(0) => return,
-            Ok(n) => {
-                buffer.extend_from_slice(&chunk[..n]);
-                header_end = find_header_end(&buffer);
-            }
-            Err(_) => return,
-        }
-    }
-
-    let header_end = header_end.unwrap_or(0);
-    let headers_raw = String::from_utf8_lossy(&buffer[..header_end]);
-    let mut lines = headers_raw.lines();
-    let request_line = lines.next().unwrap_or_default().to_string();
-    let content_length = lines
-        .filter_map(|line| line.split_once(':'))
-        .find_map(|(name, value)| {
-            if name.trim().eq_ignore_ascii_case("content-length") {
-                value.trim().parse::<usize>().ok()
-            } else {
-                None
-            }
-        })
-        .unwrap_or(0);
-
-    let mut body = buffer[(header_end + 4)..].to_vec();
-    while body.len() < content_length {
-        match stream.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(n) => body.extend_from_slice(&chunk[..n]),
-            Err(_) => break,
-        }
-    }
-
-    if !request_line.starts_with("POST /mcp ") {
-        let _ = write_http_response(stream, 404, "application/json", "{}".as_bytes());
-        return;
-    }
-
-    let request = match serde_json::from_slice::<JsonRpcRequest>(&body) {
-        Ok(req) => req,
-        Err(_) => {
-            let payload = json!({
-                "jsonrpc": "2.0",
-                "error": {"code": -32700, "message": "Parse error"},
-                "id": serde_json::Value::Null
-            });
-            let bytes = serde_json::to_vec(&payload).unwrap_or_else(|_| b"{}".to_vec());
-            let _ = write_http_response(stream, 400, "application/json", &bytes);
-            return;
-        }
-    };
-
-    let (response, next_state) = server.handle_request(request, *state);
-    *state = next_state;
-
-    if let Some(resp) = response {
-        let bytes = serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec());
-        let _ = write_http_response(stream, 200, "application/json", &bytes);
-    } else {
-        let _ = write_http_response(stream, 204, "application/json", b"");
-    }
-}
-
-fn write_http_response(
-    stream: &mut std::net::TcpStream,
-    status: u16,
-    content_type: &str,
-    body: &[u8],
-) -> std::io::Result<()> {
-    let status_text = match status {
-        200 => "OK",
-        204 => "No Content",
-        400 => "Bad Request",
-        404 => "Not Found",
-        _ => "OK",
-    };
-    let headers = format!(
-        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(headers.as_bytes())?;
-    stream.write_all(body)?;
-    stream.flush()
-}
-
-fn find_header_end(buf: &[u8]) -> Option<usize> {
-    buf.windows(4).position(|window| window == b"\r\n\r\n")
-}
-
 fn build_in_process_server(
     session: Arc<AgentSession>,
     workspace: Arc<dyn Workspace>,
@@ -592,7 +467,7 @@ mod tests {
             if !response.is_empty() {
                 break;
             }
-            std::thread::sleep(Duration::from_millis(20));
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert!(
             response.starts_with("HTTP/1.1 200"),

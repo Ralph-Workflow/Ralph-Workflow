@@ -316,7 +316,7 @@ fn load_and_merge_claude_settings(
     let merged_settings = pretty_json(&merged)?;
     let merged_mcp = pretty_json(&merged_mcp_servers_json(&merged))?;
     let lease_content = lease
-        .map(|value| serde_json::to_string_pretty(value))
+        .map(serde_json::to_string_pretty)
         .transpose()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     Ok(ClaudeHarnessFiles {

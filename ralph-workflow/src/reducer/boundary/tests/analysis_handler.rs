@@ -76,12 +76,16 @@ fn test_invoke_analysis_agent_xsd_retry_uses_existing_xsd_retry_template() {
     assert_eq!(calls.len(), 1);
     let prompt = &calls[0].prompt;
     assert!(
-        prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"),
-        "expected existing XSD retry template, got: {prompt}"
+        prompt.contains("VALIDATION FAILED - FIX JSON SUBMISSION ONLY"),
+        "expected current submission-fix retry template, got: {prompt}"
     );
     assert!(
         prompt.contains("THIS IS A SUBMISSION-FIX-ONLY RETRY"),
-        "expected XML-only retry guardrail, got: {prompt}"
+        "expected submission-fix retry guardrail, got: {prompt}"
+    );
+    assert!(
+        prompt.contains("artifact_type=\"development_result\""),
+        "expected development_result resubmission guidance, got: {prompt}"
     );
 
     let last_output = fixture

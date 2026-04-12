@@ -134,15 +134,14 @@ pub fn generate_commit_message(
     if auth_failure {
         anyhow::bail!("Authentication error detected");
     }
-    if commit_submit_tool_unavailable(&result.stderr)
-        || log_indicates_submit_tool_unavailable(workspace, &logfile)
+    if (commit_submit_tool_unavailable(&result.stderr)
+        || log_indicates_submit_tool_unavailable(workspace, &logfile))
+        && !recover_commit_artifact_from_log(workspace, &logfile)
     {
-        if !recover_commit_artifact_from_log(workspace, &logfile) {
-            anyhow::bail!(
-                "Commit submission tool is unavailable for agent '{}': output did not expose 'ralph_submit_artifact'",
-                commit_agent
-            );
-        }
+        anyhow::bail!(
+            "Commit submission tool is unavailable for agent '{}': output did not expose 'ralph_submit_artifact'",
+            commit_agent
+        );
     }
 
     let extraction = extract_commit_message_from_file_with_workspace(workspace);
@@ -342,15 +341,14 @@ fn try_single_commit_agent(
     if auth_failure {
         return TryAgentResult::Skip(Some(anyhow::anyhow!("Authentication error detected")));
     }
-    if commit_submit_tool_unavailable(&result.stderr)
-        || log_indicates_submit_tool_unavailable(workspace, &logfile)
+    if (commit_submit_tool_unavailable(&result.stderr)
+        || log_indicates_submit_tool_unavailable(workspace, &logfile))
+        && !recover_commit_artifact_from_log(workspace, &logfile)
     {
-        if !recover_commit_artifact_from_log(workspace, &logfile) {
-            return TryAgentResult::Skip(Some(anyhow::anyhow!(
-                "Commit submission tool unavailable for agent '{}'; skipping retry loop",
-                commit_agent
-            )));
-        }
+        return TryAgentResult::Skip(Some(anyhow::anyhow!(
+            "Commit submission tool unavailable for agent '{}'; skipping retry loop",
+            commit_agent
+        )));
     }
 
     if had_error && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML)) {
@@ -534,51 +532,14 @@ fn append_extra_cmd_args(
     cmd: &str,
     extra_args: &[String],
 ) -> String {
-    let cmd = if matches!(
-        agent_type,
-        crate::agents::harness::applicator::AgentType::Claude
-    ) {
-        remove_claude_harness_args(cmd)
-    } else {
-        cmd.to_string()
-    };
-    if extra_args.is_empty() {
-        cmd
-    } else {
-        let joined = extra_args.join(" ");
-        format!("{cmd} {joined}")
-    }
-}
-
-fn remove_claude_harness_args(cmd: &str) -> String {
-    let tokens = crate::agents::session::command_policy::parse_command(cmd);
-    if tokens.is_empty() {
-        return String::new();
-    }
-
-    let mut out = Vec::with_capacity(tokens.len());
-    let mut skip_next = false;
-    for token in tokens {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-
-        if token == "--settings" || token == "--mcp-config" {
-            skip_next = true;
-            continue;
-        }
-        if token == "--strict-mcp-config"
-            || token.starts_with("--settings=")
-            || token.starts_with("--mcp-config=")
-        {
-            continue;
-        }
-
-        out.push(token);
-    }
-
-    out.join(" ")
+    crate::agents::command_line::append_agent_command_args(
+        cmd,
+        extra_args,
+        matches!(
+            agent_type,
+            crate::agents::harness::applicator::AgentType::Claude
+        ),
+    )
 }
 
 fn build_commit_mcp_env(
@@ -599,21 +560,22 @@ fn build_commit_mcp_env(
             endpoint_uri
         ))
     } else {
-        let mut env = std::collections::HashMap::from([(
-            endpoint_env_var.to_string(),
-            endpoint_uri.to_string(),
-        )]);
-        if let Some(lease) = lease {
-            env.insert(
-                crate::mcp_server::session_bridge::MCP_GENERATION_ENV.to_string(),
-                lease.generation.to_string(),
-            );
-            env.insert(
-                crate::mcp_server::session_bridge::MCP_RUN_ID_ENV.to_string(),
-                lease.run_id.clone(),
-            );
-        }
-        Ok(env)
+        Ok(
+            std::iter::once((endpoint_env_var.to_string(), endpoint_uri.to_string()))
+                .chain(lease.into_iter().flat_map(|lease| {
+                    [
+                        (
+                            crate::mcp_server::session_bridge::MCP_GENERATION_ENV.to_string(),
+                            lease.generation.to_string(),
+                        ),
+                        (
+                            crate::mcp_server::session_bridge::MCP_RUN_ID_ENV.to_string(),
+                            lease.run_id.clone(),
+                        ),
+                    ]
+                }))
+                .collect(),
+        )
     }
 }
 
@@ -647,34 +609,29 @@ fn commit_payload_json(value: &serde_json::Value) -> bool {
 }
 
 fn extract_commit_payload_from_log(content: &str) -> Option<serde_json::Value> {
-    let mut latest_payload: Option<serde_json::Value> = None;
-    for segment in content.split("```json").skip(1) {
-        if let Some((json_block, _rest)) = segment.split_once("```") {
-            let trimmed = json_block.trim();
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                if commit_payload_json(&value) {
-                    latest_payload = Some(value);
-                }
-            }
-        }
-    }
-
-    // Fallback: parse any raw JSON object embedded in log text.
-    // This catches outputs where agents print plain JSON without fenced code blocks.
-    for (idx, ch) in content.char_indices() {
-        if ch != '{' {
-            continue;
-        }
-        let mut stream =
-            serde_json::Deserializer::from_str(&content[idx..]).into_iter::<serde_json::Value>();
-        if let Some(Ok(value)) = stream.next() {
-            if commit_payload_json(&value) {
-                latest_payload = Some(value);
-            }
-        }
-    }
-
-    latest_payload
+    content
+        .split("```json")
+        .skip(1)
+        .filter_map(|segment| {
+            segment
+                .split_once("```")
+                .map(|(json_block, _rest)| json_block)
+        })
+        .map(str::trim)
+        .filter_map(|trimmed| serde_json::from_str::<serde_json::Value>(trimmed).ok())
+        .chain(
+            content
+                .char_indices()
+                .filter(|(_, ch)| *ch == '{')
+                .filter_map(|(idx, _)| {
+                    serde_json::Deserializer::from_str(&content[idx..])
+                        .into_iter::<serde_json::Value>()
+                        .next()
+                        .and_then(Result::ok)
+                }),
+        )
+        .filter(commit_payload_json)
+        .last()
 }
 
 fn recover_commit_artifact_from_log(workspace: &dyn Workspace, logfile: &str) -> bool {

@@ -2,6 +2,9 @@ use super::MainEffectHandler;
 use crate::agents::AgentDrain;
 use crate::common::domain_types::AgentName;
 use crate::phases::PhaseContext;
+use crate::reducer::domain::agent_chain::{
+    commit_drain_agent_supported as domain_commit_drain_agent_supported, resolve_models_for_agents,
+};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 use crate::reducer::ui_event::UIEvent;
@@ -40,63 +43,16 @@ fn resolve_drain_agents(ctx: &PhaseContext<'_>, drain: AgentDrain) -> Vec<AgentN
             binding
                 .agents
                 .iter()
-                .filter(|name| commit_drain_agent_supported(ctx, drain, name.as_str()))
+                .filter(|name| {
+                    domain_commit_drain_agent_supported(ctx.registry, drain, name.as_str())
+                })
                 .map(|s| AgentName::from(s.clone()))
                 .collect()
         })
 }
 
-fn commit_drain_agent_supported(ctx: &PhaseContext<'_>, drain: AgentDrain, name: &str) -> bool {
-    if drain != AgentDrain::Commit {
-        return true;
-    }
-
-    let Some(cfg) = ctx.registry.resolve_config(name) else {
-        return false;
-    };
-    if !cfg.can_commit {
-        return false;
-    }
-    let agent_type = crate::agents::harness::applicator::detect_agent_type(&cfg.cmd);
-    let is_ccs = cfg
-        .cmd
-        .split_whitespace()
-        .next()
-        .map(|first| {
-            let token = first.rsplit('/').next().unwrap_or(first);
-            token.eq_ignore_ascii_case("ccs")
-        })
-        .unwrap_or(false);
-    !matches!(
-        agent_type,
-        crate::agents::harness::applicator::AgentType::OpenCode
-    ) && !is_ccs
-}
-
 fn resolve_drain_models(ctx: &PhaseContext<'_>, agents: &[AgentName]) -> Vec<Vec<String>> {
-    let provider_fallback = &ctx.registry.resolved_drains().provider_fallback;
-    agents
-        .iter()
-        .map(|agent| {
-            let agent_str = agent.as_str();
-            // Provider is the first path segment when the name contains a slash.
-            // e.g., "opencode/zai/glm-4.7" → provider "opencode"
-            // e.g., "claude" → no slash, no provider, no model fallback
-            // Provider key is the first path segment for slash-prefixed names
-            // (e.g., "opencode/zai/glm-4.7" → "opencode"), or the full name for
-            // plain agent names (e.g., "opencode" → "opencode").
-            // This lets provider_fallback entries match both naming conventions.
-            let provider = if agent_str.contains('/') {
-                agent_str.split('/').next()
-            } else {
-                Some(agent_str)
-            };
-            provider
-                .and_then(|p| provider_fallback.get(p))
-                .cloned()
-                .unwrap_or_default()
-        })
-        .collect()
+    resolve_models_for_agents(&ctx.registry.resolved_drains().provider_fallback, agents)
 }
 
 fn log_chain_info(

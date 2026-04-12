@@ -70,60 +70,9 @@ fn preflight_mcp_server_tools(
     }
 
     let address = parse_tcp_endpoint(endpoint)?;
-    let start = Instant::now();
-    let mut last_error: Option<String> = None;
-
-    while start.elapsed() < timeout {
-        let connect_timeout =
-            std::cmp::min(Duration::from_millis(500), remaining_budget(start, timeout));
-        match TcpStream::connect_timeout(&address, connect_timeout) {
-            Ok(stream) => match list_tools_for_endpoint(
-                stream,
-                std::cmp::min(Duration::from_secs(2), remaining_budget(start, timeout)),
-            ) {
-                Ok(available_tools) => {
-                    let missing: Vec<&str> = required_tools
-                        .iter()
-                        .copied()
-                        .filter(|tool| !available_tools.iter().any(|available| available == tool))
-                        .collect();
-                    if missing.is_empty() {
-                        return Ok(());
-                    }
-                    return Err(format!(
-                        "missing required MCP tools: {:?}; available: {:?}",
-                        missing, available_tools
-                    ));
-                }
-                Err(PreflightError::Retryable(error)) => {
-                    last_error = Some(error);
-                }
-                Err(PreflightError::Permanent(error)) => {
-                    return Err(error);
-                }
-            },
-            Err(error) => {
-                let message = format!("failed to connect to MCP endpoint {}: {}", endpoint, error);
-                if retryable_connect_error_kind(error.kind()) {
-                    last_error = Some(message);
-                } else {
-                    return Err(message);
-                }
-            }
-        }
-
-        std::thread::sleep(std::cmp::min(
-            Duration::from_millis(100),
-            remaining_budget(start, timeout),
-        ));
-    }
-
-    Err(last_error.unwrap_or_else(|| {
-        format!(
-            "MCP preflight timed out for endpoint {} after {:?}",
-            endpoint, timeout
-        )
-    }))
+    run_preflight_loop(endpoint, timeout, |remaining| {
+        preflight_tcp_attempt(endpoint, address, required_tools, remaining)
+    })
 }
 
 fn preflight_http_mcp_server_tools(
@@ -132,61 +81,159 @@ fn preflight_http_mcp_server_tools(
     timeout: Duration,
 ) -> Result<(), String> {
     let target = parse_http_endpoint(endpoint)?;
-    let start = Instant::now();
-    let mut last_error: Option<String> = None;
+    run_preflight_loop(endpoint, timeout, |remaining| {
+        preflight_http_attempt(endpoint, target.as_ref(), required_tools, remaining)
+    })
+}
 
-    while start.elapsed() < timeout {
-        let connect_timeout =
-            std::cmp::min(Duration::from_millis(500), remaining_budget(start, timeout));
-        match TcpStream::connect_timeout(&target.address, connect_timeout) {
-            Ok(stream) => match list_tools_for_http_endpoint(
-                stream,
-                target.as_ref(),
-                std::cmp::min(Duration::from_secs(2), remaining_budget(start, timeout)),
-            ) {
-                Ok(available_tools) => {
-                    let missing: Vec<&str> = required_tools
-                        .iter()
-                        .copied()
-                        .filter(|tool| !available_tools.iter().any(|available| available == tool))
-                        .collect();
-                    if missing.is_empty() {
-                        return Ok(());
-                    }
-                    return Err(format!(
-                        "missing required MCP tools: {:?}; available: {:?}",
-                        missing, available_tools
-                    ));
-                }
-                Err(PreflightError::Retryable(error)) => {
-                    last_error = Some(error);
-                }
-                Err(PreflightError::Permanent(error)) => {
-                    return Err(error);
-                }
-            },
-            Err(error) => {
-                let message = format!("failed to connect to MCP endpoint {}: {}", endpoint, error);
-                if retryable_connect_error_kind(error.kind()) {
-                    last_error = Some(message);
-                } else {
-                    return Err(message);
-                }
-            }
-        }
+fn run_preflight_loop<F>(endpoint: &str, timeout: Duration, attempt: F) -> Result<(), String>
+where
+    F: Fn(Duration) -> Result<(), PreflightError>,
+{
+    continue_preflight_loop(endpoint, timeout, Instant::now(), None, &attempt)
+}
 
-        std::thread::sleep(std::cmp::min(
-            Duration::from_millis(100),
-            remaining_budget(start, timeout),
-        ));
-    }
-
-    Err(last_error.unwrap_or_else(|| {
-        format!(
-            "MCP preflight timed out for endpoint {} after {:?}",
-            endpoint, timeout
+fn continue_preflight_loop<F>(
+    endpoint: &str,
+    timeout: Duration,
+    start: Instant,
+    last_error: Option<String>,
+    attempt: &F,
+) -> Result<(), String>
+where
+    F: Fn(Duration) -> Result<(), PreflightError>,
+{
+    if let Some(timeout_error) = preflight_timeout_error(endpoint, timeout, start, last_error) {
+        Err(timeout_error)
+    } else {
+        handle_preflight_attempt_result(
+            endpoint,
+            timeout,
+            start,
+            attempt(remaining_budget(start, timeout)),
+            attempt,
         )
-    }))
+    }
+}
+
+fn preflight_timeout_error(
+    endpoint: &str,
+    timeout: Duration,
+    start: Instant,
+    last_error: Option<String>,
+) -> Option<String> {
+    if start.elapsed() >= timeout {
+        Some(last_error.unwrap_or_else(|| {
+            format!(
+                "MCP preflight timed out for endpoint {} after {:?}",
+                endpoint, timeout
+            )
+        }))
+    } else {
+        None
+    }
+}
+
+fn handle_preflight_attempt_result<F>(
+    endpoint: &str,
+    timeout: Duration,
+    start: Instant,
+    result: Result<(), PreflightError>,
+    attempt: &F,
+) -> Result<(), String>
+where
+    F: Fn(Duration) -> Result<(), PreflightError>,
+{
+    match result {
+        Ok(()) => Ok(()),
+        Err(PreflightError::Permanent(error)) => Err(error),
+        Err(PreflightError::Retryable(error)) => {
+            std::thread::sleep(retry_poll_delay(start, timeout));
+            continue_preflight_loop(endpoint, timeout, start, Some(error), attempt)
+        }
+    }
+}
+
+fn preflight_tcp_attempt(
+    endpoint: &str,
+    address: SocketAddr,
+    required_tools: &[&str],
+    remaining: Duration,
+) -> Result<(), PreflightError> {
+    connect_to_endpoint(endpoint, address, remaining).and_then(|stream| {
+        list_tools_for_endpoint(stream, io_timeout_budget(remaining))
+            .and_then(|available_tools| ensure_required_tools(required_tools, available_tools))
+    })
+}
+
+fn preflight_http_attempt(
+    endpoint: &str,
+    target: HttpEndpointTargetRef<'_>,
+    required_tools: &[&str],
+    remaining: Duration,
+) -> Result<(), PreflightError> {
+    connect_to_endpoint(endpoint, target.address, remaining).and_then(|stream| {
+        list_tools_for_http_endpoint(stream, target, io_timeout_budget(remaining))
+            .and_then(|available_tools| ensure_required_tools(required_tools, available_tools))
+    })
+}
+
+fn connect_to_endpoint(
+    endpoint: &str,
+    address: SocketAddr,
+    remaining: Duration,
+) -> Result<TcpStream, PreflightError> {
+    TcpStream::connect_timeout(&address, connect_timeout_budget(remaining))
+        .map_err(|error| classify_connect_error(endpoint, error))
+}
+
+fn classify_connect_error(endpoint: &str, error: std::io::Error) -> PreflightError {
+    let message = format!("failed to connect to MCP endpoint {}: {}", endpoint, error);
+    if retryable_connect_error_kind(error.kind()) {
+        PreflightError::Retryable(message)
+    } else {
+        PreflightError::Permanent(message)
+    }
+}
+
+fn ensure_required_tools(
+    required_tools: &[&str],
+    available_tools: Vec<String>,
+) -> Result<(), PreflightError> {
+    missing_required_tools(required_tools, &available_tools).map_or(Ok(()), |missing| {
+        Err(PreflightError::Permanent(format!(
+            "missing required MCP tools: {:?}; available: {:?}",
+            missing, available_tools
+        )))
+    })
+}
+
+fn missing_required_tools<'a>(
+    required_tools: &'a [&'a str],
+    available_tools: &[String],
+) -> Option<Vec<&'a str>> {
+    let missing: Vec<&str> = required_tools
+        .iter()
+        .copied()
+        .filter(|tool| !available_tools.iter().any(|available| available == tool))
+        .collect();
+    if missing.is_empty() {
+        None
+    } else {
+        Some(missing)
+    }
+}
+
+fn connect_timeout_budget(remaining: Duration) -> Duration {
+    std::cmp::min(Duration::from_millis(500), remaining)
+}
+
+fn io_timeout_budget(remaining: Duration) -> Duration {
+    std::cmp::min(Duration::from_secs(2), remaining)
+}
+
+fn retry_poll_delay(start: Instant, timeout: Duration) -> Duration {
+    std::cmp::min(Duration::from_millis(100), remaining_budget(start, timeout))
 }
 
 #[derive(Debug)]
@@ -249,36 +296,11 @@ struct HttpEndpointTargetRef<'a> {
 }
 
 fn parse_http_endpoint(endpoint: &str) -> Result<HttpEndpointTarget, String> {
-    let (scheme, remainder) = endpoint
-        .split_once("://")
-        .ok_or_else(|| format!("invalid HTTP MCP endpoint '{}': missing scheme", endpoint))?;
-
-    if scheme != "http" {
-        return Err(format!(
-            "unsupported MCP HTTP scheme '{}' for endpoint '{}' (only http:// is supported)",
-            scheme, endpoint
-        ));
-    }
-
-    let (authority, raw_path) = match remainder.split_once('/') {
-        Some((host, path)) => (host, format!("/{path}")),
-        None => (remainder, "/".to_string()),
-    };
-
-    if authority.is_empty() {
-        return Err(format!(
-            "invalid HTTP MCP endpoint '{}': missing host:port authority",
-            endpoint
-        ));
-    }
-
-    let mut candidates = authority
-        .to_socket_addrs()
-        .map_err(|error| format!("failed to resolve MCP endpoint '{}': {}", endpoint, error))?;
-    let address = candidates
-        .find(|addr| addr.is_ipv4())
-        .or_else(|| candidates.next())
-        .ok_or_else(|| format!("failed to resolve any socket address for '{}'", endpoint))?;
+    let (scheme, remainder) = split_endpoint_scheme(endpoint)?;
+    ensure_supported_http_scheme(endpoint, scheme)?;
+    let (authority, raw_path) = split_http_authority_and_path(remainder);
+    ensure_http_authority(endpoint, authority)?;
+    let address = resolve_http_endpoint_address(endpoint, authority)?;
 
     Ok(HttpEndpointTarget {
         address,
@@ -287,65 +309,60 @@ fn parse_http_endpoint(endpoint: &str) -> Result<HttpEndpointTarget, String> {
     })
 }
 
+fn split_endpoint_scheme(endpoint: &str) -> Result<(&str, &str), String> {
+    endpoint
+        .split_once("://")
+        .ok_or_else(|| format!("invalid HTTP MCP endpoint '{}': missing scheme", endpoint))
+}
+
+fn ensure_supported_http_scheme(endpoint: &str, scheme: &str) -> Result<(), String> {
+    if scheme == "http" {
+        Ok(())
+    } else {
+        Err(format!(
+            "unsupported MCP HTTP scheme '{}' for endpoint '{}' (only http:// is supported)",
+            scheme, endpoint
+        ))
+    }
+}
+
+fn split_http_authority_and_path(remainder: &str) -> (&str, String) {
+    match remainder.split_once('/') {
+        Some((host, path)) => (host, format!("/{path}")),
+        None => (remainder, "/".to_string()),
+    }
+}
+
+fn ensure_http_authority(endpoint: &str, authority: &str) -> Result<(), String> {
+    if authority.is_empty() {
+        Err(format!(
+            "invalid HTTP MCP endpoint '{}': missing host:port authority",
+            endpoint
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn resolve_http_endpoint_address(endpoint: &str, authority: &str) -> Result<SocketAddr, String> {
+    let mut candidates = authority
+        .to_socket_addrs()
+        .map_err(|error| format!("failed to resolve MCP endpoint '{}': {}", endpoint, error))?;
+    candidates
+        .find(|addr| addr.is_ipv4())
+        .or_else(|| candidates.next())
+        .ok_or_else(|| format!("failed to resolve any socket address for '{}'", endpoint))
+}
+
 fn list_tools_for_endpoint(
     mut stream: TcpStream,
     io_timeout: Duration,
 ) -> Result<Vec<String>, PreflightError> {
-    stream.set_read_timeout(Some(io_timeout)).map_err(|error| {
-        PreflightError::Permanent(format!("failed to configure read timeout: {}", error))
-    })?;
-    stream
-        .set_write_timeout(Some(io_timeout))
-        .map_err(|error| {
-            PreflightError::Permanent(format!("failed to configure write timeout: {}", error))
-        })?;
-
-    let reader_stream = stream.try_clone().map_err(|error| {
-        PreflightError::Permanent(format!("failed to clone MCP socket for read: {}", error))
-    })?;
+    configure_stream_timeouts(&stream, io_timeout)?;
+    let reader_stream = clone_reader_stream(&stream)?;
     let mut reader = BufReader::new(reader_stream);
-
-    let initialize = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "initialize",
-        "params": {"protocolVersion": "2024-11-05"},
-        "id": 1,
-    });
-    write_jsonrpc_request(&mut stream, &initialize).map_err(PreflightError::Retryable)?;
-    let init_response = read_jsonrpc_response(&mut reader).map_err(PreflightError::Retryable)?;
-    if init_response.error.is_some() {
-        return Err(PreflightError::Permanent(format!(
-            "MCP initialize failed: {:?}",
-            init_response.error
-        )));
-    }
-
-    let initialized_notification = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized",
-        "params": {},
-    });
-    write_jsonrpc_request(&mut stream, &initialized_notification)
-        .map_err(PreflightError::Retryable)?;
-
-    let tools_list = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "tools/list",
-        "id": 2,
-    });
-    write_jsonrpc_request(&mut stream, &tools_list).map_err(PreflightError::Retryable)?;
-    let list_response = read_jsonrpc_response(&mut reader).map_err(PreflightError::Retryable)?;
-    if list_response.error.is_some() {
-        return Err(PreflightError::Permanent(format!(
-            "MCP tools/list failed: {:?}",
-            list_response.error
-        )));
-    }
-
-    let result_value = list_response.result.ok_or_else(|| {
-        PreflightError::Permanent("MCP tools/list response missing result".to_string())
-    })?;
-    extract_tool_names(result_value).map_err(PreflightError::Permanent)
+    complete_stdio_initialize(&mut stream, &mut reader)?;
+    read_tools_list_response(&mut stream, &mut reader, "MCP")
 }
 
 fn list_tools_for_http_endpoint(
@@ -353,69 +370,133 @@ fn list_tools_for_http_endpoint(
     target: HttpEndpointTargetRef<'_>,
     io_timeout: Duration,
 ) -> Result<Vec<String>, PreflightError> {
+    configure_stream_timeouts(&stream, io_timeout)?;
+    ensure_http_initialize(&mut stream, target)?;
+    let mut tools_stream = reconnect_http_tools_stream(target.address, io_timeout)?;
+    read_http_tools_list_response(&mut tools_stream, target)
+}
+
+fn configure_stream_timeouts(
+    stream: &TcpStream,
+    io_timeout: Duration,
+) -> Result<(), PreflightError> {
     stream.set_read_timeout(Some(io_timeout)).map_err(|error| {
         PreflightError::Permanent(format!("failed to configure read timeout: {}", error))
     })?;
-    stream
-        .set_write_timeout(Some(io_timeout))
-        .map_err(|error| {
-            PreflightError::Permanent(format!("failed to configure write timeout: {}", error))
-        })?;
+    stream.set_write_timeout(Some(io_timeout)).map_err(|error| {
+        PreflightError::Permanent(format!("failed to configure write timeout: {}", error))
+    })
+}
 
-    let initialize = serde_json::json!({
+fn clone_reader_stream(stream: &TcpStream) -> Result<TcpStream, PreflightError> {
+    stream.try_clone().map_err(|error| {
+        PreflightError::Permanent(format!("failed to clone MCP socket for read: {}", error))
+    })
+}
+
+fn complete_stdio_initialize(
+    stream: &mut TcpStream,
+    reader: &mut BufReader<TcpStream>,
+) -> Result<(), PreflightError> {
+    let init_response = send_stdio_request(stream, reader, initialize_request())?;
+    ensure_no_preflight_error("MCP initialize", init_response.error)?;
+    write_jsonrpc_request(stream, &initialized_notification()).map_err(PreflightError::Retryable)
+}
+
+fn read_tools_list_response(
+    stream: &mut TcpStream,
+    reader: &mut BufReader<TcpStream>,
+    label: &str,
+) -> Result<Vec<String>, PreflightError> {
+    let list_response = send_stdio_request(stream, reader, tools_list_request())?;
+    ensure_no_preflight_error(&format!("{label} tools/list"), list_response.error)?;
+    extract_preflight_tool_names(list_response.result, label)
+}
+
+fn send_stdio_request(
+    stream: &mut TcpStream,
+    reader: &mut BufReader<TcpStream>,
+    request: serde_json::Value,
+) -> Result<JsonRpcResponse, PreflightError> {
+    write_jsonrpc_request(stream, &request).map_err(PreflightError::Retryable)?;
+    read_jsonrpc_response(reader).map_err(PreflightError::Retryable)
+}
+
+fn ensure_http_initialize(
+    stream: &mut TcpStream,
+    target: HttpEndpointTargetRef<'_>,
+) -> Result<(), PreflightError> {
+    let init_response = post_http_jsonrpc(stream, target, initialize_request())
+        .map_err(PreflightError::Retryable)?;
+    ensure_no_preflight_error("HTTP MCP initialize", init_response.error)
+}
+
+fn reconnect_http_tools_stream(
+    address: SocketAddr,
+    io_timeout: Duration,
+) -> Result<TcpStream, PreflightError> {
+    let stream = TcpStream::connect_timeout(&address, io_timeout).map_err(|error| {
+        PreflightError::Retryable(format!("failed to reconnect for tools/list: {}", error))
+    })?;
+    configure_stream_timeouts(&stream, io_timeout)?;
+    Ok(stream)
+}
+
+fn read_http_tools_list_response(
+    stream: &mut TcpStream,
+    target: HttpEndpointTargetRef<'_>,
+) -> Result<Vec<String>, PreflightError> {
+    let list_response = post_http_jsonrpc(stream, target, tools_list_request())
+        .map_err(PreflightError::Retryable)?;
+    ensure_no_preflight_error("HTTP MCP tools/list", list_response.error)?;
+    extract_preflight_tool_names(list_response.result, "HTTP MCP")
+}
+
+fn ensure_no_preflight_error<T: std::fmt::Debug>(
+    label: &str,
+    error: Option<T>,
+) -> Result<(), PreflightError> {
+    error.map_or(Ok(()), |error_value| {
+        Err(PreflightError::Permanent(format!(
+            "{label} failed: {:?}",
+            error_value
+        )))
+    })
+}
+
+fn extract_preflight_tool_names(
+    result: Option<serde_json::Value>,
+    label: &str,
+) -> Result<Vec<String>, PreflightError> {
+    let result_value = result.ok_or_else(|| {
+        PreflightError::Permanent(format!("{label} tools/list response missing result"))
+    })?;
+    extract_tool_names(result_value).map_err(PreflightError::Permanent)
+}
+
+fn initialize_request() -> serde_json::Value {
+    serde_json::json!({
         "jsonrpc": "2.0",
         "method": "initialize",
         "params": {"protocolVersion": "2024-11-05"},
         "id": 1,
-    });
-    let init_response =
-        post_http_jsonrpc(&mut stream, target, initialize).map_err(PreflightError::Retryable)?;
-    if init_response.error.is_some() {
-        return Err(PreflightError::Permanent(format!(
-            "HTTP MCP initialize failed: {:?}",
-            init_response.error
-        )));
-    }
+    })
+}
 
-    let mut tools_stream =
-        TcpStream::connect_timeout(&target.address, io_timeout).map_err(|error| {
-            PreflightError::Retryable(format!("failed to reconnect for tools/list: {}", error))
-        })?;
-    tools_stream
-        .set_read_timeout(Some(io_timeout))
-        .map_err(|error| {
-            PreflightError::Permanent(format!(
-                "failed to configure tools/list read timeout: {}",
-                error
-            ))
-        })?;
-    tools_stream
-        .set_write_timeout(Some(io_timeout))
-        .map_err(|error| {
-            PreflightError::Permanent(format!(
-                "failed to configure tools/list write timeout: {}",
-                error
-            ))
-        })?;
+fn initialized_notification() -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {},
+    })
+}
 
-    let tools_list = serde_json::json!({
+fn tools_list_request() -> serde_json::Value {
+    serde_json::json!({
         "jsonrpc": "2.0",
         "method": "tools/list",
         "id": 2,
-    });
-    let list_response = post_http_jsonrpc(&mut tools_stream, target, tools_list)
-        .map_err(PreflightError::Retryable)?;
-    if list_response.error.is_some() {
-        return Err(PreflightError::Permanent(format!(
-            "HTTP MCP tools/list failed: {:?}",
-            list_response.error
-        )));
-    }
-
-    let result_value = list_response.result.ok_or_else(|| {
-        PreflightError::Permanent("HTTP MCP tools/list response missing result".to_string())
-    })?;
-    extract_tool_names(result_value).map_err(PreflightError::Permanent)
+    })
 }
 
 fn post_http_jsonrpc(
@@ -489,27 +570,47 @@ fn read_jsonrpc_response<R: BufRead>(reader: &mut R) -> Result<JsonRpcResponse, 
 }
 
 fn read_content_length<R: BufRead>(reader: &mut R) -> Result<usize, String> {
+    read_content_length_recursive(reader, None)
+}
+
+fn read_content_length_recursive<R: BufRead>(
+    reader: &mut R,
+    current: Option<usize>,
+) -> Result<usize, String> {
+    let line = read_header_line(reader)?;
+    resolve_content_length(reader, current, line)
+}
+
+fn read_header_line<R: BufRead>(reader: &mut R) -> Result<String, String> {
     let mut line = String::new();
-    let mut content_length: Option<usize> = None;
-    loop {
-        line.clear();
-        let read = reader
-            .read_line(&mut line)
-            .map_err(|error| format!("failed to read MCP response header: {}", error))?;
-        if read == 0 {
-            return Err("MCP response closed while reading headers".to_string());
-        }
-
-        if line == "\r\n" {
-            break;
-        }
-
-        if let Some(rest) = line.strip_prefix("Content-Length:") {
-            content_length = rest.trim().parse::<usize>().ok();
-        }
+    let read = reader
+        .read_line(&mut line)
+        .map_err(|error| format!("failed to read MCP response header: {}", error))?;
+    if read == 0 {
+        Err("MCP response closed while reading headers".to_string())
+    } else {
+        Ok(line)
     }
+}
 
-    content_length.ok_or_else(|| "MCP response missing Content-Length header".to_string())
+fn resolve_content_length<R: BufRead>(
+    reader: &mut R,
+    current: Option<usize>,
+    line: String,
+) -> Result<usize, String> {
+    if line == "\r\n" {
+        current.ok_or_else(|| "MCP response missing Content-Length header".to_string())
+    } else {
+        read_content_length_recursive(
+            reader,
+            current.or_else(|| parse_content_length_header(&line)),
+        )
+    }
+}
+
+fn parse_content_length_header(line: &str) -> Option<usize> {
+    line.strip_prefix("Content-Length:")
+        .and_then(|rest| rest.trim().parse::<usize>().ok())
 }
 
 fn extract_tool_names(result_value: serde_json::Value) -> Result<Vec<String>, String> {

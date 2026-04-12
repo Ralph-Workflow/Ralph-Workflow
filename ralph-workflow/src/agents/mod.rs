@@ -84,6 +84,7 @@
 pub mod cache_environment;
 pub mod ccs;
 mod ccs_env;
+pub mod command_line;
 pub mod config;
 mod error;
 pub mod fallback;

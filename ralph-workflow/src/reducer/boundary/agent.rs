@@ -2,6 +2,7 @@ use super::MainEffectHandler;
 #[path = "agent_prepare.rs"]
 mod agent_prepare;
 use self::agent_prepare::prepare_agent_invocation;
+use crate::agents::command_line::append_agent_command_args;
 use crate::agents::config::should_use_yolo_mode;
 use crate::agents::harness::applicator::{apply_harness_config_with_lease, detect_agent_type};
 use crate::agents::session::{
@@ -317,8 +318,7 @@ fn build_mcp_base_env(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_mcp_base_env, remove_claude_harness_args, EndpointLease, MCP_ENDPOINT_ENV,
-        MCP_GENERATION_ENV, MCP_RUN_ID_ENV,
+        build_mcp_base_env, EndpointLease, MCP_ENDPOINT_ENV, MCP_GENERATION_ENV, MCP_RUN_ID_ENV,
     };
 
     #[test]
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn remove_claude_harness_args_strips_existing_settings_and_mcp_flags() {
-        let cleaned = remove_claude_harness_args(
+        let cleaned = crate::agents::command_line::strip_claude_harness_args(
             "claude --settings '/tmp/old-settings' --mcp-config '/tmp/old-mcp' --strict-mcp-config -p",
         );
         assert!(
@@ -372,53 +372,20 @@ fn append_extra_args(
     extra_cmd_args: Vec<String>,
     agent_type: crate::agents::harness::applicator::AgentType,
 ) -> String {
-    let base_cmd = if matches!(
-        agent_type,
-        crate::agents::harness::applicator::AgentType::Claude
-    ) {
-        remove_claude_harness_args(&base_cmd)
-    } else {
-        base_cmd
-    };
-    if extra_cmd_args.is_empty() {
-        return base_cmd;
-    }
     let joined_args = extra_cmd_args.join(" ");
-    ctx.logger.info(&format!(
-        "RFC-009 harness extra args appended: {joined_args}"
-    ));
-    format!("{base_cmd} {joined_args}")
-}
-
-fn remove_claude_harness_args(cmd: &str) -> String {
-    let tokens = parse_command(cmd);
-    if tokens.is_empty() {
-        return String::new();
+    if !joined_args.is_empty() {
+        ctx.logger.info(&format!(
+            "RFC-009 harness extra args appended: {joined_args}"
+        ));
     }
-
-    let mut out = Vec::with_capacity(tokens.len());
-    let mut skip_next = false;
-    for token in tokens {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-
-        if token == "--settings" || token == "--mcp-config" {
-            skip_next = true;
-            continue;
-        }
-        if token == "--strict-mcp-config"
-            || token.starts_with("--settings=")
-            || token.starts_with("--mcp-config=")
-        {
-            continue;
-        }
-
-        out.push(token);
-    }
-
-    out.join(" ")
+    append_agent_command_args(
+        &base_cmd,
+        &extra_cmd_args,
+        matches!(
+            agent_type,
+            crate::agents::harness::applicator::AgentType::Claude
+        ),
+    )
 }
 
 fn check_command_policy(
