@@ -15,8 +15,8 @@ pub struct ContinuationContextData {
     pub attempt: u32,
     pub status: DevelopmentStatus,
     pub summary: String,
-    /// Files changed in previous attempt. Box<[String]> saves 8 bytes per instance
-    /// vs Vec<String> since this collection is never modified after construction.
+    /// Files changed in previous attempt. `Box<[String]>` saves 8 bytes per instance
+    /// vs `Vec<String>` since this collection is never modified after construction.
     pub files_changed: Option<Box<[String]>>,
     pub next_steps: Option<String>,
 }

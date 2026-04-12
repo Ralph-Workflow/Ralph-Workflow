@@ -1,32 +1,30 @@
 {# ============================================================================ #}
 {# Template: developer_iteration_xsd_retry.txt                                   #}
-{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                           #}
+{# Version: 5.0 - MCP JSON resubmission only                                    #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Retry prompt when XML validation fails during development iteration.      #}
-{#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
+{#   Retry prompt when JSON validation fails during development iteration.      #}
+{#   This is STRICTLY for fixing the JSON submission - NO other actions allowed.#}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   {{XSD_ERROR}} - XSD validation error message (required)                   #}
-{#                                                                             #}
-{# FILES TO READ (REFERENCE ONLY):                                              #}
-{#   .agent/tmp/development_result.xsd - The XSD schema (for structure reference) #}
-{#   .agent/tmp/last_output.xml        - Your previous invalid output (for format) #}
+{#   {{XSD_ERROR}} - Validation error message (required)                        #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
-{#   Valid <ralph-development-result> XML conforming to the XSD schema         #}
+{#   Corrected JSON submitted via ralph_submit_artifact                        #}
 {# ============================================================================ #}
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-XSD VALIDATION FAILED - FIX XML ONLY
+VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your XML output at `{{DEVELOPMENT_RESULT_XML_PATH}}` failed XSD validation.
+Your previous development result submission failed validation.
 
 **THIS IS A SUBMISSION-FIX-ONLY RETRY**
 
@@ -59,61 +57,31 @@ Focus on:
 CRITICAL INSTRUCTIONS - READ CAREFULLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{DEVELOPMENT_RESULT_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`
+The validation error is in JSON directive format:
+{"code": "MISSING_FIELD", "field_path": "status", "next_actions": ["set status to completed, partial, or failed"]}
+
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result"
+and corrected JSON content. Follow every instruction in the `next_actions`
+array exactly.
 
 You MUST NOT:
 - Write any new code
 - Modify any source files
 - Run any commands
 - Do ANY development work
-- Change the content/meaning of your response - ONLY fix the XML format
+- Change the content/meaning of your response - ONLY fix the validation errors
+
+This is a PURE SUBMISSION FIX. Your development work is done. The only problem
+is that your submitted JSON doesn't conform to the schema. Fix the JSON
+structure, nothing else.
 
 ═══════════════════════════════════════════════════════════════════════════════
-AUTHORIZATION OVERRIDE (CRITICAL)
+COMMON MISTAKES TO FIX
 ═══════════════════════════════════════════════════════════════════════════════
 
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{DEVELOPMENT_RESULT_XML_PATH}}`
+1. Missing required fields (status, summary, etc.)
+2. Invalid status value (must be: completed, partial, or failed)
+3. Missing or malformed continuation object for partial status
 
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still fix the XML to match the XSD).
-
-This is a READ-ONLY task EXCEPT FOR writing `{{DEVELOPMENT_RESULT_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
-
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
-
-═══════════════════════════════════════════════════════════════════════════════
-DO NOT DO
-═══════════════════════════════════════════════════════════════════════════════
-
-- Do NOT write any new code
-- Do NOT modify any source files
-- Do NOT run commands
-- Do NOT do new development work
-- Do NOT change the content/meaning of your response
-
-This is a PURE XML SYNTAX FIX. Your development work is done. The only problem
-is that your XML output doesn't conform to the schema. Fix the XML structure,
-nothing else.
-
-═══════════════════════════════════════════════════════════════════════════════
-COMMON XML MISTAKES TO FIX
-═══════════════════════════════════════════════════════════════════════════════
-
-1. Missing required elements (status, summary, etc.)
-2. Wrong element order (check XSD for correct sequence)
-3. Invalid status value (must be: completed, partial, or failed)
-4. Unescaped special characters (use &lt; &gt; &amp; or CDATA)
-5. Missing closing tags
-6. Text before/after root element
-7. Markdown code fences around XML (remove ```)
-
-After reading the XSD schema, fix ONLY the XML validation error.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.
 DO NOT do any other work.

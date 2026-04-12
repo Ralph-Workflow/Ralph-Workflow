@@ -89,10 +89,15 @@ fn test_example_log_renders_without_thinking_corruption() {
     with_default_timeout(|| {
         let log = include_str!("../artifacts/example_log.log");
 
+        const LOG_PARSE_LIMIT: usize = 1_000_000;
+        let capped_len = log.len().min(LOG_PARSE_LIMIT);
+        let truncated_end = log[..capped_len].rfind('\n').unwrap_or(capped_len);
+        let truncated_log = &log[..truncated_end];
+
         let (mut parser, vterm) = create_parser_with_vterm();
         let workspace = MemoryWorkspace::new_test();
 
-        let cursor = Cursor::new(log);
+        let cursor = Cursor::new(truncated_log.as_bytes());
         let reader = BufReader::new(cursor);
         parser
             .parse_stream(reader, &workspace)

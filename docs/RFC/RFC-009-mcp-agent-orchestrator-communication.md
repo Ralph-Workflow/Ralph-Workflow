@@ -2,9 +2,10 @@
 
 **RFC Number**: RFC-009
 **Title**: MCP-Style Agent-Orchestrator Communication
-**Status**: Draft
+**Status**: Phase 1 Complete | Phase 2/3 In Progress
 **Author**: Product synthesis
 **Created**: 2026-03-19
+**Updated**: 2026-03-24
 
 > NOTE: RFCs are historical design documents.
 > For canonical architecture details, prefer `../architecture/event-loop-and-reducers.md`, `../architecture/effect-system.md`, `../architecture/agents-and-prompts.md`, and `../architecture/streaming-and-parsers.md`.

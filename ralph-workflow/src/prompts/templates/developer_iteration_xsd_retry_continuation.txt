@@ -1,6 +1,6 @@
 {# ============================================================================ #}
 {# Template: developer_iteration_xsd_retry_continuation.txt                      #}
-{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                           #}
+{# Version: 2.0 - MCP JSON resubmission only                                    #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
@@ -21,102 +21,39 @@
 {# Do NOT omit completed. FR#7 contract requires all three.                   #}
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTINUATION XML VALIDATION FAILED
+CONTINUATION VALIDATION FAILED
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your continuation XML at `{{DEVELOPMENT_RESULT_XML_PATH}}` failed validation.
+Your previous continuation submission failed validation.
 
 **THIS IS A SUBMISSION-FIX-ONLY RETRY**
 
 ERROR: {{XSD_ERROR}}
 
-═══════════════════════════════════════════════════════════════════════════════
-REFERENCE ONLY (Do not redo task logic)
-═══════════════════════════════════════════════════════════════════════════════
+The validation error is in JSON directive format:
+{"code": "INVALID_VALUE", "field_path": "status", "next_actions": ["set status to partial or failed"]}
 
-Read these files ONLY to understand expected structure:
-- `{{DEVELOPMENT_RESULT_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
-- `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result"
+and corrected JSON content. Follow every instruction in the `next_actions`
+array exactly.
 
-These files are for structure reference only. Do NOT redo implementation
-work from them.
+The continuation JSON must include:
+{
+  "status": "partial",
+  "summary": "What was completed and what remains",
+  "continuation": {
+    "prior_session_id": "...",
+    "remaining_steps": ["ordered", "actionable", "recovery", "checklist"]
+  }
+}
 
-═══════════════════════════════════════════════════════════════════════════════
-PRIMARY OBJECTIVE: Fix Malformed XML Structure
-═══════════════════════════════════════════════════════════════════════════════
+Keep the output focused on why the full plan was not completed.
+Include an ordered, actionable recovery checklist that finishes the remaining plan.
 
-Your main task is to fix the malformed XML structure. The most common issue
-is malformed XML/root parse errors - fix those FIRST.
-
-Then rewrite the XML so it satisfies the continuation contract:
-- Keep the output focused on why the full plan was not completed.
-- Use the correct status:
-  - `<ralph-status>completed</ralph-status>` — ALL plan steps are done and verified
-  - `<ralph-status>partial</ralph-status>` — Meaningful progress made but work remains (most common for continuations)
-  - `<ralph-status>failed</ralph-status>` — No meaningful progress or fundamentally blocked
-- Include an ordered, actionable recovery checklist that finishes the remaining plan.
-- Omit bookkeeping such as `<ralph-files-changed>`.
-
-═══════════════════════════════════════════════════════════════════════════════
-CRITICAL INSTRUCTIONS - READ CAREFULLY
-═══════════════════════════════════════════════════════════════════════════════
-
-You MUST:
-1. Read the XSD schema at `{{DEVELOPMENT_RESULT_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix the XML structure/format issues AND satisfy the continuation contract
-4. Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`
-
-You MUST NOT:
-- Write any new code
-- Modify any source files
-- Run any commands
-- Do ANY development work
-- Change the substantive content/meaning of your continuation response beyond XML format and contract fixes
-
-═══════════════════════════════════════════════════════════════════════════════
-AUTHORIZATION OVERRIDE (CRITICAL)
-═══════════════════════════════════════════════════════════════════════════════
-
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{DEVELOPMENT_RESULT_XML_PATH}}`
-
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still fix the XML to match the XSD).
-
-This is a READ-ONLY task EXCEPT FOR writing `{{DEVELOPMENT_RESULT_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
-
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
-
-═══════════════════════════════════════════════════════════════════════════════
-DO NOT DO
-═══════════════════════════════════════════════════════════════════════════════
-
-- Do NOT modify repository files
-- Do NOT do new implementation work
-- Do NOT run commands
-- Do NOT change the content/meaning of your continuation response beyond XML format
-
-You may change the XML content as needed to satisfy the continuation contract.
-Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`.
-
-═══════════════════════════════════════════════════════════════════════════════
-COMMON XML MISTAKES TO FIX
-═══════════════════════════════════════════════════════════════════════════════
-
-1. Missing required elements (status, summary, etc.)
-2. Wrong element order (check XSD for correct sequence)
-3. Invalid status value (must be: completed, partial, or failed)
-4. Unescaped special characters (use &lt; &gt; &amp; or CDATA)
-5. Missing closing tags
-6. Text before/after root element
-7. Markdown code fences around XML (remove ```)
-
-After reading the XSD schema, fix ONLY the XML validation error.
-DO NOT do any other work.
+Do not modify repository files or do new implementation work in this retry.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.

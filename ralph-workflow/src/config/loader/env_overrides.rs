@@ -5,24 +5,24 @@ use crate::config::types::{BehavioralFlags, Config, FeatureFlags, ReviewDepth, V
 
 /// Result of applying environment overrides, including any warnings.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnvOverrideResult {
-    pub config: Config,
-    pub warnings: Vec<String>,
+pub(crate) struct EnvOverrideResult {
+    pub(crate) config: Config,
+    pub(crate) warnings: Vec<String>,
 }
 
 impl EnvOverrideResult {
-    pub fn new(config: Config) -> Self {
+    pub(crate) fn new(config: Config) -> Self {
         Self {
             config,
             warnings: Vec::new(),
         }
     }
 
-    pub fn with_warnings(config: Config, warnings: Vec<String>) -> Self {
+    pub(crate) fn with_warnings(config: Config, warnings: Vec<String>) -> Self {
         Self { config, warnings }
     }
 
-    pub fn with_warning(self, warning: impl Into<String>) -> Self {
+    pub(crate) fn with_warning(self, warning: impl Into<String>) -> Self {
         let new_warnings = self
             .warnings
             .into_iter()
@@ -40,7 +40,10 @@ impl EnvOverrideResult {
 /// Uses the injected `env` accessor instead of reading from the real process
 /// environment, enabling parallel-safe unit tests without `#[serial]`.
 #[must_use]
-pub fn apply_env_overrides(config: Config, env: &dyn ConfigEnvironment) -> EnvOverrideResult {
+pub(crate) fn apply_env_overrides(
+    config: Config,
+    env: &dyn ConfigEnvironment,
+) -> EnvOverrideResult {
     const MAX_ITERS: u32 = 50;
     const MAX_REVIEWS: u32 = 10;
     const MAX_CONTEXT: u8 = 2;

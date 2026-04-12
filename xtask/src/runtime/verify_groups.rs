@@ -12,13 +12,13 @@ use super::types::{
     VerifyReport,
 };
 
-pub(crate) const FORBIDDEN_ALLOW_EXPECT_POLICY: &str = r#"LINT POLICY: allow(...) attributes are PROHIBITED in this codebase.
+pub(crate) const FORBIDDEN_ALLOW_EXPECT_POLICY: &str = r#"LINT POLICY: #[allow(...)] attributes are PROHIBITED in this codebase.
 
-There are NO permitted allow(...) exceptions. If the lint fires on external code
+There are NO permitted #[allow(...)] exceptions. If the lint fires on external code
 (test harness, proc-macro output, external trait impls, build-script artifacts),
-use the expect(..., reason = "...") attribute instead.
+use the #[expect(..., reason = "...")] attribute instead.
 
-The expect(...) attribute is permitted ONLY when ALL three conditions are met:
+The #[expect(...)] attribute is permitted ONLY when ALL three conditions are met:
 1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).
 2. It includes reason = "..." naming the specific external source.
 3. It is the narrowest possible scope (item attribute, not module or crate).
@@ -565,6 +565,8 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
             "ralph-workflow-tests",
             "-p",
             "test-helpers",
+            "-p",
+            "mcp-server",
             "--all-targets",
             "--all-features",
             "--",
@@ -602,6 +604,33 @@ pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
             "integration_tests_reducer",
             "--test",
             "integration_tests_workflow",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-lib",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server", "--lib"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-integration",
+        program: "cargo",
+        args: &["test", "-p", "mcp-server", "--tests"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "test-mcp-server-standalone",
+        program: "cargo",
+        args: &[
+            "test",
+            "-p",
+            "mcp-server",
+            "--test",
+            "standalone_integration",
         ],
         success_exit_codes: &[0],
         extra_env: &[],

@@ -458,7 +458,7 @@ pub struct AgentConfigToml {
 
 /// Error returned by [`UnifiedConfig::resolve_agent_drains_checked`].
 ///
-/// Each variant preserves the original human-facing guidance text via [`Display`].
+/// Each variant preserves the original human-facing guidance text via `Display`.
 #[derive(Debug)]
 pub enum ResolveDrainError {
     /// `[agent_chain]` has conflicting named-key definitions with `[agent_chains]`.

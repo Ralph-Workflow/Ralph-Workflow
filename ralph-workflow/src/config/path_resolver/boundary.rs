@@ -221,7 +221,8 @@ impl ConfigEnvironment for RealConfigEnvironment {
     }
 
     fn worktree_root(&self) -> Option<PathBuf> {
-        let repo = git2::Repository::discover(".").ok()?;
+        let repo_root = std::env::current_dir().ok()?;
+        let repo = git2::Repository::open(&repo_root).ok()?;
         let gitdir = repo.path();
 
         compute_canonical_repo_root(gitdir).or_else(|| repo.workdir().map(PathBuf::from))

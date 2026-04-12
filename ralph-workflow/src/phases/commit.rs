@@ -5,8 +5,7 @@
 //! reducer via events; this code does not implement fallback chains or
 //! in-session XSD retries.
 
-use super::commit_logging::{AttemptOutcome, CommitLogSession, ExtractionAttempt};
-use super::context::PhaseContext;
+use super::commit_logging::CommitLogSession;
 use crate::agents::AgentRegistry;
 use crate::files::llm_output_extraction::{
     archive_xml_file_with_workspace, has_valid_xml_output,
@@ -15,7 +14,6 @@ use crate::files::llm_output_extraction::{
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::TemplateContext;
 use crate::workspace::Workspace;
-use anyhow::Context as _;
 use std::path::Path;
 
 pub mod diff_truncation;

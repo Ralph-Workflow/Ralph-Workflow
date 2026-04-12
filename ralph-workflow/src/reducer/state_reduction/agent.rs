@@ -83,6 +83,35 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 ..state
             }
         }
+        // Capability denied: immediate agent switch, clear session and prompt context.
+        // This indicates a misconfiguration — session capabilities don't match the effects
+        // the orchestrator is trying to execute. Try the next agent.
+        AgentEvent::CapabilityDenied {
+            role: _,
+            capability,
+            reason: _,
+        } => {
+            let state = reset_phase_xml_cleanup_for_retry(state);
+            PipelineState {
+                agent_chain: state
+                    .agent_chain
+                    .switch_to_next_agent()
+                    .clear_session_id()
+                    .clear_continuation_prompt()
+                    .with_mode(DrainMode::Normal)
+                    .with_failure_reason(Some(format!("capability denied: {}", capability))),
+                continuation: ContinuationState {
+                    xsd_retry_count: 0,
+                    xsd_retry_pending: false,
+                    xsd_retry_session_reuse_pending: false,
+                    same_agent_retry_count: 0,
+                    same_agent_retry_pending: false,
+                    same_agent_retry_reason: None,
+                    ..state.continuation
+                },
+                ..state
+            }
+        }
         // Timeout with no output: immediate agent switch (no same-agent retry)
         // The agent produced no output at all — likely overloaded or unavailable.
         // Switching agents immediately is safer than retrying the same agent.
@@ -345,6 +374,113 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             ..state
         },
 
+        // =====================================================================
+        // Phase 4: Parallel Worker Events
+        // =====================================================================
+        // Note: These events are handled here for state tracking during parallel execution.
+        // The actual worker dispatch and coordination happens via effects.
+        AgentEvent::ParallelPlanProduced { plan } => {
+            // Store the parallel plan in state for tracking.
+            // The orchestration layer will derive the EvaluateParallelPlan effect.
+            PipelineState {
+                parallel_plan: Some(plan),
+                parallel_plan_validated: false,
+                ..state
+            }
+        }
+        AgentEvent::ParallelPlanValidated { plan } => {
+            // Plan validated - store it (orchestration will derive DispatchParallelWorkers).
+            // Keep any existing parallel state since the plan is now validated and ready for dispatch.
+            PipelineState {
+                parallel_plan: Some(plan),
+                parallel_plan_validated: true,
+                ..state
+            }
+        }
+        AgentEvent::ParallelPlanRejected { plan: _, reason } => {
+            // Plan rejected - fall back to single-agent mode.
+            // Clear the parallel plan and record the rejection reason.
+            // The orchestration layer will continue with single-agent planning.
+            PipelineState {
+                parallel_plan: None,
+                parallel_plan_validated: false,
+                parallel_workers: Vec::new(),
+                parallel_workers_completed: Vec::new(),
+                parallel_plan_rejected_reason: Some(reason),
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkersDispatched {
+            worker_count: _,
+            workers,
+        } => {
+            // Workers dispatched - track the worker identities.
+            // The orchestration layer manages worker lifecycle via events.
+            PipelineState {
+                parallel_workers: workers,
+                parallel_workers_completed: Vec::new(),
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkerCompleted {
+            worker_id,
+            metadata: _,
+        } => {
+            // Worker completed - track completion status.
+            // When all workers complete, orchestration will trigger verification.
+            PipelineState {
+                parallel_workers_completed: if !state
+                    .parallel_workers_completed
+                    .contains(&worker_id)
+                {
+                    state
+                        .parallel_workers_completed
+                        .iter()
+                        .chain(std::iter::once(&worker_id))
+                        .cloned()
+                        .collect()
+                } else {
+                    state.parallel_workers_completed.clone()
+                },
+                ..state
+            }
+        }
+        AgentEvent::VerifierCompleted { decision: _ } => {
+            // Verifier completed - the orchestration layer handles the decision
+            // and derives the next effect (rework, spawn new, collapse, or accept).
+            // Just track that verification happened.
+            PipelineState {
+                parallel_verification_completed: true,
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkReworked {
+            unit_ids: _,
+            feedback: _,
+        } => {
+            // Work sent back for rework - increment verification iteration counter.
+            // The orchestration layer will re-dispatch workers with feedback.
+            PipelineState {
+                parallel_verification_iteration: state.parallel_verification_iteration + 1,
+                ..state
+            }
+        }
+        AgentEvent::ParallelWorkCollapsed {
+            remaining_units: _,
+            reason: _,
+        } => {
+            // Work collapsed to single-agent - clear parallel state.
+            // The orchestration layer will continue with single-agent execution.
+            PipelineState {
+                parallel_plan: None,
+                parallel_plan_validated: false,
+                parallel_workers: Vec::new(),
+                parallel_workers_completed: Vec::new(),
+                parallel_verification_completed: false,
+                parallel_verification_iteration: 0,
+                ..state
+            }
+        }
         // Connectivity probe succeeded: update ConnectivityState to reflect the probe result.
         // This clears check_pending and, if we were offline, transitions back to online.
         AgentEvent::ConnectivityCheckSucceeded => PipelineState {

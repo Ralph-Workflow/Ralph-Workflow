@@ -91,6 +91,7 @@ fn nesting_complexity_points(max_nesting_depth: usize) -> usize {
 /// - `ffi/` — foreign function interface bindings
 /// - `boundary/` — thin composition seams between pure and effectful code
 /// - `executor/` — process execution (part of runtime/execution)
+/// - `harness/` — agent harness configuration generators (process spawning, workspace config)
 /// - `claude/` — Claude parser implementation with RefCell state
 /// - `codex/` — Codex parser implementation with RefCell state
 /// - `gemini/` — Gemini parser implementation with RefCell state
@@ -100,6 +101,8 @@ fn nesting_complexity_points(max_nesting_depth: usize) -> usize {
 /// - `deduplication/` — Content deduplication with rolling hashes
 /// - `delta_display/` — Delta display rendering utilities
 /// - `printer/` — Terminal output (stdout/stderr access)
+/// - `mcp_server/` — MCP server: TCP loopback I/O and background thread management
+/// - `main` — Binary entry point: process args, clock reads, environment access
 pub const BOUNDARY_MODULES: &[&str] = &[
     "boundary",
     "claude",
@@ -109,8 +112,11 @@ pub const BOUNDARY_MODULES: &[&str] = &[
     "executor",
     "ffi",
     "gemini",
+    "harness",
     "health",
     "io",
+    "main",
+    "mcp_server",
     "opencode",
     "printer",
     "runtime",

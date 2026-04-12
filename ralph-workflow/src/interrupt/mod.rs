@@ -231,6 +231,7 @@ pub fn setup_interrupt_handler() {
         if is_event_loop_active() {
             if register_sigint_during_active_event_loop() {
                 eprintln!("\nSecond interrupt received; forcing immediate exit.");
+                crate::executor::process_registry::kill_all_registered_raw();
                 restore_prompt_md_writable_via_std_fs();
                 eprintln!("Cleaning up...");
                 crate::git_helpers::cleanup_agent_phase_silent();
@@ -274,6 +275,7 @@ pub fn setup_interrupt_handler() {
         eprintln!("Cleaning up...");
         crate::git_helpers::cleanup_agent_phase_silent();
         remove_repo_root_ralph_dir_via_std_fs();
+        crate::executor::process_registry::kill_all_registered_raw();
         handling::exit_sigint();
     });
 

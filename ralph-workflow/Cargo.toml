@@ -1,6 +1,6 @@
 [package]
 name = "ralph-workflow"
-version = "0.7.18"
+version = "0.8.0"
 edition = "2021"
 description = "PROMPT-driven multi-agent orchestrator for git repos"
 authors = ["Mistlight"]
@@ -96,11 +96,17 @@ strsim = "0.11"
 # XML parsing for plan validation
 quick-xml = "0.37"
 
+# JSON Schema validation (draft 2020-12) for MCP artifact submission
+jsonschema = "0.28"
+
 # Functional programming helpers (HList, LabelledGeneric, Validated, etc.)
 frunk = "0.4.4"
 
 # Iterator utilities (sorted, unique, etc.)
 itertools = "0.13"
+
+# MCP server boundary crate
+mcp-server = { path = "../mcp-server" }
 
 [dev-dependencies]
 # Testing utilities

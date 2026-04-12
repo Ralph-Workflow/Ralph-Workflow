@@ -14,7 +14,7 @@ use std::fs;
 use std::path::Path;
 
 mod io {
-    pub type Result<T> = std::io::Result<T>;
+    pub(crate) type Result<T> = std::io::Result<T>;
 }
 
 pub fn verify_hooks_removed(repo_root: &Path) -> io::Result<Vec<&'static str>> {

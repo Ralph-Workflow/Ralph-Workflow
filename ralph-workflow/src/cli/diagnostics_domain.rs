@@ -12,7 +12,7 @@ use crate::workspace::Workspace;
 
 /// Git diagnostic information.
 #[derive(Debug, Clone)]
-pub struct GitDiagnostics {
+pub(super) struct GitDiagnostics {
     pub version: Option<String>,
     pub is_repo: bool,
     pub branch: Option<String>,
@@ -21,7 +21,7 @@ pub struct GitDiagnostics {
 
 /// Plan which git commands to execute based on repository state.
 #[derive(Debug, Clone)]
-pub enum GitCommandPlan {
+enum GitCommandPlan {
     Full,
     None,
 }
@@ -29,7 +29,7 @@ pub enum GitCommandPlan {
 /// Determine which git commands to run based on initial version check.
 ///
 /// This is the policy decision: "should we run more git commands?"
-pub fn plan_git_commands(version_available: bool) -> GitCommandPlan {
+fn plan_git_commands(version_available: bool) -> GitCommandPlan {
     if !version_available {
         return GitCommandPlan::None;
     }
@@ -37,17 +37,17 @@ pub fn plan_git_commands(version_available: bool) -> GitCommandPlan {
 }
 
 /// Determine if we should check for branch (requires repo check first).
-pub fn should_check_branch(is_repo: bool) -> bool {
+fn should_check_branch(is_repo: bool) -> bool {
     is_repo
 }
 
 /// Determine if we should check for uncommitted changes (requires repo check first).
-pub fn should_check_uncommitted(is_repo: bool) -> bool {
+fn should_check_uncommitted(is_repo: bool) -> bool {
     is_repo
 }
 
 /// Build GitDiagnostics from command outputs.
-pub fn build_git_diagnostics(
+fn build_git_diagnostics(
     version: Option<String>,
     is_repo: bool,
     branch: Option<String>,
@@ -62,7 +62,7 @@ pub fn build_git_diagnostics(
 }
 
 /// Format git diagnostic information as lines.
-pub fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
+pub(super) fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
     let version_line = diagnostics
         .version
         .as_ref()
@@ -90,14 +90,14 @@ pub fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
 
 /// Config existence status.
 #[derive(Debug, Clone)]
-pub enum ConfigExistsStatus {
+enum ConfigExistsStatus {
     Yes,
     No,
     Unknown(String),
 }
 
 /// Determine config file existence status.
-pub fn determine_config_exists(
+fn determine_config_exists(
     config_path_is_absolute: bool,
     workspace_root: &dyn crate::workspace::Workspace,
     config_path: &std::path::Path,
@@ -125,7 +125,7 @@ pub fn determine_config_exists(
 
 /// PROMPT.md analysis result.
 #[derive(Debug, Clone)]
-pub struct PromptAnalysis {
+struct PromptAnalysis {
     pub size_bytes: Option<usize>,
     pub line_count: Option<usize>,
     pub has_goal_section: bool,
@@ -133,7 +133,7 @@ pub struct PromptAnalysis {
 }
 
 /// Analyze PROMPT.md content for key sections.
-pub fn analyze_prompt_content(content: &str) -> PromptAnalysis {
+fn analyze_prompt_content(content: &str) -> PromptAnalysis {
     let has_goal = content.contains("## Goal") || content.contains("# Goal");
     let has_acceptance =
         content.contains("## Acceptance") || content.contains("Acceptance Criteria");
@@ -148,7 +148,7 @@ pub fn analyze_prompt_content(content: &str) -> PromptAnalysis {
 
 /// Agent availability display info.
 #[derive(Debug, Clone)]
-pub struct AgentAvailabilityInfo {
+struct AgentAvailabilityInfo {
     pub name: String,
     pub available: bool,
     pub json_parser: bool,
@@ -156,7 +156,7 @@ pub struct AgentAvailabilityInfo {
 }
 
 /// Get sorted list of agent availability info.
-pub fn get_sorted_agent_availability(
+fn get_sorted_agent_availability(
     registry: &crate::agents::AgentRegistry,
 ) -> Vec<AgentAvailabilityInfo> {
     use itertools::Itertools;
@@ -179,14 +179,14 @@ pub fn get_sorted_agent_availability(
 
 /// Agent drain display info.
 #[derive(Debug, Clone)]
-pub struct DrainBindingInfo {
+pub(super) struct DrainBindingInfo {
     pub drain: AgentDrain,
     pub chain_name: String,
     pub agents: Vec<String>,
 }
 
 /// Get all drain bindings as display info.
-pub fn get_drain_bindings(registry: &crate::agents::AgentRegistry) -> Vec<DrainBindingInfo> {
+pub(super) fn get_drain_bindings(registry: &crate::agents::AgentRegistry) -> Vec<DrainBindingInfo> {
     let resolved = registry.resolved_drains();
     crate::agents::AgentDrain::all()
         .into_iter()
@@ -201,7 +201,7 @@ pub fn get_drain_bindings(registry: &crate::agents::AgentRegistry) -> Vec<DrainB
 }
 
 /// Resolve the checkpoint log path or find the latest run log directory.
-pub fn find_log_path(workspace: &dyn Workspace) -> Option<std::path::PathBuf> {
+fn find_log_path(workspace: &dyn Workspace) -> Option<std::path::PathBuf> {
     let checkpoint = load_checkpoint_with_workspace(workspace).ok().flatten()?;
 
     if let Some(log_run_id) = checkpoint.log_run_id {
@@ -245,14 +245,14 @@ fn find_latest_run_log_path(workspace: &dyn Workspace) -> Option<std::path::Path
 }
 
 /// Format recent log lines from content string (last 10 lines).
-pub fn format_recent_log_lines(content: &str) -> Vec<String> {
+fn format_recent_log_lines(content: &str) -> Vec<String> {
     let lines: Vec<&str> = content.lines().collect();
     let start = lines.len().saturating_sub(10);
     lines[start..].iter().map(|l| format!("  {l}")).collect()
 }
 
 /// Format configuration info section lines.
-pub fn format_config_section_lines(
+pub(super) fn format_config_section_lines(
     config: &Config,
     config_path: &std::path::Path,
     config_sources: &[crate::agents::ConfigSource],
@@ -293,7 +293,7 @@ pub fn format_config_section_lines(
 }
 
 /// Format agent availability section lines.
-pub fn format_agent_availability_section(registry: &AgentRegistry) -> Vec<String> {
+pub(super) fn format_agent_availability_section(registry: &AgentRegistry) -> Vec<String> {
     let agents = get_sorted_agent_availability(registry);
     agents
         .into_iter()
@@ -313,7 +313,7 @@ pub fn format_agent_availability_section(registry: &AgentRegistry) -> Vec<String
 }
 
 /// Format PROMPT.md status section lines.
-pub fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
+pub(super) fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
     use std::path::Path;
 
     let prompt_path = Path::new("PROMPT.md");
@@ -357,7 +357,7 @@ pub fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
 }
 
 /// Format project stack section lines.
-pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
+pub(super) fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
     let stack =
         match language_detector::detect_stack_with_workspace(workspace, std::path::Path::new("")) {
             Ok(s) => s,
@@ -464,12 +464,12 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
 }
 
 /// Determine if template selection should use the default.
-pub fn should_use_default_template(input: &str) -> bool {
+fn should_use_default_template(input: &str) -> bool {
     input.trim().is_empty()
 }
 
 /// Resolve the template name from user input.
-pub fn resolve_template_name(input: &str) -> &str {
+fn resolve_template_name(input: &str) -> &str {
     if should_use_default_template(input) {
         "feature-spec"
     } else {
@@ -479,12 +479,12 @@ pub fn resolve_template_name(input: &str) -> &str {
 
 /// Result of template validation.
 #[derive(Debug, Clone)]
-pub enum TemplateValidation {
+pub(super) enum TemplateValidation {
     Valid,
     Unknown,
 }
 
-pub fn validate_template_name(template_name: &str) -> TemplateValidation {
+pub(super) fn validate_template_name(template_name: &str) -> TemplateValidation {
     use crate::templates::get_template;
 
     if get_template(template_name).is_some() {
@@ -495,14 +495,14 @@ pub fn validate_template_name(template_name: &str) -> TemplateValidation {
 }
 
 /// Determine if user declined the template selection.
-pub fn did_user_decline_template(response: &str) -> bool {
+fn did_user_decline_template(response: &str) -> bool {
     let response = response.trim().to_lowercase();
     response == "n" || response == "no" || response == "skip"
 }
 
 /// Init action based on file existence state.
 #[derive(Debug, Clone, Copy)]
-pub enum InitFileState {
+pub(super) enum InitFileState {
     BothExist,
     ConfigOnly,
     PromptOnly,
@@ -510,7 +510,7 @@ pub enum InitFileState {
 }
 
 /// Determine the init action based on config and prompt file existence.
-pub fn determine_init_action(
+pub(super) fn determine_init_action(
     config_exists: bool,
     prompt_exists: bool,
     _template_arg: Option<&str>,
@@ -528,17 +528,14 @@ pub fn determine_init_action(
 
 /// Action to take for init when config exists but prompt doesn't.
 #[derive(Debug, Clone)]
-pub enum ConfigOnlyAction {
+enum ConfigOnlyAction {
     CreateFromTemplate(String),
     CreateMinimal,
     Skip,
 }
 
 /// Decide the action when config exists but prompt doesn't.
-pub fn decide_config_only_action(
-    can_prompt: bool,
-    template_name: Option<String>,
-) -> ConfigOnlyAction {
+fn decide_config_only_action(can_prompt: bool, template_name: Option<String>) -> ConfigOnlyAction {
     if can_prompt {
         if let Some(name) = template_name {
             return ConfigOnlyAction::CreateFromTemplate(name);
@@ -551,14 +548,14 @@ pub fn decide_config_only_action(
 
 /// Action to take for init when neither config nor prompt exists.
 #[derive(Debug, Clone)]
-pub enum NeitherExistsAction {
+enum NeitherExistsAction {
     CreateFromTemplate(String),
     CreateMinimal,
     Skip,
 }
 
 /// Decide the action when neither config nor prompt exists.
-pub fn decide_neither_exists_action(
+fn decide_neither_exists_action(
     can_prompt: bool,
     template_name: Option<String>,
 ) -> NeitherExistsAction {
@@ -573,13 +570,13 @@ pub fn decide_neither_exists_action(
 }
 
 /// Result of git version command execution.
-pub struct GitVersionResult {
+struct GitVersionResult {
     pub version: Option<String>,
     pub available: bool,
 }
 
 /// Execute git version command and extract version string.
-pub fn get_git_version_result(
+fn get_git_version_result(
     executor_output: Option<crate::executor::ProcessOutput>,
 ) -> GitVersionResult {
     let version = executor_output.map(|o| o.stdout.trim().to_string());
@@ -590,7 +587,7 @@ pub fn get_git_version_result(
 }
 
 /// Raw git execution results for domain processing.
-pub struct GitRawResults {
+pub(super) struct GitRawResults {
     pub version_output: Option<crate::executor::ProcessOutput>,
     pub rev_parse_output: Option<crate::executor::ProcessOutput>,
     pub branch_output: Option<crate::executor::ProcessOutput>,
@@ -598,17 +595,19 @@ pub struct GitRawResults {
 }
 
 /// Determine if template selection prompt should be offered.
-pub fn should_offer_template_prompt(is_terminal: bool) -> bool {
+pub(super) fn should_offer_template_prompt(is_terminal: bool) -> bool {
     is_terminal
 }
 
 #[derive(Debug)]
-pub enum TemplatePromptResponseDecision {
+pub(super) enum TemplatePromptResponseDecision {
     Declined,
     Selected,
 }
 
-pub fn evaluate_template_creation_response(response: &str) -> TemplatePromptResponseDecision {
+pub(super) fn evaluate_template_creation_response(
+    response: &str,
+) -> TemplatePromptResponseDecision {
     if did_user_decline_template(response) {
         TemplatePromptResponseDecision::Declined
     } else {
@@ -618,13 +617,13 @@ pub fn evaluate_template_creation_response(response: &str) -> TemplatePromptResp
 
 /// Resolve the selected template, returning the final template to use.
 #[derive(Debug)]
-pub enum TemplateSelectionOutcome {
+pub(super) enum TemplateSelectionOutcome {
     Selected(String),
     UseDefault { default: String },
 }
 
 /// Resolve selected template from user input, handling unknown templates.
-pub fn resolve_selected_template(
+pub(super) fn resolve_selected_template(
     input: &str,
     templates: &[(&str, &str)],
 ) -> TemplateSelectionOutcome {
@@ -642,14 +641,14 @@ pub fn resolve_selected_template(
 
 /// Result of create prompt from template operation.
 #[derive(Debug)]
-pub enum CreatePromptResult {
+pub(super) enum CreatePromptResult {
     SkippedBecauseExists,
     Created,
     UnknownTemplateError,
 }
 
 /// Determine result of trying to create prompt from template.
-pub fn determine_create_prompt_result(
+pub(super) fn determine_create_prompt_result(
     validation: &TemplateValidation,
     prompt_exists: bool,
 ) -> CreatePromptResult {
@@ -664,14 +663,14 @@ pub fn determine_create_prompt_result(
 
 /// Compute log section content from workspace state.
 #[derive(Debug)]
-pub enum ComputeLogSection {
+pub(super) enum ComputeLogSection {
     NotFound,
     Empty,
     Content(Vec<String>),
 }
 
 /// Compute what the log section should show.
-pub fn compute_log_section(workspace: &dyn Workspace) -> ComputeLogSection {
+pub(super) fn compute_log_section(workspace: &dyn Workspace) -> ComputeLogSection {
     let log_path = match find_log_path(workspace) {
         Some(p) => p,
         None => return ComputeLogSection::NotFound,
@@ -696,14 +695,14 @@ pub fn compute_log_section(workspace: &dyn Workspace) -> ComputeLogSection {
 
 /// Action for config_only init flow.
 #[derive(Debug)]
-pub enum ConfigOnlyNextAction {
+pub(super) enum ConfigOnlyNextAction {
     CreateFromTemplate(String),
     CreateMinimal,
     Skip,
 }
 
 /// Determine next action for config-only flow.
-pub fn determine_config_only_next_action(
+pub(super) fn determine_config_only_next_action(
     can_prompt: bool,
     template_name: Option<String>,
 ) -> ConfigOnlyNextAction {
@@ -718,14 +717,14 @@ pub fn determine_config_only_next_action(
 
 /// Action for neither_exists init flow.
 #[derive(Debug)]
-pub enum NeitherExistsNextAction {
+pub(super) enum NeitherExistsNextAction {
     CreateFromTemplate(String),
     CreateMinimal,
     Skip,
 }
 
 /// Determine next action for neither-exists flow.
-pub fn determine_neither_exists_next_action(
+pub(super) fn determine_neither_exists_next_action(
     can_prompt: bool,
     template_name: Option<String>,
 ) -> NeitherExistsNextAction {
@@ -738,7 +737,7 @@ pub fn determine_neither_exists_next_action(
     }
 }
 
-pub fn compute_git_diagnostics_from_raw_results(
+pub(super) fn compute_git_diagnostics_from_raw_results(
     results: GitRawResults,
     is_repo: bool,
 ) -> GitDiagnostics {

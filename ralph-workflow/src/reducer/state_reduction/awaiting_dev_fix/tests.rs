@@ -487,3 +487,32 @@ fn level_2_planning_phase_start_recovery_resets_context_and_gitignore_prereqs() 
         "Level 2 Planning recovery should re-run EnsureGitignoreEntries"
     );
 }
+
+#[test]
+fn recovery_attempted_uses_monotonic_escalation_when_event_level_is_stale() {
+    let state = PipelineState::initial(3, 0);
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        iteration: 2,
+        recovery_epoch: 5,
+        dev_fix_attempt_count: 7,
+        recovery_escalation_level: 3,
+        failed_phase_for_recovery: Some(PipelinePhase::Planning),
+        ..state
+    };
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+            level: 1,
+            attempt_count: 7,
+            target_phase: PipelinePhase::Planning,
+        }),
+    );
+
+    assert_eq!(new_state.phase, PipelinePhase::Planning);
+    assert_eq!(new_state.iteration, 1);
+    assert_eq!(new_state.recovery_epoch, 6);
+    assert_eq!(new_state.dev_fix_attempt_count, 7);
+    assert_eq!(new_state.recovery_escalation_level, 3);
+}

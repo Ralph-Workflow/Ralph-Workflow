@@ -6,7 +6,7 @@
 use super::{MemoryFile, MemoryWorkspace};
 use crate::workspace::{DirEntry, Workspace};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 impl Workspace for MemoryWorkspace {
     fn root(&self) -> &Path {
@@ -43,6 +43,10 @@ impl Workspace for MemoryWorkspace {
 
     fn write(&self, relative: &Path, content: &str) -> io::Result<()> {
         self.ensure_parent_dirs(relative);
+        // Ensure root directory exists for read_dir(".")
+        self.directories.write()
+            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+            .insert(PathBuf::from("."));
         self.files.write()
             .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace files lock")
             .insert(
@@ -54,6 +58,10 @@ impl Workspace for MemoryWorkspace {
 
     fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
         self.ensure_parent_dirs(relative);
+        // Ensure root directory exists for read_dir(".")
+        self.directories.write()
+            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+            .insert(PathBuf::from("."));
         self.files
             .write()
             .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace files lock")
@@ -63,6 +71,10 @@ impl Workspace for MemoryWorkspace {
 
     fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
         self.ensure_parent_dirs(relative);
+        // Ensure root directory exists for read_dir(".")
+        self.directories.write()
+            .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock")
+            .insert(PathBuf::from("."));
         {
             let mut files = self.files.write()
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace files lock");
@@ -159,6 +171,13 @@ impl Workspace for MemoryWorkspace {
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace files lock");
             let dirs = self.directories.read()
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
+
+            // Normalize "." to empty string for root directory comparison
+            let relative = if relative.as_os_str() == "." {
+                Path::new("")
+            } else {
+                relative
+            };
 
             if !relative.as_os_str().is_empty() && !dirs.contains(relative) {
                 return Err(io::Error::new(

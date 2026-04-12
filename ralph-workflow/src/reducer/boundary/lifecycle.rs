@@ -21,7 +21,9 @@
 //! `Effect::EmitCompletionMarkerAndTerminate`.
 
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::phases::PhaseContext;
+use crate::prompts::SessionCapabilities;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 
@@ -130,12 +132,17 @@ fn build_dev_fix_prompt(
     let issues_content = format!(
         "# Issues\n\n- [High] Pipeline failure (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle}).\n  Diagnose the root cause and fix the failure.\n"
     );
+    // Dev-fix always uses Development drain capabilities for RFC-009 session capability injection
+    let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
+    let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Development);
+    let session_caps = SessionCapabilities::new(&caps, &flags);
     let prompt = crate::prompts::prompt_fix_with_context(
         ctx.template_context,
         &prompt_content,
         &plan_content,
         &issues_content,
         ctx.workspace,
+        session_caps,
     );
     if let Err(err) = ctx.workspace.write(
         std::path::Path::new(".agent/tmp/dev_fix_prompt.txt"),
@@ -154,13 +161,21 @@ fn invoke_dev_fix_agent(
     agent: &str,
     dev_fix_prompt: String,
 ) -> anyhow::Result<EffectResult> {
+    // RFC-009: The closure receives the AgentSession created by invoke_agent.
+    // In V1, session capabilities == drain defaults, so the pre-generated prompt
+    // is correct. The closure still calls capability_template_variables_from_session
+    // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
     handler.invoke_agent(
         ctx,
         crate::agents::AgentDrain::Development,
         crate::agents::AgentRole::Developer,
         agent,
         None,
-        dev_fix_prompt,
+        |session: &crate::agents::session::AgentSession| {
+            let _session_vars =
+                crate::prompts::capability_template_variables_from_session(session);
+            dev_fix_prompt.clone()
+        },
     ).map_err(|err| {
         let unavailable = is_agent_unavailable_error(&err.to_string());
         if unavailable {

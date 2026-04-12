@@ -78,11 +78,20 @@ pub fn prompt_generate_commit_message_with_diff(diff: &str) -> String {
 ///
 /// This is the new log-based version that returns both content and substitution tracking.
 /// Use this version in handlers to enable log-based validation.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `diff` - The git diff to generate a commit message for
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `template_name` - Name of the template for logging
+/// * `session_caps` - Session capabilities bundle (RFC-009)
 pub fn prompt_generate_commit_message_with_diff_with_log(
     context: &TemplateContext,
     diff: &str,
     workspace: &dyn Workspace,
     template_name: &str,
+    session_caps: crate::prompts::SessionCapabilities<'_>,
 ) -> RenderedTemplate {
     // Ensure the commit XSD schema is available on disk for agents to reference.
     let tmp_dir = std::path::Path::new(".agent/tmp");
@@ -116,7 +125,9 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
         .unwrap_or_else(|_| include_str!("../templates/commit_message_xml.txt").to_string());
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
-    let variables = HashMap::from([
+
+    // Base variables for commit message prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("DIFF", diff_content.to_string()),
         (
             "COMMIT_MESSAGE_XML_PATH",
@@ -128,7 +139,27 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
         ),
     ]);
 
-    match template.render_with_log(template_name, &variables, &partials) {
+    // Compute capability variables using provided session capabilities
+    let (capabilities, policy_flags) = session_caps.as_parts();
+    let capability_vars = crate::prompts::template_variables::capability_template_variables(
+        capabilities,
+        policy_flags,
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
+    match template.render_with_log(template_name, &variables_ref, &partials) {
         Ok(rendered) => rendered,
         Err(_e) => {
             // Last resort: simple inline prompt with manual log
@@ -161,10 +192,12 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
 /// * `context` - Template context containing the template registry
 /// * `diff` - The git diff to generate a commit message for
 /// * `workspace` - Workspace for resolving absolute paths (accepts any Workspace implementation)
+/// * `session_caps` - Session capabilities bundle (RFC-009)
 pub fn prompt_generate_commit_message_with_diff_with_context(
     context: &TemplateContext,
     diff: &str,
     workspace: &dyn Workspace,
+    session_caps: crate::prompts::SessionCapabilities<'_>,
 ) -> String {
     // Ensure the commit XSD schema is available on disk for agents to reference.
     // In production this is also written during app bootstrap, but tests and some
@@ -192,7 +225,9 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
         .unwrap_or_else(|_| include_str!("../templates/commit_message_xml.txt").to_string());
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
-    let variables = HashMap::from([
+
+    // Base variables for commit message prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("DIFF", diff_content.to_string()),
         (
             "COMMIT_MESSAGE_XML_PATH",
@@ -204,8 +239,28 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
         ),
     ]);
 
+    // Compute capability variables using provided session capabilities
+    let (capabilities, policy_flags) = session_caps.as_parts();
+    let capability_vars = crate::prompts::template_variables::capability_template_variables(
+        capabilities,
+        policy_flags,
+    );
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_e| {
         // Last resort: simple inline prompt (no fallback template needed)
         format!(

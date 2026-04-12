@@ -1,170 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Plan XSD Schema v2.0 - Structured XML with Rich Content Elements
-  
-  This schema enforces comprehensive, detailed implementation plans by:
-  - Requiring quantified scope items (minimum 3)
-  - Requiring explicit step numbers and file targets
-  - Supporting rich content (tables, code blocks, lists)
-  - Requiring risk/mitigation pairs
-  - Requiring verification strategies
+  Plan XSD Schema v3.0 - Flat, executor-friendly design
+
+  Equivalent to plan.schema.json. Max 3 nesting levels.
+  All text content is xs:string (markdown allowed, no rich content types).
+  No ralph- prefixes. Enum values use underscores (file_change, not file-change).
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- RICH CONTENT TYPES - Used for structured content in steps                   -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
-  <!-- Inline text with optional emphasis and code -->
-  <xs:complexType name="InlineTextType" mixed="true">
-    <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="emphasis" type="xs:string"/>
-      <xs:element name="code" type="xs:string"/>
-      <xs:element name="link">
-        <xs:complexType>
-          <xs:simpleContent>
-            <xs:extension base="xs:string">
-              <xs:attribute name="href" type="xs:string" use="required"/>
-            </xs:extension>
-          </xs:simpleContent>
-        </xs:complexType>
-      </xs:element>
-    </xs:choice>
-  </xs:complexType>
-  
-  <!-- Paragraph element -->
-  <xs:complexType name="ParagraphType" mixed="true">
-    <xs:complexContent>
-      <xs:extension base="InlineTextType"/>
-    </xs:complexContent>
-  </xs:complexType>
-  
-  <!-- Code block with language and optional filename -->
-  <xs:complexType name="CodeBlockType">
-    <xs:simpleContent>
-      <xs:extension base="xs:string">
-        <xs:attribute name="language" type="xs:string"/>
-        <xs:attribute name="filename" type="xs:string"/>
-      </xs:extension>
-    </xs:simpleContent>
-  </xs:complexType>
-  
-  <!-- Table cell -->
-  <xs:complexType name="CellType" mixed="true">
-    <xs:complexContent>
-      <xs:extension base="InlineTextType"/>
-    </xs:complexContent>
-  </xs:complexType>
-  
-  <!-- Table row -->
-  <xs:complexType name="RowType">
-    <xs:sequence>
-      <xs:element name="cell" type="CellType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- Table with optional caption, columns header, and rows -->
-  <xs:complexType name="TableType">
-    <xs:sequence>
-      <xs:element name="caption" type="xs:string" minOccurs="0"/>
-      <xs:element name="columns" minOccurs="0">
-        <xs:complexType>
-          <xs:sequence>
-            <xs:element name="column" type="xs:string" maxOccurs="unbounded"/>
-          </xs:sequence>
-        </xs:complexType>
-      </xs:element>
-      <xs:element name="row" type="RowType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- List item (can contain nested content including code blocks, paragraphs, and lists) -->
-  <xs:complexType name="ListItemType" mixed="true">
-    <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="emphasis" type="xs:string"/>
-      <xs:element name="code" type="xs:string"/>
-      <xs:element name="code-block" type="CodeBlockType"/>
-      <xs:element name="paragraph" type="ParagraphType"/>
-      <xs:element name="list" type="ListType"/>
-    </xs:choice>
-  </xs:complexType>
-  
-  <!-- List (ordered or unordered) -->
-  <xs:complexType name="ListType">
-    <xs:sequence>
-      <xs:element name="item" type="ListItemType" maxOccurs="unbounded"/>
-    </xs:sequence>
-    <xs:attribute name="type" use="required">
-      <xs:simpleType>
-        <xs:restriction base="xs:string">
-          <xs:enumeration value="ordered"/>
-          <xs:enumeration value="unordered"/>
-        </xs:restriction>
-      </xs:simpleType>
-    </xs:attribute>
-  </xs:complexType>
-  
-  <!-- Heading -->
-  <xs:complexType name="HeadingType">
-    <xs:simpleContent>
-      <xs:extension base="xs:string">
-        <xs:attribute name="level" use="required">
-          <xs:simpleType>
-            <xs:restriction base="xs:integer">
-              <xs:minInclusive value="2"/>
-              <xs:maxInclusive value="4"/>
-            </xs:restriction>
-          </xs:simpleType>
-        </xs:attribute>
-      </xs:extension>
-    </xs:simpleContent>
-  </xs:complexType>
-  
-  <!-- Rich content container - can contain mix of content elements -->
-  <xs:complexType name="RichContentType">
-    <xs:choice minOccurs="1" maxOccurs="unbounded">
-      <xs:element name="paragraph" type="ParagraphType"/>
-      <xs:element name="code-block" type="CodeBlockType"/>
-      <xs:element name="table" type="TableType"/>
-      <xs:element name="list" type="ListType"/>
-      <xs:element name="heading" type="HeadingType"/>
-    </xs:choice>
-  </xs:complexType>
-  
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- SCOPE AND SUMMARY TYPES                                                      -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
-  <!-- Scope item with count and category for quantification -->
-  <xs:complexType name="ScopeItemType">
-    <xs:simpleContent>
-      <xs:extension base="xs:string">
-        <xs:attribute name="count" type="xs:string"/>
-        <xs:attribute name="category" type="xs:string"/>
-      </xs:extension>
-    </xs:simpleContent>
-  </xs:complexType>
-  
-  <!-- Scope items container (minimum 3 required) -->
-  <xs:complexType name="ScopeItemsType">
-    <xs:sequence>
-      <xs:element name="scope-item" type="ScopeItemType" minOccurs="3" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- Summary with required context and scope -->
-  <xs:complexType name="SummaryType">
-    <xs:sequence>
-      <xs:element name="context" type="xs:string"/>
-      <xs:element name="scope-items" type="ScopeItemsType"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- STEP AND FILE TYPES                                                          -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
-  <!-- File action enumeration -->
+
+  <!-- ======================================================================= -->
+  <!-- ENUMERATIONS                                                            -->
+  <!-- ======================================================================= -->
+
+  <!-- File action: create, modify, delete -->
   <xs:simpleType name="FileActionType">
     <xs:restriction base="xs:string">
       <xs:enumeration value="create"/>
@@ -172,17 +20,17 @@
       <xs:enumeration value="delete"/>
     </xs:restriction>
   </xs:simpleType>
-  
-  <!-- Step type enumeration -->
+
+  <!-- Step type: file_change, action, research -->
   <xs:simpleType name="StepTypeEnum">
     <xs:restriction base="xs:string">
-      <xs:enumeration value="file-change"/>
+      <xs:enumeration value="file_change"/>
       <xs:enumeration value="action"/>
       <xs:enumeration value="research"/>
     </xs:restriction>
   </xs:simpleType>
-  
-  <!-- Priority enumeration -->
+
+  <!-- Priority: critical, high, medium, low -->
   <xs:simpleType name="PriorityType">
     <xs:restriction base="xs:string">
       <xs:enumeration value="critical"/>
@@ -191,91 +39,8 @@
       <xs:enumeration value="low"/>
     </xs:restriction>
   </xs:simpleType>
-  
-  <!-- Target file in a step -->
-  <xs:complexType name="TargetFileType">
-    <xs:attribute name="path" type="xs:string" use="required"/>
-    <xs:attribute name="action" type="FileActionType" use="required"/>
-  </xs:complexType>
-  
-  <!-- Target files container -->
-  <xs:complexType name="TargetFilesType">
-    <xs:sequence>
-      <xs:element name="file" type="TargetFileType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- Step dependency reference -->
-  <xs:complexType name="DependsOnType">
-    <xs:attribute name="step" type="xs:positiveInteger" use="required"/>
-  </xs:complexType>
-  
-  <!-- Implementation step -->
-  <xs:complexType name="StepType">
-    <xs:sequence>
-      <xs:element name="title" type="xs:string"/>
-      <xs:element name="target-files" type="TargetFilesType" minOccurs="0"/>
-      <xs:element name="location" type="xs:string" minOccurs="0"/>
-      <xs:element name="rationale" type="xs:string" minOccurs="0"/>
-      <xs:element name="content" type="RichContentType"/>
-      <xs:element name="depends-on" type="DependsOnType" minOccurs="0" maxOccurs="unbounded"/>
-    </xs:sequence>
-    <xs:attribute name="number" type="xs:positiveInteger" use="required"/>
-    <xs:attribute name="type" type="StepTypeEnum" default="file-change"/>
-    <xs:attribute name="priority" type="PriorityType"/>
-  </xs:complexType>
-  
-  <!-- Implementation steps container -->
-  <xs:complexType name="ImplementationStepsType">
-    <xs:sequence>
-      <xs:element name="step" type="StepType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- CRITICAL FILES TYPES                                                         -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
-  <!-- Primary file entry -->
-  <xs:complexType name="PrimaryFileType">
-    <xs:attribute name="path" type="xs:string" use="required"/>
-    <xs:attribute name="action" type="FileActionType" use="required"/>
-    <xs:attribute name="estimated-changes" type="xs:string"/>
-  </xs:complexType>
-  
-  <!-- Reference file entry -->
-  <xs:complexType name="ReferenceFileType">
-    <xs:attribute name="path" type="xs:string" use="required"/>
-    <xs:attribute name="purpose" type="xs:string" use="required"/>
-  </xs:complexType>
-  
-  <!-- Primary files container -->
-  <xs:complexType name="PrimaryFilesType">
-    <xs:sequence>
-      <xs:element name="file" type="PrimaryFileType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- Reference files container -->
-  <xs:complexType name="ReferenceFilesType">
-    <xs:sequence>
-      <xs:element name="file" type="ReferenceFileType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- Critical files section -->
-  <xs:complexType name="CriticalFilesType">
-    <xs:sequence>
-      <xs:element name="primary-files" type="PrimaryFilesType"/>
-      <xs:element name="reference-files" type="ReferenceFilesType" minOccurs="0"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- RISKS AND VERIFICATION TYPES                                                 -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
-  <!-- Severity enumeration -->
+
+  <!-- Severity: low, medium, high, critical -->
   <xs:simpleType name="SeverityType">
     <xs:restriction base="xs:string">
       <xs:enumeration value="low"/>
@@ -284,73 +49,239 @@
       <xs:enumeration value="critical"/>
     </xs:restriction>
   </xs:simpleType>
-  
-  <!-- Risk-mitigation pair -->
+
+  <!-- ======================================================================= -->
+  <!-- SUMMARY                                                                 -->
+  <!-- ======================================================================= -->
+
+  <!-- Scope item: text (required), count and category (optional) -->
+  <xs:complexType name="ScopeItemType">
+    <xs:sequence>
+      <xs:element name="text" type="xs:string"/>
+      <xs:element name="count" type="xs:string" minOccurs="0"/>
+      <xs:element name="category" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Summary: context (required) + scope_items (min 3) -->
+  <xs:complexType name="SummaryType">
+    <xs:sequence>
+      <xs:element name="context" type="xs:string"/>
+      <xs:element name="scope_items">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="scope_item" type="ScopeItemType" minOccurs="3" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================================= -->
+  <!-- SKILLS AND MCP                                                          -->
+  <!-- ======================================================================= -->
+
+  <!-- Simple string arrays for skills and mcps -->
+  <xs:complexType name="SkillsMcpType">
+    <xs:sequence>
+      <xs:element name="skills">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="skill" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="mcps">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="mcp" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================================= -->
+  <!-- PARALLEL PLAN (RFC-009 Phase 4)                                         -->
+  <!-- ======================================================================= -->
+
+  <!-- Edit area: paths and directories arrays -->
+  <xs:complexType name="EditAreaType">
+    <xs:sequence>
+      <xs:element name="paths">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="path" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="directories">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="directory" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Work unit: id, description, edit_area required; depends_on optional -->
+  <xs:complexType name="WorkUnitType">
+    <xs:sequence>
+      <xs:element name="id" type="xs:string"/>
+      <xs:element name="description" type="xs:string"/>
+      <xs:element name="edit_area" type="EditAreaType"/>
+      <xs:element name="depends_on" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="dep" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================================= -->
+  <!-- STEPS                                                                   -->
+  <!-- ======================================================================= -->
+
+  <!-- Target file: path + action -->
+  <xs:complexType name="TargetType">
+    <xs:sequence>
+      <xs:element name="path" type="xs:string"/>
+      <xs:element name="action" type="FileActionType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Step: number, title, content required; step_type, priority, targets, location, rationale, depends_on optional -->
+  <xs:complexType name="StepType">
+    <xs:sequence>
+      <xs:element name="number" type="xs:positiveInteger"/>
+      <xs:element name="title" type="xs:string"/>
+      <xs:element name="step_type" type="StepTypeEnum" minOccurs="0" default="file_change"/>
+      <xs:element name="priority" type="PriorityType" minOccurs="0"/>
+      <xs:element name="targets" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="target" type="TargetType" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="location" type="xs:string" minOccurs="0"/>
+      <xs:element name="rationale" type="xs:string" minOccurs="0"/>
+      <xs:element name="content" type="xs:string"/>
+      <xs:element name="depends_on" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="dep" type="xs:positiveInteger" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================================= -->
+  <!-- CRITICAL FILES                                                          -->
+  <!-- ======================================================================= -->
+
+  <!-- Primary file: path + action required, estimated_changes optional -->
+  <xs:complexType name="PrimaryFileType">
+    <xs:sequence>
+      <xs:element name="path" type="xs:string"/>
+      <xs:element name="action" type="FileActionType"/>
+      <xs:element name="estimated_changes" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Reference file: path + purpose required -->
+  <xs:complexType name="ReferenceFileType">
+    <xs:sequence>
+      <xs:element name="path" type="xs:string"/>
+      <xs:element name="purpose" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Critical files: primary_files required (min 1), reference_files optional -->
+  <xs:complexType name="CriticalFilesType">
+    <xs:sequence>
+      <xs:element name="primary_files">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="file" type="PrimaryFileType" minOccurs="1" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="reference_files" minOccurs="0">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="file" type="ReferenceFileType" maxOccurs="unbounded"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ======================================================================= -->
+  <!-- RISKS AND VERIFICATION                                                  -->
+  <!-- ======================================================================= -->
+
+  <!-- Risk-mitigation pair: risk + mitigation required, severity optional -->
   <xs:complexType name="RiskPairType">
     <xs:sequence>
+      <xs:element name="severity" type="SeverityType" minOccurs="0"/>
       <xs:element name="risk" type="xs:string"/>
       <xs:element name="mitigation" type="xs:string"/>
     </xs:sequence>
-    <xs:attribute name="severity" type="SeverityType"/>
   </xs:complexType>
-  
-  <!-- Risks and mitigations container -->
-  <xs:complexType name="RisksMitigationsType">
-    <xs:sequence>
-      <xs:element name="risk-pair" type="RiskPairType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- Verification item -->
+
+  <!-- Verification item: method + expected_outcome required -->
   <xs:complexType name="VerificationType">
     <xs:sequence>
       <xs:element name="method" type="xs:string"/>
-      <xs:element name="expected-outcome" type="xs:string"/>
+      <xs:element name="expected_outcome" type="xs:string"/>
     </xs:sequence>
   </xs:complexType>
-  
-  <!-- Verification strategy container -->
-  <xs:complexType name="VerificationStrategyType">
-    <xs:sequence>
-      <xs:element name="verification" type="VerificationType" maxOccurs="unbounded"/>
-    </xs:sequence>
-  </xs:complexType>
-  
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- SKILLS AND MCP RECOMMENDATION TYPES                                          -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 
-  <!-- Skills and MCP recommendations container -->
-  <xs:complexType name="SkillsMcpType" mixed="true">
-    <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="skill">
-        <xs:complexType mixed="true">
-          <xs:attribute name="reason" type="xs:string"/>
-        </xs:complexType>
-      </xs:element>
-      <xs:element name="mcp">
-        <xs:complexType mixed="true">
-          <xs:attribute name="reason" type="xs:string"/>
-        </xs:complexType>
-      </xs:element>
-    </xs:choice>
-  </xs:complexType>
+  <!-- ======================================================================= -->
+  <!-- ROOT ELEMENT: plan                                                      -->
+  <!-- ======================================================================= -->
 
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  <!-- ROOT ELEMENT                                                                 -->
-  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-  
-  <xs:element name="ralph-plan">
+  <xs:element name="plan">
     <xs:complexType>
       <xs:sequence>
-        <xs:element name="ralph-summary" type="SummaryType"/>
-        <xs:element name="skills-mcp" type="SkillsMcpType" minOccurs="0"/>
-        <xs:element name="ralph-implementation-steps" type="ImplementationStepsType"/>
-        <xs:element name="ralph-critical-files" type="CriticalFilesType"/>
-        <xs:element name="ralph-risks-mitigations" type="RisksMitigationsType"/>
-        <xs:element name="ralph-verification-strategy" type="VerificationStrategyType"/>
+        <xs:element name="summary" type="SummaryType"/>
+        <xs:element name="skills_mcp" type="SkillsMcpType" minOccurs="0"/>
+        <xs:element name="parallel_plan" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="work_unit" type="WorkUnitType" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="steps">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="step" type="StepType" minOccurs="1" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="critical_files" type="CriticalFilesType"/>
+        <xs:element name="risks_mitigations">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="risk_pair" type="RiskPairType" minOccurs="1" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="verification_strategy">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="verification" type="VerificationType" minOccurs="1" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
-  
+
 </xs:schema>

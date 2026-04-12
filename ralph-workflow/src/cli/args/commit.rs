@@ -16,6 +16,18 @@ pub struct CommitPlumbingFlags {
         hide = true
     )]
     pub apply_commit: bool,
+
+    /// Generate commit message and immediately apply it (combines --generate-commit-msg + --apply-commit)
+    #[arg(
+        long,
+        help = "Generate a commit message and immediately create the commit",
+        hide = true
+    )]
+    pub generate_commit: bool,
+
+    /// Run as direct MCP stdio server (no TCP proxy hop)
+    #[arg(long, help = "Run as direct MCP stdio server", hide = true)]
+    pub mcp_stdio: bool,
 }
 
 /// Commit display plumbing flags.

@@ -49,6 +49,12 @@ fn main() -> anyhow::Result<()> {
 
     // Create real process executor for production use
     let args = Args::parse();
+
+    // Handle direct MCP stdio mode before anything else.
+    if args.commit_plumbing.mcp_stdio {
+        return ralph_workflow::boundary::stdio_mcp_server::run_mcp_stdio();
+    }
+
     let pause_mode = args.pause_on_exit;
     let executor = std::sync::Arc::new(RealProcessExecutor::new());
     let result = app::run(args, executor);
@@ -83,6 +89,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use ralph_workflow::agents::session::AuditTrail;
     use ralph_workflow::agents::{AgentDrain, AgentRegistry};
     use ralph_workflow::checkpoint::execution_history::ExecutionHistory;
     use ralph_workflow::checkpoint::RunContext;
@@ -175,6 +182,8 @@ mod tests {
                 cloud_reporter: None,
                 cloud: &self.cloud,
                 env: &self.mock_env,
+                active_session: None,
+                audit_trail: AuditTrail::new(),
             }
         }
     }

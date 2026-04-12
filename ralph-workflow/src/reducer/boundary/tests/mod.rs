@@ -5,6 +5,7 @@
 mod common;
 
 mod analysis_handler;
+mod capability_gate_enforcement;
 mod cloud;
 mod cloud_push_policy;
 mod commit_handler;
@@ -17,6 +18,9 @@ mod fix_outcome;
 mod git_auth;
 mod gitignore_handler;
 mod invoke_prompt;
+mod json_artifact_fail_closed;
+mod json_xml_parity;
+mod phase_contract_chain;
 mod planning_markdown;
 mod planning_prompt;
 mod prompt_permissions;

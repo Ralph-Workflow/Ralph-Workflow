@@ -119,6 +119,18 @@ impl PipelineState {
         }
     }
 
+    #[must_use]
+    pub fn create_commit_boundary_invariants_hold(&self, message: &str) -> bool {
+        self.phase == PipelinePhase::CommitMessage
+            && self.commit_xml_archived
+            && matches!(
+                &self.commit,
+                CommitState::Generated {
+                    message: expected_message
+                } if expected_message == message
+            )
+    }
+
     /// Clear phase-specific progress flags for the given phase.
     ///
     /// Used by Level 2 recovery (`PhaseStart`) to restart a phase from scratch

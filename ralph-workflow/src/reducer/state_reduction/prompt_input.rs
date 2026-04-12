@@ -4,7 +4,10 @@ use crate::reducer::state::{
     MaterializedReviewInputs, MaterializedXsdRetryLastOutput, PipelineState,
 };
 
-pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) -> PipelineState {
+pub(super) fn reduce_prompt_input_event(
+    state: PipelineState,
+    event: PromptInputEvent,
+) -> PipelineState {
     match event {
         PromptInputEvent::OversizeDetected { .. } => state,
         PromptInputEvent::PlanningInputsMaterialized { iteration, prompt } => PipelineState {
@@ -160,6 +163,13 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
 
             PipelineState {
                 prompt_history: new_history,
+                ..state
+            }
+        }
+        PromptInputEvent::GitignoreEntriesEnsured { .. } => {
+            // Set flag to prevent re-running effect
+            PipelineState {
+                gitignore_entries_ensured: true,
                 ..state
             }
         }

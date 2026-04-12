@@ -3,7 +3,7 @@
 //! This module provides string similarity matching to suggest corrections
 //! for unknown configuration keys.
 
-pub fn levenshtein_distance(a: &str, b: &str) -> usize {
+fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
     let a_len = a_chars.len();

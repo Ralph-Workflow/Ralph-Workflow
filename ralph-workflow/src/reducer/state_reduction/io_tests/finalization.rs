@@ -11,12 +11,12 @@ use crate::reducer::state::PipelineState;
 use crate::reducer::state_reduction::reduce;
 
 #[test]
-fn test_reduce_finalizing_started() {
+fn test_reduce_final_state_validation_completed() {
     let state = PipelineState {
         phase: PipelinePhase::FinalValidation,
         ..create_test_state()
     };
-    let new_state = reduce(state, PipelineEvent::finalizing_started());
+    let new_state = reduce(state, PipelineEvent::final_state_validation_completed());
     assert_eq!(new_state.phase, PipelinePhase::Finalizing);
 }
 
@@ -38,7 +38,7 @@ fn test_reduce_finalization_full_flow() {
     };
 
     // FinalValidation -> Finalizing
-    state = reduce(state, PipelineEvent::finalizing_started());
+    state = reduce(state, PipelineEvent::final_state_validation_completed());
     assert_eq!(state.phase, PipelinePhase::Finalizing);
 
     // Finalizing -> Complete
@@ -52,8 +52,8 @@ fn test_reduce_finalization_full_flow() {
 /// 0. `FinalValidation` phase -> `CheckUncommittedChangesBeforeTermination` effect (safety check)
 /// 1. `PreTerminationSafetyCheckPassed` event -> `FinalValidation` phase (unchanged)
 /// 2. `FinalValidation` phase -> `ValidateFinalState` effect
-/// 3. `ValidateFinalState` effect -> `FinalizingStarted` event
-/// 4. `FinalizingStarted` event -> Finalizing phase
+/// 3. `ValidateFinalState` effect -> `FinalStateValidationCompleted` event
+/// 4. `FinalStateValidationCompleted` event -> Finalizing phase
 /// 5. Finalizing phase -> `RestorePromptPermissions` effect
 /// 6. `RestorePromptPermissions` effect -> `PromptPermissionsRestored` event
 /// 7. `PromptPermissionsRestored` event -> Complete phase
@@ -109,8 +109,8 @@ fn test_finalization_orchestration_integration() {
     // Step 2: Execute effect, get event
     let result1 = handler.execute_mock(&effect1);
     assert!(
-        matches!(result1.event, PipelineEvent::FinalizingStarted),
-        "ValidateFinalState should return FinalizingStarted"
+        matches!(result1.event, PipelineEvent::FinalStateValidationCompleted),
+        "ValidateFinalState should return FinalStateValidationCompleted"
     );
 
     // Step 3: Reduce state with event

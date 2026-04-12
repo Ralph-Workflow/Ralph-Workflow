@@ -394,22 +394,24 @@ fn test_invoke_fix_agent_uses_parser_type_from_agent_config() {
         MemoryWorkspace::new_test().with_file(".agent/tmp/fix_prompt.txt", "test fix prompt");
     let mut fixture = TestFixture::with_workspace(workspace);
 
-    // Register a "test-gemini" agent configured with the Gemini parser.
+    // Register a "test-codex-gemini" agent using the codex command (recognized agent type)
+    // but configured with the Gemini json_parser. This tests that json_parser from agent_config
+    // flows through independently of the command-based agent type detection.
     // Default (buggy) behaviour uses JsonParserType::Claude regardless of this config.
-    let gemini_config = AgentConfig {
-        cmd: String::from("gemini"),
+    let codex_gemini_config = AgentConfig {
+        cmd: String::from("codex"),
         json_parser: JsonParserType::Gemini,
         ..AgentConfig::default()
     };
     fixture.registry = AgentRegistry::new()
         .unwrap()
-        .register("test-gemini", gemini_config);
+        .register("test-codex-gemini", codex_gemini_config);
 
-    // Point the agent chain at "test-gemini" with Fix drain.
+    // Point the agent chain at "test-codex-gemini" with Fix drain.
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
     handler.state.agent_chain = AgentChainState::initial()
         .with_agents(
-            vec!["test-gemini".to_string()],
+            vec!["test-codex-gemini".to_string()],
             vec![vec![]],
             AgentRole::Reviewer,
         )
@@ -420,7 +422,7 @@ fn test_invoke_fix_agent_uses_parser_type_from_agent_config() {
 
     {
         let mut ctx = fixture.ctx();
-        ctx.reviewer_agent = "test-gemini";
+        ctx.reviewer_agent = "test-codex-gemini";
         // The mock executor returns success by default; ignore the result here.
         let _ = handler.invoke_fix_agent(&mut ctx, 0);
     }

@@ -9,7 +9,7 @@ use super::cleaning::remove_thought_process_patterns;
 use super::types::OutputFormat;
 
 /// Detect the output format from content analysis
-pub fn detect_output_format(content: &str) -> OutputFormat {
+pub(super) fn detect_output_format(content: &str) -> OutputFormat {
     // Check if it looks like JSONL
     let first_line = content.lines().next().unwrap_or("");
     if !first_line.trim().starts_with('{') {
@@ -59,7 +59,7 @@ pub fn detect_output_format(content: &str) -> OutputFormat {
 }
 
 /// Extract content using the specified format's strategy
-pub fn extract_by_format(content: &str, format: OutputFormat) -> Option<String> {
+pub(super) fn extract_by_format(content: &str, format: OutputFormat) -> Option<String> {
     match format {
         OutputFormat::Claude => extract_claude_result(content),
         OutputFormat::Codex => extract_codex_result(content),

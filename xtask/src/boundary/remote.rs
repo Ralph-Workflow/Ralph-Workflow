@@ -192,7 +192,7 @@ fn sync_to_remote(server: &str, repo_root: &str, remote_root: &str) -> bool {
         .args([
             "-az",
             "--delete",
-            "--exclude=.git/",
+            "--exclude=.git",
             "--filter=:- .gitignore",
             &format!("{repo_root}/"),
             &format!("{server}:{remote_root}/"),

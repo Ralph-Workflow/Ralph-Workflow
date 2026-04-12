@@ -10,7 +10,7 @@ use super::keys::{
 
 /// Type alias for a list of (`key_name`, location) pairs.
 /// Used for tracking unknown and deprecated keys found during validation.
-pub type KeyLocationList = Vec<(String, String)>;
+pub(crate) type KeyLocationList = Vec<(String, String)>;
 
 /// Detect unknown keys and deprecated keys in a parsed TOML value.
 ///
@@ -19,7 +19,7 @@ pub type KeyLocationList = Vec<(String, String)>;
 /// - `KeyLocationList` for deprecated keys
 ///
 /// The location helps identify which section the key is in (e.g., "general.", "agents.claude.").
-pub fn detect_unknown_and_deprecated_keys(
+pub(crate) fn detect_unknown_and_deprecated_keys(
     value: &toml::Value,
 ) -> (KeyLocationList, KeyLocationList) {
     // Get the top-level table

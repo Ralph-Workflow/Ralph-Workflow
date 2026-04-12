@@ -27,7 +27,6 @@
 //! Events are organized into logical categories for type-safe routing to
 //! category-specific reducers. Each category has a dedicated enum:
 //!
-//! - [`LifecycleEvent`] - Pipeline start/stop/resume
 //! - [`PlanningEvent`] - Plan generation events
 //! - [`DevelopmentEvent`] - Development iteration and continuation events
 //! - [`ReviewEvent`] - Review pass and fix attempt events
@@ -43,8 +42,8 @@
 //!
 //! # Frozen Policy
 //!
-//! Both [`LifecycleEvent`] and [`PipelineEvent`] are **FROZEN** - adding new variants
-//! is prohibited. See their documentation for rationale and alternatives.
+//! Both [`PipelineEvent`] is **FROZEN** - adding new variants
+//! is prohibited. See its documentation for rationale and alternatives.
 //!
 //! # See Also
 //!
@@ -69,9 +68,8 @@ mod types;
 // Re-export all type definitions
 pub use types::{
     default_timeout_output_kind, AgentErrorKind, AwaitingDevFixEvent, CheckpointTrigger,
-    CommitEvent, ConflictStrategy, LifecycleEvent, MaterializedPromptInput, PlanningEvent,
-    ProcessExecutionResult, PromptInputEvent, PromptInputKind, RebaseEvent, RebasePhase,
-    TimeoutOutputKind,
+    CommitEvent, ConflictStrategy, MaterializedPromptInput, PlanningEvent, ProcessExecutionResult,
+    PromptInputEvent, PromptInputKind, RebaseEvent, RebasePhase, TimeoutOutputKind,
 };
 
 // ============================================================================

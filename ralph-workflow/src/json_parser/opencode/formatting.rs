@@ -149,21 +149,77 @@ impl OpenCodeParser {
         let prefix = &self.display_name;
         let session = event.session_id.as_deref().unwrap_or("unknown");
         let step_id = self.derive_step_id(event, session);
-
-        let current_msg_id: Option<String> = {
-            let session = self.state.streaming_session.borrow();
-            session.get_current_message_id().map(str::to_string)
-        };
-        if current_msg_id.is_some_and(|current| current == step_id) {
+        if self.is_duplicate_step_start(&step_id) {
             return String::new();
         }
+        let flush = self.flush_for_step_start(prefix, colors);
+        self.begin_step(step_id);
+        let step_start_line = self.render_step_start_line(event, prefix, colors);
+        prepend_flush(flush, step_start_line)
+    }
 
+    /// Format a `step_finish` event
+    pub(super) fn format_step_finish_event(&self, event: &OpenCodeEvent) -> String {
+        let colors = self.colors;
+        let prefix = &self.display_name;
+
+        self.ensure_current_step_id_for_finish(event);
+        let (is_duplicate, was_streaming, metrics) = self.capture_step_finish_metrics();
+        let _was_in_block = self
+            .state
+            .with_session_mut(|session| session.on_message_stop());
+        let (terminal_mode, text_flush_non_tty) = self.flush_for_step_finish(prefix, colors);
+        let render_context = StepFinishRenderContext {
+            is_duplicate,
+            was_streaming,
+            metrics: &metrics,
+            text_flush_non_tty: &text_flush_non_tty,
+            terminal_mode,
+            prefix,
+            colors,
+        };
+
+        event.part.as_ref().map_or_else(
+            || {
+                // No part field: still output any accumulated text that was waiting to be flushed.
+                // Without this, accumulated text from a truncated step is silently dropped.
+                if text_flush_non_tty.is_empty() {
+                    String::new()
+                } else {
+                    format!("{text_flush_non_tty}\n")
+                }
+            },
+            |part| self.format_step_finish_payload(part, &render_context),
+        )
+    }
+
+    fn is_duplicate_step_start(&self, step_id: &str) -> bool {
+        self.state
+            .streaming_session
+            .borrow()
+            .get_current_message_id()
+            .is_some_and(|current| current == step_id)
+    }
+
+    fn flush_for_step_start(&self, prefix: &str, colors: crate::logger::Colors) -> String {
+        let terminal_mode = *self.state.terminal_mode.borrow();
+        self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors)
+    }
+
+    fn begin_step(&self, step_id: String) {
         self.state.with_session_mut(|session| {
             session.on_message_start();
             session.set_current_message_id(Some(step_id));
         });
         self.state.with_last_rendered_content_mut(|v| v.clear());
+    }
 
+    fn render_step_start_line(
+        &self,
+        event: &OpenCodeEvent,
+        prefix: &str,
+        colors: crate::logger::Colors,
+    ) -> String {
         let snapshot_display = event
             .part
             .as_ref()
@@ -183,43 +239,31 @@ impl OpenCodeParser {
         )
     }
 
-    /// Format a `step_finish` event
-    pub(super) fn format_step_finish_event(&self, event: &OpenCodeEvent) -> String {
-        let colors = self.colors;
-        let prefix = &self.display_name;
+    fn capture_step_finish_metrics(
+        &self,
+    ) -> (
+        bool,
+        bool,
+        crate::json_parser::health::StreamingQualityMetrics,
+    ) {
+        let session = self.state.streaming_session.borrow();
+        let is_duplicate = session.get_current_message_id().map_or_else(
+            || session.has_any_streamed_content(),
+            |message_id| session.is_duplicate_final_message(message_id),
+        );
+        let was_streaming = session.has_any_streamed_content();
+        let metrics = session.get_streaming_quality_metrics();
+        (is_duplicate, was_streaming, metrics)
+    }
 
-        self.ensure_current_step_id_for_finish(event);
-
-        let (is_duplicate, was_streaming, metrics) = {
-            let session = self.state.streaming_session.borrow();
-            let is_duplicate = session.get_current_message_id().map_or_else(
-                || session.has_any_streamed_content(),
-                |message_id| session.is_duplicate_final_message(message_id),
-            );
-            let was_streaming = session.has_any_streamed_content();
-            let metrics = session.get_streaming_quality_metrics();
-            (is_duplicate, was_streaming, metrics)
-        };
-
-        let _was_in_block = self
-            .state
-            .with_session_mut(|session| session.on_message_stop());
-
+    fn flush_for_step_finish(
+        &self,
+        prefix: &str,
+        colors: crate::logger::Colors,
+    ) -> (TerminalMode, String) {
         let terminal_mode = *self.state.terminal_mode.borrow();
         let text_flush_non_tty = self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors);
-        let render_context = StepFinishRenderContext {
-            is_duplicate,
-            was_streaming,
-            metrics: &metrics,
-            text_flush_non_tty: &text_flush_non_tty,
-            terminal_mode,
-            prefix,
-            colors,
-        };
-
-        event.part.as_ref().map_or_else(String::new, |part| {
-            self.format_step_finish_payload(part, &render_context)
-        })
+        (terminal_mode, text_flush_non_tty)
     }
 
     pub(super) fn format_text_event(&self, event: &OpenCodeEvent) -> String {
@@ -550,6 +594,15 @@ fn step_finish_icon_and_color(reason: &str, colors: crate::logger::Colors) -> (c
         (CROSS, colors.yellow())
     }
 }
+
+fn prepend_flush(flush: String, step_start_line: String) -> String {
+    if flush.is_empty() {
+        step_start_line
+    } else {
+        format!("{flush}\n{step_start_line}")
+    }
+}
+
 
 #[cfg(debug_assertions)]
 fn debug_log_opencode_discontinuity(last_rendered: &str, sanitized: &str, suffix: &str) {

@@ -64,6 +64,6 @@ pub use runner::run;
 
 #[cfg(feature = "test-utils")]
 pub use runner::{
-    run_pipeline_with_effect_handler, run_with_config, run_with_config_and_handlers,
-    run_with_config_and_resolver, RunWithHandlersParams,
+    run_with_config, run_with_config_and_handlers, run_with_config_and_resolver,
+    RunWithHandlersParams,
 };

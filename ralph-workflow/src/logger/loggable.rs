@@ -23,7 +23,7 @@ pub trait Loggable {
 
     /// Log an informational message.
     ///
-    /// Default implementation formats the message with [INFO] prefix
+    /// Default implementation formats the message with `[INFO]` prefix
     /// and delegates to the `log` method.
     fn info(&self, msg: &str) {
         self.log(&format!("[INFO] {msg}"));
@@ -39,7 +39,7 @@ pub trait Loggable {
 
     /// Log a warning message.
     ///
-    /// Default implementation formats the message with [WARN] prefix
+    /// Default implementation formats the message with `[WARN]` prefix
     /// and delegates to the `log` method.
     fn warn(&self, msg: &str) {
         self.log(&format!("[WARN] {msg}"));
@@ -47,7 +47,7 @@ pub trait Loggable {
 
     /// Log an error message.
     ///
-    /// Default implementation formats the message with [ERROR] prefix
+    /// Default implementation formats the message with `[ERROR]` prefix
     /// and delegates to the `log` method.
     fn error(&self, msg: &str) {
         self.log(&format!("[ERROR] {msg}"));

@@ -1,0 +1,195 @@
+{# ============================================================================ #}
+{# Template: parallel_planning_xml.txt                                            #}
+{# Version: 2.0 - MCP JSON submission only                                    #}
+{# ============================================================================ #}
+{#                                                                             #}
+{# PURPOSE:                                                                    #}
+{#   Prompt for planning phase to create parallel implementation plans.          #}
+{#   Extends the standard planning template with parallelism instructions.     #}
+{#                                                                             #}
+{# VARIABLES:                                                                  #}
+{#   {{PROMPT}} - User requirements from the request (required)                #}
+{#                                                                             #}
+{# OUTPUT FORMAT:                                                              #}
+{#   JSON submitted via ralph_submit_artifact with artifact_type="plan"        #}
+{# ============================================================================ #}
+
+You are in PARALLEL PLANNING MODE. Create a detailed, structured implementation plan with parallel work unit decomposition.
+
+{{> shared/_unattended_mode}}
+
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
+
+CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
+- Creating, modifying, or deleting any files
+- Running any commands that modify system state
+- Installing dependencies or packages
+
+## PARALLEL PLANNING INSTRUCTIONS
+
+This task should be decomposed into independent work units that can be executed in parallel by separate agents. Each work unit must have:
+
+1. **Non-overlapping edit areas**: Each work unit should modify a distinct set of files/directories
+2. **Clear boundaries**: Edit areas must not overlap between work units
+3. **Independent execution**: Work units should not depend on each other's outputs
+
+### Identifying Parallelization Opportunities
+
+Look for:
+- Independent features that don't share implementation files
+- Separate modules or packages with clear interfaces
+- Features that can be implemented in any order
+- Files that are owned by different work units
+
+### Defining Edit Areas
+
+For each work unit, specify:
+- **Exact file paths**: For specific files that will be modified
+- **Directory prefixes**: For entire directories that will be modified
+
+Example edit area:
+```
+{
+  "paths": ["src/feature_a.rs", "src/feature_a/mod.rs"],
+  "directories": ["src/feature_a/"]
+}
+```
+
+### Handling Dependencies
+
+If work unit B depends on work unit A's output:
+- B's "dependencies" should include A's unit ID
+- Sequential ordering is enforced through the dependency graph
+- Independent units should have empty "dependencies" arrays
+
+You MUST submit your plan via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool.
+- Not submitting the plan is a FAILURE.
+- No files may be created/modified/deleted
+- Allowed operations: any non-mutating tools (for example file reads/search/listing and image analysis)
+
+═══════════════════════════════════════════════════════════════════════════════
+PLANNING CONSTRAINTS (ANTI-RUNAWAY POLICY - PROGRESS-BASED)
+═══════════════════════════════════════════════════════════════════════════════
+
+Track these control signals while planning:
+- required_sections = [objective, scope, steps, risks, verification, parallel-plan]
+- unresolved_unknowns (max 3)
+- stagnation_count (increment when no materially new info is found)
+
+Progress-based rules:
+1. Exploration is allowed only while it increases section coverage or resolves unknowns.
+2. If stagnation_count reaches 2, stop exploration and start drafting.
+3. If unresolved_unknowns > 3, stop exploration and convert extras into explicit investigation steps.
+4. After drafting, run one critique pass.
+5. Critique may request at most one targeted re-exploration pass.
+6. Then finalize plan; no further exploration allowed.
+
+Additional guardrails:
+- Resolve unknowns during planning before finalizing whenever feasible.
+- If investigation is large or spans independent areas, split work into parallel investigation tracks.
+- Use subagents when parallel investigation is appropriate, and map each output to an explicit plan update.
+- Consolidate and synthesize parallel findings before finalizing.
+- If findings are inconsistent, run targeted follow-up investigation or record explicit unresolved risks.
+- If investigation yields a clear picture, convert it into actionable implementation tasks, not additional placeholders.
+- When open questions or unknowns cannot be resolved immediately, convert them into explicit investigation/research steps with question, why it blocks, and expected evidence.
+- When identifying parallel work units, ensure edit areas do not overlap. Overlapping edit areas will cause the plan to be rejected.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 1: UNDERSTANDING
+═══════════════════════════════════════════════════════════════════════════════
+
+USER REQUIREMENTS:
+{{PROMPT}}
+
+Extract only what is needed:
+- Goal (objective)
+- Acceptance criteria and definition of done
+- Constraints
+- In-scope vs out-of-scope
+- Assumptions and open questions
+
+If requirements are ambiguous, note the ambiguity explicitly in the plan.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2: PARALLEL DECOMPOSITION
+═══════════════════════════════════════════════════════════════════════════════
+
+Analyze the task for parallelization opportunities:
+- Identify independent work units
+- Define edit areas for each work unit (files and directories)
+- Map dependencies between work units
+- Ensure no edit area overlaps
+
+For each work unit:
+- Assign a unique ID (e.g., "unit-1", "unit-2")
+- Describe what this unit does
+- Specify exact paths and directory prefixes for the edit area
+- List dependencies on other work units
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3: DESIGN
+═══════════════════════════════════════════════════════════════════════════════
+
+Design a practical implementation path:
+- ordered steps with dependencies
+- explicit inputs and expected outputs per step
+- verification method per step
+- which steps can run in parallel vs must stay sequential
+- key trade-off notes (brief)
+- risks and mitigations (brief)
+
+Choose a complete solution that fixes the problem at the root cause. Do not plan surface-level fixes or partial implementations.
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 4: REVIEW
+═══════════════════════════════════════════════════════════════════════════════
+
+Quick validation before output:
+- all acceptance criteria covered
+- target files are specific
+- steps are actionable and sequenced
+- each step has clear completion evidence
+- scope is not expanded
+- unresolved unknowns are explicit and bounded
+- handoff is executable by an agent with zero prior context
+- edit areas do not overlap between work units
+- dependency graph is acyclic
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 5: SUBMIT STRUCTURED PLAN
+═══════════════════════════════════════════════════════════════════════════════
+
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON
+string conforming to the plan schema.
+
+Required sections:
+- summary (with context and at least 3 scope_items)
+- parallel_plan (with work units and edit areas)
+- steps (numbered)
+- critical_files (with primary_files)
+- risks_mitigations (at least 1 entry)
+- verification_strategy (at least 1 entry)
+
+Parallel plan format:
+{
+  "parallel_plan": [
+    {
+      "id": "unit-1",
+      "description": "Work unit description",
+      "edit_area": {
+        "paths": ["file1.rs"],
+        "directories": ["src/utils/"]
+      },
+      "dependencies": []
+    }
+  ]
+}
+
+Skills and MCP guidance:
+Add all relevant skills and MCP suggestions to skills_mcp. Look through
+available skills before submitting. Consider whether any MCP or MCP-backed
+system should also be suggested. Use entries with type "skill" or "mcp",
+and add "reason" when helpful. Keep recommendations grounded in the actual
+task. Do not assume the consumer is a developer or fixer.

@@ -137,7 +137,84 @@ Immediately before each `Invoke*Agent` effect execution, the effect handler norm
 
 This normalization ensures checkpoint replay produces identical agent selection given the same reducer state, which is critical for deterministic recovery.
 
-## Where Streaming Output Parsing Hooks In
+## Session Model (RFC-009 V1)
+
+Ralph implements an MCP-style session model that provides structured control over agent capabilities and policy enforcement. This is the RFC-009 V1 contract for agent-orchestrator communication.
+
+### Core Types
+
+The session model is defined in `ralph-workflow/src/agents/session/mod.rs`:
+
+- **`AgentSessionId`**: Unique identifier combining run ID, drain, and counter for uniqueness across parallel workers and retries
+- **`SessionDrain`**: Phase identity (Planning, Development, Analysis, Review, Fix, Commit)
+- **`CapabilitySet`**: Bit-set of capabilities granted to a session
+- **`PolicyFlagSet`**: Restrictive flags modifying session behavior
+
+### Capability Vocabulary
+
+| Capability | Identifier | Purpose |
+|------------|------------|---------|
+| `WorkspaceRead` | `workspace.read` | Read files and directories |
+| `WorkspaceWriteEphemeral` | `workspace.write_ephemeral` | Write to gitignored files (`.agent/` artifacts) |
+| `WorkspaceWriteTracked` | `workspace.write_tracked` | Write to git-tracked source files |
+| `ProcessExecBounded` | `process.exec_bounded` | Execute bounded shell commands with timeout/policy |
+| `ArtifactSubmit` | `artifact.submit` | Submit structured artifacts (plan, issues, results) |
+| `RunReportProgress` | `run.report_progress` | Report progress and emit structured notes |
+| `GitStatusRead` | `git.status_read` | Read git status |
+| `GitDiffRead` | `git.diff_read` | Read git diff (including uncommitted) |
+| `GitWrite` | `git.write` | Perform git operations creating/modifying history |
+| `EnvRead` | `env.read` | Read environment variables |
+
+### Policy Flags
+
+| Flag | Identifier | Purpose |
+|------|------------|---------|
+| `NoEdit` | `no_edit` | Session cannot write to tracked files |
+| `AllowShell` | `allow_shell` | Session may execute shell commands |
+| `AllowGitRead` | `allow_git_read` | Session may read git status and diffs |
+| `AllowGitWrite` | `allow_git_write` | Session may perform git write operations |
+| `AllowParallelWorkers` | `allow_parallel_workers` | Session may spawn parallel workers |
+| `AllowNetwork` | `allow_network` | Session may access network |
+| `AllowEnvRead` | `allow_env_read` | Session may read sensitive environment variables |
+
+### Drain Capability Profiles
+
+| Drain | Capabilities | Policy Flags |
+|-------|-------------|--------------|
+| Planning | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Analysis | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Review | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Development | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
+| Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
+| Commit | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `GitWrite`, `ArtifactSubmit`, `RunReportProgress` | `AllowGitWrite` |
+
+**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, XML archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
+
+### Session Handshake
+
+Before each agent invocation, Ralph creates a `SessionHandshake` declaring:
+
+- `session_id`: Unique session identifier
+- `drain`: Pipeline phase identity
+- `protocol_version`: Protocol version string (e.g. `ralph-mcp/1.0`)
+- `capabilities`: Granted capability set
+- `policy_flags`: Governing policy flags
+- `issued_at`: UTC timestamp
+- `worker_identity`: For parallel worker sessions (None for single-agent)
+- `edit_area`: Restricted edit area for parallel workers
+
+### Audit Trail
+
+Every capability check is recorded in the audit trail via `record_effect_check()`:
+
+- Session ID, timestamp, effect name
+- Required capabilities
+- Outcome (Approved/Denied/ApprovedWithRestriction)
+- For denials: specific reason string
+
+Audit trails persist to `.agent/audit/{session_id}.jsonl` as NDJSON at the end of each agent invocation. See `ralph-workflow/src/agents/session/audit.rs` for persistence implementation.
+
+### Where Streaming Output Parsing Hooks In
 
 Agent CLIs typically emit streaming NDJSON. Ralph:
 

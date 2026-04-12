@@ -41,7 +41,7 @@ impl MainEffectHandler {
     pub(super) fn validate_final_state(&self, _ctx: &mut PhaseContext<'_>) -> EffectResult {
         // Transition to Finalizing phase to restore PROMPT.md permissions
         // via the effect system before marking the pipeline complete
-        let event = PipelineEvent::finalizing_started();
+        let event = PipelineEvent::final_state_validation_completed();
 
         // Emit phase transition UI event
         let ui_event = self.phase_transition_ui(PipelinePhase::Finalizing);

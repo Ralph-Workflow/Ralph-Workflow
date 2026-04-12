@@ -28,12 +28,12 @@
 use tempfile::TempDir;
 use test_helpers::{commit_all, init_git_repo, write_file};
 
-pub mod advanced_conflicts;
-pub mod basic_conflicts;
-pub mod hook_failures;
+pub(crate) mod advanced_conflicts;
+pub(crate) mod basic_conflicts;
+pub(crate) mod hook_failures;
 
 /// Initialize a git repository with an initial commit.
-pub fn init_repo_with_initial_commit(dir: &TempDir) -> git2::Repository {
+pub(crate) fn init_repo_with_initial_commit(dir: &TempDir) -> git2::Repository {
     let repo = init_git_repo(dir);
     write_file(dir.path().join("initial.txt"), "initial content");
     let _ = commit_all(&repo, "initial commit");
@@ -41,7 +41,7 @@ pub fn init_repo_with_initial_commit(dir: &TempDir) -> git2::Repository {
 }
 
 /// Helper to get the default branch name from the repository head.
-pub fn get_default_branch_name(repo: &git2::Repository) -> String {
+pub(crate) fn get_default_branch_name(repo: &git2::Repository) -> String {
     repo.head()
         .ok()
         .and_then(|h| h.shorthand().map(std::string::ToString::to_string))

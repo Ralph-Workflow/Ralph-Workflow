@@ -1,5 +1,42 @@
 // Core rebase operations: continue + verification + status.
 
+/// Verify that a rebase has completed successfully using explicit repo root.
+///
+/// This function uses `LibGit2` exclusively to verify that a rebase operation
+/// has completed successfully. It checks:
+/// - Repository state is clean (no rebase in progress)
+/// - HEAD is valid and not detached (unless expected)
+/// - Index has no conflicts
+/// - Current branch is descendant of upstream (rebase succeeded)
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+/// * `upstream_branch` - The upstream branch to verify against
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if rebase is verified as complete, `Ok(false)` if
+/// rebase is still in progress (conflicts remain), or an error if the
+/// repository state is invalid.
+///
+/// # Note
+///
+/// This is the authoritative source for rebase completion verification.
+/// It does NOT depend on parsing agent output or any other external signals.
+///
+/// # Errors
+///
+/// Returns an error if the repository cannot be accessed or branch verification fails.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn verify_rebase_completed_at(
+    repo_root: &std::path::Path,
+    upstream_branch: &str,
+) -> io::Result<bool> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    verify_rebase_completed_impl(&repo, upstream_branch)
+}
+
 /// Verify that a rebase has completed successfully using `LibGit2`.
 ///
 /// This function uses `LibGit2` exclusively to verify that a rebase operation
@@ -25,8 +62,13 @@
 /// Returns an error if the repository cannot be accessed or branch verification fails.
 #[cfg(any(test, feature = "test-utils"))]
 pub fn verify_rebase_completed(upstream_branch: &str) -> io::Result<bool> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = get_current_dir()?;
+    verify_rebase_completed_at(&repo_root, upstream_branch)
+}
 
+/// Implementation of `verify_rebase_completed`.
+#[cfg(any(test, feature = "test-utils"))]
+fn verify_rebase_completed_impl(repo: &git2::Repository, upstream_branch: &str) -> io::Result<bool> {
     // 1. Check if a rebase is still in progress
     let state = repo.state();
     if state == git2::RepositoryState::Rebase
@@ -72,16 +114,36 @@ pub fn verify_rebase_completed(upstream_branch: &str) -> io::Result<bool> {
     Ok(!index.has_conflicts())
 }
 
+/// Continue a rebase after conflict resolution using explicit repo root.
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+/// * `executor` - Process executor for dependency injection
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn continue_rebase_at(
+    repo_root: &std::path::Path,
+    executor: &dyn crate::executor::ProcessExecutor,
+) -> io::Result<()> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    continue_rebase_impl(&repo, executor)
+}
+
 /// Continue a rebase after conflict resolution.
 ///
-/// **Note:** This function uses the current working directory to discover the repo.
+/// # Arguments
+///
+/// * `executor` - Process executor for dependency injection
 ///
 /// # Errors
 ///
 /// Returns error if the operation fails.
 pub fn continue_rebase(executor: &dyn crate::executor::ProcessExecutor) -> io::Result<()> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    continue_rebase_impl(&repo, executor)
+    let repo_root = get_current_dir()?;
+    continue_rebase_at(&repo_root, executor)
 }
 
 /// Implementation of `continue_rebase`.
@@ -93,7 +155,7 @@ fn continue_rebase_impl(
         return Err(no_rebase_in_progress_error());
     }
 
-    let conflicted = get_conflicted_files()?;
+    let conflicted = get_conflicted_files_impl(repo)?;
     if !conflicted.is_empty() {
         return Err(conflict_remains_error(conflicted.len()));
     }
@@ -124,14 +186,28 @@ fn conflict_remains_error(count: usize) -> io::Error {
     )
 }
 
+/// Check if a rebase is currently in progress using explicit repo root.
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn rebase_in_progress_at(repo_root: &std::path::Path) -> io::Result<bool> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    Ok(rebase_in_progress_impl(&repo))
+}
+
 /// Check if a rebase is currently in progress.
 ///
 /// # Errors
 ///
 /// Returns error if the operation fails.
 pub fn rebase_in_progress() -> io::Result<bool> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    Ok(rebase_in_progress_impl(&repo))
+    let repo_root = get_current_dir()?;
+    rebase_in_progress_at(&repo_root)
 }
 
 /// Implementation of `rebase_in_progress`.

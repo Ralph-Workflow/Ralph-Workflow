@@ -40,8 +40,8 @@
 //! }
 //! ```
 
-pub mod types;
-pub mod validation;
+pub(crate) mod types;
+pub(crate) mod validation;
 
 // Re-export main types and functions for convenience
 pub use types::{IssueEntry, IssuesElements};

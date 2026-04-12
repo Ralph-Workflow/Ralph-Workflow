@@ -1,4 +1,6 @@
 use super::*;
+use crate::agents::session::SessionDrain;
+use crate::prompts::SessionCapabilities;
 use crate::workspace::MemoryWorkspace;
 use regex::Regex;
 
@@ -298,12 +300,17 @@ fn test_prompt_fix_with_context() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let session_caps = SessionCapabilities::new(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
     let result = prompt_fix_with_context(
         &context,
         "test prompt content",
         "test plan content",
         "test issues content",
         &workspace,
+        session_caps,
     );
     assert!(result.contains("test issues content"));
     assert!(result.contains("MUST NOT modify the ISSUES content"));
@@ -319,7 +326,11 @@ fn test_prompt_fix_with_context_empty() {
     use crate::workspace::MemoryWorkspace;
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
-    let result = prompt_fix_with_context(&context, "", "", "", &workspace);
+    let session_caps = SessionCapabilities::new(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
+    let result = prompt_fix_with_context(&context, "", "", "", &workspace, session_caps);
     assert!(result.contains("FIX MODE"));
     assert!(!result.is_empty());
 }
@@ -331,8 +342,12 @@ fn test_context_based_fix_matches_regular() {
         None,
     ));
     let workspace = MemoryWorkspace::new_test();
+    let session_caps = SessionCapabilities::new(
+        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+    );
     let regular = prompt_fix("prompt", "plan", "issues");
-    let with_context = prompt_fix_with_context(&context, "prompt", "plan", "issues", &workspace);
+    let with_context = prompt_fix_with_context(&context, "prompt", "plan", "issues", &workspace, session_caps);
     // Normalize absolute paths to avoid cross-test current_dir races.
     let normalize_paths = |input: &str| {
         let xml_re = Regex::new(r"[^\s`]*\.agent/tmp/fix_result\.xml").expect("xml regex");
@@ -350,8 +365,10 @@ fn test_prompt_generate_commit_message_with_diff_with_context() {
     let context = TemplateContext::default();
     // Use MemoryWorkspace instead of WorkspaceFs - no real filesystem access needed
     let workspace = MemoryWorkspace::new_test();
+    let (capabilities, policy_flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let diff = "diff --git a/src/main.rs b/src/main.rs\n+fn new_func() {}";
-    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace);
+    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace, session_caps);
     assert!(!result.is_empty());
     assert!(result.contains("DIFF:") || result.contains("diff"));
     assert!(!result.contains("ERROR: Empty diff"));
@@ -419,7 +436,9 @@ fn test_prompt_generate_commit_message_with_diff_with_context_empty() {
     let context = TemplateContext::default();
     // Use MemoryWorkspace instead of WorkspaceFs - no real filesystem access needed
     let workspace = MemoryWorkspace::new_test();
-    let result = prompt_generate_commit_message_with_diff_with_context(&context, "", &workspace);
+    let (capabilities, policy_flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
+    let result = prompt_generate_commit_message_with_diff_with_context(&context, "", &workspace, session_caps);
     assert!(result.contains("ERROR: Empty diff"));
 }
 
@@ -428,8 +447,10 @@ fn test_context_based_commit_uses_workspace_paths() {
     let context = TemplateContext::default();
     // Use MemoryWorkspace instead of WorkspaceFs - no real filesystem access needed
     let workspace = MemoryWorkspace::new_test();
+    let (capabilities, policy_flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let diff = "diff --git a/src/main.rs b/src/main.rs\n+fn new_func() {}";
-    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace);
+    let result = prompt_generate_commit_message_with_diff_with_context(&context, diff, &workspace, session_caps);
     // Verify the prompt uses absolute paths from workspace
     assert!(
         result.contains("/test/repo/.agent/tmp/commit_message.xml")

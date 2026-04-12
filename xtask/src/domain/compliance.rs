@@ -3,6 +3,9 @@
 //! These helpers decide what message/status to emit after the boundary layer
 //! has already gathered the raw data (file lists, violation traces, errors).
 
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+
 const STATUS_PASS: u8 = 0;
 const STATUS_WARNING: u8 = 1;
 const STATUS_ERROR: u8 = 2;
@@ -21,6 +24,186 @@ impl ComplianceSummary {
             message,
         }
     }
+
+    pub fn pass() -> Self {
+        Self::new(STATUS_PASS, String::new())
+    }
+
+    pub fn error(message: String) -> Self {
+        Self::new(STATUS_ERROR, message)
+    }
+}
+
+// ── MCP dependency isolation ─────────────────────────────────────────────────
+
+/// Pure check: does `metadata_str` (cargo metadata JSON) contain a transitive
+/// dependency path from `mcp-server` to `ralph-workflow`?
+pub fn check_mcp_dep_isolation_from_metadata(metadata_str: &str) -> ComplianceSummary {
+    parse_dep_map(metadata_str)
+        .map(|deps_map| dfs_check_dep_isolation(&deps_map))
+        .unwrap_or_else(|e| {
+            ComplianceSummary::error(format!(
+                "DEPENDENCY ISOLATION VIOLATION: failed to parse cargo metadata: {e}"
+            ))
+        })
+}
+
+fn parse_dep_map(metadata_str: &str) -> Result<HashMap<String, Vec<String>>, String> {
+    let metadata: serde_json::Value =
+        serde_json::from_str(metadata_str).map_err(|e| e.to_string())?;
+    let deps_map = metadata
+        .get("packages")
+        .and_then(|p| p.as_array())
+        .map(|packages| {
+            packages
+                .iter()
+                .map(|pkg| {
+                    let name = pkg
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_owned();
+                    (name, collect_pkg_deps(pkg))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(deps_map)
+}
+
+fn collect_pkg_deps(pkg: &serde_json::Value) -> Vec<String> {
+    pkg.get("dependencies")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|d| d.get("name").and_then(|n| n.as_str()).map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn dfs_check_dep_isolation(deps_map: &HashMap<String, Vec<String>>) -> ComplianceSummary {
+    let visited: HashSet<String> = std::iter::once("mcp-server".to_owned()).collect();
+    dfs_from(deps_map, "mcp-server", &visited).unwrap_or_else(ComplianceSummary::pass)
+}
+
+fn dfs_from(
+    deps_map: &HashMap<String, Vec<String>>,
+    current: &str,
+    visited: &HashSet<String>,
+) -> Option<ComplianceSummary> {
+    deps_map.get(current)?.iter().find_map(|dep| {
+        if dep == "ralph-workflow" {
+            return Some(ComplianceSummary::error(format!(
+                "DEPENDENCY ISOLATION VIOLATION: mcp-server must not depend on ralph-workflow \
+                 (direct or transitive). Found dependency path: mcp-server -> {dep}. \
+                 Remove the dependency and use adapter traits instead."
+            )));
+        }
+        if visited.contains(dep) {
+            return None;
+        }
+        let new_visited: HashSet<String> = visited
+            .iter()
+            .cloned()
+            .chain(std::iter::once(dep.clone()))
+            .collect();
+        dfs_from(deps_map, dep, &new_visited)
+    })
+}
+
+// ── Standalone host git safety ───────────────────────────────────────────────
+
+/// Pure decision: does `standalone_host.rs` satisfy the git-safety policy?
+///
+/// - `uses_shared_helper`: file contains `test_helpers::assert_not_in_git_repo`
+/// - `has_local_function`: file contains `fn assert_no_real_git_state`
+/// - `has_loop_walk`: file contains `loop {`
+pub fn standalone_host_git_safety_summary(
+    uses_shared_helper: bool,
+    has_local_function: bool,
+    has_loop_walk: bool,
+) -> ComplianceSummary {
+    if uses_shared_helper {
+        return ComplianceSummary::pass();
+    }
+    if !has_local_function {
+        return ComplianceSummary::error(
+            "mcp-server/tests/standalone_host.rs is missing git safety enforcement. \
+             Either call `test_helpers::assert_not_in_git_repo` (preferred) or define \
+             a local `fn assert_no_real_git_state` with loop-based parent-chain traversal."
+                .to_string(),
+        );
+    }
+    if !has_loop_walk {
+        return ComplianceSummary::error(
+            "mcp-server/tests/standalone_host.rs defines `fn assert_no_real_git_state` but \
+             it appears to be missing the loop-based directory walk (`loop {`). The \
+             implementation must traverse the parent chain using a loop to prevent bypasses \
+             via subdirectory paths. Update it to match the canonical pattern in test-helpers."
+                .to_string(),
+        );
+    }
+    ComplianceSummary::pass()
+}
+
+// ── Ralph prefix naming policy ───────────────────────────────────────────────
+
+/// Pure decision: produce a result summary from a list of `ralph_` prefix violations.
+pub fn ralph_prefix_violations_summary(violations: &[String]) -> ComplianceSummary {
+    if violations.is_empty() {
+        return ComplianceSummary::pass();
+    }
+    ComplianceSummary::error(format!(
+        "MCP tool naming policy violation: {} occurrence(s) of ralph_ prefix found in \
+         production source (only ralph_submit_artifact may retain this prefix — all other \
+         tool names must drop the ralph_ prefix per the naming convention):\n{}",
+        violations.len(),
+        violations.join("\n")
+    ))
+}
+
+/// Scan `content` for `"ralph_..."` string literals that are NOT
+/// `ralph_submit_artifact`.  Returns one violation string per match.
+///
+/// `display_path` is used only for formatting the violation path.
+pub fn scan_content_for_ralph_violations(content: &str, display_path: &Path) -> Vec<String> {
+    content
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !is_comment_or_doc_line(line))
+        .flat_map(|(line_idx, line)| {
+            collect_ralph_violations_on_line(line, line_idx + 1, display_path)
+        })
+        .collect()
+}
+
+fn is_comment_or_doc_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with("//") || trimmed.starts_with('*')
+}
+
+fn collect_ralph_violations_on_line(
+    line: &str,
+    line_num: usize,
+    display_path: &Path,
+) -> Vec<String> {
+    line.split("\"ralph_")
+        .skip(1)
+        .filter_map(|after_prefix| {
+            let end = after_prefix.find('"')?;
+            let tool_name = format!("ralph_{}", &after_prefix[..end]);
+            (tool_name != "ralph_submit_artifact").then(|| {
+                format!(
+                    "{}:{}: '{}' uses ralph_ prefix — only ralph_submit_artifact may \
+                     retain this prefix",
+                    display_path.display(),
+                    line_num,
+                    tool_name,
+                )
+            })
+        })
+        .collect()
 }
 
 pub fn shell_script_scan_result(found: &[String], walk_errors: &[String]) -> ComplianceSummary {

@@ -50,7 +50,10 @@ pub trait CatalogHttpClient: Send + Sync {
 #[derive(Clone)]
 pub struct RealCatalogFetcher {
     fetcher: Arc<dyn HttpFetcher>,
+    persist_catalog: Arc<CatalogPersistFn>,
 }
+
+type CatalogPersistFn = dyn Fn(&ApiCatalog) -> Result<(), CacheError> + Send + Sync;
 
 impl std::fmt::Debug for RealCatalogFetcher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -62,16 +65,31 @@ impl RealCatalogFetcher {
     /// Build a catalog fetcher backed by the given HTTP capability.
     #[must_use]
     pub fn with_fetcher(fetcher: Arc<dyn HttpFetcher>) -> Self {
-        Self { fetcher }
+        Self {
+            fetcher,
+            persist_catalog: Arc::new(save_catalog),
+        }
     }
 
-    /// Build a catalog fetcher from any type that implements [`HttpFetcher`].
+    /// Build a catalog fetcher from any type that implements the fetcher trait.
     #[must_use]
     pub fn with_http_fetcher<F>(fetcher: F) -> Self
     where
         F: HttpFetcher + 'static,
     {
         Self::with_fetcher(Arc::new(fetcher))
+    }
+
+    #[cfg(test)]
+    fn with_fetcher_and_persist<F, P>(fetcher: F, persist_catalog: P) -> Self
+    where
+        F: HttpFetcher + 'static,
+        P: Fn(&ApiCatalog) -> Result<(), CacheError> + Send + Sync + 'static,
+    {
+        Self {
+            fetcher: Arc::new(fetcher),
+            persist_catalog: Arc::new(persist_catalog),
+        }
     }
 }
 
@@ -93,7 +111,7 @@ impl CatalogHttpClient for RealCatalogFetcher {
             ..catalog
         };
 
-        let warnings: Vec<CacheWarning> = save_catalog(&catalog)
+        let warnings: Vec<CacheWarning> = (self.persist_catalog)(&catalog)
             .err()
             .map(|e| CacheWarning::CacheSaveFailed {
                 error: e.to_string(),
@@ -111,10 +129,8 @@ mod tests {
     use crate::agents::opencode_api::types::{Model, Provider};
     use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
     use std::collections::HashMap;
-    use std::fs;
-
     /// Create a mock API catalog for testing.
-    pub fn mock_api_catalog() -> ApiCatalog {
+    fn mock_api_catalog() -> ApiCatalog {
         let providers = HashMap::from([
             (
                 "opencode".to_string(),
@@ -246,23 +262,17 @@ mod tests {
             }
         }"#;
 
-        let fetcher = RealCatalogFetcher::with_http_fetcher(StubFetcher {
-            payload: stub_catalog,
-        });
+        let fetcher = RealCatalogFetcher::with_fetcher_and_persist(
+            StubFetcher {
+                payload: stub_catalog,
+            },
+            |_catalog| Ok(()),
+        );
 
         let (catalog, warnings) = fetcher.fetch_api_catalog(1234).unwrap();
         assert!(warnings.is_empty());
         assert_eq!(catalog.ttl_seconds, 1234);
         assert!(catalog.has_provider("test-provider"));
         assert!(catalog.has_model("test-provider", "test-model"));
-
-        cleanup_opencode_cache_file();
-    }
-
-    fn cleanup_opencode_cache_file() {
-        if let Some(cache_dir) = dirs::cache_dir() {
-            let cache_path = cache_dir.join("ralph-workflow/opencode-api-cache.json");
-            let _ = fs::remove_file(cache_path);
-        }
     }
 }

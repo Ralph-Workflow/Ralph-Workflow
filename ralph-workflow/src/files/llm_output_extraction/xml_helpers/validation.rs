@@ -38,7 +38,7 @@ use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValid
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn check_for_illegal_xml_characters(content: &str) -> Result<(), XsdValidationError> {
+pub(crate) fn check_for_illegal_xml_characters(content: &str) -> Result<(), XsdValidationError> {
     if let Some((byte_index, ch)) = content.char_indices().find(|&(_, ch)| {
         matches!(
             ch as u32,

@@ -409,7 +409,7 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
                 state = reduce(state, PipelineEvent::pre_termination_safety_check_passed());
             }
             Effect::ValidateFinalState => {
-                state = reduce(state, PipelineEvent::finalizing_started());
+                state = reduce(state, PipelineEvent::final_state_validation_completed());
             }
             Effect::SaveCheckpoint { .. } => {
                 // Phase transition checkpoint - continue
@@ -618,7 +618,7 @@ fn test_pipeline_flow_skip_planning_when_zero_iterations() {
                 state = reduce(state, PipelineEvent::pre_termination_safety_check_passed());
             }
             Effect::ValidateFinalState => {
-                state = reduce(state, PipelineEvent::finalizing_started());
+                state = reduce(state, PipelineEvent::final_state_validation_completed());
             }
             Effect::SaveCheckpoint { .. } => {
                 if state.phase == PipelinePhase::Complete {

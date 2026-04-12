@@ -1,9 +1,19 @@
 use super::*;
 
 #[test]
-fn test_real_handler_default() {
+fn test_real_handler_default_has_workspace_root_from_cwd() {
     let handler = RealAppEffectHandler::default();
-    assert!(handler.workspace_root.is_none());
+    // Default handler now uses current working directory as workspace root.
+    let cwd = std::env::current_dir().expect("cwd must be available");
+    assert!(
+        handler.workspace_root.is_some(),
+        "Default handler should have workspace_root set to cwd"
+    );
+    assert_eq!(
+        handler.workspace_root.as_deref(),
+        Some(cwd.as_path()),
+        "Default handler should use current working directory as workspace root"
+    );
 }
 
 #[test]
@@ -31,15 +41,20 @@ fn test_resolve_path_relative_with_root() {
 }
 
 #[test]
-fn test_resolve_path_relative_without_root() {
+fn test_resolve_path_relative_without_explicit_root_uses_cwd() {
+    // When using new() (which defaults to cwd), relative paths are resolved
+    // against the current working directory.
     let handler = RealAppEffectHandler::new();
     let relative = PathBuf::from("relative/path");
-    assert_eq!(handler.resolve_path(&relative), relative);
+    let resolved = handler.resolve_path(&relative);
+    let cwd = std::env::current_dir().expect("cwd must be available");
+    // With workspace_root set to cwd, relative paths are resolved relative to cwd
+    assert_eq!(resolved, cwd.join("relative/path"));
 }
 
 #[test]
 fn test_path_exists_effect() {
-    let mut handler = RealAppEffectHandler::new();
+    let mut handler = RealAppEffectHandler::with_workspace_root(std::env::current_dir().unwrap());
     // Test with a path that definitely exists (this file's directory)
     let result = handler.execute(AppEffect::PathExists {
         path: PathBuf::from("."),
@@ -49,7 +64,7 @@ fn test_path_exists_effect() {
 
 #[test]
 fn test_path_not_exists_effect() {
-    let mut handler = RealAppEffectHandler::new();
+    let mut handler = RealAppEffectHandler::with_workspace_root(std::env::current_dir().unwrap());
     let result = handler.execute(AppEffect::PathExists {
         path: PathBuf::from("/nonexistent/path/that/should/not/exist/12345"),
     });

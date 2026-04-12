@@ -104,7 +104,7 @@ fn stderr_loop_step<R: std::io::Read>(
     Ok(done)
 }
 
-pub fn collect_stderr_with_cap_and_drain<R: std::io::Read>(
+pub(super) fn collect_stderr_with_cap_and_drain<R: std::io::Read>(
     mut reader: R,
     max_bytes: usize,
     cancel: &std::sync::atomic::AtomicBool,
@@ -138,7 +138,7 @@ fn wait_for_handle_finish(
     }
 }
 
-pub fn cancel_and_join_stderr_collector(
+pub(super) fn cancel_and_join_stderr_collector(
     cancel: &Arc<std::sync::atomic::AtomicBool>,
     stderr_join_handle: &mut Option<std::thread::JoinHandle<std::io::Result<String>>>,
     join_timeout: std::time::Duration,

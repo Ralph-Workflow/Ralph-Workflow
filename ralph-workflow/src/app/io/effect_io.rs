@@ -3,6 +3,14 @@ use std::io;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
+/// Get the current working directory.
+///
+/// This is an I/O boundary function that encapsulates environment access,
+/// allowing domain code to obtain the cwd without directly calling `std::env::current_dir`.
+pub fn current_working_dir() -> io::Result<PathBuf> {
+    std::env::current_dir()
+}
+
 pub fn set_current_dir(path: &Path) -> Result<(), io::Error> {
     std::env::set_current_dir(path)
 }

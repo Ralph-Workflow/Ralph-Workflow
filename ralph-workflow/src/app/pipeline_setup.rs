@@ -6,7 +6,6 @@
 use crate::agents::AgentRegistry;
 use crate::app::config::{EventLoopConfig, MAX_EVENT_LOOP_ITERATIONS};
 use crate::app::context::PipelineContext;
-use crate::app::effect::AppEffectHandler;
 use crate::checkpoint::{PipelineCheckpoint, RunContext};
 use crate::cli::Args;
 use crate::config::Config;
@@ -110,8 +109,10 @@ pub fn create_git_helpers_boundary() -> GitHelpers {
     crate::app::runtime_factory::create_git_helpers()
 }
 
-pub fn create_effect_handler_boundary() -> crate::app::effect_handler::RealAppEffectHandler {
-    crate::app::runtime_factory::create_effect_handler()
+pub fn create_effect_handler_boundary(
+    repo_root: &std::path::Path,
+) -> crate::app::effect_handler::RealAppEffectHandler {
+    crate::app::runtime_factory::create_effect_handler_with_workspace(repo_root.to_path_buf())
 }
 
 pub fn setup_agent_phase_for_workspace_boundary(
@@ -137,7 +138,7 @@ pub struct RepoCommandBoundaryParams<'a> {
     pub logger: &'a crate::logger::Logger,
     pub colors: Colors,
     pub executor: &'a std::sync::Arc<dyn crate::executor::ProcessExecutor>,
-    pub app_handler: &'a mut dyn crate::app::effect::AppEffectHandler,
+    pub app_handler: Option<&'a mut dyn crate::app::effect::AppEffectHandler>,
     pub repo_root: &'a std::path::Path,
     pub workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
 }
@@ -198,7 +199,7 @@ pub fn handle_repo_commands_boundary(
         return Ok(true);
     }
 
-    if args.commit_plumbing.generate_commit_msg {
+    if args.commit_plumbing.generate_commit_msg || args.commit_plumbing.generate_commit {
         let _cleanup_guard = mark_cleanup_guard_owned(
             crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false),
         );
@@ -212,7 +213,19 @@ pub fn handle_repo_commands_boundary(
         let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
             config.user_templates_dir().cloned(),
         );
-        crate::app::plumbing::handle_generate_commit_msg(
+
+        // Extract handler once to avoid borrow conflicts.
+        // Uses repo_root from params as the workspace root since ralph-workflow
+        // is always invoked from the workspace directory.
+        let handler: &mut dyn crate::app::effect::AppEffectHandler = if let Some(h) = app_handler {
+            h
+        } else {
+            &mut crate::app::runtime_factory::create_effect_handler_with_workspace(
+                repo_root.to_path_buf(),
+            )
+        };
+
+        let generation_outcome = crate::app::plumbing::handle_generate_commit_msg(
             &crate::app::plumbing::CommitGenerationConfig {
                 config,
                 template_context: &template_context,
@@ -225,8 +238,26 @@ pub fn handle_repo_commands_boundary(
                 reviewer_agent,
                 executor: std::sync::Arc::clone(executor),
             },
-            app_handler,
+            handler,
         )?;
+
+        // If --generate-commit, also apply the commit immediately
+        if args.commit_plumbing.generate_commit
+            && matches!(
+                generation_outcome,
+                crate::app::plumbing::CommitGenerationOutcome::Generated
+            )
+        {
+            crate::app::plumbing::handle_apply_commit_with_handler(
+                workspace.as_ref(),
+                handler,
+                logger,
+                colors,
+            )?;
+        } else if args.commit_plumbing.generate_commit {
+            logger.info("Skipping --apply-commit because commit generation returned skip");
+        }
+
         return Ok(true);
     }
 
@@ -255,8 +286,7 @@ pub struct RunPipelineWithHandlerParams {
 
 pub fn run_pipeline_with_handler_boundary(
     params: RunPipelineWithHandlerParams,
-) -> anyhow::Result<PipelineAndRepoRoot> {
-    use crate::app::effect::{AppEffect, AppEffectResult};
+) -> anyhow::Result<Option<PipelineAndRepoRoot>> {
     use crate::app::runner::command_handlers::handle_plumbing_commands;
     use crate::app::runner::pipeline_execution::{
         command_requires_prompt_setup, handle_repo_commands_without_prompt_setup,
@@ -280,37 +310,23 @@ pub fn run_pipeline_with_handler_boundary(
         template_context: _,
     } = params;
 
-    let handler = &mut crate::app::runtime_factory::create_effect_handler();
+    let early_repo_root =
+        crate::app::io::repo_discovery::discover_repo_root(args.working_dir_override.as_deref())?;
 
-    let early_repo_root = {
-        if let Some(dir) = args.working_dir_override.as_deref() {
-            match handler.execute(AppEffect::SetCurrentDir {
-                path: dir.to_path_buf(),
-            }) {
-                AppEffectResult::Ok => {}
-                AppEffectResult::Error(e) => anyhow::bail!(e),
-                other => anyhow::bail!("unexpected result from SetCurrentDir: {other:?}"),
-            }
-        }
+    let handler = &mut crate::app::runtime_factory::create_effect_handler_with_workspace(
+        early_repo_root.clone(),
+    );
 
-        match handler.execute(AppEffect::GitRequireRepo) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => anyhow::bail!("Not in a git repository: {e}"),
-            other => anyhow::bail!("unexpected result from GitRequireRepo: {other:?}"),
-        }
-
-        match handler.execute(AppEffect::GitGetRepoRoot) {
-            AppEffectResult::Path(p) => p,
-            AppEffectResult::Error(e) => anyhow::bail!("Failed to get repo root: {e}"),
-            other => anyhow::bail!("unexpected result from GitGetRepoRoot: {other:?}"),
-        }
-    };
+    // Fail-fast: workspace root must be set before any git/file operations.
+    // This is a safety net — create_effect_handler_with_workspace always sets
+    // the root, but assert early to surface any future regressions.
+    handler.assert_has_workspace_root();
 
     let workspace: Arc<dyn Workspace> =
         Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root.clone()));
 
     if handle_plumbing_commands(&args, &logger, colors, handler, Some(workspace.as_ref()))? {
-        anyhow::bail!("plumbing commands should not return from run_pipeline");
+        return Ok(None);
     }
 
     if !command_requires_prompt_setup(&args)
@@ -323,12 +339,12 @@ pub fn run_pipeline_with_handler_boundary(
             logger: &logger,
             colors,
             executor: &executor,
-            app_handler: handler,
+            app_handler: Some(handler),
             repo_root: workspace.root(),
             workspace: &workspace,
         })?
     {
-        anyhow::bail!("repo commands should not return from run_pipeline");
+        return Ok(None);
     }
 
     let repo_root = match crate::app::runner::validate_and_setup_agents(
@@ -365,8 +381,8 @@ pub fn run_pipeline_with_handler_boundary(
     let ctx = prepare_pipeline_or_exit(params)?
         .ok_or_else(|| anyhow::anyhow!("pipeline preparation returned None"))?;
 
-    Ok(PipelineAndRepoRoot {
+    Ok(Some(PipelineAndRepoRoot {
         ctx,
         repo_root: early_repo_root,
-    })
+    }))
 }

@@ -20,7 +20,7 @@
 use super::*;
 
 /// Helper function to create Colors with disabled ANSI colors for testing.
-pub fn test_colors() -> Colors {
+fn test_colors() -> Colors {
     Colors { enabled: false }
 }
 

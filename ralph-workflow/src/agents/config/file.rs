@@ -1,4 +1,5 @@
-use super::types::{AgentConfigToml, DEFAULT_AGENTS_TOML};
+use super::types::AgentConfigToml;
+use super::DEFAULT_AGENTS_TOML;
 use crate::agents::ccs_env::CcsEnvVarsError;
 use crate::agents::fallback::FallbackConfig;
 use crate::agents::fallback::ResolvedDrainConfig;

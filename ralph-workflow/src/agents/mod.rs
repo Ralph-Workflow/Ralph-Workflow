@@ -84,9 +84,10 @@
 pub mod cache_environment;
 pub mod ccs;
 mod ccs_env;
-mod config;
+pub mod config;
 mod error;
 pub mod fallback;
+pub mod harness;
 pub mod invoke;
 pub mod opencode_api;
 mod opencode_resolver;
@@ -95,6 +96,8 @@ mod providers;
 mod registry;
 mod retry_timer;
 pub mod runtime;
+pub mod session;
+pub(crate) mod tool_manifest;
 pub mod validation;
 
 use std::sync::Arc;

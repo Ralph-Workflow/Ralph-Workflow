@@ -70,9 +70,9 @@
 //!
 //! # Module Structure
 //!
-//! - [`state`]: Core `ContinuationState` struct definition
-//! - [`budget`]: Budget tracking and exhaustion checking
-//! - [`loop_detection`]: Loop detection and effect fingerprinting
+//! - `state`: Core `ContinuationState` struct definition
+//! - `budget`: Budget tracking and exhaustion checking
+//! - `loop_detection`: Loop detection and effect fingerprinting
 
 mod budget;
 mod loop_detection;

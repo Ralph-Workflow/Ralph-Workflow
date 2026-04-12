@@ -1,5 +1,6 @@
 use crate::agents::ccs_env::load_ccs_env_vars;
 use crate::agents::parser::JsonParserType;
+use crate::agents::session::{AgentSession, Capability};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,9 +22,6 @@ fn is_stream_json_output(output_flag: &str) -> bool {
     // Fallback for other potential spellings: allow "stream_json".
     output_flag.contains("stream_json")
 }
-
-/// Default agents.toml template embedded at compile time.
-pub const DEFAULT_AGENTS_TOML: &str = include_str!("../../../examples/agents.toml");
 
 /// Config source for tracking where config was loaded from.
 #[derive(Debug, Clone)]
@@ -474,6 +472,29 @@ impl From<AgentConfigToml> for AgentConfig {
         let (config, _) = AgentConfig::try_from_ccs(toml);
         config
     }
+}
+
+/// Determine whether the agent should launch in YOLO mode based on session capabilities.
+///
+/// Returns `true` only if the session has write capabilities that require YOLO mode.
+/// Read-only drains (Planning, Analysis, Review, Commit) should NOT use YOLO mode.
+///
+/// # Drain-to-Launch-Mode Mapping
+///
+/// | Drain | Launch Mode | Rationale |
+/// | --- | --- | --- |
+/// | Planning | Restricted (false) | Only reads codebase and submits plan XML |
+/// | Analysis | Restricted (false) | Only reads code and git diff, submits analysis |
+/// | Review | Restricted (false) | Only reads code and submits issues XML |
+/// | Development | YOLO (true) | Needs filesystem write and shell exec |
+/// | Fix | YOLO (true) | Needs filesystem write and shell exec |
+/// | Commit | Restricted (false) | Only generates commit message. Ralph does actual commit |
+#[must_use]
+pub fn should_use_yolo_mode(session: &AgentSession) -> bool {
+    let caps = session.capabilities();
+    // YOLO mode only for sessions that need filesystem write access or process execution
+    caps.contains(Capability::WorkspaceWriteTracked)
+        || caps.contains(Capability::ProcessExecBounded)
 }
 
 #[cfg(test)]

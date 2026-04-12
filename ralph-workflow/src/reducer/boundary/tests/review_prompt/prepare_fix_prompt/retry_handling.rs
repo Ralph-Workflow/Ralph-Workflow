@@ -1,5 +1,6 @@
 use super::super::super::common::TestFixture;
-use crate::prompts::{PromptHistoryEntry, PromptScopeKey, RetryMode};
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::prompts::{PromptHistoryEntry, PromptScopeKey, RetryMode, SessionCapabilities};
 use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{PipelineEvent, PromptInputEvent};
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode, SameAgentRetryReason};
@@ -31,6 +32,10 @@ fn test_prepare_fix_prompt_same_agent_retry_uses_previous_prepared_prompt() {
         issues,
         &[],
         ctx.workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+        ),
     );
     ctx.workspace
         .write(Path::new(".agent/tmp/fix_prompt.txt"), &marker)
@@ -84,6 +89,10 @@ fn test_prepare_fix_prompt_same_agent_retry_does_not_stack_retry_notes() {
         issues,
         &[],
         ctx.workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+        ),
     );
     ctx.workspace
         .write(Path::new(".agent/tmp/fix_prompt.txt"), &marker)

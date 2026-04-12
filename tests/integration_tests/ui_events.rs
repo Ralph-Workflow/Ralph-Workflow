@@ -135,8 +135,9 @@ fn test_ui_events_do_not_affect_reducer_state() {
 
         let initial_state = PipelineState::initial(1, 0);
 
-        // Create a pipeline event that would normally transition state
-        let event = ralph_workflow::reducer::PipelineEvent::pipeline_started();
+        // Create a pipeline event that transitions state
+        // Use planning_phase_completed to transition from Planning to Development
+        let event = ralph_workflow::reducer::PipelineEvent::planning_phase_completed();
 
         // Reduce state
         let new_state = reduce(initial_state, event);
@@ -145,7 +146,7 @@ fn test_ui_events_do_not_affect_reducer_state() {
         // UIEvents exist separately and never go through the reducer
         assert_eq!(
             new_state.phase,
-            PipelinePhase::Planning,
+            PipelinePhase::Development,
             "State should be updated by PipelineEvent, not UIEvent"
         );
     });

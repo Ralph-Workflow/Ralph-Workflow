@@ -43,8 +43,8 @@ pub struct ReviewValidatedOutcome {
     pub pass: u32,
     pub issues_found: bool,
     pub clean_no_issues: bool,
-    /// Issues found during review. Box<[String]> saves 8 bytes per instance
-    /// vs Vec<String> (no separate capacity field) since this collection
+    /// Issues found during review. `Box<[String]>` saves 8 bytes per instance
+    /// vs `Vec<String>` (no separate capacity field) since this collection
     /// never grows after construction.
     #[serde(default)]
     pub issues: Box<[String]>,
@@ -65,8 +65,8 @@ pub struct DevelopmentValidatedOutcome {
     pub iteration: u32,
     pub status: DevelopmentStatus,
     pub summary: String,
-    /// Files changed during development. Option<Box<[String]>> saves 8 bytes
-    /// per instance vs Option<Vec<String>> when Some, and is None when empty
+    /// Files changed during development. `Option<Box<[String]>>` saves 8 bytes
+    /// per instance vs `Option<Vec<String>>` when Some, and is None when empty
     /// to avoid allocation entirely.
     pub files_changed: Option<Box<[String]>>,
     pub next_steps: Option<String>,

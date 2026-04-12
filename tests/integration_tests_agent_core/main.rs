@@ -113,6 +113,12 @@ mod prompt_path_resolution;
 #[path = "../integration_tests/prompt_permissions.rs"]
 mod prompt_permissions;
 
+// Brokered sessions (RFC-009)
+#[path = "../integration_tests/brokered_sessions/mod.rs"]
+mod brokered_sessions;
+#[path = "../integration_tests/rfc009_session_model.rs"]
+mod rfc009_session_model;
+
 // Makefile install test
 #[path = "../integration_tests/makefile_install.rs"]
 mod makefile_install;

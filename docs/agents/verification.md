@@ -29,11 +29,11 @@ If verification exposes a pre-existing failure, or if you discover any other pre
 `cargo xtask verify` runs a shared serial preparation step, a serial native-check gate, and then seven concurrent lanes:
 
 - **Phase 0 (serial, warm-run optimization):** Prepare verify cache state once for the full check set. `xtask` precomputes unique scope hashes, native required-check hashes, and the native-scan eligibility hash before any verify check starts, so later cache lookups are O(1) map reads instead of repeated scope traversal in each lane or native-check dispatch.
-- **Phase 1 (serial):** Native checks — Rust function checks (compliance-timeout-wrapper, audit-no-shell-scripts). On unchanged warm runs, `xtask` may satisfy these from the verify cache instead of rescanning the same inputs.
+- **Phase 1 (serial):** Native checks — Rust function checks (compliance-timeout-wrapper, audit-no-shell-scripts, tailwind4-removed-angular-classes, test-utils-items-used-in-tests, dependency-isolation-mcp-server). On unchanged warm runs, `xtask` may satisfy these from the verify cache instead of rescanning the same inputs.
 - **Phase 2 (concurrent):**
   - Lane 1: Native Aho-Corasick scan (pure file I/O, no target/ interaction)
   - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
-  - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
+  - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration, test-mcp-server-lib, test-mcp-server-integration — default target/)
   - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
   - Lane 5: Release (dylint — target/release-parallel-verify)
 
@@ -113,7 +113,26 @@ cargo xtask fmt --all --check
 # Note: Enforces clippy::all plus explicit deny rules (unwrap_used, panic, indexing_slicing, etc.)
 # via #![deny(...)] and #![forbid(unsafe_code)] attributes in lib.rs and main.rs
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo xtask clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings
+cargo xtask clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-server --all-targets --all-features -- -D warnings
+
+# Dead code that is only used by tests.
+# Runs lib-only with DEFAULT features (no test-utils, no #[cfg(test)] blocks).
+# Catches two classes:
+#   1. Private items only referenced from #[cfg(test)] blocks → dead_code fires
+#   2. Items behind #[cfg(feature = "test-utils")] unused by production code → dead_code fires
+# Limitation: pub items in public modules are never flagged by dead_code (Rust compiler
+# assumes they're external API). These MUST be placed behind #[cfg(feature = "test-utils")].
+cargo xtask clippy -p ralph-workflow --lib -- -D warnings
+
+# Native checks (run in Phase 1 via `cargo xtask verify`):
+# audit-test-utils-used-in-tests — ensures every pub item behind
+# #[cfg(feature = "test-utils")] in ralph-workflow/src/ is actually referenced
+# by tests/ or test-helpers/src/. Items with no test-side reference are dead code.
+# Implemented in xtask/src/boundary/test_utils_usage.rs.
+#
+# dependency-isolation-mcp-server — enforces that mcp-server has no transitive
+# dependency on ralph-workflow. The dependency arrow must be strictly one-directional:
+# ralph-workflow → mcp-server. Implemented in xtask/src/boundary/checks.rs.
 
 # Lint xtask runner (runs in parallel group with separate target dir)
 cargo xtask clippy -p xtask --all-targets -- -D warnings
@@ -121,6 +140,10 @@ cargo xtask clippy -p xtask --all-targets -- -D warnings
 # Unit tests
 cargo xtask test -p xtask
 cargo xtask test -p ralph-workflow --lib --all-features
+
+# mcp-server tests (Lane 3, always runs in core-cargo)
+cargo test -p mcp-server --lib
+cargo test -p mcp-server --tests
 
 # Drain/chain architecture changes (named chains, drain bindings, checkpoint drain metadata)
 cargo xtask test -p ralph-workflow agents::config::file::tests
@@ -132,8 +155,13 @@ cargo xtask test -p ralph-workflow-tests --test integration_tests agent_chain_no
 # Keep the built-in `ralph-workflow/examples/agents.toml` template on the named chain + drain schema
 # and ensure `AgentRegistry::new()` consumes the same resolved drain bindings.
 
-# Integration tests
-cargo xtask test -p ralph-workflow-tests --test integration_tests
+# Integration tests (split into three parallel binaries)
+cargo xtask test -p ralph-workflow-tests --test integration_tests_agent_core
+cargo xtask test -p ralph-workflow-tests --test integration_tests_reducer
+cargo xtask test -p ralph-workflow-tests --test integration_tests_workflow
+
+# MCP-specific integration tests (within integration_tests_workflow binary)
+cargo xtask test -p ralph-workflow-tests --test integration_tests_workflow mcp
 
 # Process system tests (parallel, manual only — not in CI)
 cargo xtask test -p ralph-workflow-tests --test process-system-tests
@@ -150,6 +178,13 @@ cargo xtask test -p ralph-workflow --lib executor::tests
 
 # Per-run logging tests (when changing logging infrastructure)
 cargo xtask test -p ralph-workflow-tests --test integration_tests logging_per_run
+
+# RFC-009 Phase 2: Brokered sessions / capability gate enforcement
+# These verify protocol-level capability denial for no-edit drains
+cargo test -p ralph-workflow --lib agents::session
+cargo test -p ralph-workflow --lib reducer::boundary
+cargo test -p ralph-workflow-tests --test integration_tests brokered_sessions
+cargo test -p ralph-workflow --lib prompts::snapshot_tests
 
 # Metrics regressions (when changing iteration/retry/continuation/fallback logic)
 cargo xtask test -p ralph-workflow --lib reducer::state_reduction::tests::metrics

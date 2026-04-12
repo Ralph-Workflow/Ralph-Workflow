@@ -63,8 +63,10 @@ pub fn create_pipeline_runtime<'a>(
     }
 }
 
-pub fn create_effect_handler() -> crate::app::effect_handler::RealAppEffectHandler {
-    crate::app::effect_handler::RealAppEffectHandler::new()
+pub fn create_effect_handler_with_workspace(
+    workspace_root: std::path::PathBuf,
+) -> crate::app::effect_handler::RealAppEffectHandler {
+    crate::app::effect_handler::RealAppEffectHandler::with_workspace_root(workspace_root)
 }
 
 pub fn create_main_effect_handler(

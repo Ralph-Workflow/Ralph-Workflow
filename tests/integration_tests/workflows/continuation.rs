@@ -264,8 +264,10 @@ fn test_development_status_display() {
 /// Test that continuation prompt is generated with context from previous attempt.
 #[test]
 fn test_continuation_prompt_includes_previous_context() {
+    use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use ralph_workflow::prompts::prompt_developer_iteration_continuation_xml;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::prompts::SessionCapabilities;
 
     with_default_timeout(|| {
         let template_context = TemplateContext::default();
@@ -281,6 +283,10 @@ fn test_continuation_prompt_includes_previous_context() {
             &template_context,
             &continuation_state,
             &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+            ),
         );
 
         // Verify the prompt contains key elements
@@ -357,8 +363,10 @@ fn test_continuation_prompt_includes_previous_context() {
 /// Test that continuation prompt references original files instead of inlining.
 #[test]
 fn test_continuation_prompt_references_original_files() {
+    use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use ralph_workflow::prompts::prompt_developer_iteration_continuation_xml;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::prompts::SessionCapabilities;
 
     with_default_timeout(|| {
         let template_context = TemplateContext::default();
@@ -376,6 +384,10 @@ fn test_continuation_prompt_references_original_files() {
             &template_context,
             &continuation_state,
             &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+            ),
         );
 
         // Verify inclusion of original request and plan context

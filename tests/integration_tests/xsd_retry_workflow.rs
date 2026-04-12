@@ -12,13 +12,15 @@
 
 use crate::common::with_locked_prompt_permissions;
 use crate::test_timeout::with_default_timeout;
+use ralph_workflow::agents::session::SessionDrain;
 use ralph_workflow::agents::AgentRole;
+use ralph_workflow::prompts::template_variables::SessionCapabilities;
 use ralph_workflow::prompts::{
     prompt_developer_iteration_xsd_retry_with_context, prompt_planning_xsd_retry_with_context,
     prompt_review_xsd_retry_with_context, TemplateContext,
 };
 use ralph_workflow::reducer::effect::Effect;
-use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
+use ralph_workflow::reducer::event::{CheckpointTrigger, PipelineEvent, PipelinePhase};
 use ralph_workflow::reducer::orchestration::determine_next_effect;
 use ralph_workflow::reducer::state::{
     AgentChainState, CommitState, ContinuationState, PipelineState,
@@ -35,6 +37,8 @@ fn test_xsd_retry_prompts_enforce_submission_fix_only_contract() {
     with_default_timeout(|| {
         let workspace = MemoryWorkspace::new_test();
         let context = TemplateContext::default();
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
 
         let planning_prompt = prompt_planning_xsd_retry_with_context(
             &context,
@@ -42,28 +46,26 @@ fn test_xsd_retry_prompts_enforce_submission_fix_only_contract() {
             "XSD error: missing element",
             "<invalid xml",
             &workspace,
+            session_caps,
         );
         assert_retry_prompt_contract(&planning_prompt, "Planning XSD retry");
 
         let dev_prompt = prompt_developer_iteration_xsd_retry_with_context(
             &context,
-            "original prompt",
-            "plan content",
             "XSD error: invalid element",
             "<invalid xml",
             &workspace,
             false,
+            session_caps,
         );
         assert_retry_prompt_contract(&dev_prompt, "Developer XSD retry");
 
         let review_prompt = prompt_review_xsd_retry_with_context(
             &context,
-            "test prompt",
-            "test plan",
-            "test changes",
             "XSD error",
             "<invalid xml",
             &workspace,
+            session_caps,
         );
         assert_retry_prompt_contract(&review_prompt, "Review XSD retry");
     });
@@ -936,5 +938,92 @@ fn test_xsd_exhaustion_resets_same_agent_retry_state() {
             new_state.continuation.same_agent_retry_reason.is_none(),
             "Same-agent retry reason should be cleared"
         );
+    });
+}
+
+#[test]
+fn test_review_all_reviewers_fail_validation_escalates_without_looping() {
+    with_default_timeout(|| {
+        let pass = 1;
+        let mut state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: pass,
+            total_reviewer_passes: 2,
+            review_prompt_prepared_pass: Some(pass),
+            review_agent_invoked_pass: Some(pass),
+            continuation: ContinuationState {
+                xsd_retry_count: 0,
+                max_xsd_retry_count: 1,
+                ..ContinuationState::new()
+            },
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["reviewer1".to_string(), "reviewer2".to_string()],
+                    vec![vec![], vec![]],
+                    AgentRole::Reviewer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Review)
+                .with_max_cycles(1),
+            ..with_locked_prompt_permissions(with_locked_prompt_permissions(
+                PipelineState::initial(5, 2),
+            ))
+        };
+
+        state = reduce(
+            state,
+            PipelineEvent::review_output_validation_failed(pass, 0, None),
+        );
+        assert_eq!(state.agent_chain.current_agent_index, 1);
+        assert_eq!(state.agent_chain.retry_cycle, 0);
+
+        state = reduce(state, PipelineEvent::review_prompt_prepared(pass));
+        state = reduce(state, PipelineEvent::review_agent_invoked(pass));
+        state = reduce(
+            state,
+            PipelineEvent::review_output_validation_failed(pass, 0, None),
+        );
+
+        assert_eq!(state.agent_chain.current_agent_index, 0);
+        assert_eq!(state.agent_chain.retry_cycle, 1);
+        assert!(state.agent_chain.is_exhausted());
+
+        let effect_before_checkpoint = determine_next_effect(&state);
+        assert!(matches!(
+            effect_before_checkpoint,
+            Effect::SaveCheckpoint {
+                trigger: CheckpointTrigger::Interrupt
+            }
+        ));
+
+        state = reduce(
+            state,
+            PipelineEvent::checkpoint_saved(CheckpointTrigger::Interrupt),
+        );
+        let effect_after_checkpoint = determine_next_effect(&state);
+        assert!(matches!(
+            effect_after_checkpoint,
+            Effect::ReportAgentChainExhausted {
+                role: AgentRole::Reviewer,
+                phase: PipelinePhase::Review,
+                cycle: 1,
+            }
+        ));
+
+        let recovery_state = PipelineState {
+            phase: PipelinePhase::AwaitingDevFix,
+            previous_phase: Some(PipelinePhase::Review),
+            failed_phase_for_recovery: Some(PipelinePhase::Review),
+            ..state
+        };
+
+        let effect_in_recovery = determine_next_effect(&recovery_state);
+        assert!(
+            !matches!(effect_in_recovery, Effect::ReportAgentChainExhausted { .. }),
+            "AwaitingDevFix should not re-emit ReportAgentChainExhausted, got {effect_in_recovery:?}"
+        );
+        assert!(matches!(
+            effect_in_recovery,
+            Effect::TriggerDevFixFlow { .. }
+        ));
     });
 }

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use super::types::{PipelineRuntime, PromptCommand};
 
 #[cfg(test)]
-pub fn run_with_agent_spawn_with_monitor_config(
+pub(crate) fn run_with_agent_spawn_with_monitor_config(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     anthropic_env_vars_to_sanitize: &[&str],

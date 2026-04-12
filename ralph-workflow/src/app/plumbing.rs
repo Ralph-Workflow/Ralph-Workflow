@@ -56,19 +56,61 @@ pub struct CommitGenerationConfig<'a> {
     pub executor: Arc<dyn ProcessExecutor>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitGenerationOutcome {
+    Generated,
+    Skipped,
+}
+
 fn resolve_commit_message_agents(registry: &AgentRegistry, reviewer_agent: &str) -> Vec<String> {
     if let Some(commit_binding) = registry.resolved_drain(AgentDrain::Commit) {
-        return commit_binding.agents.clone();
+        return commit_binding
+            .agents
+            .iter()
+            .filter(|name| commit_drain_agent_supported(registry, name.as_str()))
+            .cloned()
+            .collect();
     }
 
     let review_chain = registry
         .resolved_drain(AgentDrain::Review)
         .map_or(&[] as &[String], |binding| binding.agents.as_slice());
     if !review_chain.is_empty() {
-        return review_chain.to_vec();
+        return review_chain
+            .iter()
+            .filter(|name| commit_drain_agent_supported(registry, name.as_str()))
+            .cloned()
+            .collect();
     }
 
-    vec![reviewer_agent.to_string()]
+    if commit_drain_agent_supported(registry, reviewer_agent) {
+        vec![reviewer_agent.to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn commit_drain_agent_supported(registry: &AgentRegistry, agent_name: &str) -> bool {
+    let Some(cfg) = registry.resolve_config(agent_name) else {
+        return false;
+    };
+    if !cfg.can_commit {
+        return false;
+    }
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&cfg.cmd);
+    let is_ccs = cfg
+        .cmd
+        .split_whitespace()
+        .next()
+        .map(|first| {
+            let token = first.rsplit('/').next().unwrap_or(first);
+            token.eq_ignore_ascii_case("ccs")
+        })
+        .unwrap_or(false);
+    !matches!(
+        agent_type,
+        crate::agents::harness::applicator::AgentType::OpenCode
+    ) && !is_ccs
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -118,9 +160,9 @@ pub fn get_commit_message_from_workspace(workspace: &dyn Workspace) -> anyhow::R
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
+pub fn handle_apply_commit_with_handler(
     workspace: &dyn Workspace,
-    handler: &mut H,
+    handler: &mut dyn AppEffectHandler,
     logger: &Logger,
     colors: Colors,
 ) -> anyhow::Result<()> {
@@ -168,6 +210,11 @@ pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
         | AppEffectResult::Ok => {
             // No changes to commit (clean working tree)
             logger.warn("Nothing to commit (working tree clean)");
+            if let Err(err) = delete_commit_message_file_with_workspace(workspace) {
+                logger.warn(&format!(
+                    "Failed to delete commit-message.txt after no-op commit: {err}"
+                ));
+            }
             Ok(())
         }
         AppEffectResult::Error(e) => anyhow::bail!("Failed to create commit: {e}"),
@@ -200,7 +247,7 @@ pub fn handle_apply_commit_with_handler<H: AppEffectHandler>(
 pub fn handle_generate_commit_msg(
     config: &CommitGenerationConfig<'_>,
     app_handler: &mut dyn AppEffectHandler,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<CommitGenerationOutcome> {
     config.logger.info("Generating commit message...");
 
     // Generate the commit message using standard pipeline
@@ -219,6 +266,11 @@ pub fn handle_generate_commit_msg(
     }
 
     let agents = resolve_commit_message_agents(config.registry, config.reviewer_agent);
+    if agents.is_empty() {
+        anyhow::bail!(
+            "No commit-capable non-OpenCode agents are available for commit message generation"
+        );
+    }
 
     // Use the chain-aware commit message generation from phases/commit.rs.
     let result = crate::app::plumbing_boundary::generate_commit_message_for_plumbing(
@@ -230,7 +282,10 @@ pub fn handle_generate_commit_msg(
             config.logger.warn(&format!(
                 "No commit needed (agent requested skip): {reason}"
             ));
-            return Ok(());
+            let _ = config
+                .workspace
+                .remove(std::path::Path::new(".agent/commit-message.txt"));
+            return Ok(CommitGenerationOutcome::Skipped);
         }
     };
 
@@ -252,5 +307,5 @@ pub fn handle_generate_commit_msg(
         .logger
         .info("Run 'ralph --apply-commit' to create the commit");
 
-    Ok(())
+    Ok(CommitGenerationOutcome::Generated)
 }

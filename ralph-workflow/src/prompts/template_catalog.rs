@@ -231,6 +231,34 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
                 deprecated: false,
             },
         ),
+        // Phase 4: Parallel Worker Templates
+        (
+            "parallel_planning_xml",
+            EmbeddedTemplate {
+                name: "parallel_planning_xml",
+                content: include_str!("templates/parallel_planning_xml.txt"),
+                description: "Parallel planning phase prompt with XML output for splitting work across workers",
+                deprecated: false,
+            },
+        ),
+        (
+            "parallel_dev_worker_xml",
+            EmbeddedTemplate {
+                name: "parallel_dev_worker_xml",
+                content: include_str!("templates/parallel_dev_worker_xml.txt"),
+                description: "Parallel development worker prompt scoped to restricted edit area",
+                deprecated: false,
+            },
+        ),
+        (
+            "parallel_verifier_xml",
+            EmbeddedTemplate {
+                name: "parallel_verifier_xml",
+                content: include_str!("templates/parallel_verifier_xml.txt"),
+                description: "Verifier/reconciler prompt for reviewing parallel worker outputs",
+                deprecated: false,
+            },
+        ),
     ]
     .into_iter()
     .collect()
@@ -357,15 +385,14 @@ mod tests {
         let content = get_embedded_template("commit_xsd_retry").expect("commit_xsd_retry exists");
 
         assert!(
-            content.contains("XSD") && content.contains("FIX XML"),
-            "commit_xsd_retry should clearly be an XML-only retry prompt"
+            content.contains("VALIDATION FAILED") && content.contains("FIX JSON"),
+            "commit_xsd_retry should clearly be a JSON-only retry prompt"
         );
 
         // New dumb-agent-proof format uses REFERENCE ONLY instead of READ-ONLY
         assert!(
-            (content.contains("REFERENCE ONLY") || content.contains("REFERENCE ONLY"))
-                && content.contains("{{COMMIT_MESSAGE_XML_PATH}}"),
-            "commit_xsd_retry should be reference-only and point to commit_message.xml"
+            content.contains("ralph_submit_artifact"),
+            "commit_xsd_retry should instruct submission via ralph_submit_artifact"
         );
 
         assert!(

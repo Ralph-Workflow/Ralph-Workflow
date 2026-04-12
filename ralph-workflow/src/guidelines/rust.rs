@@ -6,7 +6,10 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Rust-specific guidelines to the review
-pub fn add_guidelines(guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
+pub(crate) fn add_guidelines(
+    guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
     let base = ReviewGuidelines {
         quality_checks: guidelines
             .quality_checks

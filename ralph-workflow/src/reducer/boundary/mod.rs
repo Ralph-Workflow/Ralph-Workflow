@@ -99,14 +99,14 @@
 //!
 //! # Module Organization
 //!
-//! - [`agent`] - Agent invocation and chain management
-//! - [`planning`] - Planning phase effects (prompt, XML, validation)
-//! - [`development`] - Development phase effects (iteration, continuation)
-//! - [`review`] - Review phase effects (issue detection, fix application)
-//! - [`commit`] - Commit phase effects (message generation, commit creation)
-//! - [`rebase`] - Rebase effects (conflict resolution, validation)
-//! - [`checkpoint`] - Checkpoint save/restore
-//! - [`context`] - Context preparation and cleanup
+//! - `agent` - Agent invocation and chain management
+//! - `planning` - Planning phase effects (prompt, XML, validation)
+//! - `development` - Development phase effects (iteration, continuation)
+//! - `review` - Review phase effects (issue detection, fix application)
+//! - `commit` - Commit phase effects (message generation, commit creation)
+//! - `rebase` - Rebase effects (conflict resolution, validation)
+//! - `checkpoint` - Checkpoint save/restore
+//! - `context` - Context preparation and cleanup
 //!
 //! [`docs/agents/workspace-trait.md`]: https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/agents/workspace-trait.md
 
@@ -116,14 +116,18 @@ mod chain;
 mod checkpoint;
 mod cloud;
 mod commit;
+mod commit_helpers;
 mod connectivity;
 mod context;
 mod development;
 mod development_prompt;
 mod io_agent;
 mod io_commit;
+mod json_artifact;
 mod lifecycle;
+mod parallel;
 mod planning;
+mod planning_helpers;
 mod rebase;
 pub(crate) mod retry_guidance;
 mod run_fix;
@@ -133,14 +137,108 @@ mod run_review_prompt;
 #[cfg(test)]
 mod tests;
 
+use crate::agents::session::audit::record_effect_check;
+use crate::agents::session::capability_gate::required_capabilities as effect_required_capabilities;
+use crate::agents::session::capability_gate::{check_effect_capability, is_ralph_internal_effect};
 use crate::phases::PhaseContext;
 use crate::prompts::{PromptHistoryEntry, PromptScopeKey};
 use crate::reducer::effect::{Effect, EffectHandler, EffectResult};
-use crate::reducer::event::{PipelineEvent, PipelinePhase};
+use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase};
 use crate::reducer::state::PipelineState;
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::hash::BuildHasher;
+
+fn find_first_denied_capability(
+    session: &crate::agents::session::AgentSession,
+    required_caps: &[crate::agents::session::Capability],
+) -> String {
+    required_caps
+        .iter()
+        .find(|cap| {
+            !matches!(
+                session.check_capability(**cap),
+                crate::agents::session::PolicyOutcome::Approved
+            )
+        })
+        .map(|c| c.identifier().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn current_unix_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn make_capability_denied_event(
+    session: &crate::agents::session::AgentSession,
+    required_caps: &[crate::agents::session::Capability],
+    reason: String,
+) -> PipelineEvent {
+    let denied_capability = find_first_denied_capability(session, required_caps);
+    let role = session.drain.into_role();
+    PipelineEvent::Agent(AgentEvent::CapabilityDenied {
+        role,
+        capability: denied_capability,
+        reason,
+    })
+}
+
+fn audit_and_check_outcome(
+    session: &crate::agents::session::AgentSession,
+    effect: &Effect,
+    required_caps: &[crate::agents::session::Capability],
+    audit_trail: &crate::agents::session::AuditTrail,
+) -> (
+    crate::agents::session::AuditTrail,
+    crate::agents::session::PolicyOutcome,
+) {
+    let outcome = check_effect_capability(session, effect);
+    let timestamp = current_unix_timestamp();
+    let effect_name = crate::agents::session::capability_gate::effect_name(effect);
+    let new_trail = record_effect_check(
+        audit_trail,
+        &session.session_id,
+        timestamp,
+        &effect_name,
+        required_caps,
+        &outcome,
+    );
+    (new_trail, outcome)
+}
+
+fn effect_required_caps_if_gateable(
+    effect: &Effect,
+) -> Option<Vec<crate::agents::session::Capability>> {
+    if is_ralph_internal_effect(effect) {
+        return None;
+    }
+    let caps = effect_required_capabilities(effect);
+    if caps.is_empty() {
+        None
+    } else {
+        Some(caps)
+    }
+}
+
+fn check_capability_gate(effect: &Effect, ctx: &mut PhaseContext<'_>) -> Option<EffectResult> {
+    let required_caps = effect_required_caps_if_gateable(effect)?;
+    let session = ctx.active_session.as_ref()?;
+    let (new_trail, outcome) =
+        audit_and_check_outcome(session, effect, &required_caps, &ctx.audit_trail);
+    ctx.audit_trail = new_trail;
+    if let crate::agents::session::PolicyOutcome::Denied { reason } = outcome {
+        return Some(EffectResult::event(make_capability_denied_event(
+            session,
+            &required_caps,
+            reason,
+        )));
+    }
+    None
+}
 
 fn execute_backoff_wait(
     ctx: &mut PhaseContext<'_>,
@@ -247,6 +345,10 @@ impl MainEffectHandler {
 
 impl EffectHandler<'_> for MainEffectHandler {
     fn execute(&mut self, effect: Effect, ctx: &mut PhaseContext<'_>) -> Result<EffectResult> {
+        if let Some(denied) = check_capability_gate(&effect, ctx) {
+            self.event_log.push(denied.event.clone());
+            return Ok(denied);
+        }
         let result = self.execute_effect(effect, ctx)?;
         self.event_log.push(result.event.clone());
         self.event_log
@@ -306,13 +408,21 @@ impl MainEffectHandler {
         model: Option<String>,
         prompt: String,
     ) -> Result<EffectResult> {
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults, so the pre-generated prompt
+        // is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
         self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::from(role),
             role,
             &agent,
             model.as_deref(),
-            prompt,
+            |session: &crate::agents::session::AgentSession| {
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                prompt.clone()
+            },
         )
     }
 
@@ -330,6 +440,32 @@ impl MainEffectHandler {
             Effect::ReportAgentChainExhausted { role, phase, cycle } => Err(
                 crate::reducer::event::ErrorEvent::AgentChainExhausted { role, phase, cycle }
                     .into(),
+            ),
+            e => self.execute_parallel_or_phase_effect(e, ctx),
+        }
+    }
+
+    fn execute_parallel_or_phase_effect(
+        &mut self,
+        effect: Effect,
+        ctx: &mut PhaseContext<'_>,
+    ) -> Result<EffectResult> {
+        match effect {
+            Effect::EvaluateParallelPlan { plan } => {
+                crate::reducer::boundary::parallel::evaluate_parallel_plan(ctx, &plan)
+            }
+            Effect::DispatchParallelWorkers { plan } => {
+                crate::reducer::boundary::parallel::dispatch_parallel_workers(ctx, &plan)
+            }
+            Effect::InvokeParallelVerifier {
+                plan,
+                worker_results,
+                iteration,
+            } => crate::reducer::boundary::parallel::invoke_parallel_verifier(
+                ctx,
+                &plan,
+                &worker_results,
+                iteration,
             ),
             e => self.execute_phase_effect(e, ctx),
         }
@@ -605,7 +741,7 @@ impl MainEffectHandler {
                 message,
                 files,
                 excluded_files,
-            } => Self::create_commit(ctx, message, &files, &excluded_files),
+            } => self.execute_create_commit_effect(ctx, message, files, excluded_files),
             Effect::SkipCommit { reason } => Ok(Self::skip_commit(ctx, reason)),
             Effect::CheckResidualFiles { pass } => Self::check_residual_files(ctx, pass),
             Effect::CheckUncommittedChangesBeforeTermination => {
@@ -613,6 +749,20 @@ impl MainEffectHandler {
             }
             _ => unreachable!("execute_commit_effect called with non-commit effect"),
         }
+    }
+
+    fn execute_create_commit_effect(
+        &mut self,
+        ctx: &PhaseContext<'_>,
+        message: String,
+        files: Vec<String>,
+        excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
+    ) -> Result<EffectResult> {
+        debug_assert!(
+            self.state.create_commit_boundary_invariants_hold(&message),
+            "CreateCommit invariant violation: commit must execute only from archived, reducer-generated CommitMessage state"
+        );
+        Self::create_commit(ctx, message, &files, &excluded_files)
     }
 
     fn execute_rebase_effect(

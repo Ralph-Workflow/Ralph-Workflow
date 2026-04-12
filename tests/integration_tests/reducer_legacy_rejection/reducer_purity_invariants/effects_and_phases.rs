@@ -93,6 +93,7 @@ fn test_effects_are_single_task() {
                 files: vec!["fix_result.xml".to_string()].into_boxed_slice(),
             },
             Effect::InvokeFixAgent { pass: 0 },
+            Effect::InvokeFixAnalysisAgent { pass: 0 },
             Effect::ExtractFixResultXml { pass: 0 },
             Effect::ValidateFixResultXml { pass: 0 },
             Effect::ApplyFixOutcome { pass: 0 },
@@ -194,6 +195,32 @@ fn test_effects_are_single_task() {
             },
             Effect::CheckUncommittedChangesBeforeTermination,
             Effect::CheckResidualFiles { pass: 1 },
+            // Phase 4: Parallel worker effects
+            Effect::EvaluateParallelPlan {
+                plan: ralph_workflow::agents::session::ParallelPlan {
+                    parent_plan_id: "test-plan".to_string(),
+                    work_units: vec![],
+                },
+            },
+            Effect::DispatchParallelWorkers {
+                plan: ralph_workflow::agents::session::ParallelPlan {
+                    parent_plan_id: "test-plan".to_string(),
+                    work_units: vec![],
+                },
+            },
+            Effect::WriteTimeoutContext {
+                role: AgentRole::Developer,
+                logfile_path: "test.log".to_string(),
+                context_path: ".agent/tmp/timeout_context_1.txt".to_string(),
+            },
+            Effect::InvokeParallelVerifier {
+                plan: ralph_workflow::agents::session::ParallelPlan {
+                    parent_plan_id: "test-plan".to_string(),
+                    work_units: vec![],
+                },
+                worker_results: vec![],
+                iteration: 0,
+            },
             Effect::CheckNetworkConnectivity,
             Effect::PollForConnectivity { interval_ms: 5000 },
         ];
@@ -276,6 +303,10 @@ fn test_effects_are_single_task() {
                 Effect::EmitCompletionMarkerAndTerminate { .. } => "emit-completion",
                 Effect::CheckUncommittedChangesBeforeTermination => "check-uncommitted",
                 Effect::CheckResidualFiles { .. } => "check-residual-files",
+                // Phase 4: Parallel worker effects
+                Effect::EvaluateParallelPlan { .. } => "evaluate-parallel-plan",
+                Effect::DispatchParallelWorkers { .. } => "dispatch-parallel-workers",
+                Effect::InvokeParallelVerifier { .. } => "invoke-parallel-verifier",
                 Effect::CheckNetworkConnectivity => "check-connectivity",
                 Effect::PollForConnectivity { .. } => "poll-connectivity",
             };
@@ -284,8 +315,8 @@ fn test_effects_are_single_task() {
         // Variant count guard: catches additions/removals even if the match is updated.
         assert_eq!(
             effects.len(),
-            75,
-            "Expected 75 Effect instances; update this test if variants were added or removed"
+            80,
+            "Expected 80 Effect instances; update this test if variants were added or removed"
         );
     });
 }

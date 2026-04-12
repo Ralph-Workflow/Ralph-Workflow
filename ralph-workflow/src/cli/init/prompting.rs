@@ -3,7 +3,7 @@
 ///
 /// Requires stdin to be a terminal and at least one output stream (stdout/stderr)
 /// to be a terminal so prompts are visible.
-pub fn can_prompt_user() -> bool {
+pub(crate) fn can_prompt_user() -> bool {
     prompt_output_target().is_some()
 }
 
@@ -38,7 +38,7 @@ fn with_prompt_writer<T>(
     }
 }
 
-pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::Result<bool> {
+pub(crate) fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::Result<bool> {
     let Some(target) = prompt_output_target() else {
         return Ok(false);
     };
@@ -66,7 +66,7 @@ pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyh
 ///
 /// Returns `Some(template_name)` if the user selected a template,
 /// or `None` if the user declined or entered invalid input.
-pub fn prompt_for_template(colors: Colors) -> Option<String> {
+pub(crate) fn prompt_for_template(colors: Colors) -> Option<String> {
     let target = prompt_output_target()?;
     if with_prompt_writer(target, |w| {
         let _ = writeln!(

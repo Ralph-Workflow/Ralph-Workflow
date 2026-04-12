@@ -53,17 +53,17 @@
 //! - [`errors`] - Error builder functions for consistent error messages
 //! - [`tolerant_parsing`] - Tolerant enum normalization and synonym tables for lenient validation
 
-pub mod errors;
-pub mod readers;
-pub mod tolerant_parsing;
-pub mod validation;
+pub(super) mod errors;
+pub(super) mod readers;
+pub(super) mod tolerant_parsing;
+pub(super) mod validation;
 
 // Re-export commonly used functions for backward compatibility
-pub use errors::{
+pub(crate) use errors::{
     duplicate_element_error, format_content_preview, malformed_xml_error, missing_required_error,
     text_outside_tags_error,
 };
-pub use readers::{
+pub(crate) use readers::{
     create_reader, parse_skills_mcp, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
 };
-pub use validation::check_for_illegal_xml_characters;
+pub(crate) use validation::check_for_illegal_xml_characters;

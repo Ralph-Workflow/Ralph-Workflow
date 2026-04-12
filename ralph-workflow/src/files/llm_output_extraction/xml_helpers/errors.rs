@@ -34,7 +34,7 @@ use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValid
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn missing_required_error(
+pub(crate) fn missing_required_error(
     element_name: &str,
     parent_element: &str,
     example: Option<&str>,
@@ -61,7 +61,10 @@ pub fn missing_required_error(
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn duplicate_element_error(element_name: &str, parent_element: &str) -> XsdValidationError {
+pub(crate) fn duplicate_element_error(
+    element_name: &str,
+    parent_element: &str,
+) -> XsdValidationError {
     XsdValidationError {
         error_type: XsdErrorType::UnexpectedElement,
         element_path: format!("{parent_element}/{element_name}"),
@@ -82,7 +85,7 @@ pub fn duplicate_element_error(element_name: &str, parent_element: &str) -> XsdV
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn text_outside_tags_error(text: &str, parent_element: &str) -> XsdValidationError {
+pub(crate) fn text_outside_tags_error(text: &str, parent_element: &str) -> XsdValidationError {
     // Use truncate_text for UTF-8 safe truncation (53 chars = ~50 visible + "...")
     let display_text = truncate_text(text, 53);
 
@@ -104,7 +107,7 @@ pub fn text_outside_tags_error(text: &str, parent_element: &str) -> XsdValidatio
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn format_content_preview(content: &str) -> String {
+pub(crate) fn format_content_preview(content: &str) -> String {
     if content.is_empty() {
         "empty content".to_string()
     } else {
@@ -126,7 +129,7 @@ pub fn format_content_preview(content: &str) -> String {
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn malformed_xml_error(error: &quick_xml::Error) -> XsdValidationError {
+pub(crate) fn malformed_xml_error(error: &quick_xml::Error) -> XsdValidationError {
     let error_str = error.to_string();
 
     // Check if this is likely an illegal character issue (even though we pre-validate)

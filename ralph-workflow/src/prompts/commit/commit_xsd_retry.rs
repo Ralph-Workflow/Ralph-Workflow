@@ -128,7 +128,7 @@ pub fn prompt_commit_xsd_retry_with_log(
         .registry()
         .get_template("commit_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/commit_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+    let base_variables: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "COMMIT_MESSAGE_XML_PATH",
@@ -143,10 +143,28 @@ pub fn prompt_commit_xsd_retry_with_log(
             workspace.absolute_str(".agent/tmp/commit_message.xsd"),
         ),
     ]);
+    let capabilities = crate::agents::session::CapabilitySet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Commit,
+    );
+    let policy_flags = crate::agents::session::PolicyFlagSet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Commit,
+    );
+    let variables: HashMap<String, String> = base_variables
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(crate::prompts::template_variables::capability_template_variables(
+            &capabilities,
+            &policy_flags,
+        ))
+        .collect();
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     let template = Template::new(&template_content);
     template
-        .render_with_log(template_name, &variables, &partials)
+        .render_with_log(template_name, &variables_ref, &partials)
         .map(|mut rendered| {
             if !diagnostic_prefix.is_empty() {
                 rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
@@ -310,7 +328,7 @@ pub fn prompt_commit_xsd_retry_with_context(
         .registry()
         .get_template("commit_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/commit_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+    let base_variables: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "COMMIT_MESSAGE_XML_PATH",
@@ -325,10 +343,28 @@ pub fn prompt_commit_xsd_retry_with_context(
             workspace.absolute_str(".agent/tmp/commit_message.xsd"),
         ),
     ]);
+    let capabilities = crate::agents::session::CapabilitySet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Commit,
+    );
+    let policy_flags = crate::agents::session::PolicyFlagSet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Commit,
+    );
+    let variables: HashMap<String, String> = base_variables
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(crate::prompts::template_variables::capability_template_variables(
+            &capabilities,
+            &policy_flags,
+        ))
+        .collect();
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     let template = Template::new(&template_content);
     let rendered_prompt = template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "XSD VALIDATION FAILED - FIX XML ONLY\n\n\

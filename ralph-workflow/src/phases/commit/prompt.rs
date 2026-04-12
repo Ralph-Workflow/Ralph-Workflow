@@ -177,11 +177,16 @@ fn build_commit_prompt(
     working_diff: &str,
     workspace: &dyn Workspace,
 ) -> (String, crate::prompts::SubstitutionLog) {
+    let (capabilities, policy_flags) = crate::prompts::SessionCapabilities::from_drain(
+        crate::agents::session::SessionDrain::Commit,
+    );
+    let session_caps = crate::prompts::SessionCapabilities::new(&capabilities, &policy_flags);
     let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
         template_context,
         working_diff,
         workspace,
         "commit_message_xml",
+        session_caps,
     );
     (rendered.content, rendered.log)
 }
@@ -193,4 +198,18 @@ fn stderr_contains_auth_error(stderr: &str) -> bool {
         || lower.contains("invalid key")
         || lower.contains("unauthorized")
         || lower.contains("permission denied")
+}
+
+fn commit_submission_retry_prompt(base_prompt: &str, submit_tool_name: &str) -> String {
+    format!(
+        "{base_prompt}\n\n## Submission Retry (MANDATORY)\n\
+You already analyzed the diff and produced the commit payload, but Ralph did not receive a submitted artifact.\n\
+Do NOT print the commit message or JSON to stdout again.\n\
+Do NOT summarize your answer in plain text.\n\
+Do NOT run git commit or any repository-writing command yourself; commit execution is orchestrator-owned.\n\
+Call `{submit_tool_name}` now to submit the commit artifact.\n\
+Call `{submit_tool_name}` now to submit the artifact.\n\
+If you already generated the JSON/content, reuse it exactly and submit it now.\n\
+Only if the tool is genuinely unavailable after trying should you explain that specific tool failure."
+    )
 }

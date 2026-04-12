@@ -177,8 +177,8 @@ pub use event::CheckpointTrigger;
 
 // Re-export category enums for external use
 pub use event::{
-    AgentEvent, CommitEvent, DevelopmentEvent, LifecycleEvent, PlanningEvent, RebaseEvent,
-    ReviewEvent, TimeoutOutputKind,
+    AgentEvent, CommitEvent, DevelopmentEvent, PlanningEvent, RebaseEvent, ReviewEvent,
+    TimeoutOutputKind,
 };
 
 #[cfg(test)]

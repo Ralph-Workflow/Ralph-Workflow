@@ -18,12 +18,12 @@
 /// - `iteration` is always `<= total_iterations`
 /// - `reviewer_pass` is always `<= total_reviewer_passes`
 /// - `agent_chain` maintains fallback order and retry counts
-/// - State transitions only occur through the [`reduce`](super::reduce) function
+/// - State transitions only occur through the `reduce` function
 ///
 /// # See Also
 ///
-/// - [`reduce`](super::reduce) for state transitions
-/// - [`determine_next_effect`](super::determine_next_effect) for effect derivation
+/// - `reduce` for state transitions
+/// - `determine_next_effect` for effect derivation
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PipelineState {
     pub phase: PipelinePhase,
@@ -461,9 +461,68 @@ pub struct PipelineState {
     #[serde(default)]
     pub pr_number: Option<u32>,
 
+    // ========================================================================
+    // Phase 4: Parallel Worker State Fields
+    // ========================================================================
+    //
+    // Tracks parallel plan execution state for RFC-009 Phase 4 parallel workers.
+    // These fields manage the parallel plan lifecycle:
+    // parallel_plan -> EvaluateParallelPlan -> ParallelWorkersDispatched -> ParallelWorkerCompleted
+
+    /// The current parallel plan being evaluated or executed.
+    ///
+    /// Set when `ParallelPlanProduced` or `ParallelPlanValidated` is reduced.
+    /// Cleared when the parallel workflow completes or falls back to single-agent.
+    #[serde(default)]
+    pub parallel_plan: Option<crate::agents::session::ParallelPlan>,
+
+    /// Identities of workers that have been dispatched for the parallel plan.
+    ///
+    /// Set when `ParallelWorkersDispatched` is reduced.
+    /// Cleared when the parallel workflow completes or falls back.
+    #[serde(default)]
+    pub parallel_workers: Vec<crate::agents::session::WorkerIdentity>,
+
+    /// IDs of workers that have completed their work units.
+    ///
+    /// Updated when `ParallelWorkerCompleted` is reduced.
+    /// When all workers in `parallel_workers` have completed, verification is triggered.
+    #[serde(default)]
+    pub parallel_workers_completed: Vec<String>,
+
+    /// Reason for parallel plan rejection, if the plan was rejected.
+    ///
+    /// Set when `ParallelPlanRejected` is reduced.
+    /// Cleared when falling back to single-agent mode completes.
+    #[serde(default)]
+    pub parallel_plan_rejected_reason: Option<String>,
+
+    /// Whether the parallel plan has been validated and is ready for dispatch.
+    ///
+    /// Set to true when `ParallelPlanValidated` is reduced.
+    /// Set to false when `ParallelPlanProduced` is reduced (new plan needs evaluation).
+    /// Cleared when the parallel workflow completes or falls back.
+    #[serde(default)]
+    pub parallel_plan_validated: bool,
+
+    /// Whether the verifier has completed review of parallel worker outputs.
+    ///
+    /// Set to true when `VerifierCompleted` is reduced.
+    /// Used by the orchestration layer to determine the next action.
+    #[serde(default)]
+    pub parallel_verification_completed: bool,
+
+    /// Current iteration of the parallel verification loop.
+    ///
+    /// Incremented each time `ParallelWorkReworked` is reduced.
+    /// Used as a max-iteration guard to prevent infinite verification loops.
+    /// When this reaches the max verification iterations, the workflow falls back to single-agent.
+    #[serde(default)]
+    pub parallel_verification_iteration: u32,
+
     /// Reducer-owned prompt history for deterministic resume replay (RFC-007).
     ///
-    /// Maps `PromptScopeKey::to_string()` keys to [`PromptHistoryEntry`] values
+    /// Maps `PromptScopeKey::to_string()` keys to `PromptHistoryEntry` values
     /// containing the generated prompt and optional content-id for stale-replay detection.
     ///
     /// # Ownership Contract

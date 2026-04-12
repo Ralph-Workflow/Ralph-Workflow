@@ -1,23 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Fix Result XSD Schema
-  
-  Allows <code> elements within text content for escaping special characters
-  like <, >, and & (e.g., comparisons, generics, logical operators).
+  Fix Result XSD Schema (revised to match fix_result.schema.json)
+
+  Simple schema: required status enum and optional summary string.
+  No mixed content; all text fields are xs:string.
+  No ralph- prefixes.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  
-  <!-- Text with optional inline code elements -->
-  <xs:complexType name="TextWithCodeType" mixed="true">
-    <xs:choice minOccurs="0" maxOccurs="unbounded">
-      <xs:element name="code" type="xs:string"/>
-    </xs:choice>
-  </xs:complexType>
-  
-  <xs:element name="ralph-fix-result">
+
+  <xs:element name="fix-result">
     <xs:complexType>
       <xs:sequence>
-        <xs:element name="ralph-status">
+        <xs:element name="status">
           <xs:simpleType>
             <xs:restriction base="xs:string">
               <xs:enumeration value="all_issues_addressed"/>
@@ -26,7 +20,7 @@
             </xs:restriction>
           </xs:simpleType>
         </xs:element>
-        <xs:element name="ralph-summary" type="TextWithCodeType" minOccurs="0"/>
+        <xs:element name="summary" type="xs:string" minOccurs="0"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>

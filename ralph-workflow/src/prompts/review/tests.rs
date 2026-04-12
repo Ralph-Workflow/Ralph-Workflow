@@ -5,14 +5,18 @@
 /// Regression test: analysis status contract MUST include `completed`, `partial`, `failed`.
 #[test]
 fn test_analysis_status_contract_always_has_completed_partial_failed() {
+    use crate::agents::session::SessionDrain;
     use crate::prompts::analysis::generate_analysis_prompt;
     use crate::prompts::analysis::generate_fix_analysis_prompt;
+    use crate::prompts::template_variables::SessionCapabilities;
     use crate::workspace::MemoryWorkspace;
 
     let workspace = MemoryWorkspace::new_test();
+    let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+    let session_caps = SessionCapabilities::new(&caps, &flags);
 
     // Test analysis prompt
-    let analysis_prompt = generate_analysis_prompt("plan", "diff", false, &workspace);
+    let analysis_prompt = generate_analysis_prompt("plan", "diff", false, &workspace, session_caps);
     assert!(
         analysis_prompt.contains("completed"),
         "Analysis prompt must include 'completed' status"
@@ -27,8 +31,14 @@ fn test_analysis_status_contract_always_has_completed_partial_failed() {
     );
 
     // Test fix analysis prompt
-    let fix_analysis_prompt =
-        generate_fix_analysis_prompt("issues", "diff", "fix_result", false, &workspace);
+    let fix_analysis_prompt = generate_fix_analysis_prompt(
+        "issues",
+        "diff",
+        "fix_result",
+        false,
+        &workspace,
+        session_caps,
+    );
     assert!(
         fix_analysis_prompt.contains("completed"),
         "Fix analysis prompt must include 'completed' status"
@@ -46,11 +56,15 @@ fn test_analysis_status_contract_always_has_completed_partial_failed() {
 /// Regression test: planning XSD retry MUST enforce submission-fix-only behavior.
 #[test]
 fn test_planning_xsd_retry_enforces_submission_fix_only() {
+    use crate::agents::session::SessionDrain;
     use crate::prompts::developer::prompt_planning_xsd_retry_with_context;
+    use crate::prompts::template_variables::SessionCapabilities;
     use crate::workspace::MemoryWorkspace;
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+    let session_caps = SessionCapabilities::new(&caps, &flags);
 
     let result = prompt_planning_xsd_retry_with_context(
         &context,
@@ -58,6 +72,7 @@ fn test_planning_xsd_retry_enforces_submission_fix_only() {
         "XSD error: missing element",
         "<invalid xml",
         &workspace,
+        session_caps,
     );
 
     // Must say FIX XML ONLY or similar scope lock
@@ -94,20 +109,23 @@ fn test_planning_xsd_retry_enforces_submission_fix_only() {
 /// Regression test: developer iteration XSD retry MUST enforce submission-fix-only behavior.
 #[test]
 fn test_developer_iteration_xsd_retry_enforces_submission_fix_only() {
+    use crate::agents::session::SessionDrain;
     use crate::prompts::developer::prompt_developer_iteration_xsd_retry_with_context;
+    use crate::prompts::template_variables::SessionCapabilities;
     use crate::workspace::MemoryWorkspace;
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+    let session_caps = SessionCapabilities::new(&caps, &flags);
 
     let result = prompt_developer_iteration_xsd_retry_with_context(
         &context,
-        "original prompt",
-        "plan content",
         "XSD error: invalid element",
         "<invalid xml",
         &workspace,
         false,
+        session_caps,
     );
 
     // Must say FIX XML ONLY or similar scope lock
@@ -145,7 +163,7 @@ fn test_planning_prompt_has_validation_checklist() {
     let partials = crate::prompts::partials::get_shared_partials();
     let template_content = include_str!("../templates/planning_xml.txt");
     let template = crate::prompts::Template::new(template_content);
-    let variables = std::collections::HashMap::from([
+    let base_variables = std::collections::HashMap::from([
         ("PROMPT", "test prompt".to_string()),
         (
             "PLAN_XML_PATH",
@@ -156,9 +174,25 @@ fn test_planning_prompt_has_validation_checklist() {
             workspace.absolute_str(".agent/tmp/plan.xsd"),
         ),
     ]);
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Planning);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Planning);
+    let variables: std::collections::HashMap<String, String> = base_variables
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(
+            crate::prompts::template_variables::capability_template_variables(
+                &capabilities,
+                &policy_flags,
+            ),
+        )
+        .collect();
+    let variables_ref: std::collections::HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     let result = template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_default();
 
     // Must have explicit required sections
@@ -193,17 +227,22 @@ fn test_planning_prompt_has_validation_checklist() {
 /// Regression test: review prompt MUST prioritize and make issues actionable.
 #[test]
 fn test_review_prompt_makes_issues_actionable() {
+    use crate::agents::session::SessionDrain;
+    use crate::prompts::template_variables::SessionCapabilities;
     use crate::workspace::MemoryWorkspace;
     use std::path::PathBuf;
 
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
+    let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&caps, &flags);
     let result = prompt_review_xml_with_context(
         &context,
         "test prompt",
         "test plan",
         "test changes",
         &workspace,
+        session_caps,
     );
 
     // Must prioritize issues
@@ -231,6 +270,8 @@ fn test_review_prompt_makes_issues_actionable() {
 }
 
 use super::*;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::prompts::template_variables::SessionCapabilities;
 use crate::workspace::MemoryWorkspace;
 use std::path::PathBuf;
 
@@ -238,12 +279,16 @@ use std::path::PathBuf;
 fn test_prompt_review_xml_with_context() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let result = prompt_review_xml_with_context(
         &context,
         "test prompt",
         "test plan",
         "test changes",
         &workspace,
+        session_caps,
     );
     // prompt_content is no longer embedded - reviewer reads PROMPT.md.backup directly
     assert!(!result.contains("test prompt"));
@@ -251,7 +296,10 @@ fn test_prompt_review_xml_with_context() {
     assert!(result.contains("test plan"));
     assert!(result.contains("test changes"));
     assert!(result.contains("REVIEW MODE"));
-    assert!(result.contains("<ralph-issues>"));
+    assert!(
+        result.contains("ralph_submit_artifact"),
+        "review_xml should require MCP artifact submission"
+    );
     assert!(
         result.contains("Focus on high-signal, user-impacting issues"),
         "review_xml should prioritize high-signal, user-impacting findings"
@@ -265,30 +313,18 @@ fn test_prompt_review_xml_with_context() {
         "review_xml should provide conditional guidance for parallel review agents"
     );
 
-    // Read-only modes: reviewer must still write exactly one XML file.
-    assert!(
-        result.contains("explicitly authorized") && result.contains("EXACTLY ONE file"),
-        "review_xml should explicitly authorize writing exactly one XML file"
-    );
+    // Submission is mandatory via MCP tool
     assert!(
         result.contains("MANDATORY"),
-        "review_xml should mark XML file write mandatory"
+        "review_xml should mark submission mandatory"
     );
     assert!(
-        result.contains("Not writing") && result.contains("FAILURE"),
-        "review_xml should say not writing XML is a failure"
+        result.contains("Not submitting") && result.contains("FAILURE"),
+        "review_xml should say not submitting is a failure"
     );
     assert!(
-        result.contains("does not conform") && result.contains("XSD") && result.contains("FAILURE"),
-        "review_xml should say non-XSD XML is a failure"
-    );
-    assert!(
-        result.contains("READ-ONLY")
-            && (result.contains("EXCEPT FOR writing")
-                || result.contains("except for writing")
-                || result.contains("Except for writing"))
-            && result.contains("issues.xml"),
-        "review_xml should be read-only except for writing issues.xml"
+        result.contains("READ-ONLY"),
+        "review_xml should be read-only"
     );
 
     assert!(
@@ -314,7 +350,11 @@ fn test_prompt_review_xml_with_context() {
 fn test_prompt_review_xml_with_context_allows_empty_plan_and_changes() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
-    let result = prompt_review_xml_with_context(&context, "prompt", "", "", &workspace);
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
+    let result =
+        prompt_review_xml_with_context(&context, "prompt", "", "", &workspace, session_caps);
 
     assert!(
         !result.contains("{{PLAN}}"),
@@ -338,8 +378,17 @@ fn test_prompt_review_xml_with_context_allows_empty_plan_and_changes() {
 fn test_prompt_review_xml_with_context_uses_inline_plan_and_changes_when_present() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
-    let result =
-        prompt_review_xml_with_context(&context, "prompt", "plan here", "diff here", &workspace);
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
+    let result = prompt_review_xml_with_context(
+        &context,
+        "prompt",
+        "plan here",
+        "diff here",
+        &workspace,
+        session_caps,
+    );
 
     assert!(result.contains("plan here"));
     assert!(result.contains("diff here"));
@@ -358,14 +407,15 @@ fn test_prompt_review_xml_with_context_uses_inline_plan_and_changes_when_present
 fn test_prompt_review_xsd_retry_with_context() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let result = prompt_review_xsd_retry_with_context(
         &context,
-        "test prompt",
-        "test plan",
-        "test changes",
         "XSD error",
         "last output",
         &workspace,
+        session_caps,
     );
     assert!(result.contains("XSD error"));
     assert!(result.contains(".agent/tmp/issues.xml"));
@@ -428,6 +478,9 @@ fn test_prompt_review_xsd_retry_with_context() {
 fn test_prompt_fix_xml_with_context() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let result = prompt_fix_xml_with_context(
         &context,
         "test prompt",
@@ -435,10 +488,14 @@ fn test_prompt_fix_xml_with_context() {
         "test issues",
         &[],
         &workspace,
+        session_caps,
     );
     assert!(result.contains("test issues"));
     assert!(result.contains("FIX MODE"));
-    assert!(result.contains("<ralph-fix-result>"));
+    assert!(
+        result.contains("ralph_submit_artifact"),
+        "fix_mode_xml should reference MCP submission tool"
+    );
     assert!(
         result.contains("Run relevant unit/integration tests"),
         "fix_mode_xml should require running relevant tests beyond listed issues"
@@ -491,12 +548,16 @@ fn test_prompt_fix_xml_with_context() {
 fn test_prompt_fix_xsd_retry_with_context() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let result = prompt_fix_xsd_retry_with_context(
         &context,
         "test issues",
         "XSD error",
         "last output",
         &workspace,
+        session_caps,
     );
     assert!(result.contains("XSD error"));
     assert!(result.contains(".agent/tmp/fix_result.xml"));
@@ -516,13 +577,16 @@ fn test_prompt_review_xml_with_references_small_content() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
 
     let refs = PromptContentBuilder::new(&workspace)
         .with_plan("Small plan content".to_string())
         .with_diff("Small diff content".to_string(), "abc123")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, session_caps);
 
     // Should embed content inline
     assert!(result.contains("Small plan content"));
@@ -537,6 +601,9 @@ fn test_prompt_review_xml_with_references_large_plan() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let large_plan = "p".repeat(MAX_INLINE_CONTENT_SIZE + 1);
 
     let refs = PromptContentBuilder::new(&workspace)
@@ -544,7 +611,7 @@ fn test_prompt_review_xml_with_references_large_plan() {
         .with_diff("Small diff".to_string(), "abc123")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, session_caps);
 
     // Should reference PLAN.md file, not embed content
     assert!(result.contains(".agent/PLAN.md"));
@@ -559,6 +626,9 @@ fn test_prompt_review_xml_with_references_large_diff() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let large_diff = "d".repeat(MAX_INLINE_CONTENT_SIZE + 1);
 
     let refs = PromptContentBuilder::new(&workspace)
@@ -566,7 +636,7 @@ fn test_prompt_review_xml_with_references_large_diff() {
         .with_diff(large_diff, "abc123def")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, session_caps);
 
     // Should instruct to use git diff fallback commands, not embed content
     assert!(result.contains("git diff abc123def"));
@@ -581,6 +651,9 @@ fn test_prompt_review_xml_with_references_both_large() {
 
     let workspace = MemoryWorkspace::new_test();
     let context = TemplateContext::default();
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
+    let session_caps = SessionCapabilities::new(&capabilities, &policy_flags);
     let large_plan = "p".repeat(MAX_INLINE_CONTENT_SIZE + 1);
     let large_diff = "d".repeat(MAX_INLINE_CONTENT_SIZE + 1);
 
@@ -589,7 +662,7 @@ fn test_prompt_review_xml_with_references_both_large() {
         .with_diff(large_diff, "start123")
         .build();
 
-    let result = prompt_review_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_review_xml_with_references(&context, &refs, &workspace, session_caps);
 
     // Both should be referenced by file/git command
     assert!(result.contains(".agent/PLAN.md"));

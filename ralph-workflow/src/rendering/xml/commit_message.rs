@@ -70,7 +70,7 @@ fn trim_opt(s: Option<String>) -> Option<String> {
 }
 
 /// Render commit message XML with structured visual output.
-pub fn render(content: &str) -> String {
+pub(super) fn render(content: &str) -> String {
     let header = build_commit_header();
 
     let skip_reason = trim_opt(extract_tag_content(content, "ralph-skip"));

@@ -1,6 +1,6 @@
 //! Tests for monitor integration with file activity detection.
 
-use super::super::runtime::MonitorConfig;
+use super::super::runtime::{monitor_idle_timeout_with_interval_and_kill_config, MonitorConfig};
 use super::super::*;
 use crate::executor::{AgentChild, MockAgentChild, MockProcessExecutor};
 use crate::workspace::{DirEntry, MemoryWorkspace, Workspace};

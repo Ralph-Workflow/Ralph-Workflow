@@ -64,26 +64,33 @@ impl ConcurrentOperation {
 /// or `Ok(Some(operation))` with the type of operation detected.
 /// Returns an error if unable to check the repository state.
 ///
-/// # Example
-///
-/// ```ignore
-/// use ralph_workflow::git_helpers::rebase::detect_concurrent_git_operations;
-///
-/// match detect_concurrent_git_operations() {
-///     Ok(None) => println!("No concurrent operations detected"),
-///     Ok(Some(op)) => println!("Concurrent operation detected: {}", op.description()),
-///     Err(e) => eprintln!("Error checking: {e}"),
-/// }
-/// ```
-///
 /// # Errors
 ///
 /// Returns an error if the git repository cannot be accessed or filesystem operations fail.
 #[cfg(any(test, feature = "test-utils"))]
 pub fn detect_concurrent_git_operations() -> io::Result<Option<ConcurrentOperation>> {
+    let repo_root = std::env::current_dir()?;
+    detect_concurrent_git_operations_at(&repo_root)
+}
+
+/// Detect concurrent Git operations that would block a rebase using explicit repo root.
+///
+/// This is the explicit path variant that should be used in tests and
+/// production code where the repository path is known.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn detect_concurrent_git_operations_at(
+    repo_root: &std::path::Path,
+) -> io::Result<Option<ConcurrentOperation>> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    detect_concurrent_git_operations_impl(&repo)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn detect_concurrent_git_operations_impl(
+    repo: &git2::Repository,
+) -> io::Result<Option<ConcurrentOperation>> {
     use std::fs;
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
 
     // Check for rebase in progress (multiple possible state directories)
@@ -215,9 +222,24 @@ impl CleanupResult {
 /// Returns an error if the git repository cannot be accessed or filesystem operations fail.
 #[cfg(any(test, feature = "test-utils"))]
 pub fn cleanup_stale_rebase_state() -> io::Result<CleanupResult> {
+    let repo_root = std::env::current_dir()?;
+    cleanup_stale_rebase_state_at(&repo_root)
+}
+
+/// Clean up stale rebase state files using explicit repo root.
+///
+/// This is the explicit path variant that should be used in tests and
+/// production code where the repository path is known.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn cleanup_stale_rebase_state_at(repo_root: &std::path::Path) -> io::Result<CleanupResult> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    cleanup_stale_rebase_state_impl(&repo)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn cleanup_stale_rebase_state_impl(repo: &git2::Repository) -> io::Result<CleanupResult> {
     use std::fs;
 
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
 
     // List of possible stale rebase state files/directories
@@ -335,6 +357,7 @@ fn validate_state_file(path: &Path) -> io::Result<bool> {
 ///
 /// # Arguments
 ///
+/// * `executor` - Process executor for dependency injection
 /// * `error_kind` - The error that occurred
 /// * `phase` - The current rebase phase
 /// * `phase_error_count` - Number of errors in the current phase
@@ -345,24 +368,39 @@ fn validate_state_file(path: &Path) -> io::Result<bool> {
 /// `Ok(false)` if recovery was attempted but operation should still abort,
 /// or an error if recovery itself failed.
 ///
-/// # Example
-///
-/// ```ignore
-/// use ralph_workflow::git_helpers::rebase::{attempt_automatic_recovery, RebaseErrorKind};
-/// use ralph_workflow::git_helpers::rebase_checkpoint::RebasePhase;
-///
-/// match attempt_automatic_recovery(&executor, &RebaseErrorKind::Unknown { details: "test".to_string() }, &RebasePhase::ConflictDetected, 2) {
-///     Ok(true) => println!("Recovery succeeded, can continue"),
-///     Ok(false) => println!("Recovery attempted, should abort"),
-///     Err(e) => println!("Recovery failed: {e}"),
-/// }
-/// ```
-///
 /// # Errors
 ///
 /// Returns an error if recovery operations fail.
 #[cfg(any(test, feature = "test-utils"))]
 pub fn attempt_automatic_recovery(
+    executor: &dyn crate::executor::ProcessExecutor,
+    error_kind: &RebaseErrorKind,
+    phase: &crate::git_helpers::rebase_checkpoint::RebasePhase,
+    phase_error_count: u32,
+) -> io::Result<bool> {
+    let repo_root = std::env::current_dir()?;
+    attempt_automatic_recovery_at(&repo_root, executor, error_kind, phase, phase_error_count)
+}
+
+/// Attempt automatic recovery from a rebase failure using explicit repo root.
+///
+/// This is the explicit path variant that should be used in tests and
+/// production code where the repository path is known.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn attempt_automatic_recovery_at(
+    repo_root: &std::path::Path,
+    executor: &dyn crate::executor::ProcessExecutor,
+    error_kind: &RebaseErrorKind,
+    phase: &crate::git_helpers::rebase_checkpoint::RebasePhase,
+    phase_error_count: u32,
+) -> io::Result<bool> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    attempt_automatic_recovery_impl(&repo, executor, error_kind, phase, phase_error_count)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn attempt_automatic_recovery_impl(
+    repo: &git2::Repository,
     executor: &dyn crate::executor::ProcessExecutor,
     error_kind: &RebaseErrorKind,
     phase: &crate::git_helpers::rebase_checkpoint::RebasePhase,
@@ -388,15 +426,14 @@ pub fn attempt_automatic_recovery(
     }
 
     // Level 1: Try cleaning stale state
-    if cleanup_stale_rebase_state().is_ok() {
+    if cleanup_stale_rebase_state_impl(repo).is_ok() {
         // If we cleaned something, try to validate the repo is in a good state
-        if validate_git_state().is_ok() {
+        if validate_git_state_impl(repo).is_ok() {
             return Ok(true);
         }
     }
 
     // Level 2: Try removing lock files
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
     let lock_files = ["index.lock", "packed-refs.lock", "HEAD.lock"];
     let removed_any = lock_files.iter().any(|lock_file| {
@@ -404,7 +441,7 @@ pub fn attempt_automatic_recovery(
         lock_path.exists() && std::fs::remove_file(&lock_path).is_ok()
     });
 
-    if removed_any && validate_git_state().is_ok() {
+    if removed_any && validate_git_state_impl(repo).is_ok() {
         return Ok(true);
     }
 
@@ -415,7 +452,7 @@ pub fn attempt_automatic_recovery(
 
         if abort_result.is_ok() {
             // Check if state is now clean
-            if validate_git_state().is_ok() {
+            if validate_git_state_impl(repo).is_ok() {
                 return Ok(true);
             }
         }
@@ -436,8 +473,22 @@ pub fn attempt_automatic_recovery(
 /// or an error describing the validation failure.
 #[cfg(any(test, feature = "test-utils"))]
 pub fn validate_git_state() -> io::Result<()> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = std::env::current_dir()?;
+    validate_git_state_at(&repo_root)
+}
 
+/// Validate the overall Git repository state for corruption using explicit repo root.
+///
+/// This is the explicit path variant that should be used in tests and
+/// production code where the repository path is known.
+#[cfg(any(test, feature = "test-utils"))]
+pub fn validate_git_state_at(repo_root: &std::path::Path) -> io::Result<()> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    validate_git_state_impl(&repo)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn validate_git_state_impl(repo: &git2::Repository) -> io::Result<()> {
     // Check if the repository head is valid
     let _ = repo.head().map_err(|e| {
         io::Error::new(

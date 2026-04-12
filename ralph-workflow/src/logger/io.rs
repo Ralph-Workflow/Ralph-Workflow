@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-pub fn append_to_file(path: &str, msg: &str) -> std::io::Result<()> {
+pub(super) fn append_to_file(path: &str, msg: &str) -> std::io::Result<()> {
     if let Some(parent) = Path::new(path).parent() {
         fs::create_dir_all(parent)?;
     }

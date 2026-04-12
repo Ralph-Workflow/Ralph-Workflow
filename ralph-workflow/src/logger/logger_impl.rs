@@ -12,7 +12,7 @@ use crate::logger::{
 use crate::workspace::Workspace;
 use std::sync::Arc;
 
-use crate::logger::ansi_stripper::strip_ansi_codes;
+use crate::logger::ansi::strip_ansi_codes;
 use crate::logger::file_writer::append_to_file;
 
 /// Logger for Ralph output.

@@ -1,3 +1,50 @@
+/// Perform a rebase onto the specified upstream branch using explicit repo root.
+///
+/// This function rebases the current branch onto the specified upstream branch.
+/// It handles the full rebase process including conflict detection and
+/// classifies all known failure modes.
+///
+/// # Arguments
+///
+/// * `repo_root` - Path to the repository root
+/// * `upstream_branch` - The branch to rebase onto (e.g., "main", "origin/main")
+/// * `executor` - Process executor for dependency injection
+///
+/// # Returns
+///
+/// Returns `Ok(RebaseResult)` indicating the outcome, or an error if:
+/// - The repository cannot be opened
+/// - The rebase operation fails in an unexpected way
+///
+/// # Edge Cases Handled
+///
+/// - Empty repository (no commits) - Returns `Ok(RebaseResult::NoOp)` with reason
+/// - Unborn branch - Returns `Ok(RebaseResult::NoOp)` with reason
+/// - Already up-to-date - Returns `Ok(RebaseResult::NoOp)` with reason
+/// - Unrelated branches (no shared ancestor) - Returns `Ok(RebaseResult::NoOp)` with reason
+/// - On main/master branch - Returns `Ok(RebaseResult::NoOp)` with reason
+/// - Conflicts during rebase - Returns `Ok(RebaseResult::Conflicts)` or `Failed` with error kind
+/// - Other failures - Returns `Ok(RebaseResult::Failed)` with appropriate error kind
+///
+/// # Note
+///
+/// This function uses git CLI for rebase operations as libgit2's rebase API
+/// has limitations and complexity that make it unreliable for production use.
+/// The git CLI is more robust and better tested for rebase operations.
+///
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn rebase_onto_at(
+    repo_root: &std::path::Path,
+    upstream_branch: &str,
+    executor: &dyn crate::executor::ProcessExecutor,
+) -> io::Result<RebaseResult> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    rebase_onto_impl(&repo, upstream_branch, executor)
+}
+
 /// Perform a rebase onto the specified upstream branch.
 ///
 /// This function rebases the current branch onto the specified upstream branch.
@@ -31,7 +78,6 @@
 /// has limitations and complexity that make it unreliable for production use.
 /// The git CLI is more robust and better tested for rebase operations.
 ///
-///
 /// # Errors
 ///
 /// Returns error if the operation fails.
@@ -39,8 +85,8 @@ pub fn rebase_onto(
     upstream_branch: &str,
     executor: &dyn crate::executor::ProcessExecutor,
 ) -> io::Result<RebaseResult> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
-    rebase_onto_impl(&repo, upstream_branch, executor)
+    let repo_root = get_current_dir()?;
+    rebase_onto_at(&repo_root, upstream_branch, executor)
 }
 
 /// Implementation of `rebase_onto`.
@@ -132,13 +178,18 @@ fn rebase_onto_impl(
 
         // Use classify_rebase_error to determine specific failure mode
         let error_kind = classify_rebase_error(stderr, stdout);
-        Ok(classify_rebase_result(error_kind, stderr))
+        let repo_root = repo.workdir().unwrap();
+        Ok(classify_rebase_result(repo_root, error_kind, stderr))
     }
 }
 
-fn classify_rebase_result(error_kind: RebaseErrorKind, stderr: &str) -> RebaseResult {
+fn classify_rebase_result(
+    repo_root: &std::path::Path,
+    error_kind: RebaseErrorKind,
+    stderr: &str,
+) -> RebaseResult {
     match error_kind {
-        RebaseErrorKind::ContentConflict { .. } => match get_conflicted_files() {
+        RebaseErrorKind::ContentConflict { .. } => match get_conflicted_files_at(repo_root) {
             Ok(files) if files.is_empty() => {
                 if let RebaseErrorKind::ContentConflict { files } = error_kind {
                     RebaseResult::Conflicts(files)

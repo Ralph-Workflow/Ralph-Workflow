@@ -6,7 +6,7 @@
 
 /// Check if a string is a valid conventional commit subject line.
 #[must_use]
-pub fn is_conventional_commit_subject(subject: &str) -> bool {
+pub(crate) fn is_conventional_commit_subject(subject: &str) -> bool {
     let valid_types = [
         "feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore",
     ];
@@ -45,7 +45,7 @@ pub fn is_conventional_commit_subject(subject: &str) -> bool {
 /// # Returns
 ///
 /// The fully rendered commit message with all escape sequences properly handled.
-pub fn render_final_commit_message(message: &str) -> String {
+pub(crate) fn render_final_commit_message(message: &str) -> String {
     message.to_string()
 }
 

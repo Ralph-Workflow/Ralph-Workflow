@@ -134,7 +134,11 @@ const PROVIDER_CATEGORIES: &[ProviderCategory] = &[
 ];
 
 /// Helper function to print provider information for --list-providers.
-pub fn print_provider_info(colors: Colors, provider: OpenCodeProviderType, agent_alias: &str) {
+pub(crate) fn print_provider_info(
+    colors: Colors,
+    provider: OpenCodeProviderType,
+    agent_alias: &str,
+) {
     let examples = provider.example_models();
     let example_str = if examples.is_empty() {
         String::new()

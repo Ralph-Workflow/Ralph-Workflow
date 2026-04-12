@@ -1,34 +1,29 @@
 {# ============================================================================ #}
 {# Template: review_xml.txt                                                     #}
-{# Version: 3.0 - Dumb-agent-proof review with actionable issues              #}
+{# Version: 3.0 - MCP JSON submission only                                     #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
 {#   Prompt for review phase to identify issues in the codebase.                #}
-{#   Uses XML output format for reliable parsing.                              #}
-{#   Makes issues prioritized, actionable, and structured.                     #}
+{#   Submits structured JSON via ralph_submit_artifact MCP tool.               #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   {{PLAN}} - Implementation plan (required)                                  #}
 {#   {{CHANGES}} - Description of changes made (required)                       #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                              #}
-{#   <ralph-issues>                                                             #}
-{#     <ralph-issue>Issue description</ralph-issue> (one or more)               #}
-{#     OR                                                                       #}
-{#     <ralph-no-issues-found>No issues found</ralph-no-issues-found>          #}
-{#   </ralph-issues>                                                            #}
-{#                                                                             #}
-{# EXTRACTION:                                                                 #}
-{#   Parsed by extract_issues_xml() in xml_extraction_issues.rs                #}
-{#   Validated by validate_issues_xml() in xsd_validation_issues.rs            #}
+{#   JSON submitted via ralph_submit_artifact with artifact_type="issues"      #}
 {# ============================================================================ #}
 
 You are in REVIEW MODE. Your ONLY task is to identify issues - DO NOT modify any code.
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{{> shared/_mcp_tools}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL CONSTRAINTS
@@ -40,7 +35,7 @@ CRITICAL CONSTRAINTS
 4. DO NOT run the implementation - only analyze the code
 5. If you have code review skills/tools available, USE THEM
 6. Focus ONLY on the changed files shown in the diff below
-7. YOU MUST WRITE your XML to: `{{ISSUES_XML_PATH}}` - THIS IS NOT OPTIONAL
+7. YOU MUST submit your findings via `{{SUBMIT_ARTIFACT_TOOL_NAME}}` - THIS IS NOT OPTIONAL
 
 ═══════════════════════════════════════════════════════════════════════════════
 CONTEXT
@@ -106,7 +101,7 @@ Focus on finding (in priority order):
    - Clear violations of project patterns
    - Obvious duplication that will cause maintenance issues
 
-STEP 3: Write your findings as XML
+STEP 3: Submit your findings
 
 For each issue found, provide:
 - File and line reference (e.g., `src/file.rs:42`)
@@ -140,57 +135,41 @@ Issues should be ordered by priority (Critical first, then High, Medium, Low).
 Parallel review guidance:
 - Use parallel review agents only for independent review tracks (for example: correctness, security, tests)
 - Avoid duplicate coverage across agents
-- Synthesize all findings into one final XML issue list
+- Synthesize all findings into one final issue list
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
-Write your XML to: `{{ISSUES_XML_PATH}}`
-XSD schema at: `{{ISSUES_XSD_PATH}}`
-
-## AUTHORIZATION OVERRIDE (CRITICAL)
-
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{ISSUES_XML_PATH}}`
-
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still review the code changes and follow the XSD).
-
-This is a READ-ONLY task EXCEPT FOR writing `{{ISSUES_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
-
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
-
-For special characters, use CDATA: <![CDATA[a < b]]>
-
-For each `<ralph-issue>`, add all relevant skills and MCP suggestions to a
-`<skills-mcp>` child. Look through available skills before writing each issue.
-Consider whether any MCP or MCP-backed system would help fix this specific
-issue. Use `<skill>` and `<mcp>` entries with optional `reason=""`. Keep
-recommendations grounded in the specific issue. Do not assume the consumer
-is a developer or fixer.
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="issues" and content as a
+JSON string:
 
 If issues found:
-<ralph-issues>
-<ralph-issue>[Severity] file:line - Description of the issue.
-What is wrong: The specific issue.
-Where it is: File:line reference.
-Why it matters: Impact assessment.
-How to fix: Direction for correction.
-<skills-mcp>
-<skill reason="Capture the regression with a failing test">test-driven-development</skill>
-<mcp reason="Use for dependency and library research">context7</mcp>
-</skills-mcp>
-</ralph-issue>
-<ralph-issue>Additional issues as needed...</ralph-issue>
-</ralph-issues>
+{
+  "type": "issues_found",
+  "issues": [
+    {
+      "text": "src/foo.rs:42 — Description of the issue and suggested fix approach.",
+      "skills": ["test-driven-development"],
+      "mcps": ["context7"]
+    }
+  ]
+}
 
-If no issues found (implementation is correct):
-<ralph-issues>
-<ralph-no-issues-found>Brief explanation of why the implementation correctly satisfies the requirements.</ralph-no-issues-found>
-</ralph-issues>
+If no issues found:
+{
+  "type": "no_issues_found",
+  "explanation": "Brief explanation of why the implementation correctly satisfies the requirements."
+}
+
+Submitting your findings is MANDATORY. Not submitting is a FAILURE.
+This is a READ-ONLY task. You MUST NOT create, modify, or delete any files.
+
+For each issue, add all relevant skills and MCP suggestions to the
+skills_mcp array. Look through available skills before writing each issue.
+Consider whether any MCP or MCP-backed system would help fix this specific
+issue. Use entries with type "skill" or "mcp" and add "reason" when helpful.
+Keep recommendations grounded in the specific issue. Do not assume the
+consumer is a developer or fixer.
 
 REMEMBER: Your job is to IDENTIFY issues, not to FIX them. Do not modify any files.

@@ -1,6 +1,8 @@
 // Tests for developer prompts.
 
 use super::*;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::prompts::SessionCapabilities;
 
 #[test]
 fn test_prompt_developer_iteration() {
@@ -55,11 +57,11 @@ fn test_prompt_plan() {
     // Agents receive content directly without knowing the source file
     assert!(!result.contains("PROMPT.md"));
     assert!(!result.contains("NEVER read, write, or delete this file"));
-    // Plan is now returned as XML output format
+    // Plan is now returned as JSON via MCP
     assert!(result.contains("PLANNING MODE"));
-    assert!(result.contains("<ralph-implementation-steps>"));
-    assert!(result.contains("<ralph-critical-files>"));
-    assert!(result.contains("<ralph-verification-strategy>"));
+    assert!(result.contains("ralph_submit_artifact"));
+    assert!(result.contains("critical_files"));
+    assert!(result.contains("verification_strategy"));
 
     // Ensure strict read-only constraints are present (Claude Code alignment)
     assert!(result.contains("READ-ONLY"));
@@ -70,11 +72,11 @@ fn test_prompt_plan() {
     assert!(result.contains("PHASE 2: EXPLORATION"));
     assert!(result.contains("PHASE 3: DESIGN"));
     assert!(result.contains("PHASE 4: REVIEW"));
-    assert!(result.contains("PHASE 5: WRITE STRUCTURED PLAN"));
+    assert!(result.contains("PHASE 5: SUBMIT STRUCTURED PLAN"));
 
-    // Ensure XML output format is specified
-    assert!(result.contains("<ralph-plan>"));
-    assert!(result.contains("<ralph-summary>"));
+    // Ensure JSON output format is specified
+    assert!(result.contains("artifact_type"));
+    assert!(result.contains("\"summary\""));
 }
 
 #[test]
@@ -89,8 +91,8 @@ fn test_prompt_plan_with_content() {
     // Should still have the planning structure
     assert!(result.contains("PLANNING MODE"));
     assert!(result.contains("PHASE 1: UNDERSTANDING"));
-    // Should have XML output format
-    assert!(result.contains("<ralph-plan>"));
+    // Should have JSON output format via MCP
+    assert!(result.contains("ralph_submit_artifact"));
 }
 
 #[test]
@@ -132,6 +134,10 @@ fn test_prompt_developer_iteration_with_context() {
         ContextLevel::Normal,
         "test prompt",
         "test plan",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
     // Agent should receive PROMPT and PLAN content directly
     assert!(result.contains("test prompt"));
@@ -152,6 +158,10 @@ fn test_prompt_developer_iteration_with_context_minimal() {
         ContextLevel::Minimal,
         "test prompt",
         "test plan",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
     // Agent should receive PROMPT and PLAN content directly
     assert!(result.contains("test prompt"));
@@ -165,19 +175,19 @@ fn test_prompt_plan_with_context() {
     use crate::workspace::MemoryWorkspace;
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
-    let result = prompt_plan_with_context(&context, None, &workspace);
+    let result = prompt_plan_with_context(&context, None, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
     assert!(result.contains("PLANNING MODE"));
-    assert!(result.contains("<ralph-implementation-steps>"));
-    assert!(result.contains("<ralph-critical-files>"));
-    assert!(result.contains("<ralph-verification-strategy>"));
+    assert!(result.contains("ralph_submit_artifact"));
+    assert!(result.contains("critical_files"));
+    assert!(result.contains("verification_strategy"));
     assert!(result.contains("READ-ONLY"));
     assert!(result.contains("STRICTLY PROHIBITED"));
     assert!(result.contains("PHASE 1: UNDERSTANDING"));
     assert!(result.contains("PHASE 2: EXPLORATION"));
     assert!(result.contains("PHASE 3: DESIGN"));
     assert!(result.contains("PHASE 4: REVIEW"));
-    assert!(result.contains("PHASE 5: WRITE STRUCTURED PLAN"));
-    assert!(result.contains("<ralph-plan>"));
+    assert!(result.contains("PHASE 5: SUBMIT STRUCTURED PLAN"));
+    assert!(result.contains("artifact_type"));
     assert!(
         result.contains(
             "Choose a complete solution that fixes the problem at the root cause. Do not plan surface-level fixes or partial implementations."
@@ -196,7 +206,7 @@ fn test_prompt_plan_with_context_uses_progress_based_anti_runaway_policy() {
 
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
-    let result = prompt_plan_with_context(&context, None, &workspace);
+    let result = prompt_plan_with_context(&context, None, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
 
     assert!(
         result.contains("ANTI-RUNAWAY POLICY") && result.contains("PROGRESS-BASED"),
@@ -259,7 +269,7 @@ fn test_prompt_plan_with_context_is_concise_and_non_redundant() {
 
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
-    let result = prompt_plan_with_context(&context, None, &workspace);
+    let result = prompt_plan_with_context(&context, None, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
 
     assert!(
         !result.contains("OPENCODE") && !result.contains("Claude"),
@@ -281,7 +291,7 @@ fn test_prompt_plan_with_context_and_content() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
     let prompt_md = "# Test Prompt\n\nThis is the content.";
-    let result = prompt_plan_with_context(&context, Some(prompt_md), &workspace);
+    let result = prompt_plan_with_context(&context, Some(prompt_md), &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
     assert!(result.contains("USER REQUIREMENTS:"));
     assert!(result.contains("This is the content."));
     assert!(!result.contains("PROMPT.md"));
@@ -295,9 +305,9 @@ fn test_context_based_prompts_isolate_from_git() {
     let context = TemplateContext::default();
     let workspace = MemoryWorkspace::new_test();
     let prompts = vec![
-        prompt_developer_iteration_with_context(&context, 1, 3, ContextLevel::Minimal, "", ""),
-        prompt_developer_iteration_with_context(&context, 2, 3, ContextLevel::Normal, "", ""),
-        prompt_plan_with_context(&context, None, &workspace),
+        prompt_developer_iteration_with_context(&context, 1, 3, ContextLevel::Minimal, "", "", SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development))),
+        prompt_developer_iteration_with_context(&context, 2, 3, ContextLevel::Normal, "", "", SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development))),
+        prompt_plan_with_context(&context, None, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning))),
     ];
 
     for prompt in prompts {
@@ -328,7 +338,7 @@ fn test_context_based_uses_workspace_rooted_paths() {
     let workspace = MemoryWorkspace::new_test();
 
     // Test that context-based planning function uses workspace-rooted paths
-    let with_context_plan = prompt_plan_with_context(&context, None, &workspace);
+    let with_context_plan = prompt_plan_with_context(&context, None, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
 
     // The output should contain absolute paths rooted at the workspace
     // not at the process current_dir()
@@ -349,31 +359,25 @@ fn test_context_based_uses_workspace_rooted_paths() {
         ContextLevel::Normal,
         "prompt",
         "plan",
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     let xsd_retry_workspace = MemoryWorkspace::new_test().with_file(
         ".agent/tmp/last_output.xml",
         "<ralph-development-result><ralph-status>partial</ralph-status></ralph-development-result>",
     );
-    let continuation_xsd_retry = prompt_developer_iteration_xsd_retry_with_context_files(
+    let _continuation_xsd_retry = prompt_developer_iteration_xsd_retry_with_context_files(
         &context,
         "Test error",
         &xsd_retry_workspace,
         true,
-    );
-    assert!(
-        continuation_xsd_retry.contains("development_result.xsd"),
-        "Continuation-mode XSD retry should point at development_result.xsd"
-    );
-    let referenced_schemas: Vec<&str> = continuation_xsd_retry
-        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
-        .filter(|token| token.ends_with(".xsd"))
-        .collect();
-    assert!(
-        referenced_schemas
-            .iter()
-            .all(|schema| schema.ends_with("development_result.xsd")),
-        "Continuation-mode XSD retry must only reference the canonical development_result.xsd schema"
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     // Both should contain the core content (PROMPT and PLAN)
@@ -396,35 +400,20 @@ fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
         "Continuation output validation error",
         &workspace,
         true,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     assert!(
-        prompt.contains("development_result.xsd"),
-        "Continuation-mode XSD retry should point at development_result.xsd"
-    );
-    let referenced_schemas: Vec<&str> = prompt
-        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' || ch == '/'))
-        .filter(|token| token.ends_with(".xsd"))
-        .collect();
-    assert!(
-        referenced_schemas
-            .iter()
-            .all(|schema| schema.ends_with("development_result.xsd")),
-        "Continuation-mode XSD retry must only reference the canonical development_result.xsd schema"
-    );
-    assert!(
-        prompt.contains("continuation output")
-            || prompt.contains("continuation XML")
-            || prompt.contains("recovery-critical information"),
+        prompt.contains("continuation")
+            || prompt.contains("recovery"),
         "Continuation-mode XSD retry should explicitly describe continuation output requirements"
     );
     assert!(
-        !prompt.contains("Fix ONLY the XML structure/format issues"),
-        "Continuation-mode XSD retry must not instruct the agent to only fix generic XML formatting"
-    );
-    assert!(
-        !prompt.contains("Change the content/meaning of your response - ONLY fix the XML format"),
-        "Continuation-mode XSD retry must allow semantic contract fixes required by continuation validation"
+        prompt.contains("ralph_submit_artifact"),
+        "Continuation-mode XSD retry should instruct MCP submission"
     );
 }
 
@@ -473,6 +462,10 @@ fn test_xsd_retry_falls_back_when_last_output_is_missing() {
         "Missing previous output",
         &workspace,
         false,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     assert!(
@@ -508,6 +501,10 @@ fn test_continuation_xsd_retry_with_log_falls_back_when_last_output_is_missing()
         &workspace,
         "developer_iteration_xsd_retry",
         true,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     assert!(
@@ -556,6 +553,10 @@ fn test_prompt_developer_iteration_xml_with_context_renders_shared_partials() {
         "test prompt",
         "test plan",
         &workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     assert!(result.contains("test prompt"));
@@ -590,7 +591,15 @@ fn test_prompt_developer_iteration_xml_with_references_small_content() {
         .with_plan("Small plan content".to_string())
         .build();
 
-    let result = prompt_developer_iteration_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_developer_iteration_xml_with_references(
+        &context,
+        &refs,
+        &workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
+    );
 
     // Should embed content inline
     assert!(result.contains("Small prompt content"));
@@ -624,7 +633,15 @@ fn test_prompt_developer_iteration_xml_with_references_large_prompt() {
         .with_plan("Small plan".to_string())
         .build();
 
-    let result = prompt_developer_iteration_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_developer_iteration_xml_with_references(
+        &context,
+        &refs,
+        &workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
+    );
 
     // Should reference backup file, not embed content
     assert!(result.contains("PROMPT.md.backup"));
@@ -647,7 +664,15 @@ fn test_prompt_developer_iteration_xml_with_references_large_plan() {
         .with_plan(large_plan)
         .build();
 
-    let result = prompt_developer_iteration_xml_with_references(&context, &refs, &workspace);
+    let result = prompt_developer_iteration_xml_with_references(
+        &context,
+        &refs,
+        &workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
+    );
 
     // Should reference PLAN.md file, not embed content
     assert!(result.contains(".agent/PLAN.md"));
@@ -669,36 +694,24 @@ fn test_prompt_planning_xml_with_references_small_content() {
         "User requirements",
     );
 
-    let result = prompt_planning_xml_with_references(&context, &prompt_ref, &workspace);
+    let result = prompt_planning_xml_with_references(&context, &prompt_ref, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
 
     // Should embed content inline
     assert!(result.contains("Small requirements"));
     assert!(result.contains("PLANNING MODE"));
 
-    // Read-only modes: planner must still write exactly one XML file.
+    // Read-only modes: planner must submit via MCP tool.
     assert!(
-        result.contains("explicitly authorized") && result.contains("EXACTLY ONE file"),
-        "planning_xml should explicitly authorize writing exactly one XML file"
+        result.contains("ralph_submit_artifact"),
+        "planning_xml should instruct submission via ralph_submit_artifact"
     );
     assert!(
-        result.contains("MANDATORY"),
-        "planning_xml should mark XML file write mandatory"
+        result.contains("MANDATORY") || result.contains("Not submitting") && result.contains("FAILURE"),
+        "planning_xml should mark submission as mandatory"
     );
     assert!(
-        result.contains("Not writing") && result.contains("FAILURE"),
-        "planning_xml should say not writing XML is a failure"
-    );
-    assert!(
-        result.contains("does not conform") && result.contains("XSD") && result.contains("FAILURE"),
-        "planning_xml should say non-XSD XML is a failure"
-    );
-    assert!(
-        result.contains("READ-ONLY")
-            && (result.contains("EXCEPT FOR writing")
-                || result.contains("except for writing")
-                || result.contains("Except for writing"))
-            && result.contains("plan.xml"),
-        "planning_xml should be read-only except for writing plan.xml"
+        result.contains("READ-ONLY"),
+        "planning_xml should be read-only"
     );
 
     assert!(
@@ -725,7 +738,7 @@ fn test_prompt_planning_xml_with_references_large_content() {
         "User requirements",
     );
 
-    let result = prompt_planning_xml_with_references(&context, &prompt_ref, &workspace);
+    let result = prompt_planning_xml_with_references(&context, &prompt_ref, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
 
     // Should reference backup file, not embed content
     assert!(result.contains("PROMPT.md.backup"));
@@ -743,7 +756,7 @@ fn test_prompt_planning_xml_with_references_writes_xsd() {
 
     let prompt_ref = PromptContentReference::inline("Test requirements".to_string());
 
-    let _result = prompt_planning_xml_with_references(&context, &prompt_ref, &workspace);
+    let _result = prompt_planning_xml_with_references(&context, &prompt_ref, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Planning), &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning)));
 
     // Should have written the XSD schema file
     assert!(workspace.exists(Path::new(".agent/tmp/plan.xsd")));
@@ -762,35 +775,22 @@ fn test_prompt_planning_xsd_retry_with_context_has_read_only_overrides() {
         "XSD error",
         "last output",
         &workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+        ),
     );
 
     assert!(result.contains("XSD error"));
-    assert!(result.contains(".agent/tmp/plan.xsd"));
-    assert!(result.contains(".agent/tmp/last_output.xml"));
 
+    // The planning XSD retry template now uses MCP JSON submission
     assert!(
-        result.contains("explicitly authorized") && result.contains("EXACTLY ONE file"),
-        "planning_xsd_retry should explicitly authorize writing exactly one XML file"
+        result.contains("ralph_submit_artifact"),
+        "planning_xsd_retry should instruct submission via ralph_submit_artifact"
     );
     assert!(
-        result.contains("MANDATORY"),
-        "planning_xsd_retry should mark XML file write mandatory"
-    );
-    assert!(
-        result.contains("Not writing") && result.contains("FAILURE"),
-        "planning_xsd_retry should say not writing XML is a failure"
-    );
-    assert!(
-        result.contains("does not conform") && result.contains("XSD") && result.contains("FAILURE"),
-        "planning_xsd_retry should say non-XSD XML is a failure"
-    );
-    assert!(
-        result.contains("READ-ONLY")
-            && (result.contains("EXCEPT FOR writing")
-                || result.contains("except for writing")
-                || result.contains("Except for writing"))
-            && result.contains("plan.xml"),
-        "planning_xsd_retry should be read-only except for writing plan.xml"
+        result.contains("VALIDATION FAILED"),
+        "planning_xsd_retry should indicate validation failure"
     );
 
     assert!(
@@ -800,10 +800,6 @@ fn test_prompt_planning_xsd_retry_with_context_has_read_only_overrides() {
             && !result.contains("The ONLY acceptable output"),
         "planning_xsd_retry should not include stdout suppression wording"
     );
-
-    // Verify files were written to workspace
-    assert!(workspace.was_written(".agent/tmp/plan.xsd"));
-    assert!(workspace.was_written(".agent/tmp/last_output.xml"));
 }
 
 #[test]
@@ -820,7 +816,7 @@ fn test_continuation_prompt_contains_expected_elements() {
     );
     let workspace = MemoryWorkspace::new_test();
     let prompt =
-        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development)));
 
     // Debug: print the prompt to see what we're actually getting
     eprintln!("Generated prompt:\n{prompt}");
@@ -954,7 +950,7 @@ fn test_continuation_prompt_includes_verification_guidance() {
     );
 
     let prompt =
-        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development)));
 
     // Should include new verification section
     assert!(
@@ -1009,7 +1005,7 @@ fn test_continuation_prompt_emphasizes_recovery_over_incidental_activity() {
     );
 
     let prompt =
-        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development)));
 
     assert!(
         prompt.contains("Focus the continuation on completing the entire remaining plan")
@@ -1087,7 +1083,7 @@ fn test_continuation_prompt_includes_original_request_and_plan_sections() {
     );
 
     let prompt =
-        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development)));
 
     assert!(
         prompt.contains("ORIGINAL REQUEST"),
@@ -1127,7 +1123,7 @@ fn test_continuation_prompt_includes_original_request_and_plan_sections() {
         .with_file(".agent/PLAN.md", "Implementation plan body");
 
     let fallback_prompt =
-        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace, SessionCapabilities::new(&CapabilitySet::defaults_for_drain(SessionDrain::Development), &PolicyFlagSet::defaults_for_drain(SessionDrain::Development)));
 
     assert!(
         fallback_prompt.contains("ORIGINAL REQUEST"),
@@ -1223,6 +1219,10 @@ fn test_initial_iteration_prompt_includes_verification_guidance() {
         "test prompt",
         "test plan",
         &workspace,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+        ),
     );
 
     // Should include verification section

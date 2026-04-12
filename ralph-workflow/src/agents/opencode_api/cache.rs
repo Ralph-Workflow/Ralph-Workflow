@@ -70,7 +70,7 @@ pub fn load_api_catalog(
 /// # Returns
 ///
 /// Returns the catalog along with any warnings encountered during loading.
-pub fn load_api_catalog_with_ttl(
+pub(super) fn load_api_catalog_with_ttl(
     fetcher: &dyn CatalogHttpClient,
     ttl_seconds: u64,
 ) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
@@ -105,7 +105,7 @@ pub enum CacheWarning {
 
 /// Result of loading catalog with associated warnings.
 #[derive(Debug, Clone)]
-pub struct LoadCatalogResult {
+pub(super) struct LoadCatalogResult {
     pub catalog: ApiCatalog,
     pub warnings: Vec<CacheWarning>,
 }
@@ -170,7 +170,7 @@ fn load_cached_catalog_with_env(
 ///
 /// Note: Only serializes the providers and models data from the API.
 /// The `cached_at` timestamp and `ttl_seconds` are not persisted.
-pub fn save_catalog(catalog: &ApiCatalog) -> Result<(), CacheError> {
+pub(super) fn save_catalog(catalog: &ApiCatalog) -> Result<(), CacheError> {
     save_catalog_with_env(catalog, &RealCacheEnvironment)
 }
 

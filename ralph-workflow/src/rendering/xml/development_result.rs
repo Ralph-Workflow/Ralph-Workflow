@@ -15,7 +15,7 @@ use crate::reducer::ui_event::XmlOutputContext;
 use crate::rendering::xml::SkillsMcp;
 
 /// Render development result XML with semantic formatting.
-pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
+pub(super) fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
     let header = output_context
         .and_then(|ctx| ctx.iteration)
         .map(|iter| format!("\n╔═══ Development Iteration {iter} ═══╗\n"))

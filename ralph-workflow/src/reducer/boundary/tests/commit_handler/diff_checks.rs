@@ -92,8 +92,12 @@ fn test_check_commit_diff_uses_head_baseline_not_start_commit() {
     // IMPORTANT: Use an isolated tempdir repo; never mutate process CWD (test parallelism).
     use std::path::Path;
 
+    // GUARD: capture project HEAD OID before any git operations
+    let project_head_before = test_helpers::capture_project_head_oid();
+
     let repo_dir = tempfile::TempDir::new().expect("create temp git repo");
     let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    test_helpers::assert_repo_is_isolated(&repo);
     let sig = git2::Signature::now("test", "test@test.com").expect("signature");
 
     // Commit A: initial state — create two separate tracked files.
@@ -185,6 +189,9 @@ fn test_check_commit_diff_uses_head_baseline_not_start_commit() {
         !diff.contains(committed_marker),
         "expected already-committed change to be ABSENT from commit diff (HEAD baseline); got: {diff}"
     );
+
+    // GUARD: verify project git state unchanged
+    test_helpers::assert_project_head_unchanged(&project_head_before);
 }
 
 #[test]
@@ -198,12 +205,16 @@ fn test_fresh_commit_context_after_previous_commit() {
     // IMPORTANT: Uses an isolated tempdir repo; never mutates process CWD (parallel-safe).
     use std::path::Path;
 
+    // GUARD: capture project HEAD OID before any git operations
+    let project_head_before = test_helpers::capture_project_head_oid();
+
     const ITERATION1_UNIQUE_MARKER: &str =
         "ITERATION1_UNIQUE_MARKER_MUST_NOT_APPEAR_IN_SECOND_DIFF";
     const ITERATION2_UNIQUE_MARKER: &str = "ITERATION2_UNIQUE_MARKER_MUST_APPEAR_IN_SECOND_DIFF";
 
     let repo_dir = tempfile::TempDir::new().expect("create temp git repo");
     let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    test_helpers::assert_repo_is_isolated(&repo);
     let sig = git2::Signature::now("test", "test@test.com").expect("signature");
 
     // Initial commit: create both tracked files with base content so HEAD exists.
@@ -307,4 +318,7 @@ fn test_fresh_commit_context_after_previous_commit() {
         !diff2.contains(ITERATION1_UNIQUE_MARKER),
         "second diff must NOT contain ITERATION1 marker (already committed); got: {diff2}"
     );
+
+    // GUARD: verify project git state unchanged
+    test_helpers::assert_project_head_unchanged(&project_head_before);
 }

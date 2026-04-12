@@ -98,6 +98,16 @@ fn path_has_nested_boundary(path: &std::path::Path) -> Option<(&'static str, Str
 
         if let Some(&boundary) = BOUNDARY_MODULES.iter().find(|&&b| b == stem) {
             if i + 1 < len {
+                // If the next component is `..`, the path is navigating *out* of
+                // the boundary (e.g. via `include_str!("../../schemas/...")`) — this
+                // is NOT a nested module and should be exempt.
+                let next_is_parent = matches!(
+                    components[i + 1],
+                    std::path::Component::ParentDir
+                );
+                if next_is_parent {
+                    return None;
+                }
                 let remainder: String = components[(i + 1)..]
                     .iter()
                     .filter_map(|c| c.as_os_str().to_str())
@@ -185,6 +195,16 @@ mod tests {
         let (b, n) = result.unwrap();
         assert_eq!(b, "runtime");
         assert_eq!(n, "process/mod.rs");
+    }
+
+    #[test]
+    fn include_str_escaping_boundary_is_not_nested() {
+        // include_str!("../../schemas/plan.schema.json") from inside mcp_server/
+        // produces a source-map path like mcp_server/../../schemas/plan.schema.json.
+        // This is NOT a nested module — it's navigating OUT of the boundary.
+        let result =
+            path_has_nested_boundary(Path::new("src/mcp_server/../../schemas/plan.schema.json"));
+        assert!(result.is_none());
     }
 
     #[test]

@@ -59,9 +59,9 @@ where
 ///
 /// # Memory Optimization
 ///
-/// This enum uses Box<str> for string fields and Option<Box<[String]>> for
+/// This enum uses `Box<str>` for string fields and `Option<Box<[String]>>` for
 /// collections to reduce allocation overhead when fields are empty or small.
-/// Vec<T> over-allocates capacity, while Box<[T]> uses exactly the needed space.
+/// `Vec<T>` over-allocates capacity, while `Box<[T]>` uses exactly the needed space.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StepOutcome {
     /// Step completed successfully
@@ -149,8 +149,8 @@ impl StepOutcome {
 /// # Memory Optimization
 ///
 /// Uses `Option<Box<[String]>>` instead of `Vec<String>` to save memory:
-/// - Empty collections use `None` instead of empty Vec (saves 24 bytes per field)
-/// - Non-empty collections use `Box<[String]>` which is 16 bytes vs Vec's 24 bytes
+/// - Empty collections use `None` instead of empty `Vec` (saves 24 bytes per field)
+/// - Non-empty collections use `Box<[String]>` which is 16 bytes vs `Vec`'s 24 bytes
 /// - Total savings: up to 72 bytes per instance when all fields are empty
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModifiedFilesDetail {
@@ -192,17 +192,17 @@ pub struct IssuesSummary {
 ///
 /// # Memory Optimization
 ///
-/// This struct uses Arc<str> for `phase` and `agent` fields to reduce memory
+/// This struct uses `Arc<str>` for `phase` and `agent` fields to reduce memory
 /// usage through string interning. Phase names and agent names are repeated
 /// frequently across execution history entries, so sharing allocations via
-/// Arc<str> significantly reduces heap usage.
+/// `Arc<str>` significantly reduces heap usage.
 ///
-/// Serialization/deserialization is backward-compatible - Arc<str> is serialized
+/// Serialization/deserialization is backward-compatible - `Arc<str>` is serialized
 /// as a regular string and can be deserialized from both old (String) and new
-/// (Arc<str>) checkpoint formats.
+/// (`Arc<str>`) checkpoint formats.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExecutionStep {
-    /// Phase this step belongs to (interned via Arc<str>)
+    /// Phase this step belongs to (interned via `Arc<str>`)
     pub phase: Arc<str>,
     /// Iteration number (for development/review iterations)
     pub iteration: u32,
@@ -212,7 +212,7 @@ pub struct ExecutionStep {
     pub timestamp: String,
     /// Outcome of the step
     pub outcome: StepOutcome,
-    /// Agent that executed this step (interned via Arc<str>)
+    /// Agent that executed this step (interned via `Arc<str>`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<Arc<str>>,
     /// Duration in seconds (if available)
@@ -241,7 +241,7 @@ impl ExecutionStep {
     /// # Performance Note
     ///
     /// For optimal memory usage, use `new_with_pool` to intern repeated phase
-    /// and agent names via a `StringPool`. This constructor creates new Arc<str>
+    /// and agent names via a `StringPool`. This constructor creates new `Arc<str>`
     /// allocations for each call.
     #[must_use]
     pub fn new(phase: &str, iteration: u32, step_type: &str, outcome: StepOutcome) -> Self {

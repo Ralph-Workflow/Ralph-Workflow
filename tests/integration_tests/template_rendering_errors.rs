@@ -8,8 +8,10 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
+use ralph_workflow::agents::session::SessionDrain;
 use ralph_workflow::agents::AgentRole;
 use ralph_workflow::prompts::analysis::{generate_analysis_prompt, generate_fix_analysis_prompt};
+use ralph_workflow::prompts::template_variables::SessionCapabilities;
 use ralph_workflow::prompts::{
     prompt_planning_xml_with_references, PromptContentReference, TemplateContext,
 };
@@ -29,12 +31,12 @@ fn test_planning_template_includes_guidance_and_checklist() {
         let template = include_str!("../../ralph-workflow/src/prompts/templates/planning_xml.txt");
 
         assert!(
-            template.contains("REQUIRED SECTIONS"),
+            template.contains("Required sections:") || template.contains("REQUIRED SECTIONS"),
             "Planning template must list required sections."
         );
         assert!(
-            template.contains("PRE-SUBMISSION CHECKLIST"),
-            "Planning template must include the checklist guidance."
+            template.contains("ralph_submit_artifact"),
+            "Planning template must reference the submission tool."
         );
         assert!(
             template.contains("PHASE"),
@@ -54,8 +56,14 @@ fn test_rendered_planning_prompt_contains_no_comments() {
         let template_context = TemplateContext::default();
         let prompt_ref = PromptContentReference::inline("Test prompt".to_string());
 
-        let rendered =
-            prompt_planning_xml_with_references(&template_context, &prompt_ref, &workspace);
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
+        let rendered = prompt_planning_xml_with_references(
+            &template_context,
+            &prompt_ref,
+            &workspace,
+            session_caps,
+        );
 
         assert!(
             !rendered.is_empty(),
@@ -72,13 +80,22 @@ fn test_rendered_planning_prompt_contains_no_comments() {
 fn test_analysis_prompts_include_status_contract() {
     with_default_timeout(|| {
         let workspace = MemoryWorkspace::new_test();
-        let analysis_prompt = generate_analysis_prompt("plan", "diff", false, &workspace);
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Development);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
+        let analysis_prompt =
+            generate_analysis_prompt("plan", "diff", false, &workspace, session_caps);
         assert!(analysis_prompt.contains("completed"));
         assert!(analysis_prompt.contains("partial"));
         assert!(analysis_prompt.contains("failed"));
 
-        let fix_prompt =
-            generate_fix_analysis_prompt("issues", "diff", "fix_result", false, &workspace);
+        let fix_prompt = generate_fix_analysis_prompt(
+            "issues",
+            "diff",
+            "fix_result",
+            false,
+            &workspace,
+            session_caps,
+        );
         assert!(fix_prompt.contains("completed"));
         assert!(fix_prompt.contains("partial"));
         assert!(fix_prompt.contains("failed"));

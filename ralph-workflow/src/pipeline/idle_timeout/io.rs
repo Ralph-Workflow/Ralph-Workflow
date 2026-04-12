@@ -5,13 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Shared agent child handle (Arc-wrapped Mutex over a boxed AgentChild).
-pub type SharedAgentChild = Arc<Mutex<Box<dyn AgentChild>>>;
+pub(crate) type SharedAgentChild = Arc<Mutex<Box<dyn AgentChild>>>;
 /// Shared child-activity observer (Arc-wrapped Mutex over an optional ChildProcessInfo snapshot).
-pub type SharedChildActivityObserver = Arc<Mutex<Option<ChildProcessInfo>>>;
+pub(crate) type SharedChildActivityObserver = Arc<Mutex<Option<ChildProcessInfo>>>;
 
 /// Result of attempting to kill a process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KillResult {
+pub(crate) enum KillResult {
     /// Process was successfully killed with SIGTERM.
     TerminatedByTerm,
     /// Process required SIGKILL/taskkill escalation.
@@ -87,7 +87,7 @@ impl KillConfig {
 /// - SIGKILL confirm timeout: 500ms
 /// - Post-SIGKILL hard cap: 5s
 /// - SIGKILL resend interval: 1s
-pub const DEFAULT_KILL_CONFIG: KillConfig = KillConfig::new(
+pub(crate) const DEFAULT_KILL_CONFIG: KillConfig = KillConfig::new(
     Duration::from_secs(5),
     Duration::from_millis(100),
     Duration::from_millis(500),
@@ -137,7 +137,19 @@ fn try_wait_child(child_arc: &Arc<Mutex<Box<dyn AgentChild>>>) -> bool {
             .expect("child process mutex poisoned - indicates panic in another thread");
         locked.try_wait()
     };
-    matches!(status, Ok(Some(_)))
+    if matches!(status, Ok(Some(_))) {
+        // Unregister the PID on confirmed exit
+        let pid = {
+            let locked = child_arc
+                .lock()
+                .expect("child process mutex poisoned - indicates panic in another thread");
+            locked.id()
+        };
+        crate::executor::process_registry::unregister(pid);
+        true
+    } else {
+        false
+    }
 }
 
 /// Check if a child process has exited; sleep briefly if not. Returns `true` if exited.

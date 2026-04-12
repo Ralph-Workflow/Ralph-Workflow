@@ -56,11 +56,11 @@
 //! - Uses `TempDir` for filesystem isolation (allowed in system tests)
 //! - Tests are deterministic and black-box (test rebase as a user would experience it)
 
-pub mod ai_resolution_tests;
-pub mod category1_failure_modes;
-pub mod category2_failure_modes;
-pub mod category3_failure_modes;
-pub mod category4_recovery_tests;
-pub mod category5_unknown_failures;
-pub mod edge_cases;
-pub mod git_op_tests;
+pub(crate) mod ai_resolution_tests;
+pub(crate) mod category1_failure_modes;
+pub(crate) mod category2_failure_modes;
+pub(crate) mod category3_failure_modes;
+pub(crate) mod category4_recovery_tests;
+pub(crate) mod category5_unknown_failures;
+pub(crate) mod edge_cases;
+pub(crate) mod git_op_tests;

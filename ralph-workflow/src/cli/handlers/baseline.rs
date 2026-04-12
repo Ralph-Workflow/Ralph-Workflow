@@ -4,7 +4,8 @@
 //! start commit and review baseline state.
 
 use crate::git_helpers::{
-    get_current_head_oid, get_review_baseline_info, git_oid_to_git2_oid, load_review_baseline,
+    get_current_head_oid, get_repo_root, get_review_baseline_info, git_oid_to_git2_oid,
+    load_review_baseline,
 };
 use crate::git_helpers::{load_start_point, ReviewBaseline, StartPoint};
 
@@ -34,11 +35,12 @@ pub fn handle_show_baseline() -> std::io::Result<()> {
 
     // Show start commit state
     let _ = writeln!(std::io::stdout(), "Start Commit (.agent/start_commit):");
-    match load_start_point() {
+    let repo_root = get_repo_root()?;
+    match load_start_point(&repo_root) {
         Ok(StartPoint::Commit(oid)) => {
             let _ = writeln!(std::io::stdout(), "  Commit: {oid}");
             match git_oid_to_git2_oid(&oid) {
-                Ok(parsed_oid) => print_commit_info(parsed_oid),
+                Ok(parsed_oid) => print_commit_info_at(&repo_root, parsed_oid),
                 Err(err) => {
                     let _ = writeln!(std::io::stdout(), "  Warning: {err}");
                 }
@@ -65,7 +67,7 @@ pub fn handle_show_baseline() -> std::io::Result<()> {
     match load_review_baseline() {
         Ok(ReviewBaseline::Commit(oid)) => {
             let _ = writeln!(std::io::stdout(), "  Commit: {oid}");
-            print_commit_info(oid);
+            print_commit_info_at(&repo_root, oid);
         }
         Ok(ReviewBaseline::NotSet) => {
             let _ = writeln!(
@@ -128,8 +130,8 @@ pub fn handle_show_baseline() -> std::io::Result<()> {
 }
 
 /// Print information about a commit.
-fn print_commit_info(oid: git2::Oid) {
-    if let Ok(repo) = git2::Repository::discover(".") {
+fn print_commit_info_at(repo_root: &std::path::Path, oid: git2::Oid) {
+    if let Ok(repo) = git2::Repository::open(repo_root) {
         if let Ok(commit) = repo.find_commit(oid) {
             // Get short ID
             let oid_display = oid.to_string();

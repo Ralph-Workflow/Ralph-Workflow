@@ -178,6 +178,29 @@ The remaining potential optimization — the Cranelift codegen backend — requi
 
 ---
 
+## Build acceleration
+
+The remote build server uses several tools to speed up compilation:
+
+### mold linker
+
+[mold](https://github.com/rui314/mold) is a modern linker that is 3-10x faster than the default GNU ld for linking Rust binaries. It is configured automatically via `.cargo/config.toml` for the `x86_64-unknown-linux-gnu` target — no manual setup needed on new machines beyond `sudo apt-get install -y mold clang`.
+
+### sccache
+
+[sccache](https://github.com/mozilla/sccache) caches compiled crate artifacts across builds. It helps when switching between debug/release/clippy modes or when the target directory is wiped. The `rustc-wrapper-dylint` script automatically chains through sccache when it is available on PATH. Install with `cargo install sccache --locked`.
+
+### Cargo profile tuning
+
+The workspace `Cargo.toml` includes several profile optimizations:
+
+- **`[profile.dev.package."*"]` opt-level = 2**: Dependencies are compiled with optimizations even in dev mode. Since deps rarely change and are cached, this is nearly free on incremental builds but makes test execution significantly faster.
+- **`[profile.test]` opt-level = 1**: Light optimization for test execution speed.
+- **`[profile.dev]` split-debuginfo = "unpacked"**: Reduces macOS debug build link times.
+- **`[profile.release-verify]`**: Uses thin LTO instead of full LTO for verification builds. The `cargo xtask verify` release lane uses this profile — it catches the same link errors as full LTO at a fraction of the compile cost.
+
+---
+
 ## Platform note
 
 The remote machines run **Debian Linux (x86_64)**. `cargo xtask verify` produces no binary artifacts that need copy-back, so the macOS/Linux difference is transparent for verification and testing. Linux binaries cannot run on macOS — the primary value of remote builds is compile-time checking and test execution, not producing runnable local binaries.

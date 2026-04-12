@@ -48,6 +48,7 @@ mod template_macros;
 pub mod template_parsing;
 pub mod template_registry;
 mod template_validator;
+pub mod template_variables;
 mod types;
 
 // Sub-modules for split functionality
@@ -57,6 +58,11 @@ mod prompt_dispatch;
 
 // Re-export ResumeContext for use in prompts
 pub use crate::checkpoint::restore::ResumeContext;
+
+// Re-export SessionCapabilities for use in prompts
+pub use template_variables::capability_template_variables_from_session;
+pub use template_variables::default_caps_and_flags_for_drain;
+pub use template_variables::SessionCapabilities;
 
 // Backwards compatibility alias: registry used to be in prompts, now in agents
 pub mod registry {
@@ -91,9 +97,10 @@ pub use developer::{
     prompt_developer_iteration_xsd_retry_with_context,
     prompt_developer_iteration_xsd_retry_with_context_files,
     prompt_developer_iteration_xsd_retry_with_context_files_and_log,
-    prompt_planning_xml_with_context, prompt_planning_xml_with_references,
-    prompt_planning_xml_with_references_and_log, prompt_planning_xsd_retry_with_context,
-    prompt_planning_xsd_retry_with_context_files,
+    prompt_parallel_dev_worker_with_context, prompt_parallel_planning_with_context,
+    prompt_parallel_verifier_with_context, prompt_planning_xml_with_context,
+    prompt_planning_xml_with_references, prompt_planning_xml_with_references_and_log,
+    prompt_planning_xsd_retry_with_context, prompt_planning_xsd_retry_with_context_files,
     prompt_planning_xsd_retry_with_context_files_and_log,
 };
 pub use developer::{prompt_developer_iteration_with_context, prompt_plan_with_context};
@@ -137,3 +144,9 @@ pub use content_reference::{
 
 #[cfg(test)]
 mod io_tests;
+
+#[cfg(test)]
+mod snapshot_tests;
+
+#[cfg(test)]
+mod schema_contract_tests;

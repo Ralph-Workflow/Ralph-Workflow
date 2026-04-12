@@ -157,10 +157,10 @@ pub enum MonitorResult {
 }
 
 /// Default check interval for the idle monitor (30 seconds).
-pub const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+pub(crate) const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy)]
-pub struct TimeoutEnforcementState {
+pub(crate) struct TimeoutEnforcementState {
     pub pid: u32,
     pub escalated: bool,
     pub last_sigkill_sent_at: Option<std::time::Instant>,
@@ -168,7 +168,7 @@ pub struct TimeoutEnforcementState {
 }
 
 impl TimeoutEnforcementState {
-    pub fn new(pid: u32, escalated: bool) -> Self {
+    pub(crate) fn new(pid: u32, escalated: bool) -> Self {
         Self {
             pid,
             escalated,
@@ -178,7 +178,7 @@ impl TimeoutEnforcementState {
     }
 }
 
-pub struct MonitorParams<'a> {
+pub(crate) struct MonitorParams<'a> {
     pub activity_timestamp: &'a SharedActivityTimestamp,
     pub file_activity_config: Option<&'a FileActivityConfig>,
     pub child: &'a Arc<std::sync::Mutex<Box<dyn AgentChild>>>,

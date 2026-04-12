@@ -7,7 +7,7 @@
 
 use crate::pipeline::clipboard::ClipboardCommand;
 
-pub fn copy_to_clipboard(
+pub(super) fn copy_to_clipboard(
     executor: &dyn crate::executor::ProcessExecutor,
     prompt: &str,
     clipboard_cmd: ClipboardCommand,

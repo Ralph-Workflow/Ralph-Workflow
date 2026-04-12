@@ -12,7 +12,7 @@
     clippy::arithmetic_side_effects,
     reason = "bounds-checked index arithmetic"
 )]
-pub fn extract_key_from_toml_error(error: &str) -> String {
+pub(crate) fn extract_key_from_toml_error(error: &str) -> String {
     if let Some(start) = error.find('`') {
         if let Some(end) = error[start + 1..].find('`') {
             return error[start + 1..start + 1 + end].to_string();
@@ -29,7 +29,7 @@ pub fn extract_key_from_toml_error(error: &str) -> String {
 ///
 /// Input: "invalid type: string \"five\", expected u32 for field `developer_iters`"
 /// Output: "Expected u32, got string \"five\""
-pub fn format_invalid_type_message(error: &str) -> String {
+pub(crate) fn format_invalid_type_message(error: &str) -> String {
     // Parse the toml error to extract expected vs actual types
     // Format: "invalid type: string \"five\", expected u32 for field `developer_iters`"
     if error.contains("invalid type") {

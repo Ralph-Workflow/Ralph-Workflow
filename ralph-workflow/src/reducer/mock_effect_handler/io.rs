@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use super::{Effect, PipelineEvent, UIEvent};
 
 #[derive(Debug)]
-pub struct CapturedState {
+pub(super) struct CapturedState {
     pub effects: RefCell<Vec<Effect>>,
     pub ui_events: RefCell<Vec<UIEvent>>,
     pub events: RefCell<Vec<PipelineEvent>>,
@@ -20,19 +20,19 @@ impl Default for CapturedState {
 }
 
 impl CapturedState {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::default()
     }
 
-    pub fn push_effect(&self, effect: Effect) {
+    pub(super) fn push_effect(&self, effect: Effect) {
         self.effects.borrow_mut().push(effect);
     }
 
-    pub fn push_ui_event(&self, event: UIEvent) {
+    pub(super) fn push_ui_event(&self, event: UIEvent) {
         self.ui_events.borrow_mut().push(event);
     }
 
-    pub fn push_event(&self, event: PipelineEvent) {
+    pub(super) fn push_event(&self, event: PipelineEvent) {
         self.events.borrow_mut().push(event);
     }
 }

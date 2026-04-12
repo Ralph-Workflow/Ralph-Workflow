@@ -221,6 +221,11 @@ fn finalize_agent_child(mut child: std::process::Child) -> io::Result<AgentChild
     #[cfg(not(unix))]
     let _ = (&child, &stdout, &stderr);
 
+    // Register the PID immediately after successful spawn and stream setup,
+    // before returning the handle. This ensures the PID is tracked even if
+    // subsequent operations fail.
+    super::process_registry::register(child.id());
+
     Ok(AgentChildHandle {
         stdout: Box::new(stdout),
         stderr: Box::new(stderr),

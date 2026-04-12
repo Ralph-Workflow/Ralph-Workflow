@@ -115,6 +115,7 @@ const fn map_to_checkpoint_phase(phase: crate::reducer::event::PipelinePhase) ->
 #[cfg(test)]
 mod tests {
     use super::save_checkpoint_from_state;
+    use crate::agents::session::AuditTrail;
     use crate::agents::AgentRegistry;
     use crate::checkpoint::execution_history::{ExecutionHistory, ExecutionStep, StepOutcome};
     use crate::checkpoint::load_checkpoint_with_workspace;
@@ -184,6 +185,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &config.cloud,
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let mut state = PipelineState::initial(1, 0);
@@ -272,6 +275,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &config.cloud,
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let state = PipelineState::initial(1, 0);
@@ -344,6 +349,8 @@ mod tests {
             cloud_reporter: None,
             cloud: &config.cloud,
             env: &git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         };
 
         let mut state = PipelineState::initial(1, 0);

@@ -1,5 +1,8 @@
 // Legacy phase-based code - deprecated in favor of reducer/handler architecture
-use crate::phases::commit_logging::CommitAttemptLog;
+
+use crate::phases::commit_logging::{AttemptOutcome, CommitAttemptLog, ExtractionAttempt};
+use crate::phases::context::PhaseContext;
+use anyhow::Context;
 
 /// Outcome of commit message generation.
 ///
@@ -92,6 +95,18 @@ pub fn run_commit_attempt(
         .registry
         .resolve_config(commit_agent)
         .ok_or_else(|| anyhow::anyhow!("Agent not found: {commit_agent}"))?;
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&agent_config.cmd);
+    let commit_capabilities = crate::agents::session::CapabilitySet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Commit,
+    );
+    let prompt = crate::agents::tool_manifest::rewrite_prompt_mcp_tool_names(
+        &prompt,
+        &commit_capabilities,
+        matches!(
+            agent_type,
+            crate::agents::harness::applicator::AgentType::Claude
+        ),
+    );
     let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
     // Use per-run log directory with simplified naming

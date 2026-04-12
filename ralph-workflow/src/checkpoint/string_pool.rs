@@ -1,7 +1,7 @@
 //! String interning for deduplicating repeated strings in execution history.
 //!
 //! This module provides a string pool that deduplicates commonly repeated strings
-//! (like phase names and agent names) by storing them as Arc<str>. This reduces
+//! (like phase names and agent names) by storing them as `Arc<str>`. This reduces
 //! memory usage when the same strings appear many times across execution history.
 
 use std::collections::HashSet;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 /// String pool for deduplicating commonly repeated strings in execution history.
 ///
 /// Phase names and agent names are repeated frequently across execution history
-/// entries. Using Arc<str> with a string pool reduces memory usage by sharing
+/// entries. Using `Arc<str>` with a string pool reduces memory usage by sharing
 /// the same allocation for identical strings.
 ///
 /// # Example
@@ -23,7 +23,7 @@ use std::sync::Arc;
 /// let (pool, phase1) = StringPool::new().intern("Development");
 /// let (_, phase2) = pool.intern("Development");
 ///
-/// // Both Arc<str> values point to the same allocation
+/// // Both `Arc<str>` values point to the same allocation
 /// assert!(Arc::ptr_eq(&phase1, &phase2));
 /// ```
 #[derive(Debug, Clone, Default)]
@@ -54,7 +54,7 @@ impl StringPool {
         }
     }
 
-    /// Get or insert a string slice into the pool, returning an Arc<str>.
+    /// Get or insert a string slice into the pool, returning an `Arc<str>`.
     ///
     /// Prefer this when the input is already a `&str` to avoid allocating a
     /// temporary `String` on repeated calls.
@@ -83,7 +83,7 @@ impl StringPool {
         (Self { pool }, interned)
     }
 
-    /// Get or insert an owned string into the pool, returning an Arc<str>.
+    /// Get or insert an owned string into the pool, returning an `Arc<str>`.
     ///
     /// This path can reuse the allocation of the provided `String` when inserting.
     #[must_use]

@@ -121,7 +121,7 @@ impl ProjectStack {
 
 /// Detect the project stack for a given repository root.
 ///
-/// This is a convenience wrapper that creates a [`WorkspaceFs`] and calls
+/// This is a convenience wrapper that creates a `WorkspaceFs` and calls
 /// [`detect_stack_with_workspace`].
 ///
 /// # Errors

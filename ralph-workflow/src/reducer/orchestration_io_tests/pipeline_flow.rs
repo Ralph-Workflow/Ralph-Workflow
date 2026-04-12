@@ -349,7 +349,7 @@ fn test_complete_pipeline_flow() {
                 state = reduce(state, PipelineEvent::pre_termination_safety_check_passed());
             }
             Effect::ValidateFinalState => {
-                state = reduce(state, PipelineEvent::finalizing_started());
+                state = reduce(state, PipelineEvent::final_state_validation_completed());
             }
             Effect::SaveCheckpoint { .. } => {
                 if state.phase == PipelinePhase::Complete {
@@ -509,8 +509,7 @@ fn test_pipeline_skips_planning_dev_when_zero_iterations() {
                 state = reduce(state, PipelineEvent::pre_termination_safety_check_passed());
             }
             Effect::ValidateFinalState => {
-                state = reduce(state, PipelineEvent::pipeline_completed());
-                break;
+                state = reduce(state, PipelineEvent::final_state_validation_completed());
             }
             Effect::SaveCheckpoint { .. } => {
                 if state.phase == PipelinePhase::Complete {

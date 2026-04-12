@@ -44,12 +44,12 @@ use crate::checkpoint::execution_history::ExecutionStep;
 /// # Memory Optimization
 ///
 /// After optimization, this accounts for:
-/// - `phase`: Arc<str> - counted as the length of the string (shared allocation)
-/// - `step_type`: Box<str> - counted as the length of the string
-/// - `timestamp`: String - counted as length (deterministic; capacity can vary)
-/// - `agent`: Option<Arc<str>> - counted as the length of the string (shared allocation)
+/// - `phase`: `Arc<str>` - counted as the length of the string (shared allocation)
+/// - `step_type`: `Box<str>` - counted as the length of the string
+/// - `timestamp`: `String` - counted as length (deterministic; capacity can vary)
+/// - `agent`: `Option<Arc<str>>` - counted as the length of the string (shared allocation)
 ///
-/// Arc<str> fields are counted by length rather than capacity because the
+/// `Arc<str>` fields are counted by length rather than capacity because the
 /// allocation is shared across multiple `ExecutionStep` instances via string interning.
 #[must_use]
 pub fn estimate_execution_step_heap_bytes_core_fields(step: &ExecutionStep) -> usize {
@@ -272,8 +272,8 @@ mod tests {
 
     /// Regression test: Verify memory optimization reduces per-entry footprint
     ///
-    /// After Arc<str> and Box<str> optimizations, core fields should use ~40-45 bytes
-    /// per entry (down from ~53 bytes with String fields).
+    /// After `Arc<str>` and `Box<str>` optimizations, core fields should use ~40-45 bytes
+    /// per entry (down from ~53 bytes with `String` fields).
     #[test]
     fn test_memory_optimization_regression() {
         use crate::checkpoint::StringPool;

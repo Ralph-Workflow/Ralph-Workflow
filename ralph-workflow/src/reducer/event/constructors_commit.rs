@@ -202,10 +202,14 @@ impl PipelineEvent {
         Self::CheckpointSaved { trigger }
     }
 
-    /// Create a `FinalizingStarted` event.
-    #[must_use] 
-    pub const fn finalizing_started() -> Self {
-        Self::FinalizingStarted
+    /// Create a `FinalStateValidationCompleted` event.
+    ///
+    /// This event is emitted after `ValidateFinalState` effect handler completes
+    /// final state validation. The name reflects what the handler did (validated
+    /// the final state), not what the reducer should do next.
+    #[must_use]
+    pub const fn final_state_validation_completed() -> Self {
+        Self::FinalStateValidationCompleted
     }
 
     /// Create a `PromptPermissionsRestored` event.

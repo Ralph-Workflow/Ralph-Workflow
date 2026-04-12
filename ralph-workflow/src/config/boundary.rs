@@ -10,6 +10,6 @@ use crate::config::cloud::CloudConfig;
 /// This is a boundary function that reads environment variables
 /// and passes them to the pure `from_env_fn` parser.
 #[must_use]
-pub fn load_cloud_config_from_env() -> CloudConfig {
+pub(crate) fn load_cloud_config_from_env() -> CloudConfig {
     CloudConfig::from_env_fn(|k| std::env::var(k).ok())
 }

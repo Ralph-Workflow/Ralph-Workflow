@@ -7,7 +7,7 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add JavaScript-specific guidelines to the review
-pub fn add_javascript_guidelines(
+pub(crate) fn add_javascript_guidelines(
     guidelines: ReviewGuidelines,
     stack: &ProjectStack,
 ) -> ReviewGuidelines {
@@ -62,7 +62,7 @@ pub fn add_javascript_guidelines(
     add_framework_guidelines(with_frontend, stack)
 }
 
-pub fn add_typescript_guidelines(
+pub(crate) fn add_typescript_guidelines(
     guidelines: ReviewGuidelines,
     stack: &ProjectStack,
 ) -> ReviewGuidelines {

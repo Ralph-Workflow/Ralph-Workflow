@@ -12,4 +12,4 @@
 | Unit | `cargo test -p ralph-workflow --lib` | parallel | < 10 s |
 | Integration | `cargo test -p ralph-workflow-tests --test integration_tests` | parallel | < 60 s wall-clock |
 | Process system | `cargo test -p ralph-workflow-tests --test process-system-tests` | parallel | manual only |
-| git2 system | `cargo test -p ralph-workflow-tests --test git2-system-tests` | serial (libgit2) | manual only |
+| git2 system | `cargo test -p ralph-workflow-tests --test system_tests` | serial (libgit2) | manual only |

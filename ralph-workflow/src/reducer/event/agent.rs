@@ -1,5 +1,8 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
+use crate::agents::session::{
+    ParallelPlan, ReconciliationDecision, WorkerIdentity, WorkerReconciliationMetadata,
+};
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
 use crate::ChildProcessInfo;
@@ -220,6 +223,108 @@ pub enum AgentEvent {
         logfile_path: String,
         /// Target temp file path where context was written.
         context_path: String,
+    },
+
+    /// A capability check was denied by the policy gate.
+    ///
+    /// Emitted when an effect requires a capability that the session doesn't have.
+    /// This indicates a misconfiguration — the session's capabilities don't match
+    /// the effects the orchestrator is trying to execute.
+    ///
+    /// The reducer handles this by triggering recovery escalation.
+    CapabilityDenied {
+        /// The role whose capability was denied.
+        role: AgentRole,
+        /// The capability identifier that was missing (e.g., "workspace.write_tracked").
+        capability: String,
+        /// Human-readable reason for the denial.
+        reason: String,
+    },
+
+    // ========================================================================
+    // Phase 4: Parallel Worker Events
+    // ========================================================================
+    /// Planning agent produced a parallel plan.
+    ///
+    /// Emitted when the planning agent's output indicates the plan should be
+    /// executed in parallel with multiple workers. The plan contains work units
+    /// with non-overlapping edit areas.
+    ParallelPlanProduced {
+        /// The parallel plan produced by the planning agent.
+        plan: ParallelPlan,
+    },
+
+    /// Parallel workers were successfully dispatched.
+    ///
+    /// Emitted after worktrees are created and agent processes are spawned
+    /// for each work unit in the parallel plan.
+    ParallelWorkersDispatched {
+        /// Number of workers dispatched.
+        worker_count: usize,
+        /// Identity of each dispatched worker.
+        workers: Vec<WorkerIdentity>,
+    },
+
+    /// A parallel worker completed its work unit.
+    ///
+    /// Emitted when a worker finishes execution (success, failure, or timeout).
+    /// The reducer uses this to track progress toward awaiting verification.
+    ParallelWorkerCompleted {
+        /// The worker's identity.
+        worker_id: String,
+        /// Reconciliation metadata for this worker.
+        metadata: WorkerReconciliationMetadata,
+    },
+
+    /// A parallel plan was validated and accepted.
+    ///
+    /// Emitted after `EvaluateParallelPlan` confirms the plan is valid
+    /// (non-overlapping edit areas, valid dependencies).
+    ParallelPlanValidated {
+        /// The validated parallel plan.
+        plan: ParallelPlan,
+    },
+
+    /// A parallel plan was rejected as invalid.
+    ///
+    /// Emitted when `EvaluateParallelPlan` finds issues:
+    /// overlapping edit areas, circular dependencies, or invalid paths.
+    /// The pipeline falls back to single-agent execution.
+    ParallelPlanRejected {
+        /// The rejected parallel plan.
+        plan: ParallelPlan,
+        /// Reason for rejection.
+        reason: String,
+    },
+
+    /// Verifier agent completed review of parallel worker outputs.
+    ///
+    /// Emitted after the verifier agent reviews all worker outputs and produces
+    /// a reconciliation decision.
+    VerifierCompleted {
+        /// The reconciliation decision from the verifier.
+        decision: ReconciliationDecision,
+    },
+
+    /// Parallel work was sent back to workers for rework.
+    ///
+    /// Emitted when the verifier decides that specific work units need revision.
+    ParallelWorkReworked {
+        /// IDs of work units that need rework.
+        unit_ids: Vec<String>,
+        /// Feedback from the verifier for the workers.
+        feedback: String,
+    },
+
+    /// Parallel work collapsed to single-agent execution.
+    ///
+    /// Emitted when the verifier decides remaining work is interdependent
+    /// and cannot be parallelized.
+    ParallelWorkCollapsed {
+        /// IDs of work units that were collapsed.
+        remaining_units: Vec<String>,
+        /// Reason for collapsing to single-agent.
+        reason: String,
     },
 
     /// Connectivity probe succeeded (network is reachable).

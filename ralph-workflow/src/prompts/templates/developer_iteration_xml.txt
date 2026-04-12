@@ -13,14 +13,19 @@
 {#   PLAN   - Implementation plan (required)                                   #}
 {#                                                                             #}
 {# OUTPUT:                                                                      #}
-{#   Development agent produces code changes only. No structured output required. #}
+{#   JSON submitted via ralph_submit_artifact with                              #}
+{#   artifact_type="development_result"                                         #}
 {# ============================================================================ #}
 
 You are in IMPLEMENTATION MODE. Execute the plan and make progress.
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{{> shared/_mcp_tools}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
 IMPORTANT: EXECUTION CONTEXT
@@ -55,6 +60,29 @@ IMPLEMENTATION PLAN
 {{PLAN|default="(no plan available)"}}
 
 {{> shared/_developer_iteration_guidance}}
+
+═══════════════════════════════════════════════════════════════════════════════
+RESULT SUBMISSION
+═══════════════════════════════════════════════════════════════════════════════
+
+When done, call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result"
+and content as a JSON string:
+{
+  "status": "completed",
+  "summary": "Brief description of what was implemented",
+  "files_changed": "- src/foo.rs\n- tests/foo_test.rs"
+}
+
+For partial completion requiring continuation:
+{
+  "status": "partial",
+  "summary": "What was completed and what remains",
+  "files_changed": "- src/foo.rs",
+  "next_steps": "Finish the remaining implementation and validation steps.",
+  "continuation": {
+    "prior_session_id": "current-session-id"
+  }
+}
 
 ═══════════════════════════════════════════════════════════════════════════════
 WHAT MATTERS

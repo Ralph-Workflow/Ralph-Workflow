@@ -7,4 +7,4 @@
 //! to satisfy the functional programming lints.
 
 pub type Template = crate::prompts::runtime::Template;
-pub type TemplateError = crate::prompts::template_registry::TemplateError;
+pub(crate) type TemplateError = crate::prompts::template_registry::TemplateError;

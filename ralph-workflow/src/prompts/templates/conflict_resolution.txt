@@ -33,7 +33,9 @@
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 There are merge conflicts that need to be resolved. Below are the files with conflicts, showing both versions of the conflicting changes.
 
@@ -82,7 +84,8 @@ For each conflicted file:
    - Ensure no duplicate code or leftover merge artifacts
    - **Your resolution will be automatically validated**
 
-5. **Edit the File**: Use the Edit tool to modify each conflicted file on disk
+{% if HAS_WORKSPACE_WRITE %}5. **Edit the File**: Use the Edit tool to modify each conflicted file on disk
+{% endif %}
 
 **CRITICAL REMINDERS**:
 - Remove ALL conflict markers - the file must not contain `<<<<<<<`, `=======`, or `>>>>>>>`

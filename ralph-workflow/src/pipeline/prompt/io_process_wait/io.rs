@@ -227,7 +227,7 @@ fn resolve_exit_code(status: std::process::ExitStatus, runtime: &PipelineRuntime
     status.code().unwrap_or(1)
 }
 
-pub fn wait_for_completion_and_collect_stderr(
+pub(super) fn wait_for_completion_and_collect_stderr(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     stderr_join_handle: &mut Option<std::thread::JoinHandle<std::io::Result<String>>>,
     monitor_handle: &mut Option<std::thread::JoinHandle<MonitorResult>>,

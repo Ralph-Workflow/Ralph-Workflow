@@ -12,6 +12,7 @@ use git2::{Commit, IndexAddOption, Oid, Repository, Signature, Status, StatusOpt
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::OnceLock;
 use tempfile::TempDir;
 
 /// Create an isolated config file in the test directory.
@@ -377,4 +378,189 @@ pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
     let _guard = set_temp_directory(&dir);
 
     f(&dir);
+}
+
+// ── Project-repo detection ───────────────────────────────────────────────────
+
+static PROJECT_REPO_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Return the root of the project git repository (cached), or `None`.
+pub fn project_repo_root() -> Option<&'static Path> {
+    PROJECT_REPO_ROOT
+        .get_or_init(|| {
+            let start = std::env::current_exe().ok()?.parent()?.to_path_buf();
+            std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
+                .find(|p| p.join(".git").exists())
+        })
+        .as_deref()
+}
+
+/// Panic if `repo_root` is inside the project's own repository.
+pub fn assert_not_project_repo(repo_root: &Path) {
+    let Some(project) = project_repo_root() else {
+        return;
+    };
+    let repo_abs = std::fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let project_abs = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    let is_project_repo = repo_abs == project_abs || repo_abs.starts_with(&project_abs);
+    if is_project_repo {
+        panic!(
+            "POLICY VIOLATION: test attempted to mutate real git repository at {}\n\
+             All tests MUST operate on isolated repositories under std::env::temp_dir().\n\
+             Use test_helpers::init_git_repo() to create an isolated test repository.",
+            repo_abs.display()
+        );
+    }
+}
+
+/// Panic if `repo.workdir()` is not inside the system temp directory.
+pub fn assert_repo_is_temp_isolated(repo: &Repository) {
+    let Some(workdir) = repo.workdir() else {
+        return;
+    };
+    let workdir_abs = std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.to_path_buf());
+    let temp_dir_abs =
+        std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
+    if !workdir_abs.starts_with(&temp_dir_abs) {
+        panic!(
+            "POLICY VIOLATION: repository workdir '{}' is not inside temp directory '{}'. \
+             All test repositories must be created with TempDir::new() and live under the \
+             system's temp directory.",
+            workdir.display(),
+            temp_dir_abs.display()
+        );
+    }
+}
+
+/// Capture the HEAD OID of the project repository, or `None`.
+pub fn capture_project_head_oid() -> Option<String> {
+    let project = project_repo_root()?;
+    let repo = Repository::open(project).ok()?;
+    let head = repo.head().ok()?;
+    let oid = head.target()?;
+    Some(oid.to_string())
+}
+
+// ── Git-ancestor path walkers ─────────────────────────────────────────────────
+
+/// Walk ancestors of `path` (with canonicalization) and return the first one
+/// that contains a `.git` directory, or `None` if none is found.
+pub fn find_git_ancestor(path: &Path) -> Option<PathBuf> {
+    std::iter::successors(Some(path.to_path_buf()), |p| {
+        std::fs::canonicalize(p)
+            .ok()
+            .and_then(|c| c.parent().map(|pp| pp.to_path_buf()))
+            .or_else(|| p.parent().map(|pp| pp.to_path_buf()))
+            .filter(|next| next != p)
+    })
+    .find(|p| p.join(".git").exists())
+}
+
+/// Walk ancestors of `path` (no canonicalization) and return the first one
+/// that contains a `.git` directory, or `None`.
+pub fn find_git_ancestor_simple(path: &Path) -> Option<PathBuf> {
+    std::iter::successors(Some(path.to_path_buf()), |p| {
+        p.parent()
+            .filter(|pp| *pp != p.as_path())
+            .map(|pp| pp.to_path_buf())
+    })
+    .find(|p| p.join(".git").exists())
+}
+
+/// Panic if `path` is inside any real git repository (checked with canonicalization).
+///
+/// Used by `git_safety::assert_not_real_git_repo`.
+pub fn assert_not_real_git_repo_impl(path: &Path) {
+    if let Some(git_root) = find_git_ancestor(path) {
+        panic!(
+            "POLICY VIOLATION: test path '{}' is inside a real git repository at '{}'. \
+             Tests must use MemoryWorkspace or isolated temp directories outside any repo. \
+             See docs/agents/testing-guide.md.",
+            path.display(),
+            git_root.display()
+        );
+    }
+}
+
+/// Panic if `path` is inside a `.git` directory in a non-temp location.
+///
+/// Used by `lib::assert_no_real_git_repo`.
+pub fn assert_no_real_git_repo_impl(path: &Path) {
+    if let Some(git_root) = find_git_ancestor(path) {
+        let tmp = std::env::temp_dir();
+        assert!(
+            git_root.starts_with(&tmp),
+            "POLICY VIOLATION: Test attempted to operate on a real git repository at {:?}. \
+             All tests must use MemoryWorkspace or a git repo inside a temp directory. \
+             Do NOT use environment variables or feature flags to bypass this requirement.",
+            git_root
+        );
+    }
+}
+
+/// Panic if `path` is inside the project's own git repository (not any isolated repo).
+///
+/// Used by `git_safety::assert_in_isolated_temp_repo`.
+pub fn assert_in_isolated_temp_repo_impl(path: &Path) {
+    let Some(project_git_dir) = find_project_git_dir_canonical() else {
+        return;
+    };
+    if let Some(git_root) = find_git_ancestor(path) {
+        let is_project = git_root
+            .join(".git")
+            .canonicalize()
+            .ok()
+            .map(|c| c == project_git_dir)
+            .unwrap_or(false);
+        if is_project {
+            panic!(
+                "POLICY VIOLATION: test path '{}' is inside the project git repository at '{}'. \
+                 Tests must use isolated temp directories outside the project repo. \
+                 See docs/agents/testing-guide.md.",
+                path.display(),
+                project_git_dir.display()
+            );
+        }
+    }
+}
+
+/// Panic if `path` is inside any git repository (simple walk, no canonicalization).
+///
+/// Used by `git_guard::assert_not_in_git_repo`.
+pub fn assert_not_in_git_repo_impl(path: &Path) {
+    if let Some(git_root) = find_git_ancestor_simple(path) {
+        panic!(
+            "POLICY VIOLATION: test path '{}' is inside a git repository at '{}'.\n\
+             Tests must not operate on real git state. Use temp_dir_outside_git() \
+             to create a safe temporary directory, or ensure your test path is \
+             outside all git repositories.",
+            path.display(),
+            git_root.display()
+        );
+    }
+}
+
+fn find_project_git_dir_canonical() -> Option<PathBuf> {
+    let start = std::env::current_dir().ok()?;
+    std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
+        .find(|p| p.join(".git").exists())
+        .and_then(|p| p.join(".git").canonicalize().ok())
+}
+
+/// Create a temporary directory guaranteed to be outside any git repository.
+///
+/// Used by `git_guard::temp_dir_outside_git`.
+///
+/// # Panics
+///
+/// Panics if the temporary directory cannot be created, or if it is unexpectedly
+/// inside a git repository.
+#[must_use]
+pub fn temp_dir_outside_git_impl(prefix: &str) -> TempDir {
+    let dir = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir()
+        .unwrap_or_else(|e| panic!("temp_dir_outside_git: failed to create temp dir: {e}"));
+    assert_not_in_git_repo_impl(dir.path());
+    dir
 }

@@ -9,11 +9,12 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
+use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use ralph_workflow::prompts::content_reference::{DiffContentReference, PlanContentReference};
 use ralph_workflow::prompts::{
     prompt_generate_commit_message_with_diff_with_context, prompt_planning_xml_with_references,
     prompt_planning_xsd_retry_with_context_files, prompt_review_xml_with_references,
-    PromptContentReference, TemplateContext,
+    PromptContentReference, SessionCapabilities, TemplateContext,
 };
 use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
 use std::path::{Path, PathBuf};
@@ -30,14 +31,20 @@ fn test_planning_prompts_use_workspace_root() {
         let prompt_ref = PromptContentReference::inline("Test prompt".to_string());
 
         // Generate planning prompt
-        let prompt =
-            prompt_planning_xml_with_references(&template_context, &prompt_ref, &workspace);
+        let prompt = prompt_planning_xml_with_references(
+            &template_context,
+            &prompt_ref,
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+            ),
+        );
 
-        // Verify: prompt contains workspace root paths, not current_dir paths
-        let expected_path = workspace.absolute_str(".agent/tmp/plan.xml");
+        // Verify: prompt instructs agent to submit via MCP
         assert!(
-            prompt.contains(&expected_path),
-            "Planning prompt should contain workspace-rooted path: {expected_path}"
+            prompt.contains("ralph_submit_artifact"),
+            "Planning prompt should instruct agent to use ralph_submit_artifact"
         );
     });
 }
@@ -66,13 +73,20 @@ fn test_review_prompts_use_workspace_root() {
             plan: Some(plan_ref),
             diff: Some(diff_ref),
         };
-        let prompt = prompt_review_xml_with_references(&template_context, &refs, &workspace);
+        let prompt = prompt_review_xml_with_references(
+            &template_context,
+            &refs,
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Review),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Review),
+            ),
+        );
 
-        // Verify: prompt contains workspace root paths
-        let expected_path = workspace.absolute_str(".agent/tmp/issues.xml");
+        // Verify: prompt instructs agent to submit via MCP
         assert!(
-            prompt.contains(&expected_path),
-            "Review prompt should contain workspace-rooted path: {expected_path}"
+            prompt.contains("ralph_submit_artifact"),
+            "Review prompt should instruct agent to use ralph_submit_artifact"
         );
     });
 }
@@ -90,6 +104,10 @@ fn test_xsd_retry_missing_schema_includes_workspace_root() {
             &template_context,
             "Test XSD error",
             &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+            ),
         );
 
         // When schema is missing, prompt should include workspace root for diagnostics
@@ -101,7 +119,7 @@ fn test_xsd_retry_missing_schema_includes_workspace_root() {
     });
 }
 
-/// Test that commit prompts use workspace-rooted paths.
+/// Test that commit prompts use MCP artifact submission.
 #[test]
 fn test_commit_prompts_use_workspace_root() {
     with_default_timeout(|| {
@@ -110,17 +128,19 @@ fn test_commit_prompts_use_workspace_root() {
         let template_context = TemplateContext::default();
 
         // Generate commit prompt
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Commit);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
         let prompt = prompt_generate_commit_message_with_diff_with_context(
             &template_context,
             "Test diff",
             &workspace,
+            session_caps,
         );
 
-        // Verify: prompt contains workspace root paths
-        let expected_path = workspace.absolute_str(".agent/tmp/commit_message.xml");
+        // Verify: prompt instructs agent to submit via MCP
         assert!(
-            prompt.contains(&expected_path),
-            "Commit prompt should contain workspace-rooted path: {expected_path}"
+            prompt.contains("ralph_submit_artifact"),
+            "Commit prompt should instruct agent to use ralph_submit_artifact"
         );
     });
 }

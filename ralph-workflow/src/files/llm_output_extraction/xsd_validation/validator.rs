@@ -4,7 +4,7 @@
 mod types;
 mod file_list_parsers;
 
-pub use types::CommitMessageElements;
+pub(crate) use types::CommitMessageElements;
 
 use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
 use crate::reducer::state::pipeline::ExcludedFile;

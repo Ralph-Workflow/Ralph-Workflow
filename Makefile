@@ -21,7 +21,7 @@ else
     PLATFORM := unknown
 endif
 
-.PHONY: all build release test clean install uninstall check fmt lint dylint dylint-verbose help
+.PHONY: all build release test clean install install-debug uninstall check fmt lint dylint dylint-verbose help
 
 # Default target
 all: build
@@ -63,6 +63,13 @@ install: release
 install-local:
 	$(MAKE) install INSTALL_ROOT=$(HOME)/.local
 
+# Install debug version locally (no sudo needed)
+install-debug: build
+	echo "Installing $(BINARY_NAME) (debug) to $(HOME)/.local/bin..."
+	mkdir -p $(HOME)/.local/bin
+	install -m 755 target/debug/$(BINARY_NAME) $(HOME)/.local/bin/$(BINARY_NAME)
+	echo "Installed: $(HOME)/.local/bin/$(BINARY_NAME)"
+
 # Uninstall the binary
 uninstall:
 	echo "Removing $(INSTALL_BIN)/$(BINARY_NAME)..."
@@ -92,6 +99,7 @@ lint:
 	$(CARGO) clippy -p ralph-workflow-tests $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p test-helpers $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p xtask $(CARGO_FLAGS) --all-targets -- -D warnings
+	$(CARGO) clippy -p mcp-server $(CARGO_FLAGS) --all-targets -- -D warnings
 	echo "Lint check passed"
 
 # Run custom dylint lints (safe default: lib only)
@@ -327,7 +335,7 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=deny" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+		RUSTFLAGS="--cap-lints=deny" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -p mcp-server -- --lib --quiet >/dev/null 2>&1; \
 	'
 
 # Run the canonical verification contract.
@@ -359,6 +367,7 @@ help:
 	echo "  clean         Remove build artifacts"
 	echo "  install       Install to $(INSTALL_BIN) (may need sudo)"
 	echo "  install-local Install to ~/.local/bin (no sudo needed)"
+	echo "  install-debug Install debug version to ~/.local/bin (no sudo needed)"
 	echo "  uninstall     Remove installed binary"
 	echo "  check         Run type checks"
 	echo "  fmt           Format source code"

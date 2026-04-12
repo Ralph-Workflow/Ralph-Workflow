@@ -41,6 +41,7 @@ pub fn generate_commit_message_for_plumbing(
         agents,
         config.template_context,
         config.workspace,
+        &config.workspace_arc,
     )
     .map_err(|e| anyhow::anyhow!("Failed to generate commit message: {e}"))?;
     Ok(result)

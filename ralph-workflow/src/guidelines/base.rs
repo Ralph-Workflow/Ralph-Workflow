@@ -34,7 +34,7 @@ impl std::fmt::Display for CheckSeverity {
 
 /// A review check with associated severity
 #[derive(Debug, Clone)]
-pub struct SeverityCheck {
+pub(crate) struct SeverityCheck {
     /// The check description
     pub(crate) check: String,
     /// Severity level for this check

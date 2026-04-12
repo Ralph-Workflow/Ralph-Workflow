@@ -21,7 +21,7 @@
 //! # Module Structure
 //!
 //! - [`types`] - Core configuration types (Config, `ReviewDepth`, Verbosity)
-//! - [`cloud`] - Cloud and git remote configuration types
+//! - `cloud` - Cloud and git remote configuration types
 //! - [`truncation`] - Truncation limits for verbosity levels
 //! - [`parser`] - Environment variable parsing (legacy)
 //! - [`unified`] - Unified configuration format types

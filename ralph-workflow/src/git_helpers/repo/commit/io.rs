@@ -53,7 +53,7 @@ fn is_internal_agent_artifact(path: &std::path::Path) -> bool {
 ///
 /// Returns error if the operation fails.
 pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> std::io::Result<bool> {
-    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
     // Strict selective staging: start from a clean index that matches HEAD, so we don't
@@ -117,23 +117,7 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> std::io::Re
     index_has_changes_to_commit(&repo, &index)
 }
 
-/// Stage all changes.
-///
-/// Similar to `git add -A`.
-///
-/// # Returns
-///
-/// Returns `Ok(true)` if files were successfully staged, `Ok(false)` if there
-/// were no files to stage, or an error if staging failed.
-///
-/// # Errors
-///
-/// Returns error if the operation fails.
-pub fn git_add_all() -> std::io::Result<bool> {
-    git_add_all_in_repo(Path::new("."))
-}
-
-/// Stage all changes in the repository discovered from `repo_root`.
+/// Stage all changes in the repository at the given `repo_root`.
 ///
 /// This avoids relying on process-wide CWD and allows callers (including tests)
 /// to control which repository is targeted.
@@ -142,7 +126,7 @@ pub fn git_add_all() -> std::io::Result<bool> {
 ///
 /// Returns error if the operation fails.
 pub fn git_add_all_in_repo(repo_root: &Path) -> std::io::Result<bool> {
-    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     git_add_all_impl(&repo)
 }
 
@@ -332,27 +316,23 @@ fn resolve_commit_identity(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn git_commit(
-    message: &str,
-    git_user_name: Option<&str>,
-    git_user_email: Option<&str>,
-    executor: Option<&dyn crate::executor::ProcessExecutor>,
-    env: Option<&dyn crate::runtime::environment::Environment>,
-) -> std::io::Result<Option<git2::Oid>> {
-    git_commit_in_repo(
-        Path::new("."),
-        message,
-        git_user_name,
-        git_user_email,
-        executor,
-        env,
-    )
-}
-
-/// Create a commit in the repository discovered from `repo_root`.
+/// Create a commit in the repository at the given `repo_root`.
 ///
-/// This avoids relying on process-wide CWD and allows callers to select the
-/// repository to operate on.
+/// This avoids relying on process-wide CWD and requires callers to supply
+/// an explicit repository path. This is intentional: any code that calls
+/// this function must think carefully about which repository it targets.
+///
+/// # Policy Assertion
+///
+/// This function will panic if `repo_root` resolves to the project's own
+/// development repository. The project's development repository is identified
+/// by walking up from the current executable to find a directory containing
+/// both `CLAUDE.md` and `PROMPT.md` — these files exist only in the project root.
+///
+/// This guard exists because test runs have previously created commits
+/// ("feat: add new file flow") in the development repository and reverted
+/// developer changes. Structural enforcement (path-based) is used instead of
+/// environment variables because env vars can be overridden or forgotten.
 ///
 /// # Errors
 ///
@@ -365,8 +345,56 @@ pub fn git_commit_in_repo(
     executor: Option<&dyn crate::executor::ProcessExecutor>,
     env: Option<&dyn crate::runtime::environment::Environment>,
 ) -> std::io::Result<Option<git2::Oid>> {
-    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    // Policy assertion: prevent commits to the project's own development repository.
+    assert_not_project_repo_for_commit(repo_root);
+
+    // Use open() instead of discover() to require an explicit path.
+    // discover() walks up the directory tree, which can accidentally target
+    // the project repo when called with "." in tests.
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     git_commit_impl(&repo, message, git_user_name, git_user_email, executor, env)
+}
+
+/// Policy check: panic if `repo_root` is the project's own development repository.
+///
+/// The project repository is identified by walking up from the current executable
+/// to find a directory containing both `CLAUDE.md` and `PROMPT.md`.
+fn assert_not_project_repo_for_commit(repo_root: &Path) {
+    let repo_abs = resolve_path_canonical(repo_root);
+    let project_abs = match find_project_root_containing_markers() {
+        Some(p) => resolve_path_canonical(&p),
+        None => return, // Cannot determine project root — skip check
+    };
+
+    check_repo_not_project_repo(&repo_abs, &project_abs);
+}
+
+/// Resolve a path to its canonical form, falling back to the original if canonicalization fails.
+fn resolve_path_canonical(path: &Path) -> std::path::PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Pure policy check: panics if repo_abs is at or under project_abs.
+fn check_repo_not_project_repo(repo_abs: &Path, project_abs: &Path) {
+    if repo_abs == project_abs || repo_abs.starts_with(project_abs) {
+        panic!(
+            "POLICY VIOLATION: git write operations on the project's own development \
+             repository are forbidden. This check exists because test runs previously \
+             created commits ('feat: add new file flow') in the development repository \
+             and reverted developer changes. Fix your test to use an isolated TempDir \
+             workspace, not the project root. Detected project root: {}",
+            project_abs.display()
+        );
+    }
+}
+
+/// Find the project root by walking up from the current executable,
+/// looking for a directory containing both CLAUDE.md and PROMPT.md.
+fn find_project_root_containing_markers() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let start = exe.parent()?.to_path_buf();
+    std::iter::successors(Some(start), |p| p.parent().map(|pp| pp.to_path_buf()))
+        .find(|p| p.join("CLAUDE.md").exists() && p.join("PROMPT.md").exists())
 }
 
 fn has_cli_override(git_user_name: Option<&str>, git_user_email: Option<&str>) -> bool {
@@ -510,6 +538,79 @@ mod tests {
         let tree_oid = index.write_tree().expect("write tree");
         let tree = repo.find_tree(tree_oid).expect("find tree");
         super::tree_has_entries(&tree)
+    }
+
+    /// Regression test: the policy guard in `check_repo_not_project_repo` must
+    /// fire when the repo root equals the project root. This prevents the
+    /// historical bug where tests created real commits ("feat: add new file
+    /// flow") in the development repository, reverting developer changes.
+    ///
+    /// The guard identifies the project root by looking for `CLAUDE.md` and
+    /// `PROMPT.md` marker files, then panics if `repo_root` is at or under
+    /// that path.
+    #[test]
+    fn policy_violation_fires_on_project_repo_commit_attempt() {
+        let project_root = super::find_project_root_containing_markers();
+        let Some(project_root) = project_root else {
+            // Cannot locate project root (e.g. on remote build server) — skip.
+            return;
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::assert_not_project_repo_for_commit(&project_root);
+        }));
+
+        assert!(
+            result.is_err(),
+            "assert_not_project_repo_for_commit must panic when given the project \
+             repo root — this guard prevents the historical 'feat: add new file flow' \
+             bug where tests mutated the development repository"
+        );
+
+        // Verify the panic message references the policy violation.
+        let panic_msg = result
+            .unwrap_err()
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            panic_msg.contains("POLICY VIOLATION"),
+            "panic message must contain 'POLICY VIOLATION', got: {}",
+            panic_msg
+        );
+    }
+
+    /// A subdirectory of the project root must also be rejected — the policy
+    /// guard uses `starts_with` to catch nested paths.
+    #[test]
+    fn policy_violation_fires_on_project_subdirectory() {
+        let project_root = super::find_project_root_containing_markers();
+        let Some(project_root) = project_root else {
+            return;
+        };
+
+        let subdirectory = project_root.join("some-nested-path");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::check_repo_not_project_repo(&subdirectory, &project_root);
+        }));
+
+        assert!(
+            result.is_err(),
+            "check_repo_not_project_repo must panic for paths under the project root"
+        );
+    }
+
+    /// A temp directory must NOT trigger the policy guard — isolated repos are safe.
+    #[test]
+    fn policy_guard_allows_temp_directory() {
+        let project_root = super::find_project_root_containing_markers();
+        let Some(project_root) = project_root else {
+            return;
+        };
+
+        let temp_dir = tempfile::TempDir::new().expect("create temp dir");
+        // Must not panic.
+        super::check_repo_not_project_repo(temp_dir.path(), &project_root);
     }
 
     #[test]

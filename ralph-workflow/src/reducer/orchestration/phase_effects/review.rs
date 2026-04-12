@@ -47,16 +47,24 @@ use crate::reducer::state::{PipelineState, PromptMode};
 ///
 /// These files are cleaned up before each review agent invocation to ensure
 /// fresh output. The review agent writes to `.agent/tmp/issues.xml`.
-pub const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
+pub(super) const REQUIRED_FILES_ISSUES: &[&str] = &[
+    ".agent/tmp/issues.xml",
+    ".agent/tmp/issues.json",
+    ".agent/tmp/issues.partial.json",
+];
 
 /// Files that the fix agent writes.
 ///
 /// These files are cleaned up before each fix agent invocation to ensure
 /// fresh output. The fix agent writes to `.agent/tmp/fix_result.xml`.
 /// When fix analysis is enabled, the analysis agent writes to `.agent/tmp/development_result.xml`.
-pub const REQUIRED_FILES_FIX: &[&str] = &[
+pub(super) const REQUIRED_FILES_FIX: &[&str] = &[
     ".agent/tmp/fix_result.xml",
+    ".agent/tmp/fix_result.json",
+    ".agent/tmp/fix_result.partial.json",
     ".agent/tmp/development_result.xml",
+    ".agent/tmp/development_result.json",
+    ".agent/tmp/development_result.partial.json",
 ];
 
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
@@ -112,9 +120,14 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
                 && state.fix_required_files_cleaned_pass == Some(state.reviewer_pass)
                 && state.runtime_drain() == AgentDrain::Fix);
 
+        let continuation_prompt_pending = state.continuation.fix_continue_pending
+            && state.agent_chain.current_mode == DrainMode::Continuation
+            && state.fix_prompt_prepared_pass != Some(state.reviewer_pass);
+
         let should_initialize_fix_chain = !in_transition_to_analysis
             && !is_legacy_continue
             && fix_not_started
+            && !continuation_prompt_pending
             && (state.agent_chain.agents.is_empty() || !chain_matches);
 
         if should_initialize_fix_chain {
@@ -283,7 +296,22 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
             };
         }
 
-        if state.review_agent_invoked_pass != Some(state.reviewer_pass) {
+        let last_effect_was_review_agent = state
+            .continuation
+            .last_effect_kind
+            .as_deref()
+            .is_some_and(|k| k.contains("InvokeReviewAgent"));
+
+        let effective_review_agent_invoked = state.review_agent_invoked_pass
+            == Some(state.reviewer_pass)
+            || (last_effect_was_review_agent
+                && state.review_context_prepared_pass == Some(state.reviewer_pass)
+                && state.review_prompt_prepared_pass == Some(state.reviewer_pass)
+                && state.review_required_files_cleaned_pass == Some(state.reviewer_pass)
+                && state.agent_chain.current_drain == AgentDrain::Review
+                && state.agent_chain.current_mode == DrainMode::Normal);
+
+        if !effective_review_agent_invoked {
             return Effect::InvokeReviewAgent {
                 pass: state.reviewer_pass,
             };

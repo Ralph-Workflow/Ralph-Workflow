@@ -39,7 +39,7 @@
 //!
 //! Orchestrators are pure functions - test them without mocks:
 //!
-//! ```ignore
+//! ```text
 //! #[test]
 //! fn test_xsd_retry_pending_derives_cleanup_effect() {
 //!     let state = PipelineState {
@@ -56,7 +56,7 @@
 //! }
 //! ```
 //!
-//! See [`tests`] module for comprehensive orchestration tests.
+//! See `tests` module for comprehensive orchestration tests.
 
 use super::event::{CheckpointTrigger, PipelinePhase, RebasePhase};
 use super::state::{CommitState, PipelineState, PromptMode, RebaseState};

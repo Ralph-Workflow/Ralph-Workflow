@@ -12,10 +12,22 @@ use crate::executor::{AgentChild, ChildProcessInfo, MockAgentChild, MockProcessE
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 fn wait_until_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout: Duration) {
-    timestamp.store(0, Ordering::Release);
+    // Set timestamp to just barely exceed the timeout.
+    // With timestamp = now - (timeout + 1ms), time_since_activity = timeout + 1ms,
+    // which is > timeout, so is_idle_timeout_exceeded returns true.
+    // This is better than timestamp=0 which makes time_since_activity = 56 years,
+    // breaking activity_resumed_after_file_scan logic.
+    let offset = timeout + Duration::from_millis(1);
+    let now_ms = SystemTime::UNIX_EPOCH
+        .elapsed()
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let past_ms = now_ms.saturating_sub(offset.as_millis() as u64);
+    timestamp.store(past_ms, Ordering::Release);
+    // Verify idle is now exceeded
     while !is_idle_timeout_exceeded(timestamp, timeout) {
         std::thread::yield_now();
     }
@@ -54,25 +66,14 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    // Auto-advance cpu by 100ms on every query — no background thread needed.
+    let executor_impl = Arc::new(
+        MockProcessExecutor::new()
+            .with_active_children_for(child_pid)
+            .with_cpu_step_per_query(child_pid, 100),
+    );
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
-    let cpu_advancer_executor = executor_impl.clone();
-    let cpu_advancer_stop = Arc::clone(&should_stop);
-    let cpu_advancer = thread::spawn(move || {
-        let mut cpu_ms = 0u64;
-        while !cpu_advancer_stop.load(Ordering::Acquire) {
-            cpu_ms += 100;
-            cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
-            thread::sleep(Duration::from_millis(2));
-        }
-    });
-
-    // required_idle_confirmations=3 requires three consecutive 5ms checks (15ms gap)
-    // with no CPU progress before a kill fires. The cpu_advancer runs every 2ms, so
-    // fresh progress is always detected within 15ms while the advancer is running.
-    // This prevents the race where a single missed check interval causes a spurious
-    // kill while children are still advancing CPU time.
     let config = MonitorConfig {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
@@ -97,7 +98,12 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
         )
     });
 
-    thread::sleep(Duration::from_millis(50));
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 3
+        }),
+        "monitor should have queried children at least 3 times with cpu advancing on each query"
+    );
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
         "no kill signals should be sent while child processes have advancing CPU time"
@@ -106,7 +112,6 @@ fn active_children_with_advancing_cpu_prevent_idle_kill() {
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("monitor thread panicked");
-    cpu_advancer.join().expect("cpu advancer panicked");
     assert_eq!(
         result,
         MonitorResult::ProcessCompleted,
@@ -208,15 +213,20 @@ fn child_processes_that_finish_eventually_allow_kill() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
-        child_pid,
-        ChildProcessInfo {
-            child_count: 1,
-            active_child_count: 1,
-            cpu_time_ms: 100,
-            descendant_pid_signature: 11,
-        },
-    ));
+    // Auto-advance cpu by 100ms on every query — no background thread needed.
+    let executor_impl = Arc::new(
+        MockProcessExecutor::new()
+            .with_active_children_info(
+                child_pid,
+                ChildProcessInfo {
+                    child_count: 1,
+                    active_child_count: 1,
+                    cpu_time_ms: 100,
+                    descendant_pid_signature: 11,
+                },
+            )
+            .with_cpu_step_per_query(child_pid, 100),
+    );
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     let cpu_advancer_executor = executor_impl.clone();
@@ -267,6 +277,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
 
     cpu_advancer_stop.store(true, Ordering::Release);
     cpu_advancer.join().expect("cpu advancer panicked");
+
     executor_impl.remove_active_children_for(child_pid);
 
     let result = handle.join().expect("monitor thread panicked");
@@ -513,10 +524,15 @@ fn first_child_observation_without_current_activity_times_out_immediately() {
         !executor_impl.execute_calls_for("kill").is_empty(),
         "timeout enforcement should start on the first idle check when descendants are not currently active"
     );
-    controller.store(false, Ordering::Release);
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("monitor thread panicked");
+
+    // Mark child as exited AFTER monitor has completed its enforcement action.
+    // This ensures try_wait_child sees the child's state at the time of enforcement,
+    // not a subsequent state change that would incorrectly produce ProcessCompleted.
+    controller.store(false, Ordering::Release);
+
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
         "non-active descendants should not delay timeout on their first observation"

@@ -6,6 +6,7 @@
 //! - `FailingWorkspace` - Workspace that simulates I/O failures
 //! - `StalledAwaitingDevFixHandler` - Mock handler for testing timeout behavior
 
+use ralph_workflow::agents::session::AuditTrail;
 use ralph_workflow::agents::AgentRegistry;
 use ralph_workflow::checkpoint::{ExecutionHistory, RunContext};
 use ralph_workflow::config::Config;
@@ -23,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Standard test fixture with workspace, logger, and phase context.
-pub struct Fixture {
+pub(crate) struct Fixture {
     pub config: Config,
     pub colors: Colors,
     pub logger: Logger,
@@ -40,14 +41,14 @@ pub struct Fixture {
 
 impl Fixture {
     /// Creates a new fixture with a memory-backed workspace.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let repo_root = PathBuf::from("/test/repo");
         let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new(repo_root));
         Self::with_workspace(workspace)
     }
 
     /// Creates a fixture using a custom workspace implementation.
-    pub fn with_workspace(workspace: Arc<dyn Workspace>) -> Self {
+    pub(crate) fn with_workspace(workspace: Arc<dyn Workspace>) -> Self {
         let config = Config::default();
         let colors = Colors::new();
         let repo_root = workspace.root().to_path_buf();
@@ -74,7 +75,7 @@ impl Fixture {
     }
 
     /// Creates a phase context for use in effect handlers.
-    pub fn ctx(&mut self) -> ralph_workflow::phases::PhaseContext<'_> {
+    pub(crate) fn ctx(&mut self) -> ralph_workflow::phases::PhaseContext<'_> {
         ralph_workflow::phases::PhaseContext {
             config: &self.config,
             registry: &self.registry,
@@ -98,6 +99,8 @@ impl Fixture {
             cloud_reporter: None,
             cloud: &self.cloud,
             env: &self.git_env,
+            active_session: None,
+            audit_trail: AuditTrail::new(),
         }
     }
 }
@@ -107,7 +110,7 @@ impl Fixture {
 /// Wraps a `MemoryWorkspace` and selectively fails operations based on
 /// configuration. Used to test error recovery paths in the event loop.
 #[derive(Debug)]
-pub struct FailingWorkspace {
+pub(crate) struct FailingWorkspace {
     inner: MemoryWorkspace,
     fail_marker_write: bool,
 }
@@ -119,7 +122,7 @@ impl FailingWorkspace {
     ///
     /// * `inner` - The underlying memory workspace
     /// * `fail_marker_write` - If true, writes to `.agent/tmp/completion_marker` will fail
-    pub const fn new(inner: MemoryWorkspace, fail_marker_write: bool) -> Self {
+    pub(crate) const fn new(inner: MemoryWorkspace, fail_marker_write: bool) -> Self {
         Self {
             inner,
             fail_marker_write,
@@ -229,7 +232,7 @@ impl Workspace for FailingWorkspace {
 
 /// Behavior for `SaveCheckpoint` effect in mock handler.
 #[derive(Debug, Clone, Copy)]
-pub enum SaveBehavior {
+pub(crate) enum SaveBehavior {
     /// `SaveCheckpoint` succeeds
     Ok,
     /// `SaveCheckpoint` returns error event
@@ -244,7 +247,7 @@ pub enum SaveBehavior {
 /// This handler responds to `TriggerDevFixFlow` but never advances past
 /// `AwaitingDevFix`, allowing tests to exercise timeout behavior.
 #[derive(Debug)]
-pub struct StalledAwaitingDevFixHandler {
+pub(crate) struct StalledAwaitingDevFixHandler {
     pub state: PipelineState,
     save_behavior: SaveBehavior,
     pub save_attempts: usize,
@@ -257,7 +260,7 @@ impl StalledAwaitingDevFixHandler {
     ///
     /// * `state` - Initial pipeline state
     /// * `save_behavior` - How `SaveCheckpoint` effect should behave
-    pub const fn new(state: PipelineState, save_behavior: SaveBehavior) -> Self {
+    pub(crate) const fn new(state: PipelineState, save_behavior: SaveBehavior) -> Self {
         Self {
             state,
             save_behavior,

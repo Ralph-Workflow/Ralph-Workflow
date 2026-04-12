@@ -1,134 +1,90 @@
 {# ============================================================================ #}
 {# Template: review_xsd_retry.txt                                               #}
-{# Version: 6.0 - Dumb-agent-proof XML-only fix mode                            #}
+{# Version: 6.0 - MCP JSON resubmission only                                   #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
-{#   Retry prompt when XML validation fails during review phase.                #}
-{#   This is STRICTLY for fixing malformed XML - NO other actions allowed.     #}
+{#   Retry prompt when JSON validation fails during review phase.               #}
+{#   This is STRICTLY for fixing the JSON submission - NO other actions allowed.#}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
-{#   {{XSD_ERROR}} - XSD validation error message (required)                    #}
-{#                                                                             #}
-{# FILES TO READ (REFERENCE ONLY):                                              #}
-{#   .agent/tmp/issues.xsd       - The XSD schema (for structure reference)      #}
-{#   .agent/tmp/last_output.xml  - Your previous invalid output (for format)    #}
+{#   {{XSD_ERROR}} - Validation error message (required)                        #}
+{#   {{ISSUES_XML_PATH}} - Path to issues XML file                              #}
+{#   {{ISSUES_XSD_PATH}} - Path to issues XSD schema                            #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                               #}
-{#   Valid <ralph-issues> XML conforming to the XSD schema                     #}
+{#   Corrected JSON submitted via ralph_submit_artifact                        #}
 {# ============================================================================ #}
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
-XSD VALIDATION FAILED - FIX XML ONLY
+VALIDATION FAILED - FIX JSON SUBMISSION ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your XML output at `{{ISSUES_XML_PATH}}` failed XSD validation.
+Your previous issues submission failed validation.
 
 **THIS IS A SUBMISSION-FIX-ONLY RETRY**
 
 ERROR: {{XSD_ERROR}}
 
 ═══════════════════════════════════════════════════════════════════════════════
-REFERENCE ONLY (Do not redo task logic)
+REFERENCE ONLY (Do NOT review any code or Do NOT DO any review work)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Read these files ONLY to understand expected structure:
 - `{{ISSUES_XSD_PATH}}` - XSD schema (REFERENCE ONLY)
+- `{{ISSUES_XML_PATH}}` - Your previous issues output (REFERENCE ONLY)
 - `.agent/tmp/last_output.xml` - Your invalid output (REFERENCE ONLY)
 
-These files are for structure reference only. Do NOT redo review work from them.
+These files are for structure reference only. Do NOT review code or
+Do NOT DO any additional review work from them.
 
 ═══════════════════════════════════════════════════════════════════════════════
-PRIMARY OBJECTIVE: Fix Malformed XML Structure
+PRIMARY OBJECTIVE: Fix Malformed JSON Submission
 ═══════════════════════════════════════════════════════════════════════════════
 
-Your main task is to fix the malformed XML structure. The most common issue
-is malformed XML/root parse errors - fix those FIRST.
+Your main task is to fix the malformed JSON submission. The most common issues
+are missing required fields and invalid field values.
 
 Focus on:
-1. Fix malformed XML/root structure first
-2. Fix any remaining XML format issues
-3. Ensure all required elements are present
+1. Fix malformed JSON structure first
+2. Fix any remaining field format issues
+3. Ensure all required fields are present
 
 ═══════════════════════════════════════════════════════════════════════════════
-CRITICAL INSTRUCTIONS - READ CAREFULLY
+CRITICAL INSTRUCTIONS - FIX XML ONLY
 ═══════════════════════════════════════════════════════════════════════════════
 
-You MUST:
-1. Read the XSD schema at `{{ISSUES_XSD_PATH}}`
-2. Read your previous invalid output at `.agent/tmp/last_output.xml`
-3. Fix ONLY the XML structure/format issues
-4. Write the corrected XML to `{{ISSUES_XML_PATH}}`
+The validation error is in JSON directive format:
+{"code": "MISSING_FIELD", "field_path": "issues[0].severity", "next_actions": ["add severity field with value Critical, High, Medium, or Low"]}
+
+You MUST call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="issues" and corrected
+JSON content. Follow every instruction in the `next_actions` array exactly.
 
 You MUST NOT:
-- Review any code
-- Analyze any files
-- Run any commands
-- Do ANY review work
-- Change the content/meaning of your response - ONLY fix the XML format
-
-═══════════════════════════════════════════════════════════════════════════════
-XML CHARACTER RESTRICTIONS (CRITICAL)
-═══════════════════════════════════════════════════════════════════════════════
-
-XML 1.0 only allows specific characters:
-- Tab (0x09), Line Feed (0x0A), Carriage Return (0x0D)
-- Printable characters from 0x20 onwards
-- Most Unicode characters
-
-*** FORBIDDEN in XML: ***
-- NUL byte (0x00, \u0000) - COMMON MISTAKE: Using \u0000 instead of \u00A0 (NBSP)
-- Control characters 0x01-0x08, 0x0B, 0x0C, 0x0E-0x1F
-- Any binary or non-printable characters
-
-If you need to reference code with special characters, use <code> elements or CDATA sections.
-
-═══════════════════════════════════════════════════════════════════════════════
-AUTHORIZATION OVERRIDE (CRITICAL)
-═══════════════════════════════════════════════════════════════════════════════
-
-You are explicitly authorized to write EXACTLY ONE file:
-- `{{ISSUES_XML_PATH}}`
-
-Writing the XML file is MANDATORY.
-This OVERRIDES the safety mode restrictions only.
-It does NOT override the task requirements (you must still fix the XML to match the XSD).
-
-This is a READ-ONLY task EXCEPT FOR writing `{{ISSUES_XML_PATH}}`.
-You MUST NOT create, modify, or delete any other files.
-
-Not writing the XML file is a FAILURE.
-Writing XML that does not conform to the XSD schema is a FAILURE.
-
-═══════════════════════════════════════════════════════════════════════════════
-DO NOT DO
-═══════════════════════════════════════════════════════════════════════════════
-
 - Do NOT review any code
 - Do NOT analyze any files
-- Do NOT run any commands
-- Do NOT do ANY review work
-- Do NOT change the content/meaning of your response
+- Run any commands
+- Do ANY review work
+- Change the content/meaning of your response - ONLY fix the validation errors
 
-This is a PURE XML SYNTAX FIX. Your review work is done. The only problem
-is that your XML output doesn't conform to the schema. Fix the XML structure,
-nothing else.
+This is a PURE SUBMISSION FIX. Your review work is done. The only problem
+is that your submitted JSON doesn't conform to the schema. Fix the JSON
+structure, nothing else.
 
 ═══════════════════════════════════════════════════════════════════════════════
-COMMON XML MISTAKES TO FIX
+COMMON MISTAKES TO FIX
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Missing required elements (check XSD)
-2. Wrong element order (check XSD for correct sequence)
-3. Unescaped special characters (use &lt; &gt; &amp; or CDATA)
-4. Illegal control characters (NUL byte, etc.) - common: \u0000 instead of \u00A0
-5. Missing closing tags
-6. Text before/after root element
-7. Markdown code fences around XML (remove ```)
+1. Missing required fields (check the error for specifics)
+2. Invalid severity value (must be: Critical, High, Medium, or Low)
+3. Missing or empty description
+4. Malformed JSON structure
 
-After reading the XSD schema, fix ONLY the XML validation error.
-DO NOT do any other work.
+Resubmit your corrected JSON via `{{SUBMIT_ARTIFACT_TOOL_NAME}}`.
+DO NOT DO any other work.

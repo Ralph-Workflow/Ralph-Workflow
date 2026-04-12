@@ -43,7 +43,7 @@ use std::borrow::Cow;
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn create_reader(content: &str) -> Reader<&[u8]> {
+pub(crate) fn create_reader(content: &str) -> Reader<&[u8]> {
     configure_trimmed_reader(Reader::from_str(content))
 }
 
@@ -71,7 +71,7 @@ fn configure_trimmed_reader(mut reader: Reader<&[u8]>) -> Reader<&[u8]> {
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn read_text_until_end(
+pub(crate) fn read_text_until_end(
     reader: &mut Reader<&[u8]>,
     end_tag: &[u8],
 ) -> Result<String, XsdValidationError> {
@@ -129,7 +129,7 @@ fn read_text_until_end_next(
 /// * `reader` - The XML reader
 /// * `canonical_end_tag` - The expected canonical closing tag (e.g., `b"ralph-summary"`)
 /// * `original_start_tag` - The original tag that appeared in the XML (e.g., `b"ralph-sumary"`)
-pub fn read_text_until_end_fuzzy(
+pub(crate) fn read_text_until_end_fuzzy(
     reader: &mut Reader<&[u8]>,
     canonical_end_tag: &[u8],
     original_start_tag: &[u8],
@@ -226,7 +226,10 @@ fn read_text_until_end_fuzzy_next(
 /// # Examples
 ///
 /// See the unit tests in this module for working examples.
-pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), XsdValidationError> {
+pub(crate) fn skip_to_end(
+    reader: &mut Reader<&[u8]>,
+    end_tag: &[u8],
+) -> Result<(), XsdValidationError> {
     skip_to_end_with_depth(reader, end_tag, 1)
 }
 
@@ -297,7 +300,7 @@ fn merge_raw_content(raw_content: Option<String>, fragment: &str) -> Option<Stri
 /// # Returns
 ///
 /// A `SkillsMcp` struct with parsed entries.
-pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
+pub(crate) fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
     let parsed_state = parse_skills_mcp_state(
         reader,
         SkillsMcpState {

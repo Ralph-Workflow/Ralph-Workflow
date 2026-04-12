@@ -5,20 +5,20 @@ use std::path::PathBuf;
 use crate::config::cloud::load_cloud_config_from_env;
 
 /// Result of converting UnifiedConfig to Config, including any warnings.
-pub struct ConfigConversionResult {
-    pub config: Config,
-    pub warnings: Vec<String>,
+pub(crate) struct ConfigConversionResult {
+    pub(crate) config: Config,
+    pub(crate) warnings: Vec<String>,
 }
 
 impl ConfigConversionResult {
-    pub fn new(config: Config) -> Self {
+    pub(crate) fn new(config: Config) -> Self {
         Self {
             config,
             warnings: Vec::new(),
         }
     }
 
-    pub fn with_warnings(config: Config, warnings: Vec<String>) -> Self {
+    pub(crate) fn with_warnings(config: Config, warnings: Vec<String>) -> Self {
         Self { config, warnings }
     }
 }
@@ -94,7 +94,7 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig) -> ConfigConversionRe
 }
 
 /// Default configuration when no config file is found.
-pub fn default_config() -> Config {
+pub(crate) fn default_config() -> Config {
     use crate::config::types::{BehavioralFlags, FeatureFlags};
 
     Config {

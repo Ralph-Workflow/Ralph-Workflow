@@ -24,7 +24,10 @@
 
 use std::fs;
 use tempfile::TempDir;
-use test_helpers::{commit_all, init_git_repo, with_temp_cwd, write_file};
+use test_helpers::{
+    assert_project_head_unchanged, capture_project_head_oid, commit_all, init_git_repo,
+    with_temp_cwd, write_file,
+};
 
 use crate::common::mock_executor_for_git_success;
 use crate::test_timeout::with_default_timeout;
@@ -98,6 +101,7 @@ fn get_default_branch_name(repo: &git2::Repository) -> String {
 #[serial]
 fn test_detect_single_file_conflict() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let file = dir.path().join("conflict.txt");
 
@@ -112,6 +116,7 @@ fn test_detect_single_file_conflict() {
                 has_conflict_markers(&file),
                 "Should detect conflict markers"
             );
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -124,6 +129,7 @@ fn test_detect_single_file_conflict() {
 #[serial]
 fn test_detect_multiple_file_conflicts() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let files = vec![
                 dir.path().join("file1.rs"),
@@ -145,6 +151,7 @@ fn test_detect_multiple_file_conflicts() {
                     "Should detect conflict markers in {file:?}"
                 );
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -157,6 +164,7 @@ fn test_detect_multiple_file_conflicts() {
 #[serial]
 fn test_distinct_resolved_unresolved_conflicts() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let file1 = dir.path().join("resolved.rs");
             let file2 = dir.path().join("unresolved.rs");
@@ -179,6 +187,7 @@ fn test_distinct_resolved_unresolved_conflicts() {
                 has_conflict_markers(&file2),
                 "Unresolved file should have markers"
             );
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -191,6 +200,7 @@ fn test_distinct_resolved_unresolved_conflicts() {
 #[serial]
 fn test_validate_balanced_delimiters() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             // Balanced file
             let balanced = dir.path().join("balanced.rs");
@@ -215,6 +225,7 @@ fn test_validate_balanced_delimiters() {
             create_conflict_file(&unbalanced_parens, "fn main() {\n    let x = (1, 2;\n}\n");
             let content = fs::read_to_string(&unbalanced_parens).unwrap();
             assert!(check_balanced_delimiters(&content).is_err());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -227,6 +238,7 @@ fn test_validate_balanced_delimiters() {
 #[serial]
 fn test_ai_leaves_conflict_markers_is_detected() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let file = dir.path().join("partial.rs");
 
@@ -241,6 +253,7 @@ fn test_ai_leaves_conflict_markers_is_detected() {
                 has_conflict_markers(&file),
                 "Should detect remaining conflict markers"
             );
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -253,6 +266,7 @@ fn test_ai_leaves_conflict_markers_is_detected() {
 #[serial]
 fn test_detect_partial_conflict_resolution() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let file1 = dir.path().join("resolved.rs");
             let file2 = dir.path().join("unresolved.rs");
@@ -272,6 +286,7 @@ fn test_detect_partial_conflict_resolution() {
                 file1_resolved && !file2_resolved,
                 "Should detect partial resolution"
             );
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -284,6 +299,7 @@ fn test_detect_partial_conflict_resolution() {
 #[serial]
 fn test_validate_complete_conflict_resolution() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let file1 = dir.path().join("file1.rs");
             let file2 = dir.path().join("file2.rs");
@@ -295,6 +311,7 @@ fn test_validate_complete_conflict_resolution() {
             // Should validate successfully
             assert!(!has_conflict_markers(&file1), "file1 should be resolved");
             assert!(!has_conflict_markers(&file2), "file2 should be resolved");
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -389,6 +406,7 @@ fn test_recovery_action_decision_logic() {
 #[serial]
 fn test_rebase_already_up_to_date() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
             let default_branch = get_default_branch_name(&repo);
@@ -416,6 +434,7 @@ fn test_rebase_already_up_to_date() {
                     panic!("Unexpected result for up-to-date rebase: {other:?}");
                 }
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -428,6 +447,7 @@ fn test_rebase_already_up_to_date() {
 #[serial]
 fn test_rebase_no_common_ancestor() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         with_temp_cwd(|dir| {
             let _repo = init_repo_with_initial_commit(dir);
 
@@ -444,6 +464,7 @@ fn test_rebase_no_common_ancestor() {
                     panic!("Unexpected result: {other:?}");
                 }
             }
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -456,6 +477,7 @@ fn test_rebase_no_common_ancestor() {
 #[serial]
 fn test_state_machine_tracks_conflict_resolution() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::RebaseStateMachine;
 
         with_temp_cwd(|_dir| {
@@ -479,6 +501,7 @@ fn test_state_machine_tracks_conflict_resolution() {
 
             assert_eq!(machine.unresolved_conflict_count(), 0);
             assert!(machine.all_conflicts_resolved());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -491,6 +514,7 @@ fn test_state_machine_tracks_conflict_resolution() {
 #[serial]
 fn test_checkpoint_save_and_load() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_checkpoint::{
             clear_rebase_checkpoint, load_rebase_checkpoint, rebase_checkpoint_exists,
             save_rebase_checkpoint,
@@ -523,6 +547,7 @@ fn test_checkpoint_save_and_load() {
             // Clean up
             clear_rebase_checkpoint().unwrap();
             assert!(!rebase_checkpoint_exists());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -535,6 +560,7 @@ fn test_checkpoint_save_and_load() {
 #[serial]
 fn test_recovery_from_checkpoint() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::rebase_checkpoint::save_rebase_checkpoint;
         use ralph_workflow::git_helpers::{RebaseCheckpoint, RebasePhase, RebaseStateMachine};
 
@@ -559,6 +585,7 @@ fn test_recovery_from_checkpoint() {
 
             // Can still recover (not at max attempts yet)
             assert!(machine.can_recover());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -571,6 +598,7 @@ fn test_recovery_from_checkpoint() {
 #[serial]
 fn test_rebase_lock_prevents_concurrent() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::{acquire_rebase_lock, release_rebase_lock};
 
         with_temp_cwd(|_dir| {
@@ -589,6 +617,7 @@ fn test_rebase_lock_prevents_concurrent() {
 
             // Clean up
             release_rebase_lock().unwrap();
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -601,6 +630,7 @@ fn test_rebase_lock_prevents_concurrent() {
 #[serial]
 fn test_stale_lock_is_cleaned_up() {
     with_default_timeout(|| {
+        let head_before = capture_project_head_oid();
         use ralph_workflow::git_helpers::{acquire_rebase_lock, release_rebase_lock};
 
         with_temp_cwd(|dir| {
@@ -619,6 +649,7 @@ fn test_stale_lock_is_cleaned_up() {
 
             // Clean up
             release_rebase_lock().unwrap();
+            assert_project_head_unchanged(&head_before);
         });
     });
 }
@@ -633,7 +664,10 @@ fn test_stale_lock_is_cleaned_up() {
 #[serial]
 fn test_conflict_resolution_continues_without_json() {
     with_default_timeout(|| {
-        use ralph_workflow::git_helpers::{abort_rebase, get_conflicted_files, git_add_all};
+        let head_before = capture_project_head_oid();
+        use ralph_workflow::git_helpers::{
+            abort_rebase, get_conflicted_files, git_add_all_in_repo,
+        };
 
         with_temp_cwd(|dir| {
             let repo = init_repo_with_initial_commit(dir);
@@ -692,7 +726,7 @@ fn test_conflict_resolution_continues_without_json() {
                     create_conflict_file(&conflict_file, "merged version\n");
 
                     // Stage the resolved file
-                    let _ = git_add_all();
+                    let _ = git_add_all_in_repo(dir.path());
 
                     // Verify conflicts are resolved via LibGit2 (not JSON)
                     // get_conflicted_files returns empty vec when no conflicts
@@ -721,6 +755,7 @@ fn test_conflict_resolution_continues_without_json() {
             // Always clean up
             let executor = mock_executor_for_git_success();
             let _ = abort_rebase(executor.as_ref());
+            assert_project_head_unchanged(&head_before);
         });
     });
 }

@@ -49,8 +49,8 @@ fn test_prepare_review_prompt_writes_prompt_file_with_required_markers() {
         "review prompt should instruct reading PROMPT.md.backup"
     );
     assert!(
-        prompt.contains("<ralph-issues>"),
-        "review prompt should include XML output instructions"
+        prompt.contains("ralph_submit_artifact"),
+        "review prompt should include MCP submission instructions"
     );
 }
 

@@ -146,11 +146,13 @@ fn test_commit_created_when_review_skipped() {
 /// - Reference to PROMPT.md.backup file (reviewer reads it directly)
 /// - The implementation plan (PLAN content)
 /// - Changes made (git diff content)
-/// - XML output format instructions with <ralph-issues> tags
+/// - MCP artifact submission instructions via ralph_submit_artifact
 #[test]
 fn review_prompt_construction_includes_all_required_components() {
+    use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use ralph_workflow::prompts::prompt_review_xml_with_context;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::prompts::SessionCapabilities;
 
     with_default_timeout(|| {
         let template_context = TemplateContext::default();
@@ -168,6 +170,10 @@ fn review_prompt_construction_includes_all_required_components() {
             plan_content,
             changes_content,
             &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Review),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Review),
+            ),
         );
 
         // Verify the prompt contains all required components
@@ -194,13 +200,8 @@ fn review_prompt_construction_includes_all_required_components() {
         );
 
         assert!(
-            review_prompt.contains("<ralph-issues>"),
-            "Review prompt must contain XML output format instructions with <ralph-issues> tag"
-        );
-
-        assert!(
-            review_prompt.contains("issues.xml"),
-            "Review prompt must reference the issues.xml output file path"
+            review_prompt.contains("ralph_submit_artifact"),
+            "Review prompt must contain MCP artifact submission instructions"
         );
     });
 }
@@ -211,15 +212,26 @@ fn review_prompt_construction_includes_all_required_components() {
 /// and/or when diff content is unavailable.
 #[test]
 fn review_prompt_allows_empty_plan_and_changes() {
+    use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use ralph_workflow::prompts::prompt_review_xml_with_context;
     use ralph_workflow::prompts::template_context::TemplateContext;
     use ralph_workflow::prompts::template_registry::TemplateRegistry;
+    use ralph_workflow::prompts::SessionCapabilities;
 
     with_default_timeout(|| {
         let template_context = TemplateContext::new(TemplateRegistry::new(None));
         let workspace = ralph_workflow::workspace::MemoryWorkspace::new_test();
-        let review_prompt =
-            prompt_review_xml_with_context(&template_context, "prompt", "", "", &workspace);
+        let review_prompt = prompt_review_xml_with_context(
+            &template_context,
+            "prompt",
+            "",
+            "",
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Review),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Review),
+            ),
+        );
 
         assert!(
             !review_prompt.contains("{{PLAN}}"),
@@ -246,8 +258,10 @@ fn review_prompt_allows_empty_plan_and_changes() {
 /// with severity levels and <file:line> references.
 #[test]
 fn review_prompt_includes_output_format_guidance() {
+    use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use ralph_workflow::prompts::prompt_review_xml_with_context;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::prompts::SessionCapabilities;
 
     with_default_timeout(|| {
         let template_context = TemplateContext::default();
@@ -259,6 +273,10 @@ fn review_prompt_includes_output_format_guidance() {
             "plan",
             "changes",
             &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Review),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Review),
+            ),
         );
 
         // Verify format guidance
@@ -286,16 +304,27 @@ fn review_prompt_includes_output_format_guidance() {
 /// output when given empty prompt, plan, or changes content.
 #[test]
 fn review_prompt_handles_empty_inputs() {
+    use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
     use ralph_workflow::prompts::prompt_review_xml_with_context;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::prompts::SessionCapabilities;
 
     with_default_timeout(|| {
         let template_context = TemplateContext::default();
         let workspace = ralph_workflow::workspace::MemoryWorkspace::new_test();
 
         // All empty inputs
-        let review_prompt =
-            prompt_review_xml_with_context(&template_context, "", "", "", &workspace);
+        let review_prompt = prompt_review_xml_with_context(
+            &template_context,
+            "",
+            "",
+            "",
+            &workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Review),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Review),
+            ),
+        );
 
         // Should still produce a valid prompt structure
         assert!(
@@ -303,8 +332,8 @@ fn review_prompt_handles_empty_inputs() {
             "Review prompt must contain 'REVIEW MODE' even with empty inputs"
         );
         assert!(
-            review_prompt.contains("<ralph-issues>"),
-            "Review prompt must contain XML format instructions even with empty inputs"
+            review_prompt.contains("ralph_submit_artifact"),
+            "Review prompt must contain MCP artifact submission instructions even with empty inputs"
         );
     });
 }

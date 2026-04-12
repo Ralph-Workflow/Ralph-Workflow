@@ -256,7 +256,7 @@ impl std::error::Error for XsdValidationError {}
 /// Each variant represents a different category of validation failure,
 /// allowing for targeted error messages and retry strategies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XsdErrorType {
+pub(crate) enum XsdErrorType {
     /// A required element is missing from the XML
     MissingRequiredElement,
     /// An unexpected element was found
@@ -269,7 +269,7 @@ pub enum XsdErrorType {
 
 impl XsdErrorType {
     /// Get a human-readable description of this error type.
-    pub const fn description(self) -> &'static str {
+    pub(crate) const fn description(self) -> &'static str {
         match self {
             Self::MissingRequiredElement => "Missing required element",
             Self::UnexpectedElement => "Unexpected element",

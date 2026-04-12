@@ -103,7 +103,6 @@ Ralph uses a few structural patterns that are important when you add new behavio
 
 `PipelineEvent` wraps category-specific enums so the reducer can do type-safe routing:
 
-- `LifecycleEvent` (frozen)
 - `PlanningEvent`
 - `DevelopmentEvent`
 - `ReviewEvent`
@@ -114,6 +113,20 @@ Ralph uses a few structural patterns that are important when you add new behavio
 - `AwaitingDevFixEvent`
 
 Category routing keeps each reducer module exhaustively matched within its own domain.
+
+#### Sanctioned cross-phase top-level lifecycle events
+
+`PipelineEvent` also contains a **small frozen set** of top-level lifecycle facts that are intentionally cross-phase and not owned by a single category enum:
+
+- `ContextCleaned`
+- `CheckpointSaved`
+- `FinalStateValidationCompleted`
+- `PromptPermissionsRestored`
+- `LoopRecoveryTriggered`
+
+These are policy exceptions, not a general extension point. They exist to preserve reducer-visible lifecycle boundaries (cleanup, checkpoint accounting, finalization handoff, prompt permission restoration, loop recovery) without hiding control flow in handlers.
+
+Do **not** add new top-level lifecycle events by default. Prefer category events unless the event is genuinely cross-phase and meets the same exception criteria.
 
 ### UIEvent is separate from PipelineEvent
 
@@ -242,11 +255,7 @@ The exact file layout can evolve, but conceptually Ralph keeps these concerns se
 
 ## Best Practices: Events vs Decisions
 
-### Never add decision-events to lifecycle
-
-`LifecycleEvent` is intentionally frozen so effect handlers cannot introduce new "control" events.
-
-If you need to represent a new observation or failure, add it to the appropriate phase/category event and let the reducer decide what to do.
+### Events must be descriptive facts
 
 ### Events must be descriptive facts
 
@@ -364,6 +373,102 @@ When adding or changing reducer behavior:
 2. Run the test and confirm it fails for the right reason.
 3. Implement the minimal state transition in the reducer.
 4. Add follow-up tests for edge cases (limits, phase boundaries, retries).
+
+## Capability Gate (RFC-009 Phase 2)
+
+The pipeline implements a **capability gate** that enforces protocol-level capability denial for no-edit drains (Planning, Analysis, Review, Commit). This is a safety net that ensures agents can only perform actions their session allows — not just through prompt text, but through actual enforcement at the effect handler level.
+
+### Overview
+
+Before any effect is executed, the `MainEffectHandler::execute()` method checks whether the active session has the required capabilities. If the session lacks a required capability, the effect is denied with a `CapabilityDenied` event before execution.
+
+```
+effect → Capability Gate → [denied: CapabilityDenied event] OR [approved: execute normally]
+```
+
+### How It Works
+
+1. **Pre-execution check**: At the start of `execute()`, the handler checks if `ctx.active_session` is `Some(session)`
+2. **Required capabilities**: The `effect_required_capabilities(effect)` function returns the set of capabilities an effect needs
+3. **Session check**: `check_effect_capability(session, effect)` evaluates whether the session's capability set satisfies the requirement
+4. **Deny or proceed**: If denied, a `CapabilityDenied` event is returned immediately without executing the effect; if approved, normal execution continues
+
+### Ralph-Internal Effects
+
+Some effects are Ralph's own orchestration and bypass the capability gate entirely. These are classified by `is_ralph_internal_effect(effect) -> bool`:
+
+**Lifecycle and persistence:**
+- `InitializeAgentChain` — runs before session exists
+- `SaveCheckpoint` — Ralph's own persistence
+- `EmitCompletionMarkerAndTerminate` — Ralph's lifecycle
+- `ValidateFinalState` — Ralph's final validation
+
+**Cleanup operations:**
+- `CleanupContext` — Ralph's cleanup
+- `CleanupContinuationContext` — continuation cleanup
+- `CleanupRequiredFiles` — required files cleanup
+
+**Prompt permissions:**
+- `RestorePromptPermissions` — restore prompt file permissions
+- `LockPromptPermissions` — lock prompt file permissions
+
+**Context writes:**
+- `WriteContinuationContext` — write continuation context
+- `WriteTimeoutContext` — write timeout context for session-less agent retries
+
+**Retry and backoff:**
+- `BackoffWait` — Ralph's retry backoff logic
+- `TriggerDevFixFlow` — trigger dev-fix recovery flow
+
+**Recovery effects:**
+- `TriggerLoopRecovery`, `AttemptRecovery`, `EmitRecoveryReset`, `EmitRecoverySuccess` — recovery effects
+
+**Setup operations:**
+- `EnsureGitignoreEntries` — Ralph's setup
+
+**Git operations (internal):**
+- `ConfigureGitAuth` — configure git authentication
+- `PushToRemote` — push to remote
+- `CreatePullRequest` — create pull request
+
+**Archive operations:**
+- `ArchivePlanningXml`, `ArchiveDevelopmentXml`, `ArchiveReviewIssuesXml`, `ArchiveFixResultXml`, `ArchiveCommitXml` — archive artifacts to `.agent/` directory (Ralph's internal ephemeral storage)
+
+**Phase 4 parallel worker effects:**
+- `EvaluateParallelPlan`, `DispatchParallelWorkers` — parallel worker orchestration
+
+### Drain Capability Profiles
+
+Each drain type has a specific capability profile per RFC-009 V1:
+
+| Drain | Capabilities | Policy Flags |
+|-------|-------------|--------------|
+| Planning | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Analysis | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Review | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
+| Development | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
+| Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
+| Commit | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `GitWrite`, `ArtifactSubmit`, `RunReportProgress` | `AllowGitWrite` |
+
+**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, XML archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
+
+### Audit Trail Integration
+
+Every capability check is recorded in `ctx.audit_trail` via `record_effect_check()`:
+- Session ID
+- Timestamp
+- Effect name
+- Required capabilities
+- Outcome (Approved/Denied)
+- For denials: the specific reason string
+
+The audit trail is persisted to `.agent/audit/{session_id}.jsonl` at the end of each agent invocation.
+
+### Behavioral Equivalence Invariant
+
+The capability gate must NOT change behavior for correctly-orchestrated pipelines. The orchestrator already dispatches effects appropriate for each drain. The gate is a safety net that catches misconfigurations and bugs — it approves everything in normal operation.
+
+If an existing test fails after adding a capability check, the most likely cause is that the gate is misclassifying an effect's requirements or a drain's capability profile.
 
 ## Best Practices: Effects and Handlers
 

@@ -11,7 +11,7 @@
 //! - Required verification strategies
 
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use std::collections::HashMap;
 

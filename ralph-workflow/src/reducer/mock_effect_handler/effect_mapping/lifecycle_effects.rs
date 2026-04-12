@@ -178,7 +178,11 @@ impl MockEffectHandler {
                     from: Some(self.state.phase),
                     to: PipelinePhase::Finalizing,
                 }];
-                Some((PipelineEvent::finalizing_started(), ui, vec![]))
+                Some((
+                    PipelineEvent::final_state_validation_completed(),
+                    ui,
+                    vec![],
+                ))
             }
 
             Effect::SaveCheckpoint { trigger } => {

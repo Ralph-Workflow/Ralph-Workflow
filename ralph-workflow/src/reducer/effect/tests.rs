@@ -33,13 +33,11 @@ fn test_effect_serialization() {
 
 #[test]
 fn test_effect_result_event_only() {
-    let event = PipelineEvent::pipeline_started();
+    // Use ContextCleaned as a representative event that exists
+    let event = PipelineEvent::ContextCleaned;
     let result = EffectResult::event(event);
 
-    assert!(matches!(
-        result.event,
-        PipelineEvent::Lifecycle(crate::reducer::event::LifecycleEvent::Started)
-    ));
+    assert!(matches!(result.event, PipelineEvent::ContextCleaned));
     assert!(result.ui_events.is_empty());
 }
 

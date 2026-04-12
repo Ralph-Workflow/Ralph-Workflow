@@ -102,7 +102,7 @@ pub(super) fn snapshot_threshold() -> usize {
 /// Tracks whether we're in the middle of streaming content and whether
 /// that content has been displayed to the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum StreamingState {
+pub(super) enum StreamingState {
     /// No active streaming - idle state
     #[default]
     Idle,
@@ -119,7 +119,7 @@ pub enum StreamingState {
 /// This prevents "glued text" bugs where block boundaries are crossed
 /// without proper finalization.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum ContentBlockState {
+pub(super) enum ContentBlockState {
     /// Not currently inside a content block
     #[default]
     NotInBlock,

@@ -33,9 +33,9 @@ use sha2::{Digest, Sha256};
 pub(crate) use chrono::Local;
 
 mod io {
-    pub type Error = std::io::Error;
-    pub type ErrorKind = std::io::ErrorKind;
-    pub type Result<T> = std::result::Result<T, Error>;
+    pub(crate) type Error = std::io::Error;
+    pub(crate) type ErrorKind = std::io::ErrorKind;
+    pub(crate) type Result<T> = std::result::Result<T, Error>;
 }
 
 include!("state/types/snapshots_and_phases.rs");

@@ -530,7 +530,7 @@ fn test_prepare_review_prompt_xsd_retry_allows_missing_issues_xml() {
         .read(Path::new(".agent/tmp/review_prompt.txt"))
         .expect("review prompt file should be written");
     assert!(
-        prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"),
+        prompt.contains("VALIDATION FAILED - FIX JSON SUBMISSION ONLY"),
         "expected review XSD retry template to be used"
     );
 }
@@ -776,10 +776,8 @@ fn test_prepare_fix_prompt_does_not_replay_legacy_entry_without_content_id_when_
 fn test_fix_mode_xsd_retry_template_mentions_illegal_control_characters() {
     let template = include_str!("../../../../prompts/templates/fix_mode_xsd_retry.txt");
     assert!(
-        template.contains(
-            r"Illegal control characters (NUL byte, etc.) - common: \u0000 instead of \u00A0"
-        ),
-        "Expected fix_mode_xsd_retry template to mention illegal control characters"
+        template.contains("VALIDATION FAILED - FIX JSON SUBMISSION ONLY"),
+        "Expected fix_mode_xsd_retry template to contain JSON validation failure heading"
     );
 }
 

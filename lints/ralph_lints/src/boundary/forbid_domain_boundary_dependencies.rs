@@ -42,11 +42,34 @@ impl EarlyLintPass for ForbidDomainBoundaryDependencies {
     }
 }
 
+/// Check if a use tree imports from a boundary module.
+///
+/// Returns the boundary module name if found, None otherwise.
+///
+/// Excludes `std` and `core` imports to avoid false positives:
+/// `std::io`, `std::fs`, `std::env`, etc. are standard library modules,
+/// NOT boundary modules. Only project-local paths like `crate::io::foo`
+/// or `crate::runtime::bar` would be genuine boundary imports.
 fn boundary_segment_in_use_tree(use_tree: &rustc_ast::ast::UseTree) -> Option<String> {
-    use_tree
+    let segments: Vec<&str> = use_tree
         .prefix
         .segments
         .iter()
-        .map(|segment| segment.ident.name.as_str().to_string())
-        .find(|segment| BOUNDARY_MODULES.iter().any(|&boundary| boundary == segment))
+        .map(|segment| segment.ident.name.as_str())
+        .collect();
+
+    // std::... and core::... are the standard library, not boundary modules.
+    // Skip them to avoid false positives on std::io, std::fs, std::env, etc.
+    if let Some(first) = segments.first() {
+        if *first == "std" || *first == "core" {
+            return None;
+        }
+    }
+
+    for segment in &segments {
+        if BOUNDARY_MODULES.iter().any(|boundary| *boundary == *segment) {
+            return Some((*segment).to_string());
+        }
+    }
+    None
 }

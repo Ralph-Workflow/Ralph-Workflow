@@ -108,7 +108,7 @@ pub fn resolve_protection_scope_from(discovery_root: &Path) -> std::io::Result<P
 ///
 /// Falls back to `repo_root/.git/ralph` if libgit2 discovery fails (e.g., plain temp
 /// directories used in unit tests).
-pub fn ralph_git_dir(repo_root: &Path) -> PathBuf {
+pub(crate) fn ralph_git_dir(repo_root: &Path) -> PathBuf {
     if let Ok(scope) = resolve_protection_scope_from(repo_root) {
         return scope.ralph_dir;
     }
@@ -116,7 +116,7 @@ pub fn ralph_git_dir(repo_root: &Path) -> PathBuf {
     repo_root.join(".git").join("ralph")
 }
 
-pub fn normalize_protection_scope_path(path: &Path) -> PathBuf {
+pub(crate) fn normalize_protection_scope_path(path: &Path) -> PathBuf {
     if let Ok(canonical) = fs::canonicalize(path) {
         return canonical;
     }
@@ -173,7 +173,7 @@ fn is_empty_dir(path: &Path) -> bool {
         && fs::read_dir(path).ok().is_some_and(|it| it.count() == 0)
 }
 
-pub fn quarantine_path_in_place(path: &Path, label: &str) -> std::io::Result<PathBuf> {
+pub(crate) fn quarantine_path_in_place(path: &Path, label: &str) -> std::io::Result<PathBuf> {
     let tampered_path = build_tampered_path(path, label)?;
     match fs::rename(path, &tampered_path) {
         Ok(()) => Ok(tampered_path),
@@ -232,13 +232,13 @@ fn verify_created_ralph_dir(ralph_dir: &Path) -> std::io::Result<bool> {
     Ok(true)
 }
 
-pub fn ensure_ralph_git_dir(repo_root: &Path) -> std::io::Result<PathBuf> {
+pub(crate) fn ensure_ralph_git_dir(repo_root: &Path) -> std::io::Result<PathBuf> {
     let ralph_dir = ralph_git_dir(repo_root);
     prepare_ralph_git_dir_internal(&ralph_dir, true)?;
     Ok(ralph_dir)
 }
 
-pub fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> std::io::Result<bool> {
+pub(crate) fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> std::io::Result<bool> {
     prepare_ralph_git_dir_internal(ralph_dir, false)
 }
 
@@ -248,7 +248,17 @@ pub fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> std::io::Result<bool> {
 ///
 /// Returns error if the operation fails.
 pub fn require_git_repo() -> std::io::Result<()> {
-    git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = std::env::current_dir()?;
+    require_git_repo_at(&repo_root)
+}
+
+/// Check if we're in a git repository using explicit repo root.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn require_git_repo_at(repo_root: &Path) -> std::io::Result<()> {
+    git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     Ok(())
 }
 
@@ -258,13 +268,23 @@ pub fn require_git_repo() -> std::io::Result<()> {
 ///
 /// Returns error if the operation fails.
 pub fn get_repo_root() -> std::io::Result<PathBuf> {
-    let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = std::env::current_dir()?;
+    get_repo_root_at(&repo_root)
+}
+
+/// Get the git repository root using explicit repo root.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn get_repo_root_at(repo_root: &Path) -> std::io::Result<PathBuf> {
+    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     repo.workdir().map(PathBuf::from).ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "No workdir for repository")
     })
 }
 
-pub fn get_hooks_dir_from(discovery_root: &Path) -> std::io::Result<PathBuf> {
+pub(crate) fn get_hooks_dir_from(discovery_root: &Path) -> std::io::Result<PathBuf> {
     Ok(resolve_protection_scope_from(discovery_root)?.hooks_dir)
 }
 

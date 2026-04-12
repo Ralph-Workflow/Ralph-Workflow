@@ -14,7 +14,7 @@ use crate::files::llm_output_extraction::xsd_validation_plan::{
 };
 
 /// Render development plan XML with semantic formatting.
-pub fn render(content: &str) -> String {
+pub(super) fn render(content: &str) -> String {
     let header = "\n╔════════════════════════════════════╗\n\
 ║      Implementation Plan           ║\n\
 ╚════════════════════════════════════╝\n\n";

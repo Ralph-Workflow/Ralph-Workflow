@@ -201,8 +201,12 @@ fn test_invoke_analysis_agent_uses_repo_root_for_diff_not_start_commit_baseline(
     // tests run in parallel by default.
     use std::path::Path;
 
+    // GUARD: capture project HEAD OID before any git operations
+    let project_head_before = test_helpers::capture_project_head_oid();
+
     let repo_dir = tempfile::TempDir::new().expect("create temp git repo");
     let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    test_helpers::assert_repo_is_isolated(&repo);
 
     // Create an initial commit so the diff baseline is HEAD.
     let marker_file = "ralph_test_repo_root_diff_marker.txt";
@@ -262,6 +266,9 @@ fn test_invoke_analysis_agent_uses_repo_root_for_diff_not_start_commit_baseline(
         !prompt.contains("[DIFF unavailable"),
         "expected diff generation to succeed; got: {prompt}"
     );
+
+    // GUARD: verify project git state unchanged
+    test_helpers::assert_project_head_unchanged(&project_head_before);
 }
 
 #[test]
@@ -280,8 +287,12 @@ fn test_invoke_analysis_agent_uses_head_baseline_not_start_commit() {
     // IMPORTANT: Use an isolated tempdir repo; never mutate process CWD (test parallelism).
     use std::path::Path;
 
+    // GUARD: capture project HEAD OID before any git operations
+    let project_head_before = test_helpers::capture_project_head_oid();
+
     let repo_dir = tempfile::TempDir::new().expect("create temp git repo");
     let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    test_helpers::assert_repo_is_isolated(&repo);
     let sig = git2::Signature::now("test", "test@test.com").expect("signature");
 
     // Commit A: create two tracked files.
@@ -384,6 +395,9 @@ fn test_invoke_analysis_agent_uses_head_baseline_not_start_commit() {
         !prompt.contains(committed_marker),
         "expected already-committed change to be ABSENT from analysis prompt (HEAD baseline); got: {prompt}"
     );
+
+    // GUARD: verify project git state unchanged
+    test_helpers::assert_project_head_unchanged(&project_head_before);
 }
 
 /// Boundary regression: analysis drain must configure `completion_output_path` to
@@ -455,6 +469,8 @@ fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result
         cloud_reporter: None,
         cloud: &cloud,
         env: &git_env,
+        active_session: None,
+        audit_trail: crate::agents::session::AuditTrail::new(),
     };
 
     let mut handler = MainEffectHandler::new(PipelineState {

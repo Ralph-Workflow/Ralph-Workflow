@@ -29,4 +29,4 @@ pub use crate::reducer::state::{
     AgentChainState, CommitState, ConnectivityState, ContinuationState, PipelineState, RunMetrics,
     SameAgentRetryReason,
 };
-pub use crate::reducer::state_reduction::reduce;
+pub(super) use crate::reducer::state_reduction::reduce;

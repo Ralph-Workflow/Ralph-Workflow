@@ -1,4 +1,5 @@
 use super::MainEffectHandler;
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::review::boundary_domain::{
     build_fix_continuation_prompt_content_id, build_fix_normal_prompt_content_id,
@@ -6,6 +7,7 @@ use crate::phases::review::boundary_domain::{
     parse_development_result_status, render_fix_continuation_note,
 };
 use crate::phases::PhaseContext;
+use crate::prompts::SessionCapabilities;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -92,12 +94,15 @@ impl MainEffectHandler {
             &self.state.prompt_history,
             Some(&prompt_content_id),
             || {
+                let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+                let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
                 prompt_fix_xsd_retry_with_context(
                     ctx.template_context,
                     &inputs.issues_content,
                     xsd_error,
                     &inputs.last_output,
                     ctx.workspace,
+                    SessionCapabilities::new(&capabilities, &policy_flags),
                 )
             },
         );
@@ -173,12 +178,18 @@ impl MainEffectHandler {
             || {
                 crate::prompts::review::prompt_fix_xml_with_log(
                     ctx.template_context,
-                    &inputs.prompt_content,
-                    &inputs.plan_content,
-                    &inputs.issues_content,
+                    crate::prompts::review::FixPromptContent::new(
+                        &inputs.prompt_content,
+                        &inputs.plan_content,
+                        &inputs.issues_content,
+                    ),
                     &[],
                     ctx.workspace,
                     "fix_mode_xml",
+                    SessionCapabilities::new(
+                        &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+                    ),
                 )
                 .content
             },
@@ -212,6 +223,8 @@ impl MainEffectHandler {
             &self.state.prompt_history,
             Some(&prompt_content_id),
             || {
+                let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+                let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
                 format!(
                     "{continuation_note}\n{}",
                     prompt_fix_xml_with_context(
@@ -220,7 +233,8 @@ impl MainEffectHandler {
                         &inputs.plan_content,
                         &inputs.issues_content,
                         &[],
-                        ctx.workspace
+                        ctx.workspace,
+                        SessionCapabilities::new(&capabilities, &policy_flags),
                     )
                 )
             },
@@ -316,27 +330,42 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.reviewer_agent.to_string());
 
+        // RFC-009: The closure receives the AgentSession created by invoke_agent.
+        // In V1, session capabilities == drain defaults, so the pre-generated prompt
+        // is correct. The closure still calls capability_template_variables_from_session
+        // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Fix,
             AgentRole::Reviewer,
             &agent,
             None,
-            prompt,
+            |session: &crate::agents::session::AgentSession| {
+                let _session_vars =
+                    crate::prompts::capability_template_variables_from_session(session);
+                prompt.clone()
+            },
         )?;
         Ok(maybe_append_fix_invoked_event(result, pass))
     }
 
     pub(super) fn extract_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
         let is_analysis = self.state.fix_analysis_agent_invoked_pass == Some(pass);
-        match read_xml_for_pass(ctx, is_analysis) {
-            Ok(_) => EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass)),
-            Err(err) => EffectResult::event(PipelineEvent::fix_result_xml_missing(
-                pass,
-                self.state.continuation.invalid_output_attempts,
-                xml_io_error_detail(&err),
-            )),
+        if fix_json_artifact_present(ctx, is_analysis) {
+            return EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass));
         }
+        extract_fix_result_xml_from_disk(
+            ctx,
+            pass,
+            is_analysis,
+            self.state.continuation.invalid_output_attempts,
+        )
+    }
+
+    fn fix_analysis_continuation_active(&self, is_analysis: bool) -> bool {
+        is_analysis
+            && (self.state.continuation.fix_continuation_attempt > 0
+                || self.state.continuation.fix_continue_pending)
     }
 
     pub(super) fn validate_fix_result_xml(
@@ -345,21 +374,25 @@ impl MainEffectHandler {
         pass: u32,
     ) -> EffectResult {
         let is_analysis = self.state.fix_analysis_agent_invoked_pass == Some(pass);
+        let fix_analysis_continuation = self.fix_analysis_continuation_active(is_analysis);
         let invalid_attempts = self.state.continuation.invalid_output_attempts;
-        let xml_content = match read_xml_for_pass(ctx, is_analysis) {
-            Ok(s) => s,
-            Err(err) => {
-                return EffectResult::event(PipelineEvent::fix_output_validation_failed(
-                    pass,
-                    invalid_attempts,
-                    xml_io_error_detail(&err),
-                ))
-            }
-        };
-        if is_analysis {
-            validate_fix_analysis_xml(pass, xml_content, invalid_attempts)
-        } else {
-            validate_fix_normal_xml(pass, xml_content, invalid_attempts)
+        let json_type = fix_json_artifact_type(is_analysis);
+        match try_validate_fix_from_json(
+            ctx,
+            pass,
+            is_analysis,
+            fix_analysis_continuation,
+            invalid_attempts,
+            json_type,
+        ) {
+            Some(result) => result,
+            None => validate_fix_from_xml(
+                ctx,
+                pass,
+                is_analysis,
+                fix_analysis_continuation,
+                invalid_attempts,
+            ),
         }
     }
 
@@ -383,11 +416,19 @@ impl MainEffectHandler {
         use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
+        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+            ctx.workspace,
+            "fix_result",
+        );
 
         if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
             archive_xml_file_with_workspace(
                 ctx.workspace,
                 Path::new(".agent/tmp/development_result.xml"),
+            );
+            crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+                ctx.workspace,
+                "development_result",
             );
         }
 
@@ -450,6 +491,8 @@ fn build_same_agent_retry_body(
 ) -> String {
     use crate::prompts::prompt_fix_xml_with_context;
     let fresh = || {
+        let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+        let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
         prompt_fix_xml_with_context(
             ctx.template_context,
             &inputs.prompt_content,
@@ -457,6 +500,7 @@ fn build_same_agent_retry_body(
             &inputs.issues_content,
             &[],
             ctx.workspace,
+            SessionCapabilities::new(&capabilities, &policy_flags),
         )
     };
     let base_prompt = match ctx.workspace.read(Path::new(".agent/tmp/fix_prompt.txt")) {
@@ -534,12 +578,18 @@ fn render_fix_template_for_validation(
         }
         _ => crate::prompts::review::prompt_fix_xml_with_log(
             ctx.template_context,
-            &inputs.prompt_content,
-            &inputs.plan_content,
-            &inputs.issues_content,
+            crate::prompts::review::FixPromptContent::new(
+                &inputs.prompt_content,
+                &inputs.plan_content,
+                &inputs.issues_content,
+            ),
             &[],
             ctx.workspace,
             gen.template_name,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+            ),
         ),
     }
 }
@@ -555,12 +605,15 @@ fn render_xsd_retry_fix_log(
         .as_deref()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or("XML output failed validation. Provide valid XML output.");
+    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
     crate::prompts::review::prompt_fix_xsd_retry_with_log(
         ctx.template_context,
         xsd_error,
         &inputs.last_output,
         ctx.workspace,
         gen.template_name,
+        SessionCapabilities::new(&capabilities, &policy_flags),
     )
 }
 
@@ -608,12 +661,18 @@ fn render_continuation_fix_log(
     );
     let rendered = crate::prompts::review::prompt_fix_xml_with_log(
         ctx.template_context,
-        &inputs.prompt_content,
-        &inputs.plan_content,
-        &inputs.issues_content,
+        crate::prompts::review::FixPromptContent::new(
+            &inputs.prompt_content,
+            &inputs.plan_content,
+            &inputs.issues_content,
+        ),
         &[],
         ctx.workspace,
         gen.template_name,
+        SessionCapabilities::new(
+            &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
+            &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
+        ),
     );
     crate::prompts::RenderedTemplate {
         content: format!("{continuation_note}\n{}", rendered.content),
@@ -744,84 +803,4 @@ fn xml_io_error_detail(err: &std::io::Error) -> Option<String> {
     }
 }
 
-fn maybe_append_fix_invoked_event(
-    result: crate::reducer::effect::EffectResult,
-    pass: u32,
-) -> crate::reducer::effect::EffectResult {
-    let succeeded = result.additional_events.iter().any(|e| {
-        matches!(
-            e,
-            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-        )
-    });
-    if succeeded {
-        result.with_additional_event(PipelineEvent::fix_agent_invoked(pass))
-    } else {
-        result
-    }
-}
-
-fn validate_fix_analysis_xml(
-    pass: u32,
-    xml_content: String,
-    invalid_attempts: u32,
-) -> crate::reducer::effect::EffectResult {
-    use crate::files::llm_output_extraction::validate_development_result_xml;
-    match validate_development_result_xml(&xml_content) {
-        Ok(elements) => {
-            let status = parse_development_result_status(&elements.status);
-            crate::reducer::effect::EffectResult::with_ui(
-                PipelineEvent::fix_result_xml_validated(pass, status, Some(elements.summary)),
-                vec![UIEvent::XmlOutput {
-                    xml_type: XmlOutputType::DevelopmentResult,
-                    content: xml_content,
-                    context: Some(XmlOutputContext {
-                        iteration: None,
-                        pass: Some(pass),
-                        snippets: Vec::new(),
-                    }),
-                }],
-            )
-        }
-        Err(err) => crate::reducer::effect::EffectResult::event(
-            PipelineEvent::fix_output_validation_failed(
-                pass,
-                invalid_attempts,
-                Some(err.format_for_ai_retry()),
-            ),
-        ),
-    }
-}
-
-fn validate_fix_normal_xml(
-    pass: u32,
-    xml_content: String,
-    invalid_attempts: u32,
-) -> crate::reducer::effect::EffectResult {
-    use crate::files::llm_output_extraction::validate_fix_result_xml;
-    match validate_fix_result_xml(&xml_content) {
-        Ok(elements) => {
-            let status = crate::reducer::state::FixStatus::parse(&elements.status)
-                .unwrap_or(crate::reducer::state::FixStatus::Failed);
-            crate::reducer::effect::EffectResult::with_ui(
-                PipelineEvent::fix_result_xml_validated(pass, status, elements.summary),
-                vec![UIEvent::XmlOutput {
-                    xml_type: XmlOutputType::FixResult,
-                    content: xml_content,
-                    context: Some(XmlOutputContext {
-                        iteration: None,
-                        pass: Some(pass),
-                        snippets: Vec::new(),
-                    }),
-                }],
-            )
-        }
-        Err(err) => crate::reducer::effect::EffectResult::event(
-            PipelineEvent::fix_output_validation_failed(
-                pass,
-                invalid_attempts,
-                Some(err.format_for_ai_retry()),
-            ),
-        ),
-    }
-}
+include!("run_fix_validate.rs");

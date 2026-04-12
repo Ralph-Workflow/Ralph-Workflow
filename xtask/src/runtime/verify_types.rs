@@ -26,6 +26,12 @@ pub struct CancellationState {
     highest_priority_failure: AtomicUsize,
 }
 
+impl Default for CancellationState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CancellationState {
     const NO_FAILURE: usize = usize::MAX;
 

@@ -75,7 +75,11 @@
 //!
 //! - [`crate::executor::ProcessExecutor`] - Similar abstraction for process execution
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+mod validation_error;
+pub use validation_error::{ErrorCode, ValidationError};
 
 // ============================================================================
 // Well-known path constants
@@ -88,6 +92,67 @@ include!("workspace/paths.rs");
 // ============================================================================
 
 include!("workspace/dir_entry.rs");
+
+// ============================================================================
+// Artifact Envelope
+// ============================================================================
+
+/// JSON artifact envelope for broker-owned persistence.
+///
+/// Wraps artifact content with metadata for the MCP artifact submission flow.
+/// Stored in `.agent/tmp/{artifact_type}.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactEnvelope {
+    /// The artifact type (e.g., "plan", "development_result", "issues").
+    pub artifact_type: String,
+    /// Schema version for forward compatibility.
+    pub version: String,
+    /// The validated artifact content as a JSON value.
+    pub content: serde_json::Value,
+    /// ISO 8601 timestamp when the artifact was validated.
+    pub validated_at: String,
+    /// Whether this is a partial (incomplete) artifact submission.
+    #[serde(default)]
+    pub partial: bool,
+    /// Validation errors present in a partial submission.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<ValidationError>,
+}
+
+impl ArtifactEnvelope {
+    /// Create a new complete artifact envelope.
+    pub fn new(
+        artifact_type: impl Into<String>,
+        content: serde_json::Value,
+        validated_at: impl Into<String>,
+    ) -> Self {
+        Self {
+            artifact_type: artifact_type.into(),
+            version: "1.0".to_string(),
+            content,
+            validated_at: validated_at.into(),
+            partial: false,
+            errors: Vec::new(),
+        }
+    }
+
+    /// Create a new partial artifact envelope with validation errors.
+    pub fn new_partial(
+        artifact_type: impl Into<String>,
+        content: serde_json::Value,
+        validated_at: impl Into<String>,
+        errors: Vec<ValidationError>,
+    ) -> Self {
+        Self {
+            artifact_type: artifact_type.into(),
+            version: "1.0".to_string(),
+            content,
+            validated_at: validated_at.into(),
+            partial: true,
+            errors,
+        }
+    }
+}
 
 // ============================================================================
 // Workspace Trait
@@ -368,9 +433,75 @@ pub trait Workspace: Send + Sync {
         self.root().join(format!(".agent/tmp/{name}.xml"))
     }
 
+    /// Path to a JSON artifact file in `.agent/tmp/`.
+    fn json_artifact_path(&self, artifact_type: &str) -> PathBuf {
+        self.root().join(format!(".agent/tmp/{artifact_type}.json"))
+    }
+
+    /// Path to a partial JSON artifact file in `.agent/tmp/`.
+    ///
+    /// Partial artifacts are intermediate files for agent resumption only.
+    /// Reducers and boundaries do NOT consume partial files.
+    fn partial_json_artifact_path(&self, artifact_type: &str) -> PathBuf {
+        self.root()
+            .join(format!(".agent/tmp/{artifact_type}.partial.json"))
+    }
+
     /// Path to a log file in `.agent/logs/`.
     fn log_path(&self, name: &str) -> PathBuf {
         self.root().join(format!(".agent/logs/{name}"))
+    }
+
+    // =========================================================================
+    // JSON artifact persistence (default implementations)
+    // =========================================================================
+
+    /// Write a JSON artifact envelope to `.agent/tmp/{artifact_type}.json`.
+    ///
+    /// Uses atomic write to prevent partial artifacts. Creates parent
+    /// directories if needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if serialization or file write fails.
+    fn write_artifact_json(&self, envelope: &ArtifactEnvelope) -> std::io::Result<()> {
+        let json = serde_json::to_string_pretty(envelope)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let path = Path::new(AGENT_TMP).join(format!("{}.json", envelope.artifact_type));
+        self.write_atomic(&path, &json)
+    }
+
+    /// Write a partial JSON artifact envelope to `.agent/tmp/{artifact_type}.partial.json`.
+    ///
+    /// Partial artifacts are intermediate files for agent resumption only.
+    /// When a complete submission arrives, it should replace the partial file.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if serialization or file write fails.
+    fn write_partial_artifact_json(&self, envelope: &ArtifactEnvelope) -> std::io::Result<()> {
+        let json = serde_json::to_string_pretty(envelope)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let path = Path::new(AGENT_TMP).join(format!("{}.partial.json", envelope.artifact_type));
+        self.write_atomic(&path, &json)
+    }
+
+    /// Read a JSON artifact envelope from `.agent/tmp/{artifact_type}.json`.
+    ///
+    /// Returns `None` if the file does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the file exists but cannot be read or parsed.
+    fn read_artifact_json(&self, artifact_type: &str) -> std::io::Result<Option<ArtifactEnvelope>> {
+        let path = Path::new(AGENT_TMP).join(format!("{artifact_type}.json"));
+        if !self.exists(&path) {
+            return Ok(None);
+        }
+        let content = self.read(&path)?;
+        let envelope: ArtifactEnvelope = serde_json::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(Some(envelope))
     }
 }
 

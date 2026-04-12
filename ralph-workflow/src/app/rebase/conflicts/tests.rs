@@ -57,8 +57,10 @@ fn handle_error_resolution_accepts_error_reference() {
     let logger = Logger::new(colors);
     let executor = Arc::new(MockProcessExecutor::new());
     let error = anyhow::anyhow!("test error");
+    let workspace = MemoryWorkspace::new_test();
+    let repo_root = workspace.root();
 
-    let continued = handle_error_resolution(&logger, &*executor, &error);
+    let continued = handle_error_resolution(&logger, repo_root, &*executor, &error);
 
     assert!(!continued);
 }

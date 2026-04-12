@@ -1,11 +1,10 @@
 use super::types::InitialRebaseOutcome;
 use crate::checkpoint::RunContext;
-use crate::git_helpers::{get_default_branch, rebase_onto, RebaseResult};
+use crate::git_helpers::{get_default_branch_at, rebase_onto_at, RebaseResult};
 use crate::logger::{Colors, Logger};
-use crate::phases::PhaseContext;
 use crate::ProcessExecutor;
 
-pub struct InitialRebaseRunResult {
+pub(crate) struct InitialRebaseRunResult {
     pub outcome: InitialRebaseOutcome,
     /// Prompt replay observability for conflict-resolution prompts.
     pub prompt_replay_hits: Vec<(String, bool)>,
@@ -19,19 +18,20 @@ pub struct InitialRebaseRunResult {
 /// - Empty repository (returns `NoOp`)
 /// - Upstream branch not found (error)
 /// - Conflicts during rebase (returns `Conflicts` result)
-pub fn run_rebase_to_default(
+pub(crate) fn run_rebase_to_default(
     logger: &Logger,
     colors: Colors,
+    repo_root: &std::path::Path,
     executor: &dyn ProcessExecutor,
 ) -> std::io::Result<RebaseResult> {
-    let default_branch = get_default_branch()?;
+    let default_branch = get_default_branch_at(repo_root)?;
     logger.info(&format!(
         "Rebasing onto {}{}{}",
         colors.cyan(),
         default_branch,
         colors.reset()
     ));
-    rebase_onto(&default_branch, executor)
+    rebase_onto_at(repo_root, &default_branch, executor)
 }
 
 /// Run initial rebase before development phase.
@@ -41,22 +41,22 @@ pub fn run_rebase_to_default(
 ///
 /// Uses a state machine for fault tolerance and automatic recovery from
 /// interruptions or failures.
-pub fn run_initial_rebase(
+pub(crate) fn run_initial_rebase(
     logger: &Logger,
     colors: Colors,
-    _phase_ctx: &mut PhaseContext<'_>,
+    repo_root: &std::path::Path,
     _run_context: &RunContext,
     executor: &dyn ProcessExecutor,
     _prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 ) -> anyhow::Result<InitialRebaseRunResult> {
-    let default_branch = get_default_branch()?;
+    let default_branch = get_default_branch_at(repo_root)?;
     logger.info(&format!(
         "Rebasing onto {}{}{}",
         colors.cyan(),
         default_branch,
         colors.reset()
     ));
-    rebase_onto(&default_branch, executor)
+    rebase_onto_at(repo_root, &default_branch, executor)
         .map_err(Into::into)
         .map(|result| {
             let outcome = match result {

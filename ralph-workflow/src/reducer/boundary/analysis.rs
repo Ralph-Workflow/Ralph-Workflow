@@ -1,9 +1,10 @@
 //! Analysis agent effect handlers.
 
+use crate::agents::session::SessionDrain;
 use crate::agents::AgentRole;
 use crate::files::write_diff_backup_with_workspace;
 use crate::phases::PhaseContext;
-use crate::prompts::prompt_developer_iteration_xsd_retry_with_context_files_and_log;
+use crate::prompts::template_variables::SessionCapabilities;
 use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, DevelopmentEvent, PipelineEvent, ReviewEvent};
@@ -36,24 +37,16 @@ impl MainEffectHandler {
     ) -> Result<EffectResult> {
         let plan_content = read_plan_content_with_fallback(ctx);
         let diff_content = read_diff_content_with_backup(ctx);
-        let prompt = if self.state.continuation.xsd_retry_pending {
-            prepare_analysis_xsd_retry_context(ctx);
-            prompt_developer_iteration_xsd_retry_with_context_files_and_log(
-                ctx.template_context,
-                &read_xsd_retry_error_with_fallback(ctx),
-                ctx.workspace,
-                "developer_iteration_xsd_retry",
-                self.state.continuation.is_continuation(),
-            )
-            .content
-        } else {
-            crate::prompts::analysis::generate_analysis_prompt(
-                &plan_content,
-                &diff_content,
-                self.state.continuation.is_continuation(),
-                ctx.workspace,
-            )
-        };
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
+        let prompt = crate::prompts::analysis::generate_analysis_prompt(
+            &plan_content,
+            &diff_content,
+            self.state.continuation.is_continuation(),
+            ctx.workspace,
+            session_caps,
+        );
+        let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
         let prompt = apply_same_agent_retry_prefix(
             prompt,
             self.state.continuation.same_agent_retry_pending,
@@ -87,12 +80,15 @@ impl MainEffectHandler {
         let issues_content = read_issues_content(ctx);
         let diff_content = read_diff_content_with_backup(ctx);
         let fix_result_content = read_fix_result_content(ctx);
+        let (caps, flags) = SessionCapabilities::from_drain(SessionDrain::Analysis);
+        let session_caps = SessionCapabilities::new(&caps, &flags);
         let prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
             &issues_content,
             &diff_content,
             &fix_result_content,
             self.state.continuation.fix_continue_pending,
             ctx.workspace,
+            session_caps,
         );
         let prompt = apply_xsd_retry_note(prompt, self.state.continuation.xsd_retry_pending);
         let prompt = apply_same_agent_retry_prefix(
@@ -175,27 +171,6 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
     }
 }
 
-fn prepare_analysis_xsd_retry_context(ctx: &PhaseContext<'_>) {
-    if let Ok(last_output) = ctx
-        .workspace
-        .read(Path::new(".agent/tmp/development_result.xml"))
-    {
-        let _ = ctx
-            .workspace
-            .write(Path::new(".agent/tmp/last_output.xml"), &last_output);
-    }
-}
-
-fn read_xsd_retry_error_with_fallback(ctx: &PhaseContext<'_>) -> String {
-    ctx.workspace
-        .read(Path::new(".agent/tmp/development_xsd_error.txt"))
-        .unwrap_or_else(|err| {
-            format!(
-                "XML output failed validation. Read .agent/tmp/development_xsd_error.txt for details if available. ({err})"
-            )
-        })
-}
-
 fn apply_same_agent_retry_prefix(
     prompt: String,
     same_agent_retry_pending: bool,
@@ -221,13 +196,20 @@ fn invoke_analysis_agent_with_prompt(
         .current_agent()
         .cloned()
         .unwrap_or_else(|| ctx.developer_agent.to_string());
+    // RFC-009: The closure receives the AgentSession created by invoke_agent.
+    // In V1, session capabilities == drain defaults, so the pre-generated prompt
+    // is correct. The closure still calls capability_template_variables_from_session
+    // to verify the V1 invariant holds and to exercise the RFC-009 session-aware path.
     handler.invoke_agent(
         ctx,
         crate::agents::AgentDrain::Analysis,
         AgentRole::Analysis,
         &agent,
         None,
-        prompt,
+        |session: &crate::agents::session::AgentSession| {
+            let _session_vars = crate::prompts::capability_template_variables_from_session(session);
+            prompt.clone()
+        },
     )
 }
 

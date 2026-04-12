@@ -80,8 +80,18 @@ pub fn run_with_config(
     config: crate::config::Config,
     registry: AgentRegistry,
 ) -> anyhow::Result<()> {
-    // Use real path resolver and effect handler by default
-    let mut handler = RealAppEffectHandler::new();
+    // Use current working directory as workspace root. When ralph-workflow is invoked
+    // from the command line, the cwd IS the workspace (or a subdirectory of it).
+    // RealAppEffectHandler::new() defaults to cwd, so the fallback is safe.
+    let mut handler = std::env::current_dir()
+        .map(RealAppEffectHandler::with_workspace_root)
+        .unwrap_or_else(|_| RealAppEffectHandler::new());
+
+    // Fail-fast: workspace root must be set before any git/file operations.
+    // If cwd is unavailable AND new() also fails, this catches it immediately
+    // rather than letting it fail deep in git operations with a confusing message.
+    handler.assert_has_workspace_root();
+
     run_with_config_and_resolver(
         args,
         executor,
@@ -268,7 +278,7 @@ pub fn run_with_config_and_resolver<P: crate::config::ConfigEnvironment, H: AppE
             logger: &logger,
             colors,
             executor: &executor,
-            app_handler: handler,
+            app_handler: Some(handler),
             repo_root: &repo_root,
             workspace: &workspace,
         })?
@@ -535,7 +545,7 @@ where
             logger: &logger,
             colors,
             executor: &executor,
-            app_handler,
+            app_handler: Some(app_handler),
             repo_root: &repo_root,
             workspace: &workspace,
         })?

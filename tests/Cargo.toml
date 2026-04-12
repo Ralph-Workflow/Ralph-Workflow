@@ -20,7 +20,7 @@ name = "integration_tests_agent_core"
 path = "integration_tests_agent_core/main.rs"
 
 [[test]]
-name = "git2-system-tests"
+name = "system_tests"
 path = "system_tests/main.rs"
 
 [[test]]
@@ -31,6 +31,7 @@ path = "process_system_tests/main.rs"
 anyhow = { workspace = true }
 clap = { workspace = true }
 ralph-workflow = { path = "../ralph-workflow", features = ["test-utils"] }
+mcp-server = { path = "../mcp-server" }
 serde_json = { workspace = true }
 test-helpers = { path = "../test-helpers" }
 tempfile = { workspace = true }

@@ -19,6 +19,7 @@ use ralph_workflow::workspace::WorkspaceFs;
 use serial_test::serial;
 use std::fs::{self, File};
 use std::process::Command;
+use test_helpers::git_safety::assert_in_isolated_temp_repo;
 
 fn program_exists(name: &str) -> bool {
     Command::new(name).arg("--version").output().is_ok()
@@ -58,7 +59,7 @@ fn assert_wrapper_blocks(output: &std::process::Output, context: &str) {
 }
 
 fn init_repo_with_commit(path: &std::path::Path) -> git2::Repository {
-    let repo = git2::Repository::init(path).unwrap();
+    let repo = init_repo_guarded(path);
     let sig = git2::Signature::now("test", "test@test.com").unwrap();
     fs::write(path.join("tracked.txt"), "tracked\n").unwrap();
     let mut index = repo.index().unwrap();
@@ -70,6 +71,12 @@ fn init_repo_with_commit(path: &std::path::Path) -> git2::Repository {
         .unwrap();
     drop(tree);
     repo
+}
+
+fn init_repo_guarded(path: impl AsRef<std::path::Path>) -> git2::Repository {
+    let path = path.as_ref();
+    assert_in_isolated_temp_repo(path);
+    git2::Repository::init(path).unwrap()
 }
 
 fn linked_worktree_git_dir(worktree_root: &std::path::Path) -> std::path::PathBuf {
@@ -156,7 +163,7 @@ fn test_agent_phase_cleanup_removes_git_wrapper_track_file() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -820,7 +827,7 @@ fn test_disable_git_wrapper_removes_track_file_even_when_cwd_changes() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -850,10 +857,10 @@ fn test_start_agent_phase_in_repo_uses_target_repo_not_cwd_repo() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|cwd_repo| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let target_repo = tempfile::tempdir().expect("create target repo tempdir");
-        git2::Repository::init(target_repo.path()).unwrap();
+        init_repo_guarded(target_repo.path());
 
         let mut helpers = GitHelpers::default();
         start_agent_phase_in_repo(target_repo.path(), &mut helpers).unwrap();
@@ -909,7 +916,7 @@ fn test_git_snapshot() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         // Create an untracked file.
         fs::write("testfile.txt", "test").unwrap();
@@ -925,7 +932,7 @@ fn test_install_hook() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let hooks_dir = get_hooks_dir().unwrap();
         fs::create_dir_all(&hooks_dir).unwrap();
@@ -945,7 +952,7 @@ fn test_install_hook_creates_missing_hooks_dir() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let hooks_dir = get_hooks_dir().unwrap();
         // Simulate a broken repo state where hooks dir is missing.
@@ -969,7 +976,7 @@ fn test_uninstall_hooks_in_repo_does_not_depend_on_cwd() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let hooks_dir = get_hooks_dir().unwrap();
         fs::create_dir_all(&hooks_dir).unwrap();
@@ -1004,7 +1011,7 @@ fn test_uninstall_hook_restores_original() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let hooks_dir = get_hooks_dir().unwrap();
         fs::create_dir_all(&hooks_dir).unwrap();
@@ -1036,7 +1043,7 @@ fn test_install_hook_uses_absolute_path() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let hooks_dir = get_hooks_dir().unwrap();
         fs::create_dir_all(&hooks_dir).unwrap();
@@ -1066,7 +1073,7 @@ fn test_cleanup_orphaned_marker() {
         let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
         let dir_path = dir.path();
 
-        git2::Repository::init(dir_path).unwrap();
+        init_repo_guarded(dir_path);
 
         // Create marker.
         let marker_path = dir_path.join(".git/ralph/no_agent_commit");
@@ -1088,7 +1095,7 @@ fn test_cleanup_orphaned_marker_removes_legacy_root_marker() {
         let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
         let dir_path = dir.path();
 
-        git2::Repository::init(dir_path).unwrap();
+        init_repo_guarded(dir_path);
 
         let legacy_marker_path = dir_path.join(".no_agent_commit");
         File::create(&legacy_marker_path).unwrap();
@@ -1109,7 +1116,7 @@ fn test_start_agent_phase_quarantines_symlinked_ralph_dir() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let outside = tempfile::tempdir().unwrap();
         let ralph_dir = dir.path().join(".git/ralph");
@@ -1146,7 +1153,7 @@ fn test_install_hooks_in_repo_quarantines_symlinked_ralph_dir() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let outside = tempfile::tempdir().unwrap();
         let ralph_dir = dir.path().join(".git/ralph");
@@ -1175,7 +1182,7 @@ fn test_git_add_specific_in_repo_skips_legacy_root_marker() {
 
     with_temp_cwd(|dir| {
         let repo_root = dir.path();
-        let _repo = git2::Repository::init(repo_root).unwrap();
+        let _repo = init_repo_guarded(repo_root);
         fs::write(repo_root.join(".no_agent_commit"), "legacy").unwrap();
 
         let staged =
@@ -1195,7 +1202,7 @@ fn test_git_add_all_in_repo_skips_legacy_root_marker() {
 
     with_temp_cwd(|dir| {
         let repo_root = dir.path();
-        let repo = git2::Repository::init(repo_root).unwrap();
+        let repo = init_repo_guarded(repo_root);
 
         fs::write(repo_root.join("tracked.txt"), "tracked").unwrap();
         fs::write(repo_root.join(".no_agent_commit"), "legacy").unwrap();
@@ -1307,7 +1314,7 @@ fn test_get_git_diff_from_start_with_workspace_returns_diff_from_start_commit() 
 
     with_temp_cwd(|dir| {
         // Arrange: real git repo with an initial commit.
-        let repo = git2::Repository::init(".").expect("init git repo");
+        let repo = init_repo_guarded(".");
 
         let tracked_file = "ralph_test_workspace_diff_marker.txt";
         std::fs::write(tracked_file, "initial\n").expect("write initial file");
@@ -1358,7 +1365,7 @@ fn test_get_git_diff_from_start_with_workspace_returns_diff_from_start_commit() 
 #[serial]
 fn test_git_snapshot_excludes_gitignored_files() {
     let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let repo = init_repo_guarded(dir.path());
 
     // Configure git user for commits.
     let mut cfg = repo.config().unwrap();
@@ -1403,7 +1410,7 @@ fn test_pre_commit_hook_blocks_when_marker_exists() {
     }
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         // Install Ralph-managed hooks.
         hooks::install_hooks().unwrap();
@@ -1457,7 +1464,7 @@ fn test_pre_commit_hook_passes_when_no_marker() {
     }
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         // Install Ralph-managed hooks.
         hooks::install_hooks().unwrap();
@@ -1497,7 +1504,7 @@ fn test_agent_phase_guard_drop_cleans_up_hooks() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let workspace = WorkspaceFs::new(dir.path().to_path_buf());
         let mut helpers = GitHelpers::default();
@@ -1562,7 +1569,7 @@ fn test_git_diff_in_repo_is_head_based_after_multiple_commits() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let repo = git2::Repository::init(".").unwrap();
+        let repo = init_repo_guarded(".");
 
         // Configure git identity required for commits.
         {
@@ -1656,7 +1663,7 @@ fn test_installed_hooks_are_read_only_executable() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -1682,7 +1689,7 @@ fn test_marker_file_is_read_only() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -1713,7 +1720,7 @@ fn test_uninstall_hooks_handles_read_only() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -1738,7 +1745,7 @@ fn test_end_agent_phase_handles_read_only_marker() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -1770,7 +1777,7 @@ fn test_ensure_agent_phase_protections_restores_hook_permissions() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -1813,7 +1820,7 @@ fn test_ensure_agent_phase_protections_restores_marker_permissions() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -1852,7 +1859,7 @@ fn test_ensure_agent_phase_protections_restores_marker_permissions() {
 /// Returns a context that keeps `GitHelpers` alive for the duration of the test and
 /// cleans up on Drop, avoiding tempdir leaks.
 fn setup_wrapper_test(dir: &std::path::Path) -> WrapperTestContext {
-    git2::Repository::init(dir).unwrap();
+    init_repo_guarded(dir);
 
     let mut helpers = GitHelpers::default();
     start_agent_phase(&mut helpers).unwrap();
@@ -1910,7 +1917,7 @@ fn test_start_agent_phase_creates_marker_in_repo_root_not_cwd() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         // Move CWD into a subdirectory within the repo.
         let subdir = dir.path().join("subdir");
@@ -1949,7 +1956,7 @@ fn test_start_agent_phase_repairs_marker_symlink_without_clobbering_target() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         // Create a target file inside the repo and point the marker symlink at it.
         let target = dir.path().join("marker-target.txt");
@@ -1995,7 +2002,7 @@ fn test_end_agent_phase_does_not_chmod_marker_symlink_target() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let target = dir.path().join("marker-target.txt");
         fs::write(&target, "x").unwrap();
@@ -2028,7 +2035,7 @@ fn test_capture_head_oid_refuses_agent_dir_symlink() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let repo = git2::Repository::init(".").unwrap();
+        let repo = init_repo_guarded(".");
 
         // Create an initial commit so HEAD exists.
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -2071,8 +2078,8 @@ fn test_detect_unauthorized_commit_uses_repo_root_not_cwd() {
         fs::create_dir_all(&repo_a).unwrap();
         fs::create_dir_all(&repo_b).unwrap();
 
-        let repo = git2::Repository::init(&repo_a).unwrap();
-        git2::Repository::init(&repo_b).unwrap();
+        let repo = init_repo_guarded(&repo_a);
+        init_repo_guarded(&repo_b);
 
         // Commit in repo_a.
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -2340,7 +2347,7 @@ fn test_reinstall_hooks_if_tampered_when_missing() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let hooks_dir = get_hooks_dir().unwrap();
 
@@ -2375,7 +2382,7 @@ fn test_ensure_agent_phase_protections_restores_when_marker_and_hooks_deleted() 
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2429,7 +2436,7 @@ fn test_reinstall_hooks_if_tampered_when_marker_stripped() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         // Install hooks normally first.
         hooks::install_hooks().unwrap();
@@ -2474,7 +2481,7 @@ fn test_ensure_agent_phase_protections_restores_marker() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2510,7 +2517,7 @@ fn test_ensure_agent_phase_protections_restores_hooks() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2565,7 +2572,7 @@ fn test_git_wrapper_script_is_read_only() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2597,7 +2604,7 @@ fn test_pre_merge_commit_hook_installed() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -2626,7 +2633,7 @@ fn test_pre_merge_commit_hook_blocks_when_marker_exists() {
     }
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -2672,7 +2679,7 @@ fn test_ensure_agent_phase_protections_returns_tampering_when_marker_deleted() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2708,7 +2715,7 @@ fn test_ensure_agent_phase_protections_returns_tampering_when_hooks_deleted() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2743,7 +2750,7 @@ fn test_wrapper_unsets_git_env_vars() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2780,7 +2787,7 @@ fn test_ensure_agent_phase_protections_restores_missing_wrapper_script() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2826,7 +2833,7 @@ fn test_ensure_agent_phase_protections_restores_missing_wrapper_track_file() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2864,7 +2871,7 @@ fn test_ensure_agent_phase_protections_ignores_tampered_wrapper_track_file_path(
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2920,7 +2927,7 @@ fn test_disable_git_wrapper_handles_read_only_wrapper() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -2955,7 +2962,7 @@ fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let marker = std::path::Path::new(".git/ralph/no_agent_commit");
         assert!(!marker.exists(), "precondition: marker must not exist");
@@ -2994,7 +3001,7 @@ fn test_hook_blocks_when_only_track_file_exists() {
     }
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -3042,7 +3049,7 @@ fn test_hook_passes_when_neither_marker_nor_track_file() {
     }
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -3081,7 +3088,7 @@ fn test_start_agent_phase_captures_head_oid() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let repo = git2::Repository::init(".").unwrap();
+        let repo = init_repo_guarded(".");
 
         // Create an initial commit so HEAD exists.
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -3124,7 +3131,7 @@ fn test_detect_unauthorized_commit_detects_head_change() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let repo = git2::Repository::init(".").unwrap();
+        let repo = init_repo_guarded(".");
 
         // Create an initial commit.
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -3172,7 +3179,7 @@ fn test_end_agent_phase_removes_head_oid_file() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let repo = git2::Repository::init(".").unwrap();
+        let repo = init_repo_guarded(".");
 
         // Create initial commit.
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -3224,7 +3231,7 @@ fn test_ensure_agent_phase_protections_restores_track_file_permissions() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -3280,7 +3287,7 @@ fn test_finalize_cleanup_leaves_no_artifacts() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        let repo = git2::Repository::init(".").unwrap();
+        let repo = init_repo_guarded(".");
 
         // Create initial commit so HEAD exists for head-oid capture.
         let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -3361,7 +3368,7 @@ fn test_commit_msg_hook_installed_and_blocks() {
     }
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 
@@ -3409,7 +3416,7 @@ fn test_commit_msg_hook_cleaned_up_on_exit() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|_dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
@@ -3440,7 +3447,7 @@ fn test_verify_hooks_removed_detects_remaining() {
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
     with_temp_cwd(|dir| {
-        git2::Repository::init(".").unwrap();
+        init_repo_guarded(".");
 
         hooks::install_hooks().unwrap();
 

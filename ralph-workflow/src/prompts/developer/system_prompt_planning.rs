@@ -27,7 +27,7 @@ pub fn prompt_plan(prompt_content: Option<&str>) -> String {
     let template_content = include_str!("../templates/planning_xml.txt");
     let template = Template::new(template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
-    let variables = HashMap::from([
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_md.to_string()),
         (
             "PLAN_XML_PATH",
@@ -38,9 +38,25 @@ pub fn prompt_plan(prompt_content: Option<&str>) -> String {
             workspace.absolute_str(".agent/tmp/plan.xsd"),
         ),
     ]);
+    let caps = crate::agents::session::CapabilitySet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Planning,
+    );
+    let flags = crate::agents::session::PolicyFlagSet::defaults_for_drain(
+        crate::agents::session::SessionDrain::Planning,
+    );
+    let capability_vars = capability_template_variables(&caps, &flags);
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
 
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             // Embedded fallback template (XML format)
             format!(
@@ -50,10 +66,18 @@ pub fn prompt_plan(prompt_content: Option<&str>) -> String {
 }
 
 /// Generate prompt for planning phase using template registry.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `prompt_content` - The original user request (PROMPT.md content)
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_plan_with_context(
     context: &TemplateContext,
     prompt_content: Option<&str>,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     let partials = get_shared_partials();
     let template_content = context
@@ -65,7 +89,9 @@ pub fn prompt_plan_with_context(
         });
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
-    let variables = HashMap::from([
+
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_md.to_string()),
         (
             "PLAN_XML_PATH",
@@ -77,8 +103,25 @@ pub fn prompt_plan_with_context(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             // Embedded fallback template (XML format)
             format!(
@@ -88,10 +131,18 @@ pub fn prompt_plan_with_context(
 }
 
 /// Generate XML-based planning prompt using template registry.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `prompt_content` - The original user request (PROMPT.md content)
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_planning_xml_with_context(
     context: &TemplateContext,
     prompt_content: Option<&str>,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     let partials = get_shared_partials();
     // Write the XSD schema file so it's available for the agent to reference
@@ -103,7 +154,9 @@ pub fn prompt_planning_xml_with_context(
         .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
-    let variables = HashMap::from([
+
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_md.to_string()),
         (
             "PLAN_XML_PATH",
@@ -115,8 +168,25 @@ pub fn prompt_planning_xml_with_context(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "PLANNING MODE\n\nCreate an implementation plan for:\n\n{prompt_md}\n\n\
@@ -129,11 +199,20 @@ pub fn prompt_planning_xml_with_context(
 ///
 /// This is the new log-based version that returns both content and substitution tracking.
 /// Use this version in handlers to enable log-based validation.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `prompt_ref` - Content reference for PROMPT
+/// * `workspace` - Workspace for resolving absolute paths
+/// * `template_name` - Name of the template for logging
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_planning_xml_with_references_and_log(
     context: &TemplateContext,
     prompt_ref: &super::content_reference::PromptContentReference,
     workspace: &dyn Workspace,
     template_name: &str,
+    session_caps: SessionCapabilities,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -149,7 +228,8 @@ pub fn prompt_planning_xml_with_references_and_log(
         .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
     let template = Template::new(&template_content);
 
-    let variables = HashMap::from([
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_ref.render_for_template()),
         (
             "PLAN_XML_PATH",
@@ -161,7 +241,24 @@ pub fn prompt_planning_xml_with_references_and_log(
         ),
     ]);
 
-    match template.render_with_log(template_name, &variables, &partials) {
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
+    match template.render_with_log(template_name, &variables_ref, &partials) {
         Ok(rendered) => rendered,
         Err(err) => {
             // Extract missing variable from error
@@ -201,10 +298,12 @@ pub fn prompt_planning_xml_with_references_and_log(
 /// * `context` - Template context containing the template registry
 /// * `prompt_ref` - Content reference for PROMPT
 /// * `workspace` - Workspace for resolving absolute paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_planning_xml_with_references(
     context: &TemplateContext,
     prompt_ref: &super::content_reference::PromptContentReference,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     let partials = get_shared_partials();
     // Write the XSD schema file so it's available for the agent to reference
@@ -216,7 +315,8 @@ pub fn prompt_planning_xml_with_references(
         .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
     let template = Template::new(&template_content);
 
-    let variables = HashMap::from([
+    // Base variables for planning prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_ref.render_for_template()),
         (
             "PLAN_XML_PATH",
@@ -228,8 +328,25 @@ pub fn prompt_planning_xml_with_references(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     template
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             let prompt = prompt_ref.render_for_template();
             format!("PLANNING MODE\n\nCreate an implementation plan for:\n\n{prompt}\n")
@@ -243,10 +360,18 @@ pub fn prompt_planning_xml_with_references(
 /// Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
 /// If required files are missing, a deterministic fallback prompt is produced that includes
 /// diagnostic information but still provides valid instructions to the agent.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `xsd_error` - The XSD validation error message
+/// * `workspace` - Workspace for resolving paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_planning_xsd_retry_with_context_files(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     use std::path::Path;
 
@@ -310,7 +435,9 @@ pub fn prompt_planning_xsd_retry_with_context_files(
         .registry()
         .get_template("planning_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/planning_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "PLAN_XML_PATH",
@@ -326,8 +453,25 @@ pub fn prompt_planning_xsd_retry_with_context_files(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let rendered_prompt = Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             format!(
                 "Your previous plan failed XSD validation.\n\nError: {xsd_error}\n\n\
@@ -347,11 +491,20 @@ pub fn prompt_planning_xsd_retry_with_context_files(
 /// Generate XSD validation retry prompt for planning with substitution log.
 ///
 /// This variant assumes `.agent/tmp/last_output.xml` is already materialized.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `xsd_error` - The XSD validation error message
+/// * `workspace` - Workspace for resolving paths
+/// * `template_name` - Name of the template for logging
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_planning_xsd_retry_with_context_files_and_log(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
     template_name: &str,
+    session_caps: SessionCapabilities,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -429,7 +582,9 @@ pub fn prompt_planning_xsd_retry_with_context_files_and_log(
         .registry()
         .get_template("planning_xsd_retry")
         .unwrap_or_else(|_| include_str!("../templates/planning_xsd_retry.txt").to_string());
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "PLAN_XML_PATH",
@@ -445,9 +600,26 @@ pub fn prompt_planning_xsd_retry_with_context_files_and_log(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let template = Template::new(&template_content);
     template
-        .render_with_log(template_name, &variables, &partials)
+        .render_with_log(template_name, &variables_ref, &partials)
         .map(|mut rendered| {
             if !diagnostic_prefix.is_empty() {
                 rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
@@ -475,14 +647,25 @@ pub fn prompt_planning_xsd_retry_with_context_files_and_log(
 }
 
 /// Generate XSD validation retry prompt for planning with error feedback.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `_prompt_content` - The original user request (unused - kept for API compatibility)
+/// * `xsd_error` - The XSD validation error message
+/// * `last_output` - The invalid XML output that failed validation
+/// * `workspace` - Workspace for resolving paths
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_planning_xsd_retry_with_context(
     context: &TemplateContext,
     _prompt_content: &str,
     xsd_error: &str,
     last_output: &str,
     workspace: &dyn Workspace,
+    session_caps: SessionCapabilities,
 ) -> String {
     // Write context files to .agent/tmp/ for the agent to read
     write_planning_xsd_retry_files(workspace, last_output);
-    prompt_planning_xsd_retry_with_context_files(context, xsd_error, workspace)
+    prompt_planning_xsd_retry_with_context_files(context, xsd_error, workspace, session_caps)
 }
+

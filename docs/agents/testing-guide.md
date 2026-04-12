@@ -8,7 +8,7 @@ Read before writing or modifying any test.
 ## Test Pyramid
 
 ```
-         ▲ git2-system-tests (tests/system_tests/)
+         ▲ system_tests (tests/system_tests/)
          │ Real git, real filesystem, libgit2 — serial (#[serial] required)
          │ NOT in CI — run manually only
          │
@@ -32,14 +32,14 @@ Read before writing or modifying any test.
 | Unit | `ralph-workflow --lib` | parallel | yes | `cargo test -p ralph-workflow --lib --all-features` |
 | Integration | `integration_tests` | parallel | yes | `cargo test -p ralph-workflow-tests --test integration_tests` |
 | Process system | `process-system-tests` | parallel | **no** | `cargo test -p ralph-workflow-tests --test process-system-tests` |
-| git2 system | `git2-system-tests` | serial (libgit2) | **no** | `cargo test -p ralph-workflow-tests --test git2-system-tests` |
+| git2 system | `system_tests` | serial (libgit2) | **no** | `cargo test -p ralph-workflow-tests --test system_tests` |
 
 ---
 
 ## Parallelism Rules
 
 **All tests are parallel by default.**
-The only justified exception is the `git2-system-tests` binary, where `#[serial]` is required on every test because concurrent `git2::Repository` drops from multiple threads trigger thread-unsafe libgit2 global shutdown (SIGABRT).
+The only justified exception is the `system_tests` binary, where `#[serial]` is required on every test because concurrent `git2::Repository` drops from multiple threads trigger thread-unsafe libgit2 global shutdown (SIGABRT).
 
 | Location | `#[serial]` | Reason |
 |----------|-------------|--------|
@@ -145,6 +145,64 @@ Ralph uses two effect layers:
 | `AppEffect` (CLI setup) | `MockAppEffectHandler` | integration tests |
 | `Effect` (pipeline) | `MemoryWorkspace` + `MockProcessExecutor` | integration tests |
 | Real OS / libgit2 | none (real implementations) | system tests only |
+
+### Capability Gate Testing (RFC-009 Phase 2)
+
+The capability gate is tested at two levels:
+
+#### Unit Tests (`reducer/boundary/tests/capability_gate_enforcement.rs`)
+
+Test `MainEffectHandler::execute()` directly with specific drain sessions:
+
+```rust
+#[test]
+fn planning_denies_workspace_write() {
+    let session = AgentSession::for_drain(run_id.clone(), SessionDrain::Planning, 0);
+    let ctx = create_context_with_session(&workspace, session);
+    let mut handler = MainEffectHandler::new(state);
+
+    // Planning trying to execute development effect
+    let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx);
+
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Agent(AgentEvent::CapabilityDenied { capability, .. })
+    ));
+    assert!(capability.contains("WorkspaceWriteTracked"));
+}
+```
+
+#### Integration Tests (`tests/integration_tests/brokered_sessions/`)
+
+Test the full pipeline with `MockEffectHandler` using `session_override`:
+
+```rust
+#[test]
+fn brokered_session_enforces_read_only() {
+    let workspace = MemoryWorkspace::new_test();
+    let session = AgentSession::for_drain("test".to_string(), SessionDrain::Planning, 0);
+
+    let mut handler = MockEffectHandler::new()
+        .with_session_override(session);
+
+    // Planning session trying to invoke development agent
+    let ctx = create_context(&workspace);
+    let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx.clone());
+
+    // Should be denied at capability gate level
+    assert!(matches!(result.event, PipelineEvent::Agent(AgentEvent::CapabilityDenied { .. })));
+}
+```
+
+#### Key Testing Patterns
+
+| Scenario | Test Location | Pattern |
+|----------|---------------|---------|
+| Drain denies wrong effect type | `capability_gate_enforcement.rs` | `MainEffectHandler` + direct session |
+| Behavioral equivalence (dev works) | `capability_gate_enforcement.rs` | `MainEffectHandler` + `Development` session |
+| Full pipeline with session override | `brokered_sessions/` | `MockEffectHandler::with_session_override()` |
+| Audit trail accumulation | `brokered_sessions/audit_trail_tests.rs` | Inspect `ctx.audit_trail` |
+| Session handshake persistence | `brokered_sessions/session_handshake_tests.rs` | Check `.agent/audit/*.jsonl` |
 
 ---
 
@@ -395,7 +453,7 @@ A change is complete only when **all** of the following hold:
 
 - [ ] New behavior is covered by a test that was **red before** the production change.
 - [ ] Existing behavior regressions are prevented by focused, targeted tests.
-- [ ] All tests pass in **parallel mode** (no new `#[serial]` outside `git2-system-tests`).
+- [ ] All tests pass in **parallel mode** (no new `#[serial]` outside `system_tests`).
 - [ ] No new flaky tests introduced; quarantined tests include issue URLs.
 - [ ] Test names describe observable behavior, not implementation details.
 - [ ] AAA structure is clear; setup does not exceed ~10 lines without a named helper.

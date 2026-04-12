@@ -35,7 +35,11 @@ use crate::reducer::state::{DevelopmentStatus, PipelineState, PromptMode};
 ///
 /// These files are cleaned up before each development iteration to ensure
 /// fresh output. The analysis agent writes to `.agent/tmp/development_result.xml`.
-pub const REQUIRED_FILES: &[&str] = &[".agent/tmp/development_result.xml"];
+pub(super) const REQUIRED_FILES: &[&str] = &[
+    ".agent/tmp/development_result.xml",
+    ".agent/tmp/development_result.json",
+    ".agent/tmp/development_result.partial.json",
+];
 
 pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
     if state.continuation.context_write_pending {

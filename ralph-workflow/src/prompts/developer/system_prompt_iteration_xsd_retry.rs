@@ -11,19 +11,18 @@
 /// # Arguments
 ///
 /// * `context` - Template context containing the template registry
-/// * `_prompt_content` - The original user request (unused - kept for API compatibility)
-/// * `_plan_content` - The implementation plan (unused - kept for API compatibility)
 /// * `xsd_error` - The XSD validation error message to include in the prompt
 /// * `last_output` - The invalid XML output that failed validation
 /// * `workspace` - Workspace for writing XSD retry context files
+/// * `continuation_mode` - Whether this is a continuation retry
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xsd_retry_with_context(
     context: &TemplateContext,
-    _prompt_content: &str,
-    _plan_content: &str,
     xsd_error: &str,
     last_output: &str,
     workspace: &dyn Workspace,
     continuation_mode: bool,
+    session_caps: SessionCapabilities,
 ) -> String {
     // Write context files to .agent/tmp/ for the agent to read
     write_dev_iteration_xsd_retry_files(workspace, last_output);
@@ -32,6 +31,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context(
         xsd_error,
         workspace,
         continuation_mode,
+        session_caps,
     )
 }
 
@@ -42,11 +42,20 @@ pub fn prompt_developer_iteration_xsd_retry_with_context(
 /// Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
 /// If required files are missing, a deterministic fallback prompt is produced that includes
 /// diagnostic information but still provides valid instructions to the agent.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `xsd_error` - The XSD validation error message
+/// * `workspace` - Workspace for resolving paths
+/// * `continuation_mode` - Whether this is a continuation retry
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
     continuation_mode: bool,
+    session_caps: SessionCapabilities,
 ) -> String {
     use std::path::Path;
 
@@ -121,7 +130,9 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
                 include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
             }
         });
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "DEVELOPMENT_RESULT_XML_PATH",
@@ -137,8 +148,25 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let rendered_prompt = Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+        .render_with_partials(&variables_ref, &partials)
         .unwrap_or_else(|_| {
             fallback_xsd_retry_render_error_prompt(
                 xsd_error,
@@ -158,12 +186,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
 /// Generate XSD validation retry prompt for developer iteration with substitution log.
 ///
 /// This variant assumes `.agent/tmp/last_output.xml` is already materialized.
+///
+/// # Arguments
+///
+/// * `context` - Template context containing the template registry
+/// * `xsd_error` - The XSD validation error message
+/// * `workspace` - Workspace for resolving paths
+/// * `template_name` - Name of the template for logging
+/// * `continuation_mode` - Whether this is a continuation retry
+/// * `session_caps` - Bundled session capabilities and policy flags
 pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
     template_name: &str,
     continuation_mode: bool,
+    session_caps: SessionCapabilities,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -252,7 +290,9 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
                 include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
             }
         });
-    let variables = HashMap::from([
+
+    // Base variables for XSD retry prompt
+    let base_vars: HashMap<&str, String> = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
         (
             "DEVELOPMENT_RESULT_XML_PATH",
@@ -268,9 +308,26 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
         ),
     ]);
 
+    // Compute capability variables from session capabilities
+    let capability_vars =
+        capability_template_variables(session_caps.capabilities, session_caps.policy_flags);
+
+    // Merge base and capability variables using functional style (no mutation)
+    let variables: HashMap<String, String> = base_vars
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .chain(capability_vars)
+        .collect();
+
+    // Convert to HashMap<&str, String> for rendering
+    let variables_ref: HashMap<&str, String> = variables
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.clone()))
+        .collect();
+
     let template = Template::new(&template_content);
     template
-        .render_with_log(actual_template_name, &variables, &partials)
+        .render_with_log(actual_template_name, &variables_ref, &partials)
         .map(|mut rendered| {
             if !diagnostic_prefix.is_empty() {
                 rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);

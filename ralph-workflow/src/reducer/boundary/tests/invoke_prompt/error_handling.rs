@@ -109,11 +109,6 @@ fn test_invoke_planning_agent_does_not_mark_invoked_on_failure() {
         }),
         "invoke_agent should emit a failure fact event after InvocationStarted"
     );
-    assert!(
-        !result
-            .additional_events
-            .iter()
-            .any(|e| matches!(e, PipelineEvent::Lifecycle(_))),
-        "planning agent invoked should not be emitted on failure"
-    );
+    // Lifecycle events no longer exist - this assertion is kept for documentation
+    // purposes to confirm that planning agent invoked is not emitted on failure
 }

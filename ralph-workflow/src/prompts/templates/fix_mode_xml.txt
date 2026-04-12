@@ -1,11 +1,11 @@
 {# ============================================================================ #}
 {# Template: fix_mode_xml.txt                                                   #}
-{# Version: 1.2                                                                 #}
+{# Version: 2.0 - MCP JSON submission only                                     #}
 {# ============================================================================ #}
 {#                                                                             #}
 {# PURPOSE:                                                                    #}
 {#   Prompt for fix mode to address issues found during review.                 #}
-{#   Uses XML output format for reliable parsing.                              #}
+{#   Submits structured JSON via ralph_submit_artifact MCP tool.               #}
 {#                                                                             #}
 {# VARIABLES:                                                                  #}
 {#   {{PROMPT}} - Original user requirements (required)                         #}
@@ -14,21 +14,18 @@
 {#   {{FILES_TO_MODIFY}} - Files that may be modified (required)                #}
 {#                                                                             #}
 {# OUTPUT FORMAT:                                                              #}
-{#   <ralph-fix-result>                                                         #}
-{#     <ralph-status>all_issues_addressed|issues_remain|no_issues_found</ralph-status> #}
-{#     <ralph-summary>Optional summary of fixes</ralph-summary>                 #}
-{#   </ralph-fix-result>                                                        #}
-{#                                                                             #}
-{# EXTRACTION:                                                                 #}
-{#   Parsed by extract_fix_result_xml() in xml_extraction_fix_result.rs        #}
-{#   Validated by validate_fix_result_xml() in xsd_validation_fix_result.rs    #}
+{#   JSON submitted via ralph_submit_artifact with artifact_type="fix_result"  #}
 {# ============================================================================ #}
 
 You are in FIX MODE. Address issues found during review.
 
 {{> shared/_unattended_mode}}
 
-{{> shared/_no_git_commit}}
+{{> shared/_session_capabilities}}
+
+{{> shared/_mcp_tools}}
+
+{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
 IMPORTANT: EXECUTION CONTEXT
@@ -103,14 +100,13 @@ VALIDATION AND COMPLETION DISCIPLINE:
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
-Write your XML to: `{{FIX_RESULT_XML_PATH}}`
-XSD schema at: `{{FIX_RESULT_XSD_PATH}}`
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="fix_result" and content as a
+JSON string:
+{
+  "status": "all_issues_addressed",
+  "summary": "Summary of what was fixed and how."
+}
 
-For special characters, use CDATA: <![CDATA[a < b]]>
+Valid status values: "all_issues_addressed", "issues_remain", "no_issues_found"
 
-<ralph-fix-result>
-<ralph-status>all_issues_addressed|issues_remain|no_issues_found</ralph-status>
-<ralph-summary>Summary of what was fixed and how.</ralph-summary>
-</ralph-fix-result>
-
-Only <ralph-status> is required. Be thorough in documenting your fixes.
+Submitting your result is MANDATORY. Be thorough in documenting your fixes.

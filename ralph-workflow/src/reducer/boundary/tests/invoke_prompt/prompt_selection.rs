@@ -105,7 +105,7 @@ fn test_invoke_agent_prefers_same_agent_retry_prompt_over_rate_limit_continuatio
             AgentRole::Developer,
             "claude",
             None,
-            retry_prompt,
+            |_session: &crate::agents::session::AgentSession| retry_prompt.clone(),
         )
         .expect("invoke_agent should succeed");
 
@@ -158,7 +158,7 @@ fn test_invoke_agent_prefers_xsd_retry_prompt_over_rate_limit_continuation_promp
             AgentRole::Developer,
             "claude",
             None,
-            xsd_retry_prompt.clone(),
+            |_session: &crate::agents::session::AgentSession| xsd_retry_prompt.clone(),
         )
         .expect("invoke_agent should succeed");
 
@@ -168,6 +168,45 @@ fn test_invoke_agent_prefers_xsd_retry_prompt_over_rate_limit_continuation_promp
         calls[0].prompt, xsd_retry_prompt,
         "effective prompt should use the XSD retry prompt, not stale continuation prompt"
     );
+}
+
+#[test]
+fn test_invoke_agent_rewrites_claude_mcp_tool_names_in_prompt() {
+    let mut fixture = TestFixture::new();
+    fixture.executor = Arc::new(
+        MockProcessExecutor::new()
+            .with_agent_result("claude", Ok(crate::executor::AgentCommandResult::success())),
+    );
+    let mut ctx = fixture.ctx();
+    ctx.developer_agent = "claude";
+    ctx.reviewer_agent = "codex";
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        AgentRole::Developer,
+    );
+
+    let prompt = "AVAILABLE TOOLS:\nread_file, ralph_submit_artifact\n\nUse `ralph_submit_artifact` to submit structured results.".to_string();
+
+    let _ = handler
+        .invoke_agent(
+            &mut ctx,
+            crate::agents::AgentDrain::Development,
+            AgentRole::Developer,
+            "claude",
+            None,
+            |_session: &crate::agents::session::AgentSession| prompt.clone(),
+        )
+        .expect("invoke_agent should succeed");
+
+    let calls = fixture.executor.agent_calls();
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0]
+        .prompt
+        .contains("mcp__ralph__ralph_submit_artifact"));
+    assert!(!calls[0].prompt.contains("`ralph_submit_artifact`"));
 }
 
 #[test]

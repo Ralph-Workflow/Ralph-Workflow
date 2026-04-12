@@ -47,7 +47,9 @@ pub(crate) use policy::{
     CLIPPY_CORE_CHECK_NAME, CORE_LIB_TEST_CHECK_NAME, INTEGRATION_TEST_CHECK_NAME,
 };
 
-pub use types::{CheckStatus, NativeCheck, NativeCheckResult, VerifyExitCode, VerifyReport};
+pub use types::{
+    CheckFailure, CheckStatus, NativeCheck, NativeCheckResult, VerifyExitCode, VerifyReport,
+};
 
 #[cfg(test)]
 #[path = "verify_tests.rs"]

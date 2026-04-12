@@ -334,6 +334,78 @@ mod tests {
         assert_eq!(classification, MonitorEventClassification::Ignored);
     }
 
+    #[test]
+    fn test_step_finish_without_part_flushes_accumulated_text() {
+        // Bug: when step_finish has no `part` field, map_or_else(String::new, ...) drops
+        // the `text_flush_non_tty` string even though it was already computed.
+        // In Basic/None mode, this silently discards all text from the step.
+        use crate::json_parser::terminal::TerminalMode;
+
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_terminal_mode(TerminalMode::None);
+
+        // Start a step so the session has a current message ID
+        let step_start = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"messageID":"msg_a","type":"step-start"}}"#;
+        parser.parse_event(step_start);
+
+        // Accumulate text in the session (None mode suppresses per-delta output)
+        let text_event = r#"{"type":"text","timestamp":2,"sessionID":"ses_test","part":{"type":"text","text":"Hello from step"}}"#;
+        let text_out = parser.parse_event(text_event);
+        assert!(text_out.is_none(), "None mode should suppress per-delta text");
+
+        // step_finish with NO part field — should still flush accumulated text
+        let finish_no_part =
+            r#"{"type":"step_finish","timestamp":3,"sessionID":"ses_test"}"#;
+        let finish_out = parser.parse_event(finish_no_part);
+
+        assert!(
+            finish_out.is_some(),
+            "step_finish without part should output accumulated text, got None"
+        );
+        assert!(
+            finish_out.unwrap().contains("Hello from step"),
+            "Accumulated text should appear in step_finish output even when part is missing"
+        );
+    }
+
+    #[test]
+    fn test_new_step_start_without_finish_flushes_previous_text() {
+        // Bug: when a new step_start arrives while the previous step was mid-stream,
+        // on_message_start() clears `accumulated` before the text is flushed.
+        // In Basic/None mode, the previous step's text is silently lost.
+        use crate::json_parser::terminal::TerminalMode;
+
+        let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal)
+            .with_terminal_mode(TerminalMode::None);
+
+        // Step A starts
+        let step_a_start = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"messageID":"msg_a","type":"step-start"}}"#;
+        parser.parse_event(step_a_start);
+
+        // Text accumulates for Step A (None mode suppresses per-delta output)
+        let text_event = r#"{"type":"text","timestamp":2,"sessionID":"ses_test","part":{"type":"text","text":"Step A thinking..."}}"#;
+        let text_out = parser.parse_event(text_event);
+        assert!(text_out.is_none(), "None mode should suppress per-delta text");
+
+        // Step B starts WITHOUT a step_finish for Step A — should flush Step A's text
+        let step_b_start = r#"{"type":"step_start","timestamp":3,"sessionID":"ses_test","part":{"messageID":"msg_b","type":"step-start"}}"#;
+        let step_b_out = parser.parse_event(step_b_start);
+
+        assert!(
+            step_b_out.is_some(),
+            "step_b_start should produce output containing flushed Step A text"
+        );
+        let out = step_b_out.unwrap();
+        assert!(
+            out.contains("Step A thinking..."),
+            "Text from incomplete Step A should be flushed when Step B starts, got: {out:?}"
+        );
+        assert!(
+            out.contains("Step started"),
+            "Output should also contain the Step B started line"
+        );
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Issue 1 regression: single truncation summary for tool output exceeding
     // the line limit.

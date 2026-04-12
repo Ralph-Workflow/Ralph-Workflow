@@ -109,6 +109,17 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             attempt_count: _,
             target_phase,
         } => {
+            let level_from_attempt_count = match state.dev_fix_attempt_count {
+                0 => level,
+                1..=3 => 1,
+                4..=6 => 2,
+                7..=9 => 3,
+                _ => 4,
+            };
+            let effective_level = level
+                .max(state.recovery_escalation_level)
+                .max(level_from_attempt_count);
+
             // Recovery state transitions documented for clarity:
             //
             // Level 1: Retry same operation (attempts 1-3)
@@ -138,12 +149,13 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             let new_state = PipelineState {
                 phase: target_phase,
                 previous_phase: Some(PipelinePhase::AwaitingDevFix),
+                recovery_escalation_level: effective_level,
                 // Keep recovery tracking fields so we can escalate if this fails
                 ..state.clone()
             };
 
             // Apply state reset based on escalation level (functional style)
-            let new_state = match level {
+            let new_state = match effective_level {
                 1 => {
                     // Level 1: Simple retry - just transition back, no state reset
                     new_state
@@ -236,7 +248,7 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             // Semantics:
             // - Always reset for Level 2+ recovery (phase/iteration resets imply fresh work).
             // - Also reset for Level 1 if the chain is already exhausted.
-            if level >= 2 || new_state.agent_chain.is_exhausted() {
+            if effective_level >= 2 || new_state.agent_chain.is_exhausted() {
                 let drain = new_state.agent_chain.current_drain;
                 PipelineState {
                     agent_chain: new_state.agent_chain.reset_for_drain(drain),

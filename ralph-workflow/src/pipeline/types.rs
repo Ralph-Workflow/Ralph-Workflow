@@ -56,7 +56,7 @@ pub struct TimeoutContext {
 
 /// Why the idle-timeout monitor stopped waiting for an agent process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdleTimeoutCause {
+pub(super) enum IdleTimeoutCause {
     /// The agent timed out with no qualifying child work present.
     NoQualifying,
     /// The agent timed out while child processes still existed but no longer showed
@@ -108,6 +108,9 @@ impl Drop for AgentPhaseGuard<'_> {
         if !self.active {
             return;
         }
+
+        // Kill any remaining agent processes. This is the panic/early-return safety net.
+        crate::executor::process_registry::kill_all_registered_raw();
 
         // Restore PROMPT.md write permissions FIRST (most important for user recovery).
         // This is best-effort - we don't want to panic in drop().

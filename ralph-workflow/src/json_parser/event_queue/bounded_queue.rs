@@ -36,7 +36,7 @@
 // ```
 #[derive(Debug)]
 #[cfg(test)]
-pub struct BoundedEventQueue<T> {
+pub(crate) struct BoundedEventQueue<T> {
     sender: mpsc::SyncSender<T>,
     receiver: mpsc::Receiver<T>,
     metrics: QueueMetrics,
@@ -45,13 +45,13 @@ pub struct BoundedEventQueue<T> {
 // Metrics tracking queue health and performance.
 #[derive(Debug, Clone, Default)]
 #[cfg(test)]
-pub struct QueueMetrics {
+pub(crate) struct QueueMetrics {
     // Current number of events in the queue
-    pub depth: usize,
+    pub(crate) depth: usize,
     // Number of times backpressure was triggered (send blocked on full queue)
-    pub backpressure_count: usize,
+    pub(crate) backpressure_count: usize,
     // Maximum observed queue depth
-    pub max_depth: usize,
+    pub(crate) max_depth: usize,
 }
 
 #[cfg(test)]
@@ -62,7 +62,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // ```ignore
     // let queue: BoundedEventQueue<String> = BoundedEventQueue::new();
     // ```
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let config = get_queue_config();
         Self::with_config(config)
     }
@@ -77,7 +77,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // let config = QueueConfig { capacity: 500 };
     // let queue: BoundedEventQueue<String> = BoundedEventQueue::with_config(config);
     // ```
-    pub fn with_config(config: QueueConfig) -> Self {
+    pub(crate) fn with_config(config: QueueConfig) -> Self {
         let (sender, receiver) = mpsc::sync_channel(config.capacity);
         Self {
             sender,
@@ -104,7 +104,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // ```ignore
     // queue.send(event)?;
     // ```
-    pub fn send(self, event: T) -> Self {
+    pub(crate) fn send(self, event: T) -> Self {
         match self.sender.send(event) {
             Ok(()) => {
                 let new_depth = self.metrics.depth.saturating_add(1);
@@ -124,7 +124,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
         }
     }
 
-    pub fn try_send(mut self, event: T) -> Self {
+    pub(crate) fn try_send(mut self, event: T) -> Self {
         match self.sender.try_send(event) {
             Ok(()) => {
                 self.metrics.depth = self.metrics.depth.saturating_add(1);
@@ -152,7 +152,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // let (queue, result) = queue.recv();
     // let event = result?;
     // ```
-    pub fn recv(self) -> (Self, Result<T, mpsc::RecvError>) {
+    pub(crate) fn recv(self) -> (Self, Result<T, mpsc::RecvError>) {
         match self.receiver.recv() {
             Ok(event) => {
                 let mut new_self = self;
@@ -171,7 +171,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // println!("Depth: {}, Backpressure: {}", metrics.depth, metrics.backpressure_count);
     // ```
     #[must_use]
-    pub const fn metrics(&self) -> &QueueMetrics {
+    pub(crate) const fn metrics(&self) -> &QueueMetrics {
         &self.metrics
     }
 
@@ -180,20 +180,20 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // This is an estimate that may not be perfectly accurate due to
     // concurrent access, but is sufficient for monitoring purposes.
     #[must_use]
-    pub const fn depth(&self) -> usize {
+    pub(crate) const fn depth(&self) -> usize {
         self.metrics.depth
     }
 
     // Check if the queue is empty.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.depth() == 0
     }
 
     // Clear all events from the queue.
     //
     // This is useful for error recovery when invalid data is encountered.
-    pub fn clear(self) -> Self {
+    pub(crate) fn clear(self) -> Self {
         while self.receiver.try_recv().is_ok() {}
         Self {
             sender: self.sender,
@@ -207,7 +207,7 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     }
 
     // Reset metrics while preserving queue contents.
-    pub fn reset_metrics(self) -> Self {
+    pub(crate) fn reset_metrics(self) -> Self {
         Self {
             metrics: QueueMetrics {
                 depth: self.metrics.depth,

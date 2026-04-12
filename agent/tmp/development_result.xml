@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<development-result>
+  <status>complete</status>
+  <summary>
+All implementation work is complete. All verification checks pass. The test-generated commits ("feat: add new file flow") have been removed from git history by deleting the filter-branch backup ref at refs/original/refs/heads/wt-69-paralel.
+
+COMPLETED ACROSS ALL CONTINUATIONS:
+
+Architecture:
+- Created mcp-server standalone crate with zero dependency on ralph-workflow
+- Defined adapter trait seam: HostSession, WorkspaceAdapter, AuditSink
+- McpServerConfig with root_dir, AccessMode, ToolFilter enforcement
+- AccessDecision type with AccessDeniedCode variants (ReadOnlyMode, OutsideRootDir, ToolNotAllowed, CapabilityDenied, NotInitialized)
+- McpCapability enum covering all 15 registered tools
+- Path normalization preventing parent traversal attacks
+
+Tools (15 registered):
+read_file, write_file, list_directory, list_directory_recursive, search_files, git_status, git_diff, git_log, git_show, exec, ralph_submit_artifact, report_progress, declare_complete, read_env, coordinate
+
+Safety Guardrails:
+- assert_no_real_git_mutations() and assert_no_real_git_state() in test-helpers
+- xtask audit-no-real-git-in-tests native check
+- All tests use TempDir workspaces, never project checkout paths
+- filter-branch backup ref removed: refs/original/refs/heads/wt-69-paralel deleted
+
+FINAL VERIFICATION RESULTS:
+- cargo fmt --all --check: PASS
+- cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers -p mcp-server --all-targets --all-features -- -D warnings: PASS (0 errors)
+- cargo test -p mcp-server --test standalone_host: PASS (18/18)
+- cargo test -p ralph-workflow --lib mcp_server: PASS (116/116)
+- cargo test -p ralph-workflow-tests --test integration_tests: PASS (1267/1267)
+- cargo xtask verify: PASS (17/17 checks)
+- dep-isolation check (mcp-server has no ralph-workflow dependency): PASS
+- cargo doc -p mcp-server --no-deps: PASS (0 warnings)
+- cargo doc -p ralph-workflow --no-deps: PASS (0 warnings)
+- git log --oneline --all | grep "add new file flow": 0 matches (PASS)
+  </summary>
+  <files-changed>
+mcp-server/src/lib.rs — crate root with full RPC contract Rustdoc
+mcp-server/src/io/mod.rs — boundary IO module
+mcp-server/src/dispatch/mod.rs — dispatch layer with Rustdoc for all tools
+mcp-server/src/dispatch/access.rs — McpCapability, AccessDecision, ToolFilter, AccessDeniedCode
+mcp-server/src/dispatch/registry.rs — tool registry with 15 registered tools
+mcp-server/tests/standalone_host.rs — 18 standalone tests (no ralph-workflow dep)
+ralph-workflow/src/mcp_server/session_bridge.rs — SessionBridge startup, RALPH_MCP_ENDPOINT injection
+ralph-workflow/src/mcp_server/tool_bridge.rs — McpServerConfig construction with repo root
+ralph-workflow/src/mcp_server/audit_adapter.rs — AuditSink impl for ralph-workflow
+ralph-workflow/src/mcp_server/tool_artifact.rs — ralph_submit_artifact handler with Rustdoc
+ralph-workflow/src/mcp_server/tool_workspace.rs — file/directory tools with Rustdoc
+ralph-workflow/src/mcp_server/tool_git_read.rs — git read tools with Rustdoc
+ralph-workflow/src/mcp_server/tool_exec.rs — exec tool with Rustdoc
+ralph-workflow/src/mcp_server/tool_coordination.rs — coordination tools with Rustdoc
+ralph-workflow/src/mcp_server/tests/e2e_socket_behavior.rs — e2e socket tests with git safety guards
+ralph-workflow/src/mcp_server/tests/blacklist_tests.rs — blocklist enforcement tests
+ralph-workflow/src/mcp_server/tests/capability_tests.rs — capability check tests
+ralph-workflow/src/mcp_server/tests/snapshot_tests.rs — snapshot tests
+ralph-workflow/src/mcp_server/tests/tool_tests.rs — tool unit tests
+ralph-workflow/src/app/io/repo_discovery.rs — discover_repo_root() boundary module
+ralph-workflow/src/app/io/mod.rs — pub mod repo_discovery
+ralph-workflow/src/app/pipeline_setup.rs — SessionBridge integration with repo root discovery
+ralph-workflow/src/prompts/template_variables.rs — RALPH_MCP_ENDPOINT propagation
+ralph-workflow/src/prompts/templates/shared/_mcp_tools.txt — correct tool names (no ralph_ prefix drift)
+ralph-workflow/src/agents/harness/claude.rs — RALPH_MCP_ENDPOINT env injection
+ralph-workflow/src/agents/harness/mod.rs — harness MCP integration
+test-helpers/src/lib.rs — assert_no_real_git_mutations(), assert_no_real_git_state()
+tests/integration_tests/mcp_behavioral.rs — MCP behavioral integration tests
+tests/integration_tests/workflows/mcp_end_to_end.rs — end-to-end MCP workflow tests
+xtask/src/runtime/verify.rs — 17-check verify suite with mcp-server lanes and dep-isolation check
+xtask/src/boundary/compliance.rs — audit-no-real-git-in-tests native check
+xtask/src/io/scanner.rs — git mutation pattern scanner
+  </files-changed>
+  <next-steps>
+None. All plan requirements are satisfied and all verification passes.
+  </next-steps>
+</development-result>

@@ -1,6 +1,6 @@
 use super::common::TestFixture;
 use crate::reducer::boundary::MainEffectHandler;
-use crate::reducer::event::LifecycleEvent;
+use crate::reducer::event::PromptInputEvent;
 use crate::workspace::{MemoryWorkspace, Workspace};
 
 #[test]
@@ -11,8 +11,8 @@ fn test_ensure_gitignore_creates_file_when_missing() {
     let result = MainEffectHandler::ensure_gitignore_entries(&ctx);
 
     match result.event {
-        crate::reducer::event::PipelineEvent::Lifecycle(
-            LifecycleEvent::GitignoreEntriesEnsured {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            PromptInputEvent::GitignoreEntriesEnsured {
                 added,
                 existing,
                 created,
@@ -46,8 +46,8 @@ fn test_ensure_gitignore_appends_when_file_exists() {
     let result = MainEffectHandler::ensure_gitignore_entries(&ctx);
 
     match result.event {
-        crate::reducer::event::PipelineEvent::Lifecycle(
-            LifecycleEvent::GitignoreEntriesEnsured {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            PromptInputEvent::GitignoreEntriesEnsured {
                 added,
                 existing,
                 created,
@@ -80,8 +80,8 @@ fn test_ensure_gitignore_idempotent_when_entries_exist() {
     let result = MainEffectHandler::ensure_gitignore_entries(&ctx);
 
     match result.event {
-        crate::reducer::event::PipelineEvent::Lifecycle(
-            LifecycleEvent::GitignoreEntriesEnsured {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            PromptInputEvent::GitignoreEntriesEnsured {
                 added,
                 existing,
                 created,
@@ -113,8 +113,8 @@ fn test_ensure_gitignore_partial_entries() {
     let result = MainEffectHandler::ensure_gitignore_entries(&ctx);
 
     match result.event {
-        crate::reducer::event::PipelineEvent::Lifecycle(
-            LifecycleEvent::GitignoreEntriesEnsured {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            PromptInputEvent::GitignoreEntriesEnsured {
                 added,
                 existing,
                 created,
@@ -240,8 +240,8 @@ fn test_ensure_gitignore_handles_write_failure_gracefully() {
     let result = MainEffectHandler::ensure_gitignore_entries(&ctx);
 
     match result.event {
-        crate::reducer::event::PipelineEvent::Lifecycle(
-            LifecycleEvent::GitignoreEntriesEnsured {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            PromptInputEvent::GitignoreEntriesEnsured {
                 added,
                 existing,
                 created,
@@ -277,8 +277,8 @@ fn test_ensure_gitignore_handles_write_failure_on_missing_file() {
     let result = MainEffectHandler::ensure_gitignore_entries(&ctx);
 
     match result.event {
-        crate::reducer::event::PipelineEvent::Lifecycle(
-            LifecycleEvent::GitignoreEntriesEnsured {
+        crate::reducer::event::PipelineEvent::PromptInput(
+            PromptInputEvent::GitignoreEntriesEnsured {
                 added,
                 existing,
                 created,

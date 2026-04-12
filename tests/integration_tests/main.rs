@@ -51,11 +51,21 @@
 //!
 //! Tests requiring real git/filesystem operations are in `tests/system_tests/`.
 //! See `tests/system_tests/SYSTEM_TESTS.md` for those guidelines.
+//!
+//! # Git Mutation Safety Policy
+//!
+//! **POLICY: All integration tests that interact with git state MUST instantiate a
+//! `test_helpers::GitMutationGuard` at the top of the test function.** The guard detects
+//! any mutation to the project repository's HEAD during the test and panics with a clear
+//! violation message if HEAD changes. Tests that use `MemoryWorkspace` exclusively do not
+//! need the guard (they cannot touch real git state), but tests that call git operations
+//! MUST hold one for their entire duration.
 
 mod agent_chain_normalization;
 mod agent_spawn_errors;
 mod awaiting_dev_fix_recovery;
 mod behavioral_pipeline_tests;
+mod brokered_sessions;
 mod ccs_all_delta_types_spam_reproduction;
 mod ccs_ansi_stripping_console;
 mod ccs_ansi_stripping_waterfall;
@@ -84,10 +94,13 @@ mod fix_xml_validation;
 mod gemini_parser_tests;
 mod git;
 mod gitignore_enforcement;
+mod lifecycle_event_removal_regression;
 mod logger;
 mod logging_per_run;
 mod loop_detection_after_additional_events;
 mod loop_detection_recovery;
+mod mcp_artifact_reducer_parity;
+mod mcp_behavioral;
 mod memory_safety;
 mod offline_detection;
 mod opencode_parser_tests;
@@ -109,6 +122,7 @@ mod reducer_state_machine;
 mod required_files_cleanup;
 mod review_output_validation;
 mod review_xml_validation;
+mod rfc009_session_model;
 mod rust_lsp_dylint;
 mod template_rendering_errors;
 mod template_validation_jsx;

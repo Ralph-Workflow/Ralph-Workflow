@@ -10,7 +10,7 @@
 //! - [`dry_run`]: Validation without running agents
 //! - [`list`]: Agent listing commands
 //! - [`template_mgmt`]: Template management commands (validate, list, show, variables, render)
-//! - [`template_selection`]: Interactive template selection when PROMPT.md is missing
+//! - `template_selection`: Interactive template selection when PROMPT.md is missing
 
 pub mod baseline;
 #[path = "boundary.rs"]

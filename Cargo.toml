@@ -1,6 +1,6 @@
 [workspace]
-members = ["ralph-workflow", "test-helpers", "tests", "xtask"]
-default-members = ["ralph-workflow", "test-helpers", "xtask"]
+members = ["mcp-server", "ralph-workflow", "test-helpers", "tests", "xtask"]
+default-members = ["mcp-server", "ralph-workflow", "test-helpers", "xtask"]
 resolver = "2"
 
 [workspace.metadata.test-workspace]

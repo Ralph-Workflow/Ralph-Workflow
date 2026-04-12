@@ -56,7 +56,7 @@ fn run_initial_rebase_phase(
     let run_result = crate::app::rebase::run_initial_rebase(
         ctx.logger,
         *ctx.colors,
-        ctx,
+        ctx.repo_root,
         &run_context,
         ctx.executor,
         &mut local_prompt_history,
@@ -95,8 +95,8 @@ fn run_non_initial_rebase_phase(
     phase: RebasePhase,
     target_branch: &str,
 ) -> Result<EffectResult> {
-    use crate::git_helpers::rebase_onto;
-    match rebase_onto(target_branch, ctx.executor) {
+    use crate::git_helpers::rebase_onto_at;
+    match rebase_onto_at(ctx.repo_root, target_branch, ctx.executor) {
         Ok(_) => Ok(rebase_onto_success_result(ctx, phase)),
         Err(e) => Ok(EffectResult::event(PipelineEvent::rebase_failed(
             phase,
@@ -106,8 +106,8 @@ fn run_non_initial_rebase_phase(
 }
 
 fn rebase_onto_success_result(ctx: &PhaseContext<'_>, phase: RebasePhase) -> EffectResult {
-    use crate::git_helpers::get_conflicted_files;
-    let conflicted_files = get_conflicted_files().unwrap_or_default();
+    use crate::git_helpers::get_conflicted_files_at;
+    let conflicted_files = get_conflicted_files_at(ctx.repo_root).unwrap_or_default();
     if conflicted_files.is_empty() {
         let new_head = resolve_head_oid(ctx.repo_root, "unknown");
         EffectResult::event(PipelineEvent::rebase_succeeded(phase, new_head))

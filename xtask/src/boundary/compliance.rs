@@ -84,6 +84,144 @@ fn run_timeout_wrapper_scan(test_dir: &Path) -> NativeCheckResult {
     compliance_summary_to_native(timeout_wrapper_scan_result(&violations, &read_errors))
 }
 
+/// Scans test files (excluding system_tests) for direct git commit operations and
+/// risky workspace construction patterns that could bypass the test isolation policy.
+///
+/// This enforces two policies:
+/// 1. No real git mutations in tests (commit operations are forbidden)
+/// 2. No workspace construction using CWD or repo-root paths (must use TempDir/TestTempDir)
+///
+/// Scanned directories:
+/// - `tests/integration_tests`
+/// - `tests/process_system_tests`
+/// - `ralph-workflow/src/mcp_server/tests/` (MCP e2e tests)
+///
+/// System tests in `tests/system_tests/` are allowed to use real git for testing
+/// git functionality itself.
+///
+/// Returns `Pass` when no violations are found or when the test directory does not exist.
+pub fn check_no_real_git_in_tests(repo_root: &Path) -> NativeCheckResult {
+    let files = match collect_git_scan_files(repo_root) {
+        Ok(f) => f,
+        Err(r) => return r,
+    };
+    if files.is_empty() {
+        return pass_native();
+    }
+    let ac = AhoCorasick::new(GIT_VIOLATION_PATTERNS).expect("valid git violation patterns");
+    let (violations, read_errors) = scan_files_for_git_violations(&files, &ac);
+    build_git_scan_result(&violations, &read_errors)
+}
+
+// Patterns that indicate real git usage or risky CWD workspace construction in tests.
+const GIT_VIOLATION_PATTERNS: &[&str] = &[
+    "Repository::commit",
+    ".commit(",
+    "CommitEffect",
+    "WorkspaceFs::new(std::env::current_dir",
+    "WorkspaceFs::new(PathBuf::from(\".\")",
+];
+
+fn collect_git_scan_files(repo_root: &Path) -> Result<Vec<PathBuf>, NativeCheckResult> {
+    let test_dirs = [
+        repo_root.join("tests/integration_tests"),
+        repo_root.join("tests/process_system_tests"),
+        repo_root.join("ralph-workflow/src/mcp_server/tests"),
+        repo_root.join("mcp-server/tests"),
+    ];
+    let mut files = Vec::new();
+    for test_dir in &test_dirs {
+        collect_from_dir_if_exists(test_dir, &mut files)?;
+    }
+    Ok(files)
+}
+
+fn collect_from_dir_if_exists(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), NativeCheckResult> {
+    if dir.exists() {
+        collect_rs_files_from(dir, out).map_err(|e| {
+            error_native(format!(
+                "Failed to walk test directory {}: {e}",
+                dir.display()
+            ))
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn collect_rs_files_from(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    let mut all_files = Vec::new();
+    crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut all_files)?;
+    out.extend(
+        all_files
+            .into_iter()
+            .filter(|p| !should_exclude_from_git_scan(p)),
+    );
+    Ok(())
+}
+
+fn should_exclude_from_git_scan(path: &Path) -> bool {
+    path.components().any(|c| c.as_os_str() == "system_tests") || should_skip_file(path)
+}
+
+fn scan_files_for_git_violations(
+    files: &[PathBuf],
+    ac: &AhoCorasick,
+) -> (Vec<String>, Vec<String>) {
+    let mut violations = Vec::new();
+    let mut read_errors = Vec::new();
+    for file_path in files {
+        match std::fs::read(file_path) {
+            Ok(content) => scan_file_for_git_violations(file_path, &content, ac, &mut violations),
+            Err(e) => read_errors.push(format!("{}: read error: {e}", file_path.display())),
+        }
+    }
+    (violations, read_errors)
+}
+
+fn build_git_scan_result(violations: &[String], read_errors: &[String]) -> NativeCheckResult {
+    if !read_errors.is_empty() {
+        return error_native(format!(
+            "Failed to read {} test file(s) during git-violation scan:\n{}",
+            read_errors.len(),
+            read_errors.join("\n")
+        ));
+    }
+    if violations.is_empty() {
+        pass_native()
+    } else {
+        error_native(format!(
+            "Found {} test file(s) with real git operations or risky workspace construction \
+             (real git mutations and CWD-rooted workspaces are forbidden in tests — use \
+             MemoryWorkspace or TempDir-backed WorkspaceFs):\n{}",
+            violations.len(),
+            violations.join("\n")
+        ))
+    }
+}
+
+fn scan_file_for_git_violations(
+    file_path: &Path,
+    content: &[u8],
+    ac: &AhoCorasick,
+    violations: &mut Vec<String>,
+) {
+    let line_idx = LineIndex::new(content);
+
+    for mat in ac.find_iter(content) {
+        let line_number = line_idx.line_number(mat.start()) + 1;
+        let line_bytes = line_idx.extract_line(content, mat.start());
+        let line_str = String::from_utf8_lossy(line_bytes);
+
+        violations.push(format!(
+            "{}:{}: found git operation '{}' — tests must use MemoryWorkspace or MockAppEffectHandler",
+            file_path.display(),
+            line_number,
+            line_str.trim()
+        ));
+    }
+}
+
 fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut files)?;
@@ -283,6 +421,172 @@ fn compliance_summary_to_native(summary: ComplianceSummary) -> NativeCheckResult
         status,
         message: summary.message,
     }
+}
+
+fn pass_native() -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Pass,
+        message: String::new(),
+    }
+}
+
+fn error_native(message: String) -> NativeCheckResult {
+    NativeCheckResult {
+        status: CheckStatus::Error,
+        message,
+    }
+}
+
+/// Verifies that `mcp-server` has no dependency on `ralph-workflow` (direct or
+/// transitive). This enforces the standalone principle: mcp-server must be usable
+/// without ralph-workflow in the dependency graph.
+///
+/// Uses `cargo metadata --format-version 1` to get the full dependency graph and
+/// traverses all dependencies of mcp-server to verify ralph-workflow is not present.
+pub fn check_mcp_server_dep_isolation(repo_root: &Path) -> NativeCheckResult {
+    if !repo_root.exists() {
+        return pass_native();
+    }
+    match run_cargo_metadata_for_mcp(repo_root) {
+        Ok(Some(metadata)) => check_dep_isolation_in_metadata(&metadata),
+        Ok(None) => pass_native(),
+        Err(r) => r,
+    }
+}
+
+fn run_cargo_metadata_for_mcp(repo_root: &Path) -> Result<Option<String>, NativeCheckResult> {
+    let output = match std::process::Command::new("cargo")
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--manifest-path",
+            "mcp-server/Cargo.toml",
+        ])
+        .current_dir(repo_root)
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return Ok(None),
+    };
+    if !output.status.success() {
+        return handle_cargo_metadata_failure(&String::from_utf8_lossy(&output.stderr));
+    }
+    Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
+}
+
+fn handle_cargo_metadata_failure(stderr: &str) -> Result<Option<String>, NativeCheckResult> {
+    if stderr.contains("package not found")
+        || stderr.contains("`mcp-server` is not found")
+        || stderr.contains("could not find `Cargo.toml`")
+        || stderr.contains("does not exist")
+    {
+        return Ok(None);
+    }
+    Err(error_native(format!(
+        "DEPENDENCY ISOLATION VIOLATION: cargo metadata failed: {stderr}"
+    )))
+}
+
+fn check_dep_isolation_in_metadata(metadata: &str) -> NativeCheckResult {
+    compliance_summary_to_native(
+        crate::domain::compliance::check_mcp_dep_isolation_from_metadata(metadata),
+    )
+}
+
+/// Verifies that `ralph_submit_artifact` is the only MCP tool name retaining the `ralph_`
+/// prefix in production source code.
+///
+/// All other tool names must have dropped the prefix (per commit d1f09f19 "rename all tools
+/// to drop ralph_ prefix"). This check ensures no future tool registration accidentally
+/// reintroduces the `ralph_` prefix on a tool other than the artifact submission tool.
+///
+/// Scanned directories (test directories are excluded):
+/// - `mcp-server/src/`
+/// - `ralph-workflow/src/mcp_server/` (excluding `tests/` subdirectory)
+///
+/// Returns `Pass` when only `ralph_submit_artifact` (or no `ralph_`-prefixed strings at all)
+/// appear in production source. Returns `Error` when any other `ralph_`-prefixed tool name
+/// is found.
+pub fn check_mcp_tool_naming_policy(repo_root: &Path) -> NativeCheckResult {
+    if !repo_root.exists() {
+        return pass_native();
+    }
+    let dirs = [
+        repo_root.join("mcp-server/src"),
+        repo_root.join("ralph-workflow/src/mcp_server"),
+    ];
+    match collect_ralph_prefix_violations(&dirs, repo_root) {
+        Ok(violations) => compliance_summary_to_native(
+            crate::domain::compliance::ralph_prefix_violations_summary(&violations),
+        ),
+        Err(e) => error_native(e),
+    }
+}
+
+fn collect_ralph_prefix_violations(
+    dirs: &[PathBuf],
+    repo_root: &Path,
+) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    for dir in dirs {
+        if !dir.exists() {
+            continue;
+        }
+        collect_ralph_violations_from_dir(dir, repo_root, &mut violations)
+            .map_err(|e| format!("Failed to scan {}: {e}", dir.display()))?;
+    }
+    Ok(violations)
+}
+
+fn collect_ralph_violations_from_dir(
+    dir: &Path,
+    repo_root: &Path,
+    violations: &mut Vec<String>,
+) -> std::io::Result<()> {
+    let mut rs_files = Vec::new();
+    crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut rs_files)?;
+    for file_path in rs_files.iter().filter(|p| !is_in_test_subdir(p)) {
+        let content = std::fs::read_to_string(file_path)?;
+        let display = file_path
+            .strip_prefix(repo_root)
+            .unwrap_or(file_path.as_path());
+        violations.extend(
+            crate::domain::compliance::scan_content_for_ralph_violations(&content, display),
+        );
+    }
+    Ok(())
+}
+
+fn is_in_test_subdir(path: &Path) -> bool {
+    path.components()
+        .any(|c| c.as_os_str() == "tests" || c.as_os_str() == "test")
+}
+
+/// Verifies that `mcp-server/tests/standalone_host.rs` enforces git safety using either:
+///
+/// 1. **Shared helper (preferred)**: calls `test_helpers::assert_not_in_git_repo`
+/// 2. **Local function (legacy)**: defines `fn assert_no_real_git_state` with `loop {`
+///
+/// Returns `Pass` when either requirement is met or when the file does not exist.
+pub fn check_standalone_host_git_safety_parity(repo_root: &Path) -> NativeCheckResult {
+    let standalone_host = repo_root.join("mcp-server/tests/standalone_host.rs");
+    if !standalone_host.exists() {
+        return pass_native();
+    }
+    let content = match std::fs::read_to_string(&standalone_host) {
+        Ok(c) => c,
+        Err(e) => {
+            return error_native(format!("Failed to read {}: {e}", standalone_host.display()))
+        }
+    };
+    compliance_summary_to_native(
+        crate::domain::compliance::standalone_host_git_safety_summary(
+            content.contains("test_helpers::assert_not_in_git_repo"),
+            content.contains("fn assert_no_real_git_state"),
+            content.contains("loop {"),
+        ),
+    )
 }
 
 #[path = "compliance_tests.rs"]

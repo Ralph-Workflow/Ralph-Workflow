@@ -9,10 +9,11 @@ use super::prompt_scope_key::PromptScopeKey;
 use super::types::{Action, Role};
 use super::ContextLevel;
 use super::TemplateContext;
-use super::{
+use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
+use crate::prompts::{
     prompt_developer_iteration_with_context, prompt_fix_with_context, prompt_plan_with_context,
 };
-use crate::prompts::PromptHistoryEntry;
+use crate::prompts::{PromptHistoryEntry, SessionCapabilities};
 
 /// Generate a prompt for any agent type.
 ///
@@ -54,6 +55,10 @@ pub fn prompt_for_agent(
             template_context,
             config.prompt_md_content.as_deref(),
             workspace,
+            SessionCapabilities::new(
+                &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
+                &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
+            ),
         ),
         (Role::Developer | Role::Reviewer, Action::Iterate) => {
             let (prompt_content, plan_content) = config
@@ -66,18 +71,26 @@ pub fn prompt_for_agent(
                 context,
                 &prompt_content,
                 &plan_content,
+                SessionCapabilities::new(
+                    &CapabilitySet::defaults_for_drain(SessionDrain::Development),
+                    &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
+                ),
             )
         }
         (_, Action::Fix) => {
             let (prompt_content, plan_content, issues_content) = config
                 .prompt_plan_and_issues
                 .unwrap_or((String::new(), String::new(), String::new()));
+            let caps = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
+            let flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
+            let session_caps = SessionCapabilities::new(&caps, &flags);
             prompt_fix_with_context(
                 template_context,
                 &prompt_content,
                 &plan_content,
                 &issues_content,
                 workspace,
+                session_caps,
             )
         }
     };

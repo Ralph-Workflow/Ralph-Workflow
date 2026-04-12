@@ -16,7 +16,7 @@ use std::sync::Mutex;
 /// Since `io::Error` doesn't implement `Clone`, we store error info as strings
 /// and reconstruct the error on demand.
 #[derive(Debug, Clone)]
-pub enum MockResult<T: Clone> {
+pub(crate) enum MockResult<T: Clone> {
     Ok(T),
     Err {
         kind: io::ErrorKind,
@@ -63,6 +63,7 @@ pub struct MockProcessExecutor {
     active_children: Mutex<HashMap<u32, ChildProcessInfo>>,
     child_info_queries: Mutex<HashMap<u32, u32>>,
     kill_group_calls: Mutex<Vec<u32>>,
+    cpu_step_per_query: Mutex<HashMap<u32, u64>>,
 }
 
 impl Default for MockProcessExecutor {
@@ -91,6 +92,7 @@ impl Default for MockProcessExecutor {
             active_children: Mutex::new(HashMap::new()),
             child_info_queries: Mutex::new(HashMap::new()),
             kill_group_calls: Mutex::new(Vec::new()),
+            cpu_step_per_query: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -120,6 +122,7 @@ impl MockProcessExecutor {
             active_children: Mutex::new(HashMap::new()),
             child_info_queries: Mutex::new(HashMap::new()),
             kill_group_calls: Mutex::new(Vec::new()),
+            cpu_step_per_query: Mutex::new(HashMap::new()),
         }
     }
 
@@ -356,6 +359,24 @@ impl MockProcessExecutor {
             .unwrap_or(0)
     }
 
+    /// Configure the mock to auto-advance the CPU time for a parent PID's children on each query.
+    ///
+    /// When set, every call to `get_child_process_info` for `parent_pid` increments the
+    /// recorded `cpu_time_ms` by `step` before returning it. This allows tests to verify
+    /// CPU-advancement-based suppression logic without needing a background thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn with_cpu_step_per_query(self, parent_pid: u32, step: u64) -> Self {
+        self.cpu_step_per_query
+            .lock()
+            .unwrap()
+            .insert(parent_pid, step);
+        self
+    }
+
     pub fn kill_process_group_calls(&self) -> Vec<u32> {
         self.kill_group_calls.lock().unwrap().clone()
     }
@@ -394,6 +415,11 @@ impl ProcessExecutor for MockProcessExecutor {
             .unwrap()
             .entry(parent_pid)
             .or_insert(0) += 1;
+        if let Some(&step) = self.cpu_step_per_query.lock().unwrap().get(&parent_pid) {
+            if let Some(info) = self.active_children.lock().unwrap().get_mut(&parent_pid) {
+                info.cpu_time_ms = info.cpu_time_ms.saturating_add(step);
+            }
+        }
         self.active_children
             .lock()
             .unwrap()

@@ -16,7 +16,7 @@ use itertools::Itertools;
 /// This parser is used for residual-file detection and must be robust:
 /// incorrect path extraction can pollute carry-forward state.
 #[must_use]
-pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
+pub(crate) fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
     snapshot
         .lines()
         .filter_map(parse_status_line)

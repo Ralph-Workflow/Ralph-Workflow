@@ -415,12 +415,16 @@ fn normalize_optional_text_and_presence(value: Option<String>) -> (Option<String
 pub fn validate_continuation_development_result_xml(
     xml_content: &str,
 ) -> Result<DevelopmentResultElements, XsdValidationError> {
-    // Tolerate ralph-files-changed if present — clear it so downstream ignores it.
-    let elements = clear_files_changed(validate_development_result_xml(xml_content)?);
+    apply_continuation_development_result_contract(validate_development_result_xml(xml_content)?)
+}
 
-    // When status is partial or failed, next_steps is required
-    if (elements.status == "partial" || elements.status == "failed")
-        && elements.next_steps.is_none()
+pub fn apply_continuation_development_result_contract(
+    elements: DevelopmentResultElements,
+) -> Result<DevelopmentResultElements, XsdValidationError> {
+    let normalized = clear_files_changed(elements);
+
+    if (normalized.status == "partial" || normalized.status == "failed")
+        && normalized.next_steps.is_none()
     {
         return Err(missing_required_error(
             "ralph-next-steps",
@@ -437,7 +441,7 @@ pub fn validate_continuation_development_result_xml(
         ));
     }
 
-    Ok(elements)
+    Ok(normalized)
 }
 
 fn unwrap_cdata_wrapper(content: &str) -> Cow<'_, str> {

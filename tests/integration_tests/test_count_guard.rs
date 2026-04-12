@@ -56,7 +56,7 @@ use std::collections::HashSet;
 /// - Tests were accidentally removed
 /// - A test module is not being compiled
 /// - The test discovery is not working correctly
-pub const MINIMUM_EXPECTED_TESTS: usize = 400;
+pub(crate) const MINIMUM_EXPECTED_TESTS: usize = 400;
 
 struct SourceFile {
     path: &'static str,
@@ -123,6 +123,22 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "behavioral_pipeline_tests.rs",
         contents: include_str!("behavioral_pipeline_tests.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/mod.rs",
+        contents: include_str!("brokered_sessions/mod.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/audit_trail_tests.rs",
+        contents: include_str!("brokered_sessions/audit_trail_tests.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/capability_enforcement_tests.rs",
+        contents: include_str!("brokered_sessions/capability_enforcement_tests.rs"),
+    },
+    SourceFile {
+        path: "brokered_sessions/session_handshake_tests.rs",
+        contents: include_str!("brokered_sessions/session_handshake_tests.rs"),
     },
     SourceFile {
         path: "ccs_all_delta_types_spam_reproduction.rs",
@@ -253,6 +269,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("gitignore_enforcement.rs"),
     },
     SourceFile {
+        path: "lifecycle_event_removal_regression.rs",
+        contents: include_str!("lifecycle_event_removal_regression.rs"),
+    },
+    SourceFile {
         path: "git/mod.rs",
         contents: include_str!("git/mod.rs"),
     },
@@ -275,6 +295,14 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "loop_detection_recovery.rs",
         contents: include_str!("loop_detection_recovery.rs"),
+    },
+    SourceFile {
+        path: "mcp_artifact_reducer_parity.rs",
+        contents: include_str!("mcp_artifact_reducer_parity.rs"),
+    },
+    SourceFile {
+        path: "mcp_behavioral.rs",
+        contents: include_str!("mcp_behavioral.rs"),
     },
     SourceFile {
         path: "memory_safety/mod.rs",
@@ -405,6 +433,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "reducer_resume_boundary_tests.rs",
         contents: include_str!("reducer_resume_boundary_tests.rs"),
+    },
+    SourceFile {
+        path: "rfc009_session_model.rs",
+        contents: include_str!("rfc009_session_model.rs"),
     },
     SourceFile {
         path: "reducer_legacy_rejection/mod.rs",

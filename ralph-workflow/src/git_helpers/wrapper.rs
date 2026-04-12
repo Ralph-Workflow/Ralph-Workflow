@@ -19,7 +19,7 @@
 //! This module is split into focused submodules:
 //! - [`marker`] — marker file creation and repair
 //! - [`path_wrapper`] — PATH wrapper directory management
-//! - [`script`] — wrapper shell script generation
+//! - `script` — wrapper shell script generation
 //! - [`phase`] — agent phase lifecycle and self-healing checks
 //! - [`cleanup`] — cleanup utilities
 
