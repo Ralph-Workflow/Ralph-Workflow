@@ -1,14 +1,22 @@
-# Configurable Orchestration Layer
+# Configurable Orchestration Layer (Move Orchestration Policy from Rust into Config)
 
 **Date:** 2026-04-09
 **Status:** Proposed
-**Scope:** Define the intended orchestration flow explicitly, replace the remaining legacy structured-output assumptions with an MCP-artifact-only orchestration contract, and move drain routing, phase wiring, and orchestration invariants into validated TOML so bad agent selection fails fast instead of silently falling through to the wrong chain.
+**Scope:** Define the intended orchestration flow explicitly and move orchestration policy decisions out of implicit Rust control-flow code and into validated, visible configuration files. Rust should keep execution mechanics; configuration should express the orchestration policy. Replace the remaining legacy structured-output assumptions with an MCP-artifact-only orchestration contract, and make drain routing, phase wiring, artifact contracts, analysis decision routes, parallel-work policy, and orchestration invariants legible in TOML so bad agent selection fails fast instead of silently falling through to the wrong chain.
 
-> This is the proposal for configurable orchestration. Its job is to define the target flow clearly enough that implementation and validation cannot drift.
+> This proposal is about making orchestration visible and configurable: logic that is currently buried across Rust reducers, drain resolution, and continuation rules should be expressed as validated configuration wherever it represents policy. Rust should remain responsible for execution mechanics, deterministic dispatch, and invariant enforcement — not for being the only place where orchestration decisions live. Its job is to define that target clearly enough that implementation and validation cannot drift.
 
 ---
 
 ## 1) What flow this proposal is defining
+
+Before any detail, the main point of this document should be obvious:
+
+- **today, too much orchestration policy is hidden in Rust code paths and fallback logic**
+- **the target state is for orchestration policy to be visible in configuration files**
+- **Rust should execute and validate that policy, not remain the only place where orchestration decisions are encoded**
+
+In other words, this proposal is not merely about adding more settings. It is about taking orchestration behavior that is currently implicit in Rust and making it explicit, inspectable, and validated in configuration.
 
 The current document must do two things clearly:
 
@@ -56,6 +64,15 @@ Repo evidence shows that today:
 This proposal therefore defines the **target orchestration model** that implementation should converge on, while using the current codebase only as evidence for where the existing behavior is muddy or wrong.
 
 ## 2) Why this proposal exists now
+
+Right now, a reader still has to inspect Rust code to understand too much of the orchestration contract. Drain routing, fallback behavior, phase wiring, continuation budgets, and artifact expectations are split across reducers, normalization logic, and compatibility branches. That makes orchestration hard to reason about, hard to review, and too easy to misconfigure without noticing.
+
+This proposal exists to change that. The intended end state is:
+
+- **policy is visible in config files**
+- **policy decisions are configured there, rather than being implicit in Rust branching logic**
+- **validation rejects impossible or ambiguous orchestration up front**
+- **Rust remains responsible for execution mechanics and invariant enforcement, but not for hiding the effective orchestration policy**
 
 The original version assumed the pipeline still revolved around legacy structured-output files and schema-bound extraction. That is no longer true.
 
@@ -146,7 +163,9 @@ But several orchestration decisions still assume the presence of legacy extracti
 
 ## 4) Goals
 
-This proposal now has **two equally important goals**.
+The top-level goal is simple: **move orchestration policy decisions out of scattered Rust implementation details and into validated configuration files, while keeping Rust responsible for execution mechanics.**
+
+More concretely, this proposal now has **three equally important goals**.
 
 ### Goal 1: Fix orchestration correctness bugs
 
@@ -163,6 +182,10 @@ Success means:
 ### Goal 2: Make TOML the enforcement layer, not just a settings file
 
 The TOML contract must catch bad orchestration states before a run starts.
+
+This is the configurability goal: orchestration should be understandable by reading the config surface, not by reverse-engineering Rust reducers and fallback helpers.
+
+It must also be a **typed, user-configurable contract** rather than a best-effort bag of strings. If a user edits these files, Ralph should typecheck them against the policy schema and fail with precise, field-level error messages that explain what is wrong, where it is wrong, and what valid shape/value is expected.
 
 Success means:
 
@@ -209,14 +232,16 @@ The new design is intentionally stricter than the old one.
 2. **Every built-in drain must be explicit.**
    Hidden drain inheritance is no longer acceptable. If inheritance exists, it must be declared in TOML and validated.
 
-3. **System invariants are enforced by the runtime; users only configure chains.**
-   The built-in drain semantics (which drain is read-only, which is write-capable, which maps to which policy mode, which artifact type it produces) are hardcoded system invariants. They are enforced by the runtime, not configured by users. Users only decide *which agent chain* backs each drain. The `require_explicit_drain_bindings` flag ensures users always make that choice explicitly; the system enforces everything else.
+3. **System invariants are enforced by the runtime; configuration expresses policy.**
+   Configuration should express the orchestration policy surface: which chain backs each drain, which decision routes are legal, which budgets apply, which artifact contracts exist, and under what policy conditions parallel fan-out is allowed. The runtime still enforces non-negotiable invariants such as safety checks, drain capability correctness, deterministic dispatch, and artifact identity validation.
 
 4. **Reject invalid orchestration up front.**
    Startup validation is cheaper than debugging a run that invoked the wrong agent.
 
-5. **TOML documents and validates policy; reducers still own runtime decisions.**
-   TOML should make orchestration contracts visible and testable, but reducer/orchestrator code remains the authority for runtime phase transitions, retry ordering, continuation semantics, recovery escalation, and termination behavior. Rust may consume normalized policy, but it must not delegate core state-machine ownership to user-overridable config.
+   Rejection must be user-friendly, not just strict. Invalid TOML should produce actionable diagnostics tied to the exact file/section/key that failed schema or policy validation.
+
+5. **TOML is the visible policy contract; Rust executes it mechanically.**
+   TOML should make orchestration contracts visible and testable so the effective orchestration logic is not hidden in Rust. Decision policy — routes, allowed loopbacks, budgets, artifact expectations, drain bindings, and parallel-work constraints — should live in config. Rust should execute, validate, and enforce that policy deterministically rather than quietly inventing or repairing policy at runtime.
 
 6. **Policy must live outside `ralph-workflow`.**
    The end state is a standalone `ralph-workflow-policy` crate that owns orchestration policy types, TOML schemas, prompt contracts, prompt texts, template assets, templating logic, and validation rules without depending on `ralph-workflow` at all.
@@ -234,6 +259,8 @@ The new design is intentionally stricter than the old one.
 ---
 
 ## 7) Proposed config split
+
+This config split is the mechanism by which orchestration becomes visible. The goal is that a reader can inspect the policy files and understand the intended orchestration contract without having to reconstruct it from Rust implementation details.
 
 The original three-file split still makes sense, but the ownership boundary changes.
 
@@ -275,9 +302,9 @@ At the user/project level, the policy crate still materializes the same contract
   └── artifacts.toml       INTERNAL — artifact acceptance contracts and prompt/artifact metadata per drain (system-defined)
 ```
 
-The `agents.toml` model is already correct and does not change: users define chains and bind them to drains. That is all a user needs to understand.
+The `agents.toml` model is already correct as one part of the policy surface: users define chains and bind them to drains. That remains the simplest user-facing entry point.
 
-What this proposal should extract first is the **policy surface around** the reducer — explicit drain bindings, documented phase/drain relationships, continuation budgets, artifact acceptance rules, and parallel-work constraints. Reducer-owned sequencing remains in Rust until the phase model, recovery semantics, and artifact identity model are stable enough to externalize safely.
+What this proposal should extract first is the **policy surface around** the reducer — explicit drain bindings, documented phase/drain relationships, decision routes, continuation budgets, artifact acceptance rules, and parallel-work constraints. Those rules are orchestration policy and should be visible in config instead of being discoverable only by reading Rust. Rust should then consume that policy and carry out the execution mechanics deterministically.
 
 The `agents.toml` example below shows the INTERNAL system metadata per drain (role, policy_mode, drain_class, artifact_type). Users do not write these — the runtime enforces them. Users only set `chain` per drain. The example is included to make the internal contract visible, not to show user-facing config.
 
@@ -313,15 +340,15 @@ The internal metadata (role, policy_mode, drain_class, artifact_type) is shown t
 
 ### `pipeline.toml`: phase transitions and orchestration rules
 
-This file should start as a **validated contract snapshot**, not as a new runtime source of truth. The runtime already knows the real sequencing today and enforces it in reducer/orchestration code. The purpose of `pipeline.toml` is to make that contract visible, testable, and internally normalized without pretending that users can safely override phase transitions, recovery ordering, or termination behavior before those semantics are disentangled from the reducer.
+This file is the visible policy contract for orchestration decisions. It should describe the allowed phase sequencing, embedded decision points, legal analysis routes, cycle budgets, and parallel-work policy in a form the runtime validates and executes. Rust remains responsible for execution mechanics, but the orchestration policy itself should be readable here instead of being recoverable only from reducer/orchestration code.
 
 This file holds:
 
-- top-level reducer-visible phases
+- top-level phases
 - embedded drain-owned decision points inside those phases
 - continuation / retry / loop-detection budgets
 - artifact acceptance expectations
-- documented parallel-dispatch constraints derived from planning artifacts
+- documented parallel-dispatch policy derived from planning artifacts
 - invariants that config validation must enforce before startup succeeds
 
 Example:
@@ -362,7 +389,7 @@ require_current_namespace_when_present = true
 [validation]
 require_explicit_drain_bindings = true
 forbid_sibling_drain_inference = true
-preserve_reducer_priority_order = true
+preserve_runtime_execution_order = true
 
 [parallel_execution]
 source = "planning_artifact_work_units"
@@ -439,7 +466,7 @@ analysis after fix decides one of:
 - commit        (the successful iteration is checkpointed and can either finalize or hand off to the next cycle)
 ```
 
-Any successful analysis outcome that completes the current development or review iteration must route through commit before the next cycle starts. In other words, `planning -> development -> analysis` is one development cycle and `review -> fix -> analysis` is one review cycle; loopbacks such as `analysis -> development` or `analysis -> fix` remain inside the current cycle and do not increase the cycle counter. This is the behavior the documented policy contract must describe clearly while reducers continue to implement the actual runtime sequencing.
+Any successful analysis outcome that completes the current development or review iteration must route through commit before the next cycle starts. In other words, `planning -> development -> analysis` is one development cycle and `review -> fix -> analysis` is one review cycle; loopbacks such as `analysis -> development` or `analysis -> fix` remain inside the current cycle and do not increase the cycle counter. This is the behavior the documented policy contract must describe clearly; Rust should execute it, not hide it.
 
 ### Phase model: explicit embedded decision points first
 
@@ -447,7 +474,7 @@ The current codebase does **not** model `analysis` or `fix` as top-level `Pipeli
 
 - keep `analysis` explicit as a **decision point** inside `Development` and `Review`
 - keep `fix` explicit as a **write-capable subflow** inside `Review`
-- make analysis outcomes typed and reducer-visible without first splitting the global phase enum
+- make analysis outcomes typed and runtime-visible without first splitting the global phase enum
 
 This preserves the current lifecycle invariants around `CommitMessage`, `FinalValidation`, `Finalizing`, and `AwaitingDevFix`, while still fixing the real bug source: ambiguous drain identity and hidden fallback behavior.
 
@@ -455,7 +482,7 @@ A future RFC may still decide to promote `analysis` and/or `fix` into first-clas
 
 ### Multi-agent and parallel worker contracts
 
-Parallel execution must be explicit and scope-checked, but the current architecture already has the right ownership split: the **planning artifact** describes work units, and Rust validates and dispatches them deterministically.
+Parallel execution is the one genuinely new execution mechanic in this plan, and it still needs a visible policy surface. The **planning artifact** describes work units, config defines the policy constraints for when and how fan-out is allowed, and Rust validates and dispatches the work deterministically.
 
 That means the plan should not introduce a separate top-level `parallel_planner` state machine node. Instead:
 
@@ -520,8 +547,8 @@ At startup, Ralph should reject config when any of the following are true:
 5. a read-only drain is configured with a write-capable session policy
 6. a write-capable drain is configured without the capabilities its phase requires
 7. a phase expects one artifact type while the bound drain declares another
-8. the documented policy contract contradicts the reducer-owned phase graph or termination lifecycle
-9. retry or continuation policy would switch to a different drain or phase in a way the reducer does not support explicitly
+8. the documented policy contract contradicts the runtime execution graph or termination lifecycle that the runtime is expected to carry out from validated policy
+9. retry or continuation policy would switch to a different drain or phase in a way the runtime execution layer does not support explicitly
 10. any config relies on implicit sibling-drain inference
 11. phase, drain, and internal-state identifiers are not mapped canonically
 12. the `analysis` drain's declared artifact type does not define the decision outcomes the runtime needs in order to validate embedded routing
@@ -538,6 +565,14 @@ At startup, Ralph should reject config when any of the following are true:
 23. a config contains unknown keys, alias identifiers, or mixed naming forms that normalize to the same canonical identifier
 24. multiple concurrent workers can receive overlapping assignment scopes from the planning artifact without an explicit override policy
 
+These validation failures must surface as **good configuration diagnostics**, not opaque internal errors. At minimum, each error should identify:
+
+- which file failed (`agents.toml`, `pipeline.toml`, or `artifacts.toml`)
+- the exact section/key or line/field path involved
+- whether the failure is a schema/type error, an unknown-key error, or a policy/invariant error
+- what Ralph expected instead
+- enough context for a user to fix the config without reading Rust code
+
 ### Explicit bindings first, explicit inheritance only if absolutely necessary
 
 The safest near-term model is still: **every built-in drain gets an explicit chain binding**. That directly removes the current sibling/legacy fallback ambiguity.
@@ -551,6 +586,8 @@ If convenience inheritance survives at all, it must be declarative, field-scoped
 ### Generated validation matrix
 
 The config layer should also generate a deterministic validation matrix that can be unit-tested.
+
+That matrix is not only for tests; it should also support explainability. A user should be able to see why a drain resolved the way it did, which defaults or explicit bindings were applied, and which policy constraints are active after normalization.
 
 For each drain, emit a normalized record such as:
 
@@ -578,6 +615,7 @@ The normalized output should also include canonical phase ownership and worker-l
 - forbid sibling-drain inference by default
 - allow only explicit inheritance when declared in TOML
 - validate drain → role → policy_mode → drain_class consistency at load time
+- emit field-precise configuration errors when TOML shape, types, or policy constraints are invalid
 
 **Primary files:**
 
@@ -600,7 +638,7 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Key changes:**
 
-- keep analysis embedded inside `Development` and `Review`, but make its decision outcomes typed and reducer-visible
+- keep analysis embedded inside `Development` and `Review`, but make its decision outcomes typed and runtime-visible
 - allow analysis-after-development to route to development, planning, or a successful-cycle handoff that goes through commit before review or replanning continues
 - allow analysis-after-fix to route to fix, planning, review, or commit message, with successful completed review iterations always checkpointed through commit first
 - ensure session drain identity survives normalization, retries, continuations, and resume
@@ -673,12 +711,13 @@ The normalized output should also include canonical phase ownership and worker-l
 
 ### Phase 5: Add namespaced parallel worker orchestration around planning-artifact work units
 
-**Goal:** Parallel execution is first-class and driven by the planning artifact's work-unit structure, with Rust validating and dispatching those work units deterministically.
+**Goal:** add parallelization as the new execution mechanic while also making its policy visible in configuration, with the planning artifact declaring work units and Rust validating and dispatching them deterministically.
 
 **Key changes:**
 
 - the orchestrator interprets `work_units[]` in the planning artifact
 - if parallel work is declared, the planning artifact must already contain per-agent work unit specs (unit_id, description, edit_area, allowed_directories, dependencies)
+- config/policy declares when parallel fan-out is permitted and what constraints each worker must satisfy
 - the Ralph orchestrator validates those specs, then invokes the configured number of development agents concurrently
 - no separate `parallel_planner` phase or config flag is needed — the plan artifact is the control plane, and Rust remains the validator/dispatcher
 - worker namespace and directory scope contracts still apply to concurrent invocations
@@ -693,20 +732,20 @@ The normalized output should also include canonical phase ownership and worker-l
 
 **Risk:** medium
 
-**Why fifth:** once analysis flow is explicit, the next biggest source of ambiguity is uncontrolled parallelism. Multi-agent work must be validated before it is executed, but that validation belongs in Rust, not in an extra planner state machine.
+**Why fifth:** once analysis flow is explicit, the next biggest source of ambiguity is uncontrolled parallelism. Parallel execution needs both a configuration policy surface and a Rust execution mechanism: config says when it is allowed and what constraints apply, while Rust validates and dispatches it without introducing an extra planner state machine.
 
 ---
 
-### Phase 6: Add reducer-visible artifact acceptance identity
+### Phase 6: Add runtime-visible artifact acceptance identity
 
 **Goal:** make artifact acceptance stricter than artifact presence before deleting any legacy fallback path.
 
 **Key changes:**
 
-- add reducer-visible artifact identity checks for run, attempt, drain, artifact type, and namespace where applicable
+- add runtime-visible artifact identity checks for run, attempt, drain, artifact type, and namespace where applicable
 - reject stale or wrongly tagged artifacts even if a file exists
 - make completion and retry logic depend on accepted artifact identity rather than raw file presence
-- preserve current reducer-owned retry/continuation ordering while strengthening acceptance semantics
+- preserve current runtime retry/continuation mechanics while strengthening acceptance semantics
 
 **Primary files:**
 
@@ -729,7 +768,7 @@ The normalized output should also include canonical phase ownership and worker-l
 
 - replace completion detection based on legacy temp-file paths with artifact submission state
 - remove compatibility cleanup logic that targets legacy output files
-- make retries and continuations depend on artifact presence and reducer state only
+- make retries and continuations depend on accepted artifact identity, validated policy, and runtime state rather than legacy file presence
 - make boundary modules artifact-only instead of dual-mode
 
 **Primary files:**
@@ -866,6 +905,7 @@ This proposal succeeds when all of the following are true:
 
 - every built-in drain is declared explicitly or through explicit TOML inheritance
 - startup validation rejects partial or ambiguous drain definitions
+- startup validation typechecks user-edited TOML against the policy schema and returns precise, actionable error messages
 - planning, development, analysis, review, fix, and commit each have distinct validated drain contracts even when analysis/fix remain embedded in top-level phases
 - the target flow `planning -> development -> analysis` and `review -> fix -> analysis` is declared explicitly in documented policy and docs, with commit as the checkpoint after every successful completed iteration
 - analysis can explicitly decide whether work returns to development, planning, review, fix, or a successful-cycle commit handoff based on context
@@ -887,6 +927,7 @@ This proposal succeeds when all of the following are true:
 - regression tests exist proving that enabling multi-agent execution changes orchestration behavior only through validated planning-artifact work units
 - regression tests exist for per-agent assignment generation so workers do not receive overlapping or vague instructions
 - a config author can understand exactly why a drain resolved the way it did from validation output alone
+- a config author gets field-level schema/type/policy diagnostics that point to the exact TOML entry to fix
 - analysis produces typed, named decision outcomes (`needs_more_work`, `needs_replanning`, `ready_for_review`, `ready_to_commit`, `needs_another_review`) that are declared in `artifacts.toml`, validated against documented decision routes at startup, and are the only mechanism by which embedded analysis steps advance or loop work
 - the `ralph-workflow/src/files/llm_output_extraction/` XSD schema files and XML extraction/validation modules are deleted; no phase boundary references them
 - no runtime codepath contains a dual-mode branch of the form "check artifact, fall back to XML" — the XML fallback is gone
@@ -912,7 +953,7 @@ That order fixes the buggiest behavior first, then removes the compatibility pat
 Before implementation begins, the follow-up execution plan should preserve these non-negotiable invariants:
 
 - **Canonical identifiers only.** `development` and `dev`, or `fix` and `fixer`, must not be treated as interchangeable names in user config.
-- **Single source of authority per concept.** If documented policy records whether a drain is parallel-capable, the reducer must still remain the authority on runtime sequencing and termination semantics.
+- **Single source of authority per concept.** Policy config is the authority on allowed orchestration decisions and constraints; Rust runtime is the authority on executing those validated decisions, enforcing invariants, and handling termination mechanics.
 - **Artifact acceptance is stricter than artifact presence.** A phase completes only when Ralph accepts an artifact matching the current run, attempt, drain, artifact type, and namespace.
 - **Analysis owns branch decisions.** Development and fix phases do work; analysis decides whether that work loops back, requires replanning, or moves forward.
 - **Multi-agent execution requires preplanned assignments.** If more than one concurrent agent is launched, the planning artifact must have emitted distinct worker assignments first.
