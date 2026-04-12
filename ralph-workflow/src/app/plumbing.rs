@@ -90,7 +90,7 @@ fn resolve_commit_message_agents(registry: &AgentRegistry, reviewer_agent: &str)
     }
 }
 
-fn commit_drain_agent_supported(registry: &AgentRegistry, agent_name: &str) -> bool {
+pub(crate) fn commit_drain_agent_supported(registry: &AgentRegistry, agent_name: &str) -> bool {
     let Some(cfg) = registry.resolve_config(agent_name) else {
         return false;
     };
@@ -98,19 +98,10 @@ fn commit_drain_agent_supported(registry: &AgentRegistry, agent_name: &str) -> b
         return false;
     }
     let agent_type = crate::agents::harness::applicator::detect_agent_type(&cfg.cmd);
-    let is_ccs = cfg
-        .cmd
-        .split_whitespace()
-        .next()
-        .map(|first| {
-            let token = first.rsplit('/').next().unwrap_or(first);
-            token.eq_ignore_ascii_case("ccs")
-        })
-        .unwrap_or(false);
     !matches!(
         agent_type,
         crate::agents::harness::applicator::AgentType::OpenCode
-    ) && !is_ccs
+    )
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -308,4 +299,152 @@ pub fn handle_generate_commit_msg(
         .info("Run 'ralph --apply-commit' to create the commit");
 
     Ok(CommitGenerationOutcome::Generated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{commit_drain_agent_supported, resolve_commit_message_agents};
+    use crate::agents::AgentRegistry;
+    use crate::config::UnifiedConfig;
+
+    fn registry_from_toml(toml: &str) -> AgentRegistry {
+        let unified: UnifiedConfig = toml::from_str(toml).expect("valid toml");
+        AgentRegistry::new()
+            .expect("registry")
+            .apply_unified_config(&unified)
+            .expect("apply config")
+    }
+
+    // -----------------------------------------------------------------------
+    // commit_drain_agent_supported — unit tests
+    // -----------------------------------------------------------------------
+
+    /// A CCS agent with `can_commit = true` must be accepted for commit drain.
+    ///
+    /// Previously, the `is_ccs` check incorrectly excluded all CCS agents from
+    /// commit message generation, causing `claude` (the fallback) to be selected
+    /// silently even when `ccs/mm` was the intended agent.
+    #[test]
+    fn test_ccs_agent_is_accepted_for_commit_drain() {
+        let registry = registry_from_toml(
+            r#"
+[agents.ccs_mm]
+cmd = "ccs mm"
+can_commit = true
+
+[agent_chains]
+commit_chain = ["ccs_mm"]
+
+[agent_drains]
+planning = "commit_chain"
+development = "commit_chain"
+analysis = "commit_chain"
+review = "commit_chain"
+fix = "commit_chain"
+commit = "commit_chain"
+"#,
+        );
+
+        assert!(
+            commit_drain_agent_supported(&registry, "ccs_mm"),
+            "CCS agent with can_commit=true must be accepted for commit drain"
+        );
+    }
+
+    /// An OpenCode agent must be rejected for commit drain regardless of `can_commit`.
+    ///
+    /// OpenCode uses `OPENCODE_CONFIG` env var transport; the commit submission
+    /// tool is not available via the Claude harness that OpenCode uses.
+    #[test]
+    fn test_opencode_agent_is_rejected_for_commit_drain() {
+        let registry = registry_from_toml(
+            r#"
+[agents.opencode_test]
+cmd = "opencode"
+can_commit = true
+
+[agent_chains]
+oc_chain = ["opencode_test"]
+
+[agent_drains]
+planning = "oc_chain"
+development = "oc_chain"
+analysis = "oc_chain"
+review = "oc_chain"
+fix = "oc_chain"
+commit = "oc_chain"
+"#,
+        );
+
+        assert!(
+            !commit_drain_agent_supported(&registry, "opencode_test"),
+            "OpenCode agent must be rejected for commit drain"
+        );
+    }
+
+    /// An agent with `can_commit = false` must be rejected regardless of type.
+    #[test]
+    fn test_agent_with_can_commit_false_is_rejected() {
+        let registry = registry_from_toml(
+            r#"
+[agents.ccs_nocmt]
+cmd = "ccs nocmt"
+can_commit = false
+
+[agent_chains]
+nc_chain = ["ccs_nocmt"]
+
+[agent_drains]
+planning = "nc_chain"
+development = "nc_chain"
+analysis = "nc_chain"
+review = "nc_chain"
+fix = "nc_chain"
+commit = "nc_chain"
+"#,
+        );
+
+        assert!(
+            !commit_drain_agent_supported(&registry, "ccs_nocmt"),
+            "Agent with can_commit=false must be rejected"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_commit_message_agents — integration tests
+    // -----------------------------------------------------------------------
+
+    /// When the Commit drain has `ccs/mm` as its first agent, `resolve_commit_message_agents`
+    /// must return `ccs/mm` first (not skip it in favour of the claude fallback).
+    #[test]
+    fn test_resolve_commit_message_agents_prefers_configured_ccs_over_fallback() {
+        let registry = registry_from_toml(
+            r#"
+[agents.ccs_mm]
+cmd = "ccs mm"
+can_commit = true
+
+[agents.claude]
+cmd = "claude"
+can_commit = true
+
+[agent_chains]
+commit_chain = ["ccs_mm", "claude"]
+
+[agent_drains]
+planning = "commit_chain"
+development = "commit_chain"
+analysis = "commit_chain"
+review = "commit_chain"
+fix = "commit_chain"
+commit = "commit_chain"
+"#,
+        );
+
+        let agents = resolve_commit_message_agents(&registry, "claude");
+        assert!(
+            agents.first().map(String::as_str) == Some("ccs_mm"),
+            "ccs_mm must appear first when it is the first agent in the commit chain; got: {agents:?}"
+        );
+    }
 }

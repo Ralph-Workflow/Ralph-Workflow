@@ -12,7 +12,7 @@ pub fn commit_drain_agent_supported(
     }
 
     registry.resolve_config(name).is_some_and(|cfg| {
-        cfg.can_commit && !is_opencode_command(&cfg.cmd) && !is_ccs_command(&cfg.cmd)
+        cfg.can_commit && !is_opencode_command(&cfg.cmd)
     })
 }
 
@@ -38,13 +38,6 @@ fn provider_key(agent_name: &str) -> Option<&str> {
     } else {
         Some(agent_name)
     }
-}
-
-fn is_ccs_command(cmd: &str) -> bool {
-    cmd.split_whitespace()
-        .next()
-        .map(|first| first.rsplit('/').next().unwrap_or(first))
-        .is_some_and(|token| token.eq_ignore_ascii_case("ccs"))
 }
 
 fn is_opencode_command(cmd: &str) -> bool {
