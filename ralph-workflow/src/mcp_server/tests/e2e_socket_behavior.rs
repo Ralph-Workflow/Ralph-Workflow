@@ -475,6 +475,115 @@ mod unix_tests {
         );
     }
 
+    #[test]
+    fn commit_drain_enforces_deny_matrix_while_allowing_artifact_submission() {
+        let ws = Arc::new(MemoryWorkspace::new_test());
+        assert_no_real_git_mutations(ws.root());
+        ws.write(Path::new("src/lib.rs"), "pub fn old() {}")
+            .expect("pre-seed tracked file");
+
+        let bridge = start_bridge(
+            "e2e-commit-matrix",
+            SessionDrain::Commit,
+            Arc::clone(&ws) as Arc<dyn Workspace>,
+        );
+        let mut stream = connect(&bridge);
+        initialize(&mut stream);
+
+        // Denied: tracked write in commit drain.
+        send(
+            &mut stream,
+            &serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "write_file",
+                    "arguments": {"path": "src/lib.rs", "content": "pub fn new() {}"}
+                },
+                "id": 61
+            }),
+        );
+        let denied_write = recv(&mut stream);
+        let write_error = denied_write
+            .get("error")
+            .and_then(serde_json::Value::as_object)
+            .expect("commit drain write must be denied with protocol error");
+        let write_msg = write_error
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        assert!(
+            write_msg.contains("denies") || write_msg.contains("denied"),
+            "commit drain write denial must describe policy block, got: {denied_write}"
+        );
+
+        // Denied: process execution tool in commit drain.
+        send(
+            &mut stream,
+            &serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "exec",
+                    "arguments": {"cmd": "pwd"}
+                },
+                "id": 62
+            }),
+        );
+        let denied_exec = recv(&mut stream);
+        assert!(
+            denied_exec.get("error").is_some(),
+            "commit drain exec must be denied"
+        );
+
+        // Allowed: read-only access still works.
+        send(
+            &mut stream,
+            &serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "read_file",
+                    "arguments": {"path": "src/lib.rs"}
+                },
+                "id": 63
+            }),
+        );
+        let read_ok = recv(&mut stream);
+        assert!(
+            read_ok.get("error").is_none(),
+            "commit drain must keep read-only tool access"
+        );
+
+        // Allowed: artifact submission in commit drain.
+        let valid_commit_message = serde_json::json!({
+            "type": "commit",
+            "subject": "test: commit drain artifact acceptance"
+        });
+        let commit_content = serde_json::to_string(&valid_commit_message)
+            .unwrap_or_else(|err| panic!("commit artifact JSON serialization failed: {err}"));
+        send(
+            &mut stream,
+            &serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "ralph_submit_artifact",
+                    "arguments": {
+                        "artifact_type": "commit_message",
+                        "content": commit_content
+                    }
+                },
+                "id": 64
+            }),
+        );
+        let artifact_ok = recv(&mut stream);
+        assert!(
+            artifact_ok.get("error").is_none(),
+            "commit drain must allow artifact submission: {artifact_ok}"
+        );
+    }
+
     // =============================================================================
     // Test 10: OpenCode connects directly to socket, initializes, and lists tools.
     //

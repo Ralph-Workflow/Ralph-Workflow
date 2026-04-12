@@ -170,8 +170,13 @@ fn install_hooks_for_hook_names(
     })
 }
 
-pub fn install_hooks_in_repo(repo_root: &Path) -> std::io::Result<()> {
-    assert_not_project_repo_for_install(repo_root)?;
+fn install_hooks_in_repo_with_policy(
+    repo_root: &Path,
+    enforce_project_repo_guard: bool,
+) -> std::io::Result<()> {
+    if enforce_project_repo_guard {
+        assert_not_project_repo_for_install(repo_root)?;
+    }
     let scope = resolve_protection_scope_from(repo_root)?;
 
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(repo_root)?;
@@ -180,6 +185,10 @@ pub fn install_hooks_in_repo(repo_root: &Path) -> std::io::Result<()> {
     worktree::ensure_worktree_hook_scoping(&scope)?;
 
     install_hooks_for_hook_names(&ralph_dir, &hooks_dir, RALPH_HOOK_NAMES)
+}
+
+pub fn install_hooks_in_repo(repo_root: &Path) -> std::io::Result<()> {
+    install_hooks_in_repo_with_policy(repo_root, false)
 }
 
 /// Enforce that hook installation does not target the project's real git repository.
@@ -238,7 +247,10 @@ fn check_install_policy_violation(repo_root: &Path) -> Option<String> {
 /// Translate the policy check result into an io::Result.
 fn translate_policy_result(violation: Option<String>) -> std::io::Result<()> {
     match violation {
-        Some(msg) => Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg)),
+        Some(msg) => Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            msg,
+        )),
         None => Ok(()),
     }
 }
@@ -246,6 +258,7 @@ fn translate_policy_result(violation: Option<String>) -> std::io::Result<()> {
 #[cfg(any(test, feature = "test-utils"))]
 pub fn install_hook(hook_name: &str, hook_path: &Path) -> std::io::Result<()> {
     let repo_root = crate::git_helpers::repo::get_repo_root()?;
+    assert_not_project_repo_for_install(&repo_root)?;
     let scope = resolve_protection_scope_from(&repo_root)?;
     let ralph_dir = crate::git_helpers::repo::ensure_ralph_git_dir(&repo_root)?;
     let hooks_dir = hook_path.parent().ok_or_else(|| {
@@ -270,7 +283,7 @@ pub fn install_hook(hook_name: &str, hook_path: &Path) -> std::io::Result<()> {
 #[cfg(any(test, feature = "test-utils"))]
 pub fn install_hooks() -> std::io::Result<()> {
     let repo_root = crate::git_helpers::repo::get_repo_root()?;
-    install_hooks_in_repo(&repo_root)
+    install_hooks_in_repo_with_policy(&repo_root, true)
 }
 
 #[cfg(test)]

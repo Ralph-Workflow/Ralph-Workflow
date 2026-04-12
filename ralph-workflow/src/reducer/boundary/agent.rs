@@ -253,9 +253,10 @@ fn apply_mcp_harness_to_cmd(
     agent_config: &crate::agents::config::AgentConfig,
     base_cmd: String,
 ) -> Result<(String, std::collections::HashMap<String, String>)> {
+    let agent_type = detect_agent_type(&agent_config.cmd);
     let mut mcp_env_vars = build_mcp_base_env(inputs.mcp_endpoint, inputs.mcp_lease.as_ref());
-    let extra_cmd_args = apply_harness_if_needed(ctx, inputs, agent_config, &mut mcp_env_vars)?;
-    let cmd_str = append_extra_args(ctx, base_cmd, extra_cmd_args);
+    let extra_cmd_args = apply_harness_if_needed(ctx, inputs, agent_type, &mut mcp_env_vars)?;
+    let cmd_str = append_extra_args(ctx, base_cmd, extra_cmd_args, agent_type);
     let mut merged_env = agent_config.env_vars.clone();
     merged_env.extend(mcp_env_vars);
     Ok((cmd_str, merged_env))
@@ -264,7 +265,7 @@ fn apply_mcp_harness_to_cmd(
 fn apply_harness_if_needed(
     ctx: &mut PhaseContext<'_>,
     inputs: &AgentRunInputs<'_>,
-    agent_config: &crate::agents::config::AgentConfig,
+    agent_type: crate::agents::harness::applicator::AgentType,
     mcp_env_vars: &mut std::collections::HashMap<String, String>,
 ) -> Result<Vec<String>> {
     let endpoint = inputs.mcp_endpoint.ok_or_else(|| {
@@ -274,12 +275,6 @@ fn apply_harness_if_needed(
             inputs.session.session_id
         )
     })?;
-    require_tcp_mcp_endpoint(
-        endpoint,
-        inputs.effective_agent,
-        inputs.session.session_id.as_str(),
-    )?;
-    let agent_type = detect_agent_type(&agent_config.cmd);
     match apply_harness_config_with_lease(
         agent_type,
         inputs.session,
@@ -304,19 +299,6 @@ fn apply_harness_if_needed(
     }
 }
 
-fn require_tcp_mcp_endpoint(endpoint: &str, agent: &str, session_id: &str) -> Result<()> {
-    if endpoint.starts_with("tcp://") {
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!(
-            "MCP endpoint for agent '{}' (session {}) must be tcp://, got '{}'. MCP is mandatory and execution was aborted.",
-            agent,
-            session_id,
-            endpoint
-        ))
-    }
-}
-
 fn build_mcp_base_env(
     mcp_endpoint: Option<&str>,
     lease: Option<&EndpointLease>,
@@ -335,7 +317,7 @@ fn build_mcp_base_env(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_mcp_base_env, require_tcp_mcp_endpoint, EndpointLease, MCP_ENDPOINT_ENV,
+        build_mcp_base_env, remove_claude_harness_args, EndpointLease, MCP_ENDPOINT_ENV,
         MCP_GENERATION_ENV, MCP_RUN_ID_ENV,
     };
 
@@ -372,19 +354,15 @@ mod tests {
     }
 
     #[test]
-    fn require_tcp_mcp_endpoint_accepts_tcp() {
-        let result = require_tcp_mcp_endpoint("tcp://127.0.0.1:1234", "agent-a", "session-a");
-        assert!(result.is_ok(), "tcp endpoint must be accepted");
-    }
-
-    #[test]
-    fn require_tcp_mcp_endpoint_rejects_unix() {
-        let err = require_tcp_mcp_endpoint("unix:///tmp/ralph.sock", "agent-a", "session-a")
-            .expect_err("unix endpoint must be rejected");
-        assert!(
-            err.to_string().contains("must be tcp://"),
-            "unexpected error: {err}"
+    fn remove_claude_harness_args_strips_existing_settings_and_mcp_flags() {
+        let cleaned = remove_claude_harness_args(
+            "claude --settings '/tmp/old-settings' --mcp-config '/tmp/old-mcp' --strict-mcp-config -p",
         );
+        assert!(
+            !cleaned.contains("/tmp/old-settings") && !cleaned.contains("/tmp/old-mcp"),
+            "stale harness args must be removed: {cleaned}"
+        );
+        assert!(cleaned.contains("claude") && cleaned.contains("-p"));
     }
 }
 
@@ -392,7 +370,16 @@ fn append_extra_args(
     ctx: &mut PhaseContext<'_>,
     base_cmd: String,
     extra_cmd_args: Vec<String>,
+    agent_type: crate::agents::harness::applicator::AgentType,
 ) -> String {
+    let base_cmd = if matches!(
+        agent_type,
+        crate::agents::harness::applicator::AgentType::Claude
+    ) {
+        remove_claude_harness_args(&base_cmd)
+    } else {
+        base_cmd
+    };
     if extra_cmd_args.is_empty() {
         return base_cmd;
     }
@@ -401,6 +388,37 @@ fn append_extra_args(
         "RFC-009 harness extra args appended: {joined_args}"
     ));
     format!("{base_cmd} {joined_args}")
+}
+
+fn remove_claude_harness_args(cmd: &str) -> String {
+    let tokens = parse_command(cmd);
+    if tokens.is_empty() {
+        return String::new();
+    }
+
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut skip_next = false;
+    for token in tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        if token == "--settings" || token == "--mcp-config" {
+            skip_next = true;
+            continue;
+        }
+        if token == "--strict-mcp-config"
+            || token.starts_with("--settings=")
+            || token.starts_with("--mcp-config=")
+        {
+            continue;
+        }
+
+        out.push(token);
+    }
+
+    out.join(" ")
 }
 
 fn check_command_policy(

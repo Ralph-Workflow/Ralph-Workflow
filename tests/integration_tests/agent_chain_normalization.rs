@@ -1909,7 +1909,7 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
 
         assert_eq!(
             resolve_commit_message_agents_for_testing(&config),
-            vec!["claude".to_string(), "opencode".to_string()]
+            vec!["claude".to_string()]
         );
     });
 }

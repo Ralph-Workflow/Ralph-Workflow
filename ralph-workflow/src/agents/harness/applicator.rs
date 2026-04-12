@@ -108,8 +108,8 @@ pub fn apply_harness_config_with_lease(
     lease: Option<&EndpointLease>,
 ) -> std::io::Result<HarnessApplyResult> {
     match agent_type {
-        AgentType::Claude => apply_claude_harness(session, mcp_endpoint, workspace),
-        AgentType::OpenCode => apply_opencode_harness(session, mcp_endpoint, workspace),
+        AgentType::Claude => apply_claude_harness(session, mcp_endpoint, workspace, lease),
+        AgentType::OpenCode => apply_opencode_harness(session, mcp_endpoint, workspace, lease),
         AgentType::Aider => apply_aider_harness(session, mcp_endpoint, workspace),
         AgentType::Codex => apply_codex_harness(session, mcp_endpoint, workspace, lease),
         AgentType::Unknown => Err(std::io::Error::new(
@@ -124,10 +124,11 @@ fn apply_opencode_harness(
     session: &AgentSession,
     mcp_endpoint: &str,
     workspace: &dyn Workspace,
+    lease: Option<&EndpointLease>,
 ) -> std::io::Result<HarnessApplyResult> {
     let harness_dir = harness_dir_for(session);
     let config = OpenCodeHarness.generate(session, mcp_endpoint);
-    let content = harness_config_content(&config);
+    let content = opencode_harness_content_with_lease(&config, lease)?;
     let config_path = format!("{harness_dir}/config.json");
     write_config(workspace, &harness_dir, &config_path, &content)?;
 
@@ -176,7 +177,7 @@ fn apply_codex_harness(
     let config_path = format!("{harness_dir}/config.toml");
     write_config(workspace, &harness_dir, &config_path, &content)?;
 
-    let extra_cmd_args = build_codex_override_args(session, mcp_endpoint, lease);
+    let extra_cmd_args = build_codex_override_args(session, lease);
 
     Ok(HarnessApplyResult {
         extra_env_vars: HashMap::new(),
@@ -188,16 +189,12 @@ fn apply_codex_harness(
 /// Build the `-c key=value` CLI arguments for Codex MCP configuration.
 ///
 /// The command is resolved to the absolute path of the current executable so
-/// that Codex can spawn `ralph --mcp-proxy` without relying on PATH being set
+/// that Codex can spawn `ralph --mcp-stdio` without relying on PATH being set
 /// in its environment. This mirrors the strategy used by `CodexHarness::generate`
 /// for the config.toml; both must use the same resolved path so that the -c
 /// overrides (which take precedence over the config file) do not regress to a
 /// PATH-dependent bare `"ralph"`.
-fn build_codex_override_args(
-    session: &AgentSession,
-    mcp_endpoint: &str,
-    lease: Option<&EndpointLease>,
-) -> Vec<String> {
+fn build_codex_override_args(session: &AgentSession, lease: Option<&EndpointLease>) -> Vec<String> {
     // Resolve the absolute path to the ralph binary. Falls back to bare "ralph"
     // if current_exe() cannot be determined (mirrors CodexHarness::generate).
     let ralph_command = std::env::current_exe()
@@ -206,11 +203,18 @@ fn build_codex_override_args(
         .unwrap_or_else(|| "ralph".to_string());
     let mut overrides = vec![
         format!("mcp_servers.ralph.command=\"{ralph_command}\""),
-        "mcp_servers.ralph.args=[\"--mcp-proxy\"]".to_string(),
-        format!("mcp_servers.ralph.env.RALPH_MCP_ENDPOINT=\"{mcp_endpoint}\""),
         format!(
             "mcp_servers.ralph.env.RALPH_SESSION_ID=\"{}\"",
             session.session_id
+        ),
+        "mcp_servers.ralph.args=[\"--mcp-stdio\"]".to_string(),
+        format!(
+            "mcp_servers.ralph.env.RALPH_MCP_RUN_ID=\"{}\"",
+            session.run_id
+        ),
+        format!(
+            "mcp_servers.ralph.env.RALPH_SESSION_DRAIN=\"{}\"",
+            session.drain.as_str()
         ),
     ];
     if let Some(lease) = lease {
@@ -237,8 +241,10 @@ fn harness_dir_for(session: &AgentSession) -> String {
 struct ClaudeHarnessFiles {
     config_path: String,
     mcp_config_path: String,
+    lease_path: Option<String>,
     merged_settings: String,
     merged_mcp: String,
+    lease_content: Option<String>,
 }
 
 fn parse_claude_json(value: &str) -> std::io::Result<serde_json::Value> {
@@ -280,21 +286,46 @@ fn load_and_merge_claude_settings(
     mcp_endpoint: &str,
     session: &AgentSession,
     workspace: &dyn Workspace,
+    lease: Option<&EndpointLease>,
 ) -> std::io::Result<ClaudeHarnessFiles> {
     let config = ClaudeHarness.generate(session, mcp_endpoint);
     let ralph_settings_json = harness_config_content(&config);
     let ralph_value = parse_claude_json(ralph_settings_json.as_str())?;
     let existing = read_existing_claude_settings(workspace);
+    let (config_path, mcp_config_path) = build_harness_paths(session);
 
-    let merged = merge_claude_settings(&existing, &ralph_value);
+    let mut merged = merge_claude_settings(&existing, &ralph_value);
+    let lease_path = lease.map(|_| {
+        let harness_dir = Path::new(config_path.as_str())
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| Path::new(".agent/tmp/harness").to_path_buf());
+        harness_dir
+            .join("endpoint_lease.json")
+            .to_string_lossy()
+            .into_owned()
+    });
+    inject_lease_env_in_claude_settings(
+        &mut merged,
+        lease,
+        lease_path
+            .as_ref()
+            .map(|p| workspace.root().join(p).to_string_lossy().into_owned())
+            .as_deref(),
+    );
     let merged_settings = pretty_json(&merged)?;
     let merged_mcp = pretty_json(&merged_mcp_servers_json(&merged))?;
-    let (config_path, mcp_config_path) = build_harness_paths(session);
+    let lease_content = lease
+        .map(|value| serde_json::to_string_pretty(value))
+        .transpose()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     Ok(ClaudeHarnessFiles {
         config_path,
         mcp_config_path,
+        lease_path,
         merged_settings,
         merged_mcp,
+        lease_content,
     })
 }
 
@@ -312,6 +343,9 @@ fn persist_claude_harness_files(
         files.merged_settings.as_str(),
     )?;
     workspace.write(Path::new(&files.mcp_config_path), files.merged_mcp.as_str())?;
+    if let (Some(path), Some(content)) = (files.lease_path.as_ref(), files.lease_content.as_ref()) {
+        workspace.write(Path::new(path.as_str()), content.as_str())?;
+    }
     Ok(())
 }
 
@@ -331,12 +365,11 @@ fn claude_harness_cmd_args(workspace: &dyn Workspace, files: &ClaudeHarnessFiles
             .as_ref(),
     );
     vec![
-        "--tools".to_string(),
-        "''".to_string(),
         "--settings".to_string(),
         escaped_settings,
         "--mcp-config".to_string(),
         escaped_mcp_config,
+        "--strict-mcp-config".to_string(),
     ]
 }
 
@@ -346,8 +379,9 @@ fn apply_claude_harness(
     session: &AgentSession,
     mcp_endpoint: &str,
     workspace: &dyn Workspace,
+    lease: Option<&EndpointLease>,
 ) -> std::io::Result<HarnessApplyResult> {
-    let files = load_and_merge_claude_settings(mcp_endpoint, session, workspace)?;
+    let files = load_and_merge_claude_settings(mcp_endpoint, session, workspace, lease)?;
     persist_claude_harness_files(workspace, &files)?;
 
     Ok(HarnessApplyResult {
@@ -355,6 +389,66 @@ fn apply_claude_harness(
         config_path: Some(files.config_path.clone()),
         extra_cmd_args: claude_harness_cmd_args(workspace, &files),
     })
+}
+
+fn inject_lease_env_in_claude_settings(
+    settings: &mut serde_json::Value,
+    lease: Option<&EndpointLease>,
+    lease_path: Option<&str>,
+) {
+    if let Some(lease) = lease {
+        if let Some(env) = settings
+            .get_mut("mcpServers")
+            .and_then(|m| m.get_mut("ralph"))
+            .and_then(|r| r.get_mut("env"))
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            env.insert(
+                "RALPH_MCP_GENERATION".to_string(),
+                serde_json::Value::String(lease.generation.to_string()),
+            );
+            env.insert(
+                "RALPH_MCP_RUN_ID".to_string(),
+                serde_json::Value::String(lease.run_id.clone()),
+            );
+            let _ = lease_path;
+        }
+    }
+}
+
+fn opencode_harness_content_with_lease(
+    config: &HarnessConfig,
+    lease: Option<&EndpointLease>,
+) -> std::io::Result<String> {
+    let content = harness_config_content(config);
+    let Some(lease) = lease else {
+        return Ok(content);
+    };
+
+    let mut parsed: serde_json::Value = serde_json::from_str(content.as_str()).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("failed to parse OpenCode harness config JSON: {e}"),
+        )
+    })?;
+
+    if let Some(environment) = parsed
+        .get_mut("mcp")
+        .and_then(|m| m.get_mut("ralph"))
+        .and_then(|r| r.get_mut("environment"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        environment.insert(
+            "RALPH_MCP_GENERATION".to_string(),
+            serde_json::Value::String(lease.generation.to_string()),
+        );
+        environment.insert(
+            "RALPH_MCP_RUN_ID".to_string(),
+            serde_json::Value::String(lease.run_id.clone()),
+        );
+    }
+
+    pretty_json(&parsed)
 }
 
 /// Merge Ralph's MCP settings into existing Claude Code settings.

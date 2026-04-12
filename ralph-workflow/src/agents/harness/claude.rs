@@ -2,42 +2,38 @@
 //!
 //! Generates settings.json with deny-all permissions and MCP server configuration.
 
-use std::collections::HashMap;
-
 use crate::agents::harness::{AgentHarness, ClaudeCodeSettings, HarnessConfig};
 use crate::agents::session::AgentSession;
 use crate::agents::tool_manifest::visible_mcp_tool_names;
+use std::collections::HashMap;
 
 /// Harness for Claude Code agent.
 pub struct ClaudeHarness;
 
 impl AgentHarness for ClaudeHarness {
     fn generate(&self, session: &AgentSession, mcp_endpoint: &str) -> HarnessConfig {
-        // Build MCP env vars in a single functional pass.
-        let mcp_env = HashMap::from([
-            ("RALPH_MCP_ENDPOINT".to_string(), mcp_endpoint.to_string()),
+        let headers = std::collections::HashMap::from([
             (
-                "RALPH_SESSION_ID".to_string(),
+                "X-Ralph-Session-Id".to_string(),
                 session.session_id.as_str().to_string(),
             ),
+            ("X-Ralph-Run-Id".to_string(), session.run_id.clone()),
+            (
+                "X-Ralph-Drain".to_string(),
+                session.drain.as_str().to_string(),
+            ),
         ]);
-
-        // Resolve the absolute path to the ralph binary using the current executable path.
-        // When ralph itself is the running process, current_exe() returns the absolute
-        // path to the ralph binary, which is embedded in settings.json so agents can
-        // spawn `ralph --mcp-proxy` without relying on PATH being set in their environment.
-        let ralph_command = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.to_str().map(String::from))
-            .unwrap_or_else(|| "ralph".to_string());
 
         let settings = ClaudeCodeSettings {
             mcp_servers: HashMap::from([(
                 "ralph".to_string(),
                 crate::agents::harness::MCPServerConfig {
-                    command: ralph_command,
-                    args: vec!["--mcp-proxy".to_string()],
-                    env: mcp_env,
+                    r#type: Some("http".to_string()),
+                    url: Some(mcp_endpoint.to_string()),
+                    headers: Some(headers),
+                    command: None,
+                    args: None,
+                    env: None,
                 },
             )]),
             permissions: ClaudePermissions {
@@ -85,8 +81,9 @@ mod tests {
                 assert!(json.contains("mcpServers"));
                 assert!(json.contains("permissions"));
                 assert!(json.contains("\"ralph\""));
-                assert!(json.contains("--mcp-proxy"));
-                assert!(json.contains("RALPH_MCP_ENDPOINT"));
+                assert!(json.contains("\"type\": \"http\""));
+                assert!(json.contains("tcp://127.0.0.1:42000"));
+                assert!(json.contains("X-Ralph-Drain"));
             }
             _ => panic!("Expected ClaudeCode variant"),
         }

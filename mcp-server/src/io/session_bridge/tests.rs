@@ -2,6 +2,7 @@ use super::*;
 use crate::dispatch::access::{AccessDecision, McpCapability};
 use crate::dispatch::audit::AuditEventType;
 use crate::dispatch::host::DirEntry;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 struct TestSession;
@@ -316,4 +317,105 @@ fn process_control_messages_serializes_mode_transitions_and_emits_audit_payload(
     assert!(second_details.contains("\"old_mode\":\"Dev\""));
     assert!(second_details.contains("\"new_mode\":\"Commit\""));
     assert!(second_details.contains("\"requester_id\":\"orchestrator-b\""));
+}
+
+#[test]
+fn bind_failure_signal_surfaces_transport_error_before_endpoint_publish() {
+    let (ready_tx, ready_rx) = mpsc::channel::<Result<ServerReady, String>>();
+    ready_tx
+        .send(Err("bind failed: address already in use".to_string()))
+        .expect("ready signal should send");
+
+    let err =
+        wait_for_socket_ready(ready_rx).expect_err("bind failure must surface as start error");
+    let SessionBridgeError::Transport(message) = err else {
+        panic!("expected SessionBridgeError::Transport for bind failure");
+    };
+    assert!(
+        message.contains("bind failed"),
+        "transport error must preserve bind failure context, got: {message}"
+    );
+}
+
+#[test]
+fn process_control_messages_parallel_mode_switches_are_serialized_with_unique_indices() {
+    let challenge = "p".repeat(256);
+    let (request_tx, request_rx) = mpsc::channel::<ControlRequest>();
+    let shutdown_flag = Arc::new(AtomicBool::new(false));
+    let (server, sink) = test_server_with_sink(PolicyMode::ReadOnly);
+    let transition_runtime = Arc::new(TransitionRuntime::new(PolicyMode::ReadOnly));
+
+    let mut response_receivers = Vec::new();
+    let mut send_threads = Vec::new();
+    for i in 0..8 {
+        let tx = request_tx.clone();
+        let challenge_clone = challenge.clone();
+        let mode = if i % 2 == 0 { "dev" } else { "commit" }.to_string();
+        let (response_tx, response_rx) = mpsc::channel::<ControlResult>();
+        response_receivers.push(response_rx);
+        send_threads.push(std::thread::spawn(move || {
+            tx.send(ControlRequest {
+                challenge: challenge_clone,
+                command: ControlCommand::ModeSwitch { mode },
+                requester_id: format!("orchestrator-{i}"),
+                requester_context: Some(format!("{{\"request_id\":{i}}}")),
+                response: response_tx,
+            })
+            .expect("parallel mode switch send should succeed");
+        }));
+    }
+
+    for handle in send_threads {
+        handle.join().expect("sender thread should not panic");
+    }
+
+    process_control_messages(
+        &request_rx,
+        &shutdown_flag,
+        challenge.as_str(),
+        &server,
+        &transition_runtime,
+    );
+
+    for rx in response_receivers {
+        assert!(
+            rx.recv()
+                .expect("parallel mode switch response should exist")
+                .is_ok(),
+            "each parallel mode switch must be acknowledged"
+        );
+    }
+
+    let records = sink.records();
+    let transition_records: Vec<_> = records
+        .iter()
+        .filter(|record| record.metadata.event_type == AuditEventType::ModeTransition)
+        .collect();
+    assert_eq!(
+        transition_records.len(),
+        8,
+        "each accepted mode switch must emit exactly one transition audit event"
+    );
+
+    let transition_indices: BTreeSet<u64> = transition_records
+        .iter()
+        .map(|record| {
+            let details = record
+                .metadata
+                .details
+                .as_ref()
+                .expect("transition events must include details payload");
+            let details_json: serde_json::Value =
+                serde_json::from_str(details).expect("details payload should be valid JSON");
+            details_json["transition_index"]
+                .as_u64()
+                .expect("transition_index must be present and numeric")
+        })
+        .collect();
+
+    let expected_indices: BTreeSet<u64> = (1..=8).collect();
+    assert_eq!(
+        transition_indices, expected_indices,
+        "parallel mode switches must serialize with contiguous transition indices"
+    );
 }

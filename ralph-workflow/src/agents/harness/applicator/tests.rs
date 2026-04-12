@@ -1,8 +1,8 @@
 //! Tests for the harness applicator module
 
 use crate::agents::harness::applicator::{
-    apply_harness_config, build_codex_override_args, detect_agent_type, merge_claude_settings,
-    AgentType, CLAUDE_SETTINGS_LOCAL,
+    apply_harness_config, apply_harness_config_with_lease, build_codex_override_args,
+    detect_agent_type, merge_claude_settings, AgentType, CLAUDE_SETTINGS_LOCAL,
 };
 use crate::agents::session::{AgentSession, SessionDrain};
 use crate::workspace::{memory_workspace::MemoryWorkspace, Workspace};
@@ -122,32 +122,32 @@ fn apply_claude_writes_session_scoped_settings_and_env() {
     assert!(!ws.was_written(CLAUDE_SETTINGS_LOCAL));
 
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
-    assert_eq!(result.extra_cmd_args.len(), 6);
-    assert_eq!(result.extra_cmd_args[0], "--tools");
-    assert_eq!(result.extra_cmd_args[1], "''");
-    assert_eq!(result.extra_cmd_args[2], "--settings");
-    assert!(result.extra_cmd_args[3].contains(&format!(
+    assert_eq!(result.extra_cmd_args.len(), 5);
+    assert_eq!(result.extra_cmd_args[0], "--settings");
+    assert!(result.extra_cmd_args[1].contains(&format!(
         ".agent/tmp/harness/{}/claude/settings.local.json",
         session.session_id.as_str()
     )));
-    assert_eq!(result.extra_cmd_args[4], "--mcp-config");
-    assert!(result.extra_cmd_args[5].contains(&format!(
+    assert_eq!(result.extra_cmd_args[2], "--mcp-config");
+    assert!(result.extra_cmd_args[3].contains(&format!(
         ".agent/tmp/harness/{}/claude/mcp.json",
         session.session_id.as_str()
     )));
-
+    assert_eq!(result.extra_cmd_args[4], "--strict-mcp-config");
     let content = ws
         .read(Path::new(&expected_config_path))
         .expect("read config");
     assert!(content.contains("mcpServers"));
     assert!(content.contains("permissions"));
-    assert!(content.contains("--mcp-proxy"));
+    assert!(content.contains("\"type\": \"http\""));
+    assert!(content.contains(TEST_ENDPOINT));
+    assert!(content.contains("X-Ralph-Session-Id"));
 
     let mcp_content = ws
         .read(Path::new(&expected_mcp_path))
         .expect("read mcp config");
     assert!(mcp_content.contains("mcpServers"));
-    assert!(mcp_content.contains("--mcp-proxy"));
+    assert!(mcp_content.contains("mcpServers"));
 }
 
 #[test]
@@ -203,16 +203,14 @@ fn apply_claude_preserves_existing_settings() {
     // User's existing MCP server is preserved
     assert!(parsed["mcpServers"]["my-other-server"].is_object());
 
-    // Ralph's MCP server is added with an absolute command path
+    // Ralph's MCP server is added with a remote HTTP endpoint
     assert!(parsed["mcpServers"]["ralph"].is_object());
-    let ralph_command = parsed["mcpServers"]["ralph"]["command"]
+    let ralph_url = parsed["mcpServers"]["ralph"]["url"]
         .as_str()
-        .expect("mcpServers.ralph.command must be a string");
-    // The command is resolved to the current executable path at runtime (absolute path).
-    // In tests this is the test binary; in production it is the actual ralph binary.
+        .expect("mcpServers.ralph.url must be a string");
     assert!(
-        !ralph_command.is_empty(),
-        "mcpServers.ralph.command must not be empty"
+        !ralph_url.is_empty(),
+        "mcpServers.ralph.url must not be empty"
     );
 
     // User's existing permissions are preserved
@@ -243,29 +241,64 @@ fn apply_claude_injects_settings_arg() {
     let extra = &result.extra_cmd_args;
     assert_eq!(
         extra.len(),
-        6,
-        "Claude harness should append tools disable + settings + mcp config"
+        5,
+        "Claude harness should append settings and explicit mcp config"
     );
-    assert_eq!(extra[0], "--tools");
-    assert_eq!(extra[1], "''");
-    assert_eq!(extra[2], "--settings");
+    assert_eq!(extra[0], "--settings");
     assert!(
-        extra[3].contains(&format!(
+        extra[1].contains(&format!(
             ".agent/tmp/harness/{}/claude/settings.local.json",
             session.session_id.as_str()
         )),
         "escaped path should point to session config"
     );
-    assert!(extra[3].starts_with('\''), "settings arg must be quoted");
-    assert!(extra[3].ends_with('\''), "settings arg must be quoted");
-    assert_eq!(extra[4], "--mcp-config");
-    assert!(extra[5].contains(&format!(
-        ".agent/tmp/harness/{}/claude/mcp.json",
-        session.session_id.as_str()
-    )));
-    assert!(extra[5].starts_with('\''), "mcp config arg must be quoted");
-    assert!(extra[5].ends_with('\''), "mcp config arg must be quoted");
+    assert!(extra[1].starts_with('\''), "settings arg must be quoted");
+    assert!(extra[1].ends_with('\''), "settings arg must be quoted");
+    assert_eq!(extra[2], "--mcp-config");
+    assert!(
+        extra[3].contains(&format!(
+            ".agent/tmp/harness/{}/claude/mcp.json",
+            session.session_id.as_str()
+        )),
+        "escaped mcp config path should point to session mcp config"
+    );
+    assert!(extra[3].starts_with('\''), "mcp config arg must be quoted");
+    assert!(extra[3].ends_with('\''), "mcp config arg must be quoted");
+    assert_eq!(extra[4], "--strict-mcp-config");
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
+}
+
+#[test]
+fn apply_claude_with_lease_writes_generation_and_run_id_into_mcp_env() {
+    let ws = MemoryWorkspace::new_test();
+    let session = test_session();
+    let lease = EndpointLease::new(
+        TEST_ENDPOINT.to_string(),
+        "lease-run-claude".to_string(),
+        11,
+        SystemTime::UNIX_EPOCH,
+    );
+    let result = apply_harness_config_with_lease(
+        AgentType::Claude,
+        &session,
+        TEST_ENDPOINT,
+        &ws,
+        Some(&lease),
+    )
+    .expect("should succeed");
+
+    let expected_config_path = result.config_path.expect("config path");
+    let expected_lease_path = format!(
+        ".agent/tmp/harness/{}/claude/endpoint_lease.json",
+        session.session_id.as_str()
+    );
+    let content = ws
+        .read(Path::new(&expected_config_path))
+        .expect("read config");
+    assert!(content.contains("X-Ralph-Session-Id"));
+    assert!(content.contains("X-Ralph-Run-Id"));
+    assert!(content.contains("X-Ralph-Drain"));
+    assert!(ws.was_written(expected_lease_path.as_str()));
 }
 
 #[test]
@@ -277,7 +310,7 @@ fn build_codex_override_args_includes_generation_and_run_id() {
         8,
         SystemTime::UNIX_EPOCH,
     );
-    let args = build_codex_override_args(&session, TEST_ENDPOINT, Some(&lease));
+    let args = build_codex_override_args(&session, Some(&lease));
     let joined = args.join(" ");
     assert!(
         joined.contains("RALPH_MCP_GENERATION"),
@@ -340,7 +373,7 @@ fn apply_opencode_writes_config_json() {
     let content = ws.read(Path::new(&expected_path)).expect("read config");
     assert!(content.contains("\"mcp\""));
     assert!(content.contains("\"type\": \"local\""));
-    assert!(content.contains("--mcp-proxy"));
+    assert!(content.contains("--mcp-stdio"));
 }
 
 #[test]
@@ -394,6 +427,35 @@ fn apply_opencode_preserves_auth_env() {
         2,
         "merged env should only contain the auth token and config path"
     );
+}
+
+#[test]
+fn apply_opencode_with_lease_writes_generation_and_run_id_into_mcp_env() {
+    let ws = MemoryWorkspace::new_test();
+    let session = test_session();
+    let lease = EndpointLease::new(
+        TEST_ENDPOINT.to_string(),
+        "lease-run-opencode".to_string(),
+        12,
+        SystemTime::UNIX_EPOCH,
+    );
+    let result = apply_harness_config_with_lease(
+        AgentType::OpenCode,
+        &session,
+        TEST_ENDPOINT,
+        &ws,
+        Some(&lease),
+    )
+    .expect("should succeed");
+
+    let session_id = session.session_id.as_str();
+    let expected_path = format!(".agent/tmp/harness/{session_id}/config.json");
+    assert_eq!(result.config_path.as_deref(), Some(expected_path.as_str()));
+    let content = ws.read(Path::new(&expected_path)).expect("read config");
+    assert!(content.contains("RALPH_MCP_GENERATION"));
+    assert!(content.contains("\"12\""));
+    assert!(content.contains("RALPH_MCP_RUN_ID"));
+    assert!(content.contains("lease-run-opencode"));
 }
 
 #[test]
@@ -526,7 +588,7 @@ fn apply_codex_writes_config_json() {
 
     let content = ws.read(Path::new(&expected_path)).expect("read config");
     assert!(content.contains("[mcp_servers.ralph]"));
-    assert!(content.contains("--mcp-proxy"));
+    assert!(content.contains("--mcp-stdio"));
 }
 
 #[test]
@@ -734,7 +796,7 @@ fn apply_codex_config_toml_and_override_args_use_same_command() {
 fn merge_empty_existing_gets_ralph_config() {
     let existing = serde_json::json!({});
     let ralph = serde_json::json!({
-        "mcpServers": {"ralph": {"command": "ralph"}},
+        "mcpServers": {"ralph": {"type": "http", "url": "http://127.0.0.1:42000/mcp"}},
         "permissions": {"allow": ["tool_a"], "deny": ["tool_b"]}
     });
     let merged = merge_claude_settings(&existing, &ralph);
@@ -749,7 +811,7 @@ fn merge_preserves_unrelated_fields() {
         "custom_field": 42
     });
     let ralph = serde_json::json!({
-        "mcpServers": {"ralph": {"command": "ralph"}}
+        "mcpServers": {"ralph": {"type": "http", "url": "http://127.0.0.1:42000/mcp"}}
     });
     let merged = merge_claude_settings(&existing, &ralph);
     assert_eq!(merged["env"]["FOO"].as_str(), Some("bar"));
@@ -787,13 +849,12 @@ fn apply_ccs_agent_gets_mcp_config() {
         "CCS agent must get config path"
     );
     assert!(result.extra_env_vars.is_empty(), "no extra env for Claude");
-    assert_eq!(result.extra_cmd_args.len(), 6);
-    assert_eq!(result.extra_cmd_args[0], "--tools");
-    assert_eq!(result.extra_cmd_args[1], "''");
-    assert_eq!(result.extra_cmd_args[2], "--settings");
+    assert_eq!(result.extra_cmd_args.len(), 5);
+    assert_eq!(result.extra_cmd_args[0], "--settings");
+    assert!(result.extra_cmd_args[1].contains(".agent/tmp/harness"));
+    assert_eq!(result.extra_cmd_args[2], "--mcp-config");
     assert!(result.extra_cmd_args[3].contains(".agent/tmp/harness"));
-    assert_eq!(result.extra_cmd_args[4], "--mcp-config");
-    assert!(result.extra_cmd_args[5].contains(".agent/tmp/harness"));
+    assert_eq!(result.extra_cmd_args[4], "--strict-mcp-config");
     assert!(
         !ws.was_written(CLAUDE_SETTINGS_LOCAL),
         "CCS harness must not mutate project .claude/settings.local.json"
@@ -811,8 +872,8 @@ fn apply_ccs_agent_gets_mcp_config() {
         "CCS harness MUST include ralph_submit_artifact permission"
     );
     assert!(
-        content.contains("--mcp-proxy"),
-        "CCS harness MUST configure ralph MCP proxy"
+        content.contains("\"type\": \"http\""),
+        "CCS harness MUST configure remote ralph MCP endpoint"
     );
 }
 
@@ -840,11 +901,10 @@ fn round_trip_detect_and_apply() {
                     .expect("should succeed");
                 assert!(result.config_path.is_some());
                 assert!(result.extra_env_vars.is_empty());
-                assert_eq!(result.extra_cmd_args.len(), 6);
-                assert_eq!(result.extra_cmd_args[0], "--tools");
-                assert_eq!(result.extra_cmd_args[1], "''");
-                assert_eq!(result.extra_cmd_args[2], "--settings");
-                assert_eq!(result.extra_cmd_args[4], "--mcp-config");
+                assert_eq!(result.extra_cmd_args.len(), 5);
+                assert_eq!(result.extra_cmd_args[0], "--settings");
+                assert_eq!(result.extra_cmd_args[2], "--mcp-config");
+                assert_eq!(result.extra_cmd_args[4], "--strict-mcp-config");
             }
             AgentType::Unknown => {
                 assert!(apply_harness_config(agent_type, &session, TEST_ENDPOINT, &ws).is_err());

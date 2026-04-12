@@ -9,7 +9,7 @@ use crate::agents::session::AgentSession;
 pub struct CodexHarness;
 
 impl AgentHarness for CodexHarness {
-    fn generate(&self, session: &AgentSession, mcp_endpoint: &str) -> HarnessConfig {
+    fn generate(&self, session: &AgentSession, _mcp_endpoint: &str) -> HarnessConfig {
         // Resolve the absolute path to the ralph binary. Falls back to bare "ralph"
         // if current_exe() cannot be determined.
         let ralph_command = std::env::current_exe()
@@ -17,10 +17,11 @@ impl AgentHarness for CodexHarness {
             .and_then(|p| p.to_str().map(String::from))
             .unwrap_or_else(|| "ralph".to_string());
         let config = format!(
-            "[mcp_servers.ralph]\ncommand = \"{}\"\nargs = [\"--mcp-proxy\"]\n[mcp_servers.ralph.env]\nRALPH_MCP_ENDPOINT = \"{}\"\nRALPH_SESSION_ID = \"{}\"\n",
+            "[mcp_servers.ralph]\ncommand = \"{}\"\nargs = [\"--mcp-stdio\"]\n[mcp_servers.ralph.env]\nRALPH_SESSION_ID = \"{}\"\nRALPH_MCP_RUN_ID = \"{}\"\nRALPH_SESSION_DRAIN = \"{}\"\n",
             ralph_command,
-            mcp_endpoint,
-            session.session_id.as_str()
+            session.session_id.as_str(),
+            session.run_id.as_str(),
+            session.drain.as_str(),
         );
         HarnessConfig::Codex(config)
     }
@@ -44,8 +45,8 @@ mod tests {
                 assert!(toml.contains("[mcp_servers.ralph]"));
                 // command resolves to current_exe() at runtime; just assert the key is present
                 assert!(toml.contains("command = "));
-                assert!(toml.contains("--mcp-proxy"));
-                assert!(toml.contains("RALPH_MCP_ENDPOINT"));
+                assert!(toml.contains("--mcp-stdio"));
+                assert!(toml.contains("RALPH_SESSION_DRAIN"));
             }
             _ => panic!("Expected Codex variant"),
         }

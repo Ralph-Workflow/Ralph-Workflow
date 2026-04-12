@@ -24,12 +24,9 @@ pub(super) fn unique_commit_plumbing_run_id(label: &str) -> String {
 pub fn start_mcp_bridge(
     session: crate::agents::session::AgentSession,
     workspace_arc: std::sync::Arc<dyn crate::workspace::Workspace>,
-) -> Result<crate::mcp_server::session_bridge::SessionBridge, crate::mcp_server::session_bridge::SessionBridgeError>
-{
-    use crate::mcp_server::session_bridge::SessionBridge;
-
-    // Create the boundary SessionBridge which encapsulates internal MCP bridge + adapters
-    let mut bridge = SessionBridge::new(session, workspace_arc);
-    bridge.start()?;
-    Ok(bridge)
+) -> Result<
+    crate::mcp_server::session_bridge::SessionBridge,
+    crate::mcp_server::session_bridge::SessionBridgeError,
+> {
+    crate::mcp_server::startup::start_mcp_server_for_session(session, workspace_arc)
 }

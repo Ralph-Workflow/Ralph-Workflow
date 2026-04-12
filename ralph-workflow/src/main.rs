@@ -50,10 +50,9 @@ fn main() -> anyhow::Result<()> {
     // Create real process executor for production use
     let args = Args::parse();
 
-    // Handle MCP proxy mode before anything else - this is a lightweight
-    // stdio-to-socket bridge that doesn't need the full pipeline.
-    if args.commit_plumbing.mcp_proxy {
-        return ralph_workflow::boundary::stdio_proxy::run_mcp_proxy();
+    // Handle direct MCP stdio mode before anything else.
+    if args.commit_plumbing.mcp_stdio {
+        return ralph_workflow::boundary::stdio_mcp_server::run_mcp_stdio();
     }
 
     let pause_mode = args.pause_on_exit;

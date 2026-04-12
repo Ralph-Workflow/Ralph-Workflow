@@ -40,9 +40,37 @@ fn resolve_drain_agents(ctx: &PhaseContext<'_>, drain: AgentDrain) -> Vec<AgentN
             binding
                 .agents
                 .iter()
+                .filter(|name| commit_drain_agent_supported(ctx, drain, name.as_str()))
                 .map(|s| AgentName::from(s.clone()))
                 .collect()
         })
+}
+
+fn commit_drain_agent_supported(ctx: &PhaseContext<'_>, drain: AgentDrain, name: &str) -> bool {
+    if drain != AgentDrain::Commit {
+        return true;
+    }
+
+    let Some(cfg) = ctx.registry.resolve_config(name) else {
+        return false;
+    };
+    if !cfg.can_commit {
+        return false;
+    }
+    let agent_type = crate::agents::harness::applicator::detect_agent_type(&cfg.cmd);
+    let is_ccs = cfg
+        .cmd
+        .split_whitespace()
+        .next()
+        .map(|first| {
+            let token = first.rsplit('/').next().unwrap_or(first);
+            token.eq_ignore_ascii_case("ccs")
+        })
+        .unwrap_or(false);
+    !matches!(
+        agent_type,
+        crate::agents::harness::applicator::AgentType::OpenCode
+    ) && !is_ccs
 }
 
 fn resolve_drain_models(ctx: &PhaseContext<'_>, agents: &[AgentName]) -> Vec<Vec<String>> {

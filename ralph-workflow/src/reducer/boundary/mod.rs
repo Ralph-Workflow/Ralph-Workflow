@@ -741,10 +741,7 @@ impl MainEffectHandler {
                 message,
                 files,
                 excluded_files,
-            } => {
-                self.assert_create_commit_boundary_invariants(&message);
-                Self::create_commit(ctx, message, &files, &excluded_files)
-            }
+            } => self.execute_create_commit_effect(ctx, message, files, excluded_files),
             Effect::SkipCommit { reason } => Ok(Self::skip_commit(ctx, reason)),
             Effect::CheckResidualFiles { pass } => Self::check_residual_files(ctx, pass),
             Effect::CheckUncommittedChangesBeforeTermination => {
@@ -752,6 +749,20 @@ impl MainEffectHandler {
             }
             _ => unreachable!("execute_commit_effect called with non-commit effect"),
         }
+    }
+
+    fn execute_create_commit_effect(
+        &mut self,
+        ctx: &PhaseContext<'_>,
+        message: String,
+        files: Vec<String>,
+        excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
+    ) -> Result<EffectResult> {
+        debug_assert!(
+            self.state.create_commit_boundary_invariants_hold(&message),
+            "CreateCommit invariant violation: commit must execute only from archived, reducer-generated CommitMessage state"
+        );
+        Self::create_commit(ctx, message, &files, &excluded_files)
     }
 
     fn execute_rebase_effect(

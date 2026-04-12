@@ -32,7 +32,14 @@ use mcp_server::io::access::McpServerConfig;
 use mcp_server::io::{ControlCommand, ControlError};
 use mcp_server::io::{EndpointLease, McpServer, ServerState, SessionBridge as McpSessionBridge};
 use mcp_server::protocol::{JsonRpcRequest, JsonRpcResponse};
+use serde_json::json;
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 use thiserror::Error;
 
 pub const MCP_ENDPOINT_ENV: &str = "RALPH_MCP_ENDPOINT";
@@ -71,6 +78,12 @@ pub struct SessionBridge {
     audit_adapter: Arc<RalphAuditSinkAdapter>,
     /// Cached view of audit records for backward-compatible API.
     cached_audit: AuditTrail,
+    /// Remote HTTP endpoint exposed to agent clients.
+    http_endpoint: Option<String>,
+    /// Shutdown signal for in-process HTTP gateway.
+    http_shutdown: Arc<AtomicBool>,
+    /// Join handle for HTTP gateway thread.
+    http_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl SessionBridge {
@@ -97,6 +110,7 @@ impl SessionBridge {
         // Planning/Analysis/Review/Fix → ReadOnly; Development/Commit → ReadWrite.
         let access_mode = drain_to_access_mode(session_arc.drain);
         let visible_tools = visible_mcp_tool_names_owned(session_arc.capabilities());
+        let generation = next_generation_for_run(workspace.root(), session_arc.run_id.as_str());
 
         // Create config with workspace root and session ID for audit correlation
         let policy_mode = drain_to_policy_mode(session_arc.drain);
@@ -108,7 +122,7 @@ impl SessionBridge {
             .with_drain_class(drain_class_for_session(session_arc.drain))
             .with_tool_filter(ToolFilter::Allowlist(visible_tools))
             .with_run_id(session_arc.run_id.clone())
-            .with_generation(1);
+            .with_generation(generation);
 
         // Create the inner session bridge (audit sink passed at start() time)
         let inner = McpSessionBridge::new(host, config, ws, registry);
@@ -119,6 +133,9 @@ impl SessionBridge {
             inner,
             audit_adapter,
             cached_audit: AuditTrail::new(),
+            http_endpoint: None,
+            http_shutdown: Arc::new(AtomicBool::new(false)),
+            http_thread: None,
         }
     }
 
@@ -169,6 +186,15 @@ impl SessionBridge {
         self.inner.endpoint_uri()
     }
 
+    /// Get the endpoint URI exposed to agents.
+    ///
+    /// Uses the in-process HTTP gateway when available.
+    pub fn agent_endpoint_uri(&self) -> String {
+        self.http_endpoint
+            .clone()
+            .unwrap_or_else(|| self.inner.endpoint_uri())
+    }
+
     /// Get the latest endpoint lease published by the MCP server.
     pub fn endpoint_lease(&self) -> Option<EndpointLease> {
         self.inner.endpoint_lease()
@@ -197,14 +223,42 @@ impl SessionBridge {
     pub fn start(&mut self) -> Result<(), SessionBridgeError> {
         self.inner
             .start_with_audit_sink(self.audit_adapter.clone())
-            .map_err(|e| SessionBridgeError::Transport(e.to_string()))
+            .map_err(|e| SessionBridgeError::Transport(e.to_string()))?;
+        self.start_http_gateway()?;
+        Ok(())
     }
 
     /// Shutdown the session bridge gracefully.
     ///
     /// This signals the MCP server to shutdown and waits for the server thread to finish.
     pub fn shutdown(&mut self) {
+        self.http_shutdown.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.http_thread.take() {
+            let _ = handle.join();
+        }
         self.inner.shutdown();
+    }
+
+    fn start_http_gateway(&mut self) -> Result<(), SessionBridgeError> {
+        self.http_shutdown.store(false, Ordering::SeqCst);
+        let listener = TcpListener::bind(("127.0.0.1", 0))
+            .map_err(|e| SessionBridgeError::Transport(e.to_string()))?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|e| SessionBridgeError::Transport(e.to_string()))?;
+        let addr = listener
+            .local_addr()
+            .map_err(|e| SessionBridgeError::Transport(e.to_string()))?;
+        self.http_endpoint = Some(format!("http://{addr}/mcp"));
+
+        let shutdown = Arc::clone(&self.http_shutdown);
+        let session = Arc::clone(&self.session);
+        let workspace = Arc::clone(&self.workspace);
+        let audit = Arc::clone(&self.audit_adapter);
+        self.http_thread = Some(thread::spawn(move || {
+            run_http_gateway(listener, shutdown, session, workspace, audit)
+        }));
+        Ok(())
     }
 
     /// Send a private control command through the orchestrator-only control channel.
@@ -227,6 +281,8 @@ impl SessionBridge {
         let drain_class = drain_class_for_session(self.session.drain);
         let visible_tools = visible_mcp_tool_names_owned(self.session.capabilities());
         let policy_mode = drain_to_policy_mode(self.session.drain);
+        let generation =
+            next_generation_for_run(self.workspace.root(), self.session.run_id.as_str());
         let config = McpServerConfig::new(self.workspace.root().to_path_buf())
             .with_session_id(self.session.session_id.as_str().to_string())
             .with_access_mode(access_mode)
@@ -235,7 +291,7 @@ impl SessionBridge {
             .with_drain_class(drain_class)
             .with_tool_filter(ToolFilter::Allowlist(visible_tools))
             .with_run_id(self.session.run_id.clone())
-            .with_generation(1);
+            .with_generation(generation);
 
         McpServer::new(host, config, ws, registry, Some(self.audit_adapter.clone()))
     }
@@ -254,6 +310,25 @@ impl SessionBridge {
     }
 }
 
+fn endpoint_lease_path(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".agent").join("endpoint_lease.json")
+}
+
+fn next_generation_for_run(workspace_root: &Path, run_id: &str) -> u32 {
+    let lease_path = endpoint_lease_path(workspace_root);
+    let Some(content) = std::fs::read_to_string(lease_path).ok() else {
+        return 1;
+    };
+    let Some(lease) = serde_json::from_str::<EndpointLease>(&content).ok() else {
+        return 1;
+    };
+    if lease.run_id == run_id {
+        lease.generation.saturating_add(1)
+    } else {
+        1
+    }
+}
+
 impl Clone for SessionBridge {
     fn clone(&self) -> Self {
         Self {
@@ -262,8 +337,162 @@ impl Clone for SessionBridge {
             inner: self.inner.clone(),
             audit_adapter: Arc::clone(&self.audit_adapter),
             cached_audit: self.cached_audit.clone(),
+            http_endpoint: self.http_endpoint.clone(),
+            http_shutdown: Arc::clone(&self.http_shutdown),
+            http_thread: None,
         }
     }
+}
+
+fn run_http_gateway(
+    listener: TcpListener,
+    shutdown: Arc<AtomicBool>,
+    session: Arc<AgentSession>,
+    workspace: Arc<dyn Workspace>,
+    audit_adapter: Arc<RalphAuditSinkAdapter>,
+) {
+    let server = build_in_process_server(session, workspace, audit_adapter);
+    let mut state = ServerState::Uninitialized;
+
+    while !shutdown.load(Ordering::SeqCst) {
+        match listener.accept() {
+            Ok((mut stream, _addr)) => {
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+                handle_http_connection(&server, &mut state, &mut stream);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+fn handle_http_connection(
+    server: &McpServer,
+    state: &mut ServerState,
+    stream: &mut std::net::TcpStream,
+) {
+    let mut buffer = Vec::new();
+    let mut chunk = [0u8; 1024];
+    let mut header_end = None;
+
+    while header_end.is_none() {
+        match stream.read(&mut chunk) {
+            Ok(0) => return,
+            Ok(n) => {
+                buffer.extend_from_slice(&chunk[..n]);
+                header_end = find_header_end(&buffer);
+            }
+            Err(_) => return,
+        }
+    }
+
+    let header_end = header_end.unwrap_or(0);
+    let headers_raw = String::from_utf8_lossy(&buffer[..header_end]);
+    let mut lines = headers_raw.lines();
+    let request_line = lines.next().unwrap_or_default().to_string();
+    let content_length = lines
+        .filter_map(|line| line.split_once(':'))
+        .find_map(|(name, value)| {
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0);
+
+    let mut body = buffer[(header_end + 4)..].to_vec();
+    while body.len() < content_length {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => body.extend_from_slice(&chunk[..n]),
+            Err(_) => break,
+        }
+    }
+
+    if !request_line.starts_with("POST /mcp ") {
+        let _ = write_http_response(stream, 404, "application/json", "{}".as_bytes());
+        return;
+    }
+
+    let request = match serde_json::from_slice::<JsonRpcRequest>(&body) {
+        Ok(req) => req,
+        Err(_) => {
+            let payload = json!({
+                "jsonrpc": "2.0",
+                "error": {"code": -32700, "message": "Parse error"},
+                "id": serde_json::Value::Null
+            });
+            let bytes = serde_json::to_vec(&payload).unwrap_or_else(|_| b"{}".to_vec());
+            let _ = write_http_response(stream, 400, "application/json", &bytes);
+            return;
+        }
+    };
+
+    let (response, next_state) = server.handle_request(request, *state);
+    *state = next_state;
+
+    if let Some(resp) = response {
+        let bytes = serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec());
+        let _ = write_http_response(stream, 200, "application/json", &bytes);
+    } else {
+        let _ = write_http_response(stream, 204, "application/json", b"");
+    }
+}
+
+fn write_http_response(
+    stream: &mut std::net::TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> std::io::Result<()> {
+    let status_text = match status {
+        200 => "OK",
+        204 => "No Content",
+        400 => "Bad Request",
+        404 => "Not Found",
+        _ => "OK",
+    };
+    let headers = format!(
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(headers.as_bytes())?;
+    stream.write_all(body)?;
+    stream.flush()
+}
+
+fn find_header_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn build_in_process_server(
+    session: Arc<AgentSession>,
+    workspace: Arc<dyn Workspace>,
+    audit_adapter: Arc<RalphAuditSinkAdapter>,
+) -> McpServer {
+    let registry = build_ralph_tool_registry(Arc::clone(&session), Arc::clone(&workspace));
+    let host = Arc::new(RalphHostSessionAdapter::new(Arc::clone(&session)));
+    let ws = Arc::new(RalphWorkspaceAdapter::new(Arc::clone(&workspace)));
+    let access_mode = drain_to_access_mode(session.drain);
+    let drain_class = drain_class_for_session(session.drain);
+    let visible_tools = visible_mcp_tool_names_owned(session.capabilities());
+    let policy_mode = drain_to_policy_mode(session.drain);
+    let generation = next_generation_for_run(workspace.root(), session.run_id.as_str());
+    let config = McpServerConfig::new(workspace.root().to_path_buf())
+        .with_session_id(session.session_id.as_str().to_string())
+        .with_access_mode(access_mode)
+        .with_policy_mode(policy_mode)
+        .with_drain(session.drain.as_str().to_string())
+        .with_drain_class(drain_class)
+        .with_tool_filter(ToolFilter::Allowlist(visible_tools))
+        .with_run_id(session.run_id.clone())
+        .with_generation(generation);
+
+    McpServer::new(host, config, ws, registry, Some(audit_adapter))
 }
 
 impl Drop for SessionBridge {
@@ -282,6 +511,7 @@ mod tests {
     use mcp_server::dispatch::access::AuditSink;
     use mcp_server::dispatch::access::{AccessDecision, McpCapability};
     use mcp_server::dispatch::audit::AuditRecord as McpAuditRecord;
+    use tempfile::tempdir;
 
     fn unique_session() -> AgentSession {
         AgentSession::for_drain(
@@ -308,6 +538,70 @@ mod tests {
     }
 
     #[test]
+    fn test_agent_endpoint_uri_is_http_gateway() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        bridge.start().expect("bridge should start");
+        let uri = bridge.agent_endpoint_uri();
+        assert!(
+            uri.starts_with("http://127.0.0.1:") && uri.ends_with("/mcp"),
+            "agent endpoint should expose in-process HTTP gateway, got: {uri}"
+        );
+    }
+
+    #[test]
+    fn test_http_gateway_handles_initialize_request() {
+        let mut bridge = SessionBridge::new(unique_session(), test_workspace());
+        bridge.start().expect("bridge should start");
+        let uri = bridge.agent_endpoint_uri();
+        let address = uri
+            .strip_prefix("http://")
+            .expect("http prefix")
+            .strip_suffix("/mcp")
+            .expect("/mcp suffix");
+
+        let request_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05"},
+            "id": 1
+        })
+        .to_string();
+        let request = format!(
+            "POST /mcp HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            request_body.len(),
+            request_body
+        );
+        let mut response = String::new();
+        for _ in 0..10 {
+            let mut stream = std::net::TcpStream::connect(address).expect("connect http gateway");
+            std::io::Write::write_all(&mut stream, request.as_bytes()).expect("write request");
+            std::io::Write::flush(&mut stream).expect("flush request");
+
+            let mut response_bytes = Vec::new();
+            let mut buf = [0u8; 1024];
+            loop {
+                match std::io::Read::read(&mut stream, &mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => response_bytes.extend_from_slice(&buf[..n]),
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => break,
+                    Err(e) => panic!("read response: {e}"),
+                }
+            }
+
+            response = String::from_utf8_lossy(&response_bytes).to_string();
+            if !response.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            response.starts_with("HTTP/1.1 200"),
+            "unexpected response: {response}"
+        );
+        assert!(response.contains("\"result\""));
+    }
+
+    #[test]
     fn test_start_publishes_tcp_endpoint_lease() {
         let mut bridge = SessionBridge::new(unique_session(), test_workspace());
         bridge.start().expect("bridge should start");
@@ -320,6 +614,51 @@ mod tests {
             "lease endpoint must be TCP loopback, got: {}",
             lease.endpoint
         );
+    }
+
+    #[test]
+    fn next_generation_for_run_defaults_to_one_without_lease() {
+        let dir = tempdir().expect("tempdir");
+        let generation = next_generation_for_run(dir.path(), "run-a");
+        assert_eq!(generation, 1);
+    }
+
+    #[test]
+    fn next_generation_for_run_increments_when_run_id_matches() {
+        let dir = tempdir().expect("tempdir");
+        let lease = EndpointLease {
+            endpoint: "tcp://127.0.0.1:9900".to_string(),
+            run_id: "run-b".to_string(),
+            generation: 7,
+            ready_at: 1_700_000_700,
+        };
+        let lease_path = endpoint_lease_path(dir.path());
+        std::fs::create_dir_all(lease_path.parent().expect("lease path parent"))
+            .expect("create lease dir");
+        let lease_json = serde_json::to_string(&lease).expect("serialize lease");
+        std::fs::write(&lease_path, lease_json).expect("write lease file");
+
+        let generation = next_generation_for_run(dir.path(), "run-b");
+        assert_eq!(generation, 8);
+    }
+
+    #[test]
+    fn next_generation_for_run_resets_when_run_id_differs() {
+        let dir = tempdir().expect("tempdir");
+        let lease = EndpointLease {
+            endpoint: "tcp://127.0.0.1:9901".to_string(),
+            run_id: "run-c".to_string(),
+            generation: 9,
+            ready_at: 1_700_000_701,
+        };
+        let lease_path = endpoint_lease_path(dir.path());
+        std::fs::create_dir_all(lease_path.parent().expect("lease path parent"))
+            .expect("create lease dir");
+        let lease_json = serde_json::to_string(&lease).expect("serialize lease");
+        std::fs::write(&lease_path, lease_json).expect("write lease file");
+
+        let generation = next_generation_for_run(dir.path(), "different-run");
+        assert_eq!(generation, 1);
     }
 
     #[test]

@@ -25,9 +25,9 @@ pub struct CommitPlumbingFlags {
     )]
     pub generate_commit: bool,
 
-    /// Run as MCP stdio-to-socket proxy (used by Claude Code MCP config)
-    #[arg(long, help = "Run as MCP stdio-to-socket proxy", hide = true)]
-    pub mcp_proxy: bool,
+    /// Run as direct MCP stdio server (no TCP proxy hop)
+    #[arg(long, help = "Run as direct MCP stdio server", hide = true)]
+    pub mcp_stdio: bool,
 }
 
 /// Commit display plumbing flags.

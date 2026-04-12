@@ -286,7 +286,7 @@ pub struct RunPipelineWithHandlerParams {
 
 pub fn run_pipeline_with_handler_boundary(
     params: RunPipelineWithHandlerParams,
-) -> anyhow::Result<PipelineAndRepoRoot> {
+) -> anyhow::Result<Option<PipelineAndRepoRoot>> {
     use crate::app::runner::command_handlers::handle_plumbing_commands;
     use crate::app::runner::pipeline_execution::{
         command_requires_prompt_setup, handle_repo_commands_without_prompt_setup,
@@ -326,7 +326,7 @@ pub fn run_pipeline_with_handler_boundary(
         Arc::new(crate::workspace::WorkspaceFs::new(early_repo_root.clone()));
 
     if handle_plumbing_commands(&args, &logger, colors, handler, Some(workspace.as_ref()))? {
-        anyhow::bail!("plumbing commands should not return from run_pipeline");
+        return Ok(None);
     }
 
     if !command_requires_prompt_setup(&args)
@@ -344,7 +344,7 @@ pub fn run_pipeline_with_handler_boundary(
             workspace: &workspace,
         })?
     {
-        anyhow::bail!("repo commands should not return from run_pipeline");
+        return Ok(None);
     }
 
     let repo_root = match crate::app::runner::validate_and_setup_agents(
@@ -381,8 +381,8 @@ pub fn run_pipeline_with_handler_boundary(
     let ctx = prepare_pipeline_or_exit(params)?
         .ok_or_else(|| anyhow::anyhow!("pipeline preparation returned None"))?;
 
-    Ok(PipelineAndRepoRoot {
+    Ok(Some(PipelineAndRepoRoot {
         ctx,
         repo_root: early_repo_root,
-    })
+    }))
 }

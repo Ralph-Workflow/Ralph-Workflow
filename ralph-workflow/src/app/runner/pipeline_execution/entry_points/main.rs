@@ -140,8 +140,11 @@ fn run_validated_pipeline(
         executor,
         template_context,
     };
-    let PipelineAndRepoRoot { ctx, repo_root: _ } =
-        crate::app::pipeline_setup::run_pipeline_with_handler_boundary(params)?;
+    let Some(PipelineAndRepoRoot { ctx, repo_root: _ }) =
+        crate::app::pipeline_setup::run_pipeline_with_handler_boundary(params)?
+    else {
+        return Ok(());
+    };
     if ctx.args.recovery.inspect_checkpoint {
         crate::app::resume::inspect_checkpoint(ctx.workspace.as_ref(), &ctx.logger)?;
         return Ok(());

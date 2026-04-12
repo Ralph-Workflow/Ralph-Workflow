@@ -65,17 +65,19 @@ pub fn generate_commit_message(
 
     let mcp = start_commit_mcp_context(unique_commit_plumbing_run_id("cps"), workspace_arc)?;
     let harness_session = mcp.session.clone();
-    let mcp_env = endpoint_env_or_fail(
+    let mcp_env = build_commit_mcp_env(
         crate::mcp_server::session_bridge::MCP_ENDPOINT_ENV,
         &mcp.endpoint_uri,
         commit_agent,
+        mcp.endpoint_lease.as_ref(),
     )?;
 
-    let result = crate::agents::harness::applicator::apply_harness_config(
+    let result = crate::agents::harness::applicator::apply_harness_config_with_lease(
         agent_type,
         &harness_session,
         &mcp.endpoint_uri,
         workspace,
+        mcp.endpoint_lease.as_ref(),
     )
     .map_err(|e| anyhow::anyhow!(
         "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
@@ -103,7 +105,7 @@ pub fn generate_commit_message(
         model_index,
         attempt,
     );
-    let cmd_str = append_extra_cmd_args(&base_cmd_str, &harness_extra_cmd_args);
+    let cmd_str = append_extra_cmd_args(agent_type, &base_cmd_str, &harness_extra_cmd_args);
     let prompt = crate::agents::tool_manifest::rewrite_prompt_mcp_tool_names(
         &raw_prompt,
         harness_session.capabilities(),
@@ -131,6 +133,16 @@ pub fn generate_commit_message(
     let auth_failure = had_error && stderr_contains_auth_error(&result.stderr);
     if auth_failure {
         anyhow::bail!("Authentication error detected");
+    }
+    if commit_submit_tool_unavailable(&result.stderr)
+        || log_indicates_submit_tool_unavailable(workspace, &logfile)
+    {
+        if !recover_commit_artifact_from_log(workspace, &logfile) {
+            anyhow::bail!(
+                "Commit submission tool is unavailable for agent '{}': output did not expose 'ralph_submit_artifact'",
+                commit_agent
+            );
+        }
     }
 
     let extraction = extract_commit_message_from_file_with_workspace(workspace);
@@ -177,6 +189,7 @@ struct CommitMcpContext {
     _bridge: crate::mcp_server::session_bridge::SessionBridge,
     session: crate::agents::session::AgentSession,
     endpoint_uri: String,
+    endpoint_lease: Option<mcp_server::io::EndpointLease>,
 }
 
 fn start_commit_mcp_context(
@@ -195,8 +208,20 @@ fn start_commit_mcp_context(
             e
         ),
     )?;
+    let endpoint_lease = bridge.endpoint_lease();
+    if let Some(lease) = endpoint_lease.as_ref() {
+        if let Err(error) =
+            crate::agents::session::audit::persist_endpoint_lease(workspace_arc.as_ref(), lease)
+        {
+            eprintln!(
+                "warning: failed to persist MCP endpoint lease for commit run '{}': {}",
+                session.run_id, error
+            );
+        }
+    }
     Ok(CommitMcpContext {
-        endpoint_uri: bridge.endpoint_uri(),
+        endpoint_uri: bridge.agent_endpoint_uri(),
+        endpoint_lease,
         _bridge: bridge,
         session,
     })
@@ -228,21 +253,23 @@ fn try_single_commit_agent(
     let base_cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
 
     let harness_session = mcp.session.clone();
-    let mcp_env = match endpoint_env_or_fail(
+    let mcp_env = match build_commit_mcp_env(
         crate::mcp_server::session_bridge::MCP_ENDPOINT_ENV,
         &mcp.endpoint_uri,
         commit_agent,
+        mcp.endpoint_lease.as_ref(),
     ) {
         Ok(env) => env,
         Err(err) => return TryAgentResult::Fatal(err),
     };
 
     let (harness_env, harness_extra_cmd_args) =
-        match crate::agents::harness::applicator::apply_harness_config(
+        match crate::agents::harness::applicator::apply_harness_config_with_lease(
             agent_type,
             &harness_session,
             &mcp.endpoint_uri,
             workspace,
+            mcp.endpoint_lease.as_ref(),
         ) {
             Ok(result) => (result.extra_env_vars, result.extra_cmd_args),
             Err(e) => {
@@ -273,7 +300,7 @@ fn try_single_commit_agent(
         model_index,
         attempt,
     );
-    let cmd_str = append_extra_cmd_args(&base_cmd_str, &harness_extra_cmd_args);
+    let cmd_str = append_extra_cmd_args(agent_type, &base_cmd_str, &harness_extra_cmd_args);
     let prompt = crate::agents::tool_manifest::rewrite_prompt_mcp_tool_names(
         &raw_prompt,
         harness_session.capabilities(),
@@ -314,6 +341,16 @@ fn try_single_commit_agent(
 
     if auth_failure {
         return TryAgentResult::Skip(Some(anyhow::anyhow!("Authentication error detected")));
+    }
+    if commit_submit_tool_unavailable(&result.stderr)
+        || log_indicates_submit_tool_unavailable(workspace, &logfile)
+    {
+        if !recover_commit_artifact_from_log(workspace, &logfile) {
+            return TryAgentResult::Skip(Some(anyhow::anyhow!(
+                "Commit submission tool unavailable for agent '{}'; skipping retry loop",
+                commit_agent
+            )));
+        }
     }
 
     if had_error && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML)) {
@@ -492,62 +529,241 @@ pub fn generate_commit_message_with_chain(
     }
 }
 
-fn append_extra_cmd_args(cmd: &str, extra_args: &[String]) -> String {
-    if extra_args.is_empty() {
+fn append_extra_cmd_args(
+    agent_type: crate::agents::harness::applicator::AgentType,
+    cmd: &str,
+    extra_args: &[String],
+) -> String {
+    let cmd = if matches!(
+        agent_type,
+        crate::agents::harness::applicator::AgentType::Claude
+    ) {
+        remove_claude_harness_args(cmd)
+    } else {
         cmd.to_string()
+    };
+    if extra_args.is_empty() {
+        cmd
     } else {
         let joined = extra_args.join(" ");
         format!("{cmd} {joined}")
     }
 }
 
-fn endpoint_env_or_fail(
+fn remove_claude_harness_args(cmd: &str) -> String {
+    let tokens = crate::agents::session::command_policy::parse_command(cmd);
+    if tokens.is_empty() {
+        return String::new();
+    }
+
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut skip_next = false;
+    for token in tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        if token == "--settings" || token == "--mcp-config" {
+            skip_next = true;
+            continue;
+        }
+        if token == "--strict-mcp-config"
+            || token.starts_with("--settings=")
+            || token.starts_with("--mcp-config=")
+        {
+            continue;
+        }
+
+        out.push(token);
+    }
+
+    out.join(" ")
+}
+
+fn build_commit_mcp_env(
     endpoint_env_var: &str,
     endpoint_uri: &str,
     commit_agent: &str,
+    lease: Option<&mcp_server::io::EndpointLease>,
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
     if endpoint_uri.is_empty() {
         Err(anyhow::anyhow!(
             "MCP endpoint missing for commit agent '{}'. MCP is mandatory and execution was aborted.",
             commit_agent
         ))
-    } else if !endpoint_uri.starts_with("tcp://") {
+    } else if !(endpoint_uri.starts_with("tcp://") || endpoint_uri.starts_with("http://")) {
         Err(anyhow::anyhow!(
-            "MCP endpoint for commit agent '{}' must be tcp://, got '{}'. MCP is mandatory and execution was aborted.",
+            "MCP endpoint for commit agent '{}' must be tcp:// or http://, got '{}'. MCP is mandatory and execution was aborted.",
             commit_agent,
             endpoint_uri
         ))
     } else {
-        Ok(std::collections::HashMap::from([(
+        let mut env = std::collections::HashMap::from([(
             endpoint_env_var.to_string(),
             endpoint_uri.to_string(),
-        )]))
+        )]);
+        if let Some(lease) = lease {
+            env.insert(
+                crate::mcp_server::session_bridge::MCP_GENERATION_ENV.to_string(),
+                lease.generation.to_string(),
+            );
+            env.insert(
+                crate::mcp_server::session_bridge::MCP_RUN_ID_ENV.to_string(),
+                lease.run_id.clone(),
+            );
+        }
+        Ok(env)
     }
+}
+
+fn commit_submit_tool_unavailable(stderr: &str) -> bool {
+    let stderr_lower = stderr.to_lowercase();
+    stderr_lower.contains("ralph_submit_artifact")
+        && (stderr_lower.contains("unavailable tool")
+            || stderr_lower.contains("don't have a tool")
+            || stderr_lower.contains("mcp tools are not available")
+            || (stderr_lower.contains("tool: invalid")
+                && stderr_lower.contains("tool=ralph_submit_artifact")))
+}
+
+fn log_indicates_submit_tool_unavailable(workspace: &dyn Workspace, logfile: &str) -> bool {
+    let Ok(content) = workspace.read(Path::new(logfile)) else {
+        return false;
+    };
+    let lower = content.to_lowercase();
+    lower.contains("ralph_submit_artifact")
+        && (lower.contains("unavailable tool")
+            || lower.contains("don't have a tool")
+            || lower.contains("mcp tools are not available")
+            || (lower.contains("tool: invalid") && lower.contains("tool=ralph_submit_artifact")))
+}
+
+fn commit_payload_json(value: &serde_json::Value) -> bool {
+    matches!(
+        value.get("type").and_then(|v| v.as_str()),
+        Some("commit") | Some("skip")
+    )
+}
+
+fn extract_commit_payload_from_log(content: &str) -> Option<serde_json::Value> {
+    let mut latest_payload: Option<serde_json::Value> = None;
+    for segment in content.split("```json").skip(1) {
+        if let Some((json_block, _rest)) = segment.split_once("```") {
+            let trimmed = json_block.trim();
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                if commit_payload_json(&value) {
+                    latest_payload = Some(value);
+                }
+            }
+        }
+    }
+
+    // Fallback: parse any raw JSON object embedded in log text.
+    // This catches outputs where agents print plain JSON without fenced code blocks.
+    for (idx, ch) in content.char_indices() {
+        if ch != '{' {
+            continue;
+        }
+        let mut stream =
+            serde_json::Deserializer::from_str(&content[idx..]).into_iter::<serde_json::Value>();
+        if let Some(Ok(value)) = stream.next() {
+            if commit_payload_json(&value) {
+                latest_payload = Some(value);
+            }
+        }
+    }
+
+    latest_payload
+}
+
+fn recover_commit_artifact_from_log(workspace: &dyn Workspace, logfile: &str) -> bool {
+    if matches!(workspace.read_artifact_json("commit_message"), Ok(Some(_))) {
+        return true;
+    }
+    let Ok(content) = workspace.read(Path::new(logfile)) else {
+        return false;
+    };
+    let Some(payload) = extract_commit_payload_from_log(&content) else {
+        return false;
+    };
+    let envelope = crate::workspace::ArtifactEnvelope::new(
+        "commit_message",
+        payload,
+        chrono::Utc::now().to_rfc3339(),
+    );
+    workspace.write_artifact_json(&envelope).is_ok()
 }
 
 #[cfg(test)]
 mod append_extra_cmd_args_tests {
     use super::*;
+    use crate::mcp_server::session_bridge::{MCP_GENERATION_ENV, MCP_RUN_ID_ENV};
+    use crate::workspace::memory_workspace::MemoryWorkspace;
     use crate::workspace::WorkspaceFs;
+    use mcp_server::io::EndpointLease;
     use std::sync::Arc;
 
     #[test]
     fn append_extra_cmd_args_noop() {
-        assert_eq!(append_extra_cmd_args("cmd", &[]), "cmd");
+        assert_eq!(
+            append_extra_cmd_args(
+                crate::agents::harness::applicator::AgentType::Unknown,
+                "cmd",
+                &[]
+            ),
+            "cmd"
+        );
     }
 
     #[test]
     fn append_extra_cmd_args_appends_values() {
         let args = vec!["--settings".to_string(), "'/tmp/cache'".to_string()];
         assert_eq!(
-            append_extra_cmd_args("claude", &args),
+            append_extra_cmd_args(
+                crate::agents::harness::applicator::AgentType::Unknown,
+                "claude",
+                &args
+            ),
             "claude --settings '/tmp/cache'"
         );
     }
 
     #[test]
-    fn endpoint_env_or_fail_rejects_empty_endpoint() {
-        let err = endpoint_env_or_fail("RALPH_MCP_ENDPOINT", "", "commit-agent")
+    fn append_extra_cmd_args_replaces_existing_claude_harness_flags() {
+        let args = vec![
+            "--settings".to_string(),
+            "'/tmp/new-settings'".to_string(),
+            "--mcp-config".to_string(),
+            "'/tmp/new-mcp'".to_string(),
+            "--strict-mcp-config".to_string(),
+        ];
+        let existing =
+            "claude --settings '/tmp/old-settings' --mcp-config '/tmp/old-mcp' --strict-mcp-config";
+
+        let merged = append_extra_cmd_args(
+            crate::agents::harness::applicator::AgentType::Claude,
+            existing,
+            &args,
+        );
+
+        assert!(
+            !merged.contains("/tmp/old-settings"),
+            "existing --settings must be removed: {merged}"
+        );
+        assert!(
+            !merged.contains("/tmp/old-mcp"),
+            "existing --mcp-config must be removed: {merged}"
+        );
+        assert!(
+            merged.contains("/tmp/new-settings") && merged.contains("/tmp/new-mcp"),
+            "new harness args must be appended: {merged}"
+        );
+    }
+
+    #[test]
+    fn build_commit_mcp_env_rejects_empty_endpoint() {
+        let err = build_commit_mcp_env("RALPH_MCP_ENDPOINT", "", "commit-agent", None)
             .expect_err("empty endpoint must fail closed");
         assert!(
             err.to_string()
@@ -557,11 +773,12 @@ mod append_extra_cmd_args_tests {
     }
 
     #[test]
-    fn endpoint_env_or_fail_builds_endpoint_env() {
-        let env = endpoint_env_or_fail(
+    fn build_commit_mcp_env_builds_endpoint_env() {
+        let env = build_commit_mcp_env(
             "RALPH_MCP_ENDPOINT",
             "tcp://127.0.0.1:47001",
             "commit-agent",
+            None,
         )
         .expect("non-empty endpoint should build env");
         assert_eq!(
@@ -571,16 +788,168 @@ mod append_extra_cmd_args_tests {
     }
 
     #[test]
-    fn endpoint_env_or_fail_rejects_unix_endpoint() {
-        let err = endpoint_env_or_fail(
+    fn build_commit_mcp_env_accepts_http_endpoint() {
+        let env = build_commit_mcp_env(
+            "RALPH_MCP_ENDPOINT",
+            "http://127.0.0.1:60161/mcp",
+            "commit-agent",
+            None,
+        )
+        .expect("http endpoint should be accepted");
+        assert_eq!(
+            env.get("RALPH_MCP_ENDPOINT").map(String::as_str),
+            Some("http://127.0.0.1:60161/mcp")
+        );
+    }
+
+    #[test]
+    fn build_commit_mcp_env_includes_generation_and_run_id_from_lease() {
+        let lease = EndpointLease::new(
+            "tcp://127.0.0.1:47001".into(),
+            "run-commit-123".into(),
+            7,
+            std::time::SystemTime::UNIX_EPOCH,
+        );
+        let env = build_commit_mcp_env(
+            "RALPH_MCP_ENDPOINT",
+            "tcp://127.0.0.1:47001",
+            "commit-agent",
+            Some(&lease),
+        )
+        .expect("lease metadata must be threaded into commit plumbing env");
+
+        assert_eq!(env.get(MCP_GENERATION_ENV).map(String::as_str), Some("7"));
+        assert_eq!(
+            env.get(MCP_RUN_ID_ENV).map(String::as_str),
+            Some("run-commit-123")
+        );
+    }
+
+    #[test]
+    fn build_commit_mcp_env_rejects_unix_endpoint() {
+        let err = build_commit_mcp_env(
             "RALPH_MCP_ENDPOINT",
             "unix:///tmp/ralph.sock",
             "commit-agent",
+            None,
         )
         .expect_err("unix endpoint must be rejected");
         assert!(
-            err.to_string().contains("must be tcp://"),
+            err.to_string().contains("must be tcp:// or http://"),
             "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn commit_submit_tool_unavailable_detects_unavailable_submit_artifact() {
+        let stderr = "Model tried to call unavailable tool 'ralph_submit_artifact'.";
+        assert!(commit_submit_tool_unavailable(stderr));
+    }
+
+    #[test]
+    fn commit_submit_tool_unavailable_detects_invalid_tool_wrapper_signal() {
+        let stderr = "Tool: invalid; tool=ralph_submit_artifact";
+        assert!(commit_submit_tool_unavailable(stderr));
+    }
+
+    #[test]
+    fn commit_submit_tool_unavailable_ignores_unrelated_output() {
+        assert!(!commit_submit_tool_unavailable(
+            "Generated commit message successfully"
+        ));
+    }
+
+    #[test]
+    fn log_indicates_submit_tool_unavailable_detects_pattern() {
+        let workspace = MemoryWorkspace::new_test();
+        let log = ".agent/logs/commit_generation/test_tool_unavailable.log";
+        workspace
+            .create_dir_all(std::path::Path::new(".agent/logs/commit_generation"))
+            .expect("create log dir");
+        workspace
+            .write(
+                std::path::Path::new(log),
+                "Model tried to call unavailable tool 'ralph_submit_artifact'",
+            )
+            .expect("write log");
+
+        assert!(log_indicates_submit_tool_unavailable(&workspace, log));
+    }
+
+    #[test]
+    fn log_indicates_submit_tool_unavailable_ignores_missing_log() {
+        let workspace = MemoryWorkspace::new_test();
+        assert!(!log_indicates_submit_tool_unavailable(
+            &workspace,
+            ".agent/logs/commit_generation/absent.log"
+        ));
+    }
+
+    #[test]
+    fn extract_commit_payload_from_log_reads_latest_json_block() {
+        let content = r#"
+before
+```json
+{"type":"commit","subject":"feat: first"}
+```
+after
+```json
+{"type":"commit","subject":"feat: latest","body_summary":"summary"}
+```
+"#;
+        let payload = extract_commit_payload_from_log(content).expect("payload expected");
+        assert_eq!(payload.get("type").and_then(|v| v.as_str()), Some("commit"));
+        assert_eq!(
+            payload.get("subject").and_then(|v| v.as_str()),
+            Some("feat: latest")
+        );
+    }
+
+    #[test]
+    fn recover_commit_artifact_from_log_persists_commit_json() {
+        let workspace = MemoryWorkspace::new_test();
+        let log = ".agent/logs/commit_generation/recover_from_log.log";
+        workspace
+            .create_dir_all(std::path::Path::new(".agent/logs/commit_generation"))
+            .expect("create log dir");
+        workspace
+            .write(
+                std::path::Path::new(log),
+                r#"assistant output
+```json
+{"type":"commit","subject":"fix: recovered from log","body_summary":"Recovered"}
+```
+"#,
+            )
+            .expect("write log");
+
+        assert!(recover_commit_artifact_from_log(&workspace, log));
+        let envelope = workspace
+            .read_artifact_json("commit_message")
+            .expect("read artifact")
+            .expect("artifact should exist");
+        assert_eq!(
+            envelope.content.get("subject").and_then(|v| v.as_str()),
+            Some("fix: recovered from log")
+        );
+    }
+
+    #[test]
+    fn extract_commit_payload_from_log_reads_plain_json_block_without_fence() {
+        let content = r#"
+analysis text before
+{
+  "type": "commit",
+  "subject": "feat: plain-json",
+  "body_summary": "no fence"
+}
+analysis text after
+"#;
+        let payload = extract_commit_payload_from_log(content).expect("payload expected");
+        assert_eq!(payload.get("type").and_then(|v| v.as_str()), Some("commit"));
+        assert_eq!(
+            payload.get("subject").and_then(|v| v.as_str()),
+            Some("feat: plain-json")
         );
     }
 
@@ -596,7 +965,7 @@ mod append_extra_cmd_args_tests {
         assert_eq!(ctx.session.drain.as_str(), "commit");
         assert!(!ctx.endpoint_uri.is_empty());
         assert!(
-            ctx.endpoint_uri.starts_with("tcp://127.0.0.1:"),
+            ctx.endpoint_uri.starts_with("http://127.0.0.1:") && ctx.endpoint_uri.ends_with("/mcp"),
             "unexpected endpoint URI: {}",
             ctx.endpoint_uri
         );

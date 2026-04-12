@@ -550,36 +550,6 @@ impl crate::reducer::boundary::MainEffectHandler {
     }
 
     /// Create a git commit from the validated commit message.
-    pub(in crate::reducer::boundary) fn assert_create_commit_boundary_invariants(
-        &self,
-        message: &str,
-    ) {
-        debug_assert!(
-            self.state.phase == crate::reducer::event::PipelinePhase::CommitMessage,
-            "CreateCommit invariant violation: orchestrator may only commit during CommitMessage phase"
-        );
-        debug_assert!(
-            self.state.commit_xml_archived,
-            "CreateCommit invariant violation: commit XML/artifact must be archived before git side-effects"
-        );
-        debug_assert!(
-            matches!(
-                self.state.commit,
-                crate::reducer::state::CommitState::Generated { .. }
-            ),
-            "CreateCommit invariant violation: commit state must be Generated before git side-effects"
-        );
-        if let crate::reducer::state::CommitState::Generated {
-            message: expected_message,
-        } = &self.state.commit
-        {
-            debug_assert_eq!(
-                expected_message, message,
-                "CreateCommit invariant violation: effect message must match reducer-validated commit message"
-            );
-        }
-    }
-
     /// Create a git commit from the validated commit message.
     pub(in crate::reducer::boundary) fn create_commit(
         ctx: &PhaseContext<'_>,

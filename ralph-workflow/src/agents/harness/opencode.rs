@@ -1,8 +1,7 @@
 //! OpenCode harness configuration.
 //!
 //! Generates MCP server configuration for OpenCode CLI.
-//! The MCP server entry tells OpenCode to spawn `ralph --mcp-proxy` which
-//! bridges stdio to Ralph's TCP loopback MCP server.
+//! The MCP server entry tells OpenCode to spawn `ralph --mcp-stdio`.
 
 use crate::agents::harness::{AgentHarness, HarnessConfig};
 use crate::agents::session::AgentSession;
@@ -11,7 +10,7 @@ use crate::agents::session::AgentSession;
 pub struct OpenCodeHarness;
 
 impl AgentHarness for OpenCodeHarness {
-    fn generate(&self, session: &AgentSession, mcp_endpoint: &str) -> HarnessConfig {
+    fn generate(&self, session: &AgentSession, _mcp_endpoint: &str) -> HarnessConfig {
         // Resolve the absolute path to the ralph binary. Falls back to bare "ralph"
         // if current_exe() cannot be determined.
         let ralph_command = std::env::current_exe()
@@ -22,11 +21,12 @@ impl AgentHarness for OpenCodeHarness {
             "mcp": {
                 "ralph": {
                     "type": "local",
-                    "command": [ralph_command, "--mcp-proxy"],
+                    "command": [ralph_command, "--mcp-stdio"],
                     "enabled": true,
                     "environment": {
-                        "RALPH_MCP_ENDPOINT": mcp_endpoint,
-                        "RALPH_SESSION_ID": session.session_id.as_str()
+                        "RALPH_SESSION_ID": session.session_id.as_str(),
+                        "RALPH_MCP_RUN_ID": session.run_id.as_str(),
+                        "RALPH_SESSION_DRAIN": session.drain.as_str()
                     }
                 }
             }
@@ -54,8 +54,8 @@ mod tests {
             HarnessConfig::OpenCode(json) => {
                 assert!(json.contains("\"mcp\""));
                 assert!(json.contains("ralph"));
-                assert!(json.contains("--mcp-proxy"));
-                assert!(json.contains("RALPH_MCP_ENDPOINT"));
+                assert!(json.contains("--mcp-stdio"));
+                assert!(json.contains("RALPH_SESSION_DRAIN"));
             }
             _ => panic!("Expected OpenCode variant"),
         }

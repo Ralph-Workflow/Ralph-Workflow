@@ -54,9 +54,18 @@ pub struct ClaudeCodeSettings {
 /// Configuration for a single MCP server entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MCPServerConfig {
-    pub command: String,
-    pub args: Vec<String>,
-    pub env: std::collections::HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Claude Code permission allow/deny lists.
@@ -72,9 +81,12 @@ impl Default for ClaudeCodeSettings {
             mcp_servers: std::collections::HashMap::from([(
                 "ralph".to_string(),
                 MCPServerConfig {
-                    command: "ralph".to_string(),
-                    args: vec!["--mcp-proxy".to_string()],
-                    env: std::collections::HashMap::new(),
+                    r#type: Some("http".to_string()),
+                    url: Some("http://127.0.0.1:0/mcp".to_string()),
+                    headers: Some(std::collections::HashMap::new()),
+                    command: None,
+                    args: None,
+                    env: None,
                 },
             )]),
             permissions: ClaudePermissions {
@@ -193,8 +205,8 @@ mod tests {
             .mcp_servers
             .get("ralph")
             .expect("ralph server should exist");
-        assert_eq!(ralph_server.command, "ralph");
-        assert_eq!(ralph_server.args, vec!["--mcp-proxy"]);
+        assert_eq!(ralph_server.r#type.as_deref(), Some("http"));
+        assert!(ralph_server.url.is_some());
         assert!(settings
             .permissions
             .allow

@@ -2,3 +2,4 @@
 
 mod ccs_filesystem_tests;
 mod child_process_timeout_detection;
+mod mcp_runtime_probe_tests;

@@ -50,3 +50,40 @@ fn heartbeat_inside_grace_resets_monitor() {
     let decision = monitor.check(heartbeat_time + Duration::from_millis(5));
     assert_eq!(decision, HeartbeatDecision::Healthy);
 }
+
+#[test]
+fn grace_window_decision_preserves_original_deadline_until_termination() {
+    let mut monitor = HeartbeatMonitor::new(small_policy());
+    let start = Instant::now();
+    monitor.record_heartbeat(start);
+
+    let first_grace = monitor.check(start + Duration::from_millis(25));
+    let HeartbeatDecision::GraceWindow {
+        deadline: first_deadline,
+        ..
+    } = first_grace
+    else {
+        panic!("expected first grace-window decision");
+    };
+
+    let second_grace = monitor.check(start + Duration::from_millis(40));
+    let HeartbeatDecision::GraceWindow {
+        deadline: second_deadline,
+        ..
+    } = second_grace
+    else {
+        panic!("expected second grace-window decision before expiration");
+    };
+
+    assert_eq!(
+        first_deadline, second_deadline,
+        "grace window deadline must stay stable while waiting for reconnect"
+    );
+
+    let terminate = monitor.check(first_deadline + Duration::from_millis(1));
+    assert_eq!(
+        terminate,
+        HeartbeatDecision::Terminate,
+        "monitor must terminate immediately after grace deadline passes"
+    );
+}

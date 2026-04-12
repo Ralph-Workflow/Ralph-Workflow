@@ -291,3 +291,15 @@ That is why this incident survived so many partial fixes.
 The correct long-term fix is:
 
 > one stable run-scoped MCP server, with session-aware policy inside it, and provider-truth contract tests at the real boundary.
+
+---
+
+## Implementation notes (added after Wave 3 completion)
+
+The implemented architecture follows the corrected target with one clarification:
+
+**Runtime transport is TCP loopback-only.** The MCP server binds to a TCP loopback endpoint (for example `tcp://127.0.0.1:<port>`) and this endpoint is the only supported runtime transport. Unix socket paths exist only in explicit negative test cases that verify `unix://` endpoints are correctly rejected at the boundary. The `TcpLoopbackTransport` symbol name reflects the actual behavior and avoids unix-oriented terminology in runtime paths.
+
+**Commit boundary is orchestrator-owned.** The MCP server `submit_artifact` tool is the only commit-relevant operation exposed at the MCP boundary. The orchestrator reads the submitted artifact and performs the actual `git commit` via `Effect::CreateCommit`. MCP-side git write operations are denied by the policy gate in commit mode.
+
+**Policy matrix enforced server-side.** The `commit` drain maps to a read-only + artifact-submission-only policy. Dev and fixer drains remain read-write capable. All enforcement happens inside `mcp-server` via the pre-dispatch capability check, not via provider-side prompt conventions.

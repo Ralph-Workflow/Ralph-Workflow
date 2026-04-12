@@ -327,4 +327,20 @@ mod tests {
             "retry prompt must preserve orchestrator-owned commit execution boundary"
         );
     }
+
+    #[test]
+    fn test_commit_submission_retry_prompt_keeps_artifact_only_boundary_for_any_tool_name() {
+        let base_prompt = "Base commit prompt";
+
+        let retry = commit_submission_retry_prompt(base_prompt, "mcp__ralph__write_file");
+
+        assert!(
+            retry.contains("submit the artifact"),
+            "retry prompt must enforce artifact-only handoff even when previous tool was not submit_artifact"
+        );
+        assert!(
+            retry.contains("Do NOT run git commit"),
+            "retry prompt must preserve orchestrator-owned commit execution boundary"
+        );
+    }
 }
