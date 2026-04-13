@@ -212,3 +212,94 @@ cargo xtask dylint
 **Broader policy:** known pre-existing issues anywhere in the repo must also be fixed immediately, even when they are outside the narrow change you started with.
 
 For dylint details/troubleshooting, see `docs/tooling/dylint.md`.
+
+---
+
+## Python Verification (ralph-python)
+
+The Python implementation uses a separate verification process from the Rust codebase.
+
+### Canonical Verification Command
+
+```bash
+cd ralph-python
+make verify
+```
+
+This runs all three Python verification checks in sequence:
+1. `make lint` — ruff check (zero violations)
+2. `make typecheck` — mypy strict (zero type errors)
+3. `make test-cov` — pytest with coverage (80% minimum branch coverage)
+
+### Individual Verification Commands
+
+```bash
+cd ralph-python
+
+# Lint: ruff check all source and tests
+ruff check ralph/ tests/
+
+# Format check: verify ruff format compliance
+ruff format --check ralph/ tests/
+
+# Type check: mypy strict mode
+mypy ralph/
+
+# Test: run pytest with coverage
+pytest --cov=ralph --cov-report=term-missing --cov-fail-under=80 -v
+```
+
+### Policy Loader Smoke Test
+
+Verify the policy loader can load defaults:
+
+```bash
+cd ralph-python
+python -c "from ralph.policy.loader import load_policy; from pathlib import Path; load_policy(Path('ralph/policy/defaults'))"
+```
+
+Expected: No error, all six drains (planning, development, analysis, review, fix, commit) are bound.
+
+### Distribution Verification
+
+```bash
+cd ralph-python
+
+# Binary smoke test
+make dist-binary
+./dist/ralph-workflow --help
+
+# Formula validation (requires Homebrew)
+make formula-check
+```
+
+### Python Tooling Reference
+
+For detailed tooling documentation, see `docs/tooling/python-tooling.md`.
+
+### Pre-commit Hooks
+
+Install pre-commit hooks to run verification before each commit:
+
+```bash
+cd ralph-python
+pip install -e ".[dev]"
+pre-commit install
+```
+
+Run manually:
+```bash
+pre-commit run --all-files
+```
+
+### Verification Failure Resolution
+
+If any Python verification check fails:
+
+1. **ruff check fails**: Run `ruff check --fix ralph/ tests/` to auto-fix, then review remaining issues
+2. **mypy fails**: Fix type annotations — mypy strict mode requires complete annotations
+3. **pytest fails**: Fix failing tests — coverage must meet 80% threshold
+4. **Policy validation fails**: Check TOML files in `ralph/policy/defaults/` for structural errors
+
+**Zero tolerance:** All verification checks must pass with zero errors before PR.
+

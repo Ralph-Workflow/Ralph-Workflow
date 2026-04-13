@@ -1,0 +1,73 @@
+# Default artifacts policy for Ralph.
+# Defines MCP artifact contracts for each drain.
+#
+# MCP-artifact-only: Unlike the legacy Rust implementation, the Python Ralph
+# does not support XML/XSD structured output. All agent output flows through
+# typed JSON artifacts submitted via the MCP bridge.
+#
+# decision_vocabulary defines valid values for analysis decision routing:
+# - "continue" / "success" / "approve" → on_success transition
+# - "loopback" / "retry" / "request_changes" → on_loopback transition
+# - "fail" / "reject" → on_failure transition
+
+# ---------------------------------------------------------------------------
+# Planning artifact
+# ---------------------------------------------------------------------------
+
+[artifacts.planning_output]
+drain = "planning"
+artifact_type = "planning_json"
+decision_vocabulary = []
+prompt_template = ""
+
+# ---------------------------------------------------------------------------
+# Development analysis decision
+# ---------------------------------------------------------------------------
+
+[artifacts.development_analysis_decision]
+drain = "development_analysis"
+artifact_type = "development_analysis_decision"
+decision_vocabulary = [
+    "continue",
+    "success",
+    "loopback",
+    "retry",
+    "request_changes",
+    "fail",
+]
+prompt_template = ""
+
+# ---------------------------------------------------------------------------
+# Review analysis decision
+# ---------------------------------------------------------------------------
+
+[artifacts.review_analysis_decision]
+drain = "review_analysis"
+artifact_type = "review_analysis_decision"
+decision_vocabulary = [
+    "approve",
+    "request_changes",
+    "reject",
+    "loopback",
+]
+prompt_template = ""
+
+# ---------------------------------------------------------------------------
+# Development commit artifact
+# ---------------------------------------------------------------------------
+
+[artifacts.development_commit_artifact]
+drain = "development_commit"
+artifact_type = "commit_message"
+decision_vocabulary = []
+prompt_template = ""
+
+# ---------------------------------------------------------------------------
+# Review commit artifact
+# ---------------------------------------------------------------------------
+
+[artifacts.review_commit_artifact]
+drain = "review_commit"
+artifact_type = "commit_message"
+decision_vocabulary = []
+prompt_template = ""

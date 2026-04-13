@@ -1,0 +1,223 @@
+"""MCP artifact handling.
+
+Provides artifact submission, retrieval, and management for MCP interactions.
+Artifacts are JSON files stored in the workspace's .agent/artifacts/ directory.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from loguru import logger
+
+
+@dataclass(frozen=True)
+class ArtifactSubmitOptions:
+    """Options for artifact submission."""
+
+    metadata: dict[str, Any] | None = None
+    overwrite: bool = False
+
+
+class ArtifactError(Exception):
+    """Base exception for artifact errors."""
+
+    pass
+
+
+class ArtifactNotFoundError(ArtifactError):
+    """Raised when an artifact is not found."""
+
+    pass
+
+
+class ArtifactExistsError(ArtifactError):
+    """Raised when attempting to create an artifact that already exists."""
+
+    pass
+
+
+@dataclass
+class Artifact:
+    """Represents an MCP artifact.
+
+    Attributes:
+        name: Unique artifact name.
+        artifact_type: Type identifier (e.g., "planning", "code", "review").
+        content: Artifact content as a dictionary.
+        created_at: ISO timestamp when artifact was created.
+        updated_at: ISO timestamp when artifact was last updated.
+        metadata: Optional metadata dictionary.
+    """
+
+    name: str
+    artifact_type: str
+    content: dict[str, Any]
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert artifact to dictionary for JSON serialization."""
+        return {
+            "name": self.name,
+            "type": self.artifact_type,
+            "content": self.content,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Artifact:
+        """Create an artifact from a dictionary."""
+        return cls(
+            name=data["name"],
+            artifact_type=data.get("type", "unknown"),
+            content=data["content"],
+            created_at=data.get("created_at", datetime.utcnow().isoformat()),
+            updated_at=data.get("updated_at", datetime.utcnow().isoformat()),
+            metadata=data.get("metadata", {}),
+        )
+
+
+def submit_artifact(
+    artifact_dir: Path,
+    name: str,
+    artifact_type: str,
+    content: dict[str, Any],
+    options: ArtifactSubmitOptions | None = None,
+) -> Artifact:
+    """Submit a new artifact.
+
+    Args:
+        artifact_dir: Directory to store artifacts (e.g., .agent/artifacts/).
+        name: Unique artifact name.
+        artifact_type: Type of artifact.
+        content: Artifact content.
+        options: Optional submission options.
+
+    Returns:
+        The created artifact.
+
+    Raises:
+        ArtifactExistsError: If artifact exists and overwrite is False.
+    """
+    opts = options or ArtifactSubmitOptions()
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / f"{name}.json"
+
+    if artifact_path.exists() and not opts.overwrite:
+        raise ArtifactExistsError(f"Artifact '{name}' already exists")
+
+    artifact = Artifact(
+        name=name,
+        artifact_type=artifact_type,
+        content=content,
+        metadata=opts.metadata or {},
+    )
+
+    artifact_path.write_text(json.dumps(artifact.to_dict(), indent=2))
+    logger.debug("Submitted artifact: {} at {}", name, artifact_path)
+    return artifact
+
+
+def get_artifact(artifact_dir: Path, name: str) -> Artifact:
+    """Retrieve an artifact by name.
+
+    Args:
+        artifact_dir: Directory where artifacts are stored.
+        name: Artifact name.
+
+    Returns:
+        The artifact.
+
+    Raises:
+        ArtifactNotFoundError: If artifact does not exist.
+    """
+    artifact_path = artifact_dir / f"{name}.json"
+    if not artifact_path.exists():
+        raise ArtifactNotFoundError(f"Artifact '{name}' not found")
+
+    data = json.loads(artifact_path.read_text())
+    return Artifact.from_dict(data)
+
+
+def list_artifacts(artifact_dir: Path) -> list[Artifact]:
+    """List all artifacts in the directory.
+
+    Args:
+        artifact_dir: Directory where artifacts are stored.
+
+    Returns:
+        List of artifacts.
+    """
+    artifacts_dir = Path(artifact_dir)
+    if not artifacts_dir.exists():
+        return []
+
+    artifacts = []
+    for path in artifacts_dir.glob("*.json"):
+        try:
+            data = json.loads(path.read_text())
+            artifacts.append(Artifact.from_dict(data))
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.warning("Failed to read artifact {}: {}", path, exc)
+
+    return sorted(artifacts, key=lambda a: a.updated_at)
+
+
+def update_artifact(
+    artifact_dir: Path,
+    name: str,
+    content: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> Artifact:
+    """Update an existing artifact.
+
+    Args:
+        artifact_dir: Directory where artifacts are stored.
+        name: Artifact name.
+        content: New content (merged with existing).
+        metadata: New metadata (merged with existing).
+
+    Returns:
+        The updated artifact.
+
+    Raises:
+        ArtifactNotFoundError: If artifact does not exist.
+    """
+    artifact = get_artifact(artifact_dir, name)
+
+    if content is not None:
+        artifact.content.update(content)
+    if metadata is not None:
+        artifact.metadata.update(metadata)
+
+    artifact.updated_at = datetime.utcnow().isoformat()
+
+    artifact_path = artifact_dir / f"{name}.json"
+    artifact_path.write_text(json.dumps(artifact.to_dict(), indent=2))
+    logger.debug("Updated artifact: {}", name)
+    return artifact
+
+
+def delete_artifact(artifact_dir: Path, name: str) -> None:
+    """Delete an artifact.
+
+    Args:
+        artifact_dir: Directory where artifacts are stored.
+        name: Artifact name.
+
+    Raises:
+        ArtifactNotFoundError: If artifact does not exist.
+    """
+    artifact_path = artifact_dir / f"{name}.json"
+    if not artifact_path.exists():
+        raise ArtifactNotFoundError(f"Artifact '{name}' not found")
+    artifact_path.unlink()
+    logger.debug("Deleted artifact: {}", name)

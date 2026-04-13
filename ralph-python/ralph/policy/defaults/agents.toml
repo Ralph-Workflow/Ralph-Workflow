@@ -1,0 +1,78 @@
+# Default agents policy for Ralph.
+# Defines agent chains (fallback sequences) and drain-to-chain bindings.
+#
+# Chains are ordered fallback lists. Ralph tries agents in order;
+# on failure it retries up to max_retries times before advancing to the next agent.
+# After all agents in a chain are exhausted, the pipeline fails.
+
+# ---------------------------------------------------------------------------
+# Agent chains
+# ---------------------------------------------------------------------------
+
+[agent_chains.planning]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 1000
+
+[agent_chains.development]
+agents = ["claude", "opencode"]
+max_retries = 3
+retry_delay_ms = 1000
+
+[agent_chains.development_analysis]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
+[agent_chains.development_commit]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
+[agent_chains.review]
+agents = ["claude"]
+max_retries = 3
+retry_delay_ms = 1000
+
+[agent_chains.review_analysis]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
+[agent_chains.fix]
+agents = ["claude"]
+max_retries = 3
+retry_delay_ms = 1000
+
+[agent_chains.review_commit]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
+# ---------------------------------------------------------------------------
+# Drain bindings
+# ---------------------------------------------------------------------------
+
+[agent_drains.planning]
+chain = "planning"
+
+[agent_drains.development]
+chain = "development"
+
+[agent_drains.development_analysis]
+chain = "development_analysis"
+
+[agent_drains.development_commit]
+chain = "development_commit"
+
+[agent_drains.review]
+chain = "review"
+
+[agent_drains.review_analysis]
+chain = "review_analysis"
+
+[agent_drains.fix]
+chain = "fix"
+
+[agent_drains.review_commit]
+chain = "review_commit"

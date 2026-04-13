@@ -1,0 +1,83 @@
+# Default pipeline policy for Ralph.
+# This defines the phase graph that drives the configurable orchestration layer.
+#
+# Phase routing is driven entirely by this file — no hardcoded phase transitions
+# exist in the reducer. Each phase references a drain (bound in agents.toml) and
+# defines routing rules for success, failure, and loopback signals.
+
+[phases.planning]
+drain = "planning"
+embeds_analysis = false
+requires_commit = false
+[phases.planning.transitions]
+on_success = "development"
+
+[phases.development]
+drain = "development"
+embeds_analysis = false
+requires_commit = false
+[phases.development.transitions]
+on_success = "development_analysis"
+on_loopback = "development"
+
+[phases.development_analysis]
+drain = "development_analysis"
+embeds_analysis = false
+requires_commit = false
+[phases.development_analysis.transitions]
+on_success = "development_commit"
+on_loopback = "development"
+
+[phases.development_commit]
+drain = "development_commit"
+embeds_analysis = false
+requires_commit = true
+[phases.development_commit.transitions]
+on_success = "review"
+on_failure = "failed"
+
+[phases.review]
+drain = "review"
+embeds_analysis = false
+requires_commit = false
+[phases.review.transitions]
+on_success = "review_analysis"
+on_loopback = "fix"
+
+[phases.review_analysis]
+drain = "review_analysis"
+embeds_analysis = false
+requires_commit = false
+[phases.review_analysis.transitions]
+on_success = "review_commit"
+on_loopback = "fix"
+
+[phases.fix]
+drain = "fix"
+embeds_analysis = false
+requires_commit = false
+[phases.fix.transitions]
+on_success = "review"
+on_loopback = "review"
+
+[phases.review_commit]
+drain = "review_commit"
+embeds_analysis = false
+requires_commit = true
+[phases.review_commit.transitions]
+on_success = "complete"
+on_failure = "failed"
+
+# The 'complete' phase is the terminal marker — it has no transitions
+# because the pipeline ends when it reaches terminal_phase.
+# No drain is needed for the terminal state.
+[phases.complete]
+drain = "complete"
+embeds_analysis = false
+requires_commit = false
+[phases.complete.transitions]
+on_success = "complete"
+on_loopback = "complete"
+
+entry_phase = "planning"
+terminal_phase = "complete"

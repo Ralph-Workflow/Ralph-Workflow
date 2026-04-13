@@ -1,0 +1,20 @@
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM", "RUF", "TCH", "PTH", "PERF", "PL"]
+ignore = [
+    "ANN101",  # Missing type annotation for self
+    "ANN102",  # Missing type annotation for cls
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["ANN"]
+"ralph/__init__.py" = ["F401"]
+
+[lint.isort]
+force-single-line = false
+
+[format]
+quote-style = "double"
+indent-style = "space"
