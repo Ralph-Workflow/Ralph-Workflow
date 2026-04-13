@@ -31,7 +31,7 @@ use super::helpers::create_state_with_agent_chain_in_development;
 fn test_agent_sigsegv_caught_by_fault_tolerant_executor() {
     with_default_timeout(|| {
         let state = PipelineState {
-            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(2, 3, 2),
+            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(3, 2),
             ..create_state_with_agent_chain_in_development()
         };
 
@@ -87,7 +87,7 @@ fn test_agent_sigsegv_caught_by_fault_tolerant_executor() {
 fn test_agent_panic_caught_by_fault_tolerant_executor() {
     with_default_timeout(|| {
         let state = PipelineState {
-            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(2, 3, 2),
+            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(3, 2),
             ..create_state_with_agent_chain_in_development()
         };
 
@@ -295,7 +295,7 @@ fn test_retry_cycle_backoff_is_explicit_effect() {
 fn test_pipeline_continues_after_agent_sigsegv() {
     with_default_timeout(|| {
         let state = PipelineState {
-            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(2, 3, 2),
+            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(3, 2),
             ..create_state_with_agent_chain_in_development()
         };
         let initial_agent_index = state.agent_chain.current_agent_index;
@@ -372,273 +372,8 @@ fn test_pipeline_continues_after_multiple_agent_failures() {
 }
 
 // ============================================================================
-// XSD RETRY STATE TRACKING TESTS
-// ============================================================================
-
-/// Test that XSD retry decisions come from reducer state, not implicit logic.
-///
-/// The `invalid_output_attempts` counter in `ContinuationState` must be the
-/// single source of truth for XSD retry decisions. This test verifies
-/// that the reducer correctly updates this counter and triggers agent
-/// fallback at the right threshold.
-#[test]
-fn test_xsd_retry_decisions_from_reducer_state_only() {
-    use ralph_workflow::reducer::state::{ContinuationState, PipelineState};
-    use ralph_workflow::reducer::state_reduction::reduce;
-
-    with_default_timeout(|| {
-        // Set up state with multiple agents for fallback
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.phase = PipelinePhase::Development;
-        state.continuation = ContinuationState::new().with_max_xsd_retry(3);
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["agent-1".to_string(), "agent-2".to_string()],
-            vec![vec![], vec![]],
-            AgentRole::Developer,
-        );
-
-        // Verify counter starts at 0
-        assert_eq!(state.continuation.invalid_output_attempts, 0);
-
-        // Process validation failures up to threshold
-        for i in 0..2 {
-            state = reduce(
-                state,
-                PipelineEvent::development_output_validation_failed(0, i),
-            );
-            assert_eq!(
-                state.continuation.invalid_output_attempts,
-                i + 1,
-                "Counter should increment on each failure"
-            );
-            // Agent should NOT change until threshold exceeded
-            assert_eq!(
-                state.agent_chain.current_agent(),
-                Some(&"agent-1".to_string()),
-                "Agent should not change until threshold exceeded"
-            );
-        }
-
-        // One more failure should trigger agent advancement
-        state = reduce(
-            state,
-            PipelineEvent::development_output_validation_failed(0, 2),
-        );
-
-        // Counter should reset after agent switch
-        assert_eq!(
-            state.continuation.invalid_output_attempts, 0,
-            "Counter should reset after agent advancement"
-        );
-
-        // Agent should have advanced
-        assert_eq!(
-            state.agent_chain.current_agent(),
-            Some(&"agent-2".to_string()),
-            "Agent should advance after max retries"
-        );
-    });
-}
-
-/// Test complete XSD retry exhaustion flow is reducer-driven.
-///
-/// Verifies that:
-/// 1. XSD validation failures increment state counter
-/// 2. After configured XSD retry limit, agent chain advances
-/// 3. Counter resets after agent advancement
-/// 4. If all agents exhausted with retries, chain enters exhausted state
-///
-/// This test ensures no hidden XSD retry logic exists outside the reducer.
-#[test]
-fn test_xsd_retry_exhaustion_complete_flow() {
-    use ralph_workflow::reducer::state::{ContinuationState, PipelineState};
-    use ralph_workflow::reducer::state_reduction::reduce;
-
-    with_default_timeout(|| {
-        // Set up state with two agents
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.phase = PipelinePhase::Development;
-        state.continuation = ContinuationState::new().with_max_xsd_retry(3);
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["agent-primary".to_string(), "agent-fallback".to_string()],
-            vec![vec![], vec![]],
-            AgentRole::Developer,
-        );
-
-        // Phase 1: Exhaust retries on primary agent
-        for attempt in 0..2 {
-            assert_eq!(
-                state.agent_chain.current_agent(),
-                Some(&"agent-primary".to_string()),
-                "Should stay on primary agent until retries exhausted"
-            );
-            state = reduce(
-                state,
-                PipelineEvent::development_output_validation_failed(0, attempt),
-            );
-        }
-
-        // Counter should be at MAX
-        assert_eq!(
-            state.continuation.invalid_output_attempts, 2,
-            "Counter should be at expected value before final failure"
-        );
-
-        // One more failure triggers agent advancement
-        state = reduce(
-            state,
-            PipelineEvent::development_output_validation_failed(0, 2),
-        );
-
-        // After exhausting retries, should be on fallback agent
-        assert_eq!(
-            state.agent_chain.current_agent(),
-            Some(&"agent-fallback".to_string()),
-            "Should advance to fallback agent after exhausting retries"
-        );
-        assert_eq!(
-            state.continuation.invalid_output_attempts, 0,
-            "Counter should reset after agent advancement"
-        );
-
-        // Phase 2: Exhaust retries on fallback agent
-        for attempt in 0..3 {
-            state = reduce(
-                state,
-                PipelineEvent::development_output_validation_failed(0, attempt),
-            );
-        }
-
-        // After exhausting all agents, chain should wrap around (cycle increment)
-        // or point back to first agent if not exhausted
-        assert!(
-            state.agent_chain.current_agent_index == 0
-                || state.agent_chain.retry_cycle > 0
-                || state.agent_chain.is_exhausted(),
-            "After exhausting all agents, chain should wrap, increment cycle, or be exhausted"
-        );
-    });
-}
-
-/// Test that XSD retry state is distinct from agent invocation failure state.
-///
-/// XSD validation failures (bad XML output) and agent invocation failures
-/// (crashes, auth errors) are tracked separately. This test verifies the
-/// reducer treats them as independent failure modes.
-#[test]
-fn test_xsd_retry_state_independent_of_invocation_failures() {
-    use ralph_workflow::reducer::state::PipelineState;
-    use ralph_workflow::reducer::state_reduction::reduce;
-
-    with_default_timeout(|| {
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.phase = PipelinePhase::Development;
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["agent-1".to_string(), "agent-2".to_string()],
-            vec![vec!["model-a".to_string(), "model-b".to_string()], vec![]],
-            AgentRole::Developer,
-        );
-
-        // Start with XSD validation failure
-        state = reduce(
-            state,
-            PipelineEvent::development_output_validation_failed(0, 0),
-        );
-        assert_eq!(state.continuation.invalid_output_attempts, 1);
-        assert_eq!(state.agent_chain.current_agent_index, 0, "Same agent");
-
-        // Then get a model unavailable error (retriable) - should advance model, not agent
-        // Note: Network errors now trigger connectivity check, not model fallback
-        state = reduce(
-            state,
-            PipelineEvent::agent_invocation_failed(
-                AgentRole::Developer,
-                "agent-1".into(),
-                1,
-                AgentErrorKind::ModelUnavailable,
-                true,
-            ),
-        );
-
-        // Model unavailable error should advance model, but XSD counter remains
-        assert_eq!(state.agent_chain.current_agent_index, 0, "Same agent");
-        assert!(
-            state.agent_chain.current_model_index > 0,
-            "Model should advance"
-        );
-        // XSD counter should NOT be affected by invocation failures
-        assert_eq!(
-            state.continuation.invalid_output_attempts, 1,
-            "XSD counter should remain independent"
-        );
-    });
-}
-
-// ============================================================================
 // PLANNING PHASE XSD RETRY TESTS
 // ============================================================================
-
-/// Test that planning XSD retry decisions come from reducer state.
-///
-/// The `invalid_output_attempts` counter in `ContinuationState` must be the
-/// single source of truth for planning XSD retry decisions.
-#[test]
-fn test_planning_xsd_retry_decisions_from_reducer_state() {
-    use ralph_workflow::reducer::state::{ContinuationState, PipelineState};
-    use ralph_workflow::reducer::state_reduction::reduce;
-
-    with_default_timeout(|| {
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.phase = PipelinePhase::Planning;
-        state.continuation = ContinuationState::new().with_max_xsd_retry(3);
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["agent-1".to_string(), "agent-2".to_string()],
-            vec![vec![], vec![]],
-            AgentRole::Developer,
-        );
-
-        // Verify counter starts at 0
-        assert_eq!(state.continuation.invalid_output_attempts, 0);
-
-        // Process validation failures up to threshold
-        for i in 0..2 {
-            state = reduce(
-                state,
-                PipelineEvent::planning_output_validation_failed(0, i),
-            );
-            assert_eq!(
-                state.continuation.invalid_output_attempts,
-                i + 1,
-                "Counter should increment on each failure"
-            );
-            // Agent should NOT change until threshold exceeded
-            assert_eq!(
-                state.agent_chain.current_agent(),
-                Some(&"agent-1".to_string()),
-                "Agent should not change until threshold exceeded"
-            );
-        }
-
-        // One more failure should trigger agent advancement
-        state = reduce(
-            state,
-            PipelineEvent::planning_output_validation_failed(0, 2),
-        );
-
-        // Counter should reset after agent switch
-        assert_eq!(
-            state.continuation.invalid_output_attempts, 0,
-            "Counter should reset after agent advancement"
-        );
-
-        // Agent should have advanced
-        assert_eq!(
-            state.agent_chain.current_agent(),
-            Some(&"agent-2".to_string()),
-            "Agent should advance after max retries"
-        );
-    });
-}
 
 /// Test that planning XSD retry is independent of development XSD retry.
 ///
@@ -720,7 +455,7 @@ fn test_planning_xsd_retry_state_persistence() {
 #[test]
 fn test_commit_phase_uses_reviewer_chain_fallback() {
     use ralph_workflow::reducer::state::{
-        CommitState, ContinuationState, PipelineState, MAX_VALIDATION_RETRY_ATTEMPTS,
+        CommitState, PipelineState, MAX_VALIDATION_RETRY_ATTEMPTS,
     };
     use ralph_workflow::reducer::state_reduction::reduce;
 
@@ -728,12 +463,6 @@ fn test_commit_phase_uses_reviewer_chain_fallback() {
         // Set up state with reviewer agents in commit role (simulating fallback)
         let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
         state.phase = PipelinePhase::CommitMessage;
-        // Force immediate exhaustion of XSD retry budget so we exercise agent fallback.
-        state.continuation = ContinuationState {
-            xsd_retry_count: 0,
-            max_xsd_retry_count: 1,
-            ..ContinuationState::new()
-        };
         state.agent_chain = state.agent_chain.with_agents(
             vec!["reviewer-claude".to_string(), "reviewer-codex".to_string()],
             vec![vec![], vec![]],

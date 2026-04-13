@@ -42,19 +42,13 @@ fn test_network_failure_sets_check_pending_not_retry() {
         new_state.continuation.same_agent_retry_count, state.continuation.same_agent_retry_count,
         "same_agent_retry_count should be preserved"
     );
-    assert_eq!(
-        new_state.continuation.xsd_retry_count, state.continuation.xsd_retry_count,
-        "xsd_retry_count should be preserved"
-    );
 }
 
 #[test]
 fn test_offline_detection_freezes_retry_state() {
-    // Given: state with xsd_retry_pending=true and some retry counts
+    // Given: state with same_agent_retry_pending=true and some retry counts
     let state = PipelineState {
         continuation: ContinuationState {
-            xsd_retry_count: 3,
-            xsd_retry_pending: true,
             same_agent_retry_count: 2,
             same_agent_retry_pending: true,
             ..ContinuationState::new()
@@ -73,14 +67,6 @@ fn test_offline_detection_freezes_retry_state() {
     let new_state = reduce(state.clone(), event);
 
     // Then: retry state is preserved
-    assert_eq!(
-        new_state.continuation.xsd_retry_count, 3,
-        "xsd_retry_count should be preserved"
-    );
-    assert!(
-        new_state.continuation.xsd_retry_pending,
-        "xsd_retry_pending should be preserved"
-    );
     assert_eq!(
         new_state.continuation.same_agent_retry_count, 2,
         "same_agent_retry_count should be preserved"
@@ -230,7 +216,6 @@ fn test_back_online_resumes_without_budget_consumption() {
             ..ConnectivityState::default()
         },
         continuation: ContinuationState {
-            xsd_retry_count: 3,
             same_agent_retry_count: 2,
             ..ContinuationState::new()
         },
@@ -253,10 +238,6 @@ fn test_back_online_resumes_without_budget_consumption() {
     );
     // Budget should be exactly as preserved
     assert_eq!(
-        new_state.continuation.xsd_retry_count, 3,
-        "xsd_retry_count should be preserved through offline window"
-    );
-    assert_eq!(
         new_state.continuation.same_agent_retry_count, 2,
         "same_agent_retry_count should be preserved through offline window"
     );
@@ -265,33 +246,6 @@ fn test_back_online_resumes_without_budget_consumption() {
 // =============================================================================
 // Orchestrator Priority Tests
 // =============================================================================
-
-#[test]
-fn test_offline_state_check_pending_blocks_retry_in_orchestrator() {
-    // Given: state with xsd_retry_pending=true AND check_pending=true
-    let state = PipelineState {
-        connectivity: ConnectivityState {
-            check_pending: true,
-            ..ConnectivityState::default()
-        },
-        continuation: ContinuationState {
-            xsd_retry_pending: true,
-            xsd_retry_count: 3,
-            ..ContinuationState::new()
-        },
-        ..create_test_state()
-    };
-
-    // When: determining next effect
-    let effect = determine_next_effect(&state);
-
-    // Then: connectivity check takes priority over XSD retry
-    assert!(
-        matches!(effect, Effect::CheckNetworkConnectivity),
-        "check_pending should block xsd_retry_pending: got {:?}",
-        effect
-    );
-}
 
 #[test]
 fn test_offline_state_poll_pending_blocks_continuation_in_orchestrator() {
@@ -313,37 +267,6 @@ fn test_offline_state_poll_pending_blocks_continuation_in_orchestrator() {
     assert!(
         matches!(effect, Effect::PollForConnectivity { .. }),
         "poll_pending should block continuation: got {:?}",
-        effect
-    );
-}
-
-#[test]
-fn test_back_online_allows_xsd_retry_to_proceed() {
-    // Given: state with xsd_retry_pending=true and connectivity restored
-    // create_test_state() starts in Planning phase
-    let state = PipelineState {
-        connectivity: ConnectivityState::default(), // Online, no pending checks
-        continuation: ContinuationState {
-            xsd_retry_pending: true,
-            xsd_retry_count: 3,
-            ..ContinuationState::new()
-        },
-        ..create_test_state()
-    };
-
-    // When: determining next effect
-    let effect = determine_next_effect(&state);
-
-    // Then: XSD retry effect is derived (PreparePlanningPrompt with XsdRetry mode for Planning phase)
-    assert!(
-        matches!(
-            effect,
-            Effect::PreparePlanningPrompt {
-                prompt_mode: crate::reducer::PromptMode::XsdRetry,
-                ..
-            }
-        ),
-        "After back online, xsd_retry should proceed: got {:?}",
         effect
     );
 }

@@ -51,7 +51,7 @@ pub use types::{Config, ReviewDepth, Verbosity};
 // Re-export unified config types for --init-global handling
 pub use unified::{
     unified_config_path, CcsAliasConfig, CcsConfig, ConfigInitResult as UnifiedConfigInitResult,
-    UnifiedConfig,
+    DrainConfigToml, OrchestrationConfig, UnifiedConfig,
 };
 
 // Re-export config environment types for dependency injection

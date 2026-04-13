@@ -56,7 +56,7 @@ use std::collections::HashSet;
 /// - Tests were accidentally removed
 /// - A test module is not being compiled
 /// - The test discovery is not working correctly
-pub(crate) const MINIMUM_EXPECTED_TESTS: usize = 400;
+pub(crate) const MINIMUM_EXPECTED_TESTS: usize = 365;
 
 struct SourceFile {
     path: &'static str,
@@ -467,10 +467,6 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         ),
     },
     SourceFile {
-        path: "reducer_legacy_rejection/xsd_retry_invariants.rs",
-        contents: include_str!("reducer_legacy_rejection/xsd_retry_invariants.rs"),
-    },
-    SourceFile {
         path: "reducer_legacy_rejection/archival_invariants.rs",
         contents: include_str!("reducer_legacy_rejection/archival_invariants.rs"),
     },
@@ -673,14 +669,6 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "workflows/resume/v3/smoke.rs",
         contents: include_str!("workflows/resume/v3/smoke.rs"),
-    },
-    SourceFile {
-        path: "xsd_retry_missing_files.rs",
-        contents: include_str!("xsd_retry_missing_files.rs"),
-    },
-    SourceFile {
-        path: "xsd_retry_workflow.rs",
-        contents: include_str!("xsd_retry_workflow.rs"),
     },
 ];
 

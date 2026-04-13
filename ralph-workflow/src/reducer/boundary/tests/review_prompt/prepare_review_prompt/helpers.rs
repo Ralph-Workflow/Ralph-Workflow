@@ -27,9 +27,6 @@ impl ReadFailingWorkspace {
         }
     }
 
-    pub(in crate::reducer::boundary::tests::review_prompt) fn inner(&self) -> &MemoryWorkspace {
-        &self.inner
-    }
 }
 
 impl Workspace for ReadFailingWorkspace {

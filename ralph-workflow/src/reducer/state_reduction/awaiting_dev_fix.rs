@@ -180,24 +180,20 @@ pub(super) fn reduce_awaiting_dev_fix_event(
                             PipelinePhase::Planning => reset
                                 .prompt_inputs
                                 .clone()
-                                .with_planning_cleared()
-                                .with_xsd_retry_cleared(),
+                                .with_planning_cleared(),
                             PipelinePhase::Development => reset
                                 .prompt_inputs
                                 .clone()
-                                .with_development_cleared()
-                                .with_xsd_retry_cleared(),
+                                .with_development_cleared(),
                             PipelinePhase::Review => reset
                                 .prompt_inputs
                                 .clone()
-                                .with_review_cleared()
-                                .with_xsd_retry_cleared(),
+                                .with_review_cleared(),
                             PipelinePhase::CommitMessage => reset
                                 .prompt_inputs
                                 .clone()
-                                .with_commit_cleared()
-                                .with_xsd_retry_cleared(),
-                            _ => reset.prompt_inputs.clone().with_xsd_retry_cleared(),
+                                .with_commit_cleared(),
+                            _ => reset.prompt_inputs.clone(),
                         },
                         ..reset
                     };

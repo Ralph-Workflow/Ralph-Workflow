@@ -127,8 +127,6 @@ fn level_2_phase_start_recovery_clears_retry_and_continuation_flags() {
     let state = PipelineState {
         phase: PipelinePhase::AwaitingDevFix,
         continuation: ContinuationState {
-            xsd_retry_pending: true,
-            xsd_retry_session_reuse_pending: true,
             same_agent_retry_pending: true,
             same_agent_retry_reason: Some(crate::reducer::state::SameAgentRetryReason::Timeout),
             continue_pending: true,
@@ -150,8 +148,6 @@ fn level_2_phase_start_recovery_clears_retry_and_continuation_flags() {
     );
 
     assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
-    assert!(!new_state.continuation.xsd_retry_pending);
-    assert!(!new_state.continuation.xsd_retry_session_reuse_pending);
     assert!(!new_state.continuation.same_agent_retry_pending);
     assert!(new_state.continuation.same_agent_retry_reason.is_none());
     assert!(!new_state.continuation.continue_pending);

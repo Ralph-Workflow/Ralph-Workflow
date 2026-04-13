@@ -328,8 +328,14 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
             vec!["claude".to_string()],
         )]),
         agent_drains: std::collections::HashMap::from([
-            ("review".to_string(), "shared_review".to_string()),
-            ("fix".to_string(), "shared_review".to_string()),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
+            (
+                "fix".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
         ]),
         ..Default::default()
     };
@@ -362,11 +368,27 @@ fn test_resolve_agent_drains_checked_rejects_empty_named_drain_binding() {
             ("shared_review".to_string(), vec!["claude".to_string()]),
         ]),
         agent_drains: std::collections::HashMap::from([
-            ("planning".to_string(), "empty_dev".to_string()),
-            ("development".to_string(), "empty_dev".to_string()),
-            ("review".to_string(), "shared_review".to_string()),
-            ("fix".to_string(), "shared_review".to_string()),
+            (
+                "planning".to_string(),
+                DrainConfigToml::Chain("empty_dev".to_string()),
+            ),
+            (
+                "development".to_string(),
+                DrainConfigToml::Chain("empty_dev".to_string()),
+            ),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
+            (
+                "fix".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
         ]),
+        orchestration: OrchestrationConfig {
+            forbid_sibling_drain_inference: false,
+            require_explicit_drain_bindings: false,
+        },
         ..Default::default()
     };
 
@@ -416,11 +438,27 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
             ),
         ]),
         agent_drains: std::collections::HashMap::from([
-            ("planning".to_string(), "shared_dev".to_string()),
-            ("development".to_string(), "shared_dev".to_string()),
-            ("review".to_string(), "shared_review".to_string()),
-            ("fix".to_string(), "shared_review".to_string()),
+            (
+                "planning".to_string(),
+                DrainConfigToml::Chain("shared_dev".to_string()),
+            ),
+            (
+                "development".to_string(),
+                DrainConfigToml::Chain("shared_dev".to_string()),
+            ),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
+            (
+                "fix".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
         ]),
+        orchestration: OrchestrationConfig {
+            forbid_sibling_drain_inference: false,
+            require_explicit_drain_bindings: false,
+        },
         ..Default::default()
     };
 
@@ -461,11 +499,29 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
             ("analysis".to_string(), vec!["gemini".to_string()]),
         ]),
         agent_drains: std::collections::HashMap::from([
-            ("planning".to_string(), "shared_dev".to_string()),
-            ("development".to_string(), "shared_dev".to_string()),
-            ("review".to_string(), "shared_review".to_string()),
-            ("fix".to_string(), "shared_review".to_string()),
+            (
+                "planning".to_string(),
+                DrainConfigToml::Chain("shared_dev".to_string()),
+            ),
+            (
+                "development".to_string(),
+                DrainConfigToml::Chain("shared_dev".to_string()),
+            ),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
+            (
+                "fix".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
         ]),
+        // require_explicit_drain_bindings=false: commit and analysis resolve via tier-1
+        // chain-name matching (chains named "commit" and "analysis" exist).
+        orchestration: OrchestrationConfig {
+            require_explicit_drain_bindings: false,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -506,9 +562,19 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
             ),
         ]),
         agent_drains: std::collections::HashMap::from([
-            ("planning".to_string(), "shared_dev".to_string()),
-            ("review".to_string(), "shared_review".to_string()),
+            (
+                "planning".to_string(),
+                DrainConfigToml::Chain("shared_dev".to_string()),
+            ),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("shared_review".to_string()),
+            ),
         ]),
+        orchestration: OrchestrationConfig {
+            forbid_sibling_drain_inference: false,
+            require_explicit_drain_bindings: false,
+        },
         ..Default::default()
     };
 
@@ -977,4 +1043,364 @@ force_universal_prompt = false
         !merged.general.execution.force_universal_prompt,
         "force_universal_prompt should be from local (false)"
     );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_tier3_developer_chain_rejected_when_forbid_sibling_true() {
+    // Config has only a chain named "developer" (tier-3 legacy role-family name).
+    // With forbid_sibling_drain_inference=true (the default), tier-3 is not allowed.
+    // Planning must NOT silently resolve to the developer chain.
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([(
+            "developer".to_string(),
+            vec!["claude".to_string()],
+        )]),
+        // No agent_drains entries at all — only tier-3 would save it
+        orchestration: OrchestrationConfig {
+            forbid_sibling_drain_inference: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("tier-3 only chain must fail when forbid_sibling_drain_inference=true");
+
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::MissingBuiltinCoverage { .. }
+        ),
+        "expected MissingBuiltinCoverage, got: {error}"
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_tier3_developer_chain_resolves_when_forbid_sibling_false() {
+    // Config has only chains named "developer" and "reviewer" (tier-3 legacy role-family names).
+    // With forbid_sibling_drain_inference=false, tier-3 is allowed:
+    // planning/development/analysis → developer chain; review/fix/commit → reviewer chain.
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            ("developer".to_string(), vec!["dev-agent".to_string()]),
+            ("reviewer".to_string(), vec!["review-agent".to_string()]),
+        ]),
+        orchestration: OrchestrationConfig {
+            forbid_sibling_drain_inference: false,
+            require_explicit_drain_bindings: false,
+        },
+        ..Default::default()
+    };
+
+    let resolved = config
+        .resolve_agent_drains_checked()
+        .expect("tier-3 chain should resolve when forbid_sibling_drain_inference=false")
+        .expect("named chain config should resolve");
+
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning should resolve")
+            .agents,
+        vec!["dev-agent"]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Development)
+            .expect("development should resolve")
+            .agents,
+        vec!["dev-agent"]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Analysis)
+            .expect("analysis should resolve")
+            .agents,
+        vec!["dev-agent"]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Review)
+            .expect("review should resolve")
+            .agents,
+        vec!["review-agent"]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Fix)
+            .expect("fix should resolve")
+            .agents,
+        vec!["review-agent"]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Commit)
+            .expect("commit should resolve")
+            .agents,
+        vec!["review-agent"]
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_planning_drain_unknown_chain_reference() {
+    // Config where the planning drain references a chain that doesn't exist.
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([(
+            "shared_dev".to_string(),
+            vec!["codex".to_string()],
+        )]),
+        agent_drains: std::collections::HashMap::from([(
+            "planning".to_string(),
+            DrainConfigToml::Chain("nonexistent-chain".to_string()),
+        )]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("unknown chain reference must fail");
+
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::UnknownChainReference { .. }
+        ),
+        "expected UnknownChainReference, got: {error}"
+    );
+    let msg = error.to_string();
+    assert!(msg.contains("planning"), "expected 'planning' in: {msg}");
+    assert!(
+        msg.contains("nonexistent-chain"),
+        "expected 'nonexistent-chain' in: {msg}"
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_all_explicit_resolves_to_exact_chains() {
+    // All 6 drains explicitly bound to distinct chains — must resolve to exactly
+    // those chains with no drift (tier-1/2/3 fallback must not override explicit bindings).
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            ("plan-chain".to_string(), vec!["planner".to_string()]),
+            ("dev-chain".to_string(), vec!["developer".to_string()]),
+            ("review-chain".to_string(), vec!["reviewer".to_string()]),
+            ("fix-chain".to_string(), vec!["fixer".to_string()]),
+            ("commit-chain".to_string(), vec!["committer".to_string()]),
+            ("analysis-chain".to_string(), vec!["analyst".to_string()]),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            (
+                "planning".to_string(),
+                DrainConfigToml::Chain("plan-chain".to_string()),
+            ),
+            (
+                "development".to_string(),
+                DrainConfigToml::Chain("dev-chain".to_string()),
+            ),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("review-chain".to_string()),
+            ),
+            (
+                "fix".to_string(),
+                DrainConfigToml::Chain("fix-chain".to_string()),
+            ),
+            (
+                "commit".to_string(),
+                DrainConfigToml::Chain("commit-chain".to_string()),
+            ),
+            (
+                "analysis".to_string(),
+                DrainConfigToml::Chain("analysis-chain".to_string()),
+            ),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = config
+        .resolve_agent_drains_checked()
+        .expect("all-explicit drain config must resolve")
+        .expect("named drain config should resolve");
+
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning")
+            .chain_name,
+        "plan-chain"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Development)
+            .expect("development")
+            .chain_name,
+        "dev-chain"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Review)
+            .expect("review")
+            .chain_name,
+        "review-chain"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Fix)
+            .expect("fix")
+            .chain_name,
+        "fix-chain"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Commit)
+            .expect("commit")
+            .chain_name,
+        "commit-chain"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Analysis)
+            .expect("analysis")
+            .chain_name,
+        "analysis-chain"
+    );
+}
+
+#[test]
+fn test_merge_global_partial_local_adds_missing_drains_produces_complete_drain_map() {
+    // Global config has 4 of 6 drains (missing commit and analysis).
+    // Local config adds the 2 missing drains.
+    // The merged config must produce a complete drain map with all 6 drains.
+    let global_toml = r#"
+[agent_chains]
+shared_dev = ["codex"]
+shared_review = ["claude"]
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+"#;
+    let local_toml = r#"
+[agent_chains]
+commit_chain = ["aider"]
+analysis_chain = ["gemini"]
+[agent_drains]
+commit = "commit_chain"
+analysis = "analysis_chain"
+"#;
+
+    let global = UnifiedConfig::load_from_content(global_toml).expect("global TOML must parse");
+    let local = UnifiedConfig::load_from_content(local_toml).expect("local TOML must parse");
+    let merged = global.merge_with_content(local_toml, &local);
+
+    let resolved = merged
+        .resolve_agent_drains_checked()
+        .expect("merged config must resolve")
+        .expect("merged named drain config should resolve");
+
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning")
+            .chain_name,
+        "shared_dev"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Development)
+            .expect("development")
+            .chain_name,
+        "shared_dev"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Review)
+            .expect("review")
+            .chain_name,
+        "shared_review"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Fix)
+            .expect("fix")
+            .chain_name,
+        "shared_review"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Commit)
+            .expect("commit")
+            .chain_name,
+        "commit_chain"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Analysis)
+            .expect("analysis")
+            .chain_name,
+        "analysis_chain"
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_require_explicit_bindings_rejects_tier1_only_drain() {
+    // When require_explicit_drain_bindings=true, every built-in drain must appear
+    // explicitly in agent_drains — tier-1 chain-name resolution is not enough.
+    //
+    // Config has 5 drains in agent_drains (all except "analysis").
+    // There IS a chain named "analysis" in agent_chains (tier-1 match),
+    // so with forbid_sibling_drain_inference=true alone it would resolve fine.
+    // But require_explicit_drain_bindings=true must reject the implicit tier-1 resolution.
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            ("dev".to_string(), vec!["codex".to_string()]),
+            ("review".to_string(), vec!["claude".to_string()]),
+            // "analysis" chain exists for tier-1 resolution — must still be rejected
+            ("analysis".to_string(), vec!["gemini".to_string()]),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            (
+                "planning".to_string(),
+                DrainConfigToml::Chain("dev".to_string()),
+            ),
+            (
+                "development".to_string(),
+                DrainConfigToml::Chain("dev".to_string()),
+            ),
+            (
+                "review".to_string(),
+                DrainConfigToml::Chain("review".to_string()),
+            ),
+            (
+                "fix".to_string(),
+                DrainConfigToml::Chain("review".to_string()),
+            ),
+            (
+                "commit".to_string(),
+                DrainConfigToml::Chain("review".to_string()),
+            ),
+            // "analysis" is deliberately absent from agent_drains
+        ]),
+        orchestration: OrchestrationConfig {
+            forbid_sibling_drain_inference: true,
+            require_explicit_drain_bindings: true,
+        },
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("require_explicit_drain_bindings=true must reject tier-1-only drain");
+
+    assert!(
+        matches!(
+            error,
+            crate::config::unified::types::ResolveDrainError::MissingBuiltinCoverage { .. }
+        ),
+        "expected MissingBuiltinCoverage, got: {error}"
+    );
+    let msg = error.to_string();
+    assert!(msg.contains("analysis"), "expected 'analysis' in: {msg}");
 }

@@ -29,7 +29,6 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig) -> ConfigConversionRe
 
     let general = &unified.general;
     let max_dev_continuations = general.max_dev_continuations;
-    let max_xsd_retries = general.max_xsd_retries;
     let max_same_agent_retries = general.max_same_agent_retries;
     let max_commit_residual_retries = general.max_commit_residual_retries;
 
@@ -83,7 +82,6 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig) -> ConfigConversionRe
         show_streaming_metrics: false,
         review_format_retries: 5,
         max_dev_continuations: Some(max_dev_continuations),
-        max_xsd_retries: Some(max_xsd_retries),
         max_same_agent_retries: Some(max_same_agent_retries),
         max_commit_residual_retries: Some(max_commit_residual_retries),
         execution_history_limit: general.execution_history_limit,
@@ -133,7 +131,6 @@ pub(crate) fn default_config() -> Config {
         show_streaming_metrics: false,
         review_format_retries: 5,
         max_dev_continuations: Some(2),
-        max_xsd_retries: Some(10),
         max_same_agent_retries: Some(2),
         max_commit_residual_retries: Some(10),
         execution_history_limit: 1000,

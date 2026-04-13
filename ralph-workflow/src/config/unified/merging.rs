@@ -174,11 +174,6 @@ impl UnifiedConfig {
             } else {
                 local.general.max_dev_continuations
             },
-            max_xsd_retries: if local.general.max_xsd_retries == defaults.max_xsd_retries {
-                self.general.max_xsd_retries
-            } else {
-                local.general.max_xsd_retries
-            },
             max_same_agent_retries: if local.general.max_same_agent_retries
                 == defaults.max_same_agent_retries
             {
@@ -283,9 +278,23 @@ impl UnifiedConfig {
             false,
         );
 
+        // Orchestration: local overrides global when non-default
+        let orchestration = if local.orchestration.forbid_sibling_drain_inference
+            != crate::config::unified::types::OrchestrationConfig::default()
+                .forbid_sibling_drain_inference
+            || local.orchestration.require_explicit_drain_bindings
+                != crate::config::unified::types::OrchestrationConfig::default()
+                    .require_explicit_drain_bindings
+        {
+            local.orchestration.clone()
+        } else {
+            self.orchestration.clone()
+        };
+
         Self {
             general,
             ccs,
+            orchestration,
             agents,
             ccs_aliases,
             agent_chains,
@@ -453,11 +462,6 @@ impl UnifiedConfig {
                 local_parsed.general.max_dev_continuations
             } else {
                 self.general.max_dev_continuations
-            },
-            max_xsd_retries: if has_field("max_xsd_retries") {
-                local_parsed.general.max_xsd_retries
-            } else {
-                self.general.max_xsd_retries
             },
             max_same_agent_retries: if has_field("max_same_agent_retries") {
                 local_parsed.general.max_same_agent_retries
@@ -640,9 +644,22 @@ impl UnifiedConfig {
             None
         };
 
+        // Orchestration: local overrides global when non-default
+        let default_orch = crate::config::unified::types::OrchestrationConfig::default();
+        let orchestration = if local_parsed.orchestration.forbid_sibling_drain_inference
+            != default_orch.forbid_sibling_drain_inference
+            || local_parsed.orchestration.require_explicit_drain_bindings
+                != default_orch.require_explicit_drain_bindings
+        {
+            local_parsed.orchestration.clone()
+        } else {
+            self.orchestration.clone()
+        };
+
         Self {
             general,
             ccs,
+            orchestration,
             agents,
             ccs_aliases,
             agent_chains,
@@ -677,6 +694,8 @@ fn merge_named_schema_legacy_metadata(
             reviewer: Vec::new(),
             commit: Vec::new(),
             analysis: Vec::new(),
+            planning: Vec::new(),
+            fix: Vec::new(),
             provider_fallback,
             max_retries: if is_local_field_present("max_retries") {
                 local.max_retries

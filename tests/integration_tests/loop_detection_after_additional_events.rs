@@ -30,10 +30,10 @@ use crate::test_timeout::with_default_timeout;
 #[test]
 fn test_loop_detection_counters_computed_after_additional_events() {
     with_default_timeout(|| {
-        // Create initial state in Planning phase with XSD retry pending
+        // Create initial state in Planning phase with continuation pending
         let mut state = PipelineState::initial(1, 0);
         state.phase = PipelinePhase::Planning;
-        state.continuation.xsd_retry_pending = true;
+        state.continuation.continue_pending = true;
         let expected_initial_fingerprint = compute_effect_fingerprint(&state);
         state.continuation.last_effect_kind = Some(expected_initial_fingerprint.clone());
         state.continuation.consecutive_same_effect_count = 3;
@@ -47,9 +47,9 @@ fn test_loop_detection_counters_computed_after_additional_events() {
         let primary_event = PipelineEvent::context_cleaned();
         let state_after_primary = reduce(state, primary_event);
 
-        // At this point, still in Planning with xsd_retry_pending
+        // At this point, still in Planning with continue_pending
         assert!(matches!(state_after_primary.phase, PipelinePhase::Planning));
-        assert!(state_after_primary.continuation.xsd_retry_pending);
+        assert!(state_after_primary.continuation.continue_pending);
 
         // 2. Additional event: Transition to Development phase (simulating phase completion)
         // This is the key scenario: additional events CAN change the state significantly
@@ -100,7 +100,7 @@ fn test_loop_detection_resets_when_additional_events_change_phase() {
         // Start in Planning with a "looping" effect fingerprint
         let mut state = PipelineState::initial(1, 0);
         state.phase = PipelinePhase::Planning;
-        state.continuation.xsd_retry_pending = true;
+        state.continuation.continue_pending = true;
         let expected_initial_fingerprint = compute_effect_fingerprint(&state);
         state.continuation.last_effect_kind = Some(expected_initial_fingerprint);
         state.continuation.consecutive_same_effect_count = 4;
@@ -147,13 +147,13 @@ fn test_loop_detection_increments_when_additional_events_preserve_fingerprint() 
         // Start in Planning with a "looping" effect fingerprint
         let mut state = PipelineState::initial(1, 0);
         state.phase = PipelinePhase::Planning;
-        state.continuation.xsd_retry_pending = true;
+        state.continuation.continue_pending = true;
         let expected_initial_fingerprint = compute_effect_fingerprint(&state);
         state.continuation.last_effect_kind = Some(expected_initial_fingerprint);
         state.continuation.consecutive_same_effect_count = 2;
 
         // Simulate: primary event and additional events that both keep us in
-        // the same state (Planning, XSD retry pending)
+        // the same state (Planning, continuation pending)
         let primary_event = PipelineEvent::context_cleaned();
         let state_after_primary = reduce(state, primary_event);
 
@@ -162,9 +162,9 @@ fn test_loop_detection_increments_when_additional_events_preserve_fingerprint() 
         let additional_event = PipelineEvent::context_cleaned();
         let final_state = reduce(state_after_primary, additional_event);
 
-        // Verify we're still in Planning with XSD retry pending
+        // Verify we're still in Planning with continuation pending
         assert!(matches!(final_state.phase, PipelinePhase::Planning));
-        assert!(final_state.continuation.xsd_retry_pending);
+        assert!(final_state.continuation.continue_pending);
 
         // The fingerprint should be the same
         let final_fingerprint = compute_effect_fingerprint(&final_state);

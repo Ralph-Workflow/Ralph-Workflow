@@ -15,7 +15,6 @@
 //! The files module is organized by domain concern:
 //!
 //! - [`protection`] - File protection and integrity (validation, integrity, monitoring)
-//! - [`llm_output_extraction`] - LLM output extraction (commit message, JSON extraction)
 //! - [`result_extraction`] - File path extraction from ISSUES content
 //!
 //! # Isolation Mode
@@ -35,7 +34,7 @@ pub use self::agent_files::{
     cleanup_generated_files_with_workspace, delete_commit_message_file_with_workspace,
     delete_plan_file_with_workspace, ensure_files_with_workspace, file_contains_marker,
     file_contains_marker_with_workspace, read_commit_message_file_with_workspace,
-    setup_xsd_schemas_with_workspace, write_commit_message_file_with_workspace, GENERATED_FILES,
+    write_commit_message_file_with_workspace, GENERATED_FILES,
 };
 
 pub mod backup;
@@ -66,6 +65,13 @@ pub use self::protection::{
 pub mod recovery;
 pub use self::recovery::{auto_repair_with_workspace, RecoveryStatus};
 
-pub mod llm_output_extraction;
+pub mod archive;
+pub use self::archive::archive_json_artifact_with_workspace;
+
+pub mod artifact_paths;
+pub use self::artifact_paths::{archive_xml_file_with_workspace, has_valid_artifact_output};
+
 
 pub mod result_extraction;
+
+pub mod result_types;

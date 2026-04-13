@@ -99,11 +99,9 @@ pub(in crate::reducer::state_reduction::review) fn reduce_pass_started(
         },
         continuation: if pass == state.reviewer_pass {
             // If orchestration re-emits PassStarted for the same pass (e.g., retry after
-            // OutputValidationFailed), clear xsd_retry_pending to prevent infinite loops.
+            // OutputValidationFailed), clear retry flags to prevent infinite loops.
             // The reducer owns retry accounting for determinism.
             ContinuationState {
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
                 ..state.continuation
@@ -112,14 +110,9 @@ pub(in crate::reducer::state_reduction::review) fn reduce_pass_started(
             // New pass: reset retry state but preserve configured limits
             ContinuationState {
                 invalid_output_attempts: 0,
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 same_agent_retry_count: 0,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
-                // Clear review error when starting a new pass
-                last_review_xsd_error: None,
                 ..state.continuation
             }
         },
@@ -164,8 +157,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_prompt_prepared(
         review_prompt_prepared_pass: Some(pass),
         agent_chain: state.agent_chain,
         continuation: ContinuationState {
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: state.continuation.xsd_retry_session_reuse_pending,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
             ..state.continuation
@@ -198,8 +189,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_agent_invoked(
     PipelineState {
         review_agent_invoked_pass: Some(pass),
         continuation: ContinuationState {
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
             ..state.continuation
@@ -241,11 +230,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_issues_xml_validated(
             issues: issues.into_boxed_slice(),
             no_issues_found,
         }),
-        continuation: ContinuationState {
-            // Clear error when validation succeeds
-            last_review_xsd_error: None,
-            ..state.continuation
-        },
         ..state
     }
 }

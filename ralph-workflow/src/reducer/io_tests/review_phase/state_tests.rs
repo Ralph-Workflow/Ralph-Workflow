@@ -575,10 +575,13 @@ fn test_event_loop_state_consistency_for_review_agent() {
     );
 }
 
-/// Full integration test: Development -> `CommitMessage` -> Review
+/// Full integration test: Development -> Review (Phase 2 flow)
 ///
-/// This test simulates the complete flow from development through commit creation
-/// to review phase, verifying that the agent chain is correctly initialized.
+/// This test simulates the complete flow from development to review phase,
+/// verifying that the agent chain is correctly initialized for the reviewer.
+///
+/// Phase 2: Development routes directly to Review (not via CommitMessage first).
+/// The commit checkpoint happens after the review/fix cycle completes.
 #[test]
 fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
     use crate::reducer::orchestration::determine_next_effect;
@@ -602,45 +605,20 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
     };
 
     // === STEP 1: Development completes successfully ===
+    // Phase 2: Development routes directly to Review (not CommitMessage first)
     state = reduce(
         state,
         PipelineEvent::development_iteration_completed(4, true),
     );
     assert_eq!(
         state.phase,
-        PipelinePhase::CommitMessage,
-        "Should transition to CommitMessage after successful dev iteration"
+        PipelinePhase::Review,
+        "Phase 2: Should transition to Review after successful dev iteration"
     );
     assert_eq!(
         state.previous_phase,
         Some(PipelinePhase::Development),
         "previous_phase should be Development"
-    );
-    // Agent chain should still have developer agents at this point
-    assert!(!state.agent_chain.agents.is_empty());
-
-    // === STEP 2: Commit message generated ===
-    state = reduce(
-        state,
-        PipelineEvent::commit_message_generated("test commit".to_string(), 0),
-    );
-    assert_eq!(state.phase, PipelinePhase::CommitMessage);
-    assert!(matches!(
-        state.commit,
-        crate::reducer::state::CommitState::Generated { .. }
-    ));
-
-    // === STEP 3: Commit created ===
-    state = reduce(
-        state,
-        PipelineEvent::commit_created("abc123".to_string(), "test commit".to_string()),
-    );
-
-    // After commit on last iteration, should transition to Review
-    assert_eq!(
-        state.phase,
-        PipelinePhase::Review,
-        "Should transition to Review after last dev iteration commit"
     );
 
     // CRITICAL: Agent chain should be CLEARED to force reinitialization
@@ -650,7 +628,7 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         state.agent_chain.agents
     );
 
-    // === STEP 4: Orchestration cleans continuation context if needed ===
+    // === STEP 2: Orchestration cleans continuation context if needed ===
     let mut effect = determine_next_effect(&state);
     if matches!(
         effect,
@@ -674,7 +652,7 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         "Orchestration should request reviewer chain initialization, got {effect:?}"
     );
 
-    // === STEP 5: Agent chain initialized with reviewer agents ===
+    // === STEP 3: Agent chain initialized with reviewer agents ===
     let last_reviewer_agents = vec![
         "codex".to_string(),
         "opencode".to_string(),
@@ -705,7 +683,7 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         crate::agents::AgentRole::Reviewer
     );
 
-    // === STEP 6: Orchestration begins single-task review chain ===
+    // === STEP 4: Orchestration begins single-task review chain ===
     let effect = determine_next_effect(&state);
     assert!(
         matches!(
@@ -766,7 +744,7 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         "Should request InvokeReviewAgent, got {effect:?}"
     );
 
-    // === STEP 7: Simulate what handler does ===
+    // === STEP 5: Simulate what handler does ===
     // Handler reads current_agent from state to pass to run_review_pass
     let review_agent = state.agent_chain.current_agent().cloned();
     assert_eq!(

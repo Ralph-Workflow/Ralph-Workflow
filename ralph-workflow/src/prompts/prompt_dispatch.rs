@@ -243,27 +243,6 @@ mod tests {
     }
 
     #[test]
-    fn test_key_lookup_uses_display_string() {
-        let scope_key = PromptScopeKey::for_commit(2, 1, RetryMode::Xsd { count: 1 }, 0);
-        let expected_key = "commit_message_attempt_iter2_1_xsd_retry_1";
-        let history = [(
-            expected_key.to_string(),
-            PromptHistoryEntry::from_string("stored xsd retry prompt".to_string()),
-        )]
-        .into_iter()
-        .collect::<std::collections::HashMap<_, _>>();
-
-        let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &history, None, || "new prompt".to_string());
-
-        assert_eq!(prompt, "stored xsd retry prompt");
-        assert!(
-            was_replayed,
-            "Should replay using Display string '{expected_key}' as key"
-        );
-    }
-
-    #[test]
     fn test_recovery_epoch_does_not_affect_lookup_key() {
         let scope_key_epoch0 = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
         let scope_key_epoch1 = PromptScopeKey::for_planning(1, RetryMode::Normal, 1);

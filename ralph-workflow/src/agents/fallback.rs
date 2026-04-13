@@ -9,9 +9,13 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Agent role (developer, reviewer, or commit).
+/// Agent role (developer, reviewer, commit, planning, fix, or analysis).
 ///
 /// Each role can have its own chain of fallback agents.
+///
+/// Distinct Planning and Fix roles were added to avoid lossy drain-to-role collapses.
+/// Previously Planning was collapsed into Developer and Fix was collapsed into Reviewer,
+/// which made diagnostics and session identity checks lose drain-specific context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentRole {
     /// Developer agent: implements features based on PROMPT.md.
@@ -22,6 +26,10 @@ pub enum AgentRole {
     Commit,
     /// Analysis agent: independently verifies progress (diff vs plan).
     Analysis,
+    /// Planning agent: produces work plans (read-only, does not implement).
+    Planning,
+    /// Fix agent: addresses review findings (write-capable).
+    Fix,
 }
 
 /// Runtime consumer of an agent chain.
@@ -39,12 +47,17 @@ pub enum AgentDrain {
 }
 
 impl AgentDrain {
-    /// Return the broad capability role associated with this drain.
+    /// Return the capability role associated with this drain.
+    ///
+    /// Each drain maps to a distinct role to preserve drain identity through
+    /// diagnostics and session checks. Planning is read-only, Fix is write-capable.
     #[must_use]
     pub const fn role(self) -> AgentRole {
         match self {
-            Self::Planning | Self::Development => AgentRole::Developer,
-            Self::Review | Self::Fix => AgentRole::Reviewer,
+            Self::Planning => AgentRole::Planning,
+            Self::Development => AgentRole::Developer,
+            Self::Review => AgentRole::Reviewer,
+            Self::Fix => AgentRole::Fix,
             Self::Commit => AgentRole::Commit,
             Self::Analysis => AgentRole::Analysis,
         }
@@ -98,6 +111,8 @@ impl From<AgentRole> for AgentDrain {
             AgentRole::Reviewer => Self::Review,
             AgentRole::Commit => Self::Commit,
             AgentRole::Analysis => Self::Analysis,
+            AgentRole::Planning => Self::Planning,
+            AgentRole::Fix => Self::Fix,
         }
     }
 }
@@ -115,7 +130,6 @@ pub enum DrainMode {
     Normal,
     Continuation,
     SameAgentRetry,
-    XsdRetry,
 }
 
 /// Concrete runtime chain binding for one drain.
@@ -192,6 +206,12 @@ impl ResolvedDrainConfig {
             analysis: self
                 .binding(AgentDrain::Analysis)
                 .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            planning: self
+                .binding(AgentDrain::Planning)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            fix: self
+                .binding(AgentDrain::Fix)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
             provider_fallback: self.provider_fallback.clone(),
             max_retries: self.max_retries,
             retry_delay_ms: self.retry_delay_ms,
@@ -210,6 +230,8 @@ impl std::fmt::Display for AgentRole {
             Self::Reviewer => write!(f, "reviewer"),
             Self::Commit => write!(f, "commit"),
             Self::Analysis => write!(f, "analysis"),
+            Self::Planning => write!(f, "planning"),
+            Self::Fix => write!(f, "fix"),
         }
     }
 }
@@ -260,6 +282,16 @@ pub struct FallbackConfig {
     /// If empty, analysis falls back to the developer chain.
     #[serde(default)]
     pub analysis: Vec<String>,
+    /// Ordered list of agents for planning role (first = preferred, rest = fallbacks).
+    ///
+    /// If empty, planning falls back to the analysis chain.
+    #[serde(default)]
+    pub planning: Vec<String>,
+    /// Ordered list of agents for fix role (first = preferred, rest = fallbacks).
+    ///
+    /// If empty, fix falls back to the reviewer chain.
+    #[serde(default)]
+    pub fix: Vec<String>,
     /// Provider-level fallback: maps agent name to list of model flags to try.
     /// Example: `opencode = ["-m opencode/glm-4.7-free", "-m opencode/claude-sonnet-4"]`
     #[serde(default)]
@@ -299,6 +331,10 @@ impl<'de> Deserialize<'de> for FallbackConfig {
             #[serde(default)]
             analysis: Option<Vec<String>>,
             #[serde(default)]
+            planning: Option<Vec<String>>,
+            #[serde(default)]
+            fix: Option<Vec<String>>,
+            #[serde(default)]
             provider_fallback: HashMap<String, Vec<String>>,
             #[serde(default = "default_max_retries")]
             max_retries: u32,
@@ -316,13 +352,17 @@ impl<'de> Deserialize<'de> for FallbackConfig {
         let legacy_role_keys_present = raw.developer.is_some()
             || raw.reviewer.is_some()
             || raw.commit.is_some()
-            || raw.analysis.is_some();
+            || raw.analysis.is_some()
+            || raw.planning.is_some()
+            || raw.fix.is_some();
 
         Ok(Self {
             developer: raw.developer.unwrap_or_default(),
             reviewer: raw.reviewer.unwrap_or_default(),
             commit: raw.commit.unwrap_or_default(),
             analysis: raw.analysis.unwrap_or_default(),
+            planning: raw.planning.unwrap_or_default(),
+            fix: raw.fix.unwrap_or_default(),
             provider_fallback: raw.provider_fallback,
             max_retries: raw.max_retries,
             retry_delay_ms: raw.retry_delay_ms,
@@ -427,6 +467,8 @@ impl Default for FallbackConfig {
             reviewer: Vec::new(),
             commit: Vec::new(),
             analysis: Vec::new(),
+            planning: Vec::new(),
+            fix: Vec::new(),
             provider_fallback: HashMap::new(),
             max_retries: default_max_retries(),
             retry_delay_ms: default_retry_delay_ms(),
@@ -447,6 +489,8 @@ impl FallbackConfig {
             self.reviewer.as_slice(),
             self.commit.as_slice(),
             self.analysis.as_slice(),
+            self.planning.as_slice(),
+            self.fix.as_slice(),
         ]
         .into_iter()
         .any(|chain| !chain.is_empty())
@@ -482,6 +526,8 @@ impl FallbackConfig {
                     "analysis"
                 }
             }
+            AgentRole::Planning => "planning",
+            AgentRole::Fix => "fix",
         }
     }
 
@@ -555,6 +601,34 @@ impl FallbackConfig {
             AgentRole::Reviewer => &self.reviewer,
             AgentRole::Commit => self.get_effective_commit_fallbacks(),
             AgentRole::Analysis => self.get_effective_analysis_fallbacks(),
+            AgentRole::Planning => self.get_effective_planning_fallbacks(),
+            AgentRole::Fix => self.get_effective_fix_fallbacks(),
+        }
+    }
+
+    /// Get effective fallback agents for planning role.
+    ///
+    /// Falls back to analysis chain, then developer chain, if planning chain is empty.
+    /// The developer fallback preserves backward compatibility for legacy configs that
+    /// only configure `[agent_chain] developer = [...]`.
+    fn get_effective_planning_fallbacks(&self) -> &[String] {
+        if !self.planning.is_empty() {
+            &self.planning
+        } else if !self.analysis.is_empty() {
+            &self.analysis
+        } else {
+            &self.developer
+        }
+    }
+
+    /// Get effective fallback agents for fix role.
+    ///
+    /// Falls back to reviewer chain if fix chain is empty.
+    fn get_effective_fix_fallbacks(&self) -> &[String] {
+        if self.fix.is_empty() {
+            &self.reviewer
+        } else {
+            &self.fix
         }
     }
 
@@ -627,10 +701,10 @@ mod tests {
 
     #[test]
     fn test_agent_drain_role_mapping() {
-        assert_eq!(AgentDrain::Planning.role(), AgentRole::Developer);
+        assert_eq!(AgentDrain::Planning.role(), AgentRole::Planning);
         assert_eq!(AgentDrain::Development.role(), AgentRole::Developer);
         assert_eq!(AgentDrain::Review.role(), AgentRole::Reviewer);
-        assert_eq!(AgentDrain::Fix.role(), AgentRole::Reviewer);
+        assert_eq!(AgentDrain::Fix.role(), AgentRole::Fix);
         assert_eq!(AgentDrain::Commit.role(), AgentRole::Commit);
         assert_eq!(AgentDrain::Analysis.role(), AgentRole::Analysis);
     }

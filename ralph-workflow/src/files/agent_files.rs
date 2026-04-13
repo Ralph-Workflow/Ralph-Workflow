@@ -8,15 +8,6 @@ use crate::workspace::Workspace;
 // Direct filesystem operations in boundary module (io.rs stem → exempt from forbid_io_effects).
 include!("agent_files/io.rs");
 
-/// XSD schemas for XML validation - included at compile time.
-/// These are written to `.agent/xsd/` at pipeline start for agent self-validation.
-const PLAN_XSD_SCHEMA: &str = include_str!("llm_output_extraction/plan.xsd");
-const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
-    include_str!("llm_output_extraction/development_result.xsd");
-const ISSUES_XSD_SCHEMA: &str = include_str!("llm_output_extraction/issues.xsd");
-const FIX_RESULT_XSD_SCHEMA: &str = include_str!("llm_output_extraction/fix_result.xsd");
-const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("llm_output_extraction/commit_message.xsd");
-
 /// Files that Ralph generates during a run and should clean up.
 pub const GENERATED_FILES: &[&str] = &[
     ".agent/PLAN.md",
@@ -28,7 +19,6 @@ pub const GENERATED_FILES: &[&str] = &[
 /// Ensure required files and directories exist using workspace.
 ///
 /// Creates the `.agent/logs` and `.agent/tmp` directories if they don't exist.
-/// Also writes XSD schemas to `.agent/tmp/` for agent self-validation.
 ///
 /// When `isolation_mode` is true (the default), STATUS.md, NOTES.md and ISSUES.md
 /// are NOT created. This prevents context contamination from previous runs.
@@ -60,9 +50,6 @@ pub fn ensure_files_with_workspace(
     let tmp_dir = agent_dir.join("tmp");
     let _ = integrity::cleanup_stale_xml_files_with_workspace(workspace, &tmp_dir, false);
     // Note: cleanup is best-effort, failures are not fatal
-
-    // Write XSD schemas to .agent/tmp/ for agent self-validation
-    setup_xsd_schemas_with_workspace(workspace)?;
 
     // Only create STATUS.md, NOTES.md and ISSUES.md when NOT in isolation mode
     if !isolation_mode {
@@ -214,32 +201,6 @@ pub fn cleanup_generated_files_with_workspace(workspace: &dyn Workspace) {
         .collect::<Vec<_>>();
 }
 
-/// Write XSD schemas to .agent/tmp/ using the workspace.
-///
-/// This is the workspace-based version of `setup_xsd_schemas_at`.
-///
-/// # Errors
-///
-/// Returns error if the operation fails.
-pub fn setup_xsd_schemas_with_workspace(workspace: &dyn Workspace) -> std::io::Result<()> {
-    let tmp_dir = Path::new(".agent/tmp");
-    workspace.create_dir_all(tmp_dir)?;
-
-    workspace.write(&tmp_dir.join("plan.xsd"), PLAN_XSD_SCHEMA)?;
-    workspace.write(
-        &tmp_dir.join("development_result.xsd"),
-        DEVELOPMENT_RESULT_XSD_SCHEMA,
-    )?;
-    workspace.write(&tmp_dir.join("issues.xsd"), ISSUES_XSD_SCHEMA)?;
-    workspace.write(&tmp_dir.join("fix_result.xsd"), FIX_RESULT_XSD_SCHEMA)?;
-    workspace.write(
-        &tmp_dir.join("commit_message.xsd"),
-        COMMIT_MESSAGE_XSD_SCHEMA,
-    )?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     // =========================================================================
@@ -357,23 +318,5 @@ mod tests {
             assert!(!workspace.exists(Path::new(".git/ralph/no_agent_commit")));
         }
 
-        #[test]
-        fn test_setup_xsd_schemas_with_workspace() {
-            let workspace = MemoryWorkspace::new_test();
-
-            setup_xsd_schemas_with_workspace(&workspace).unwrap();
-
-            // Verify all schemas are written
-            assert!(workspace.exists(Path::new(".agent/tmp/plan.xsd")));
-            assert!(workspace.exists(Path::new(".agent/tmp/development_result.xsd")));
-            assert!(workspace.exists(Path::new(".agent/tmp/issues.xsd")));
-            assert!(workspace.exists(Path::new(".agent/tmp/fix_result.xsd")));
-            assert!(workspace.exists(Path::new(".agent/tmp/commit_message.xsd")));
-
-            // Verify content
-            let plan_xsd = workspace.read(Path::new(".agent/tmp/plan.xsd")).unwrap();
-            assert!(plan_xsd.contains("xs:schema"));
-            assert!(plan_xsd.contains("ralph-plan"));
-        }
     }
 }

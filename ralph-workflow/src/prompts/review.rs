@@ -11,9 +11,7 @@ use crate::prompts::{
 };
 use crate::workspace::Workspace;
 use std::collections::HashMap;
-use std::path::Path;
 
-include!("review/xsd_files.rs");
 include!("review/review_prompts.rs");
 include!("review/fix_prompts.rs");
 

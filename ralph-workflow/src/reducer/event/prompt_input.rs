@@ -25,7 +25,6 @@ use crate::reducer::event::{ErrorEvent, PipelinePhase};
 /// # Emitted By
 ///
 /// - Prompt preparation handlers in `handler/*/prepare_prompt.rs`
-/// - XSD retry handlers
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum PromptInputEvent {
     /// Oversize content detected, will be materialized as file reference.
@@ -74,15 +73,6 @@ pub enum PromptInputEvent {
         attempt: u32,
         /// Materialized diff input.
         diff: MaterializedPromptInput,
-    },
-    /// XSD retry last output materialized.
-    XsdRetryLastOutputMaterialized {
-        /// Phase that produced the invalid output being retried.
-        phase: PipelinePhase,
-        /// Scope id within the phase (iteration/pass/attempt).
-        scope_id: u32,
-        /// Materialized representation of the last invalid output.
-        last_output: MaterializedPromptInput,
     },
     /// A typed error event returned by an effect handler.
     ///

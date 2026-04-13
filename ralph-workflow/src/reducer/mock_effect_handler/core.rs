@@ -48,8 +48,8 @@ pub struct MockEffectHandler {
     /// and default diff content. Use `with_staged_diff_sequence` to configure.
     pub(super) staged_diff_contents: VecDeque<String>,
 
-    /// Optional simulated commit message XML for `ValidateCommitXml`.
-    pub(super) simulate_commit_message_xml: Option<String>,
+    /// Optional simulated commit JSON for `ValidateCommitXml`.
+    pub(super) simulate_commit_json: Option<serde_json::Value>,
 
     /// Mock outcome for `CheckUncommittedChangesBeforeTermination`.
     pub(super) pre_termination_snapshot: PreTerminationSnapshotMock,
@@ -112,7 +112,7 @@ impl MockEffectHandler {
             simulate_commit_diff_error: None,
             simulate_commit_diff_content: None,
             staged_diff_contents: VecDeque::new(),
-            simulate_commit_message_xml: None,
+            simulate_commit_json: None,
             pre_termination_snapshot: PreTerminationSnapshotMock::Clean,
             residual_files_pass_1: None,
             residual_files_pass_2: None,
@@ -167,10 +167,10 @@ impl MockEffectHandler {
         self
     }
 
-    /// Configure the mock to use a specific commit message XML content for `ValidateCommitXml`.
+    /// Configure the mock to use a specific commit JSON content for `ValidateCommitXml`.
     #[must_use]
-    pub fn with_commit_message_xml(mut self, xml: impl Into<String>) -> Self {
-        self.simulate_commit_message_xml = Some(xml.into());
+    pub fn with_commit_json(mut self, json: serde_json::Value) -> Self {
+        self.simulate_commit_json = Some(json);
         self
     }
 

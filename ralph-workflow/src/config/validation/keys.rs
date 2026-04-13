@@ -30,7 +30,6 @@ pub(crate) const VALID_GENERAL_KEYS: &[&str] = &[
     "git_user_email",
     "provider_fallback",
     "max_dev_continuations",
-    "max_xsd_retries",
     "max_same_agent_retries",
     "max_commit_residual_retries",
     "max_retries",
@@ -38,6 +37,7 @@ pub(crate) const VALID_GENERAL_KEYS: &[&str] = &[
     "backoff_multiplier",
     "max_backoff_ms",
     "max_cycles",
+    "execution_history_limit",
     "behavior",
     "workflow",
     "execution",
@@ -106,14 +106,13 @@ pub(crate) const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
 ];
 
 /// Valid keys for the built-in [`agent_drains`] section.
-pub(crate) const VALID_AGENT_DRAIN_KEYS: &[&str] = &[
-    "planning",
-    "development",
-    "review",
-    "fix",
-    "commit",
-    "analysis",
-];
+pub(crate) use ralph_workflow_policy::validation::VALID_AGENT_DRAIN_KEYS;
+
+/// Valid keys for the [`orchestration`] section.
+pub(crate) use ralph_workflow_policy::validation::VALID_ORCHESTRATION_KEYS;
+
+/// Valid keys for per-drain config table (used when agent_drains.<drain> = { ... }).
+pub(crate) use ralph_workflow_policy::validation::VALID_DRAIN_CONFIG_KEYS;
 
 /// Get all valid configuration keys for typo detection.
 ///
@@ -123,6 +122,7 @@ pub(crate) fn get_valid_config_keys() -> Vec<&'static str> {
         // Top-level sections
         "general",
         "ccs",
+        "orchestration",
         "agents",
         "ccs_aliases",
         "agent_chain",
@@ -147,7 +147,6 @@ pub(crate) fn get_valid_config_keys() -> Vec<&'static str> {
         "git_user_email",
         "provider_fallback",
         "max_dev_continuations",
-        "max_xsd_retries",
         "max_same_agent_retries",
         "max_commit_residual_retries",
         "max_retries",
@@ -155,6 +154,7 @@ pub(crate) fn get_valid_config_keys() -> Vec<&'static str> {
         "backoff_multiplier",
         "max_backoff_ms",
         "max_cycles",
+        "execution_history_limit",
         // Behavior flags (nested)
         "behavior",
         // Workflow flags (nested)

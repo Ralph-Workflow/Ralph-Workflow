@@ -4,7 +4,7 @@ use std::io;
 mod materialize_inputs;
 mod prepare_fix_prompt;
 mod prepare_review_prompt;
-mod xsd_retry;
+
 
 #[derive(Debug, Clone)]
 struct AtomicWriteEnforcingWorkspace {

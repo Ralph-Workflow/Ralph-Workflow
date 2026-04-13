@@ -1,59 +1,35 @@
 // Output validation failed tests.
 //
 // Tests for development and review output validation failures, including
-// retry behavior, agent switching, and XSD retry limits.
+// retry behavior and agent switching.
 
 use super::*;
 
 #[test]
-fn test_output_validation_failed_retries_within_limit() {
+fn test_output_validation_failed_sets_incremented_attempt_from_event() {
+    // When the attempt count has not yet reached the switching threshold the
+    // counter is set to attempt.saturating_add(1) and the agent is NOT switched.
     let state = create_test_state();
-    let new_state = reduce(
-        state,
-        PipelineEvent::development_output_validation_failed(0, 0),
-    );
-    assert_eq!(new_state.phase, PipelinePhase::Development);
-    assert_eq!(new_state.continuation.invalid_output_attempts, 1);
-    assert_eq!(new_state.agent_chain.current_agent_index, 0);
-    assert_eq!(
-        new_state.agent_chain.current_mode,
-        crate::agents::DrainMode::XsdRetry
-    );
-}
-
-#[test]
-fn test_output_validation_failed_increments_attempt_counter() {
-    let state = {
-        let base = create_test_state();
-        PipelineState {
-            continuation: ContinuationState {
-                invalid_output_attempts: 1,
-                ..base.continuation.clone()
-            },
-            ..base
-        }
-    };
-
     let new_state = reduce(
         state,
         PipelineEvent::development_output_validation_failed(0, 1),
     );
     assert_eq!(new_state.phase, PipelinePhase::Development);
     assert_eq!(new_state.continuation.invalid_output_attempts, 2);
-    assert_eq!(new_state.agent_chain.current_agent_index, 0);
 }
 
 #[test]
 fn test_output_validation_failed_switches_agent_at_limit() {
     use crate::reducer::state::ContinuationState;
 
+    // With a large number of invalid output attempts, the agent should switch
+    let base = create_test_state();
     let state = PipelineState {
         continuation: ContinuationState {
-            xsd_retry_count: 1,
-            max_xsd_retry_count: 2,
-            ..ContinuationState::new()
+            invalid_output_attempts: 9,
+            ..base.continuation.clone()
         },
-        ..create_test_state()
+        ..base
     };
     let new_state = reduce(
         state,
@@ -68,14 +44,13 @@ fn test_output_validation_failed_switches_agent_at_limit() {
 
 #[test]
 fn test_output_validation_failed_resets_counter_on_agent_switch() {
+    let base = create_test_state();
     let state = PipelineState {
         continuation: ContinuationState {
-            xsd_retry_count: 1,
-            max_xsd_retry_count: 2,
-            invalid_output_attempts: 2,
-            ..ContinuationState::new()
+            invalid_output_attempts: 9,
+            ..base.continuation.clone()
         },
-        ..create_test_state()
+        ..base
     };
 
     let new_state = reduce(
@@ -110,41 +85,6 @@ fn test_output_validation_failed_stays_in_development_phase() {
 }
 
 #[test]
-fn test_output_validation_failed_respects_configured_xsd_retry_limit() {
-    use crate::reducer::state::ContinuationState;
-
-    let state = PipelineState {
-        phase: PipelinePhase::Development,
-        iteration: 1,
-        continuation: ContinuationState {
-            xsd_retry_count: 1,
-            max_xsd_retry_count: 5,
-            ..ContinuationState::new()
-        },
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["agent1".to_string(), "agent2".to_string()],
-            vec![vec![], vec![]],
-            AgentRole::Developer,
-        ),
-        ..create_test_state()
-    };
-
-    let new_state = reduce(
-        state,
-        PipelineEvent::development_output_validation_failed(1, 0),
-    );
-
-    assert_eq!(
-        new_state.agent_chain.current_agent_index, 0,
-        "Configured XSD retry limit should allow retries before agent fallback"
-    );
-    assert!(
-        new_state.continuation.xsd_retry_pending,
-        "Should request XSD retry while under configured limit"
-    );
-}
-
-#[test]
 fn test_review_output_validation_failed_increments_state_counter() {
     let state = {
         let base = create_test_state();
@@ -164,14 +104,11 @@ fn test_review_output_validation_failed_increments_state_counter() {
     assert_eq!(new_state.phase, PipelinePhase::Review);
     assert_eq!(new_state.reviewer_pass, 0);
     assert_eq!(new_state.continuation.invalid_output_attempts, 1);
-    assert_eq!(
-        new_state.agent_chain.current_mode,
-        crate::agents::DrainMode::XsdRetry
-    );
 }
 
 #[test]
 fn test_review_output_validation_failed_switches_agent_after_limit() {
+    let base = create_test_state();
     let state = PipelineState {
         phase: PipelinePhase::Review,
         reviewer_pass: 0,
@@ -180,12 +117,10 @@ fn test_review_output_validation_failed_switches_agent_after_limit() {
             same_agent_retry_count: 1,
             same_agent_retry_pending: true,
             same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
-            xsd_retry_count: 1,
-            max_xsd_retry_count: 2,
-            invalid_output_attempts: 2,
-            ..ContinuationState::new()
+            invalid_output_attempts: 9,
+            ..base.continuation.clone()
         },
-        ..create_test_state()
+        ..base
     };
 
     let new_state = reduce(
@@ -286,19 +221,16 @@ fn test_review_pass_started_does_not_reset_invalid_output_attempts_on_retry() {
 
 #[test]
 fn test_review_pass_started_preserves_agent_chain_on_retry() {
-    let state = {
-        let base = create_test_state();
-        PipelineState {
-            phase: PipelinePhase::Review,
-            reviewer_pass: 0,
-            total_reviewer_passes: 2,
-            continuation: ContinuationState {
-                xsd_retry_count: 1,
-                max_xsd_retry_count: 2,
-                ..ContinuationState::new()
-            },
-            ..base
-        }
+    let base = create_test_state();
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        reviewer_pass: 0,
+        total_reviewer_passes: 2,
+        continuation: ContinuationState {
+            invalid_output_attempts: 9,
+            ..base.continuation.clone()
+        },
+        ..base
     };
 
     let state = reduce(
@@ -307,7 +239,7 @@ fn test_review_pass_started_preserves_agent_chain_on_retry() {
     );
     assert!(
         state.agent_chain.current_agent_index > 0,
-        "Precondition: review_output_validation_failed should have switched agents when XSD retry limit reached"
+        "Precondition: review_output_validation_failed should have switched agents after max attempts"
     );
 
     let new_state = reduce(state.clone(), PipelineEvent::review_pass_started(0));

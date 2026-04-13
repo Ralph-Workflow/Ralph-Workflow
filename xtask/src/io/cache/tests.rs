@@ -284,13 +284,6 @@ fn test_scope_for_clippy_core_is_granular() {
                 "clippy-core must track embedded prompt template text files consumed by ralph-workflow"
             );
             assert!(
-                globs.iter().any(|glob| {
-                    glob.dir == "ralph-workflow/src/files/llm_output_extraction"
-                        && glob.pattern == "*"
-                }),
-                "clippy-core must track embedded XSD files consumed by ralph-workflow"
-            );
-            assert!(
                 files.is_empty(),
                 "clippy-core should track compile-time resources via directory extras"
             );
@@ -342,13 +335,6 @@ fn test_scope_for_test_integration_tracks_compile_time_artifacts() {
                     glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
                 }),
                 "integration test scope must track embedded prompt template text files consumed by ralph-workflow"
-            );
-            assert!(
-                globs.iter().any(|glob| {
-                    glob.dir == "ralph-workflow/src/files/llm_output_extraction"
-                        && glob.pattern == "*"
-                }),
-                "integration test scope must track embedded XSD files used by integration tests and prompts"
             );
             assert!(
                 files.is_empty(),
@@ -517,13 +503,6 @@ fn test_scope_for_test_ralph_workflow_lib_tracks_ralph_workflow_compile_time_res
                 }),
                 "ralph-workflow lib tests must track embedded prompt template text files"
             );
-            assert!(
-                globs.iter().any(|glob| {
-                    glob.dir == "ralph-workflow/src/files/llm_output_extraction"
-                        && glob.pattern == "*"
-                }),
-                "ralph-workflow lib tests must track embedded XSD files"
-            );
             assert!(files.is_empty());
         }
         CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
@@ -551,13 +530,6 @@ fn test_scope_for_release_build_tracks_ralph_workflow_compile_time_resources() {
                     glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
                 }),
                 "release-build must track embedded prompt template text files consumed by ralph-workflow"
-            );
-            assert!(
-                globs.iter().any(|glob| {
-                    glob.dir == "ralph-workflow/src/files/llm_output_extraction"
-                        && glob.pattern == "*"
-                }),
-                "release-build must track embedded XSD files consumed by ralph-workflow"
             );
             assert!(files.is_empty());
         }
@@ -1088,72 +1060,6 @@ fn test_compute_scope_hash_test_integration_changes_when_fixture_changes() {
     assert_ne!(
         hash_before, hash_after,
         "integration test scope must invalidate when compile-time fixtures change"
-    );
-
-    let _ = std::fs::remove_dir_all(&tmp);
-}
-
-#[test]
-fn test_compute_scope_hash_test_integration_changes_when_embedded_xsd_changes() {
-    let tmp = unique_test_dir("xtask-cache-test-integration-xsd-change");
-    let _ = std::fs::remove_dir_all(&tmp);
-    let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
-    let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src/files/llm_output_extraction"));
-    let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
-    let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests"));
-
-    std::fs::write(
-        tmp.join("Cargo.toml"),
-        b"[workspace]\nmembers = [\"ralph-workflow\", \"test-helpers\", \"tests\"]\n",
-    )
-    .unwrap();
-    std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
-    std::fs::write(
-        tmp.join("ralph-workflow/Cargo.toml"),
-        b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("test-helpers/Cargo.toml"),
-        b"[package]\nname = \"test-helpers\"\nversion = \"0.1.0\"\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("tests/Cargo.toml"),
-        b"[package]\nname = \"tests\"\nversion = \"0.1.0\"\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-workflow/src/lib.rs"),
-        b"pub fn workflow() {}\n",
-    )
-    .unwrap();
-    std::fs::write(tmp.join("test-helpers/src/lib.rs"), b"pub fn helper() {}\n").unwrap();
-    std::fs::write(
-        tmp.join("tests/integration_tests/development_xml.rs"),
-        b"const XSD: &str = include_str!(\"../../ralph-workflow/src/files/llm_output_extraction/development_result.xsd\");\n#[test]\nfn integration() { assert!(!XSD.is_empty()); }\n",
-    )
-    .unwrap();
-    std::fs::write(
-        tmp.join("ralph-workflow/src/files/llm_output_extraction/development_result.xsd"),
-        b"<schema>one</schema>\n",
-    )
-    .unwrap();
-
-    let scope = scope_for("test-integration");
-    let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
-
-    std::fs::write(
-        tmp.join("ralph-workflow/src/files/llm_output_extraction/development_result.xsd"),
-        b"<schema>two</schema>\n",
-    )
-    .unwrap();
-
-    let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
-
-    assert_ne!(
-        hash_before, hash_after,
-        "integration test scope must invalidate when embedded XSD dependencies change"
     );
 
     let _ = std::fs::remove_dir_all(&tmp);

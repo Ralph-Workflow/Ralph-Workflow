@@ -1,6 +1,5 @@
 use super::commit_helpers::*;
-use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::files::artifact_paths;
 use crate::phases::PhaseContext;
 use crate::phases::{effective_model_budget_bytes, truncate_diff_to_model_budget};
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
@@ -17,8 +16,6 @@ use crate::reducer::state::{MaterializedPromptInput, PromptInputKind, PromptMode
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
-
-const COMMIT_XSD_ERROR_PATH: &str = ".agent/tmp/commit_xsd_error.txt";
 
 pub(in crate::reducer::boundary) const fn current_commit_attempt(
     commit: &crate::reducer::state::CommitState,
@@ -115,29 +112,7 @@ impl crate::reducer::boundary::MainEffectHandler {
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
         debug_assert_not_continuation(prompt_mode);
-        match prompt_mode {
-            PromptMode::XsdRetry => self.prepare_commit_xsd_retry_prompt(ctx),
-            mode => self.prepare_commit_prompt_from_inputs(ctx, mode),
-        }
-    }
-
-    fn prepare_commit_xsd_retry_prompt(&self, ctx: &PhaseContext<'_>) -> Result<EffectResult> {
-        let attempt = current_commit_attempt(&self.state.commit);
-        let gen = match gen_xsd_retry_commit_prompt(self, ctx, attempt) {
-            Ok(g) => g,
-            Err(early) => return Ok(*early),
-        };
-        super::io_commit::ensure_commit_tmp_dir(ctx)?;
-        super::io_commit::write_commit_prompt_file(ctx, &gen.prompt);
-        Ok(assemble_commit_xsd_retry_result(
-            self,
-            attempt,
-            gen.prompt_key,
-            gen.prompt,
-            gen.prompt_content_id,
-            gen.was_replayed,
-            gen.rendered_log,
-        ))
+        self.prepare_commit_prompt_from_inputs(ctx, prompt_mode)
     }
 
     fn prepare_commit_prompt_from_inputs(
@@ -218,12 +193,9 @@ impl crate::reducer::boundary::MainEffectHandler {
             PromptMode::Normal => {
                 self.gen_normal_commit_prompt(ctx, diff_for_prompt, attempt, prompt_content_id)
             }
-            PromptMode::XsdRetry => unreachable!(
-                "XsdRetry mode should be handled by prepare_commit_prompt() before calling this function"
-            ),
             PromptMode::Continuation => unreachable!(
                 "Continuation mode is invalid for commit phase; \
-                 orchestrator should constrain to {{Normal, XsdRetry, SameAgentRetry}}"
+                 orchestrator should constrain to {{Normal, SameAgentRetry}}"
             ),
         }
     }
@@ -432,22 +404,16 @@ impl crate::reducer::boundary::MainEffectHandler {
     // XML extraction
     // =====================================================================
 
-    /// Check whether commit output exists (JSON artifact or XML file).
+    /// Check whether JSON commit artifact exists.
     pub(in crate::reducer::boundary) fn extract_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
         let attempt = current_commit_attempt(&self.state.commit);
-
-        // Check JSON artifact first, then XML
         if crate::phases::commit::has_json_commit_artifact(ctx.workspace) {
-            return EffectResult::event(PipelineEvent::commit_xml_extracted(attempt));
-        }
-
-        let commit_xml = Path::new(xml_paths::COMMIT_MESSAGE_XML);
-        match ctx.workspace.read(commit_xml) {
-            Ok(_) => EffectResult::event(PipelineEvent::commit_xml_extracted(attempt)),
-            Err(_) => EffectResult::event(PipelineEvent::commit_xml_missing(attempt)),
+            EffectResult::event(PipelineEvent::commit_xml_extracted(attempt))
+        } else {
+            EffectResult::event(PipelineEvent::commit_xml_missing(attempt))
         }
     }
 
@@ -457,36 +423,52 @@ impl crate::reducer::boundary::MainEffectHandler {
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
         let attempt = current_commit_attempt(&self.state.commit);
-        archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML));
+        artifact_paths::archive_xml_file_with_workspace(
+            ctx.workspace,
+            Path::new(artifact_paths::COMMIT_MESSAGE_XML),
+        );
+        crate::files::archive_json_artifact_with_workspace(ctx.workspace, "commit_message");
         EffectResult::event(PipelineEvent::commit_xml_archived(attempt))
     }
 
     // =====================================================================
-    // XML validation
+    // JSON validation
     // =====================================================================
 
-    /// Validate commit message output (JSON artifact first, XML fallback) and
-    /// map parsed outcome into pipeline events.
+    /// Validate commit message output from JSON artifact and map parsed outcome into pipeline events.
     pub(in crate::reducer::boundary) fn validate_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
         use crate::reducer::ui_event::XmlOutputType;
         let attempt = current_commit_attempt(&self.state.commit);
-        if let Some(parsed) =
-            crate::phases::commit::try_parse_commit_from_json_artifact(ctx.workspace)
-        {
-            let event = commit_event_from_parsed_outcome(ctx, parsed, attempt);
-            return EffectResult::with_ui(
-                event,
-                vec![UIEvent::XmlOutput {
-                    xml_type: XmlOutputType::CommitMessage,
-                    content: "(from JSON artifact)".to_string(),
-                    context: None,
-                }],
-            );
+        match crate::phases::commit::try_parse_commit_from_json_artifact(ctx.workspace) {
+            Some(parsed) => {
+                let event = commit_event_from_parsed_outcome(ctx, parsed, attempt);
+                EffectResult::with_ui(
+                    event,
+                    vec![UIEvent::XmlOutput {
+                        xml_type: XmlOutputType::CommitMessage,
+                        content: "(from JSON artifact)".to_string(),
+                        context: None,
+                    }],
+                )
+            }
+            None => {
+                let reason =
+                    "No commit message found: JSON artifact (.agent/tmp/commit_message.json) absent";
+                let event =
+                    PipelineEvent::commit_xml_validation_failed(reason.to_string(), attempt);
+                EffectResult::with_ui(
+                    event,
+                    vec![UIEvent::XmlOutput {
+                        xml_type: XmlOutputType::CommitMessage,
+                        content: reason.to_string(),
+                        context: None,
+                    }],
+                )
+            }
         }
-        validate_commit_from_xml_file(ctx, attempt)
     }
 
     /// Emit a commit outcome event from validated state.
@@ -651,58 +633,16 @@ fn commit_event_from_parsed_outcome(
     match parsed {
         crate::phases::commit::ParsedCommitXmlOutcome::Skipped(reason) => {
             ctx.logger.info(&format!("Commit skipped by AI: {reason}"));
-            let _ = ctx
-                .workspace
-                .remove_if_exists(Path::new(COMMIT_XSD_ERROR_PATH));
             PipelineEvent::commit_skipped(reason)
         }
         crate::phases::commit::ParsedCommitXmlOutcome::Invalid(detail) => {
-            let _ = ctx
-                .workspace
-                .write(Path::new(COMMIT_XSD_ERROR_PATH), &detail);
             PipelineEvent::commit_xml_validation_failed(detail, attempt)
         }
         crate::phases::commit::ParsedCommitXmlOutcome::Valid {
             message,
             files,
             excluded_files,
-        } => {
-            let _ = ctx
-                .workspace
-                .remove_if_exists(Path::new(COMMIT_XSD_ERROR_PATH));
-            PipelineEvent::commit_xml_validated(message, files, excluded_files, attempt)
-        }
+        } => PipelineEvent::commit_xml_validated(message, files, excluded_files, attempt),
     }
 }
 
-fn validate_commit_from_xml_file(ctx: &PhaseContext<'_>, attempt: u32) -> EffectResult {
-    use crate::reducer::ui_event::XmlOutputType;
-    let commit_xml = Path::new(xml_paths::COMMIT_MESSAGE_XML);
-    let Ok(xml_content) = ctx.workspace.read(commit_xml) else {
-        let reason =
-            "No commit message found: neither JSON artifact (.agent/tmp/commit_message.json) \
-                 nor XML file (.agent/tmp/commit_message.xml) present";
-        let event = PipelineEvent::commit_xml_validation_failed(reason.to_string(), attempt);
-        return EffectResult::with_ui(
-            event,
-            vec![UIEvent::XmlOutput {
-                xml_type: XmlOutputType::CommitMessage,
-                content: reason.to_string(),
-                context: None,
-            }],
-        );
-    };
-    let event = commit_event_from_parsed_outcome(
-        ctx,
-        crate::phases::commit::parse_commit_xml_document(&xml_content),
-        attempt,
-    );
-    EffectResult::with_ui(
-        event,
-        vec![UIEvent::XmlOutput {
-            xml_type: XmlOutputType::CommitMessage,
-            content: xml_content,
-            context: None,
-        }],
-    )
-}

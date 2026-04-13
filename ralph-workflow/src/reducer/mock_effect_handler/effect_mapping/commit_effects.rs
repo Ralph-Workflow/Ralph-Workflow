@@ -29,11 +29,10 @@
 //! - **`CreateCommit`** returns a fake commit hash
 //! - **`RunRebase`** always succeeds with a fake head OID
 
-use crate::files::llm_output_extraction::try_extract_xml_commit_document_with_trace;
 use crate::prompts::prompt_scope_key::{PromptScopeKey, RetryMode};
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
-use crate::reducer::state::{CommitState, PromptMode};
+use crate::reducer::state::CommitState;
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
 
 use super::super::MockEffectHandler;
@@ -64,19 +63,13 @@ impl MockEffectHandler {
                 Some((PipelineEvent::rebase_conflict_resolved(vec![]), vec![]))
             }
 
-            Effect::PrepareCommitPrompt { prompt_mode } => {
+            Effect::PrepareCommitPrompt { prompt_mode: _ } => {
                 let attempt = match self.state.commit {
                     CommitState::Generating { attempt, .. } => attempt,
                     _ => 1,
                 };
-                // Compute the prompt key the same way the real handler does,
-                // using Normal retry mode for Normal/SameAgentRetry modes.
-                let retry_mode = match prompt_mode {
-                    PromptMode::XsdRetry => RetryMode::Xsd {
-                        count: self.state.continuation.xsd_retry_count,
-                    },
-                    _ => RetryMode::Normal,
-                };
+                // Compute the prompt key the same way the real handler does.
+                let retry_mode = RetryMode::Normal;
                 let scope_key = PromptScopeKey::for_commit(
                     self.state.iteration,
                     attempt,
@@ -119,40 +112,20 @@ impl MockEffectHandler {
                     CommitState::Generating { attempt, .. } => attempt,
                     _ => 1,
                 };
-                let xml = self.simulate_commit_message_xml.clone().unwrap_or_else(|| {
-                    r"<ralph-commit>
-<ralph-subject>feat: mock commit message for testing</ralph-subject>
-<ralph-body>This is a mock commit body generated for testing purposes.
 
-- Changed some files
-- Added new features</ralph-body>
-</ralph-commit>"
-                        .to_string()
-                });
-
-                let (message, skip_reason, files, excluded_files, detail) =
-                    try_extract_xml_commit_document_with_trace(&xml);
-
-                let event = skip_reason.map_or_else(
-                    || {
-                        message.map_or_else(
-                            || PipelineEvent::commit_xml_validation_failed(detail, attempt),
-                            |message| {
-                                PipelineEvent::commit_xml_validated(
-                                    message,
-                                    files,
-                                    excluded_files,
-                                    attempt,
-                                )
-                            },
-                        )
-                    },
-                    PipelineEvent::commit_skipped,
-                );
+                let event = if let Some(json) = &self.simulate_commit_json {
+                    parse_mock_commit_json_event(json, attempt)
+                } else {
+                    let message =
+                        "feat: mock commit message for testing\n\nThis is a mock commit body \
+                         generated for testing purposes.\n\n- Changed some files\n- Added new features"
+                            .to_string();
+                    PipelineEvent::commit_xml_validated(message, vec![], vec![], attempt)
+                };
 
                 let ui = vec![UIEvent::XmlOutput {
                     xml_type: XmlOutputType::CommitMessage,
-                    content: xml,
+                    content: "(mock JSON artifact)".to_string(),
                     context: None,
                 }];
 
@@ -220,11 +193,69 @@ impl MockEffectHandler {
     }
 }
 
+/// Parse a mock commit JSON value into a `PipelineEvent` for `ValidateCommitXml`.
+///
+/// Supports the same JSON schema as the real artifact:
+/// - `{ "type": "commit", "subject": "...", "excluded_files": [...] }`
+/// - `{ "type": "skip", "reason": "..." }`
+fn parse_mock_commit_json_event(json: &serde_json::Value, attempt: u32) -> PipelineEvent {
+    // Skip variant
+    if json.get("type").and_then(|t| t.as_str()) == Some("skip") {
+        let reason = json
+            .get("reason")
+            .and_then(|r| r.as_str())
+            .unwrap_or("no reason provided")
+            .to_string();
+        return PipelineEvent::commit_skipped(reason);
+    }
+
+    let Some(subject) = json.get("subject").and_then(|s| s.as_str()) else {
+        return PipelineEvent::commit_xml_validation_failed(
+            "Mock JSON artifact missing required 'subject' field".to_string(),
+            attempt,
+        );
+    };
+
+    let subject = subject.trim();
+    if subject.is_empty() {
+        return PipelineEvent::commit_xml_validation_failed(
+            "Mock JSON artifact has empty 'subject' field".to_string(),
+            attempt,
+        );
+    }
+
+    let excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile> = json
+        .get("excluded_files")
+        .and_then(|f| f.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| {
+                    let path = item.get("path")?.as_str()?.to_string();
+                    let reason_str = item.get("reason")?.as_str()?;
+                    let reason = match reason_str {
+                        "internal_ignore" => {
+                            crate::reducer::state::pipeline::ExcludedFileReason::InternalIgnore
+                        }
+                        "not_task_related" => {
+                            crate::reducer::state::pipeline::ExcludedFileReason::NotTaskRelated
+                        }
+                        "sensitive" => crate::reducer::state::pipeline::ExcludedFileReason::Sensitive,
+                        "deferred" => crate::reducer::state::pipeline::ExcludedFileReason::Deferred,
+                        _ => crate::reducer::state::pipeline::ExcludedFileReason::NotTaskRelated,
+                    };
+                    Some(crate::reducer::state::pipeline::ExcludedFile { path, reason })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    PipelineEvent::commit_xml_validated(subject.to_string(), vec![], excluded_files, attempt)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::reducer::event::CommitEvent;
-    use crate::reducer::state::PipelineState;
 
     #[test]
     fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {
@@ -242,14 +273,13 @@ mod tests {
     #[test]
     fn test_validate_commit_xml_propagates_excluded_files_metadata() {
         let state = crate::reducer::state::PipelineState::initial(1, 0);
-        let handler = MockEffectHandler::new(state).with_commit_message_xml(
-            r#"<ralph-commit>
-<ralph-subject>feat: mock</ralph-subject>
-<ralph-excluded-files>
-  <ralph-excluded-file reason="deferred">src/leftover.rs</ralph-excluded-file>
-</ralph-excluded-files>
-</ralph-commit>"#,
-        );
+        let handler = MockEffectHandler::new(state).with_commit_json(serde_json::json!({
+            "type": "commit",
+            "subject": "feat: mock",
+            "excluded_files": [
+                { "path": "src/leftover.rs", "reason": "deferred" }
+            ]
+        }));
 
         let (event, _ui) = handler
             .handle_commit_effect(Effect::ValidateCommitXml)
@@ -264,41 +294,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
-        let state = {
-            let s = crate::reducer::state::PipelineState::initial(1, 0);
-            let continuation = s
-                .continuation
-                .trigger_xsd_retry()
-                .trigger_xsd_retry()
-                .trigger_xsd_retry();
-            PipelineState { continuation, ..s }
-        };
-
-        let handler = MockEffectHandler::new(state);
-        let (_event, ui) = handler
-            .handle_commit_effect(Effect::PrepareCommitPrompt {
-                prompt_mode: PromptMode::XsdRetry,
-            })
-            .expect("PrepareCommitPrompt should be handled");
-
-        let prompt_key = ui
-            .iter()
-            .find_map(|e| match e {
-                UIEvent::PromptReplayHit { key, .. } => Some(key.clone()),
-                _ => None,
-            })
-            .expect("Expected PromptReplayHit UI event");
-
-        let expected_key = PromptScopeKey::for_commit(
-            handler.state.iteration,
-            1,
-            RetryMode::Xsd { count: 3 },
-            handler.state.recovery_epoch,
-        )
-        .to_string();
-
-        assert_eq!(prompt_key, expected_key);
-    }
 }

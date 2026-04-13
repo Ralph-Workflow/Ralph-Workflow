@@ -48,47 +48,7 @@ pub struct ContinuationState {
     /// Whether a continuation context cleanup is pending.
     #[serde(default)]
     pub context_cleanup_pending: bool,
-    /// Count of XSD validation retry attempts for current artifact.
-    ///
-    /// Tracks how many times we've retried with the same agent/session due to
-    /// XML parsing or XSD validation failures. Reset when switching agents,
-    /// artifacts, or on successful validation.
-    #[serde(default)]
-    pub xsd_retry_count: u32,
-    /// Whether an XSD retry is pending (validation failed, need to retry).
-    ///
-    /// Set to true when `XsdValidationFailed` event fires.
-    /// Cleared when retry attempt starts or max retries exceeded.
-    #[serde(default)]
-    pub xsd_retry_pending: bool,
-    /// Whether the next agent invocation should reuse the last session id.
-    ///
-    /// XSD retry is derived via `xsd_retry_pending`, but `xsd_retry_pending` is cleared
-    /// as soon as the retry prompt is prepared to avoid re-deriving the prepare-prompt
-    /// effect. This flag preserves the "reuse session id" signal for the subsequent
-    /// invocation effect.
-    #[serde(default)]
-    pub xsd_retry_session_reuse_pending: bool,
-    /// Last validation error message for XSD retry prompts (commit phase).
-    ///
-    /// This is set when validation fails and cleared when the retry attempt starts.
-    #[serde(default)]
-    pub last_xsd_error: Option<String>,
-    /// Last XSD validation error for review issues XML (used in XSD retry prompt).
-    ///
-    /// This is set when review validation fails and cleared when transitioning away
-    /// from review or when validation succeeds.
-    #[serde(default)]
-    pub last_review_xsd_error: Option<String>,
-    /// Last XSD validation error for fix result XML (used in XSD retry prompt).
-    ///
-    /// This is set when fix validation fails and cleared when transitioning away
-    /// from fix or when validation succeeds.
-    #[serde(default)]
-    pub last_fix_xsd_error: Option<String>,
     /// Count of same-agent retry attempts for transient invocation failures.
-    ///
-    /// This is intentionally separate from XSD retry, which is only for invalid XML outputs.
     #[serde(default)]
     pub same_agent_retry_count: u32,
     /// Whether a same-agent retry is pending.
@@ -109,15 +69,9 @@ pub struct ContinuationState {
     /// Current artifact type being processed.
     ///
     /// Set at the start of each phase to track which XML artifact is expected.
-    /// Used for appropriate retry prompts and error messages.
+    /// Used for appropriate error messages.
     #[serde(default)]
     pub current_artifact: Option<ArtifactType>,
-    /// Maximum XSD retry attempts (default 10).
-    ///
-    /// Loaded from unified config. After this many retries, falls back to
-    /// agent chain advancement.
-    #[serde(default = "default_max_xsd_retry_count")]
-    pub max_xsd_retry_count: u32,
     /// Maximum same-agent retry attempts for invocation failures that should not
     /// immediately trigger agent fallback (default 2).
     ///
@@ -191,10 +145,6 @@ pub struct ContinuationState {
     pub timeout_context_file_path: Option<String>,
 }
 
-const fn default_max_xsd_retry_count() -> u32 {
-    10
-}
-
 const fn default_max_same_agent_retry_count() -> u32 {
     2
 }
@@ -229,18 +179,11 @@ impl Default for ContinuationState {
             invalid_output_attempts: 0,
             context_write_pending: false,
             context_cleanup_pending: false,
-            xsd_retry_count: 0,
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
-            last_xsd_error: None,
-            last_review_xsd_error: None,
-            last_fix_xsd_error: None,
             same_agent_retry_count: 0,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
             continue_pending: false,
             current_artifact: None,
-            max_xsd_retry_count: default_max_xsd_retry_count(),
             max_same_agent_retry_count: default_max_same_agent_retry_count(),
             max_continue_count: default_max_continue_count(),
             // Fix continuation fields
@@ -269,28 +212,12 @@ impl ContinuationState {
 
     /// Create continuation state with custom limits (for config loading).
     #[must_use]
-    pub fn with_limits(
-        max_xsd_retry_count: u32,
-        max_continue_count: u32,
-        max_same_agent_retry_count: u32,
-    ) -> Self {
+    pub fn with_limits(max_continue_count: u32, max_same_agent_retry_count: u32) -> Self {
         Self {
-            max_xsd_retry_count,
             max_same_agent_retry_count,
             max_continue_count,
             max_fix_continue_count: default_max_fix_continue_count(),
             ..Self::default()
-        }
-    }
-
-    /// Builder: set max XSD retry count.
-    ///
-    /// Use 0 to disable XSD retries (immediate agent fallback on validation failure).
-    #[must_use]
-    pub fn with_max_xsd_retry(self, max_xsd_retry_count: u32) -> Self {
-        Self {
-            max_xsd_retry_count,
-            ..self
         }
     }
 
@@ -340,7 +267,7 @@ impl ContinuationState {
     /// Reset the continuation state for a new iteration or phase transition.
     ///
     /// This performs a **hard reset** of ALL continuation and retry state,
-    /// preserving only the configured limits (`max_xsd_retry_count`, `max_continue_count`,
+    /// preserving only the configured limits (`max_continue_count`,
     /// `max_fix_continue_count`).
     ///
     /// # What gets reset
@@ -348,8 +275,6 @@ impl ContinuationState {
     /// - `continuation_attempt` -> 0
     /// - `continue_pending` -> false
     /// - `invalid_output_attempts` -> 0
-    /// - `xsd_retry_count` -> 0
-    /// - `xsd_retry_pending` -> false
     /// - `fix_continuation_attempt` -> 0
     /// - `fix_continue_pending` -> false
     /// - `fix_status` -> None
@@ -371,7 +296,6 @@ impl ContinuationState {
         // consecutive_same_effect_count -> 0). This is intentional during
         // loop recovery to break the tight loop cycle and start fresh.
         Self {
-            max_xsd_retry_count: self.max_xsd_retry_count,
             max_same_agent_retry_count: self.max_same_agent_retry_count,
             max_continue_count: self.max_continue_count,
             max_fix_continue_count: self.max_fix_continue_count,

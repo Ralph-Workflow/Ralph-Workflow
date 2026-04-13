@@ -131,8 +131,8 @@ fn infer_legacy_current_drain(
     }
 
     match (current_role, current_mode) {
-        (Some(AgentRole::Reviewer), DrainMode::Continuation) => AgentDrain::Fix,
         (Some(AgentRole::Developer), DrainMode::Continuation) => AgentDrain::Development,
+        (Some(AgentRole::Reviewer), DrainMode::Continuation) => AgentDrain::Fix,
         (Some(current_role), _) => AgentDrain::from(current_role),
         (None, _) => default_current_drain(),
     }
@@ -242,7 +242,7 @@ impl Default for AgentChainState {
             backoff_multiplier: default_backoff_multiplier(),
             max_backoff_ms: default_max_backoff_ms(),
             backoff_pending_ms: None,
-            current_role: AgentRole::Developer,
+            current_role: AgentRole::Planning,
             current_drain: default_current_drain(),
             current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
@@ -293,7 +293,7 @@ impl AgentChainState {
             backoff_multiplier: default_backoff_multiplier(),
             max_backoff_ms: default_max_backoff_ms(),
             backoff_pending_ms: None,
-            current_role: AgentRole::Developer,
+            current_role: AgentRole::Planning,
             current_drain: default_current_drain(),
             current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
@@ -319,6 +319,8 @@ impl AgentChainState {
             AgentRole::Reviewer => AgentDrain::Review,
             AgentRole::Commit => AgentDrain::Commit,
             AgentRole::Analysis => AgentDrain::Analysis,
+            AgentRole::Planning => AgentDrain::Planning,
+            AgentRole::Fix => AgentDrain::Fix,
         };
         Self {
             agents: Arc::from(agents),
@@ -626,7 +628,7 @@ mod legacy_rate_limit_prompt_tests {
             AgentDrain::Fix,
             "drain must be inferred from the structured continuation prompt's drain field"
         );
-        assert_eq!(decoded.current_role, AgentRole::Reviewer);
+        assert_eq!(decoded.current_role, AgentRole::Fix);
         let prompt = decoded
             .rate_limit_continuation_prompt
             .expect("continuation prompt must survive deserialization");
@@ -660,8 +662,8 @@ mod legacy_rate_limit_prompt_tests {
         );
         assert_eq!(
             decoded.current_role,
-            AgentRole::Reviewer,
-            "current_role must be derived from current_drain (Fix -> Reviewer)"
+            AgentRole::Fix,
+            "current_role must be derived from current_drain (Fix -> Fix)"
         );
     }
 
@@ -738,7 +740,7 @@ mod legacy_rate_limit_prompt_tests {
             AgentDrain::Planning,
             "when both current_drain and current_role are absent, Planning drain is the default"
         );
-        assert_eq!(decoded.current_role, AgentRole::Developer);
+        assert_eq!(decoded.current_role, AgentRole::Planning);
     }
 
     #[test]
@@ -875,12 +877,12 @@ mod legacy_rate_limit_prompt_tests {
             AgentDrain::Fix,
             "(Reviewer, Continuation) must map to Fix via role+mode inference"
         );
-        assert_eq!(decoded.current_role, AgentRole::Reviewer);
+        assert_eq!(decoded.current_role, AgentRole::Fix);
         let prompt = decoded
             .rate_limit_continuation_prompt
             .expect("legacy string prompt must survive deserialization");
         assert_eq!(prompt.drain, AgentDrain::Fix);
-        assert_eq!(prompt.role, AgentRole::Reviewer);
+        assert_eq!(prompt.role, AgentRole::Fix);
         assert_eq!(prompt.prompt, "legacy fix prompt");
     }
 }

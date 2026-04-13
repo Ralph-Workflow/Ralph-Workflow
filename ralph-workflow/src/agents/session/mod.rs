@@ -83,16 +83,13 @@ impl SessionDrain {
     }
 
     /// Returns the corresponding `AgentRole` for this drain.
-    ///
-    /// Note: Planning and Fix drains don't have direct `AgentRole` equivalents,
-    /// so they map to `AgentRole::Analysis` as the most generic fallback.
     pub fn into_role(self) -> AgentRole {
         match self {
-            SessionDrain::Planning => AgentRole::Analysis,
+            SessionDrain::Planning => AgentRole::Planning,
             SessionDrain::Development => AgentRole::Developer,
             SessionDrain::Analysis => AgentRole::Analysis,
             SessionDrain::Review => AgentRole::Reviewer,
-            SessionDrain::Fix => AgentRole::Analysis,
+            SessionDrain::Fix => AgentRole::Fix,
             SessionDrain::Commit => AgentRole::Commit,
         }
     }

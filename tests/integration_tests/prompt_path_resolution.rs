@@ -13,10 +13,9 @@ use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain
 use ralph_workflow::prompts::content_reference::{DiffContentReference, PlanContentReference};
 use ralph_workflow::prompts::{
     prompt_generate_commit_message_with_diff_with_context, prompt_planning_xml_with_references,
-    prompt_planning_xsd_retry_with_context_files, prompt_review_xml_with_references,
-    PromptContentReference, SessionCapabilities, TemplateContext,
+    prompt_review_xml_with_references, PromptContentReference, SessionCapabilities, TemplateContext,
 };
-use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
+use ralph_workflow::workspace::MemoryWorkspace;
 use std::path::{Path, PathBuf};
 
 use crate::test_timeout::with_default_timeout;
@@ -87,34 +86,6 @@ fn test_review_prompts_use_workspace_root() {
         assert!(
             prompt.contains("ralph_submit_artifact"),
             "Review prompt should instruct agent to use ralph_submit_artifact"
-        );
-    });
-}
-
-/// Test that XSD retry prompts detect missing schema files with workspace root context.
-#[test]
-fn test_xsd_retry_missing_schema_includes_workspace_root() {
-    with_default_timeout(|| {
-        let workspace_root = PathBuf::from("/tmp/test_workspace");
-        let workspace = MemoryWorkspace::new(workspace_root);
-        let template_context = TemplateContext::default();
-
-        // Generate XSD retry prompt when schema file is missing
-        let prompt = prompt_planning_xsd_retry_with_context_files(
-            &template_context,
-            "Test XSD error",
-            &workspace,
-            SessionCapabilities::new(
-                &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
-                &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
-            ),
-        );
-
-        // When schema is missing, prompt should include workspace root for diagnostics
-        assert!(
-            prompt.contains("workspace.root()")
-                || prompt.contains(&workspace.root().display().to_string()),
-            "XSD retry prompt should include workspace root when files are missing"
         );
     });
 }

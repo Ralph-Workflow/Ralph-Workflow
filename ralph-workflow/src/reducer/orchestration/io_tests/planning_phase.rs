@@ -151,68 +151,6 @@ fn test_planning_phase_emits_single_task_effect() {
 }
 
 #[test]
-fn test_planning_phase_uses_xsd_retry_prompt_when_pending() {
-    let sig = PipelineState::initial(5, 2)
-        .agent_chain
-        .with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        )
-        .with_drain(crate::agents::AgentDrain::Planning)
-        .consumer_signature_sha256();
-
-    let state = PipelineState {
-        phase: PipelinePhase::Planning,
-        gitignore_entries_ensured: true,
-        context_cleaned: true,
-        iteration: 1,
-        agent_chain: PipelineState::initial(5, 2)
-            .agent_chain
-            .with_agents(
-                vec!["claude".to_string()],
-                vec![vec![]],
-                AgentRole::Developer,
-            )
-            .with_drain(crate::agents::AgentDrain::Planning),
-        prompt_inputs: crate::reducer::state::PromptInputsState {
-            planning: Some(crate::reducer::state::MaterializedPlanningInputs {
-                iteration: 1,
-                prompt: crate::reducer::state::MaterializedPromptInput {
-                    kind: crate::reducer::state::PromptInputKind::Prompt,
-                    content_id_sha256: "id".to_string(),
-                    consumer_signature_sha256: sig,
-                    original_bytes: 1,
-                    final_bytes: 1,
-                    model_budget_bytes: None,
-                    inline_budget_bytes: Some(100_000),
-                    representation: crate::reducer::state::PromptInputRepresentation::Inline,
-                    reason: crate::reducer::state::PromptMaterializationReason::WithinBudgets,
-                },
-            }),
-            ..Default::default()
-        },
-        continuation: crate::reducer::state::ContinuationState {
-            xsd_retry_pending: true,
-            ..crate::reducer::state::ContinuationState::default()
-        },
-        ..create_test_state()
-    };
-
-    let effect = determine_next_effect(&state);
-    assert!(
-        matches!(
-            effect,
-            Effect::PreparePlanningPrompt {
-                iteration: 1,
-                prompt_mode: PromptMode::XsdRetry
-            }
-        ),
-        "Expected XSD retry prompt when xsd_retry_pending=true, got {effect:?}"
-    );
-}
-
-#[test]
 fn test_planning_phase_transitions_to_development_after_completion() {
     // Create state in Planning phase with agents initialized
     let mut state = PipelineState {

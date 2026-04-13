@@ -132,7 +132,4 @@ mod test_traits;
 mod timeout_file_activity;
 mod ui_events;
 mod workflows;
-mod xsd_retry_missing_files;
-mod xsd_retry_workflow;
-
 mod dylint_target;

@@ -3,10 +3,9 @@
 //! Split boundary handlers for review/fix flows.
 
 use super::MainEffectHandler;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::files::artifact_paths;
 use crate::phases::review::boundary_domain::{
     derive_review_validation_flags, render_issues_markdown, review_outcome_event,
-    should_materialize_xsd_retry_last_output,
 };
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
@@ -127,22 +126,15 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         pass: u32,
     ) -> EffectResult {
-        // JSON-first: check for issues.json artifact before XML
         match ctx.workspace.read_artifact_json("issues") {
             Ok(Some(_)) | Err(_) => {
-                return EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass));
+                EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass))
             }
-            Ok(None) => {}
-        }
-        // XML fallback
-        let issues_xml = Path::new(xml_paths::ISSUES_XML);
-        match ctx.workspace.read(issues_xml) {
-            Ok(_) => EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass)),
-            Err(err) => issues_xml_missing_result(
+            Ok(None) => EffectResult::event(PipelineEvent::review_issues_xml_missing(
                 pass,
                 self.state.continuation.invalid_output_attempts,
-                &err,
-            ),
+                None,
+            )),
         }
     }
 
@@ -152,15 +144,14 @@ impl MainEffectHandler {
         pass: u32,
     ) -> EffectResult {
         let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
-        if let Some(result) = try_validate_review_from_json(ctx, pass, invalid_output_attempts) {
-            return result;
+        match try_validate_review_from_json(ctx, pass, invalid_output_attempts) {
+            Some(result) => result,
+            None => EffectResult::event(PipelineEvent::review_output_validation_failed(
+                pass,
+                invalid_output_attempts,
+                None,
+            )),
         }
-        let issues_xml =
-            match read_review_issues_xml_for_validation(ctx, invalid_output_attempts, pass) {
-                Ok(s) => s,
-                Err(result) => return *result,
-            };
-        validate_and_build_result(pass, issues_xml, invalid_output_attempts)
     }
 
     pub(super) fn write_issues_markdown(
@@ -168,7 +159,7 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         pass: u32,
     ) -> Result<EffectResult> {
-        use crate::files::llm_output_extraction::IssuesElements;
+        use crate::files::result_types::{IssueEntry, IssuesElements};
 
         let outcome = self
             .state
@@ -177,22 +168,17 @@ impl MainEffectHandler {
             .filter(|outcome| outcome.pass == pass)
             .ok_or(ErrorEvent::ValidatedReviewOutcomeMissing { pass })?;
 
-        let elements = ctx
-            .workspace
-            .read(Path::new(xml_paths::ISSUES_XML))
-            .ok()
-            .and_then(|xml| crate::files::llm_output_extraction::validate_issues_xml(&xml).ok())
-            .unwrap_or_else(|| IssuesElements {
-                issues: outcome
-                    .issues
-                    .iter()
-                    .map(|s| crate::files::llm_output_extraction::IssueEntry {
-                        text: s.clone(),
-                        skills_mcp: None,
-                    })
-                    .collect(),
-                no_issues_found: outcome.no_issues_found.clone(),
-            });
+        let elements = IssuesElements {
+            issues: outcome
+                .issues
+                .iter()
+                .map(|s| IssueEntry {
+                    text: s.clone(),
+                    skills_mcp: None,
+                })
+                .collect(),
+            no_issues_found: outcome.no_issues_found.clone(),
+        };
 
         let markdown = render_issues_markdown(&elements);
         ctx.workspace
@@ -219,29 +205,20 @@ impl MainEffectHandler {
             .filter(|outcome| outcome.pass == pass)
             .ok_or(ErrorEvent::ValidatedReviewOutcomeMissing { pass })?;
 
-        let issues_xml = ctx.workspace.read(Path::new(xml_paths::ISSUES_XML));
-        let issues_xml = match issues_xml {
-            Ok(s) => s,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                ctx.logger
-                    .warn("Missing .agent/tmp/issues.xml; using empty content for UI output");
-                String::new()
-            }
-            Err(err) => {
-                return Err(ErrorEvent::WorkspaceReadFailed {
-                    path: xml_paths::ISSUES_XML.to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-                .into());
-            }
-        };
+        let content = ctx
+            .workspace
+            .read_artifact_json("issues")
+            .ok()
+            .and_then(|opt| opt)
+            .and_then(|envelope| serde_json::to_string_pretty(&envelope.content).ok())
+            .unwrap_or_else(|| "[no issues artifact]".to_string());
 
         let snippets = extract_issue_snippets(&outcome.issues, ctx.workspace);
         Ok(EffectResult::with_ui(
             PipelineEvent::review_issue_snippets_extracted(pass),
             vec![UIEvent::XmlOutput {
                 xml_type: XmlOutputType::ReviewIssues,
-                content: issues_xml,
+                content,
                 context: Some(XmlOutputContext {
                     iteration: None,
                     pass: Some(pass),
@@ -252,13 +229,11 @@ impl MainEffectHandler {
     }
 
     pub(super) fn archive_review_issues_xml(ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
-        use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
-
-        archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::ISSUES_XML));
-        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+        artifact_paths::archive_xml_file_with_workspace(
             ctx.workspace,
-            "issues",
+            Path::new(artifact_paths::ISSUES_XML),
         );
+        crate::files::archive_json_artifact_with_workspace(ctx.workspace, "issues");
         EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
 
@@ -271,53 +246,6 @@ impl MainEffectHandler {
         EffectResult::event(review_outcome_event(pass, issues_found, clean_no_issues))
     }
 
-    pub(super) fn materialize_xsd_retry_last_output(
-        &self,
-        ctx: &PhaseContext<'_>,
-        pass: u32,
-    ) -> Result<Vec<PipelineEvent>> {
-        use crate::phases::review::boundary_domain::XsdRetryMaterializationSignature;
-
-        let primary_path = Path::new(xml_paths::ISSUES_XML);
-        let archived_path = Path::new(".agent/tmp/issues.xml.processed");
-        let last_output = read_xsd_retry_source(ctx, primary_path, archived_path)?;
-
-        let content_id_sha256 = sha256_hex_str(&last_output);
-        let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
-        let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
-        let last_output_bytes = last_output.len() as u64;
-
-        let candidate = XsdRetryMaterializationSignature {
-            phase: crate::reducer::event::PipelinePhase::Review,
-            scope_id: pass,
-            content_id_sha256: content_id_sha256.clone(),
-            consumer_signature_sha256,
-        };
-
-        let existing = find_existing_xsd_signature(&self.state, pass, &candidate);
-
-        if should_materialize_xsd_retry_last_output(existing.as_ref(), &candidate) {
-            let last_output_path = Path::new(".agent/tmp/last_output.xml");
-            write_xsd_last_output(ctx, last_output_path, &last_output)?;
-
-            let input = build_xsd_last_output_input(
-                &candidate,
-                last_output_bytes,
-                inline_budget_bytes,
-                last_output_path,
-            );
-
-            Ok(build_xsd_materialized_events(
-                input,
-                pass,
-                &content_id_sha256,
-                last_output_bytes,
-                inline_budget_bytes,
-            ))
-        } else {
-            Ok(Vec::new())
-        }
-    }
 }
 
 fn log_prompt_backup_result(ctx: &PhaseContext<'_>) {
@@ -649,52 +577,6 @@ fn attach_oversize_diff_event(
     }
 }
 
-fn read_review_issues_xml_for_validation(
-    ctx: &PhaseContext<'_>,
-    invalid_output_attempts: u32,
-    pass: u32,
-) -> std::result::Result<String, Box<EffectResult>> {
-    let issues_xml = ctx.workspace.read(Path::new(xml_paths::ISSUES_XML));
-    match issues_xml {
-        Ok(s) => Ok(s),
-        Err(err) => {
-            let detail = extract_workspace_error_detail(&err);
-            Err(Box::new(EffectResult::event(
-                PipelineEvent::review_output_validation_failed(
-                    pass,
-                    invalid_output_attempts,
-                    detail,
-                ),
-            )))
-        }
-    }
-}
-
-fn issues_xml_missing_result(
-    pass: u32,
-    invalid_output_attempts: u32,
-    err: &std::io::Error,
-) -> EffectResult {
-    let detail = extract_workspace_error_detail(err);
-    EffectResult::event(PipelineEvent::review_issues_xml_missing(
-        pass,
-        invalid_output_attempts,
-        detail,
-    ))
-}
-
-fn extract_workspace_error_detail(err: &std::io::Error) -> Option<String> {
-    if err.kind() == std::io::ErrorKind::NotFound {
-        None
-    } else {
-        Some(format!(
-            "{:?}: {}",
-            WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            err
-        ))
-    }
-}
-
 // --- invoke_review_agent helpers ---
 
 fn read_review_prompt_file(ctx: &PhaseContext<'_>, pass: u32) -> Result<String> {
@@ -742,48 +624,6 @@ fn append_review_invoked_event(result: EffectResult, pass: u32) -> EffectResult 
 
 // --- validate_review_issues_xml helpers ---
 
-fn validate_and_build_result(
-    pass: u32,
-    issues_xml: String,
-    invalid_output_attempts: u32,
-) -> EffectResult {
-    use crate::files::llm_output_extraction::validate_issues_xml;
-    match validate_issues_xml(&issues_xml) {
-        Ok(elements) => build_validation_success(pass, issues_xml, &elements),
-        Err(err) => EffectResult::event(PipelineEvent::review_output_validation_failed(
-            pass,
-            invalid_output_attempts,
-            Some(err.format_for_ai_retry()),
-        )),
-    }
-}
-
-fn build_validation_success(
-    pass: u32,
-    issues_xml: String,
-    elements: &crate::files::llm_output_extraction::IssuesElements,
-) -> EffectResult {
-    let (issues_found, clean_no_issues, _, _) = derive_review_validation_flags(elements);
-    EffectResult::with_ui(
-        PipelineEvent::review_issues_xml_validated(
-            pass,
-            issues_found,
-            clean_no_issues,
-            elements.issue_texts(),
-            elements.no_issues_found.clone(),
-        ),
-        vec![UIEvent::XmlOutput {
-            xml_type: XmlOutputType::ReviewIssues,
-            content: issues_xml,
-            context: Some(XmlOutputContext {
-                iteration: None,
-                pass: Some(pass),
-                snippets: Vec::new(),
-            }),
-        }],
-    )
-}
-
 fn validate_review_json_envelope(
     envelope: crate::workspace::ArtifactEnvelope,
     pass: u32,
@@ -801,10 +641,9 @@ fn validate_review_json_envelope(
     }
 }
 
-/// Build review validation result directly from parsed `IssuesElements` (JSON-first path).
+/// Build review validation result directly from parsed `IssuesElements` (JSON path).
 ///
-/// This mirrors `build_validation_success` but does not require raw XML content,
-/// since the JSON artifact path produces domain types directly.
+/// Produces domain types directly from the JSON artifact without raw XML content.
 fn try_validate_review_from_json(
     ctx: &PhaseContext<'_>,
     pass: u32,
@@ -829,7 +668,7 @@ fn try_validate_review_from_json(
 
 fn build_review_validation_from_elements(
     pass: u32,
-    elements: crate::files::llm_output_extraction::IssuesElements,
+    elements: crate::files::result_types::IssuesElements,
     _invalid_output_attempts: u32,
 ) -> EffectResult {
     let (issues_found, clean_no_issues, _, _) = derive_review_validation_flags(&elements);
@@ -853,74 +692,6 @@ fn build_review_validation_from_elements(
             }),
         }],
     )
-}
-
-// --- materialize_xsd_retry_last_output helpers ---
-
-fn read_xsd_retry_source(
-    ctx: &PhaseContext<'_>,
-    primary_path: &Path,
-    archived_path: &Path,
-) -> Result<String> {
-    use crate::phases::review::xsd_retry_input_strategy::{
-        decide_xsd_retry_input_source, XsdRetryInputSource,
-    };
-    let source = decide_xsd_retry_input_source(
-        ctx.workspace.exists(primary_path),
-        ctx.workspace.exists(archived_path),
-        primary_path,
-        archived_path,
-    );
-    match source {
-        XsdRetryInputSource::Primary { ref path } => ctx.workspace.read(path).map_err(|err| {
-            ErrorEvent::WorkspaceReadFailed {
-                path: path.display().to_string(),
-                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            }
-            .into()
-        }),
-        XsdRetryInputSource::ArchivedFallback { ref path } => {
-            ctx.logger
-                .info("XSD retry: using archived .processed file as last output");
-            ctx.workspace.read(path).map_err(|err| {
-                ErrorEvent::WorkspaceReadFailed {
-                    path: path.display().to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-                .into()
-            })
-        }
-        XsdRetryInputSource::EmptyFallback => {
-            ctx.logger.warn(
-                "Missing .agent/tmp/issues.xml and .processed fallback; using empty output for review XSD retry",
-            );
-            Ok(String::new())
-        }
-    }
-}
-
-fn find_existing_xsd_signature(
-    state: &crate::reducer::state::PipelineState,
-    pass: u32,
-    candidate: &crate::phases::review::boundary_domain::XsdRetryMaterializationSignature,
-) -> Option<crate::phases::review::boundary_domain::XsdRetryMaterializationSignature> {
-    use crate::phases::review::boundary_domain::XsdRetryMaterializationSignature;
-    state
-        .prompt_inputs
-        .xsd_retry_last_output
-        .as_ref()
-        .filter(|m| {
-            m.phase == crate::reducer::event::PipelinePhase::Review
-                && m.scope_id == pass
-                && m.last_output.content_id_sha256 == candidate.content_id_sha256
-                && m.last_output.consumer_signature_sha256 == candidate.consumer_signature_sha256
-        })
-        .map(|m| XsdRetryMaterializationSignature {
-            phase: m.phase,
-            scope_id: m.scope_id,
-            content_id_sha256: m.last_output.content_id_sha256.clone(),
-            consumer_signature_sha256: m.last_output.consumer_signature_sha256.clone(),
-        })
 }
 
 include!("run_review_helpers.rs");

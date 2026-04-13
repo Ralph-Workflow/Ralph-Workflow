@@ -125,7 +125,7 @@ pub fn generate_commit_message(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &merged_env,
-        completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+        completion_output_path: Some(Path::new(artifact_paths::COMMIT_MESSAGE_JSON)),
     };
 
     let result = run_with_prompt(&prompt_cmd, runtime)?;
@@ -154,14 +154,16 @@ pub fn generate_commit_message(
         CommitExtractionOutcome::InvalidXml(detail)
         | CommitExtractionOutcome::MissingFile(detail) => anyhow::bail!(detail),
         CommitExtractionOutcome::Skipped(reason) => {
-            archive_xml_file_with_workspace(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML));
+            artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
+            crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
             return Ok(CommitMessageResult {
                 outcome: CommitMessageOutcome::Skipped { reason },
             });
         }
     };
 
-    archive_xml_file_with_workspace(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML));
+    artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
+    crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
 
     Ok(CommitMessageResult {
         outcome: CommitMessageOutcome::Message(result.into_message()),
@@ -327,7 +329,7 @@ fn try_single_commit_agent(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &merged_env,
-        completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+        completion_output_path: Some(Path::new(artifact_paths::COMMIT_MESSAGE_JSON)),
     };
 
     let result = match run_with_prompt(&prompt_cmd, runtime) {
@@ -351,7 +353,7 @@ fn try_single_commit_agent(
         )));
     }
 
-    if had_error && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML)) {
+    if had_error && !crate::files::has_valid_artifact_output(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_JSON)) {
         let retry_prompt = commit_submission_retry_prompt(&prompt, submit_tool_name);
         let retry_cmd = PromptCommand {
             label: commit_agent,
@@ -364,14 +366,14 @@ fn try_single_commit_agent(
             logfile: &logfile,
             parser_type: agent_config.json_parser,
             env_vars: &merged_env,
-            completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+            completion_output_path: Some(Path::new(artifact_paths::COMMIT_MESSAGE_JSON)),
         };
         let retry_result = match run_with_prompt(&retry_cmd, runtime) {
             Ok(r) => r,
             Err(e) => return TryAgentResult::Skip(Some(e.into())),
         };
         if retry_result.exit_code != 0
-            && !has_valid_xml_output(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML))
+            && !crate::files::has_valid_artifact_output(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_JSON))
         {
             return TryAgentResult::Skip(Some(anyhow::anyhow!(
                 "Agent {} failed with exit code {} after submission retry",
@@ -388,13 +390,15 @@ fn try_single_commit_agent(
             files: _,
             ..
         } => {
-            archive_xml_file_with_workspace(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML));
+            artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
+            crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
             TryAgentResult::Success(CommitMessageResult {
                 outcome: CommitMessageOutcome::Message(extracted.into_message()),
             })
         }
         CommitExtractionOutcome::Skipped(reason) => {
-            archive_xml_file_with_workspace(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML));
+            artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
+            crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
             TryAgentResult::Success(CommitMessageResult {
                 outcome: CommitMessageOutcome::Skipped { reason },
             })
@@ -413,7 +417,7 @@ fn try_single_commit_agent(
                 logfile: &logfile,
                 parser_type: agent_config.json_parser,
                 env_vars: &merged_env,
-                completion_output_path: Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
+                completion_output_path: Some(Path::new(artifact_paths::COMMIT_MESSAGE_JSON)),
             };
             match run_with_prompt(&retry_cmd, runtime) {
                 Ok(_) => match extract_commit_message_from_file_with_workspace(workspace) {
@@ -422,19 +426,15 @@ fn try_single_commit_agent(
                         files: _,
                         ..
                     } => {
-                        archive_xml_file_with_workspace(
-                            workspace,
-                            Path::new(xml_paths::COMMIT_MESSAGE_XML),
-                        );
+                        artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
+                        crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
                         TryAgentResult::Success(CommitMessageResult {
                             outcome: CommitMessageOutcome::Message(extracted.into_message()),
                         })
                     }
                     CommitExtractionOutcome::Skipped(reason) => {
-                        archive_xml_file_with_workspace(
-                            workspace,
-                            Path::new(xml_paths::COMMIT_MESSAGE_XML),
-                        );
+                        artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
+                        crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
                         TryAgentResult::Success(CommitMessageResult {
                             outcome: CommitMessageOutcome::Skipped { reason },
                         })

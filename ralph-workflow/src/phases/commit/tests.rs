@@ -104,14 +104,6 @@ mod tests {
     }
 
     #[test]
-    fn test_commit_xsd_retry_prompt_content_id_changes_with_error() {
-        let first = commit_xsd_retry_prompt_content_id("diff123", "xsd-a", "consumer456");
-        let second = commit_xsd_retry_prompt_content_id("diff123", "xsd-b", "consumer456");
-
-        assert_ne!(first, second);
-    }
-
-    #[test]
     fn test_prepend_residual_files_context_formats_note() {
         let base_prompt = "Base prompt";
         let residual = vec!["src/lib.rs".to_string(), "Cargo.toml".to_string()];
@@ -171,18 +163,6 @@ mod tests {
             event,
             PipelineEvent::Commit(CommitEvent::GenerationFailed { reason })
                 if reason == "Commit validation outcome missing message and reason"
-        ));
-    }
-
-    #[test]
-    fn test_parse_commit_xml_document_detects_skip() {
-        let xml = "<ralph-commit><ralph-skip>No changes to commit</ralph-skip></ralph-commit>";
-
-        let parsed = parse_commit_xml_document(xml);
-
-        assert!(matches!(
-            parsed,
-            ParsedCommitXmlOutcome::Skipped(reason) if reason == "No changes to commit"
         ));
     }
 

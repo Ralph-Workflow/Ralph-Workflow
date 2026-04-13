@@ -121,10 +121,9 @@ impl MockEffectHandler {
             }
 
             Effect::InitializeAgentChain { drain, .. } => {
-                let role = drain.role();
                 // Emit phase transition when initializing agent chain for a new phase
-                let ui = match role {
-                    crate::agents::AgentRole::Developer
+                let ui = match drain {
+                    crate::agents::AgentDrain::Planning
                         if self.state.phase == PipelinePhase::Planning =>
                     {
                         vec![UIEvent::PhaseTransition {
@@ -132,7 +131,7 @@ impl MockEffectHandler {
                             to: PipelinePhase::Planning,
                         }]
                     }
-                    crate::agents::AgentRole::Reviewer
+                    crate::agents::AgentDrain::Review
                         if self.state.phase == PipelinePhase::Review =>
                     {
                         vec![UIEvent::PhaseTransition {

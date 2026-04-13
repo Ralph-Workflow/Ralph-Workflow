@@ -1,7 +1,7 @@
 // Pure domain logic for development prompt mode behavior selection
 //
 // The orchestrator decides WHICH mode to use based on state (Normal, Continuation,
-// XsdRetry, SameAgentRetry). This module contains pure helpers that derive the
+// SameAgentRetry). This module contains pure helpers that derive the
 // specific prompt construction strategy for each mode WITHOUT performing I/O.
 
 use crate::reducer::state::PromptMode;
@@ -17,8 +17,6 @@ pub(crate) enum DevelopmentPromptExecutionPath {
     Normal,
     /// Execute continuation prompt flow with attempt context
     Continuation,
-    /// Execute XSD retry prompt flow with last invalid output
-    XsdRetry,
     /// Execute same-agent retry flow with prepended guidance
     SameAgentRetry,
 }
@@ -36,7 +34,6 @@ pub(crate) fn derive_development_prompt_execution_path(
     match prompt_mode {
         PromptMode::Normal => DevelopmentPromptExecutionPath::Normal,
         PromptMode::Continuation => DevelopmentPromptExecutionPath::Continuation,
-        PromptMode::XsdRetry => DevelopmentPromptExecutionPath::XsdRetry,
         PromptMode::SameAgentRetry => DevelopmentPromptExecutionPath::SameAgentRetry,
     }
 }
@@ -55,12 +52,6 @@ mod tests {
     fn test_continuation_mode_maps_to_continuation_path() {
         let path = derive_development_prompt_execution_path(PromptMode::Continuation);
         assert_eq!(path, DevelopmentPromptExecutionPath::Continuation);
-    }
-
-    #[test]
-    fn test_xsd_retry_mode_maps_to_xsd_retry_path() {
-        let path = derive_development_prompt_execution_path(PromptMode::XsdRetry);
-        assert_eq!(path, DevelopmentPromptExecutionPath::XsdRetry);
     }
 
     #[test]

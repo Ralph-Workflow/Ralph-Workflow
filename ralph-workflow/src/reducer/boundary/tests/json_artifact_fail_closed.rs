@@ -1,5 +1,5 @@
 use super::common::TestFixture;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::files::artifact_paths;
 use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{
     CommitEvent, DevelopmentEvent, PipelineEvent, PlanningEvent, ReviewEvent,
@@ -80,7 +80,7 @@ fn write_development_result_json(
 fn planning_invalid_json_does_not_fall_back_to_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/plan.json", "{not valid json")
-        .with_file(xml_paths::PLAN_XML, VALID_PLAN_XML);
+        .with_file(artifact_paths::PLAN_XML, VALID_PLAN_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
@@ -96,31 +96,10 @@ fn planning_invalid_json_does_not_fall_back_to_xml() {
 }
 
 #[test]
-fn planning_missing_json_allows_xml_fallback() {
-    let workspace = MemoryWorkspace::new_test().with_file(xml_paths::PLAN_XML, VALID_PLAN_XML);
-    let mut fixture = TestFixture::with_workspace(workspace);
-    let ctx = fixture.ctx();
-    let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
-
-    let result = handler
-        .validate_planning_xml(&ctx, 0)
-        .expect("handler should not error");
-
-    assert!(matches!(
-        result.event,
-        PipelineEvent::Planning(PlanningEvent::PlanXmlValidated {
-            iteration: 0,
-            valid: true,
-            ..
-        })
-    ));
-}
-
-#[test]
 fn development_invalid_json_does_not_fall_back_to_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/development_result.json", "{broken")
-        .with_file(xml_paths::DEVELOPMENT_RESULT_XML, VALID_DEVELOPMENT_XML);
+        .with_file(artifact_paths::DEVELOPMENT_RESULT_XML, VALID_DEVELOPMENT_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
@@ -134,9 +113,11 @@ fn development_invalid_json_does_not_fall_back_to_xml() {
 }
 
 #[test]
-fn development_missing_json_allows_xml_fallback() {
+fn development_missing_json_fails_without_xml_fallback() {
+    // Development validation is JSON-only: missing JSON always produces
+    // OutputValidationFailed, even when an XML file is present.
     let workspace = MemoryWorkspace::new_test()
-        .with_file(xml_paths::DEVELOPMENT_RESULT_XML, VALID_DEVELOPMENT_XML);
+        .with_file(artifact_paths::DEVELOPMENT_RESULT_XML, VALID_DEVELOPMENT_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
@@ -145,7 +126,7 @@ fn development_missing_json_allows_xml_fallback() {
 
     assert!(matches!(
         result.event,
-        PipelineEvent::Development(DevelopmentEvent::XmlValidated { iteration: 0, .. })
+        PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed { iteration: 0, .. })
     ));
 }
 
@@ -247,7 +228,7 @@ fn fix_analysis_continuation_json_missing_next_steps_fails_without_xml_fallback(
 fn review_invalid_json_does_not_fall_back_to_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/issues.json", "{bad")
-        .with_file(xml_paths::ISSUES_XML, VALID_ISSUES_XML);
+        .with_file(artifact_paths::ISSUES_XML, VALID_ISSUES_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
@@ -265,25 +246,10 @@ fn review_invalid_json_does_not_fall_back_to_xml() {
 }
 
 #[test]
-fn review_missing_json_allows_xml_fallback() {
-    let workspace = MemoryWorkspace::new_test().with_file(xml_paths::ISSUES_XML, VALID_ISSUES_XML);
-    let mut fixture = TestFixture::with_workspace(workspace);
-    let ctx = fixture.ctx();
-    let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
-
-    let result = handler.validate_review_issues_xml(&ctx, 0);
-
-    assert!(matches!(
-        result.event,
-        PipelineEvent::Review(ReviewEvent::IssuesXmlValidated { pass: 0, .. })
-    ));
-}
-
-#[test]
 fn fix_invalid_json_does_not_fall_back_to_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/fix_result.json", "{bad")
-        .with_file(xml_paths::FIX_RESULT_XML, VALID_FIX_XML);
+        .with_file(artifact_paths::FIX_RESULT_XML, VALID_FIX_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
@@ -301,8 +267,10 @@ fn fix_invalid_json_does_not_fall_back_to_xml() {
 }
 
 #[test]
-fn fix_missing_json_allows_xml_fallback() {
-    let workspace = MemoryWorkspace::new_test().with_file(xml_paths::FIX_RESULT_XML, VALID_FIX_XML);
+fn fix_missing_json_fails_without_xml_fallback() {
+    // Fix validation is JSON-only: missing JSON always produces FixOutputValidationFailed,
+    // even when an XML file is present.
+    let workspace = MemoryWorkspace::new_test().with_file(artifact_paths::FIX_RESULT_XML, VALID_FIX_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
@@ -311,7 +279,7 @@ fn fix_missing_json_allows_xml_fallback() {
 
     assert!(matches!(
         result.event,
-        PipelineEvent::Review(ReviewEvent::FixResultXmlValidated { pass: 0, .. })
+        PipelineEvent::Review(ReviewEvent::FixOutputValidationFailed { pass: 0, .. })
     ));
 }
 
@@ -319,7 +287,7 @@ fn fix_missing_json_allows_xml_fallback() {
 fn commit_invalid_json_does_not_fall_back_to_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/commit_message.json", "{bad")
-        .with_file(xml_paths::COMMIT_MESSAGE_XML, VALID_COMMIT_XML_SKIP);
+        .with_file(artifact_paths::COMMIT_MESSAGE_XML, VALID_COMMIT_XML_SKIP);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
@@ -332,18 +300,3 @@ fn commit_invalid_json_does_not_fall_back_to_xml() {
     ));
 }
 
-#[test]
-fn commit_missing_json_allows_xml_fallback() {
-    let workspace =
-        MemoryWorkspace::new_test().with_file(xml_paths::COMMIT_MESSAGE_XML, VALID_COMMIT_XML_SKIP);
-    let mut fixture = TestFixture::with_workspace(workspace);
-    let ctx = fixture.ctx();
-    let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
-
-    let result = handler.validate_commit_xml(&ctx);
-
-    assert!(matches!(
-        result.event,
-        PipelineEvent::Commit(CommitEvent::Skipped { .. })
-    ));
-}

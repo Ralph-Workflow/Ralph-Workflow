@@ -79,8 +79,9 @@ pub mod types;
 pub use helpers::{unified_config_path, DEFAULT_UNIFIED_CONFIG_NAME};
 pub use loading::{ConfigInitResult, ConfigLoadError, DEFAULT_UNIFIED_CONFIG};
 pub use types::{
-    AgentConfigToml, CcsAliasConfig, CcsAliasToml, CcsAliases, CcsConfig, GeneralBehaviorFlags,
-    GeneralConfig, GeneralExecutionFlags, GeneralWorkflowFlags, UnifiedConfig,
+    AgentConfigToml, CcsAliasConfig, CcsAliasToml, CcsAliases, CcsConfig, DrainConfigToml,
+    GeneralBehaviorFlags, GeneralConfig, GeneralExecutionFlags, GeneralWorkflowFlags,
+    OrchestrationConfig, UnifiedConfig,
 };
 
 // Clippy's `large_stack_frames` lint no longer trips on the generated lib-test harness.

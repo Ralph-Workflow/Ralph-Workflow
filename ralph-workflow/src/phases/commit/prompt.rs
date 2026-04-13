@@ -1,14 +1,3 @@
-pub(crate) fn commit_xsd_retry_prompt_content_id(
-    diff_content_id: &str,
-    xsd_error: &str,
-    consumer_sig: &str,
-) -> String {
-    crate::reducer::prompt_inputs::sha256_hex_str(&format!(
-        "commit_xsd_retry|diff:{}|xsd_error:{}|consumer:{}",
-        diff_content_id, xsd_error, consumer_sig,
-    ))
-}
-
 pub(crate) fn commit_prompt_content_id(
     diff_content_id: &str,
     consumer_sig: &str,

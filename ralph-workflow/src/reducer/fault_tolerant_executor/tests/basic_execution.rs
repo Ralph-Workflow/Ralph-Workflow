@@ -1092,10 +1092,10 @@ fn test_timeout_with_invalid_completion_file_emits_partial_result() {
     let colors = Colors { enabled: false };
     let completion_path = std::path::Path::new(".agent/tmp/development_result.xml");
 
-    // Workspace with a non-XML file at the completion path (agent was interrupted mid-write).
+    // Workspace with an empty file at the completion path (agent was interrupted before writing).
     let workspace = Arc::new(MemoryWorkspace::new_test().with_file(
         ".agent/tmp/development_result.xml",
-        "truncated non-xml content",
+        "",
     ));
 
     let logger = Logger::new(colors);

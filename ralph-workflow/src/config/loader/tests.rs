@@ -172,35 +172,6 @@ max_dev_continuations = 0
 }
 
 #[test]
-fn test_max_xsd_retries_zero_is_valid() {
-    // max_xsd_retries=0 is valid and means "disable XSD retries" (immediate agent fallback)
-    let toml_str = r#"
-[general]
-verbosity = 4
-developer_iters = 8
-review_depth = "standard"
-max_xsd_retries = 0
-"#;
-
-    let env = MemoryConfigEnvironment::new()
-        .with_unified_config_path("/test/config/ralph-workflow.toml")
-        .with_file("/test/config/ralph-workflow.toml", toml_str);
-
-    let Ok((config, _unified, warnings)) = load_config_from_path_with_env(None, &env) else {
-        panic!("load_config_from_path_with_env should succeed");
-    };
-
-    // 0 should be accepted (not rejected with warning)
-    assert_eq!(config.max_xsd_retries, Some(0));
-    assert!(
-        !warnings
-            .iter()
-            .any(|w: &String| w.contains("max_xsd_retries")),
-        "Should not warn about max_xsd_retries=0, got: {warnings:?}"
-    );
-}
-
-#[test]
 fn test_max_same_agent_retries_zero_is_valid() {
     // max_same_agent_retries=0 is valid and means "disable same-agent retries"
     let toml_str = r#"
@@ -548,11 +519,6 @@ fn test_default_config_sets_continuation_limits() {
     );
 
     // Also verify other limits are set
-    assert_eq!(
-        config.max_xsd_retries,
-        Some(10),
-        "default_config() must set max_xsd_retries to Some(10)"
-    );
     assert_eq!(
         config.max_same_agent_retries,
         Some(2),

@@ -51,7 +51,7 @@ impl PipelineEvent {
     }
 
     /// Create a `DevelopmentXmlValidated` event.
-    #[must_use] 
+    #[must_use]
     pub const fn development_xml_validated(
         iteration: u32,
         status: DevelopmentStatus,
@@ -62,6 +62,29 @@ impl PipelineEvent {
         Self::Development(DevelopmentEvent::XmlValidated {
             iteration,
             status,
+            analysis_decision: None,
+            summary,
+            files_changed,
+            next_steps,
+        })
+    }
+
+    /// Create a `DevelopmentXmlValidated` event with an explicit analysis decision.
+    ///
+    /// Used by JSON artifact parsing (Phase 2+) when the artifact carries a `decision` field.
+    #[must_use]
+    pub fn development_xml_validated_with_decision(
+        iteration: u32,
+        status: DevelopmentStatus,
+        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+        summary: String,
+        files_changed: Option<Vec<String>>,
+        next_steps: Option<String>,
+    ) -> Self {
+        Self::Development(DevelopmentEvent::XmlValidated {
+            iteration,
+            status,
+            analysis_decision,
             summary,
             files_changed,
             next_steps,

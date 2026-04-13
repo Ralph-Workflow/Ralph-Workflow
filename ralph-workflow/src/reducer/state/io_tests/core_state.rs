@@ -304,8 +304,7 @@ fn test_pipeline_state_from_checkpoint_preserves_prompt_inputs_when_present() {
         },
         "development": null,
         "review": null,
-        "commit": null,
-        "xsd_retry_last_output": null
+        "commit": null
     });
 
     checkpoint_value["prompt_inputs"] = prompt_inputs;

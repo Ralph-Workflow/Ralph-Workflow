@@ -16,7 +16,7 @@ use crate::agents::session::{
 };
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::{AgentName, ModelName};
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::files::artifact_paths;
 use crate::mcp_server::session_bridge::{
     SessionBridge, MCP_ENDPOINT_ENV, MCP_GENERATION_ENV, MCP_RUN_ID_ENV,
 };
@@ -40,15 +40,15 @@ use std::time::SystemTime;
 
 /// Map an AgentDrain to the expected output file path for completion detection.
 ///
-/// Returns `None` if the drain does not produce a structured XML output file.
+/// Returns `None` if the drain does not produce a structured output file.
 fn completion_path_for_drain(drain: AgentDrain) -> Option<&'static Path> {
     match drain {
-        AgentDrain::Planning => Some(Path::new(xml_paths::PLAN_XML)),
-        AgentDrain::Development => Some(Path::new(xml_paths::DEVELOPMENT_RESULT_XML)),
-        AgentDrain::Review => Some(Path::new(xml_paths::ISSUES_XML)),
-        AgentDrain::Fix => Some(Path::new(xml_paths::FIX_RESULT_XML)),
-        AgentDrain::Commit => Some(Path::new(xml_paths::COMMIT_MESSAGE_XML)),
-        AgentDrain::Analysis => Some(Path::new(xml_paths::DEVELOPMENT_RESULT_XML)),
+        AgentDrain::Planning => Some(Path::new(artifact_paths::PLAN_JSON)),
+        AgentDrain::Development => Some(Path::new(artifact_paths::DEVELOPMENT_RESULT_JSON)),
+        AgentDrain::Review => Some(Path::new(artifact_paths::ISSUES_JSON)),
+        AgentDrain::Fix => Some(Path::new(artifact_paths::FIX_RESULT_JSON)),
+        AgentDrain::Commit => Some(Path::new(artifact_paths::COMMIT_MESSAGE_JSON)),
+        AgentDrain::Analysis => Some(Path::new(artifact_paths::DEVELOPMENT_RESULT_JSON)),
     }
 }
 
@@ -629,8 +629,8 @@ fn role_allows_continuation_prompt(role: AgentRole) -> bool {
     role != AgentRole::Analysis
 }
 
-fn retry_mode_allows_continuation_prompt(state: &crate::reducer::state::PipelineState) -> bool {
-    !state.continuation.xsd_retry_session_reuse_pending
+fn retry_mode_allows_continuation_prompt(_state: &crate::reducer::state::PipelineState) -> bool {
+    true
 }
 
 /// Check state-based conditions for whether continuation prompt should be considered.
@@ -638,7 +638,6 @@ fn retry_mode_allows_continuation_prompt(state: &crate::reducer::state::Pipeline
 /// Returns true only if ALL state-based conditions are met:
 /// 1. `rate_limit_continuation_prompt` is set in agent chain and matches drain/role
 /// 2. The role is not Analysis (analysis agent has its own continuation mechanism)
-/// 3. XSD retry is NOT pending (XSD retry has its own continuation mechanism)
 ///
 /// Note: This does NOT check if the generated prompt is a retry prompt.
 /// The caller must check that separately by calling is_same_agent_retry_prompt on the generated prompt.
@@ -885,16 +884,10 @@ fn build_log_header(
 }
 
 fn resolve_session_id(
-    state: &crate::reducer::state::PipelineState,
-    in_dev_fix: bool,
+    _state: &crate::reducer::state::PipelineState,
+    _in_dev_fix: bool,
 ) -> Option<&str> {
-    if in_dev_fix {
-        None
-    } else if state.continuation.xsd_retry_session_reuse_pending {
-        state.agent_chain.last_session_id.as_deref()
-    } else {
-        None
-    }
+    None
 }
 
 fn format_chain_position_outcome(state: &crate::reducer::state::PipelineState) -> String {

@@ -5,10 +5,8 @@ use super::helpers::stderr_contains_auth_error;
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::checkpoint::restore::ResumeContext;
-use crate::files::llm_output_extraction::{
-    archive_xml_file_with_workspace, try_extract_from_file_with_workspace, validate_fix_result_xml,
-    xml_paths,
-};
+use crate::files::artifact_paths;
+use crate::files::{archive_xml_file_with_workspace, has_valid_artifact_output};
 use crate::files::result_extraction::extract_file_paths_from_issues;
 use crate::files::update_status_with_workspace;
 use crate::phases::context::PhaseContext;
@@ -167,7 +165,7 @@ pub fn run_fix_pass(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
-        completion_output_path: Some(Path::new(xml_paths::FIX_RESULT_XML)),
+        completion_output_path: Some(Path::new(artifact_paths::FIX_RESULT_JSON)),
     };
 
     let result = run_with_prompt(
@@ -190,52 +188,77 @@ pub fn run_fix_pass(
             return Ok(FixPassResult::agent_failed(true));
         }
         // Non-auth non-zero exit: fail only when no valid result file exists.
-        // A valid FIX_RESULT_XML despite non-zero exit means the agent completed
+        // A valid FIX_RESULT_JSON despite non-zero exit means the agent completed
         // its work (e.g., proprietary exit codes like reason:91 from OpenCode).
-        if !crate::files::llm_output_extraction::has_valid_xml_output(
+        if !has_valid_artifact_output(
             ctx.workspace,
-            Path::new(xml_paths::FIX_RESULT_XML),
+            Path::new(artifact_paths::FIX_RESULT_JSON),
         ) {
             return Ok(FixPassResult::agent_failed(false));
         }
     }
 
-    let xml_content =
-        try_extract_from_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
+    // Read JSON artifact from .agent/tmp/fix_result.json (submitted via MCP submit_fix_result tool).
+    let artifact = ctx
+        .workspace
+        .read_artifact_json("fix_result")
+        .ok()
+        .and_then(|opt| opt);
 
-    let Some(xml_to_validate) = xml_content else {
+    let Some(envelope) = artifact else {
+        archive_xml_file_with_workspace(ctx.workspace, Path::new(artifact_paths::FIX_RESULT_XML));
         return Ok(FixPassResult::output_invalid(None));
     };
 
-    match validate_fix_result_xml(&xml_to_validate) {
-        Ok(result_elements) => {
-            archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
+    let artifact_json = serde_json::to_string(&envelope.content).unwrap_or_default();
 
-            let changes_made = !result_elements.is_no_issues();
+    let status = envelope
+        .content
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
+    let summary = envelope
+        .content
+        .get("summary")
+        .and_then(|s| s.as_str())
+        .map(String::from);
 
-            let step = ExecutionStep::new(
-                "Review",
-                j,
-                "fix",
-                StepOutcome::success(result_elements.summary.clone(), vec![]),
-            )
-            .with_agent(active_agent)
-            .with_duration(elapsed_seconds(fix_start_time));
-            let _ = ctx
-                .execution_history
-                .add_step_bounded(step, ctx.config.execution_history_limit);
-
-            Ok(FixPassResult::validated(
-                changes_made,
-                result_elements.status.clone(),
-                result_elements.summary,
-                xml_to_validate,
-            ))
-        }
-        Err(err) => {
+    let canonical_status = match status.as_str() {
+        "all_issues_addressed" | "completed" => "all_issues_addressed".to_string(),
+        "issues_remain" | "partial" => "issues_remain".to_string(),
+        "no_issues_found" => "no_issues_found".to_string(),
+        _ => {
             ctx.logger
-                .warn(&format!("Fix XML validation failed: {err}"));
-            Ok(FixPassResult::output_invalid(Some(xml_to_validate)))
+                .warn(&format!("Fix result JSON has unknown status: {status}"));
+            archive_xml_file_with_workspace(
+                ctx.workspace,
+                Path::new(artifact_paths::FIX_RESULT_XML),
+            );
+            return Ok(FixPassResult::output_invalid(Some(artifact_json)));
         }
-    }
+    };
+
+    archive_xml_file_with_workspace(ctx.workspace, Path::new(artifact_paths::FIX_RESULT_XML));
+
+    let changes_made = canonical_status != "no_issues_found";
+
+    let step = ExecutionStep::new(
+        "Review",
+        j,
+        "fix",
+        StepOutcome::success(summary.clone(), vec![]),
+    )
+    .with_agent(active_agent)
+    .with_duration(elapsed_seconds(fix_start_time));
+    let _ = ctx
+        .execution_history
+        .add_step_bounded(step, ctx.config.execution_history_limit);
+
+    Ok(FixPassResult::validated(
+        changes_made,
+        canonical_status,
+        summary,
+        artifact_json,
+    ))
 }

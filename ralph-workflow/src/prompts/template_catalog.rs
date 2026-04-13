@@ -92,15 +92,6 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
             },
         ),
         (
-            "commit_xsd_retry",
-            EmbeddedTemplate {
-                name: "commit_xsd_retry",
-                content: include_str!("templates/commit_xsd_retry.txt"),
-                description: "XSD validation retry prompt for commit messages",
-                deprecated: false,
-            },
-        ),
-        (
             "commit_simplified",
             EmbeddedTemplate {
                 name: "commit_simplified",
@@ -139,29 +130,11 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
             },
         ),
         (
-            "developer_iteration_xsd_retry",
-            EmbeddedTemplate {
-                name: "developer_iteration_xsd_retry",
-                content: include_str!("templates/developer_iteration_xsd_retry.txt"),
-                description: "XSD validation retry prompt for developer iteration",
-                deprecated: false,
-            },
-        ),
-        (
             "planning_xml",
             EmbeddedTemplate {
                 name: "planning_xml",
                 content: include_str!("templates/planning_xml.txt"),
                 description: "Planning phase prompt with XML output format and XSD validation",
-                deprecated: false,
-            },
-        ),
-        (
-            "planning_xsd_retry",
-            EmbeddedTemplate {
-                name: "planning_xsd_retry",
-                content: include_str!("templates/planning_xsd_retry.txt"),
-                description: "XSD validation retry prompt for planning phase",
                 deprecated: false,
             },
         ),
@@ -184,15 +157,6 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
                 deprecated: false,
             },
         ),
-        (
-            "review_xsd_retry",
-            EmbeddedTemplate {
-                name: "review_xsd_retry",
-                content: include_str!("templates/review_xsd_retry.txt"),
-                description: "XSD validation retry prompt for review mode",
-                deprecated: false,
-            },
-        ),
         // Fix Mode Templates
         (
             "fix_mode_xml",
@@ -200,15 +164,6 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
                 name: "fix_mode_xml",
                 content: include_str!("templates/fix_mode_xml.txt"),
                 description: "Fix mode prompt with XML output format and XSD validation",
-                deprecated: false,
-            },
-        ),
-        (
-            "fix_mode_xsd_retry",
-            EmbeddedTemplate {
-                name: "fix_mode_xsd_retry",
-                content: include_str!("templates/fix_mode_xsd_retry.txt"),
-                description: "XSD validation retry prompt for fix mode",
                 deprecated: false,
             },
         ),
@@ -377,30 +332,6 @@ mod tests {
         assert!(
             content.contains("REVIEW MODE"),
             "review_xml should contain REVIEW MODE"
-        );
-    }
-
-    #[test]
-    fn test_commit_xsd_retry_is_read_only_except_for_xml_write() {
-        let content = get_embedded_template("commit_xsd_retry").expect("commit_xsd_retry exists");
-
-        assert!(
-            content.contains("VALIDATION FAILED") && content.contains("FIX JSON"),
-            "commit_xsd_retry should clearly be a JSON-only retry prompt"
-        );
-
-        // New dumb-agent-proof format uses REFERENCE ONLY instead of READ-ONLY
-        assert!(
-            content.contains("ralph_submit_artifact"),
-            "commit_xsd_retry should instruct submission via ralph_submit_artifact"
-        );
-
-        assert!(
-            !content.contains("DO NOT print")
-                && !content.contains("Do NOT print")
-                && !content.contains("ONLY acceptable output")
-                && !content.contains("The ONLY acceptable output"),
-            "commit_xsd_retry should not include stdout suppression wording"
         );
     }
 

@@ -3,6 +3,7 @@ use super::DEFAULT_AGENTS_TOML;
 use crate::agents::ccs_env::CcsEnvVarsError;
 use crate::agents::fallback::FallbackConfig;
 use crate::agents::fallback::ResolvedDrainConfig;
+use crate::config::unified::DrainConfigToml;
 use crate::workspace::{Workspace, WorkspaceFs};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -22,7 +23,7 @@ pub struct AgentsConfigFile {
     pub agent_chains: HashMap<String, Vec<String>>,
     /// Built-in drain bindings to named chains.
     #[serde(default)]
-    pub agent_drains: HashMap<String, String>,
+    pub agent_drains: HashMap<String, DrainConfigToml>,
     /// Legacy agent chain configuration (preferred agents + fallbacks).
     #[serde(default, rename = "agent_chain")]
     pub fallback: Option<FallbackConfig>,

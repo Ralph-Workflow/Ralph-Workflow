@@ -64,7 +64,7 @@ State should include the minimum information needed to:
 - explain why the pipeline is in its current phase
 - safely resume after interruption
 
-In practice this means a lot of "single-task sequencing" fields (for example: "prompt prepared for iteration N", "xml extracted for pass P", "validated outcome stored", etc.). These flags keep orchestration deterministic and prevent handlers from bundling policy decisions into I/O.
+In practice this means a lot of "single-task sequencing" fields (for example: "prompt prepared for iteration N", "artifact extracted for pass P", "validated outcome stored", etc.). These flags keep orchestration deterministic and prevent handlers from bundling policy decisions into I/O.
 
 ### What must not be state
 
@@ -134,7 +134,7 @@ Effect handlers may emit UI-only events for rendering/logging. These do not affe
 
 ### Effects are intentionally "single-task"
 
-Pipeline effects are granular (prepare prompt, invoke agent, extract XML, validate XML, write markdown, archive, apply outcome, etc.).
+Pipeline effects are granular (prepare prompt, invoke agent, extract MCP artifact, write markdown, archive, apply outcome, etc.).
 
 An effect should do one type of I/O and then report an outcome event. Avoid effects that mix multiple responsibilities (for example: invoke agent + parse output + transition phase).
 
@@ -207,16 +207,15 @@ Context preservation for session-less agents uses the `WriteTimeoutContext` effe
 
 Orchestration is a pure function from state to the next effect (`determine_next_effect(&PipelineState) -> Effect`). It intentionally encodes a priority order so that recovery/cleanup always preempts phase work.
 
-The current priority ordering is documented in code (see `ralph-workflow/src/reducer/orchestration/xsd_retry.rs`) and includes, roughly:
+The current priority ordering is documented in code (see `ralph-workflow/src/reducer/orchestration/`) and includes, roughly:
 
 1. Continuation context cleanup
 2. Timeout context write pending (session-less agent retry context extraction)
 3. Same-agent retry pending (transient invocation failures)
-4. XSD retry pending (invalid XML output)
-5. Continuation pending (valid output but incomplete work)
-6. Rebase in progress
-7. Agent-chain exhaustion / backoff waiting
-8. Phase-specific effects (the normal single-task sequence)
+4. Continuation pending (valid artifact but incomplete work)
+5. Rebase in progress
+6. Agent-chain exhaustion / backoff waiting
+7. Phase-specific effects (the normal single-task sequence)
 
 Do not implement hidden retries or fallback loops inside handlers; retries/fallback must be reducer-visible state so the orchestrator can remain pure and deterministic.
 
@@ -335,14 +334,14 @@ For agent execution architecture, Ralph should treat these as distinct concepts:
 
 - **chain definition**: reusable configured ordered list of concrete agents
 - **drain**: runtime consumer attached to a chain definition (for example planning, development, review, fix, commit, analysis)
-- **drain mode**: retry/continuation sub-state inside a drain (for example continuation, same-agent retry, XSD retry)
+- **drain mode**: retry/continuation sub-state inside a drain (for example continuation, same-agent retry)
 
 This separation is required for reducer clarity and consistency.
 
 Rules:
 
 - Runtime state should not collapse reusable chain definition and active consumer into the same concept.
-- Retry modes that continue the same logical work and session, such as XSD retry, should remain drain-local mode rather than becoming separate drains.
+- Retry modes that continue the same logical work and session (such as same-agent retry after a transient failure) should remain drain-local mode rather than becoming separate drains.
 - Reducer state and pipeline events must stay concrete; they must not carry unresolved config aliases or config-only indirection.
 - Legacy `[agent_chain]` config is acceptable only as an input format; normalize it into the same built-in drain bindings as `[agent_chains]` + `[agent_drains]` before runtime execution.
 - When a built-in drain is omitted from `[agent_drains]`, default it from already-resolved sibling drains first (for example commit from review/fix, analysis from planning/development) before consulting legacy compatibility names.
@@ -450,7 +449,7 @@ Each drain type has a specific capability profile per RFC-009 V1:
 | Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
 | Commit | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `GitWrite`, `ArtifactSubmit`, `RunReportProgress` | `AllowGitWrite` |
 
-**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, XML archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
+**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, MCP artifact archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
 
 ### Audit Trail Integration
 
@@ -494,7 +493,7 @@ Recommended migration approach:
 
 ## Loop Detection and Mandatory Recovery
 
-The pipeline includes a loop detection mechanism to prevent infinite tight loops, particularly for XSD retry scenarios where the system cannot converge due to external mismatches (e.g., workspace vs CWD path issues).
+The pipeline includes a loop detection mechanism to prevent infinite tight loops where the orchestrator cannot converge due to external mismatches (e.g., workspace vs CWD path issues, failed artifact submissions).
 
 ### Loop Detection
 
@@ -503,23 +502,22 @@ The orchestrator tracks effect execution patterns in `ContinuationState`:
 - `consecutive_same_effect_count`: counter for repeated identical effects
 - `max_consecutive_same_effect`: threshold before triggering recovery (default: 20)
 
-The effect fingerprint includes: phase, active drain, drain mode, iteration, pass, and XSD retry state.
+The effect fingerprint includes: phase, active drain, drain mode, iteration, and pass.
 
 ### Mandatory Recovery
 
 When `consecutive_same_effect_count` exceeds the threshold and the phase is not `Complete` or `Interrupted`, the orchestrator emits `Effect::TriggerLoopRecovery`.
 
 The loop recovery handler:
-1. Resets XSD retry state (`xsd_retry_pending = false`, `xsd_retry_count = 0`)
-2. Clears agent session ID to force fresh invocation
-3. Resets loop detection counters
-4. Emits `LoopRecoveryTriggered` event
+1. Clears agent session ID to force fresh invocation
+2. Resets loop detection counters
+3. Emits `LoopRecoveryTriggered` event
 
 After recovery, the orchestrator derives the next effect from the cleaned state, allowing the pipeline to resume with a fresh attempt.
 
 ### Why This Is Required
 
-Without loop detection, the orchestrator's priority system (e.g., `xsd_retry_pending` always winning) can keep the system stuck in the same effect indefinitely. Loop recovery provides a deterministic escape path that preserves checkpoint/resume safety: the same pre-recovery state will always trigger recovery at the same threshold.
+Without loop detection, the orchestrator's priority system can keep the system stuck in the same effect indefinitely when an artifact submission error repeats or an agent cannot converge. Loop recovery provides a deterministic escape path that preserves checkpoint/resume safety: the same pre-recovery state will always trigger recovery at the same threshold.
 
 ## See Also
 

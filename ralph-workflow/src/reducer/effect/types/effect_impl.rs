@@ -80,7 +80,7 @@ mod tests {
             },
             Effect::PrepareDevelopmentPrompt {
                 iteration: 0,
-                prompt_mode: PromptMode::XsdRetry,
+                prompt_mode: PromptMode::Continuation,
             },
             Effect::PrepareReviewPrompt {
                 pass: 0,

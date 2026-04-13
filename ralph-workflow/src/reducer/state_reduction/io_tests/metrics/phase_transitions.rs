@@ -92,10 +92,8 @@ fn test_dev_iterations_completed_increments_on_continuation_succeeded() {
     state = reduce(state, event);
 
     assert_eq!(state.metrics.dev_iterations_completed, 1);
-    assert_eq!(
-        state.phase,
-        crate::reducer::event::PipelinePhase::CommitMessage
-    );
+    // Phase 2: ContinuationSucceeded routes to Review for per-iteration code review
+    assert_eq!(state.phase, crate::reducer::event::PipelinePhase::Review);
 }
 
 #[test]
@@ -329,10 +327,6 @@ fn test_old_checkpoint_loads_with_new_metrics_fields_defaulted() {
             "invalid_output_attempts": 0,
             "context_write_pending": false,
             "context_cleanup_pending": false,
-            "xsd_retry_count": 0,
-            "xsd_retry_pending": false,
-            "xsd_retry_session_reuse_pending": false,
-            "max_xsd_retry_count": 10,
             "max_same_agent_retry_count": 2,
             "max_continue_count": 3
         },
@@ -349,12 +343,6 @@ fn test_old_checkpoint_loads_with_new_metrics_fields_defaulted() {
             "review_runs_total": 0,
             "fix_runs_total": 0,
             "fix_continuations_total": 0,
-            "xsd_retry_attempts_total": 2,
-            "xsd_retry_planning": 0,
-            "xsd_retry_development": 2,
-            "xsd_retry_review": 0,
-            "xsd_retry_fix": 0,
-            "xsd_retry_commit": 0,
             "same_agent_retry_attempts_total": 0,
             "agent_fallbacks_total": 0,
             "model_fallbacks_total": 0,
@@ -375,7 +363,6 @@ fn test_old_checkpoint_loads_with_new_metrics_fields_defaulted() {
 
     // Existing fields should be preserved
     assert_eq!(restored.metrics.dev_iterations_started, 1);
-    assert_eq!(restored.metrics.xsd_retry_attempts_total, 2);
 }
 // ============================================================================
 // XSD Retry Metrics Tests (Step 13)

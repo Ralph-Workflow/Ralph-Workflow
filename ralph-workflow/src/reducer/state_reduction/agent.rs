@@ -11,13 +11,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         // Rationale: after a 429, we preserve prompt context so the next agent can continue the
         // same work. If the first post-rate-limit invocation fails (e.g., timeout/internal), we
         // must keep the continuation prompt available for retries until an invocation succeeds.
-        AgentEvent::InvocationStarted { .. } => PipelineState {
-            continuation: ContinuationState {
-                xsd_retry_session_reuse_pending: false,
-                ..state.continuation
-            },
-            ..state
-        },
+        AgentEvent::InvocationStarted { .. } => state,
         // Clear continuation prompt and failure reason on success
         AgentEvent::InvocationSucceeded { .. } => PipelineState {
             agent_chain: state
@@ -28,7 +22,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 same_agent_retry_count: 0,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
-                xsd_retry_session_reuse_pending: false,
                 ..state.continuation
             },
             ..state
@@ -49,9 +42,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .with_mode(DrainMode::Normal)
                     .with_failure_reason(Some("rate-limited".to_string())),
                 continuation: ContinuationState {
-                    xsd_retry_count: 0,
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_count: 0,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
@@ -72,9 +62,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .with_mode(DrainMode::Normal)
                     .with_failure_reason(Some("auth failed".to_string())),
                 continuation: ContinuationState {
-                    xsd_retry_count: 0,
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_count: 0,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
@@ -101,9 +88,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .with_mode(DrainMode::Normal)
                     .with_failure_reason(Some(format!("capability denied: {}", capability))),
                 continuation: ContinuationState {
-                    xsd_retry_count: 0,
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_count: 0,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
@@ -128,9 +112,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .with_mode(DrainMode::Normal)
                     .with_failure_reason(Some("timed out (no output)".to_string())),
                 continuation: ContinuationState {
-                    xsd_retry_count: 0,
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_count: 0,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
@@ -182,9 +163,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .advance_to_next_model()
                     .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
-                    xsd_retry_count: 0,
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_count: 0,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
@@ -213,9 +191,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                         .with_mode(DrainMode::Normal)
                         .with_failure_reason(Some("auth failed".to_string())),
                     continuation: ContinuationState {
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         same_agent_retry_count: 0,
                         same_agent_retry_pending: false,
                         same_agent_retry_reason: None,
@@ -234,9 +209,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                         .with_mode(DrainMode::Normal)
                         .with_failure_reason(Some("rate-limited".to_string())),
                     continuation: ContinuationState {
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         same_agent_retry_count: 0,
                         same_agent_retry_pending: false,
                         same_agent_retry_reason: None,
@@ -279,9 +251,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .clear_continuation_prompt()
                     .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
-                    xsd_retry_count: 0,
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_count: 0,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
@@ -326,34 +295,14 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 ..state
             }
         }
-        // Session established: store session ID for potential XSD retry
+        // Session established: store session ID for potential retry context reuse
         AgentEvent::SessionEstablished { session_id, .. } => PipelineState {
             agent_chain: state.agent_chain.with_session_id(Some(session_id)),
             ..state
         },
-        // XSD validation failed: trigger XSD retry via continuation state
-        AgentEvent::XsdValidationFailed { .. } => {
-            let active_review_drain = state.runtime_drain();
-            PipelineState {
-                agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
-                continuation: state.continuation.trigger_xsd_retry(),
-                // Increment per-phase counter based on current phase.
-                metrics: match state.phase {
-                    PipelinePhase::Planning => state.metrics.increment_xsd_retry_planning(),
-                    PipelinePhase::Development => state.metrics.increment_xsd_retry_development(),
-                    PipelinePhase::Review => {
-                        if active_review_drain == crate::agents::AgentDrain::Fix {
-                            state.metrics.increment_xsd_retry_fix()
-                        } else {
-                            state.metrics.increment_xsd_retry_review()
-                        }
-                    }
-                    PipelinePhase::CommitMessage => state.metrics.increment_xsd_retry_commit(),
-                    _ => state.metrics.increment_xsd_retry_attempts_total(),
-                },
-                ..state
-            }
-        }
+        // XSD validation failed: no-op, MCP artifacts are the only path now.
+        // XSD retry infrastructure has been removed; treat as a no-op.
+        AgentEvent::XsdValidationFailed { .. } => state,
 
         // Template variables invalid: retry same agent first; only fall back after budget.
         AgentEvent::TemplateVariablesInvalid { .. } => reduce_same_agent_retryable_failure(
@@ -548,9 +497,6 @@ fn reduce_same_agent_retryable_failure(
                 .with_mode(DrainMode::Normal)
                 .with_failure_reason(Some(format!("failed after {} retries", max_count))),
             continuation: ContinuationState {
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 same_agent_retry_count: 0,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
@@ -583,20 +529,18 @@ fn reduce_same_agent_retryable_failure(
         };
 
         // For TimeoutWithContext:
-        // - If session ID exists: set xsd_retry_session_reuse_pending to reuse session
         // - If no session ID: set timeout_context_write_pending to extract context to file
-        let (session_reuse_pending, timeout_context_write_pending, timeout_context_file_path) =
-            match failure {
-                SameAgentRetryableFailure::TimeoutWithContext => {
-                    if agent_chain.last_session_id.is_some() {
-                        (true, false, None)
-                    } else {
-                        // Store the logfile path so orchestration can use it for WriteTimeoutContext
-                        (false, true, logfile_path)
-                    }
+        let (timeout_context_write_pending, timeout_context_file_path) = match failure {
+            SameAgentRetryableFailure::TimeoutWithContext => {
+                if agent_chain.last_session_id.is_some() {
+                    (false, None)
+                } else {
+                    // Store the logfile path so orchestration can use it for WriteTimeoutContext
+                    (true, logfile_path)
                 }
-                _ => (false, false, None),
-            };
+            }
+            _ => (false, None),
+        };
 
         PipelineState {
             agent_chain: agent_chain.with_mode(DrainMode::SameAgentRetry),
@@ -604,7 +548,6 @@ fn reduce_same_agent_retryable_failure(
                 same_agent_retry_count: new_retry_count,
                 same_agent_retry_pending: true,
                 same_agent_retry_reason: Some(reason),
-                xsd_retry_session_reuse_pending: session_reuse_pending,
                 timeout_context_write_pending,
                 timeout_context_file_path,
                 ..state.continuation

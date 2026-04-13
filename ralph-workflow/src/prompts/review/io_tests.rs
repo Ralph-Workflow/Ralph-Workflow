@@ -43,21 +43,3 @@ fn test_prompt_fix_xml_with_context() {
     assert!(result.contains("test issues"));
     assert!(result.contains("FIX MODE"));
 }
-
-#[test]
-fn test_prompt_review_xsd_retry_with_context() {
-    let context = TemplateContext::default();
-    let workspace = MemoryWorkspace::new_test();
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
-    let result = prompt_review_xsd_retry_with_context(
-        &context,
-        "XSD error",
-        "last output",
-        &workspace,
-        SessionCapabilities::new(&capabilities, &policy_flags),
-    );
-    assert!(result.contains("XSD error"));
-    assert!(result.contains("ralph_submit_artifact"));
-    assert!(result.contains("VALIDATION FAILED"));
-}

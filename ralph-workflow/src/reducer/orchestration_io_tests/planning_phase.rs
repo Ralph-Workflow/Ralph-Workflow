@@ -1,7 +1,7 @@
 // Planning phase orchestration tests.
 //
 // Tests for planning phase: agent chain initialization, prompt preparation,
-// XSD retry mode, and transition to development phase.
+// and transition to development phase.
 
 use crate::reducer::create_test_state;
 use crate::reducer::determine_next_effect;
@@ -11,7 +11,6 @@ use crate::reducer::AgentRole;
 use crate::reducer::PipelineEvent;
 use crate::reducer::PipelinePhase;
 use crate::reducer::PipelineState;
-use crate::reducer::PromptMode;
 
 #[test]
 fn test_planning_initializes_agent_chain_when_empty() {
@@ -94,36 +93,6 @@ fn test_planning_resume_with_legacy_development_drain_reinitializes_planning_flo
         Effect::InitializeAgentChain {
             drain: crate::agents::AgentDrain::Planning,
             ..
-        }
-    ));
-}
-
-#[test]
-fn test_planning_prompt_uses_xsd_retry_mode_when_pending() {
-    let state = PipelineState {
-        phase: PipelinePhase::Planning,
-        gitignore_entries_ensured: true,
-        context_cleaned: true,
-        iteration: 0,
-        total_iterations: 1,
-        continuation: PipelineState::initial(1, 1)
-            .continuation
-            .trigger_xsd_retry(),
-        agent_chain: PipelineState::initial(1, 1).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
-        ..create_test_state()
-    };
-
-    let effect = determine_next_effect(&state);
-
-    assert!(matches!(
-        effect,
-        Effect::PreparePlanningPrompt {
-            iteration: 0,
-            prompt_mode: PromptMode::XsdRetry
         }
     ));
 }

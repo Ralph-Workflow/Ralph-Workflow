@@ -19,7 +19,7 @@ use crate::test_timeout::with_default_timeout;
 #[test]
 fn test_dev_continuation_budget_enforced() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(99, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -70,7 +70,7 @@ fn test_dev_continuation_budget_enforced() {
 #[test]
 fn test_fix_continuation_budget_enforced() {
     with_default_timeout(|| {
-        let mut continuation = ContinuationState::with_limits(99, 3, 2);
+        let mut continuation = ContinuationState::with_limits(3, 2);
         continuation.max_fix_continue_count = 2; // Set fix budget explicitly to 2
         let mut state = PipelineState::initial_with_continuation(0, 3, &continuation);
 
@@ -127,7 +127,7 @@ fn test_continuation_state_resets_across_iterations() {
 #[test]
 fn test_continuation_budget_exhaustion_completes_iteration_and_resets_continuation() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(99, 2, 2); // max_continue_count = 2
+        let continuation = ContinuationState::with_limits(2, 2); // max_continue_count = 2
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -155,10 +155,11 @@ fn test_continuation_budget_exhaustion_completes_iteration_and_resets_continuati
             }),
         );
 
-        // New reducer semantics: exhaustion completes the iteration and transitions to commit flow.
+        // Phase 2 reducer semantics: exhaustion completes the iteration and transitions to Review.
+        // (With total_reviewer_passes=0, Review immediately routes to CommitMessage.)
         assert_eq!(
             state.phase,
-            ralph_workflow::reducer::event::PipelinePhase::CommitMessage
+            ralph_workflow::reducer::event::PipelinePhase::Review
         );
 
         // Continuation state should be reset for the next iteration.
@@ -178,7 +179,7 @@ fn test_continuation_budget_exhaustion_completes_iteration_and_resets_continuati
 #[test]
 fn test_fix_continuation_budget_exhaustion_proceeds_to_commit() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(99, 3, 1); // max_fix_continue_count = 1
+        let continuation = ContinuationState::with_limits(3, 1); // max_fix_continue_count = 1
         let mut state = PipelineState::initial_with_continuation(0, 3, &continuation);
 
         // Drive into review pass 1 through reducer events.
@@ -278,7 +279,7 @@ fn test_continuation_metrics_track_correctly() {
 #[test]
 fn test_dev_continuation_metrics_match_state() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(99, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(3, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -326,7 +327,7 @@ fn test_dev_continuation_metrics_match_state() {
 #[test]
 fn test_fix_continuation_metrics_match_state() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(99, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(0, 1, &continuation);
         state = reduce(state, PipelineEvent::review_phase_started());
         state = reduce(state, PipelineEvent::review_pass_started(0));
@@ -370,7 +371,7 @@ fn test_fix_continuation_metrics_match_state() {
 #[test]
 fn test_continuation_exhaustion_matches_metrics() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(99, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(3, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 

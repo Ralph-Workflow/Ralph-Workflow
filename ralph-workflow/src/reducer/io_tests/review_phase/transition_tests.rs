@@ -38,67 +38,6 @@ fn test_review_pass_completed_clean_on_last_pass_transitions_to_commit() {
 }
 
 #[test]
-fn test_review_output_validation_failed_retries_within_limit() {
-    let agent_chain = crate::reducer::state::AgentChainState::initial().with_agents(
-        vec!["agent1".to_string(), "agent2".to_string()],
-        vec![vec![], vec![]],
-        crate::agents::AgentRole::Reviewer,
-    );
-    let state = PipelineState {
-        phase: PipelinePhase::Review,
-        reviewer_pass: 0,
-        agent_chain,
-        ..create_test_state()
-    };
-
-    let new_state = reduce(
-        state,
-        PipelineEvent::review_output_validation_failed(0, 0, None),
-    );
-
-    assert_eq!(new_state.phase, PipelinePhase::Review);
-    // Should stay on same agent when within retry limit
-    assert_eq!(new_state.agent_chain.current_agent_index, 0);
-}
-
-#[test]
-fn test_review_output_validation_failed_switches_agent_at_limit() {
-    use crate::reducer::state::ContinuationState;
-
-    // The reducer switches agents when XSD retry count reaches the configured limit.
-    let agent_chain = crate::reducer::state::AgentChainState::initial().with_agents(
-        vec!["agent1".to_string(), "agent2".to_string()],
-        vec![vec![], vec![]],
-        crate::agents::AgentRole::Reviewer,
-    );
-    let continuation = ContinuationState {
-        xsd_retry_count: 1,
-        max_xsd_retry_count: 2,
-        ..ContinuationState::new()
-    };
-    let state = PipelineState {
-        phase: PipelinePhase::Review,
-        reviewer_pass: 0,
-        agent_chain,
-        continuation,
-        ..create_test_state()
-    };
-
-    // This validation failure should trigger agent switch since xsd_retry_count is at the limit.
-    let new_state = reduce(
-        state,
-        PipelineEvent::review_output_validation_failed(0, 0, None),
-    );
-
-    assert_eq!(new_state.phase, PipelinePhase::Review);
-    assert_eq!(new_state.agent_chain.current_agent_index, 1);
-    assert_eq!(
-        new_state.continuation.invalid_output_attempts, 0,
-        "Invalid output attempts should be reset after switching agents"
-    );
-}
-
-#[test]
 fn test_review_output_validation_failed_stays_in_review_phase() {
     let state = PipelineState {
         phase: PipelinePhase::Review,

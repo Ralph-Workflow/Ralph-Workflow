@@ -1,10 +1,8 @@
 use super::MainEffectHandler;
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::review::boundary_domain::{
     build_fix_continuation_prompt_content_id, build_fix_normal_prompt_content_id,
-    build_fix_prompt_content_id, build_fix_xsd_retry_prompt_content_id,
-    parse_development_result_status, render_fix_continuation_note,
+    build_fix_prompt_content_id, parse_development_result_status, render_fix_continuation_note,
 };
 use crate::phases::PhaseContext;
 use crate::prompts::SessionCapabilities;
@@ -26,7 +24,6 @@ impl MainEffectHandler {
         ensure_tmp_dir(ctx)?;
         let inputs = read_fix_prompt_inputs(
             ctx,
-            prompt_mode,
             Self::sentinel_plan_content(ctx.config.isolation_mode),
         )?;
         self.build_fix_prompt_result(ctx, pass, prompt_mode, inputs)
@@ -51,68 +48,9 @@ impl MainEffectHandler {
         inputs: &FixPromptInputs,
     ) -> FixPromptGenerated {
         match prompt_mode {
-            PromptMode::XsdRetry => self.gen_xsd_retry_prompt(ctx, pass, inputs),
             PromptMode::SameAgentRetry => self.gen_same_agent_retry_prompt(ctx, pass, inputs),
             PromptMode::Normal => self.gen_normal_fix_prompt(ctx, pass, inputs),
             PromptMode::Continuation => self.gen_continuation_fix_prompt(ctx, pass, inputs),
-        }
-    }
-
-    fn gen_xsd_retry_prompt(
-        &self,
-        ctx: &PhaseContext<'_>,
-        pass: u32,
-        inputs: &FixPromptInputs,
-    ) -> FixPromptGenerated {
-        use crate::prompts::{
-            get_stored_or_generate_prompt, prompt_fix_xsd_retry_with_context, PromptScopeKey,
-            RetryMode,
-        };
-        let continuation_state = &self.state.continuation;
-        let scope_key = PromptScopeKey::for_fix(
-            pass,
-            RetryMode::Xsd {
-                count: continuation_state.invalid_output_attempts,
-            },
-            self.state.recovery_epoch,
-        );
-        let prompt_key = scope_key.to_string();
-        let xsd_error = continuation_state
-            .last_fix_xsd_error
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or("XML output failed validation. Provide valid XML output.");
-        let prompt_content_id = build_fix_xsd_retry_prompt_content_id(
-            &sha256_hex_str(&inputs.prompt_content),
-            &sha256_hex_str(&inputs.plan_content),
-            &sha256_hex_str(&inputs.issues_content),
-            xsd_error,
-            &sha256_hex_str(&inputs.last_output),
-        );
-        let (prompt, was_replayed) = get_stored_or_generate_prompt(
-            &scope_key,
-            &self.state.prompt_history,
-            Some(&prompt_content_id),
-            || {
-                let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
-                let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
-                prompt_fix_xsd_retry_with_context(
-                    ctx.template_context,
-                    &inputs.issues_content,
-                    xsd_error,
-                    &inputs.last_output,
-                    ctx.workspace,
-                    SessionCapabilities::new(&capabilities, &policy_flags),
-                )
-            },
-        );
-        FixPromptGenerated {
-            prompt_key,
-            fix_prompt: prompt,
-            was_replayed,
-            template_name: "fix_mode_xsd_retry",
-            prompt_content_id: Some(prompt_content_id),
-            should_validate: true,
         }
     }
 
@@ -337,7 +275,7 @@ impl MainEffectHandler {
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Fix,
-            AgentRole::Reviewer,
+            AgentRole::Fix,
             &agent,
             None,
             |session: &crate::agents::session::AgentSession| {
@@ -351,15 +289,16 @@ impl MainEffectHandler {
 
     pub(super) fn extract_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
         let is_analysis = self.state.fix_analysis_agent_invoked_pass == Some(pass);
+        let invalid_attempts = self.state.continuation.invalid_output_attempts;
         if fix_json_artifact_present(ctx, is_analysis) {
-            return EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass));
+            EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass))
+        } else {
+            EffectResult::event(PipelineEvent::fix_result_xml_missing(
+                pass,
+                invalid_attempts,
+                None,
+            ))
         }
-        extract_fix_result_xml_from_disk(
-            ctx,
-            pass,
-            is_analysis,
-            self.state.continuation.invalid_output_attempts,
-        )
     }
 
     fn fix_analysis_continuation_active(&self, is_analysis: bool) -> bool {
@@ -386,13 +325,13 @@ impl MainEffectHandler {
             json_type,
         ) {
             Some(result) => result,
-            None => validate_fix_from_xml(
-                ctx,
+            None => EffectResult::event(PipelineEvent::fix_output_validation_failed(
                 pass,
-                is_analysis,
-                fix_analysis_continuation,
                 invalid_attempts,
-            ),
+                Some(format!(
+                    "No JSON artifact found for '{json_type}'. Agent must output a valid JSON artifact."
+                )),
+            )),
         }
     }
 
@@ -413,20 +352,10 @@ impl MainEffectHandler {
     }
 
     pub(super) fn archive_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
-        use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
-
-        archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
-        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
-            ctx.workspace,
-            "fix_result",
-        );
+        crate::files::archive_json_artifact_with_workspace(ctx.workspace, "fix_result");
 
         if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
-            archive_xml_file_with_workspace(
-                ctx.workspace,
-                Path::new(".agent/tmp/development_result.xml"),
-            );
-            crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+            crate::files::archive_json_artifact_with_workspace(
                 ctx.workspace,
                 "development_result",
             );
@@ -444,7 +373,6 @@ struct FixPromptInputs {
     prompt_content: String,
     plan_content: String,
     issues_content: String,
-    last_output: String,
 }
 
 struct FixPromptGenerated {
@@ -572,7 +500,6 @@ fn render_fix_template_for_validation(
     continuation_state: &crate::reducer::state::ContinuationState,
 ) -> crate::prompts::RenderedTemplate {
     match prompt_mode {
-        PromptMode::XsdRetry => render_xsd_retry_fix_log(ctx, inputs, gen, continuation_state),
         PromptMode::Continuation => {
             render_continuation_fix_log(ctx, inputs, gen, continuation_state)
         }
@@ -594,29 +521,6 @@ fn render_fix_template_for_validation(
     }
 }
 
-fn render_xsd_retry_fix_log(
-    ctx: &PhaseContext<'_>,
-    inputs: &FixPromptInputs,
-    gen: &FixPromptGenerated,
-    continuation_state: &crate::reducer::state::ContinuationState,
-) -> crate::prompts::RenderedTemplate {
-    let xsd_error = continuation_state
-        .last_fix_xsd_error
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("XML output failed validation. Provide valid XML output.");
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Fix);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Fix);
-    crate::prompts::review::prompt_fix_xsd_retry_with_log(
-        ctx.template_context,
-        xsd_error,
-        &inputs.last_output,
-        ctx.workspace,
-        gen.template_name,
-        SessionCapabilities::new(&capabilities, &policy_flags),
-    )
-}
-
 fn build_incomplete_template_result(
     log: crate::prompts::SubstitutionLog,
     gen: &FixPromptGenerated,
@@ -633,7 +537,7 @@ fn build_incomplete_template_result(
         was_replayed: gen.was_replayed,
     })
     .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-        AgentRole::Reviewer,
+        AgentRole::Fix,
         gen.template_name.to_string(),
         missing,
         Vec::new(),
@@ -695,14 +599,12 @@ fn ensure_tmp_dir(ctx: &PhaseContext<'_>) -> Result<()> {
 
 fn read_fix_prompt_inputs(
     ctx: &PhaseContext<'_>,
-    prompt_mode: PromptMode,
     sentinel_plan: String,
 ) -> Result<FixPromptInputs> {
     Ok(FixPromptInputs {
         prompt_content: read_prompt_backup(ctx)?,
         plan_content: read_plan_content(ctx, sentinel_plan)?,
         issues_content: read_issues_content(ctx)?,
-        last_output: read_last_output_for_mode(ctx, prompt_mode)?,
     })
 }
 
@@ -747,59 +649,6 @@ fn read_issues_content(ctx: &PhaseContext<'_>) -> Result<String> {
             kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
         }
         .into()),
-    }
-}
-
-fn read_last_output_for_mode(ctx: &PhaseContext<'_>, prompt_mode: PromptMode) -> Result<String> {
-    if !matches!(prompt_mode, PromptMode::XsdRetry) {
-        return Ok(String::new());
-    }
-    read_xsd_retry_last_output(ctx)
-}
-
-fn read_xsd_retry_last_output(ctx: &PhaseContext<'_>) -> Result<String> {
-    match ctx.workspace.read(Path::new(xml_paths::FIX_RESULT_XML)) {
-        Ok(s) => Ok(s),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(read_processed_fallback(ctx)),
-        Err(err) => Err(ErrorEvent::WorkspaceReadFailed {
-            path: xml_paths::FIX_RESULT_XML.to_string(),
-            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-        }
-        .into()),
-    }
-}
-
-fn read_processed_fallback(ctx: &PhaseContext<'_>) -> String {
-    ctx.workspace
-        .read(Path::new(".agent/tmp/fix_result.xml.processed"))
-        .map_or_else(
-            |_| String::new(),
-            |output| {
-                ctx.logger
-                    .info("XSD retry: using archived .processed file as last output");
-                output
-            },
-        )
-}
-
-fn read_xml_for_pass(ctx: &PhaseContext<'_>, is_analysis: bool) -> std::io::Result<String> {
-    let xml_path = if is_analysis {
-        Path::new(".agent/tmp/development_result.xml")
-    } else {
-        Path::new(xml_paths::FIX_RESULT_XML)
-    };
-    ctx.workspace.read(xml_path)
-}
-
-fn xml_io_error_detail(err: &std::io::Error) -> Option<String> {
-    if err.kind() == std::io::ErrorKind::NotFound {
-        None
-    } else {
-        Some(format!(
-            "{:?}: {}",
-            WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            err
-        ))
     }
 }
 

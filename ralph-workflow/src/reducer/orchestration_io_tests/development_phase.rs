@@ -15,7 +15,6 @@ use crate::reducer::reduce;
 use crate::reducer::state::PipelineState;
 use crate::reducer::state::PromptMode;
 use crate::reducer::state::PromptPermissionsState;
-use crate::reducer::TimeoutOutputKind;
 
 fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
     PipelineState {
@@ -40,10 +39,11 @@ fn test_development_runs_exactly_n_iterations() {
 
     let mut iterations_run = Vec::new();
 
-    // Simulate the development phase (includes CommitMessage after each iteration)
+    // Simulate the development phase (Phase 2: each iteration includes a Review cycle)
     while state.phase == PipelinePhase::Planning
         || state.phase == PipelinePhase::Development
         || state.phase == PipelinePhase::CommitMessage
+        || state.phase == PipelinePhase::Review
     {
         let effect = determine_next_effect(&state);
 
@@ -276,7 +276,21 @@ fn test_development_runs_exactly_n_iterations() {
                     ),
                 );
             }
-            Effect::SaveCheckpoint { .. } => break,
+            Effect::SaveCheckpoint { .. } => {
+                // Phase 2: SaveCheckpoint is emitted in Review (0 reviewer passes) before
+                // transitioning to CommitMessage. Save the checkpoint and complete the Review.
+                state = reduce(
+                    state,
+                    PipelineEvent::checkpoint_saved(
+                        crate::reducer::event::CheckpointTrigger::PhaseTransition,
+                    ),
+                );
+                if state.phase == PipelinePhase::Review
+                    && state.reviewer_pass >= state.total_reviewer_passes
+                {
+                    state = reduce(state, PipelineEvent::review_phase_completed(false));
+                }
+            }
             Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
@@ -373,49 +387,6 @@ fn test_development_continuation_emits_prompt_mode_continuation() {
             prompt_mode: PromptMode::Continuation
         }
     ));
-}
-
-#[test]
-fn test_development_timeout_retry_does_not_use_xsd_retry_prompt_mode() {
-    // Timeouts should retry the same agent with timeout-aware guidance, not via XSD retry.
-    // This test asserts orchestration does not select PromptMode::XsdRetry after a timeout.
-    let mut state = initial_with_locked_permissions(1, 0);
-    state.phase = PipelinePhase::Development;
-    state.iteration = 0;
-    state.total_iterations = 1;
-    state.development_context_prepared_iteration = Some(0);
-    state.continuation.xsd_retry_pending = false;
-    state.continuation.xsd_retry_count = 0;
-    state.agent_chain = state.agent_chain.with_agents(
-        vec!["agent-a".to_string(), "agent-b".to_string()],
-        vec![vec![], vec![]],
-        AgentRole::Developer,
-    );
-    // Set a session ID so session reuse is used instead of WriteTimeoutContext
-    state.agent_chain.last_session_id = Some("session-123".to_string());
-
-    state = reduce(
-        state,
-        PipelineEvent::agent_timed_out(
-            AgentRole::Developer,
-            AgentName::from("agent-a"),
-            TimeoutOutputKind::PartialResult,
-            Some(".agent/logs/developer_0.log".to_string()),
-            None,
-        ),
-    );
-
-    let effect = determine_next_effect(&state);
-
-    if let Effect::PrepareDevelopmentPrompt { prompt_mode, .. } = effect {
-        assert_ne!(
-            prompt_mode,
-            PromptMode::XsdRetry,
-            "Timeout retry should not use XsdRetry prompt mode"
-        );
-    } else {
-        panic!("Expected PrepareDevelopmentPrompt after timeout, got {effect:?}");
-    }
 }
 
 #[test]

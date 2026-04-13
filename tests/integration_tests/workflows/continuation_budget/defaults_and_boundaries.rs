@@ -23,9 +23,8 @@ fn test_missing_max_dev_continuations_applies_default() {
         // Simulate config with default max_dev_continuations = 2
         // This results in max_continue_count = 1 + 2 = 3
         let continuation = ContinuationState::with_limits(
-            10, // max_xsd_retries
-            3,  // max_continue_count (1 initial + 2 continuations)
-            2,  // max_same_agent_retries
+            3, // max_continue_count (1 initial + 2 continuations)
+            2, // max_same_agent_retries
         );
 
         let mut state = PipelineState::initial_with_continuation(1, 0, &continuation);
@@ -106,9 +105,8 @@ fn test_missing_config_key_caps_continuations_at_three() {
         // The event loop config loader should apply unwrap_or(2), resulting in max_continue_count = 3.
         // We construct ContinuationState directly with the expected default to simulate this.
         let continuation = ContinuationState::with_limits(
-            10, // max_xsd_retries
-            3,  // max_continue_count = 1 + unwrap_or(2)
-            2,  // max_same_agent_retries
+            3, // max_continue_count = 1 + unwrap_or(2)
+            2, // max_same_agent_retries
         );
 
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
@@ -189,9 +187,8 @@ fn test_continuation_stops_with_unwrap_or_default() {
         // Config.max_dev_continuations is None and unwrap_or(2) is applied.
         // Result: max_continue_count = 1 + 2 = 3
         let continuation = ContinuationState::with_limits(
-            10, // max_xsd_retries
-            3,  // max_continue_count = 1 + unwrap_or(2)
-            2,  // max_same_agent_retries
+            3, // max_continue_count = 1 + unwrap_or(2)
+            2, // max_same_agent_retries
         );
 
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
@@ -278,7 +275,7 @@ fn test_continuation_stops_with_unwrap_or_default() {
 fn test_outcome_applied_exhausts_too_early() {
     with_default_timeout(|| {
         // max_continue_count = 3 means attempts 0, 1, 2 should be allowed (3 total)
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -363,7 +360,7 @@ fn test_outcome_applied_exhausts_too_early() {
 #[test]
 fn test_outcome_applied_exhausts_at_correct_boundary() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -447,7 +444,7 @@ fn test_outcome_applied_exhausts_at_correct_boundary() {
 #[test]
 fn test_continuation_attempt_numbering_and_boundary() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 

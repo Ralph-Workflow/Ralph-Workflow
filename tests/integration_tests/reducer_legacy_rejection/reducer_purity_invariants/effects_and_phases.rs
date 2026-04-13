@@ -337,7 +337,7 @@ fn test_agent_fallback_only_via_reducer_events() {
     with_default_timeout(|| {
         let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
         state.phase = PipelinePhase::Development;
-        state.continuation = ContinuationState::with_limits(2, 3, 2);
+        state.continuation = ContinuationState::with_limits(3, 2);
         state.agent_chain = state.agent_chain.with_agents(
             vec![
                 "agent-a".to_string(),
@@ -617,7 +617,7 @@ fn test_phase_transitions_only_via_reducer_events() {
     use ralph_workflow::reducer::state_reduction::reduce;
 
     with_default_timeout(|| {
-        // Start at Planning
+        // Phase 2 flow: Planning → Development → Review → CommitMessage → FinalValidation
         let state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
         assert_eq!(state.phase, PipelinePhase::Planning);
 
@@ -635,7 +635,7 @@ fn test_phase_transitions_only_via_reducer_events() {
             "Planning->Development must happen via reducer event"
         );
 
-        // Transition Development -> CommitMessage via event
+        // Phase 2: Transition Development -> Review via event (not CommitMessage directly)
         let state = reduce(
             state,
             PipelineEvent::Development(DevelopmentEvent::IterationCompleted {
@@ -645,11 +645,22 @@ fn test_phase_transitions_only_via_reducer_events() {
         );
         assert_eq!(
             state.phase,
-            PipelinePhase::CommitMessage,
-            "Development->CommitMessage must happen via reducer event"
+            PipelinePhase::Review,
+            "Phase 2: Development->Review must happen via reducer event"
         );
 
-        // Transition CommitMessage -> Review via event (when iterations exhausted)
+        // Transition Review -> CommitMessage via event (phase completed)
+        let state = reduce(
+            state,
+            PipelineEvent::Review(ReviewEvent::PhaseCompleted { early_exit: false }),
+        );
+        assert_eq!(
+            state.phase,
+            PipelinePhase::CommitMessage,
+            "Review->CommitMessage must happen via reducer event"
+        );
+
+        // Transition CommitMessage -> FinalValidation via event (all iterations + reviews done)
         let state = reduce(
             state,
             PipelineEvent::Commit(CommitEvent::Created {
@@ -659,20 +670,8 @@ fn test_phase_transitions_only_via_reducer_events() {
         );
         assert_eq!(
             state.phase,
-            PipelinePhase::Review,
-            "CommitMessage->Review must happen via reducer event"
-        );
-
-        // Transition Review -> CommitMessage via event (phase completed early)
-        let state = reduce(
-            state,
-            PipelineEvent::Review(ReviewEvent::PhaseCompleted { early_exit: true }),
-        );
-        // Review phase completed transitions to CommitMessage for commit handling
-        assert_eq!(
-            state.phase,
-            PipelinePhase::CommitMessage,
-            "Review->CommitMessage must happen via reducer event"
+            PipelinePhase::FinalValidation,
+            "CommitMessage->FinalValidation must happen via reducer event when all iterations done"
         );
     });
 }

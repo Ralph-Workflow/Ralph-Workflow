@@ -83,8 +83,6 @@ pub fn generate_resume_note(context: &ResumeContext) -> String {
 }
 
 // Re-export public items for API convenience
-pub use commit::prompt_commit_xsd_retry_with_context;
-pub use commit::prompt_commit_xsd_retry_with_log;
 pub use commit::prompt_fix_with_context;
 pub use commit::prompt_generate_commit_message_with_diff_with_context;
 pub use commit::prompt_generate_commit_message_with_diff_with_log;
@@ -94,14 +92,9 @@ pub use developer::{
     prompt_developer_iteration_continuation_xml_with_log,
     prompt_developer_iteration_xml_with_context, prompt_developer_iteration_xml_with_references,
     prompt_developer_iteration_xml_with_references_and_log,
-    prompt_developer_iteration_xsd_retry_with_context,
-    prompt_developer_iteration_xsd_retry_with_context_files,
-    prompt_developer_iteration_xsd_retry_with_context_files_and_log,
     prompt_parallel_dev_worker_with_context, prompt_parallel_planning_with_context,
     prompt_parallel_verifier_with_context, prompt_planning_xml_with_context,
     prompt_planning_xml_with_references, prompt_planning_xml_with_references_and_log,
-    prompt_planning_xsd_retry_with_context, prompt_planning_xsd_retry_with_context_files,
-    prompt_planning_xsd_retry_with_context_files_and_log,
 };
 pub use developer::{prompt_developer_iteration_with_context, prompt_plan_with_context};
 pub use rebase::{
@@ -109,11 +102,9 @@ pub use rebase::{
     FileConflict,
 };
 pub use review::{
-    prompt_fix_xml_with_context, prompt_fix_xml_with_log, prompt_fix_xsd_retry_with_context,
-    prompt_fix_xsd_retry_with_context_files, prompt_fix_xsd_retry_with_log,
+    prompt_fix_xml_with_context, prompt_fix_xml_with_log,
     prompt_review_xml_with_context, prompt_review_xml_with_references,
-    prompt_review_xml_with_references_and_log, prompt_review_xsd_retry_with_context,
-    prompt_review_xsd_retry_with_context_files, prompt_review_xsd_retry_with_context_files_and_log,
+    prompt_review_xml_with_references_and_log,
 };
 
 pub use rebase::build_enhanced_conflict_resolution_prompt;

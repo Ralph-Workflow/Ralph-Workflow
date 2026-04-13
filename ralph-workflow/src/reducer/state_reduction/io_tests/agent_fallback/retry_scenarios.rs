@@ -143,7 +143,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -447,7 +447,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
     let state = PipelineState {
         phase: PipelinePhase::Development,
         agent_chain: chain,
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -517,7 +517,7 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
     let state = PipelineState {
         phase: PipelinePhase::Development,
         agent_chain: chain,
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -576,7 +576,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -598,14 +598,6 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
             .map(String::as_str),
         Some("agent1"),
         "First timeout should retry same agent, not immediately fall back"
-    );
-    assert_eq!(
-        after_first_timeout.continuation.xsd_retry_count, 0,
-        "Timeout retry must not consume XSD retry budget (XSD retries are only for invalid XML)"
-    );
-    assert!(
-        !after_first_timeout.continuation.xsd_retry_pending,
-        "Timeout retry must not set xsd_retry_pending (XSD retries are only for invalid XML)"
     );
     assert_eq!(
         after_first_timeout.continuation.same_agent_retry_count, 1,
@@ -639,14 +631,6 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
         Some("agent2"),
         "After exhausting retry budget, timeout should fall back to next agent"
     );
-    assert_eq!(
-        after_second_timeout.continuation.xsd_retry_count, 0,
-        "Agent fallback should reset retry counters"
-    );
-    assert!(
-        !after_second_timeout.continuation.xsd_retry_pending,
-        "Agent fallback should clear xsd_retry_pending"
-    );
     assert_eq!(after_second_timeout.continuation.same_agent_retry_count, 0);
     assert!(!after_second_timeout.continuation.same_agent_retry_pending);
     assert!(after_second_timeout
@@ -667,7 +651,7 @@ fn test_internal_error_retries_same_agent_until_retry_budget_exhausted() {
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -690,8 +674,6 @@ fn test_internal_error_retries_same_agent_until_retry_budget_exhausted() {
         Some("agent1"),
         "First internal error should retry same agent, not immediately fall back"
     );
-    assert_eq!(after_first_failure.continuation.xsd_retry_count, 0);
-    assert!(!after_first_failure.continuation.xsd_retry_pending);
     assert_eq!(after_first_failure.continuation.same_agent_retry_count, 1);
     assert!(after_first_failure.continuation.same_agent_retry_pending);
     assert_eq!(
@@ -718,8 +700,6 @@ fn test_internal_error_retries_same_agent_until_retry_budget_exhausted() {
         Some("agent2"),
         "After exhausting retry budget, internal error should fall back to next agent"
     );
-    assert_eq!(after_second_failure.continuation.xsd_retry_count, 0);
-    assert!(!after_second_failure.continuation.xsd_retry_pending);
     assert_eq!(after_second_failure.continuation.same_agent_retry_count, 0);
     assert!(!after_second_failure.continuation.same_agent_retry_pending);
     assert!(after_second_failure
@@ -740,7 +720,7 @@ fn test_non_auth_non_rate_limit_non_retriable_error_retries_same_agent_until_bud
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -763,8 +743,6 @@ fn test_non_auth_non_rate_limit_non_retriable_error_retries_same_agent_until_bud
         Some("agent1"),
         "First non-auth non-rate-limit non-retriable error should retry same agent"
     );
-    assert_eq!(after_first_failure.continuation.xsd_retry_count, 0);
-    assert!(!after_first_failure.continuation.xsd_retry_pending);
     assert_eq!(after_first_failure.continuation.same_agent_retry_count, 1);
     assert!(after_first_failure.continuation.same_agent_retry_pending);
 
@@ -787,8 +765,6 @@ fn test_non_auth_non_rate_limit_non_retriable_error_retries_same_agent_until_bud
         Some("agent2"),
         "After exhausting retry budget, non-retriable error should fall back to next agent"
     );
-    assert_eq!(after_second_failure.continuation.xsd_retry_count, 0);
-    assert!(!after_second_failure.continuation.xsd_retry_pending);
     assert_eq!(after_second_failure.continuation.same_agent_retry_count, 0);
     assert!(!after_second_failure.continuation.same_agent_retry_pending);
     assert!(after_second_failure
@@ -808,7 +784,7 @@ fn test_template_variables_invalid_retries_same_agent_until_budget_exhausted() {
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -870,7 +846,7 @@ fn test_no_output_timeout_triggers_immediate_agent_switch() {
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -934,7 +910,7 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
         ),
         continuation: ContinuationState {
             same_agent_retry_count: 1,
-            ..ContinuationState::with_limits(2, 3, 2)
+            ..ContinuationState::with_limits(3, 2)
         },
         ..base_state
     };
@@ -985,7 +961,7 @@ fn test_partial_result_timeout_first_occurrence_stays_same_agent() {
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState::with_limits(3, 2),
         ..base_state
     };
 
@@ -1047,7 +1023,7 @@ fn test_partial_result_vs_no_result_timeout_classification_contract() {
                 vec![vec![], vec![]],
                 AgentRole::Developer,
             ),
-            continuation: ContinuationState::with_limits(2, 3, 2),
+            continuation: ContinuationState::with_limits(3, 2),
             ..base_state
         }
     };

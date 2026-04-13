@@ -8,12 +8,11 @@
 //
 // - `development.rs`: dev_iterations_started, dev_iterations_completed,
 //                     dev_attempts_total, dev_continuation_attempt,
-//                     analysis_attempts_*, xsd_retry_development
+//                     analysis_attempts_*
 // - `review.rs`: review_passes_started, review_passes_completed, review_runs_total,
 //                fix_runs_total, fix_continuations_total, fix_continuation_attempt,
-//                current_review_pass, xsd_retry_review, xsd_retry_fix
-// - `commit.rs`: commits_created_total, xsd_retry_commit
-// - `planning.rs`: xsd_retry_planning
+//                current_review_pass
+// - `commit.rs`: commits_created_total
 // - `agent.rs`: same_agent_retry_attempts_total, agent_fallbacks_total,
 //               model_fallbacks_total, retry_cycles_started_total
 //
@@ -37,7 +36,6 @@
 // | fix_continuations_total             | ReviewEvent::FixContinuationTriggered                     | Fix continuation attempts                |
 // | fix_continuation_attempt            | ReviewEvent::FixContinuationTriggered                     | Reset on PassStarted                     |
 // | current_review_pass                 | ReviewEvent::PassStarted                                  | Tracks current pass number               |
-// | xsd_retry_*                         | *Event::OutputValidationFailed (when will_retry == true)  | Only when retrying, not when exhausted   |
 // | same_agent_retry_attempts_total     | AgentEvent::TimedOut / InternalError (when will_retry)    | Only when retrying same agent            |
 // | timeout_no_output_agent_switches_total | AgentEvent::TimedOut { output_kind: NoResult }         | NoResult timeout triggered immediate switch |
 // | agent_fallbacks_total               | AgentEvent::FallbackTriggered                             | Agent switched in chain                  |
@@ -145,26 +143,6 @@ pub struct RunMetrics {
     #[serde(default)]
     pub current_review_pass: u32,
 
-    // XSD retry tracking
-    /// Total XSD retry attempts across all phases.
-    #[serde(default)]
-    pub xsd_retry_attempts_total: u32,
-    /// XSD retry attempts in planning phase.
-    #[serde(default)]
-    pub xsd_retry_planning: u32,
-    /// XSD retry attempts in development/analysis phase.
-    #[serde(default)]
-    pub xsd_retry_development: u32,
-    /// XSD retry attempts in review phase.
-    #[serde(default)]
-    pub xsd_retry_review: u32,
-    /// XSD retry attempts in fix phase.
-    #[serde(default)]
-    pub xsd_retry_fix: u32,
-    /// XSD retry attempts in commit phase.
-    #[serde(default)]
-    pub xsd_retry_commit: u32,
-
     // Same-agent retry tracking
     /// Total same-agent retry attempts (for transient failures like timeout).
     #[serde(default)]
@@ -210,9 +188,6 @@ pub struct RunMetrics {
     /// Maximum review passes (from config, for X/Y display).
     #[serde(default)]
     pub max_review_passes: u32,
-    /// Maximum XSD retry count (from config, for X/max display).
-    #[serde(default)]
-    pub max_xsd_retry_count: u32,
     /// Maximum development continuation count (from config, for X/max display).
     #[serde(default)]
     pub max_dev_continuation_count: u32,
@@ -235,7 +210,6 @@ impl RunMetrics {
         Self {
             max_dev_iterations,
             max_review_passes,
-            max_xsd_retry_count: continuation.max_xsd_retry_count,
             max_dev_continuation_count: continuation.max_continue_count,
             max_fix_continuation_count: continuation.max_fix_continue_count,
             max_same_agent_retry_count: continuation.max_same_agent_retry_count,
@@ -335,37 +309,6 @@ impl RunMetrics {
     #[must_use]
     pub const fn set_current_review_pass(self, pass: u32) -> Self {
         Self { current_review_pass: pass, ..self }
-    }
-
-    // XSD retry metrics
-    #[must_use]
-    pub const fn increment_xsd_retry_attempts_total(self) -> Self {
-        Self { xsd_retry_attempts_total: self.xsd_retry_attempts_total.saturating_add(1), ..self }
-    }
-
-    #[must_use]
-    pub const fn increment_xsd_retry_planning(self) -> Self {
-        Self { xsd_retry_planning: self.xsd_retry_planning.saturating_add(1), xsd_retry_attempts_total: self.xsd_retry_attempts_total.saturating_add(1), ..self }
-    }
-
-    #[must_use]
-    pub const fn increment_xsd_retry_development(self) -> Self {
-        Self { xsd_retry_development: self.xsd_retry_development.saturating_add(1), xsd_retry_attempts_total: self.xsd_retry_attempts_total.saturating_add(1), ..self }
-    }
-
-    #[must_use]
-    pub const fn increment_xsd_retry_review(self) -> Self {
-        Self { xsd_retry_review: self.xsd_retry_review.saturating_add(1), xsd_retry_attempts_total: self.xsd_retry_attempts_total.saturating_add(1), ..self }
-    }
-
-    #[must_use]
-    pub const fn increment_xsd_retry_fix(self) -> Self {
-        Self { xsd_retry_fix: self.xsd_retry_fix.saturating_add(1), xsd_retry_attempts_total: self.xsd_retry_attempts_total.saturating_add(1), ..self }
-    }
-
-    #[must_use]
-    pub const fn increment_xsd_retry_commit(self) -> Self {
-        Self { xsd_retry_commit: self.xsd_retry_commit.saturating_add(1), xsd_retry_attempts_total: self.xsd_retry_attempts_total.saturating_add(1), ..self }
     }
 
     // Same-agent retry metrics

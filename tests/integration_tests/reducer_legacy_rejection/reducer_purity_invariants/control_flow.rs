@@ -18,7 +18,8 @@ fn test_state_transitions_via_reducer_only() {
     use ralph_workflow::reducer::state_reduction::reduce;
 
     with_default_timeout(|| {
-        // Start at Planning phase with 2 iterations and 1 reviewer pass
+        // Phase 2 flow: Dev → Review → CommitMessage (per iteration), not Dev → CommitMessage.
+        // Start at Planning with 2 dev iterations and 1 reviewer pass each.
         let state = with_locked_prompt_permissions(PipelineState::initial(2, 1));
         assert_eq!(state.phase, PipelinePhase::Planning);
         assert_eq!(state.iteration, 0, "Initial iteration is 0");
@@ -32,21 +33,28 @@ fn test_state_transitions_via_reducer_only() {
         );
         assert_eq!(state.iteration, 0, "Iteration unchanged by plan completion");
 
-        // Development iteration completion -> CommitMessage
-        // Note: iteration field stays at 0 until commit is created
+        // Phase 2: Development iteration completion -> Review (not CommitMessage directly)
         let state = reduce(
             state,
             PipelineEvent::development_iteration_completed(0, true),
         );
         assert_eq!(
             state.phase,
-            PipelinePhase::CommitMessage,
-            "Dev iteration completion transitions to CommitMessage"
+            PipelinePhase::Review,
+            "Phase 2: Dev iteration completion transitions to Review"
         );
-        assert_eq!(state.iteration, 0, "Iteration unchanged in CommitMessage");
+        assert_eq!(state.iteration, 0, "Iteration unchanged until commit");
 
-        // After commit created, goes to Planning for next iteration (not Development directly!)
-        // The reducer pattern is: Dev -> Commit -> Planning -> Dev (for each iteration)
+        // Review -> CommitMessage (after review pass completes)
+        let state = reduce(state, PipelineEvent::review_phase_completed(false));
+        assert_eq!(
+            state.phase,
+            PipelinePhase::CommitMessage,
+            "Review completes and transitions to CommitMessage"
+        );
+
+        // After commit created with more iterations, goes to Planning for next iteration
+        // The reducer pattern is: Dev -> Review -> Commit -> Planning -> Dev (per iteration)
         let state = reduce(
             state,
             PipelineEvent::Commit(CommitEvent::Created {
@@ -61,18 +69,22 @@ fn test_state_transitions_via_reducer_only() {
         );
         assert_eq!(state.iteration, 1, "Iteration incremented to 1");
 
-        // Planning again -> Development
+        // Planning again -> Development (iteration 1)
         let state = reduce(state, PipelineEvent::plan_generation_completed(2, true));
         assert_eq!(state.phase, PipelinePhase::Development);
 
-        // Complete iteration 1 (second dev iteration) -> CommitMessage
+        // Phase 2: Complete iteration 1 -> Review
         let state = reduce(
             state,
             PipelineEvent::development_iteration_completed(1, true),
         );
+        assert_eq!(state.phase, PipelinePhase::Review);
+
+        // Review -> CommitMessage
+        let state = reduce(state, PipelineEvent::review_phase_completed(false));
         assert_eq!(state.phase, PipelinePhase::CommitMessage);
 
-        // After final commit, transitions to Review (iteration 2 >= total_iterations 2)
+        // After final commit (iteration 1+1=2 >= total=2), transitions to FinalValidation
         let state = reduce(
             state,
             PipelineEvent::Commit(CommitEvent::Created {
@@ -82,10 +94,15 @@ fn test_state_transitions_via_reducer_only() {
         );
         assert_eq!(
             state.phase,
-            PipelinePhase::Review,
-            "After final iteration commit, should transition to Review"
+            PipelinePhase::FinalValidation,
+            "After final iteration commit with all reviews done, should transition to FinalValidation"
         );
-        assert_eq!(state.iteration, 2, "Final iteration is 2");
+        // Phase 2: iteration is not incremented when transitioning to FinalValidation
+        // (only incremented when transitioning to Planning for the next iteration)
+        assert_eq!(
+            state.iteration, 1,
+            "Iteration stays at 1 when reaching FinalValidation"
+        );
     });
 }
 

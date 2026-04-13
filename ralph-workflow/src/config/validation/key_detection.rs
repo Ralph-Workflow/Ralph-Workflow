@@ -5,12 +5,28 @@
 
 use super::keys::{
     DEPRECATED_GENERAL_KEYS, VALID_AGENT_CHAIN_KEYS, VALID_AGENT_CONFIG_KEYS,
-    VALID_AGENT_DRAIN_KEYS, VALID_CCS_ALIAS_CONFIG_KEYS, VALID_CCS_KEYS, VALID_GENERAL_KEYS,
+    VALID_AGENT_DRAIN_KEYS, VALID_CCS_ALIAS_CONFIG_KEYS, VALID_CCS_KEYS, VALID_DRAIN_CONFIG_KEYS,
+    VALID_GENERAL_KEYS, VALID_ORCHESTRATION_KEYS,
 };
 
-/// Type alias for a list of (`key_name`, location) pairs.
+/// Type alias for a list of (`key_name`, location, suggestion_override) triples.
 /// Used for tracking unknown and deprecated keys found during validation.
-pub(crate) type KeyLocationList = Vec<(String, String)>;
+/// `suggestion_override` bypasses Levenshtein distance and provides an exact suggestion.
+pub(crate) type KeyLocationList = Vec<(String, String, Option<String>)>;
+
+/// Known aliases for canonical drain names.
+///
+/// When a user provides an invalid drain name that matches a known alias,
+/// the error suggests the canonical name instead of relying on Levenshtein distance.
+const DRAIN_NAME_ALIASES: &[(&str, &str)] = &[
+    ("dev", "development"),
+    ("developer", "development"),
+    ("fixer", "fix"),
+    ("reviewer", "review"),
+    ("plan", "planning"),
+    ("analyse", "analysis"),
+    ("analyze", "analysis"),
+];
 
 /// Detect unknown keys and deprecated keys in a parsed TOML value.
 ///
@@ -36,6 +52,7 @@ pub(crate) fn detect_unknown_and_deprecated_keys(
                 key.as_str(),
                 "general"
                     | "ccs"
+                    | "orchestration"
                     | "agents"
                     | "ccs_aliases"
                     | "agent_chain"
@@ -43,11 +60,22 @@ pub(crate) fn detect_unknown_and_deprecated_keys(
                     | "agent_drains"
             )
         })
-        .map(|(key, _)| (key.clone(), String::new()));
+        .map(|(key, _)| (key.clone(), String::new(), None));
 
     let (section_unknown, section_deprecated): (KeyLocationList, KeyLocationList) = table
         .iter()
-        .filter(|(key, _)| matches!(key.as_str(), "general"))
+        .filter(|(key, _)| {
+            matches!(
+                key.as_str(),
+                "general"
+                    | "ccs"
+                    | "orchestration"
+                    | "agents"
+                    | "ccs_aliases"
+                    | "agent_chain"
+                    | "agent_drains"
+            )
+        })
         .map(|(key, value)| {
             let prefix = format!("{key}.");
             check_section(key.as_str(), value, &prefix)
@@ -66,6 +94,16 @@ pub(crate) fn detect_unknown_and_deprecated_keys(
     let deprecated = section_deprecated;
 
     (unknown, deprecated)
+}
+
+/// Look up a drain name alias to suggest the canonical drain name.
+///
+/// Returns `Some(canonical_name)` when the given name is a known alias,
+/// `None` when no alias is registered.
+fn drain_alias_suggestion(name: &str) -> Option<String> {
+    DRAIN_NAME_ALIASES
+        .iter()
+        .find_map(|(alias, canonical)| (*alias == name).then(|| (*canonical).to_string()))
 }
 
 /// Check a section for unknown and deprecated keys.
@@ -94,13 +132,13 @@ fn check_section(
 
             let deprecated: KeyLocationList = deprecated_keys
                 .into_iter()
-                .map(|key| (key, prefix.to_string()))
+                .map(|key| (key, prefix.to_string(), None))
                 .collect();
 
             let unknown: KeyLocationList = unknown_keys
                 .into_iter()
                 .filter(|key| !VALID_GENERAL_KEYS.contains(&key.as_str()))
-                .map(|key| (key, prefix.to_string()))
+                .map(|key| (key, prefix.to_string(), None))
                 .collect();
 
             (unknown, deprecated)
@@ -109,7 +147,7 @@ fn check_section(
             let unknown: KeyLocationList = table
                 .keys()
                 .filter(|key| !VALID_CCS_KEYS.contains(&key.as_str()))
-                .map(|key| (key.clone(), prefix.to_string()))
+                .map(|key| (key.clone(), prefix.to_string(), None))
                 .collect();
             (unknown, KeyLocationList::new())
         }
@@ -124,7 +162,7 @@ fn check_section(
                         agent_table
                             .keys()
                             .filter(|key| !VALID_AGENT_CONFIG_KEYS.contains(&key.as_str()))
-                            .map(|key| (key.clone(), format!("{prefix}{agent_name}.")))
+                            .map(|key| (key.clone(), format!("{prefix}{agent_name}."), None))
                             .collect::<KeyLocationList>()
                     })
                 })
@@ -142,7 +180,7 @@ fn check_section(
                         alias_table
                             .keys()
                             .filter(|key| !VALID_CCS_ALIAS_CONFIG_KEYS.contains(&key.as_str()))
-                            .map(|key| (key.clone(), format!("{prefix}{alias_name}.")))
+                            .map(|key| (key.clone(), format!("{prefix}{alias_name}."), None))
                             .collect::<KeyLocationList>()
                     })
                 })
@@ -155,15 +193,39 @@ fn check_section(
             let unknown: KeyLocationList = table
                 .keys()
                 .filter(|key| !VALID_AGENT_CHAIN_KEYS.contains(&key.as_str()))
-                .map(|key| (key.clone(), prefix.to_string()))
+                .map(|key| (key.clone(), prefix.to_string(), None))
                 .collect();
             (unknown, KeyLocationList::new())
         }
         "agent_drains" => {
+            // agent_drains may be flat strings OR tables with a "chain" key
+            let unknown: KeyLocationList = table
+                .iter()
+                .flat_map(|(drain_name, drain_value)| {
+                    if !VALID_AGENT_DRAIN_KEYS.contains(&drain_name.as_str()) {
+                        // Unknown drain name — check alias table for a helpful suggestion
+                        let suggestion = drain_alias_suggestion(drain_name.as_str());
+                        vec![(drain_name.clone(), prefix.to_string(), suggestion)]
+                    } else if let Some(drain_table) = drain_value.as_table() {
+                        // Table form: [agent_drains.<drain>]\nchain = "..."
+                        drain_table
+                            .keys()
+                            .filter(|key| !VALID_DRAIN_CONFIG_KEYS.contains(&key.as_str()))
+                            .map(|key| (key.clone(), format!("{prefix}{drain_name}."), None))
+                            .collect()
+                    } else {
+                        // Flat string form: OK
+                        vec![]
+                    }
+                })
+                .collect();
+            (unknown, KeyLocationList::new())
+        }
+        "orchestration" => {
             let unknown: KeyLocationList = table
                 .keys()
-                .filter(|key| !VALID_AGENT_DRAIN_KEYS.contains(&key.as_str()))
-                .map(|key| (key.clone(), prefix.to_string()))
+                .filter(|key| !VALID_ORCHESTRATION_KEYS.contains(&key.as_str()))
+                .map(|key| (key.clone(), prefix.to_string(), None))
                 .collect();
             (unknown, KeyLocationList::new())
         }

@@ -18,4 +18,3 @@ mod archival_invariants;
 mod checkpoint_format;
 mod legacy_phase_rejection;
 mod reducer_purity_invariants;
-mod xsd_retry_invariants;

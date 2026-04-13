@@ -310,26 +310,34 @@ fn test_cloud_push_priority_over_phase_effects() {
 
 #[test]
 fn test_cloud_push_does_not_block_other_priorities() {
-    // Higher priority effects (like XSD retry) should still take precedence
+    // Higher-priority orchestration effects (same-agent retry for the Analysis drain)
+    // must take precedence over cloud push.
+    use crate::agents::AgentDrain;
+    use crate::reducer::state::{ContinuationState, SameAgentRetryReason};
+
     let mut state = create_cloud_enabled_state();
     state.pending_push_commit = Some("abc123".to_string());
     state.git_auth_configured = true;
     state.phase = PipelinePhase::Development;
+    // Simulate an active same-agent retry on the Analysis drain.
+    state.agent_chain.current_drain = AgentDrain::Analysis;
     state.agent_chain.current_role = AgentRole::Analysis;
-    // Set XSD retry pending (higher priority than cloud push)
-    state.continuation.xsd_retry_pending = true;
-    state.continuation.xsd_retry_count = 0;
-    state.continuation.max_xsd_retry_count = 3;
+    state.continuation = ContinuationState {
+        same_agent_retry_pending: true,
+        same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
+        ..state.continuation
+    };
 
     let effect = determine_next_effect(&state);
 
-    // XSD retry should take precedence over cloud push
+    // Same-agent retry has higher priority than cloud push and routes to the
+    // Analysis drain, producing InvokeAnalysisAgent or InitializeAgentChain.
     assert!(
         matches!(
             effect,
             Effect::InvokeAnalysisAgent { .. } | Effect::InitializeAgentChain { .. }
         ),
-        "XSD retry effects should take precedence over cloud push, got: {effect:?}"
+        "Active agent effects should take precedence over cloud push, got: {effect:?}"
     );
 }
 

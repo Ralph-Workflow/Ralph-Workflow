@@ -11,9 +11,9 @@ pub fn commit_drain_agent_supported(
         return true;
     }
 
-    registry.resolve_config(name).is_some_and(|cfg| {
-        cfg.can_commit && !is_opencode_command(&cfg.cmd)
-    })
+    registry
+        .resolve_config(name)
+        .is_some_and(|cfg| cfg.can_commit && !is_opencode_command(&cfg.cmd))
 }
 
 pub fn resolve_models_for_agents(

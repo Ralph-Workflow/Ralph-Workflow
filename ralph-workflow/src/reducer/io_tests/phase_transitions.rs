@@ -9,6 +9,9 @@ fn test_complete_pipeline_phase_flow() {
     // This test validates the minimal end-to-end phase progression.
     // Use a single review pass so the post-review commit advances to FinalValidation.
     state.total_reviewer_passes = 1;
+    // Set iteration to total_iterations-1 so post-commit sees "all dev iterations done"
+    // (Phase 2: commit_created uses iteration vs total_iterations to decide Planning vs FinalValidation)
+    state.iteration = state.total_iterations - 1;
 
     // Planning -> Development
     state = reduce(state, PipelineEvent::planning_phase_started());
@@ -72,6 +75,8 @@ fn test_phase_transitions_preserve_reviewer_pass() {
     let mut state = PipelineState {
         reviewer_pass: 2,
         total_reviewer_passes: 3,
+        // Set iteration to total_iterations-1 so post-commit sees "all dev iterations done"
+        iteration: 4,
         ..create_test_state()
     };
 

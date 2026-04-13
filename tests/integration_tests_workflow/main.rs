@@ -3,7 +3,6 @@
 //! This binary contains workflow and process integration tests:
 //! - End-to-end workflow tests
 //! - CLI and commit behavior
-//! - XML validation
 //! - Logging and tracing
 
 #![deny(warnings)]
@@ -51,26 +50,7 @@ mod cli;
 // Commit behavior
 #[path = "../integration_tests/commit/mod.rs"]
 mod commit;
-#[path = "../integration_tests/commit_xml_validation.rs"]
-mod commit_xml_validation;
 
-// XML validation
-#[path = "../integration_tests/development_xml_validation.rs"]
-mod development_xml_validation;
-#[path = "../integration_tests/fix_xml_validation.rs"]
-mod fix_xml_validation;
-#[path = "../integration_tests/plan_xml_validation.rs"]
-mod plan_xml_validation;
-#[path = "../integration_tests/review_output_validation.rs"]
-mod review_output_validation;
-#[path = "../integration_tests/review_xml_validation.rs"]
-mod review_xml_validation;
-
-// XSD retry
-#[path = "../integration_tests/xsd_retry_missing_files.rs"]
-mod xsd_retry_missing_files;
-#[path = "../integration_tests/xsd_retry_workflow.rs"]
-mod xsd_retry_workflow;
 
 // Logging and tracing
 #[path = "../integration_tests/event_loop_trace_dump.rs"]

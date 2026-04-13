@@ -4,8 +4,8 @@
 
 /// Artifact type being processed by the current phase.
 ///
-/// Used to track which XML artifact type is expected for XSD validation,
-/// enabling role-specific retry prompts and error messages.
+/// Used to track which XML artifact type is currently being processed,
+/// enabling role-specific error messages.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ArtifactType {
     /// Plan XML from planning phase.
@@ -25,8 +25,6 @@ pub enum ArtifactType {
 pub enum PromptMode {
     /// Standard prompt rendering.
     Normal,
-    /// XSD retry prompt rendering for invalid XML outputs.
-    XsdRetry,
     /// Continuation prompt rendering for partial/failed outputs.
     Continuation,
     /// Same-agent retry prompt rendering for transient invocation failures.
@@ -82,6 +80,77 @@ pub enum DevelopmentStatus {
     Partial,
     /// Work failed - needs continuation with different approach.
     Failed,
+}
+
+/// Typed analysis decision for routing after development or fix analysis.
+///
+/// This enum captures the reducer's decision about what to do next after
+/// the analysis agent has verified the development or fix output. It provides
+/// richer routing semantics than raw DevelopmentStatus by encoding the
+/// intended workflow path.
+///
+/// Derived FROM DevelopmentStatus/FixStatus in the reducer after analysis,
+/// not extracted directly from XML.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnalysisDecision {
+    /// Development work is incomplete and needs to loop back to the current phase.
+    ///
+    /// This is derived when `DevelopmentStatus` is `Partial` or `Failed`,
+    /// or when `FixStatus` is `IssuesRemain` or `Failed`.
+    /// Triggers continuation within the current phase.
+    NeedsMoreWork,
+    /// The plan needs to be regenerated before continuing.
+    ///
+    /// This is derived when the analysis agent indicates that the current plan
+    /// is inadequate and a new plan should be created. Routes to Planning phase.
+    NeedsReplanning,
+    /// Development is complete and ready for review.
+    ///
+    /// This is derived when `DevelopmentStatus` is `Completed`.
+    /// Routes to Review phase.
+    ReadyForReview,
+    /// Fix is complete and ready to commit.
+    ///
+    /// This is derived when fix analysis determines all issues are addressed.
+    /// Routes to CommitMessage phase.
+    ReadyToCommit,
+    /// Fix addressed some issues but another review pass is needed.
+    ///
+    /// This is derived when fix analysis determines issues remain but
+    /// meaningful progress was made. Routes back to Review phase.
+    NeedsAnotherReview,
+}
+
+impl AnalysisDecision {
+    /// Parse an `AnalysisDecision` from its artifact key string.
+    ///
+    /// Returns `None` for unrecognized values. Callers should convert
+    /// `None` to an appropriate error at the boundary.
+    #[must_use]
+    pub fn from_artifact_key(s: &str) -> Option<Self> {
+        match s {
+            "needs_more_work" => Some(Self::NeedsMoreWork),
+            "needs_replanning" => Some(Self::NeedsReplanning),
+            "ready_for_review" => Some(Self::ReadyForReview),
+            "ready_to_commit" => Some(Self::ReadyToCommit),
+            "needs_another_review" => Some(Self::NeedsAnotherReview),
+            _ => None,
+        }
+    }
+
+    /// Returns all valid artifact key strings, in declaration order.
+    ///
+    /// Used in error messages to list accepted values.
+    #[must_use]
+    pub const fn all_artifact_keys() -> &'static [&'static str] {
+        &[
+            "needs_more_work",
+            "needs_replanning",
+            "ready_for_review",
+            "ready_to_commit",
+            "needs_another_review",
+        ]
+    }
 }
 
 /// Fix status from agent output.
@@ -228,21 +297,6 @@ impl RebaseState {
 /// When an agent produces output that fails XML parsing or format validation,
 /// we retry with corrective prompts up to this many times before giving up.
 pub const MAX_VALIDATION_RETRY_ATTEMPTS: u32 = 100;
-
-/// Maximum number of developer validation retry attempts before giving up.
-///
-/// Specifically for developer iterations - this is for XSD validation failures
-/// (malformed XML). After exhausting these retries, the system will fall back
-/// to a continuation attempt with a fresh prompt rather than failing entirely.
-/// This separates XSD retry (can't parse the response) from continuation
-/// (understood the response but work is incomplete).
-pub const MAX_DEV_VALIDATION_RETRY_ATTEMPTS: u32 = 10;
-
-/// Maximum number of invalid XML output reruns before aborting the iteration.
-pub const MAX_DEV_INVALID_OUTPUT_RERUNS: u32 = 2;
-
-/// Maximum number of invalid planning output reruns before switching agents.
-pub const MAX_PLAN_INVALID_OUTPUT_RERUNS: u32 = 2;
 
 /// Commit generation state.
 ///

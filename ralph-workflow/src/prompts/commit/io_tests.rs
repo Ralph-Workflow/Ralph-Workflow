@@ -37,11 +37,3 @@ fn test_prompt_generate_commit_message_with_diff_with_context_empty() {
     );
     assert!(result.contains("ERROR: Empty diff"));
 }
-
-#[test]
-fn test_prompt_commit_xsd_retry_with_context() {
-    let context = TemplateContext::default();
-    let workspace = MemoryWorkspace::new(PathBuf::from("/tmp/test"));
-    let result = prompt_commit_xsd_retry_with_context(&context, "xsd error", &workspace);
-    assert!(result.contains("WARNING: Required XSD retry files are missing:"));
-}

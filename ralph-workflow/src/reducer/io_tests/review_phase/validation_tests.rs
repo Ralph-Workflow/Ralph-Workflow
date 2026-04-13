@@ -182,60 +182,21 @@ fn test_fix_attempt_started_resets_agent_chain() {
     // CRITICAL: review_issues_found should be preserved (not reset)
     assert!(new_state.review_issues_found);
 
-    // Agent chain should be reset for reviewer role (fix attempts use reviewer chain)
+    // Agent chain should be reset for fix role
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
     assert_eq!(new_state.agent_chain.current_model_index, 0);
     assert_eq!(new_state.agent_chain.retry_cycle, 0);
     assert_eq!(
         new_state.agent_chain.current_role,
-        crate::agents::AgentRole::Reviewer
+        crate::agents::AgentRole::Fix
     );
     assert_eq!(
         new_state.agent_chain.current_drain,
-        crate::agents::AgentDrain::Fix,
-        "fix attempts must stay on the fix drain even though they share reviewer capability"
+        crate::agents::AgentDrain::Fix
     );
     assert!(
         new_state.agent_chain.agents.is_empty(),
         "Expected agent chain to be cleared for re-initialization"
-    );
-}
-
-#[test]
-fn test_review_prompt_prepared_clears_xsd_retry_pending() {
-    // Preparing a prompt starts a new attempt, so xsd_retry_pending should be cleared.
-    let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_pending: true,
-            ..ContinuationState::new()
-        },
-        ..create_test_state()
-    };
-
-    let new_state = reduce(state, PipelineEvent::review_prompt_prepared(0));
-
-    assert!(
-        !new_state.continuation.xsd_retry_pending,
-        "review prompt preparation should clear xsd_retry_pending to prevent infinite retry loops"
-    );
-}
-
-#[test]
-fn test_fix_prompt_prepared_clears_xsd_retry_pending() {
-    // Preparing a prompt starts a new attempt, so xsd_retry_pending should be cleared.
-    let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_pending: true,
-            ..ContinuationState::new()
-        },
-        ..create_test_state()
-    };
-
-    let new_state = reduce(state, PipelineEvent::fix_prompt_prepared(0));
-
-    assert!(
-        !new_state.continuation.xsd_retry_pending,
-        "fix prompt preparation should clear xsd_retry_pending to prevent infinite retry loops"
     );
 }
 
@@ -288,6 +249,8 @@ fn test_fix_attempt_completed_on_last_pass_transitions_to_commit() {
         reviewer_pass: 1,
         total_reviewer_passes: 2,
         review_issues_found: true,
+        // Set iteration to total_iterations-1 so post-commit sees "all dev iterations done"
+        iteration: 4,
         ..create_test_state()
     };
     let new_state = reduce(state, PipelineEvent::fix_attempt_completed(1, true));
@@ -354,6 +317,8 @@ fn test_review_completed_on_last_pass_transitions_to_commit_then_final_validatio
         reviewer_pass: 1,
         total_reviewer_passes: 2,
         review_issues_found: false,
+        // Set iteration to total_iterations-1 so post-commit sees "all dev iterations done"
+        iteration: 4,
         ..create_test_state()
     };
 

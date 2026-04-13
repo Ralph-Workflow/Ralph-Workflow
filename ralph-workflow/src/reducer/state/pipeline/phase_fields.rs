@@ -64,6 +64,16 @@ pub struct PlanningValidatedOutcome {
 pub struct DevelopmentValidatedOutcome {
     pub iteration: u32,
     pub status: DevelopmentStatus,
+    /// Explicit analysis decision from the artifact's `decision` field.
+    ///
+    /// When `Some`, this overrides the status-derived routing in the reducer.
+    /// When `None` (absent from the artifact or pre-Phase-2 artifact), the
+    /// reducer falls back to deriving the decision from `status`.
+    ///
+    /// Default is `None` for backwards compatibility with checkpoints that
+    /// predate the `decision` field.
+    #[serde(default)]
+    pub analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
     pub summary: String,
     /// Files changed during development. `Option<Box<[String]>>` saves 8 bytes
     /// per instance vs `Option<Vec<String>>` when Some, and is None when empty
@@ -77,6 +87,10 @@ pub struct FixValidatedOutcome {
     pub pass: u32,
     pub status: FixStatus,
     pub summary: Option<String>,
+    /// Phase 2: typed analysis decision from fix analysis agent.
+    /// `None` means no explicit decision — use status-based continuation logic.
+    #[serde(default)]
+    pub analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -96,11 +110,6 @@ pub struct PromptInputsState {
     pub review: Option<MaterializedReviewInputs>,
     #[serde(default)]
     pub commit: Option<MaterializedCommitInputs>,
-    /// Materialized last invalid XML output for XSD retry prompts.
-    ///
-    /// This is used to dedupe retries and keep oversize handling reducer-visible.
-    #[serde(default)]
-    pub xsd_retry_last_output: Option<MaterializedXsdRetryLastOutput>,
 }
 
 impl PromptInputsState {
@@ -141,14 +150,6 @@ impl PromptInputsState {
         }
     }
 
-    /// Clear XSD retry last output without cloning other fields.
-    #[must_use]
-    pub fn with_xsd_retry_cleared(self) -> Self {
-        Self {
-            xsd_retry_last_output: None,
-            ..self
-        }
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -177,9 +178,3 @@ pub struct MaterializedCommitInputs {
     pub diff: MaterializedPromptInput,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-pub struct MaterializedXsdRetryLastOutput {
-    pub phase: PipelinePhase,
-    pub scope_id: u32,
-    pub last_output: MaterializedPromptInput,
-}

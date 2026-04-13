@@ -1,7 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::session::AgentSession;
 use crate::agents::AgentRole;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::development::boundary_domain::{
     build_continuation_context_markdown, derive_development_status, parse_files_changed_lines,
     select_representation_by_inline_budget,
@@ -84,15 +83,7 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
-        use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
-        archive_xml_file_with_workspace(
-            ctx.workspace,
-            Path::new(xml_paths::DEVELOPMENT_RESULT_XML),
-        );
-        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
-            ctx.workspace,
-            "development_result",
-        );
+        crate::files::archive_json_artifact_with_workspace(ctx.workspace, "development_result");
         EffectResult::event(PipelineEvent::development_xml_archived(iteration))
     }
 
@@ -302,8 +293,6 @@ fn apply_oversize_plan_events(
     }
 }
 
-const DEVELOPMENT_XSD_ERROR_PATH: &str = ".agent/tmp/development_xsd_error.txt";
-
 impl MainEffectHandler {
     pub(in crate::reducer::boundary) fn extract_development_xml(
         &self,
@@ -314,16 +303,26 @@ impl MainEffectHandler {
             current: iteration,
             total: self.state.total_iterations,
         };
-        if let Some(result) = try_extract_development_xml_from_json(ctx, iteration, &initial_event)
-        {
-            return result;
+        let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
+        match ctx.workspace.read_artifact_json("development_result") {
+            Ok(Some(envelope)) => {
+                let display_content = serde_json::to_string_pretty(&envelope.content)
+                    .unwrap_or_else(|_| "{}".to_string());
+                build_development_xml_extracted_with_content(
+                    iteration,
+                    initial_event,
+                    display_content,
+                )
+            }
+            Ok(None) => EffectResult::with_ui(
+                PipelineEvent::development_xml_missing(iteration, invalid_output_attempts),
+                vec![initial_event],
+            ),
+            Err(_) => EffectResult::with_ui(
+                PipelineEvent::development_xml_extracted(iteration),
+                vec![initial_event],
+            ),
         }
-        extract_development_xml_from_disk(
-            ctx,
-            iteration,
-            initial_event,
-            self.state.continuation.invalid_output_attempts,
-        )
     }
 
     pub(in crate::reducer::boundary) fn validate_development_xml(
@@ -333,48 +332,21 @@ impl MainEffectHandler {
     ) -> EffectResult {
         let is_continuation = self.state.continuation.is_continuation();
         let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
-        if let Some(result) = try_validate_development_from_json(
-            ctx,
-            iteration,
-            is_continuation,
-            invalid_output_attempts,
-        ) {
-            return result;
+        match ctx.workspace.read_artifact_json("development_result") {
+            Ok(Some(envelope)) => validate_development_json_envelope(
+                ctx,
+                &envelope,
+                iteration,
+                is_continuation,
+                invalid_output_attempts,
+            ),
+            Ok(None) | Err(_) => EffectResult::event(
+                PipelineEvent::development_output_validation_failed(
+                    iteration,
+                    invalid_output_attempts,
+                ),
+            ),
         }
-        validate_development_from_xml(ctx, iteration, is_continuation, invalid_output_attempts)
-    }
-}
-
-fn dispatch_development_xml_validation(
-    xml: &str,
-    is_continuation: bool,
-) -> Result<
-    crate::files::llm_output_extraction::DevelopmentResultElements,
-    crate::files::llm_output_extraction::xsd_validation::XsdValidationError,
-> {
-    use crate::files::llm_output_extraction::{
-        validate_continuation_development_result_xml, validate_development_result_xml,
-    };
-    if is_continuation {
-        validate_continuation_development_result_xml(xml)
-    } else {
-        validate_development_result_xml(xml)
-    }
-}
-
-fn apply_continuation_contract_if_needed(
-    elements: crate::files::llm_output_extraction::DevelopmentResultElements,
-    is_continuation: bool,
-) -> Result<
-    crate::files::llm_output_extraction::DevelopmentResultElements,
-    crate::files::llm_output_extraction::xsd_validation::XsdValidationError,
-> {
-    if is_continuation {
-        crate::files::llm_output_extraction::apply_continuation_development_result_contract(
-            elements,
-        )
-    } else {
-        Ok(elements)
     }
 }
 
@@ -400,79 +372,36 @@ fn build_development_xml_extracted_with_content(
     )
 }
 
-fn try_extract_development_xml_from_json(
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    initial_event: &UIEvent,
-) -> Option<EffectResult> {
-    match ctx.workspace.read_artifact_json("development_result") {
-        Ok(Some(envelope)) => {
-            let display_content = serde_json::to_string_pretty(&envelope.content)
-                .unwrap_or_else(|_| "{}".to_string());
-            Some(build_development_xml_extracted_with_content(
-                iteration,
-                initial_event.clone(),
-                display_content,
-            ))
-        }
-        Err(_) => Some(EffectResult::with_ui(
-            PipelineEvent::development_xml_extracted(iteration),
-            vec![initial_event.clone()],
-        )),
-        Ok(None) => None,
-    }
-}
-
-fn extract_development_xml_from_disk(
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    initial_event: UIEvent,
-    invalid_output_attempts: u32,
-) -> EffectResult {
-    let xml_path = Path::new(xml_paths::DEVELOPMENT_RESULT_XML);
-    match ctx.workspace.read(xml_path) {
-        Ok(content) => {
-            build_development_xml_extracted_with_content(iteration, initial_event, content)
-        }
-        Err(_) => EffectResult::with_ui(
-            PipelineEvent::development_xml_missing(iteration, invalid_output_attempts),
-            vec![initial_event],
-        ),
-    }
-}
-
 fn apply_continuation_and_build_result(
-    ctx: &PhaseContext<'_>,
-    elements: crate::files::llm_output_extraction::DevelopmentResultElements,
+    _ctx: &PhaseContext<'_>,
+    elements: crate::files::result_types::DevelopmentResultElements,
     iteration: u32,
     is_continuation: bool,
     invalid_output_attempts: u32,
 ) -> EffectResult {
-    match apply_continuation_contract_if_needed(elements, is_continuation) {
+    let result = if is_continuation {
+        crate::files::result_types::apply_continuation_development_result_contract(elements)
+            .map_err(|_| ())
+    } else {
+        Ok(elements)
+    };
+    match result {
         Ok(elements) => {
-            let _ = ctx
-                .workspace
-                .remove_if_exists(Path::new(DEVELOPMENT_XSD_ERROR_PATH));
             let status = derive_development_status(elements.is_completed(), elements.is_partial());
             let files_changed = parse_files_changed_lines(elements.files_changed.as_deref());
-            EffectResult::event(PipelineEvent::development_xml_validated(
+            EffectResult::event(PipelineEvent::development_xml_validated_with_decision(
                 iteration,
                 status,
+                elements.analysis_decision,
                 elements.summary.clone(),
                 files_changed,
                 elements.next_steps,
             ))
         }
-        Err(err) => {
-            let _ = ctx.workspace.write(
-                Path::new(DEVELOPMENT_XSD_ERROR_PATH),
-                &err.format_for_ai_retry(),
-            );
-            EffectResult::event(PipelineEvent::development_output_validation_failed(
-                iteration,
-                invalid_output_attempts,
-            ))
-        }
+        Err(()) => EffectResult::event(PipelineEvent::development_output_validation_failed(
+            iteration,
+            invalid_output_attempts,
+        )),
     }
 }
 
@@ -491,100 +420,10 @@ fn validate_development_json_envelope(
             is_continuation,
             invalid_output_attempts,
         ),
-        Err(err) => {
-            let _ = ctx
-                .workspace
-                .write(Path::new(DEVELOPMENT_XSD_ERROR_PATH), &err.to_string());
-            EffectResult::event(PipelineEvent::development_output_validation_failed(
-                iteration,
-                invalid_output_attempts,
-            ))
-        }
-    }
-}
-
-fn try_validate_development_from_json(
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    is_continuation: bool,
-    invalid_output_attempts: u32,
-) -> Option<EffectResult> {
-    match ctx.workspace.read_artifact_json("development_result") {
-        Ok(Some(envelope)) => Some(validate_development_json_envelope(
-            ctx,
-            &envelope,
+        Err(_err) => EffectResult::event(PipelineEvent::development_output_validation_failed(
             iteration,
-            is_continuation,
             invalid_output_attempts,
         )),
-        Ok(None) => None,
-        Err(err) => {
-            let _ = ctx.workspace.write(
-                Path::new(DEVELOPMENT_XSD_ERROR_PATH),
-                &format!("Invalid JSON artifact 'development_result': {}", err),
-            );
-            Some(EffectResult::event(
-                PipelineEvent::development_output_validation_failed(
-                    iteration,
-                    invalid_output_attempts,
-                ),
-            ))
-        }
     }
 }
 
-fn validate_development_from_xml(
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    is_continuation: bool,
-    invalid_output_attempts: u32,
-) -> EffectResult {
-    let Ok(xml) = ctx
-        .workspace
-        .read(Path::new(xml_paths::DEVELOPMENT_RESULT_XML))
-    else {
-        return EffectResult::event(PipelineEvent::development_output_validation_failed(
-            iteration,
-            invalid_output_attempts,
-        ));
-    };
-    let validation_result = dispatch_development_xml_validation(&xml, is_continuation);
-    apply_development_validation_result(ctx, validation_result, iteration, invalid_output_attempts)
-}
-
-fn apply_development_validation_result(
-    ctx: &PhaseContext<'_>,
-    validation_result: Result<
-        crate::files::llm_output_extraction::DevelopmentResultElements,
-        crate::files::llm_output_extraction::xsd_validation::XsdValidationError,
-    >,
-    iteration: u32,
-    invalid_output_attempts: u32,
-) -> EffectResult {
-    match validation_result {
-        Ok(elements) => {
-            let _ = ctx
-                .workspace
-                .remove_if_exists(Path::new(DEVELOPMENT_XSD_ERROR_PATH));
-            let status = derive_development_status(elements.is_completed(), elements.is_partial());
-            let files_changed = parse_files_changed_lines(elements.files_changed.as_deref());
-            EffectResult::event(PipelineEvent::development_xml_validated(
-                iteration,
-                status,
-                elements.summary.clone(),
-                files_changed,
-                elements.next_steps,
-            ))
-        }
-        Err(err) => {
-            let _ = ctx.workspace.write(
-                Path::new(DEVELOPMENT_XSD_ERROR_PATH),
-                &err.format_for_ai_retry(),
-            );
-            EffectResult::event(PipelineEvent::development_output_validation_failed(
-                iteration,
-                invalid_output_attempts,
-            ))
-        }
-    }
-}

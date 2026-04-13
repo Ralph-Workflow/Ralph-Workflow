@@ -138,14 +138,14 @@ fn test_development_iteration_increments() {
             total_iterations: 5,
             ..create_initial_state()
         };
-        // DevelopmentIterationCompleted transitions to CommitMessage phase
-        // The iteration stays the same; increment happens after CommitCreated
+        // Phase 2: DevelopmentIterationCompleted transitions to Review phase.
+        // The iteration stays the same; it increments after the commit that follows review.
         let new_state = reduce(
             state,
             PipelineEvent::development_iteration_completed(2, true),
         );
         assert_eq!(new_state.iteration, 2);
-        assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
+        assert_eq!(new_state.phase, PipelinePhase::Review);
         assert_eq!(new_state.previous_phase, Some(PipelinePhase::Development));
     });
 }
@@ -159,14 +159,14 @@ fn test_development_iteration_complete_moves_to_review() {
             total_iterations: 5,
             ..create_initial_state()
         };
-        // DevelopmentIterationCompleted goes to CommitMessage first
-        // Transition to Review happens after CommitCreated when iteration >= total_iterations
+        // Phase 2: DevelopmentIterationCompleted goes directly to Review.
+        // CommitMessage is reached after review, not before.
         let new_state = reduce(
             state,
             PipelineEvent::development_iteration_completed(5, true),
         );
         assert_eq!(new_state.iteration, 5);
-        assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
+        assert_eq!(new_state.phase, PipelinePhase::Review);
         assert_eq!(new_state.previous_phase, Some(PipelinePhase::Development));
     });
 }
@@ -360,7 +360,7 @@ fn test_agent_chain_exhausted_triggers_retry_cycle() {
 fn test_sigsegv_causes_agent_fallback() {
     with_default_timeout(|| {
         let state = PipelineState {
-            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(2, 3, 2),
+            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(3, 2),
             ..create_state_with_agent_chain()
         };
         let initial_agent = state.agent_chain.current_agent().cloned();
@@ -614,7 +614,7 @@ fn test_authentication_error_triggers_agent_fallback() {
 fn test_agent_fallback_after_internal_error_retry_exhaustion() {
     with_default_timeout(|| {
         let state = PipelineState {
-            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(2, 3, 2),
+            continuation: ralph_workflow::reducer::state::ContinuationState::with_limits(3, 2),
             ..create_state_with_agent_chain()
         };
         let initial_agent = state.agent_chain.current_agent().cloned();
@@ -787,10 +787,13 @@ fn test_commit_skipped_respects_previous_phase_from_review() {
 #[test]
 fn test_commit_skipped_after_last_review_goes_to_final_validation() {
     with_default_timeout(|| {
-        // Setup state as if we just completed the last review pass
+        // Setup state as if we just completed the last review pass at the last dev iteration.
+        // iteration=4 (last of 5) ensures next_iter=5 >= total_iterations=5 so no more dev
+        // iterations remain — the pipeline should finalize.
         let state = PipelineState {
             phase: PipelinePhase::CommitMessage,
             previous_phase: Some(PipelinePhase::Review),
+            iteration: 4,     // last iteration (0-indexed in total_iterations=5)
             reviewer_pass: 1, // 0-indexed, this is the 2nd of 2 passes
             total_reviewer_passes: 2,
             ..create_initial_state()
@@ -802,7 +805,7 @@ fn test_commit_skipped_after_last_review_goes_to_final_validation() {
             PipelineEvent::commit_skipped("No changes to commit".to_string()),
         );
 
-        // Should go to FinalValidation after all review passes done
+        // Should go to FinalValidation after all review passes done at last iteration
         assert_eq!(new_state.phase, PipelinePhase::FinalValidation);
     });
 }

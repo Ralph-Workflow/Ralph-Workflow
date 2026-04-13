@@ -14,7 +14,7 @@
 //! - **Phase transitions**: Only happen via reducer events, never via file checks
 //! - **Agent selection**: Determined by `state.agent_chain`, not config lookups
 //! - **Agent fallback**: Triggered by reducer events (`AgentFallbackTriggered`, `AgentInvocationFailed`)
-//! - **XSD retry**: Tracked in `ContinuationState.xsd_retry_count` / `ContinuationState.xsd_retry_pending`, not hidden logic
+//! - **Validation failure**: Triggers agent switch via `OutputValidationFailed` event, tracked in `ContinuationState.invalid_output_attempts`
 //! - **Pipeline completion**: Determined by `state.phase == Complete`, not file existence
 //!
 //! **Invariant**: No phase module or effect handler makes control-flow decisions.

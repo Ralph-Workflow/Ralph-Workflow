@@ -37,7 +37,7 @@ fn test_invoke_agent_uses_rate_limit_continuation_prompt() {
     handler.state.agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
             drain: AgentDrain::Planning,
-            role: AgentRole::Developer,
+            role: AgentRole::Planning,
             prompt: "saved prompt from rate limit".to_string(),
         });
 

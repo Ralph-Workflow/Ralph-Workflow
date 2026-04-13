@@ -60,10 +60,10 @@ fn transition_to_commit_after_fix(
 /// Starts a new fix attempt by resetting the agent chain for the Fix drain
 /// and clearing pending flags to prevent infinite loops.
 ///
-/// Fix attempts use the Reviewer agent chain by design. The pipeline has three
-/// agent roles: Developer, Reviewer, and Commit. Fixes are performed by the same
-/// agent chain configured for review (there is no separate "Fixer" role), since
-/// the fix phase is part of the review workflow.
+/// Fix attempts use the Fix agent chain (AgentRole::Fix). The Fix role is distinct
+/// from Reviewer: fix agents are write-capable (they apply changes), while reviewer
+/// agents produce findings. In legacy configs without a dedicated fix chain, the
+/// Fix role falls back to the reviewer chain via `get_effective_fix_fallbacks()`.
 pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState {
     PipelineState {
         agent_chain: AgentChainState::initial()
@@ -75,16 +75,11 @@ pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState 
             )
             .reset_for_drain(AgentDrain::Fix),
         // Clear pending flags when fix attempt starts to prevent infinite loops.
-        // xsd_retry_pending is cleared to ensure the XSD retry effect doesn't re-trigger
-        // after the fix attempt starts a fresh agent invocation.
         continuation: ContinuationState {
             invalid_output_attempts: 0,
             fix_continue_pending: false,
-            xsd_retry_pending: false,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
-            // Clear fix error when starting a new fix attempt
-            last_fix_xsd_error: None,
             ..state.continuation
         },
         fix_prompt_prepared_pass: None,
@@ -107,8 +102,6 @@ pub(super) fn reduce_fix_prompt_prepared(state: PipelineState, pass: u32) -> Pip
         agent_chain: state.agent_chain.with_drain(AgentDrain::Fix),
         fix_prompt_prepared_pass: Some(pass),
         continuation: ContinuationState {
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: state.continuation.xsd_retry_session_reuse_pending,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
             // Clear fix_continue_pending to prevent infinite loop.
@@ -140,8 +133,6 @@ pub(super) fn reduce_fix_agent_invoked(state: PipelineState, pass: u32) -> Pipel
         agent_chain: state.agent_chain.with_drain(AgentDrain::Fix),
         fix_agent_invoked_pass: Some(pass),
         continuation: ContinuationState {
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
             ..state.continuation
@@ -160,8 +151,6 @@ pub(super) fn reduce_fix_analysis_agent_invoked(state: PipelineState, pass: u32)
         agent_chain: state.agent_chain.with_drain(AgentDrain::Analysis),
         fix_analysis_agent_invoked_pass: Some(pass),
         continuation: ContinuationState {
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
             ..state.continuation
@@ -189,18 +178,15 @@ pub(super) fn reduce_fix_result_xml_validated(
     pass: u32,
     status: FixStatus,
     summary: Option<String>,
+    analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
 ) -> PipelineState {
     PipelineState {
         fix_validated_outcome: Some(FixValidatedOutcome {
             pass,
             status,
             summary,
+            analysis_decision,
         }),
-        continuation: ContinuationState {
-            // Clear error when validation succeeds
-            last_fix_xsd_error: None,
-            ..state.continuation
-        },
         ..state
     }
 }
@@ -217,8 +203,15 @@ pub(super) fn reduce_fix_result_xml_archived(state: PipelineState, pass: u32) ->
 
 /// Handles `ReviewEvent::FixOutcomeApplied`.
 ///
-/// Applies the fix outcome by checking if continuation is needed or fix is complete.
-/// Recursively reduces the derived event (`FixContinuationTriggered`, `FixContinuationBudgetExhausted`, or `FixAttemptCompleted`).
+/// Applies the fix outcome using explicit `AnalysisDecision` when present; falls
+/// back to status-based continuation logic when `analysis_decision` is `None`.
+///
+/// Phase 2 routing table:
+/// - `ReadyToCommit` → CommitMessage (same as current `AllIssuesAddressed` path)
+/// - `NeedsAnotherReview` → Review (fresh review pass with same reviewer_pass index)
+/// - `NeedsReplanning` → Planning (start a new development cycle)
+/// - `NeedsMoreWork` | `None` → status-based continuation logic (unchanged)
+/// - `ReadyForReview` → treated as `NeedsAnotherReview` in post-fix context
 pub(super) fn reduce_fix_outcome_applied(state: PipelineState, pass: u32) -> PipelineState {
     let Some(outcome) = state
         .fix_validated_outcome
@@ -227,6 +220,26 @@ pub(super) fn reduce_fix_outcome_applied(state: PipelineState, pass: u32) -> Pip
     else {
         return state;
     };
+
+    // Phase 2: check explicit analysis decision first
+    use crate::reducer::state::AnalysisDecision;
+    match outcome.analysis_decision {
+        Some(AnalysisDecision::NeedsAnotherReview) | Some(AnalysisDecision::ReadyForReview) => {
+            return transition_to_review_after_fix(state, pass);
+        }
+        Some(AnalysisDecision::NeedsReplanning) => {
+            return transition_to_planning_after_fix(state, pass);
+        }
+        Some(AnalysisDecision::ReadyToCommit) => {
+            let next_event = ReviewEvent::FixAttemptCompleted {
+                pass,
+                changes_made: true,
+            };
+            return super::reduce_review_event(state, next_event);
+        }
+        // NeedsMoreWork or None: fall through to status-based logic
+        Some(AnalysisDecision::NeedsMoreWork) | None => {}
+    }
 
     let next_event = if outcome.status.needs_continuation() {
         let next_attempt = state.continuation.fix_continuation_attempt + 1;
@@ -250,6 +263,74 @@ pub(super) fn reduce_fix_outcome_applied(state: PipelineState, pass: u32) -> Pip
 
     // Recursively reduce the derived event
     super::reduce_review_event(state, next_event)
+}
+
+/// Route back to Review phase after fix (Phase 2: NeedsAnotherReview decision).
+///
+/// Clears fix drain progress and resets the chain to Review drain for a fresh
+/// review pass. The reviewer_pass index is unchanged — the review orchestrator
+/// re-invokes the reviewer agent for the same pass number.
+fn transition_to_review_after_fix(state: PipelineState, pass: u32) -> PipelineState {
+    let state = clear_fix_drain_progress(state);
+    PipelineState {
+        phase: PipelinePhase::Review,
+        previous_phase: Some(PipelinePhase::Review),
+        reviewer_pass: pass,
+        agent_chain: AgentChainState::initial()
+            .with_max_cycles(state.agent_chain.max_cycles)
+            .with_backoff_policy(
+                state.agent_chain.retry_delay_ms,
+                state.agent_chain.backoff_multiplier,
+                state.agent_chain.max_backoff_ms,
+            )
+            .reset_for_drain(AgentDrain::Review)
+            .with_mode(DrainMode::Normal),
+        continuation: state.continuation.reset(),
+        ..state
+    }
+}
+
+/// Route to Planning phase after fix (Phase 2: NeedsReplanning decision).
+///
+/// Clears fix and review drain progress and resets for a new development cycle.
+/// The iteration is incremented because a commit checkpoint is expected before
+/// replanning (the plan says "commit first, then continue to planning").
+fn transition_to_planning_after_fix(state: PipelineState, pass: u32) -> PipelineState {
+    let state = clear_fix_drain_progress(state);
+    // Clear review progress as well since we're leaving the review cycle entirely
+    let state = clear_review_drain_progress(state);
+    PipelineState {
+        phase: PipelinePhase::Planning,
+        previous_phase: Some(PipelinePhase::Review),
+        reviewer_pass: pass,
+        agent_chain: AgentChainState::initial()
+            .with_max_cycles(state.agent_chain.max_cycles)
+            .with_backoff_policy(
+                state.agent_chain.retry_delay_ms,
+                state.agent_chain.backoff_multiplier,
+                state.agent_chain.max_backoff_ms,
+            )
+            .reset_for_drain(AgentDrain::Planning)
+            .with_mode(DrainMode::Normal),
+        continuation: state.continuation.reset(),
+        ..state
+    }
+}
+
+fn clear_review_drain_progress(state: PipelineState) -> PipelineState {
+    PipelineState {
+        review_issues_found: false,
+        review_context_prepared_pass: None,
+        review_prompt_prepared_pass: None,
+        review_required_files_cleaned_pass: None,
+        review_agent_invoked_pass: None,
+        review_issues_xml_extracted_pass: None,
+        review_validated_outcome: None,
+        review_issues_markdown_written_pass: None,
+        review_issue_snippets_extracted_pass: None,
+        review_issues_xml_archived_pass: None,
+        ..state
+    }
 }
 
 /// Handles `ReviewEvent::FixAttemptCompleted`.
@@ -340,94 +421,38 @@ pub(super) fn reduce_fix_continuation_budget_exhausted(
 
 /// Handles `ReviewEvent::FixOutputValidationFailed` and `ReviewEvent::FixResultXmlMissing`.
 ///
-/// Increments XSD retry count and either:
-/// - Sets `xsd_retry_pending` for another attempt (if budget remains)
-/// - Switches to next agent in chain (if XSD retries exhausted)
+/// Switches to next agent in chain when fix output validation fails.
+/// XSD retry mode has been removed; validation failure always advances to the next agent.
 pub(super) fn reduce_fix_output_validation_failed(
     state: PipelineState,
     pass: u32,
     attempt: u32,
-    error_detail: Option<String>,
+    _error_detail: Option<String>,
 ) -> PipelineState {
-    // Same policy as review output validation failure
-    let new_xsd_count = state.continuation.xsd_retry_count + 1;
-
-    // Only increment metrics if we're actually retrying (not exhausted)
-    let will_retry = new_xsd_count < state.continuation.max_xsd_retry_count;
-
-    if new_xsd_count >= state.continuation.max_xsd_retry_count {
-        // XSD retries exhausted - switch to next agent
-        // Reset orchestration flags to ensure prompt is prepared and new agent is invoked
-        let new_agent_chain = state
-            .agent_chain
+    // XSD retry mode removed: validation failure always switches to next agent.
+    let new_agent_chain = state
+        .agent_chain
+        .with_drain(AgentDrain::Fix)
+        .switch_to_next_agent()
+        .clear_session_id();
+    PipelineState {
+        phase: PipelinePhase::Review,
+        reviewer_pass: pass,
+        agent_chain: new_agent_chain
             .with_drain(AgentDrain::Fix)
-            .switch_to_next_agent()
-            .clear_session_id();
-        PipelineState {
-            phase: PipelinePhase::Review,
-            reviewer_pass: pass,
-            agent_chain: new_agent_chain
-                .with_drain(AgentDrain::Fix)
-                .with_mode(DrainMode::Normal),
-            continuation: ContinuationState {
-                invalid_output_attempts: 0,
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
-                // Clear error when switching agents
-                last_fix_xsd_error: None,
-                ..state.continuation
-            },
-            // Reset orchestration flags to ensure:
-            // 1. Prompt is prepared for new agent
-            // 2. New agent is invoked
-            // 3. Cleanup runs before invocation
-            fix_prompt_prepared_pass: None,
-            fix_agent_invoked_pass: None,
-            fix_analysis_agent_invoked_pass: None,
-            fix_required_files_cleaned_pass: None,
-            metrics: if will_retry {
-                state.metrics.increment_xsd_retry_fix()
-            } else {
-                state.metrics
-            },
-            ..state
-        }
-    } else {
-        // Stay in Review, increment attempt counters, set retry pending
-        // Reset orchestration flags to ensure XSD retry prompt is prepared
-        // and agent is re-invoked with the retry prompt.
-        PipelineState {
-            phase: PipelinePhase::Review,
-            reviewer_pass: pass,
-            agent_chain: state
-                .agent_chain
-                .with_drain(AgentDrain::Fix)
-                .with_mode(DrainMode::XsdRetry),
-            continuation: ContinuationState {
-                invalid_output_attempts: attempt + 1,
-                xsd_retry_count: new_xsd_count,
-                xsd_retry_pending: true,
-                // Reuse last session id for fix XSD retry when available.
-                xsd_retry_session_reuse_pending: true,
-                // Preserve error detail for XSD retry prompt
-                last_fix_xsd_error: error_detail,
-                ..state.continuation
-            },
-            // Reset orchestration flags to ensure:
-            // 1. XSD retry prompt is prepared (fix_prompt_prepared_pass = None)
-            // 2. Agent is re-invoked with the retry prompt (fix_agent_invoked_pass = None)
-            // 3. Cleanup runs before re-invocation (fix_required_files_cleaned_pass = None)
-            fix_prompt_prepared_pass: None,
-            fix_agent_invoked_pass: None,
-            fix_analysis_agent_invoked_pass: None,
-            fix_required_files_cleaned_pass: None,
-            metrics: if will_retry {
-                state.metrics.increment_xsd_retry_fix()
-            } else {
-                state.metrics
-            },
-            ..state
-        }
+            .with_mode(DrainMode::Normal),
+        continuation: ContinuationState {
+            invalid_output_attempts: attempt + 1,
+            ..state.continuation
+        },
+        // Reset orchestration flags to ensure:
+        // 1. Prompt is prepared for new agent
+        // 2. New agent is invoked
+        // 3. Cleanup runs before invocation
+        fix_prompt_prepared_pass: None,
+        fix_agent_invoked_pass: None,
+        fix_analysis_agent_invoked_pass: None,
+        fix_required_files_cleaned_pass: None,
+        ..state
     }
 }

@@ -103,7 +103,14 @@ pub(super) fn reduce_review_event(state: PipelineState, event: ReviewEvent) -> P
             pass,
             status,
             summary,
-        } => fix_reducer::reduce_fix_result_xml_validated(state, pass, status, summary),
+            analysis_decision,
+        } => fix_reducer::reduce_fix_result_xml_validated(
+            state,
+            pass,
+            status,
+            summary,
+            analysis_decision,
+        ),
         FixResultXmlArchived { pass } => fix_reducer::reduce_fix_result_xml_archived(state, pass),
         FixOutcomeApplied { pass } => fix_reducer::reduce_fix_outcome_applied(state, pass),
         FixAttemptCompleted { pass, changes_made } => {

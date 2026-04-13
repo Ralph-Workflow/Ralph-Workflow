@@ -80,8 +80,6 @@ fn test_planning_output_validation_failed_switches_agent_at_max_attempts() {
         same_agent_retry_count: 1,
         same_agent_retry_pending: true,
         same_agent_retry_reason: Some(crate::reducer::state::SameAgentRetryReason::Timeout),
-        xsd_retry_count: 1,
-        max_xsd_retry_count: 2,
         ..ContinuationState::new()
     };
 
@@ -133,10 +131,7 @@ fn test_planning_output_validation_failed_multiple_attempts_before_switch() {
     use crate::reducer::state::ContinuationState;
 
     let mut state = create_state_in_phase(PipelinePhase::Planning);
-    state.continuation = ContinuationState {
-        max_xsd_retry_count: 3,
-        ..ContinuationState::new()
-    };
+    state.continuation = ContinuationState::new();
     state.agent_chain.agents = Arc::from(vec!["agent1".to_string(), "agent2".to_string()]);
     state.agent_chain.current_agent_index = 0;
 

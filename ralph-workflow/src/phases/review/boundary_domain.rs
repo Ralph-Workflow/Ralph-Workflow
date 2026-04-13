@@ -1,18 +1,10 @@
-use crate::files::llm_output_extraction::IssuesElements;
+use crate::files::result_types::IssuesElements;
 use crate::reducer::domain::baseline::BaselineOid;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::rendering::xml::render_skills_mcp_markdown;
 // Regex lazy-init uses OnceLock — lives in boundary submodule.
 include!("boundary_domain/io.rs");
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct XsdRetryMaterializationSignature {
-    pub phase: crate::reducer::event::PipelinePhase,
-    pub scope_id: u32,
-    pub content_id_sha256: String,
-    pub consumer_signature_sha256: String,
-}
 
 pub(crate) fn sentinel_plan_content(_isolation_mode: bool) -> String {
     if _isolation_mode {
@@ -108,23 +100,6 @@ pub(crate) fn build_review_prompt_content_id(
     ))
 }
 
-pub(crate) fn build_review_xsd_retry_prompt_content_id(
-    _xsd_error: &str,
-    _last_output_id: &str,
-) -> String {
-    sha256_hex_str(&format!(
-        "review_xsd_retry|{}|{}",
-        _xsd_error, _last_output_id
-    ))
-}
-
-pub(crate) fn should_materialize_xsd_retry_last_output(
-    _existing: Option<&XsdRetryMaterializationSignature>,
-    _candidate: &XsdRetryMaterializationSignature,
-) -> bool {
-    !_existing.is_some_and(|existing| existing == _candidate)
-}
-
 /// Map review outcome flags to the appropriate pipeline event.
 ///
 /// The orchestrator computes `issues_found` and `clean_no_issues` from the
@@ -165,19 +140,6 @@ pub(crate) fn build_fix_normal_prompt_content_id(
     ))
 }
 
-pub(crate) fn build_fix_xsd_retry_prompt_content_id(
-    _prompt_id: &str,
-    _plan_id: &str,
-    _issues_id: &str,
-    _xsd_error: &str,
-    _last_output_id: &str,
-) -> String {
-    sha256_hex_str(&format!(
-        "fix_xsd_retry|{}|{}|{}|{}|{}",
-        _prompt_id, _plan_id, _issues_id, _xsd_error, _last_output_id
-    ))
-}
-
 pub(crate) fn build_fix_continuation_prompt_content_id(
     _attempt: u32,
     _status: &str,
@@ -214,7 +176,7 @@ pub(crate) fn parse_development_result_status(_status: &str) -> crate::reducer::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::files::llm_output_extraction::{IssueEntry, SkillsMcp};
+    use crate::files::result_types::{IssueEntry, SkillsMcp};
     use crate::reducer::domain::baseline::parse_baseline_oid;
 
     #[test]
@@ -263,7 +225,7 @@ mod tests {
             issues: vec![IssueEntry {
                 text: "src/lib.rs:42 - Example".to_string(),
                 skills_mcp: Some(SkillsMcp {
-                    skills: vec![crate::files::llm_output_extraction::SkillEntry {
+                    skills: vec![crate::files::result_types::SkillEntry {
                         name: "test-driven-development".to_string(),
                         reason: Some("write failing test first".to_string()),
                     }],
@@ -347,63 +309,10 @@ mod tests {
     }
 
     #[test]
-    fn build_review_xsd_retry_prompt_content_id_changes_with_last_output() {
-        let first = build_review_xsd_retry_prompt_content_id("xsd-error", "output-a");
-        let second = build_review_xsd_retry_prompt_content_id("xsd-error", "output-b");
-        assert_ne!(first, second);
-    }
-
-    #[test]
-    fn should_materialize_xsd_retry_last_output_detects_redundant_materialization() {
-        let signature = XsdRetryMaterializationSignature {
-            phase: crate::reducer::event::PipelinePhase::Review,
-            scope_id: 2,
-            content_id_sha256: "content".to_string(),
-            consumer_signature_sha256: "consumer".to_string(),
-        };
-
-        assert!(!should_materialize_xsd_retry_last_output(
-            Some(&signature),
-            &signature
-        ));
-
-        let changed = XsdRetryMaterializationSignature {
-            content_id_sha256: "different".to_string(),
-            ..signature
-        };
-        assert!(should_materialize_xsd_retry_last_output(
-            Some(&changed),
-            &XsdRetryMaterializationSignature {
-                content_id_sha256: "new".to_string(),
-                ..changed.clone()
-            }
-        ));
-    }
-
-    #[test]
     fn build_fix_prompt_content_id_changes_with_retry_count() {
         let one = build_fix_prompt_content_id("prompt", "plan", "issues", 1);
         let two = build_fix_prompt_content_id("prompt", "plan", "issues", 2);
         assert_ne!(one, two);
-    }
-
-    #[test]
-    fn build_fix_xsd_retry_prompt_content_id_includes_xsd_context() {
-        let id = build_fix_xsd_retry_prompt_content_id(
-            "prompt",
-            "plan",
-            "issues",
-            "missing element",
-            "last-output-id",
-        );
-        let changed = build_fix_xsd_retry_prompt_content_id(
-            "prompt",
-            "plan",
-            "issues",
-            "different error",
-            "last-output-id",
-        );
-        assert_ne!(id, changed);
     }
 
     #[test]

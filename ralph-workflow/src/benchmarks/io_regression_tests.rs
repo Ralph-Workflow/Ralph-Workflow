@@ -341,12 +341,11 @@ fn regression_test_continuation_state_builder_pattern() {
     // Verify ContinuationState methods follow consuming builder pattern
     use crate::reducer::state::{ArtifactType, ContinuationState};
 
-    let state = ContinuationState::with_limits(3, 3, 2);
+    let state = ContinuationState::with_limits(3, 2);
 
     // with_artifact should work without requiring clone
     let updated = state.with_artifact(ArtifactType::Plan);
     assert_eq!(updated.current_artifact, Some(ArtifactType::Plan));
-    assert_eq!(updated.xsd_retry_count, 0); // Should reset XSD state
 }
 
 #[test]

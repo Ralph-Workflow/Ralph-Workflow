@@ -12,6 +12,7 @@ fn test_apply_fix_outcome_emits_fix_continuation_triggered_for_issues_remain() {
         pass: 0,
         status: FixStatus::IssuesRemain,
         summary: Some("needs more".to_string()),
+        analysis_decision: None,
     });
 
     let mut ctx = fixture.ctx();
@@ -35,6 +36,7 @@ fn test_apply_fix_outcome_emits_fix_attempt_completed_for_all_issues_addressed()
         pass: 0,
         status: FixStatus::AllIssuesAddressed,
         summary: Some("done".to_string()),
+        analysis_decision: None,
     });
 
     let mut ctx = fixture.ctx();
@@ -58,6 +60,7 @@ fn test_apply_fix_outcome_emits_fix_continuation_triggered_for_failed() {
         pass: 0,
         status: FixStatus::Failed,
         summary: Some("blocked".to_string()),
+        analysis_decision: None,
     });
 
     let mut ctx = fixture.ctx();
@@ -83,6 +86,7 @@ fn test_apply_fix_outcome_emits_fix_continuation_budget_exhausted_when_limit_rea
         pass: 0,
         status: FixStatus::IssuesRemain,
         summary: Some("still failing".to_string()),
+        analysis_decision: None,
     });
 
     let mut ctx = fixture.ctx();

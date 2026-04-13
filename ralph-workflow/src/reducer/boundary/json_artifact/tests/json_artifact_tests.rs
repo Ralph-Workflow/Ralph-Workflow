@@ -1,6 +1,6 @@
 //! Tests for json_artifact.rs - JSON artifact ingestion.
 
-use crate::files::llm_output_extraction::xsd_validation_plan::{FileAction, Priority, StepType};
+use crate::files::result_types::{FileAction, Priority, StepType};
 use crate::reducer::boundary::json_artifact::{
     development_result_from_envelope, fix_result_from_envelope, issues_elements_from_envelope,
     plan_elements_from_envelope,
@@ -81,7 +81,7 @@ fn plan_elements_round_trip_from_json() {
     assert_eq!(elements.risks_mitigations.len(), 1);
     assert_eq!(
         elements.risks_mitigations[0].severity,
-        Some(crate::files::llm_output_extraction::xsd_validation_plan::Severity::Low)
+        Some(crate::files::result_types::Severity::Low)
     );
     assert_eq!(elements.verification_strategy.len(), 1);
 }
@@ -371,7 +371,7 @@ fn json_plan_full_lifecycle_round_trip() {
     assert_eq!(elements.risks_mitigations.len(), 2);
     assert_eq!(
         elements.risks_mitigations[0].severity,
-        Some(crate::files::llm_output_extraction::xsd_validation_plan::Severity::Medium)
+        Some(crate::files::result_types::Severity::Medium)
     );
     assert_eq!(elements.verification_strategy.len(), 2);
     let skills = elements
@@ -820,4 +820,120 @@ fn fix_result_non_string_status_returns_error() {
     let content = serde_json::json!({"status": 42, "summary": "Done"});
     let env = ArtifactEnvelope::new("fix_result", content, "t");
     assert!(fix_result_from_envelope(&env).is_err());
+}
+
+// ---------------------------------------------------------------------------
+// AnalysisDecision field tests — Step 4 (Phase 2 TDD)
+//
+// The development_result JSON artifact can carry an explicit `decision` field
+// that maps to AnalysisDecision enum variants. Unknown values must be rejected
+// (fail closed). Known values must be parsed and stored.
+// ---------------------------------------------------------------------------
+
+/// An artifact with decision="needs_replanning" must parse to NeedsReplanning.
+#[test]
+fn development_result_with_needs_replanning_decision_parses_correctly() {
+    use crate::reducer::state::AnalysisDecision;
+
+    let content = serde_json::json!({
+        "status": "completed",
+        "summary": "done but plan needs rework",
+        "decision": "needs_replanning"
+    });
+    let envelope = ArtifactEnvelope::new("development_result", content, "t");
+
+    let result = development_result_from_envelope(&envelope)
+        .expect("valid artifact with decision field must parse");
+
+    assert_eq!(
+        result.analysis_decision,
+        Some(AnalysisDecision::NeedsReplanning),
+        "decision='needs_replanning' must parse to AnalysisDecision::NeedsReplanning"
+    );
+}
+
+/// An artifact with decision="ready_for_review" must parse to ReadyForReview.
+#[test]
+fn development_result_with_ready_for_review_decision_parses_correctly() {
+    use crate::reducer::state::AnalysisDecision;
+
+    let content = serde_json::json!({
+        "status": "completed",
+        "summary": "implementation complete",
+        "decision": "ready_for_review"
+    });
+    let envelope = ArtifactEnvelope::new("development_result", content, "t");
+
+    let result = development_result_from_envelope(&envelope)
+        .expect("valid artifact with decision field must parse");
+
+    assert_eq!(
+        result.analysis_decision,
+        Some(AnalysisDecision::ReadyForReview),
+        "decision='ready_for_review' must parse to AnalysisDecision::ReadyForReview"
+    );
+}
+
+/// An artifact with decision="ready_to_commit" must parse to ReadyToCommit.
+#[test]
+fn development_result_with_ready_to_commit_decision_parses_correctly() {
+    use crate::reducer::state::AnalysisDecision;
+
+    let content = serde_json::json!({
+        "status": "completed",
+        "summary": "ready to commit",
+        "decision": "ready_to_commit"
+    });
+    let envelope = ArtifactEnvelope::new("development_result", content, "t");
+
+    let result = development_result_from_envelope(&envelope)
+        .expect("valid artifact with decision field must parse");
+
+    assert_eq!(
+        result.analysis_decision,
+        Some(AnalysisDecision::ReadyToCommit),
+        "decision='ready_to_commit' must parse to AnalysisDecision::ReadyToCommit"
+    );
+}
+
+/// An artifact with an unknown decision string must be rejected (fail closed).
+#[test]
+fn development_result_with_unknown_decision_is_rejected() {
+    let content = serde_json::json!({
+        "status": "completed",
+        "summary": "done",
+        "decision": "continue_working_please"
+    });
+    let envelope = ArtifactEnvelope::new("development_result", content, "t");
+
+    let result = development_result_from_envelope(&envelope);
+    assert!(
+        result.is_err(),
+        "unknown decision value must be rejected; artifact must not parse with unrecognized decision"
+    );
+
+    let err_msg = result.err().unwrap().to_string();
+    assert!(
+        err_msg.contains("decision") || err_msg.contains("continue_working_please"),
+        "error message should mention the invalid decision value, got: {err_msg}"
+    );
+}
+
+/// An artifact without a decision field must parse successfully with analysis_decision=None.
+/// Decision field is optional — absence means fall back to status-derived routing.
+#[test]
+fn development_result_without_decision_field_parses_with_none_decision() {
+    let content = serde_json::json!({
+        "status": "completed",
+        "summary": "done"
+    });
+    let envelope = ArtifactEnvelope::new("development_result", content, "t");
+
+    let result = development_result_from_envelope(&envelope)
+        .expect("artifact without decision field must parse");
+
+    assert_eq!(
+        result.analysis_decision, None,
+        "absent decision field must produce analysis_decision=None"
+    );
 }

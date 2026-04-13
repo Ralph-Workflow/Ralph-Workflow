@@ -38,11 +38,15 @@ pub(crate) fn drain_to_policy_mode(drain: SessionDrain) -> PolicyMode {
 }
 
 /// Classify a session drain into a drain class for capability defaults.
+///
+/// The Analysis drain is a planning-class drain (read-only, no tool write access),
+/// consistent with `DRAIN_INVARIANTS.drain_class = "planning"` for analysis.
+/// Review is its own drain class with read-only operations and coordination tools.
 pub(crate) fn drain_class_for_session(drain: SessionDrain) -> DrainClass {
     match drain {
-        SessionDrain::Planning => DrainClass::Planning,
+        SessionDrain::Planning | SessionDrain::Analysis => DrainClass::Planning,
         SessionDrain::Development => DrainClass::Dev,
-        SessionDrain::Analysis | SessionDrain::Review => DrainClass::Review,
+        SessionDrain::Review => DrainClass::Review,
         SessionDrain::Fix => DrainClass::Fixer,
         SessionDrain::Commit => DrainClass::Commit,
     }
@@ -239,8 +243,9 @@ mod tests {
             drain_class_for_session(SessionDrain::Review)
         );
         assert_eq!(
-            DrainClass::Review,
-            drain_class_for_session(SessionDrain::Analysis)
+            DrainClass::Planning,
+            drain_class_for_session(SessionDrain::Analysis),
+            "Analysis is a planning-class drain per DRAIN_INVARIANTS (drain_class = \"planning\")"
         );
         assert_eq!(
             DrainClass::Fixer,

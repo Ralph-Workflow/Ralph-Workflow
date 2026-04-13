@@ -209,9 +209,6 @@ fn test_summary_consistency_with_xsd_retries() {
         let summary = summary_from_state(&state);
         assert_eq!(summary.dev_runs_completed, 1);
         assert_eq!(summary.changes_detected, 1);
-
-        // Keep one guard for retry attribution; avoid asserting broad internal metric sets.
-        assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
     });
 }
 
@@ -293,77 +290,3 @@ fn test_fix_continuation_metrics_tracked_in_reducer() {
     });
 }
 
-// ============================================================================
-// Step 17: XSD retry attribution across phases
-// ============================================================================
-
-/// Test that XSD retries in different phases are correctly attributed to
-/// phase-specific counters and total.
-///
-/// CRITICAL: Per-phase attribution ensures we can see where XSD retries occurred
-/// for debugging and observability.
-///
-/// This test drives state through events to reach each phase naturally rather
-/// than directly setting `state.phase`.
-#[test]
-fn test_xsd_retry_attribution_across_phases() {
-    with_default_timeout(|| {
-        use ralph_workflow::reducer::event::PlanningEvent;
-
-        // Start with initial state (Planning phase by default)
-        let mut state = PipelineState::initial(1, 1);
-
-        // Phase 1: Planning XSD retry (1 attempt)
-        // State starts in Planning phase naturally.
-        let event = PipelineEvent::Planning(PlanningEvent::OutputValidationFailed {
-            iteration: 0,
-            attempt: 0,
-        });
-        state = reduce(state, event);
-
-        // Transition to Development via planning_phase_completed event
-        state = reduce(state, PipelineEvent::planning_phase_completed());
-
-        // Phase 2: Development XSD retries (2 attempts)
-        let event = PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed {
-            iteration: 0,
-            attempt: 0,
-        });
-        state = reduce(state, event);
-
-        let event = PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed {
-            iteration: 0,
-            attempt: 1,
-        });
-        state = reduce(state, event);
-
-        // Transition to Review via development_iteration_completed + commit_created events
-        state = reduce(
-            state,
-            PipelineEvent::development_iteration_completed(0, true),
-        );
-        state = reduce(
-            state,
-            PipelineEvent::commit_created("hash".to_string(), "msg".to_string()),
-        );
-
-        // Phase 3: Review XSD retry (1 attempt)
-        let event = PipelineEvent::Review(ReviewEvent::OutputValidationFailed {
-            pass: 0,
-            attempt: 0,
-            error_detail: None,
-        });
-        state = reduce(state, event);
-
-        // Phase 4: Fix XSD retry (1 attempt) - still in Review phase
-        let event = PipelineEvent::Review(ReviewEvent::FixOutputValidationFailed {
-            pass: 0,
-            attempt: 0,
-            error_detail: None,
-        });
-        state = reduce(state, event);
-
-        // Fixed expected total for this deterministic event sequence.
-        assert_eq!(state.metrics.xsd_retry_attempts_total, 5);
-    });
-}

@@ -8,8 +8,7 @@
 // Invariants covered:
 //   1. `dev_iterations_started` increments exactly once per `IterationStarted` event.
 //   2. `dev_iterations_started >= dev_iterations_completed` after any prefix of events.
-//   3. `xsd_retry_count <= max_xsd_retry_count` after any number of validation failures.
-//   4. `continuation_attempt < max_continue_count` after any number of continuations.
+//   3. `continuation_attempt < max_continue_count` after any number of continuations.
 
 use super::*;
 use crate::reducer::event::DevelopmentEvent;
@@ -69,46 +68,7 @@ proptest! {
     }
 
     // -----------------------------------------------------------------------
-    // Invariant 3 — xsd_retry_count stays within [0, max_xsd_retry_count]
-    //
-    // Applying up to 15 consecutive `OutputValidationFailed` events must
-    // never push `xsd_retry_count` above `max_xsd_retry_count`.  When the
-    // budget is exhausted the reducer resets the counter to 0 (agent switch),
-    // so the bound holds throughout the sequence.
-    // -----------------------------------------------------------------------
-    #[test]
-    fn xsd_retry_count_stays_bounded(
-        max_xsd in 1u32..=5u32,
-        num_failures in 1u32..=15u32,
-    ) {
-        let continuation = ContinuationState::with_limits(max_xsd, 3, 3);
-        let mut state = PipelineState::initial_with_continuation(3, 0, &continuation);
-        // Enter development phase so the events are meaningful.
-        state = reduce(state, PipelineEvent::Development(DevelopmentEvent::PhaseStarted));
-        state = reduce(
-            state,
-            PipelineEvent::Development(DevelopmentEvent::IterationStarted { iteration: 0 }),
-        );
-        for attempt in 0..num_failures {
-            state = reduce(
-                state,
-                PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed {
-                    iteration: 0,
-                    attempt,
-                }),
-            );
-            prop_assert!(
-                state.continuation.xsd_retry_count <= state.continuation.max_xsd_retry_count,
-                "xsd_retry_count ({}) must be <= max_xsd_retry_count ({}) after {} failures",
-                state.continuation.xsd_retry_count,
-                state.continuation.max_xsd_retry_count,
-                attempt + 1
-            );
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Invariant 4 — continuation_attempt stays below max_continue_count
+    // Invariant 3 — continuation_attempt stays below max_continue_count
     //
     // Applying up to 15 consecutive `ContinuationTriggered` events must
     // never allow `continuation_attempt` to reach or exceed `max_continue_count`.
@@ -120,7 +80,7 @@ proptest! {
         max_cont in 1u32..=5u32,
         num_continuations in 1u32..=15u32,
     ) {
-        let continuation = ContinuationState::with_limits(3, max_cont, 3);
+        let continuation = ContinuationState::with_limits(max_cont, 3);
         let mut state = PipelineState::initial_with_continuation(3, 0, &continuation);
         // Enter development phase.
         state = reduce(state, PipelineEvent::Development(DevelopmentEvent::PhaseStarted));

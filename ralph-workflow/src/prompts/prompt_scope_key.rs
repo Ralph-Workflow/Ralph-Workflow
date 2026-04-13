@@ -64,11 +64,6 @@ pub enum RetryMode {
         /// Retry count (1-based).
         count: u32,
     },
-    /// XSD validation retry — appends `_xsd_retry_{count}` suffix.
-    Xsd {
-        /// Retry count (1-based).
-        count: u32,
-    },
 }
 
 /// Typed prompt scope key.
@@ -223,7 +218,6 @@ impl PromptScopeKey {
 ///
 /// Retry suffixes:
 /// - `SameAgent { count }` → `_same_agent_retry_{count}`
-/// - `Xsd { count }` → `_xsd_retry_{count}`
 ///
 /// NOTE: `recovery_epoch` is intentionally excluded from Display to preserve
 /// backward-compatibility with existing checkpoint `prompt_history` entries.
@@ -249,7 +243,6 @@ impl fmt::Display for PromptScopeKey {
         match &self.retry_mode {
             RetryMode::Normal => write!(f, "{base}"),
             RetryMode::SameAgent { count } => write!(f, "{base}_same_agent_retry_{count}"),
-            RetryMode::Xsd { count } => write!(f, "{base}_xsd_retry_{count}"),
         }
     }
 }
@@ -321,15 +314,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn commit_xsd_retry_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_commit(0, 1, RetryMode::Xsd { count: 1 }, 0);
-        assert_eq!(
-            key.to_string(),
-            "commit_message_attempt_iter0_1_xsd_retry_1"
-        );
-    }
-
     // =========================================================================
     // Review phase key tests
     // =========================================================================
@@ -338,13 +322,6 @@ mod tests {
     fn review_normal_key_matches_legacy_format() {
         let key = PromptScopeKey::for_review(0, RetryMode::Normal, 0);
         assert_eq!(key.to_string(), "review_0");
-    }
-
-    #[test]
-    fn review_xsd_retry_key_matches_legacy_format() {
-        // invalid_output_attempts is the XSD retry count for review
-        let key = PromptScopeKey::for_review(1, RetryMode::Xsd { count: 3 }, 0);
-        assert_eq!(key.to_string(), "review_1_xsd_retry_3");
     }
 
     #[test]
@@ -367,12 +344,6 @@ mod tests {
     fn fix_same_agent_retry_key_matches_legacy_format() {
         let key = PromptScopeKey::for_fix(1, RetryMode::SameAgent { count: 1 }, 0);
         assert_eq!(key.to_string(), "fix_1_same_agent_retry_1");
-    }
-
-    #[test]
-    fn fix_xsd_retry_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_fix(1, RetryMode::Xsd { count: 2 }, 0);
-        assert_eq!(key.to_string(), "fix_1_xsd_retry_2");
     }
 
     // =========================================================================

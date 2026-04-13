@@ -1,8 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
-use crate::phases::review::boundary_domain::{
-    build_review_prompt_content_id, build_review_xsd_retry_prompt_content_id,
-};
+use crate::phases::review::boundary_domain::build_review_prompt_content_id;
 use crate::phases::PhaseContext;
 use crate::prompts::content_builder::PromptContentReferences;
 use crate::prompts::content_reference::{
@@ -11,7 +9,6 @@ use crate::prompts::content_reference::{
 use crate::prompts::SessionCapabilities;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
-use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::{PromptInputRepresentation, PromptMode};
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
@@ -26,7 +23,6 @@ impl MainEffectHandler {
     ) -> Result<EffectResult> {
         ensure_tmp_dir(ctx)?;
 
-        let xsd_retry_events = collect_xsd_retry_events(self, ctx, pass, prompt_mode)?;
         let baseline_oid = read_baseline_oid_for_prompts(ctx)?;
         let (
             prompt_key,
@@ -41,7 +37,6 @@ impl MainEffectHandler {
             pass,
             prompt_mode,
             &baseline_oid,
-            xsd_retry_events.as_ref(),
         ) {
             Ok(tuple) => tuple,
             Err(DispatchError::EarlyReturn(early)) => return Ok(*early),
@@ -50,7 +45,7 @@ impl MainEffectHandler {
 
         write_review_prompt_file(ctx, &review_prompt_xml);
 
-        let result = assemble_review_prompt_result(
+        Ok(assemble_review_prompt_result(
             pass,
             prompt_key,
             review_prompt_xml,
@@ -58,8 +53,7 @@ impl MainEffectHandler {
             template_name,
             prompt_content_id,
             rendered_log,
-        );
-        Ok(attach_xsd_retry_events(result, xsd_retry_events))
+        ))
     }
 }
 
@@ -93,28 +87,12 @@ fn read_baseline_oid_for_prompts(ctx: &PhaseContext<'_>) -> Result<String> {
     }
 }
 
-fn collect_xsd_retry_events(
-    handler: &MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    pass: u32,
-    prompt_mode: PromptMode,
-) -> Result<Option<Vec<PipelineEvent>>> {
-    if matches!(prompt_mode, PromptMode::XsdRetry) {
-        handler
-            .materialize_xsd_retry_last_output(ctx, pass)
-            .map(Some)
-    } else {
-        Ok(None)
-    }
-}
-
 fn dispatch_prompt_mode(
     handler: &MainEffectHandler,
     ctx: &PhaseContext<'_>,
     pass: u32,
     prompt_mode: PromptMode,
     baseline_oid: &str,
-    xsd_retry_events: Option<&Vec<PipelineEvent>>,
 ) -> std::result::Result<BranchResult, DispatchError> {
     let materialized_inputs = handler
         .state
@@ -124,10 +102,6 @@ fn dispatch_prompt_mode(
         .filter(|p| p.pass == pass);
     let continuation_state = &handler.state.continuation;
     match prompt_mode {
-        PromptMode::XsdRetry => {
-            build_xsd_retry_prompt(handler, ctx, pass, continuation_state, xsd_retry_events)
-                .map_err(DispatchError::EarlyReturn)
-        }
         PromptMode::SameAgentRetry => {
             let Some(inputs) = materialized_inputs else {
                 return Err(DispatchError::Other(
@@ -275,83 +249,6 @@ fn build_diff_ref(
     }
 }
 
-// --- XSD retry prompt branch ---
-
-fn read_last_output_for_xsd_retry(ctx: &PhaseContext<'_>) -> (String, Option<String>) {
-    use std::io::ErrorKind;
-    let last_output_path = Path::new(".agent/tmp/last_output.xml");
-    match ctx.workspace.read(last_output_path) {
-        Ok(output) => (output, None),
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            (String::new(), Some("missing_last_output.xml".to_string()))
-        }
-        Err(err) => {
-            ctx.logger.warn(&format!(
-                "Failed to read {} ({:?}); using empty last output",
-                last_output_path.display(),
-                err.kind()
-            ));
-            (
-                String::new(),
-                Some(format!("last_output_read_error:{:?}", err.kind())),
-            )
-        }
-    }
-}
-
-fn build_xsd_retry_rendered_log(
-    ctx: &PhaseContext<'_>,
-    xsd_error: &str,
-    prompt_key: &str,
-    was_replayed: bool,
-    xsd_retry_events: Option<&Vec<PipelineEvent>>,
-) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
-    if was_replayed {
-        return Ok(None);
-    }
-    render_and_check_xsd_retry_log(ctx, xsd_error, prompt_key, was_replayed, xsd_retry_events)
-}
-
-fn render_and_check_xsd_retry_log(
-    ctx: &PhaseContext<'_>,
-    xsd_error: &str,
-    prompt_key: &str,
-    was_replayed: bool,
-    xsd_retry_events: Option<&Vec<PipelineEvent>>,
-) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
-    use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
-    let rendered = prompt_review_xsd_retry_with_context_files_and_log(
-        ctx.template_context,
-        xsd_error,
-        ctx.workspace,
-        "review_xsd_retry",
-        SessionCapabilities::new(&capabilities, &policy_flags),
-    );
-    if rendered.log.is_complete() {
-        return Ok(Some(rendered.log));
-    }
-    let result = build_incomplete_template_result(
-        rendered.log,
-        "review_xsd_retry",
-        prompt_key,
-        was_replayed,
-    );
-    Err(Box::new(fold_xsd_retry_events(result, xsd_retry_events)))
-}
-
-fn fold_xsd_retry_events(
-    result: EffectResult,
-    xsd_retry_events: Option<&Vec<PipelineEvent>>,
-) -> EffectResult {
-    xsd_retry_events
-        .into_iter()
-        .flatten()
-        .cloned()
-        .fold(result, |r, ev| r.with_additional_event(ev))
-}
-
 type BranchResult = (
     String,
     String,
@@ -429,108 +326,6 @@ struct ReviewInlineContent<'a> {
     plan_inline: Option<String>,
     diff_inline: Option<String>,
     baseline_oid: &'a str,
-}
-
-fn resolve_xsd_error_text(continuation_state: &crate::reducer::state::ContinuationState) -> &str {
-    continuation_state
-        .last_review_xsd_error
-        .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or("XML output failed validation. Provide valid XML output.")
-}
-
-fn compute_xsd_last_output_id(ctx: &PhaseContext<'_>) -> String {
-    let (last_output, last_output_id_seed) = read_last_output_for_xsd_retry(ctx);
-    last_output_id_seed.map_or_else(
-        || sha256_hex_str(&last_output),
-        |seed| sha256_hex_str(&seed),
-    )
-}
-
-fn build_xsd_retry_scope_key(
-    pass: u32,
-    invalid_output_attempts: u32,
-    recovery_epoch: u32,
-) -> crate::prompts::PromptScopeKey {
-    use crate::prompts::{PromptScopeKey, RetryMode};
-    PromptScopeKey::for_review(
-        pass,
-        RetryMode::Xsd {
-            count: invalid_output_attempts,
-        },
-        recovery_epoch,
-    )
-}
-
-fn generate_xsd_retry_prompt_text(ctx: &PhaseContext<'_>, xsd_error: &str) -> String {
-    use crate::prompts::prompt_review_xsd_retry_with_context_files_and_log;
-    let capabilities = CapabilitySet::defaults_for_drain(SessionDrain::Review);
-    let policy_flags = PolicyFlagSet::defaults_for_drain(SessionDrain::Review);
-    let rendered = prompt_review_xsd_retry_with_context_files_and_log(
-        ctx.template_context,
-        xsd_error,
-        ctx.workspace,
-        "review_xsd_retry",
-        SessionCapabilities::new(&capabilities, &policy_flags),
-    );
-    rendered.content
-}
-
-fn get_xsd_retry_prompt_and_content_id(
-    handler: &MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    scope_key: &crate::prompts::PromptScopeKey,
-    xsd_error: &str,
-) -> (String, bool, String) {
-    use crate::prompts::get_stored_or_generate_prompt;
-    let current_prompt_content_id =
-        build_review_xsd_retry_prompt_content_id(xsd_error, &compute_xsd_last_output_id(ctx));
-    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-        scope_key,
-        &handler.state.prompt_history,
-        Some(&current_prompt_content_id),
-        || generate_xsd_retry_prompt_text(ctx, xsd_error),
-    );
-    (prompt, was_replayed, current_prompt_content_id)
-}
-
-fn build_xsd_retry_prompt(
-    handler: &MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    pass: u32,
-    continuation_state: &crate::reducer::state::ContinuationState,
-    xsd_retry_events: Option<&Vec<PipelineEvent>>,
-) -> std::result::Result<BranchResult, Box<EffectResult>> {
-    let scope_key = build_xsd_retry_scope_key(
-        pass,
-        continuation_state.invalid_output_attempts,
-        handler.state.recovery_epoch,
-    );
-    let xsd_error = resolve_xsd_error_text(continuation_state);
-    let (prompt_key, prompt, was_replayed, content_id) =
-        get_xsd_retry_keyed_prompt(handler, ctx, scope_key, xsd_error);
-    let rendered_log =
-        build_xsd_retry_rendered_log(ctx, xsd_error, &prompt_key, was_replayed, xsd_retry_events)?;
-    Ok((
-        prompt_key,
-        prompt,
-        was_replayed,
-        "review_xsd_retry",
-        Some(content_id),
-        rendered_log,
-    ))
-}
-
-fn get_xsd_retry_keyed_prompt(
-    handler: &MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    scope_key: crate::prompts::PromptScopeKey,
-    xsd_error: &str,
-) -> (String, String, bool, String) {
-    let prompt_key = scope_key.to_string();
-    let (prompt, was_replayed, content_id) =
-        get_xsd_retry_prompt_and_content_id(handler, ctx, &scope_key, xsd_error);
-    (prompt_key, prompt, was_replayed, content_id)
 }
 
 // --- Same-agent retry prompt branch ---
@@ -748,19 +543,6 @@ fn write_review_prompt_file(ctx: &PhaseContext<'_>, content: &str) {
         ctx.logger.warn(&format!(
             "Failed to write review prompt file: {err}. Pipeline will continue."
         ));
-    }
-}
-
-fn attach_xsd_retry_events(
-    result: EffectResult,
-    xsd_retry_events: Option<Vec<PipelineEvent>>,
-) -> EffectResult {
-    match xsd_retry_events {
-        None => result,
-        Some(events) => events
-            .iter()
-            .cloned()
-            .fold(result, |r, ev| r.with_additional_event(ev)),
     }
 }
 

@@ -23,7 +23,7 @@ use crate::test_timeout::with_default_timeout;
 fn test_default_continuation_limit_prevents_infinite_loop() {
     with_default_timeout(|| {
         // Simulate config with default: max_dev_continuations = 2 -> max_continue_count = 3
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -145,7 +145,7 @@ fn test_default_continuation_limit_prevents_infinite_loop() {
 #[test]
 fn test_trigger_continuation_defensive_check_prevents_counter_increment() {
     with_default_timeout(|| {
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -266,7 +266,7 @@ fn test_missing_max_dev_continuations_prevents_infinite_loop() {
         // Reproduce the infinite loop bug from user report:
         // Config.max_dev_continuations is None (missing from config)
         // After unwrap_or(2) in create_initial_state_with_config, max_continue_count = 3
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state = reduce(state, PipelineEvent::development_iteration_started(0));
 
@@ -363,7 +363,7 @@ fn test_continuation_budget_exhaustion_completes_iteration() {
             vec![vec![], vec![], vec![]],
             AgentRole::Developer,
         );
-        let continuation = ContinuationState::with_limits(10, 3, 2);
+        let continuation = ContinuationState::with_limits(3, 2);
         let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
         state.agent_chain = agent_chain;
         state = reduce(state, PipelineEvent::development_iteration_started(0));

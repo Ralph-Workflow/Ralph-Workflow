@@ -646,6 +646,7 @@ fn test_fix_analysis_partial_triggers_fix_continuation() {
             pass: 1,
             status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
             summary: Some("Analysis found remaining issues".to_string()),
+            analysis_decision: None,
         });
         state.fix_result_xml_archived_pass = Some(1);
 
@@ -689,6 +690,7 @@ fn test_fix_analysis_completed_proceeds_to_commit() {
             pass: 1,
             status: ralph_workflow::reducer::state::FixStatus::AllIssuesAddressed,
             summary: Some("Analysis confirmed all issues addressed".to_string()),
+            analysis_decision: None,
         });
         state.fix_result_xml_archived_pass = Some(1);
 
@@ -727,6 +729,7 @@ fn test_fix_analysis_continuation_budget_exhaustion() {
             pass: 1,
             status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
             summary: Some("Analysis found remaining issues".to_string()),
+            analysis_decision: None,
         });
         state.fix_result_xml_archived_pass = Some(1);
 
@@ -779,6 +782,7 @@ fn test_fix_continuation_after_analysis_prepares_continuation_prompt() {
                 pass: 1,
                 status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
                 summary: Some("analysis found remaining issues".to_string()),
+                analysis_decision: None,
             }),
             ..with_locked_prompt_permissions(PipelineState::initial(3, 2))
         };

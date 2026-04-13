@@ -165,18 +165,6 @@ mod executor_reexports_boundary;
 // Benchmark *tests* inside the module remain `#[cfg(test)]`.
 pub mod benchmarks;
 
-// Re-export XML extraction and validation functions for use in integration tests.
-// These functions parse and validate XML output from agent responses (plan, issues, fix results).
-pub use files::llm_output_extraction::extract_development_result_xml;
-pub use files::llm_output_extraction::extract_fix_result_xml;
-pub use files::llm_output_extraction::extract_issues_xml;
-pub use files::llm_output_extraction::validate_continuation_development_result_xml;
-pub use files::llm_output_extraction::validate_development_result_xml;
-pub use files::llm_output_extraction::validate_fix_result_xml;
-pub use files::llm_output_extraction::validate_issues_xml;
-pub use files::llm_output_extraction::validate_plan_xml;
-pub use files::llm_output_extraction::validate_xml_against_xsd;
-
 // Re-export process executor types for dependency injection.
 // See [`executor`] module for documentation.
 pub use executor_reexports_boundary::{

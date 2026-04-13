@@ -5,20 +5,17 @@
 //! `MainEffectHandler` implementation in planning.rs.
 
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::planning::{apply_same_agent_retry_preamble, planning_prompt_content_id};
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::PromptContentReference;
 use crate::prompts::{
     prompt_planning_xml_with_references, prompt_planning_xml_with_references_and_log,
-    prompt_planning_xsd_retry_with_context_files_and_log, PromptScopeKey, RetryMode,
-    SessionCapabilities,
+    PromptScopeKey, RetryMode, SessionCapabilities,
 };
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
 use crate::reducer::state::{
     MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
-    PromptMaterializationReason,
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
@@ -252,177 +249,9 @@ pub(in crate::reducer::boundary) fn ensure_planning_tmp_dir(ctx: &PhaseContext<'
     Ok(())
 }
 
-pub(in crate::reducer::boundary) fn read_planning_xsd_retry_last_output(
-    ctx: &PhaseContext<'_>,
-) -> Result<String> {
-    ctx.workspace
-        .read(Path::new(xml_paths::PLAN_XML))
-        .or_else(|err| {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                let processed_path = Path::new(".agent/tmp/plan.xml.processed");
-                ctx.workspace.read(processed_path).inspect(|_output| {
-                    ctx.logger
-                        .info("XSD retry: using archived .processed file as last output");
-                })
-            } else {
-                Err(err)
-            }
-        })
-        .map_err(|err| {
-            crate::reducer::event::ErrorEvent::WorkspaceReadFailed {
-                path: xml_paths::PLAN_XML.to_string(),
-                kind: crate::reducer::event::WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            }
-            .into()
-        })
-}
-
-// ---------------------------------------------------------------------------
-// XSD retry helpers
-// ---------------------------------------------------------------------------
-
-pub(in crate::reducer::boundary) struct XsdRetryLastOutputParams<'a> {
-    pub content_id_sha256: &'a str,
-    pub consumer_signature_sha256: &'a str,
-    pub inline_budget_bytes: u64,
-    pub last_output_bytes: u64,
-}
-
-pub(in crate::reducer::boundary) fn is_xsd_retry_last_output_already_materialized(
-    handler: &crate::reducer::boundary::MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    params: &XsdRetryLastOutputParams<'_>,
-) -> bool {
-    handler
-        .state
-        .prompt_inputs
-        .xsd_retry_last_output
-        .as_ref()
-        .is_some_and(|m| {
-            m.phase == PipelinePhase::Planning
-                && m.scope_id == iteration
-                && m.last_output.content_id_sha256 == params.content_id_sha256
-                && m.last_output.consumer_signature_sha256 == params.consumer_signature_sha256
-                && ctx
-                    .workspace
-                    .exists(std::path::Path::new(".agent/tmp/last_output.xml"))
-        })
-}
-
-pub(in crate::reducer::boundary) fn build_xsd_retry_last_output_events(
-    iteration: u32,
-    input: MaterializedPromptInput,
-    content_id_sha256: &str,
-    last_output_bytes: u64,
-    inline_budget_bytes: u64,
-) -> Vec<PipelineEvent> {
-    std::iter::once(PipelineEvent::xsd_retry_last_output_materialized(
-        PipelinePhase::Planning,
-        iteration,
-        input,
-    ))
-    .chain((last_output_bytes > inline_budget_bytes).then_some(
-        PipelineEvent::prompt_input_oversize_detected(
-            PipelinePhase::Planning,
-            PromptInputKind::LastOutput,
-            content_id_sha256.to_string(),
-            last_output_bytes,
-            inline_budget_bytes,
-            "xsd-retry-context".to_string(),
-        ),
-    ))
-    .collect()
-}
-
-pub(in crate::reducer::boundary) fn materialize_planning_xsd_retry_last_output(
-    handler: &crate::reducer::boundary::MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    last_output: &str,
-    params: XsdRetryLastOutputParams<'_>,
-) -> Result<Option<Vec<PipelineEvent>>> {
-    if is_xsd_retry_last_output_already_materialized(handler, ctx, iteration, &params) {
-        return Ok(None);
-    }
-    let last_output_path = Path::new(".agent/tmp/last_output.xml");
-    ctx.workspace
-        .write_atomic(last_output_path, last_output)
-        .map_err(
-            |err| crate::reducer::event::ErrorEvent::WorkspaceWriteFailed {
-                path: last_output_path.display().to_string(),
-                kind: crate::reducer::event::WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            },
-        )?;
-    let input = MaterializedPromptInput {
-        kind: PromptInputKind::LastOutput,
-        content_id_sha256: params.content_id_sha256.to_string(),
-        consumer_signature_sha256: params.consumer_signature_sha256.to_string(),
-        original_bytes: params.last_output_bytes,
-        final_bytes: params.last_output_bytes,
-        model_budget_bytes: None,
-        inline_budget_bytes: Some(params.inline_budget_bytes),
-        representation: PromptInputRepresentation::FileReference {
-            path: last_output_path.to_path_buf(),
-        },
-        reason: PromptMaterializationReason::PolicyForcedReference,
-    };
-    Ok(Some(build_xsd_retry_last_output_events(
-        iteration,
-        input,
-        params.content_id_sha256,
-        params.last_output_bytes,
-        params.inline_budget_bytes,
-    )))
-}
-
 // ---------------------------------------------------------------------------
 // Rendered log generation
 // ---------------------------------------------------------------------------
-
-pub(in crate::reducer::boundary) fn xsd_retry_incomplete_early_return(
-    log: &crate::prompts::SubstitutionLog,
-    prompt_key: &str,
-    was_replayed: bool,
-) -> Box<EffectResult> {
-    Box::new(
-        planning_template_incomplete_early_return(
-            log,
-            "planning_xsd_retry",
-            prompt_key,
-            was_replayed,
-        )
-        .unwrap_or_else(|| EffectResult::event(PipelineEvent::planning_prompt_prepared(0))),
-    )
-}
-
-pub(in crate::reducer::boundary) fn gen_planning_xsd_retry_rendered_log(
-    ctx: &PhaseContext<'_>,
-    was_replayed: bool,
-    prompt_key: &str,
-) -> std::result::Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
-    if was_replayed {
-        return Ok(None);
-    }
-    let rendered = prompt_planning_xsd_retry_with_context_files_and_log(
-        ctx.template_context,
-        "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
-        ctx.workspace,
-        "planning_xsd_retry",
-        SessionCapabilities::new(
-            &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
-            &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
-        ),
-    );
-    match rendered.log.is_complete() {
-        true => Ok(Some(rendered.log)),
-        false => Err(xsd_retry_incomplete_early_return(
-            &rendered.log,
-            prompt_key,
-            was_replayed,
-        )),
-    }
-}
 
 pub(in crate::reducer::boundary) fn gen_planning_normal_rendered_log(
     ctx: &PhaseContext<'_>,
@@ -478,7 +307,6 @@ pub(in crate::reducer::boundary) fn assemble_planning_prompt_result(
     capture: PlanningPromptCapture,
     template_name: &str,
     rendered_log: Option<crate::prompts::SubstitutionLog>,
-    xsd_retry_events: Option<Vec<PipelineEvent>>,
 ) -> EffectResult {
     let PlanningPromptCapture {
         prompt,
@@ -505,10 +333,6 @@ pub(in crate::reducer::boundary) fn assemble_planning_prompt_result(
     });
     let result =
         prompt_captured_event.map_or(result.clone(), |ev| result.with_additional_event(ev));
-    let result = xsd_retry_events
-        .into_iter()
-        .flatten()
-        .fold(result, |r, ev| r.with_additional_event(ev));
     rendered_log.map_or(result.clone(), |log| {
         result.with_additional_event(PipelineEvent::template_rendered(
             PipelinePhase::Planning,
@@ -534,34 +358,6 @@ pub(in crate::reducer::boundary) fn maybe_add_planning_invoked_event(
     }
 }
 
-pub(in crate::reducer::boundary) fn planning_template_incomplete_early_return(
-    log: &crate::prompts::SubstitutionLog,
-    template_name: &str,
-    prompt_key: &str,
-    was_replayed: bool,
-) -> Option<EffectResult> {
-    if log.is_complete() {
-        return None;
-    }
-    let missing = log.unsubstituted.clone();
-    Some(
-        EffectResult::event(PipelineEvent::template_rendered(
-            PipelinePhase::Planning,
-            template_name.to_string(),
-            log.clone(),
-        ))
-        .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-            crate::agents::AgentRole::Developer,
-            template_name.to_string(),
-            missing,
-            Vec::new(),
-        ))
-        .with_ui_event(UIEvent::PromptReplayHit {
-            key: prompt_key.to_string(),
-            was_replayed,
-        }),
-    )
-}
 
 pub(in crate::reducer::boundary) fn build_planning_prompt_ref(
     ctx: &PhaseContext<'_>,

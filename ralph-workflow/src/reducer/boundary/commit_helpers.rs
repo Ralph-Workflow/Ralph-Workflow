@@ -8,10 +8,7 @@ use crate::agents::session::SessionDrain;
 use crate::phases::commit;
 use crate::phases::PhaseContext;
 use crate::prompts::SessionCapabilities;
-use crate::prompts::{
-    get_stored_or_generate_prompt, prompt_generate_commit_message_with_diff_with_log,
-    RenderedTemplate,
-};
+use crate::prompts::{prompt_generate_commit_message_with_diff_with_log, RenderedTemplate};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -74,64 +71,6 @@ pub(in crate::reducer::boundary) fn log_diff_size_warnings(
     } else if final_bytes > inline_budget_bytes {
         log_oversize_inline(ctx, final_bytes, inline_budget_bytes, model_safe_path);
     }
-}
-
-// ---------------------------------------------------------------------------
-// XSD retry helpers
-// ---------------------------------------------------------------------------
-
-/// Data produced by the xsd-retry prompt generation step.
-pub(in crate::reducer::boundary) struct XsdRetryPromptData {
-    pub prompt_key: String,
-    pub prompt: String,
-    pub was_replayed: bool,
-    pub prompt_content_id: String,
-    pub rendered_log: Option<crate::prompts::SubstitutionLog>,
-}
-
-fn resolve_xsd_error_message(handler: &crate::reducer::boundary::MainEffectHandler) -> String {
-    handler
-        .state
-        .continuation
-        .last_xsd_error
-        .clone()
-        .unwrap_or_else(|| "XML output failed validation. Provide valid XML output.".to_string())
-}
-
-pub(in crate::reducer::boundary) fn build_xsd_retry_prompt_data(
-    handler: &crate::reducer::boundary::MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    attempt: u32,
-    xsd_error: &str,
-) -> std::result::Result<XsdRetryPromptData, Box<EffectResult>> {
-    let (scope_key, prompt_content_id) =
-        super::io_commit::build_xsd_retry_scope_and_content_id(handler, ctx, xsd_error, attempt);
-    let prompt_key = scope_key.to_string();
-    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-        &scope_key,
-        &handler.state.prompt_history,
-        Some(&prompt_content_id),
-        || super::io_commit::gen_xsd_retry_prompt_content(ctx, xsd_error),
-    );
-    let rendered_log =
-        super::io_commit::validate_xsd_retry_log(ctx, xsd_error, &prompt_key, was_replayed)?;
-    Ok(XsdRetryPromptData {
-        prompt_key,
-        prompt,
-        was_replayed,
-        prompt_content_id,
-        rendered_log,
-    })
-}
-
-/// Generate and validate an xsd-retry commit prompt.
-pub(in crate::reducer::boundary) fn gen_xsd_retry_commit_prompt(
-    handler: &crate::reducer::boundary::MainEffectHandler,
-    ctx: &PhaseContext<'_>,
-    attempt: u32,
-) -> std::result::Result<XsdRetryPromptData, Box<EffectResult>> {
-    let xsd_error = resolve_xsd_error_message(handler);
-    build_xsd_retry_prompt_data(handler, ctx, attempt, &xsd_error)
 }
 
 // ---------------------------------------------------------------------------
@@ -244,29 +183,6 @@ pub(in crate::reducer::boundary) fn build_commit_template_invalid_result(
         key: prompt_key.to_string(),
         was_replayed,
     })
-}
-
-/// Assemble the final EffectResult for an xsd-retry commit prompt.
-pub(in crate::reducer::boundary) fn assemble_commit_xsd_retry_result(
-    handler: &crate::reducer::boundary::MainEffectHandler,
-    attempt: u32,
-    prompt_key: String,
-    prompt: String,
-    prompt_content_id: String,
-    was_replayed: bool,
-    rendered_log: Option<crate::prompts::SubstitutionLog>,
-) -> EffectResult {
-    let prompt_captured_event =
-        commit::prompt_captured_event(&prompt_key, &prompt, &prompt_content_id, was_replayed);
-    commit::commit_prompt_prepared_result(
-        attempt,
-        handler.state.phase,
-        prompt_key,
-        was_replayed,
-        prompt_captured_event,
-        rendered_log,
-        "commit_xsd_retry",
-    )
 }
 
 /// Generate the prompt text for a same-agent-retry commit prompt.

@@ -69,69 +69,6 @@ fn test_with_terminal_mode() {
     );
 }
 
-#[test]
-fn test_opencode_parser_writes_commit_message_xml_when_commit_tag_seen() {
-    use crate::workspace::Workspace;
-    use std::path::Path;
-
-    let mut parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
-
-    let input = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"id":"prt_1","sessionID":"ses_test","messageID":"msg_1","type":"step-start","snapshot":"deadbeef"}}
-{"type":"text","timestamp":2,"sessionID":"ses_test","part":{"id":"prt_2","sessionID":"ses_test","messageID":"msg_1","type":"text","text":"<ralph-commit><ralph-subject>fix: test</ralph-subject></ralph-commit>"}}
-{"type":"step_finish","timestamp":3,"sessionID":"ses_test","part":{"id":"prt_3","sessionID":"ses_test","messageID":"msg_1","type":"step-finish","reason":"stop"}}"#;
-
-    let reader = Cursor::new(input);
-    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
-
-    parser
-        .parse_stream(reader, &workspace)
-        .expect("parse_stream should succeed");
-
-    let xml_path = Path::new(".agent/tmp/commit_message.xml");
-    assert!(
-        workspace.exists(xml_path),
-        "expected parser to write commit_message.xml when <ralph-commit> is present"
-    );
-
-    let xml = workspace
-        .read(xml_path)
-        .expect("expected commit_message.xml to be readable");
-    assert!(xml.contains("<ralph-commit>"));
-    assert!(xml.contains("<ralph-subject>fix: test</ralph-subject>"));
-    assert!(xml.contains("</ralph-commit>"));
-}
-
-#[test]
-fn test_opencode_parser_writes_issues_xml_when_issues_tag_seen() {
-    use crate::workspace::Workspace;
-    use std::path::Path;
-
-    let mut parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
-
-    let input = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"id":"prt_1","sessionID":"ses_test","messageID":"msg_1","type":"step-start","snapshot":"deadbeef"}}
-{"type":"text","timestamp":2,"sessionID":"ses_test","part":{"id":"prt_2","sessionID":"ses_test","messageID":"msg_1","type":"text","text":"<ralph-issues><ralph-issue>First issue</ralph-issue></ralph-issues>"}}
-{"type":"step_finish","timestamp":3,"sessionID":"ses_test","part":{"id":"prt_3","sessionID":"ses_test","messageID":"msg_1","type":"step-finish","reason":"stop"}}"#;
-
-    let reader = Cursor::new(input);
-    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
-
-    parser
-        .parse_stream(reader, &workspace)
-        .expect("parse_stream should succeed");
-
-    let xml_path = Path::new(".agent/tmp/issues.xml");
-    assert!(
-        workspace.exists(xml_path),
-        "expected parser to write issues.xml when <ralph-issues> is present"
-    );
-
-    let xml = workspace
-        .read(xml_path)
-        .expect("expected issues.xml to be readable");
-    assert!(xml.contains("<ralph-issues>"));
-    assert!(xml.contains("<ralph-issue>First issue</ralph-issue>"));
-    assert!(xml.contains("</ralph-issues>"));
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Regression tests for UX issues (Issues 1–7)

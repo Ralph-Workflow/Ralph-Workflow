@@ -9,7 +9,7 @@ use super::*;
 use crate::agents::AgentRole;
 use crate::common::domain_types::AgentName;
 use crate::reducer::event::CheckpointTrigger;
-use crate::reducer::state::{ContinuationState, MAX_VALIDATION_RETRY_ATTEMPTS};
+use crate::reducer::state::MAX_VALIDATION_RETRY_ATTEMPTS;
 
 #[test]
 fn test_commit_generation_started_sets_generating_state() {
@@ -128,73 +128,11 @@ fn test_commit_message_validation_failed_retries() {
         PipelineEvent::commit_message_validation_failed("Invalid format".to_string(), 1),
     );
 
-    // Should retry with XSD retry pending, keeping attempt stable so attempt-scoped
-    // materialized inputs can be reused.
+    // Should retry, keeping attempt stable so attempt-scoped materialized inputs can be reused.
     assert!(matches!(
         new_state.commit,
         CommitState::Generating { attempt: 1, .. }
     ));
-    assert!(new_state.continuation.xsd_retry_pending);
-}
-
-#[test]
-fn test_commit_message_validation_failed_exhausts_attempts_with_more_agents() {
-    // Setup: 3 commit agents available
-    let base_state = create_test_state();
-    let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_count: 0,
-            max_xsd_retry_count: 1,
-            ..ContinuationState::new()
-        },
-        agent_chain: base_state.agent_chain.with_agents(
-            vec![
-                "commit-agent-1".to_string(),
-                "commit-agent-2".to_string(),
-                "commit-agent-3".to_string(),
-            ],
-            vec![vec![], vec![], vec![]],
-            AgentRole::Commit,
-        ),
-        commit: CommitState::Generating {
-            attempt: 1,
-            max_attempts: MAX_VALIDATION_RETRY_ATTEMPTS,
-        },
-        ..base_state
-    };
-
-    let new_state = reduce(
-        state,
-        PipelineEvent::commit_message_validation_failed("Invalid format".to_string(), 1),
-    );
-
-    // With XSD retry budget exhausted, should advance to next agent and reset retry state.
-    assert_eq!(new_state.agent_chain.current_agent_index, 1);
-    assert!(matches!(
-        new_state.commit,
-        CommitState::Generating { attempt: 1, .. }
-    ));
-    assert_eq!(new_state.continuation.xsd_retry_count, 0);
-    assert!(!new_state.continuation.xsd_retry_pending);
-}
-
-#[test]
-fn test_commit_prompt_prepared_clears_xsd_retry_pending() {
-    // Preparing a prompt starts a new attempt, so xsd_retry_pending should be cleared.
-    let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_pending: true,
-            ..ContinuationState::new()
-        },
-        ..create_state_in_phase(PipelinePhase::CommitMessage)
-    };
-
-    let new_state = reduce(state, PipelineEvent::commit_prompt_prepared(1));
-
-    assert!(
-        !new_state.continuation.xsd_retry_pending,
-        "commit prompt preparation should clear xsd_retry_pending to prevent infinite retry loops"
-    );
 }
 
 #[test]
@@ -202,11 +140,6 @@ fn test_commit_message_validation_failed_exhausts_all_agents() {
     // Setup: On last agent (index 2 of 3 agents)
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_count: 0,
-            max_xsd_retry_count: 1,
-            ..ContinuationState::new()
-        },
         agent_chain: base_state
             .agent_chain
             .with_agents(
@@ -251,11 +184,6 @@ fn test_commit_message_validation_failed_with_single_agent() {
     // Setup: Only 1 commit agent
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_count: 0,
-            max_xsd_retry_count: 1,
-            ..ContinuationState::new()
-        },
         agent_chain: base_state.agent_chain.with_agents(
             vec!["commit-agent-1".to_string()],
             vec![vec![]],
@@ -553,6 +481,8 @@ fn test_commit_skipped_goes_to_final_validation_after_last_review() {
         previous_phase: Some(PipelinePhase::Review),
         reviewer_pass: 1, // 0-indexed, this is the 2nd of 2 passes
         total_reviewer_passes: 2,
+        // Set iteration to total_iterations-1 so post-commit sees "all dev iterations done"
+        iteration: 4,
         ..create_test_state()
     };
 
@@ -618,11 +548,6 @@ fn test_commit_agent_chain_fallback_works_with_reviewer_agents() {
     // all fallback behavior should still work correctly
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_count: 0,
-            max_xsd_retry_count: 1,
-            ..ContinuationState::new()
-        },
         agent_chain: base_state.agent_chain.with_agents(
             vec!["reviewer1".to_string(), "reviewer2".to_string()],
             vec![vec![], vec![]],
@@ -658,11 +583,6 @@ fn test_commit_agent_chain_empty_gives_up_immediately() {
     // the commit should transition to NotStarted
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: ContinuationState {
-            xsd_retry_count: 0,
-            max_xsd_retry_count: 1,
-            ..ContinuationState::new()
-        },
         agent_chain: base_state.agent_chain.with_agents(
             vec![], // Empty agent chain
             vec![],

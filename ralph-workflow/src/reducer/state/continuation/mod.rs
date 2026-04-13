@@ -26,19 +26,7 @@
 //! - When `continuation_attempt >= max_continue_count`, no more continuations allowed
 //! - System proceeds to next phase even if work is incomplete
 //!
-//! ## 2. Retry Mechanisms
-//!
-//! The system supports two types of retries when agent invocations fail:
-//!
-//! ### XSD Retries
-//!
-//! Triggered when agent output fails XML parsing or XSD validation:
-//! - Budget: `max_xsd_retry_count` (default 10)
-//! - Behavior: Re-invoke same agent with validation error feedback
-//! - Session reuse: Preserves provider-side context for deterministic retries
-//! - Exhaustion: Falls back to next agent in chain
-//!
-//! ### Same-Agent Retries
+//! ## 2. Same-Agent Retries
 //!
 //! Triggered for transient invocation failures (timeout, internal error):
 //! - Budget: `max_same_agent_retry_count` (default 2)

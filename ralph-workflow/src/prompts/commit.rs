@@ -17,7 +17,6 @@ use crate::files::result_extraction::extract_file_paths_from_issues;
 
 include!("commit/fix_prompts.rs");
 include!("commit/commit_message_generate.rs");
-include!("commit/commit_xsd_retry.rs");
 
 #[cfg(test)]
 mod io_tests;

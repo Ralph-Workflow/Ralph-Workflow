@@ -125,9 +125,6 @@ pub(super) fn reduce_error(state: &PipelineState, error: &ErrorEvent) -> Pipelin
         ErrorEvent::AgentNotFound { .. } => PipelineState {
             agent_chain: state.agent_chain.switch_to_next_agent().clear_session_id(),
             continuation: crate::reducer::state::ContinuationState {
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 same_agent_retry_count: 0,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,

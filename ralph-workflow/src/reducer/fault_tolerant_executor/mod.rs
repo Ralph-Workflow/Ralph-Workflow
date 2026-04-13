@@ -186,7 +186,7 @@ fn try_agent_execution(
             // Result-file pre-check: a valid result file means the agent completed its work
             // before run_with_prompt failed. Treat as success regardless of the I/O error.
             if let Some(path) = config.completion_output_path {
-                if crate::files::llm_output_extraction::has_valid_xml_output(
+                if crate::files::has_valid_artifact_output(
                     runtime.workspace,
                     path,
                 ) {
@@ -228,13 +228,13 @@ fn try_agent_execution(
 ///
 /// This function implements the full classification matrix for non-zero exits:
 ///
-/// | timeout_context | Valid result file | Expected event          |
-/// |-----------------|------------------|-------------------------|
-/// | None            | Yes              | InvocationSucceeded     |
-/// | None            | No               | InvocationFailed        |
-/// | Some            | Yes              | InvocationSucceeded     |
-/// | Some            | No (absent)      | TimedOut(NoResult)      |
-/// | Some            | No (invalid XML) | TimedOut(PartialResult) |
+/// | timeout_context | Valid result file         | Expected event          |
+/// |-----------------|--------------------------|-------------------------|
+/// | None            | Yes (non-empty)          | InvocationSucceeded     |
+/// | None            | No (absent or empty)     | InvocationFailed        |
+/// | Some            | Yes (non-empty)          | InvocationSucceeded     |
+/// | Some            | No (absent)              | TimedOut(NoResult)      |
+/// | Some            | No (present but empty)   | TimedOut(PartialResult) |
 ///
 /// # Classification order (mandatory)
 ///
@@ -285,7 +285,7 @@ pub(crate) fn classify_nonzero_command_result(
     // This check MUST happen before any error classification early-returns so
     // that a completed result cannot be misclassified as a failure.
     if let Some(path) = config.completion_output_path {
-        if crate::files::llm_output_extraction::has_valid_xml_output(runtime.workspace, path) {
+        if crate::files::has_valid_artifact_output(runtime.workspace, path) {
             return AgentExecutionResult {
                 event: PipelineEvent::agent_invocation_succeeded(config.role, agent_name.clone()),
                 session_id: result.session_id,
@@ -387,10 +387,10 @@ const MEANINGFUL_OUTPUT_THRESHOLD: usize = 10;
 ///
 /// When a `completion_output_path` is provided, classification is based on
 /// whether that file exists on disk:
-/// - File present (even if invalid XML) → `PartialResult`
+/// - File present (even if empty) → `PartialResult`
 /// - File absent → `NoResult`
 ///
-/// Note: callers MUST check `has_valid_xml_output` BEFORE calling this function
+/// Note: callers MUST check `has_valid_artifact_output` BEFORE calling this function
 /// and promote a valid result to success. By the time this function is reached,
 /// the valid-result case has already been handled.
 ///

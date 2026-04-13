@@ -86,6 +86,11 @@ pub enum DevelopmentEvent {
         iteration: u32,
         /// The parsed development status.
         status: DevelopmentStatus,
+        /// Explicit routing decision from the artifact's `decision` field.
+        ///
+        /// When `Some`, the reducer uses this decision directly instead of
+        /// deriving one from `status`. `None` means fall back to status-derived routing.
+        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
         /// Summary of what was accomplished.
         summary: String,
         /// Files changed in this attempt.

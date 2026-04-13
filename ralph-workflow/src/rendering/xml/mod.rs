@@ -1,15 +1,8 @@
-//! Semantic XML renderers for user-friendly output.
+//! XML renderers for terminal output.
 //!
 //! This module routes XML rendering to type-specific modules.
 //! Each XML output type (`DevelopmentResult`, `DevelopmentPlan`, etc.) has
-//! a dedicated renderer that transforms raw XML into user-friendly
-//! terminal output.
-//!
-//! # Graceful Degradation
-//!
-//! If XML parsing fails, renderers fall back to displaying the raw XML
-//! with a warning message. This ensures users always see output even if
-//! the format is unexpected.
+//! a dedicated renderer that adds contextual headers and passes through raw content.
 
 mod commit_message;
 mod development_plan;
@@ -18,7 +11,7 @@ mod fix_result;
 mod helpers;
 mod review_issues;
 
-use crate::files::llm_output_extraction::SkillsMcp;
+use crate::files::result_types::SkillsMcp;
 use crate::reducer::ui_event::{XmlOutputContext, XmlOutputType};
 
 /// Render skills-mcp recommendations in markdown format.
@@ -80,10 +73,9 @@ pub fn render_skills_mcp_markdown(skills_mcp: Option<&SkillsMcp>) -> String {
         .join("\n")
 }
 
-/// Render XML content based on its type.
+/// Render content based on its XML output type.
 ///
-/// Returns formatted string for terminal display.
-/// Falls back to raw XML with warning if parsing fails.
+/// Returns a formatted string for terminal display with contextual headers.
 #[must_use]
 pub fn render_xml(
     xml_type: &XmlOutputType,
@@ -107,28 +99,25 @@ mod tests {
 
     #[test]
     fn test_render_xml_routes_to_development_result() {
-        let content = r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary>Done</ralph-summary>
-</ralph-development-result>";
-
+        let content = "some development result content";
         let output = render_xml(&XmlOutputType::DevelopmentResult, content, &None);
         assert!(
-            output.contains("✅"),
+            output.contains("some development result content"),
             "Should route to development result renderer"
         );
     }
 
     #[test]
     fn test_render_xml_routes_to_review_issues() {
-        let content = r"<ralph-issues>
-<ralph-issue>Test issue</ralph-issue>
-</ralph-issues>";
-
+        let content = "some review issues content";
         let output = render_xml(&XmlOutputType::ReviewIssues, content, &None);
         assert!(
-            output.contains("1 issue"),
-            "Should route to issues renderer"
+            output.contains("Review Results"),
+            "Should route to issues renderer with header"
+        );
+        assert!(
+            output.contains("some review issues content"),
+            "Should include raw content"
         );
     }
 

@@ -352,6 +352,8 @@ impl AgentChainState {
             AgentRole::Reviewer => AgentDrain::Review,
             AgentRole::Commit => AgentDrain::Commit,
             AgentRole::Analysis => AgentDrain::Analysis,
+            AgentRole::Planning => AgentDrain::Planning,
+            AgentRole::Fix => AgentDrain::Fix,
         })
     }
 

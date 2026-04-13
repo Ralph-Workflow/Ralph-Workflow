@@ -195,7 +195,8 @@ fn test_iteration_completed_resets_continuation() {
     );
 
     assert!(!new_state.continuation.is_continuation());
-    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
+    // Phase 2: IterationCompleted routes to Review for per-iteration code review
+    assert_eq!(new_state.phase, PipelinePhase::Review);
 }
 
 #[test]
@@ -259,44 +260,6 @@ fn test_same_agent_retry_uses_same_agent_retry_mode_until_success() {
 }
 
 #[test]
-fn test_xsd_retry_uses_xsd_retry_mode_until_success() {
-    let base = create_test_state();
-    let state = PipelineState {
-        phase: PipelinePhase::Development,
-        agent_chain: base
-            .agent_chain
-            .with_drain(crate::agents::AgentDrain::Analysis),
-        ..base
-    };
-
-    let retrying_state = reduce(
-        state,
-        PipelineEvent::agent_xsd_validation_failed(
-            AgentRole::Analysis,
-            crate::reducer::state::ArtifactType::DevelopmentResult,
-            "invalid xml".to_string(),
-            0,
-        ),
-    );
-
-    assert!(retrying_state.continuation.xsd_retry_pending);
-    assert_eq!(
-        retrying_state.agent_chain.current_mode,
-        crate::agents::DrainMode::XsdRetry
-    );
-
-    let recovered_state = reduce(
-        retrying_state,
-        PipelineEvent::agent_invocation_succeeded(AgentRole::Analysis, AgentName::from("mock")),
-    );
-
-    assert_eq!(
-        recovered_state.agent_chain.current_mode,
-        crate::agents::DrainMode::Normal
-    );
-}
-
-#[test]
 fn test_multiple_continuation_triggers_accumulate() {
     use crate::reducer::state::DevelopmentStatus;
 
@@ -344,13 +307,12 @@ fn test_continuation_budget_exhausted_switches_to_next_agent() {
         state,
         PipelineEvent::development_continuation_budget_exhausted(0, 3, DevelopmentStatus::Partial),
     );
-    // UPDATED: After fix for wt-39, continuation budget exhaustion now completes the iteration
-    // and transitions to CommitMessage (or next phase) rather than staying in Development.
-    // This prevents the infinite loop where the system would restart continuation with a new agent.
+    // Phase 2: After budget exhaustion, the iteration completes and transitions to Review
+    // for per-iteration code review (not directly to CommitMessage).
     assert_eq!(
         new_state.phase,
-        PipelinePhase::CommitMessage,
-        "Should complete iteration and transition to CommitMessage after budget exhaustion"
+        PipelinePhase::Review,
+        "Should complete iteration and transition to Review after budget exhaustion"
     );
     assert_eq!(
         new_state.agent_chain.current_agent_index, 0,
@@ -438,15 +400,13 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
         }
     };
 
-    // UPDATED (wt-39 fix): After continuation budget exhaustion, the system now completes
-    // the iteration and transitions to CommitMessage rather than staying in Development
-    // to try more agents within the same iteration. This prevents the infinite loop where
-    // continuation would restart after cycling through all agents.
+    // Phase 2: After continuation budget exhaustion, the system completes the iteration and
+    // transitions to Review for per-iteration code review. This prevents the infinite loop
+    // (wt-39) where continuation would restart after cycling through all agents.
     //
-    // The new behavior establishes a clear contract: one continuation budget per iteration.
-    // If work is incomplete after exhausting the budget, the iteration completes and either:
-    // 1. Advances to next iteration (where different agents can be tried), OR
-    // 2. Transitions to next pipeline phase
+    // One continuation budget per iteration. After exhaustion, the iteration completes and:
+    // 1. Transitions to Review for code review (Phase 2 behavior), OR
+    // 2. Transitions to AwaitingDevFix if all agents exhausted with incomplete work
     //
     // This ensures bounded execution per iteration and prevents unbounded agent fallback cycles.
     let state = reduce(
@@ -454,11 +414,11 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
         PipelineEvent::development_continuation_budget_exhausted(0, 3, DevelopmentStatus::Failed),
     );
 
-    // After budget exhaustion, iteration completes and transitions to CommitMessage
+    // After budget exhaustion, iteration completes and transitions to Review (Phase 2)
     assert_eq!(
         state.phase,
-        PipelinePhase::CommitMessage,
-        "Should complete iteration and transition to CommitMessage after continuation budget exhaustion"
+        PipelinePhase::Review,
+        "Should complete iteration and transition to Review after continuation budget exhaustion"
     );
     assert_eq!(
         state.agent_chain.current_agent_index, 0,
@@ -468,12 +428,12 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
         state.continuation.continuation_attempt, 0,
         "Continuation attempt should be reset after iteration completion"
     );
-    // Orchestration should continue commit flow, possibly cleaning context first.
+    // Phase 2: After IterationCompleted → Review, context cleanup runs first if pending.
     let effect = determine_next_effect(&state);
     assert!(
         matches!(effect, Effect::CheckCommitDiff)
             || matches!(effect, Effect::CleanupContinuationContext),
-        "Should proceed with commit flow after iteration completion; got {effect:?}"
+        "Should clean up continuation context before proceeding; got {effect:?}"
     );
 }
 
@@ -486,9 +446,8 @@ fn test_continuation_budget_with_missing_config_key() {
     // wrapped in Some(2) during conversion. ContinuationState::max_continue_count
     // should be 3 (1 initial + 2 continuations).
     let continuation = ContinuationState::with_limits(
-        10, // max_xsd_retries
-        3,  // max_continue_count (should be 1 + default_max_dev_continuations)
-        2,  // max_same_agent_retries
+        3, // max_continue_count (should be 1 + default_max_dev_continuations)
+        2, // max_same_agent_retries
     );
 
     let state = PipelineState::initial_with_continuation(1, 0, &continuation);
@@ -559,7 +518,7 @@ fn test_continuation_budget_with_missing_config_key() {
 fn test_orchestration_fires_budget_exhausted_at_cap() {
     use crate::reducer::state::DevelopmentStatus;
 
-    let continuation = ContinuationState::with_limits(10, 3, 2);
+    let continuation = ContinuationState::with_limits(3, 2);
     let state = PipelineState::initial_with_continuation(1, 0, &continuation);
 
     let state = reduce(
@@ -644,7 +603,7 @@ fn test_orchestration_fires_budget_exhausted_at_cap() {
 fn test_trigger_continuation_at_boundary_does_not_increment() {
     use crate::reducer::state::DevelopmentStatus;
 
-    let continuation = ContinuationState::with_limits(10, 3, 2);
+    let continuation = ContinuationState::with_limits(3, 2);
     let state = PipelineState::initial_with_continuation(1, 0, &continuation);
 
     let state = reduce(
@@ -721,7 +680,7 @@ fn test_outcome_applied_exhausts_before_triggering_third_continuation() {
     use crate::reducer::event::DevelopmentEvent;
     use crate::reducer::state::{DevelopmentStatus, DevelopmentValidatedOutcome};
 
-    let continuation = ContinuationState::with_limits(10, 3, 2);
+    let continuation = ContinuationState::with_limits(3, 2);
     let initial_state = PipelineState::initial_with_continuation(5, 0, &continuation);
 
     let state = reduce(
@@ -738,6 +697,7 @@ fn test_outcome_applied_exhausts_before_triggering_third_continuation() {
             development_validated_outcome: Some(DevelopmentValidatedOutcome {
                 iteration: 0,
                 status: DevelopmentStatus::Partial,
+                analysis_decision: None,
                 summary: "partial work".to_string(),
                 files_changed: None,
                 next_steps: None,
@@ -754,6 +714,7 @@ fn test_outcome_applied_exhausts_before_triggering_third_continuation() {
             development_validated_outcome: Some(DevelopmentValidatedOutcome {
                 iteration: 0,
                 status: DevelopmentStatus::Partial,
+                analysis_decision: None,
                 summary: "more partial work".to_string(),
                 files_changed: None,
                 next_steps: None,
@@ -772,6 +733,7 @@ fn test_outcome_applied_exhausts_before_triggering_third_continuation() {
             development_validated_outcome: Some(DevelopmentValidatedOutcome {
                 iteration: 0,
                 status: DevelopmentStatus::Partial,
+                analysis_decision: None,
                 summary: "still more partial work".to_string(),
                 files_changed: None,
                 next_steps: None,

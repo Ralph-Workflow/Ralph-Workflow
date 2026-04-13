@@ -151,7 +151,7 @@ fn test_recovery_attempted_transitions_to_failed_phase() {
         Some(PipelinePhase::AwaitingDevFix)
     );
     assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Fix);
-    assert_eq!(new_state.agent_chain.current_role, AgentRole::Reviewer);
+    assert_eq!(new_state.agent_chain.current_role, AgentRole::Fix);
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
     assert_eq!(new_state.agent_chain.retry_cycle, 0);
 }

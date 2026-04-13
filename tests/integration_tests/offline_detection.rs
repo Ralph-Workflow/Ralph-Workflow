@@ -39,8 +39,6 @@ fn test_network_failure_sets_check_pending_preserves_budget() {
             continuation: ContinuationState {
                 same_agent_retry_count: 1,
                 same_agent_retry_pending: true,
-                xsd_retry_count: 2,
-                xsd_retry_pending: true,
                 ..ContinuationState::new()
             },
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
@@ -71,47 +69,12 @@ fn test_network_failure_sets_check_pending_preserves_budget() {
             new_state.continuation.same_agent_retry_count, 1,
             "same_agent_retry_count should be preserved"
         );
-        assert_eq!(
-            new_state.continuation.xsd_retry_count, 2,
-            "xsd_retry_count should be preserved"
-        );
 
         // Agent chain should be unchanged
         assert_eq!(
             new_state.agent_chain.current_agent().unwrap(),
             "agent1",
             "Agent should not change on network failure"
-        );
-    });
-}
-
-/// Test that check_pending blocks XSD retry in orchestration priority.
-///
-/// While connectivity is being verified, no budget-consuming effects should run.
-#[test]
-fn test_check_pending_blocks_xsd_retry_in_orchestrator() {
-    with_default_timeout(|| {
-        let state = PipelineState {
-            phase: PipelinePhase::Planning,
-            connectivity: ConnectivityState {
-                check_pending: true,
-                ..ConnectivityState::default()
-            },
-            continuation: ContinuationState {
-                xsd_retry_pending: true,
-                xsd_retry_count: 3,
-                ..ContinuationState::new()
-            },
-            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
-        };
-
-        let effect = determine_next_effect(&state);
-
-        // Connectivity check should take priority
-        assert!(
-            matches!(effect, Effect::CheckNetworkConnectivity),
-            "check_pending should block xsd_retry_pending, got {:?}",
-            effect
         );
     });
 }
@@ -163,8 +126,6 @@ fn test_offline_mode_preserves_retry_budget() {
             continuation: ContinuationState {
                 same_agent_retry_count: 2,
                 same_agent_retry_pending: true,
-                xsd_retry_count: 3,
-                xsd_retry_pending: true,
                 ..ContinuationState::new()
             },
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
@@ -189,10 +150,6 @@ fn test_offline_mode_preserves_retry_budget() {
             new_state.continuation.same_agent_retry_count, 2,
             "same_agent_retry_count should be preserved through offline transition"
         );
-        assert_eq!(
-            new_state.continuation.xsd_retry_count, 3,
-            "xsd_retry_count should be preserved through offline transition"
-        );
     });
 }
 
@@ -211,7 +168,7 @@ fn test_offline_blocks_continuation_in_orchestrator() {
                 ..ConnectivityState::default()
             },
             continuation: ContinuationState {
-                xsd_retry_pending: true,
+                continue_pending: true,
                 ..ContinuationState::new()
             },
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
@@ -246,7 +203,6 @@ fn test_successful_probe_exits_offline_mode() {
                 ..ConnectivityState::default()
             },
             continuation: ContinuationState {
-                xsd_retry_count: 3,
                 same_agent_retry_count: 2,
                 ..ContinuationState::new()
             },
@@ -272,43 +228,8 @@ fn test_successful_probe_exits_offline_mode() {
 
         // Budget should remain preserved
         assert_eq!(
-            new_state.continuation.xsd_retry_count, 3,
-            "xsd_retry_count should remain preserved after going back online"
-        );
-        assert_eq!(
             new_state.continuation.same_agent_retry_count, 2,
             "same_agent_retry_count should remain preserved after going back online"
-        );
-    });
-}
-
-/// Test that back-online allows XSD retry to proceed in orchestration.
-#[test]
-fn test_back_online_allows_xsd_retry_to_proceed() {
-    with_default_timeout(|| {
-        let state = PipelineState {
-            phase: PipelinePhase::Planning,
-            connectivity: ConnectivityState::default(), // Online, no pending checks
-            continuation: ContinuationState {
-                xsd_retry_pending: true,
-                xsd_retry_count: 3,
-                ..ContinuationState::new()
-            },
-            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
-        };
-
-        let effect = determine_next_effect(&state);
-
-        assert!(
-            matches!(
-                effect,
-                Effect::PreparePlanningPrompt {
-                    prompt_mode: ralph_workflow::reducer::PromptMode::XsdRetry,
-                    ..
-                }
-            ),
-            "After back online, xsd_retry should proceed, got {:?}",
-            effect
         );
     });
 }
@@ -501,114 +422,6 @@ fn test_internal_error_consumes_retry_budget() {
         assert!(
             !new_state.connectivity.check_pending,
             "Non-network error should not set check_pending"
-        );
-    });
-}
-
-/// Test full offline lifecycle: online -> network error -> check_pending ->
-/// probe fails x2 -> offline -> probe succeeds -> back online -> XSD retry proceeds.
-#[test]
-fn test_full_offline_lifecycle_preserves_budget() {
-    with_default_timeout(|| {
-        // Start online, in Planning phase with XSD retry pending
-        let mut state = PipelineState {
-            phase: PipelinePhase::Planning,
-            connectivity: ConnectivityState::default(),
-            continuation: ContinuationState {
-                xsd_retry_pending: true,
-                xsd_retry_count: 3,
-                ..ContinuationState::new()
-            },
-            ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
-        };
-
-        // 1. Network error sets check_pending
-        state = reduce(
-            state,
-            PipelineEvent::Agent(
-                ralph_workflow::reducer::event::AgentEvent::InvocationFailed {
-                    role: AgentRole::Developer,
-                    agent: "agent1".into(),
-                    exit_code: 1,
-                    error_kind: AgentErrorKind::Network,
-                    retriable: true,
-                },
-            ),
-        );
-        assert!(
-            state.connectivity.check_pending,
-            "Step 1: check_pending should be set"
-        );
-        assert_eq!(
-            state.continuation.xsd_retry_count, 3,
-            "Step 1: xsd_retry_count preserved"
-        );
-
-        // 2. First probe fails - still checking
-        state = reduce(
-            state,
-            PipelineEvent::Agent(
-                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
-            ),
-        );
-        assert!(
-            !state.connectivity.is_offline,
-            "Step 2: Still checking (1 failure, threshold=2)"
-        );
-        assert_eq!(
-            state.continuation.xsd_retry_count, 3,
-            "Step 2: xsd_retry_count still preserved"
-        );
-
-        // 3. Second probe fails - enter offline mode
-        state = reduce(
-            state,
-            PipelineEvent::Agent(
-                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckFailed,
-            ),
-        );
-        assert!(
-            state.connectivity.is_offline,
-            "Step 3: Now offline (2 failures)"
-        );
-        assert!(
-            state.connectivity.poll_pending,
-            "Step 3: poll_pending is set"
-        );
-        assert_eq!(
-            state.continuation.xsd_retry_count, 3,
-            "Step 3: xsd_retry_count still preserved"
-        );
-
-        // 4. Probe succeeds - back online, budget preserved
-        state = reduce(
-            state,
-            PipelineEvent::Agent(
-                ralph_workflow::reducer::event::AgentEvent::ConnectivityCheckSucceeded,
-            ),
-        );
-        assert!(!state.connectivity.is_offline, "Step 4: Back online");
-        assert!(
-            !state.connectivity.poll_pending,
-            "Step 4: poll_pending cleared"
-        );
-        assert_eq!(
-            state.continuation.xsd_retry_count, 3,
-            "Step 4: xsd_retry_count preserved through entire offline window"
-        );
-
-        // 5. Orchestrator allows XSD retry to proceed
-        let effect = determine_next_effect(&state);
-        assert!(
-            matches!(
-                effect,
-                Effect::PreparePlanningPrompt {
-                    prompt_mode: ralph_workflow::reducer::PromptMode::XsdRetry,
-                    ..
-                }
-            ),
-            "Step 5: XSD retry should proceed after back online, got {:?}",
-            effect
         );
     });
 }
@@ -876,8 +689,6 @@ fn test_process_starts_offline_enters_offline_immediately() {
             continuation: ContinuationState {
                 same_agent_retry_count: 1,
                 same_agent_retry_pending: true,
-                xsd_retry_count: 2,
-                xsd_retry_pending: true,
                 ..ContinuationState::new()
             },
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
@@ -905,10 +716,6 @@ fn test_process_starts_offline_enters_offline_immediately() {
         assert_eq!(
             state.continuation.same_agent_retry_count, 1,
             "same_agent_retry_count should be preserved"
-        );
-        assert_eq!(
-            state.continuation.xsd_retry_count, 2,
-            "xsd_retry_count should be preserved"
         );
 
         // Now simulate 2 probe failures to enter offline mode
@@ -942,10 +749,6 @@ fn test_process_starts_offline_enters_offline_immediately() {
         assert_eq!(
             state.continuation.same_agent_retry_count, 1,
             "same_agent_retry_count should still be preserved"
-        );
-        assert_eq!(
-            state.continuation.xsd_retry_count, 2,
-            "xsd_retry_count should still be preserved"
         );
     });
 }

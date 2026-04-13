@@ -89,7 +89,6 @@ impl PipelineState {
             || self.continuation.fix_continuation_attempt > 0
             || self.continuation.fix_status.is_some()
             || self.continuation.fix_previous_summary.is_some()
-            || self.continuation.last_fix_xsd_error.is_some()
     }
 
     #[must_use]
@@ -232,8 +231,7 @@ impl PipelineState {
             .with_planning_cleared()
             .with_development_cleared()
             .with_commit_cleared()
-            .with_review_cleared()
-            .with_xsd_retry_cleared();
+            .with_review_cleared();
         Self {
             iteration: new_iteration,
             phase: initial_phase,
@@ -261,8 +259,7 @@ impl PipelineState {
             .with_planning_cleared()
             .with_development_cleared()
             .with_commit_cleared()
-            .with_review_cleared()
-            .with_xsd_retry_cleared();
+            .with_review_cleared();
         Self {
             iteration: 0,
             phase: initial_phase,
@@ -329,7 +326,6 @@ mod helper_tests {
                     diff: mp(PromptInputKind::Diff),
                 }),
                 review: None,
-                xsd_retry_last_output: None,
             },
             ..state
         };

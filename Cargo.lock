@@ -1736,6 +1736,7 @@ dependencies = [
  "notify",
  "proptest",
  "quick-xml",
+ "ralph-workflow-policy",
  "regex",
  "serde",
  "serde_json",
@@ -1750,6 +1751,14 @@ dependencies = [
  "ureq",
  "uuid",
  "which",
+]
+
+[[package]]
+name = "ralph-workflow-policy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

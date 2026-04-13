@@ -31,15 +31,6 @@ use super::effect::{AppEffect, AppEffectHandler, AppEffectResult};
 use std::path::PathBuf;
 use thiserror::Error;
 
-/// XSD schemas for XML validation - included at compile time.
-const PLAN_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/plan.xsd");
-const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
-    include_str!("../files/llm_output_extraction/development_result.xsd");
-const ISSUES_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/issues.xsd");
-const FIX_RESULT_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/fix_result.xsd");
-const COMMIT_MESSAGE_XSD_SCHEMA: &str =
-    include_str!("../files/llm_output_extraction/commit_message.xsd");
-
 // Re-use the canonical vague line constants from context module
 use crate::files::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
 
@@ -230,7 +221,6 @@ pub fn get_repo_root<H: AppEffectHandler>(handler: &mut H) -> Result<PathBuf, Ap
 /// Ensure required files and directories exist using effects.
 ///
 /// Creates the `.agent/logs` and `.agent/tmp` directories if they don't exist.
-/// Also writes XSD schemas to `.agent/tmp/` for agent self-validation.
 ///
 /// When `isolation_mode` is true (the default), STATUS.md, NOTES.md and ISSUES.md
 /// are NOT created. This prevents context contamination from previous runs.
@@ -248,8 +238,7 @@ pub fn get_repo_root<H: AppEffectHandler>(handler: &mut H) -> Result<PathBuf, Ap
 ///
 /// 1. `CreateDir` - Creates `.agent/logs` directory
 /// 2. `CreateDir` - Creates `.agent/tmp` directory
-/// 3. `WriteFile` - Writes XSD schemas to `.agent/tmp/`
-/// 4. `WriteFile` - Creates STATUS.md, NOTES.md, ISSUES.md (if not isolation mode)
+/// 3. `WriteFile` - Creates STATUS.md, NOTES.md, ISSUES.md (if not isolation mode)
 ///
 /// # Errors
 ///
@@ -271,30 +260,6 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
             path: PathBuf::from(".agent/tmp"),
         },
     )?;
-
-    let schemas = [
-        (".agent/tmp/plan.xsd", PLAN_XSD_SCHEMA),
-        (
-            ".agent/tmp/development_result.xsd",
-            DEVELOPMENT_RESULT_XSD_SCHEMA,
-        ),
-        (".agent/tmp/issues.xsd", ISSUES_XSD_SCHEMA),
-        (".agent/tmp/fix_result.xsd", FIX_RESULT_XSD_SCHEMA),
-        (".agent/tmp/commit_message.xsd", COMMIT_MESSAGE_XSD_SCHEMA),
-    ];
-
-    schemas
-        .iter()
-        .map(|(path, content)| {
-            execute_expect_ok(
-                handler,
-                AppEffect::WriteFile {
-                    path: PathBuf::from(*path),
-                    content: content.to_string(),
-                },
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
 
     if !isolation_mode {
         let context_files = [

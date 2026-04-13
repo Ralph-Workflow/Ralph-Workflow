@@ -108,6 +108,9 @@ itertools = "0.13"
 # MCP server boundary crate
 mcp-server = { path = "../mcp-server" }
 
+# Orchestration policy types (no dependency on ralph-workflow)
+ralph-workflow-policy = { workspace = true }
+
 [dev-dependencies]
 # Testing utilities
 tempfile = { workspace = true }

@@ -134,10 +134,10 @@ fn test_sigterm_without_timeout_context_with_partial_result_returns_invocation_f
     let mut timer = Timer::new();
     let config = Config::default();
 
-    // Completion file exists but contains non-XML content (invalid output).
+    // Completion file exists but is empty (agent was interrupted before writing).
     let workspace = MemoryWorkspace::new_test().with_file(
         ".agent/tmp/development_result.xml",
-        "agent wrote some output before the XML root element was written",
+        "",
     );
 
     let executor = Arc::new(
@@ -357,10 +357,10 @@ fn test_explicit_timeout_with_no_result_file_returns_timed_out_no_result() {
     let _ = runtime;
 }
 
-/// `timeout_context=Some` + present-but-invalid result file → `TimedOut(PartialResult)`
+/// `timeout_context=Some` + present-but-empty result file → `TimedOut(PartialResult)`
 ///
-/// A file exists but contains invalid XML — the agent started writing but didn't
-/// finish. Must emit `TimedOut` with `PartialResult` output kind.
+/// A file exists but is empty — the agent started writing but didn't finish.
+/// Must emit `TimedOut` with `PartialResult` output kind.
 #[test]
 fn test_explicit_timeout_with_invalid_result_file_returns_timed_out_partial_result() {
     let colors = Colors { enabled: false };
@@ -368,10 +368,10 @@ fn test_explicit_timeout_with_invalid_result_file_returns_timed_out_partial_resu
     let mut timer = Timer::new();
     let config = Config::default();
 
-    // Completion file exists but is not valid XML.
+    // Completion file exists but is empty (agent was interrupted before writing content).
     let workspace = MemoryWorkspace::new_test().with_file(
         ".agent/tmp/development_result.xml",
-        "agent started writing but did not finish the XML",
+        "",
     );
 
     let executor = Arc::new(crate::executor::MockProcessExecutor::new());
@@ -580,10 +580,10 @@ fn test_analysis_drain_explicit_timeout_with_no_result_returns_timed_out_no_resu
     let _ = runtime;
 }
 
-/// Analysis drain: explicit timeout + invalid result file → `TimedOut(PartialResult)`
+/// Analysis drain: explicit timeout + empty result file → `TimedOut(PartialResult)`
 ///
-/// Bug 2 regression: When the idle timeout fires and a file exists but is not
-/// valid XML, the agent started but didn't finish. Must emit PartialResult.
+/// Bug 2 regression: When the idle timeout fires and a file exists but is empty,
+/// the agent started but didn't finish writing. Must emit PartialResult.
 #[test]
 fn test_analysis_drain_explicit_timeout_with_invalid_result_returns_timed_out_partial_result() {
     let colors = Colors { enabled: false };
@@ -593,7 +593,7 @@ fn test_analysis_drain_explicit_timeout_with_invalid_result_returns_timed_out_pa
 
     let workspace = MemoryWorkspace::new_test().with_file(
         ".agent/tmp/development_result.xml",
-        "agent started writing but did not finish the XML",
+        "",
     );
 
     let executor = Arc::new(crate::executor::MockProcessExecutor::new());

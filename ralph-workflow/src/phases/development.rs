@@ -7,7 +7,7 @@
 //! 3. Deletes PLAN.md
 //! 4. Optionally runs fast checks
 
-use crate::files::llm_output_extraction::PlanElements;
+use crate::files::result_types::PlanElements;
 
 pub(crate) mod boundary_domain;
 pub(crate) mod prompt_mode_strategy;
@@ -113,14 +113,14 @@ fn format_steps_section(elements: &PlanElements) -> String {
 }
 
 fn format_step_item(
-    step: &crate::files::llm_output_extraction::xsd_validation_plan::Step,
+    step: &crate::files::result_types::Step,
 ) -> String {
     let step_type_str = match step.kind {
-        crate::files::llm_output_extraction::xsd_validation_plan::StepType::FileChange => {
+        crate::files::result_types::StepType::FileChange => {
             "file-change"
         }
-        crate::files::llm_output_extraction::xsd_validation_plan::StepType::Action => "action",
-        crate::files::llm_output_extraction::xsd_validation_plan::StepType::Research => "research",
+        crate::files::result_types::StepType::Action => "action",
+        crate::files::result_types::StepType::Research => "research",
     };
 
     let priority_str = step
@@ -128,14 +128,14 @@ fn format_step_item(
         .as_ref()
         .map(|p| {
             let s = match p {
-                crate::files::llm_output_extraction::xsd_validation_plan::Priority::Critical => {
+                crate::files::result_types::Priority::Critical => {
                     "critical"
                 }
-                crate::files::llm_output_extraction::xsd_validation_plan::Priority::High => "high",
-                crate::files::llm_output_extraction::xsd_validation_plan::Priority::Medium => {
+                crate::files::result_types::Priority::High => "high",
+                crate::files::result_types::Priority::Medium => {
                     "medium"
                 }
-                crate::files::llm_output_extraction::xsd_validation_plan::Priority::Low => "low",
+                crate::files::result_types::Priority::Low => "low",
             };
             format!(" [{s}]")
         })
@@ -154,13 +154,13 @@ fn format_step_item(
             .iter()
             .map(|tf| {
                 let action_str = match tf.action {
-                    crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Create => {
+                    crate::files::result_types::FileAction::Create => {
                         "create"
                     }
-                    crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Modify => {
+                    crate::files::result_types::FileAction::Modify => {
                         "modify"
                     }
-                    crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Delete => {
+                    crate::files::result_types::FileAction::Delete => {
                         "delete"
                     }
                 };
@@ -216,13 +216,13 @@ fn format_critical_files_section(elements: &PlanElements) -> String {
         .iter()
         .map(|pf| {
             let action_str = match pf.action {
-                crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Create => {
+                crate::files::result_types::FileAction::Create => {
                     "create"
                 }
-                crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Modify => {
+                crate::files::result_types::FileAction::Modify => {
                     "modify"
                 }
-                crate::files::llm_output_extraction::xsd_validation_plan::FileAction::Delete => {
+                crate::files::result_types::FileAction::Delete => {
                     "delete"
                 }
             };
@@ -276,16 +276,16 @@ fn format_risks_section(elements: &PlanElements) -> String {
                 .as_ref()
                 .map(|s| {
                     let sev_str = match s {
-                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::Low => {
+                        crate::files::result_types::Severity::Low => {
                             "low"
                         }
-                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::Medium => {
+                        crate::files::result_types::Severity::Medium => {
                             "medium"
                         }
-                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::High => {
+                        crate::files::result_types::Severity::High => {
                             "high"
                         }
-                        crate::files::llm_output_extraction::xsd_validation_plan::Severity::Critical => {
+                        crate::files::result_types::Severity::Critical => {
                             "critical"
                         }
                     };
@@ -326,9 +326,9 @@ fn format_verification_section(elements: &PlanElements) -> String {
 
 /// Format rich content elements to markdown.
 fn format_rich_content(
-    content: &crate::files::llm_output_extraction::xsd_validation_plan::RichContent,
+    content: &crate::files::result_types::RichContent,
 ) -> String {
-    use crate::files::llm_output_extraction::xsd_validation_plan::ContentElement;
+    use crate::files::result_types::ContentElement;
 
     let elements: Vec<String> = content
         .elements
@@ -358,7 +358,7 @@ fn format_rich_content(
     elements.join("")
 }
 
-fn format_table(t: &crate::files::llm_output_extraction::xsd_validation_plan::Table) -> String {
+fn format_table(t: &crate::files::result_types::Table) -> String {
     let caption = t
         .caption
         .as_ref()
@@ -407,9 +407,9 @@ fn format_table(t: &crate::files::llm_output_extraction::xsd_validation_plan::Ta
 
 /// Format inline content elements.
 fn format_inline_content(
-    content: &[crate::files::llm_output_extraction::xsd_validation_plan::InlineElement],
+    content: &[crate::files::result_types::InlineElement],
 ) -> String {
-    use crate::files::llm_output_extraction::xsd_validation_plan::InlineElement;
+    use crate::files::result_types::InlineElement;
 
     content
         .iter()
@@ -424,10 +424,10 @@ fn format_inline_content(
 
 /// Format a list element with proper indentation.
 fn format_list(
-    list: &crate::files::llm_output_extraction::xsd_validation_plan::List,
+    list: &crate::files::result_types::List,
     indent: usize,
 ) -> String {
-    use crate::files::llm_output_extraction::xsd_validation_plan::ListType;
+    use crate::files::result_types::ListType;
 
     let indent_str = "  ".repeat(indent);
 

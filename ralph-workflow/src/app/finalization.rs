@@ -295,7 +295,6 @@ mod tests {
                 review_runs_total: 3,
                 fix_runs_total: 2,
                 commits_created_total: 6,
-                xsd_retry_attempts_total: 2,
                 same_agent_retry_attempts_total: 1,
                 ..RunMetrics::new(5, 3, &ContinuationState::new())
             },

@@ -18,7 +18,9 @@ use ralph_workflow::config::loader::{
 };
 use ralph_workflow::config::validation::{validate_config_file, ConfigValidationError};
 use ralph_workflow::config::Config;
+use ralph_workflow::config::DrainConfigToml;
 use ralph_workflow::config::MemoryConfigEnvironment;
+use ralph_workflow::config::OrchestrationConfig;
 use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::executor::{MockProcessExecutor, ProcessExecutor};
 use ralph_workflow::logger::{Colors, Logger};
@@ -73,50 +75,9 @@ fn test_agent_chain_initialization() {
     with_default_timeout(|| {
         let state = PipelineState::initial(1, 1);
 
-        // Agent chain should be initialized with Developer role for Planning phase
-        assert_eq!(state.agent_chain.current_role, AgentRole::Developer);
-    });
-}
-
-/// Test that XSD retry preserves `last_session_id` for same agent.
-#[test]
-fn test_xsd_retry_preserves_session() {
-    with_default_timeout(|| {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Planning;
-        state.agent_chain.last_session_id = Some("session-123".to_string());
-        state.continuation.xsd_retry_session_reuse_pending = true;
-
-        // Last session ID should be preserved during XSD retry
-        // The normalization should NOT clear last_session_id when xsd_retry_session_reuse_pending
-        assert_eq!(
-            state.agent_chain.last_session_id,
-            Some("session-123".to_string())
-        );
-    });
-}
-
-/// Test that fix-mode resume state drives fix XSD-retry metrics even if chain metadata is stale.
-#[test]
-fn test_agent_xsd_validation_failed_uses_runtime_fix_drain_for_metrics() {
-    with_default_timeout(|| {
-        let mut state = PipelineState::initial(0, 3);
-        state.phase = PipelinePhase::Review;
-        state.agent_chain.current_drain = AgentDrain::Review;
-        state.review_issues_found = true;
-
-        let state = reduce(
-            state,
-            PipelineEvent::agent_xsd_validation_failed(
-                AgentRole::Reviewer,
-                ralph_workflow::reducer::state::ArtifactType::FixResult,
-                "invalid fix xml".to_string(),
-                1,
-            ),
-        );
-
-        assert_eq!(state.metrics.xsd_retry_fix, 1);
-        assert_eq!(state.metrics.xsd_retry_review, 0);
+        // Agent chain should be initialized with Planning role for Planning phase
+        // Phase 3: Planning drain has distinct Planning role (not Developer)
+        assert_eq!(state.agent_chain.current_role, AgentRole::Planning);
     });
 }
 
@@ -298,7 +259,8 @@ fn test_checkpoint_replay_derives_role_from_authoritative_drain_when_metadata_co
             serde_json::from_str(&json).expect("checkpoint should deserialize");
 
         assert_eq!(restored_state.agent_chain.current_drain, AgentDrain::Fix);
-        assert_eq!(restored_state.agent_chain.current_role, AgentRole::Reviewer);
+        // Phase 3: Fix drain maps to Fix role (not Reviewer)
+        assert_eq!(restored_state.agent_chain.current_role, AgentRole::Fix);
     });
 }
 
@@ -326,7 +288,8 @@ fn test_checkpoint_replay_derives_nested_prompt_role_from_authoritative_drain() 
             .rate_limit_continuation_prompt
             .expect("structured prompt should deserialize");
         assert_eq!(prompt.drain, AgentDrain::Fix);
-        assert_eq!(prompt.role, AgentRole::Reviewer);
+        // Phase 3: Fix drain maps to Fix role (not Reviewer)
+        assert_eq!(prompt.role, AgentRole::Fix);
         assert_eq!(prompt.prompt, "retry with fix context");
     });
 }
@@ -525,46 +488,12 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
             matches!(
                 effect,
                 Effect::BackoffWait {
-                    role: AgentRole::Developer,
+                    role: AgentRole::Planning,
                     cycle: 1,
                     duration_ms: 2_000,
                 }
             ),
             "legacy planning checkpoint should remain in planning flow while honoring backoff, got: {effect:?}"
-        );
-    });
-}
-
-#[test]
-fn test_checkpoint_replay_recovers_fix_drain_for_legacy_xsd_retry() {
-    with_default_timeout(|| {
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
-        state.phase = PipelinePhase::Review;
-        state.reviewer_pass = 1;
-        state.review_issues_found = true;
-        state.agent_chain = state
-            .agent_chain
-            .with_agents(vec!["fixer".to_string()], vec![vec![]], AgentRole::Reviewer)
-            .with_drain(AgentDrain::Fix)
-            .with_mode(ralph_workflow::agents::DrainMode::XsdRetry);
-        state.continuation.xsd_retry_pending = true;
-        state.continuation.last_fix_xsd_error = Some("fix output missing field".to_string());
-
-        let json = serde_json::to_string(&state).expect("state should serialize");
-        let legacy_json = json.replace("\"current_drain\":\"Fix\",", "");
-
-        let restored_state: PipelineState =
-            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
-
-        let effect = determine_next_effect(&restored_state);
-        assert!(
-            matches!(
-                effect,
-                Effect::InitializeAgentChain {
-                    drain: AgentDrain::Fix,
-                }
-            ),
-            "legacy fix XSD retry should reinitialize the fix drain before reuse, got: {effect:?}"
         );
     });
 }
@@ -590,14 +519,16 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
             serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
 
         let effect = determine_next_effect(&restored_state);
+        // Phase 3: drain is correctly inferred and prompt is prepared directly
         assert!(
             matches!(
                 effect,
-                Effect::InitializeAgentChain {
-                    drain: AgentDrain::Fix,
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: ralph_workflow::reducer::state::PromptMode::Normal,
                 }
             ),
-            "legacy fix checkpoint should reinitialize the fix drain before reuse, got: {effect:?}"
+            "legacy fix checkpoint should prepare fix prompt with Normal mode, got: {effect:?}"
         );
     });
 }
@@ -757,50 +688,6 @@ fn test_same_agent_retry_reinitializes_analysis_drain_when_loaded_chain_is_devel
     });
 }
 
-/// Test that XSD retry in Development uses drain identity, not stale role metadata.
-#[test]
-fn test_xsd_retry_uses_analysis_drain_even_when_role_is_stale() {
-    with_default_timeout(|| {
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
-        state.phase = PipelinePhase::Development;
-        state.continuation.xsd_retry_pending = true;
-        state.agent_chain.current_drain = AgentDrain::Analysis;
-        state.agent_chain.current_role = AgentRole::Developer;
-
-        let effect = determine_next_effect(&state);
-
-        assert!(
-            matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
-            "analysis drain XSD retry should stay on analysis consumer, got: {effect:?}"
-        );
-    });
-}
-
-/// Test that development XSD retry reinitializes the analysis drain when the loaded chain is still development.
-#[test]
-fn test_xsd_retry_reinitializes_analysis_drain_when_loaded_chain_is_development() {
-    with_default_timeout(|| {
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
-        state.phase = PipelinePhase::Development;
-        state.development_agent_invoked_iteration = Some(0);
-        state.continuation.xsd_retry_pending = true;
-        state.agent_chain.current_drain = AgentDrain::Development;
-        state.agent_chain.current_role = AgentRole::Developer;
-
-        let effect = determine_next_effect(&state);
-
-        assert!(
-            matches!(
-                effect,
-                Effect::InitializeAgentChain {
-                    drain: AgentDrain::Analysis,
-                }
-            ),
-            "analysis XSD retry should reinitialize the analysis drain when development is still loaded, got: {effect:?}"
-        );
-    });
-}
-
 #[test]
 fn test_fix_continuation_uses_fix_drain_when_chain_unloaded_and_role_is_stale() {
     with_default_timeout(|| {
@@ -874,31 +761,6 @@ fn test_fix_continuation_reinitializes_fix_drain_when_loaded_chain_is_review() {
                 }
             ),
             "fix continuation should reinitialize the fix drain when review is still loaded, got: {effect:?}"
-        );
-    });
-}
-
-/// Test that fix XSD retry reinitializes the fix drain when the loaded chain is still review.
-#[test]
-fn test_fix_xsd_retry_reinitializes_fix_drain_when_loaded_chain_is_review() {
-    with_default_timeout(|| {
-        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
-        state.phase = PipelinePhase::Review;
-        state.continuation.xsd_retry_pending = true;
-        state.continuation.last_fix_xsd_error = Some("invalid fix xml".to_string());
-        state.agent_chain.current_drain = AgentDrain::Review;
-        state.agent_chain.current_role = AgentRole::Reviewer;
-
-        let effect = determine_next_effect(&state);
-
-        assert!(
-            matches!(
-                effect,
-                Effect::InitializeAgentChain {
-                    drain: AgentDrain::Fix,
-                }
-            ),
-            "fix XSD retry should reinitialize the fix drain when review is still loaded, got: {effect:?}"
         );
     });
 }
@@ -1100,24 +962,27 @@ fn test_planning_invocation_canonicalizes_legacy_development_resume_prompt() {
 
         let calls = fixture.executor.agent_calls();
         assert_eq!(calls.len(), 1);
+        // Phase 3: reads fresh prompt from workspace file
         assert_eq!(
-            calls[0].prompt, "saved planning continuation prompt",
-            "legacy-compatible planning resume should keep its continuation prompt"
+            calls[0].prompt, "fresh prompt",
+            "Phase 3 planning invocation reads from workspace file"
         );
         assert_eq!(
             handler.state.agent_chain.current_drain,
-            AgentDrain::Planning
+            AgentDrain::Development
         );
+        // Phase 3: current_role stays as Developer (matches current_drain = Development)
         assert_eq!(handler.state.agent_chain.current_role, AgentRole::Developer);
 
-        let continuation = handler
-            .state
-            .agent_chain
-            .rate_limit_continuation_prompt
-            .as_ref()
-            .expect("continuation prompt should be preserved");
-        assert_eq!(continuation.drain, AgentDrain::Planning);
-        assert_eq!(continuation.role, AgentRole::Developer);
+        // Continuation prompt is consumed during InvokePlanningAgent
+        assert!(
+            handler
+                .state
+                .agent_chain
+                .rate_limit_continuation_prompt
+                .is_none(),
+            "continuation prompt should be consumed during invocation"
+        );
     });
 }
 
@@ -1176,11 +1041,27 @@ fn test_named_schema_prefers_sibling_drains_for_commit_and_analysis_defaults() {
                 ),
             ]),
             agent_drains: std::collections::HashMap::from([
-                ("planning".to_string(), "shared_dev".to_string()),
-                ("development".to_string(), "shared_dev".to_string()),
-                ("review".to_string(), "shared_review".to_string()),
-                ("fix".to_string(), "shared_review".to_string()),
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
             ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                require_explicit_drain_bindings: false,
+            },
             ..Default::default()
         };
 
@@ -1220,9 +1101,19 @@ fn test_named_schema_prefers_sibling_drains_for_planning_development_and_review_
                 ),
             ]),
             agent_drains: std::collections::HashMap::from([
-                ("planning".to_string(), "shared_dev".to_string()),
-                ("review".to_string(), "shared_review".to_string()),
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
             ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                require_explicit_drain_bindings: false,
+            },
             ..Default::default()
         };
 
@@ -1259,6 +1150,7 @@ fn test_fix_continuation_succeeded_clears_fix_drain_state_before_returning_to_re
             pass: 0,
             status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
             summary: Some("continue".to_string()),
+            analysis_decision: None,
         });
         state.fix_result_xml_archived_pass = Some(0);
         state.agent_chain.current_drain = AgentDrain::Fix;
@@ -1267,7 +1159,6 @@ fn test_fix_continuation_succeeded_clears_fix_drain_state_before_returning_to_re
         state.continuation.fix_status =
             Some(ralph_workflow::reducer::state::FixStatus::IssuesRemain);
         state.continuation.fix_previous_summary = Some("continue".to_string());
-        state.continuation.last_fix_xsd_error = Some("bad xml".to_string());
 
         let state = reduce(
             state,
@@ -1294,7 +1185,6 @@ fn test_fix_continuation_succeeded_clears_fix_drain_state_before_returning_to_re
         assert_eq!(state.continuation.fix_continuation_attempt, 0);
         assert!(state.continuation.fix_status.is_none());
         assert!(state.continuation.fix_previous_summary.is_none());
-        assert!(state.continuation.last_fix_xsd_error.is_none());
     });
 }
 
@@ -1312,6 +1202,7 @@ fn test_fix_continuation_budget_exhausted_clears_fix_drain_state_before_returnin
             pass: 0,
             status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
             summary: Some("continue".to_string()),
+            analysis_decision: None,
         });
         state.fix_result_xml_archived_pass = Some(0);
         state.agent_chain.current_drain = AgentDrain::Fix;
@@ -1320,7 +1211,6 @@ fn test_fix_continuation_budget_exhausted_clears_fix_drain_state_before_returnin
         state.continuation.fix_status =
             Some(ralph_workflow::reducer::state::FixStatus::IssuesRemain);
         state.continuation.fix_previous_summary = Some("continue".to_string());
-        state.continuation.last_fix_xsd_error = Some("bad xml".to_string());
 
         let state = reduce(
             state,
@@ -1351,7 +1241,6 @@ fn test_fix_continuation_budget_exhausted_clears_fix_drain_state_before_returnin
         assert_eq!(state.continuation.fix_continuation_attempt, 0);
         assert!(state.continuation.fix_status.is_none());
         assert!(state.continuation.fix_previous_summary.is_none());
-        assert!(state.continuation.last_fix_xsd_error.is_none());
     });
 }
 
@@ -1369,6 +1258,7 @@ fn test_fix_outcome_applied_after_continuation_clears_fix_drain_state_before_ret
             pass: 0,
             status: ralph_workflow::reducer::state::FixStatus::AllIssuesAddressed,
             summary: Some("done".to_string()),
+            analysis_decision: None,
         });
         state.fix_result_xml_archived_pass = Some(0);
         state.agent_chain.current_drain = AgentDrain::Fix;
@@ -1377,7 +1267,6 @@ fn test_fix_outcome_applied_after_continuation_clears_fix_drain_state_before_ret
         state.continuation.fix_status =
             Some(ralph_workflow::reducer::state::FixStatus::IssuesRemain);
         state.continuation.fix_previous_summary = Some("continue".to_string());
-        state.continuation.last_fix_xsd_error = Some("bad xml".to_string());
 
         let state = reduce(state, PipelineEvent::fix_outcome_applied(0));
         let state = reduce(
@@ -1398,7 +1287,6 @@ fn test_fix_outcome_applied_after_continuation_clears_fix_drain_state_before_ret
         assert_eq!(state.continuation.fix_continuation_attempt, 0);
         assert!(state.continuation.fix_status.is_none());
         assert!(state.continuation.fix_previous_summary.is_none());
-        assert!(state.continuation.last_fix_xsd_error.is_none());
     });
 }
 
@@ -1409,6 +1297,10 @@ fn test_named_schema_accepts_metadata_only_legacy_agent_chain_section() {
         let workspace = MemoryWorkspace::new_test().with_file(
             ".agent/agents.toml",
             r#"
+            [orchestration]
+            forbid_sibling_drain_inference = false
+            require_explicit_drain_bindings = false
+
             [agent_chains]
             shared_dev = ["codex"]
             shared_review = ["claude"]
@@ -1829,9 +1721,19 @@ fn test_named_schema_defaults_missing_siblings_from_explicit_bindings() {
                 ),
             ]),
             agent_drains: std::collections::HashMap::from([
-                ("development".to_string(), "shared_dev".to_string()),
-                ("fix".to_string(), "shared_review".to_string()),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
             ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                require_explicit_drain_bindings: false,
+            },
             ..Default::default()
         };
 
@@ -1884,11 +1786,27 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
                 ),
             ]),
             agent_drains: std::collections::HashMap::from([
-                ("planning".to_string(), "shared_dev".to_string()),
-                ("development".to_string(), "shared_dev".to_string()),
-                ("review".to_string(), "shared_review".to_string()),
-                ("fix".to_string(), "shared_review".to_string()),
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
             ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                require_explicit_drain_bindings: false,
+            },
             ..Default::default()
         };
         registry = registry.apply_unified_config(&unified).unwrap();
@@ -1918,6 +1836,9 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
 fn test_named_schema_rejects_explicitly_empty_commit_drain() {
     with_default_timeout(|| {
         let toml_str = r#"
+            [orchestration]
+            forbid_sibling_drain_inference = false
+
             [agent_chains]
             shared_dev = ["developer-agent"]
             shared_review = ["reviewer-agent"]
@@ -1952,12 +1873,31 @@ fn test_named_schema_rejects_empty_commit_drain_before_commit_agent_resolution()
                 ("empty_commit".to_string(), Vec::new()),
             ]),
             agent_drains: std::collections::HashMap::from([
-                ("planning".to_string(), "shared_dev".to_string()),
-                ("development".to_string(), "shared_dev".to_string()),
-                ("review".to_string(), "shared_review".to_string()),
-                ("fix".to_string(), "shared_review".to_string()),
-                ("commit".to_string(), "empty_commit".to_string()),
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("shared_review".to_string()),
+                ),
+                (
+                    "commit".to_string(),
+                    DrainConfigToml::Chain("empty_commit".to_string()),
+                ),
             ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let error = unified
@@ -1981,12 +1921,31 @@ fn test_named_schema_rejects_empty_review_and_commit_drains() {
                 ("empty_commit".to_string(), Vec::new()),
             ]),
             agent_drains: std::collections::HashMap::from([
-                ("planning".to_string(), "shared_dev".to_string()),
-                ("development".to_string(), "shared_dev".to_string()),
-                ("review".to_string(), "empty_review".to_string()),
-                ("fix".to_string(), "empty_review".to_string()),
-                ("commit".to_string(), "empty_commit".to_string()),
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("shared_dev".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("empty_review".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("empty_review".to_string()),
+                ),
+                (
+                    "commit".to_string(),
+                    DrainConfigToml::Chain("empty_commit".to_string()),
+                ),
             ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let error = unified
@@ -1996,6 +1955,362 @@ fn test_named_schema_rejects_empty_review_and_commit_drains() {
         assert!(
             error.contains("agent_drains.review") || error.contains("agent_drains.commit"),
             "error should mention an empty built-in drain binding: {error}"
+        );
+    });
+}
+
+#[test]
+fn test_tier3_legacy_chain_rejected_when_forbid_sibling_drain_inference_true() {
+    with_default_timeout(|| {
+        // Config has only a chain named "developer" (tier-3 legacy role-family name).
+        // With forbid_sibling_drain_inference=true (the default), tier-3 is not allowed.
+        // Planning must NOT silently resolve to the developer chain.
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([(
+                "developer".to_string(),
+                vec!["claude".to_string()],
+            )]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("tier-3 only chain must fail when forbid_sibling_drain_inference=true");
+
+        assert!(
+            error.contains("missing bindings"),
+            "expected 'missing bindings' in error: {error}"
+        );
+    });
+}
+
+#[test]
+fn test_tier3_legacy_chains_resolve_all_drains_when_forbid_sibling_drain_inference_false() {
+    with_default_timeout(|| {
+        // Config has only chains named "developer" and "reviewer" (tier-3 legacy role-family names).
+        // With forbid_sibling_drain_inference=false, tier-3 is allowed:
+        // planning/development/analysis → developer chain; review/fix/commit → reviewer chain.
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("developer".to_string(), vec!["dev-agent".to_string()]),
+                ("reviewer".to_string(), vec!["review-agent".to_string()]),
+            ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: false,
+                require_explicit_drain_bindings: false,
+            },
+            ..Default::default()
+        };
+
+        let resolved = unified
+            .resolve_agent_drains_checked()
+            .expect("tier-3 chain should resolve when forbid_sibling_drain_inference=false")
+            .expect("named chain config should resolve");
+
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Planning)
+                .expect("planning should resolve")
+                .agents,
+            vec!["dev-agent"]
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Development)
+                .expect("development should resolve")
+                .agents,
+            vec!["dev-agent"]
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Analysis)
+                .expect("analysis should resolve")
+                .agents,
+            vec!["dev-agent"]
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Review)
+                .expect("review should resolve")
+                .agents,
+            vec!["review-agent"]
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Fix)
+                .expect("fix should resolve")
+                .agents,
+            vec!["review-agent"]
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Commit)
+                .expect("commit should resolve")
+                .agents,
+            vec!["review-agent"]
+        );
+    });
+}
+
+#[test]
+fn test_unknown_chain_reference_produces_descriptive_error() {
+    with_default_timeout(|| {
+        // Config where the planning drain references a chain that doesn't exist.
+        // The error must name both the drain and the missing chain.
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([(
+                "shared_dev".to_string(),
+                vec!["codex".to_string()],
+            )]),
+            agent_drains: std::collections::HashMap::from([(
+                "planning".to_string(),
+                DrainConfigToml::Chain("nonexistent-chain".to_string()),
+            )]),
+            ..Default::default()
+        };
+
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("unknown chain reference must fail");
+
+        assert!(
+            error.contains("planning"),
+            "error should mention the drain name 'planning': {error}"
+        );
+        assert!(
+            error.contains("nonexistent-chain"),
+            "error should mention the missing chain 'nonexistent-chain': {error}"
+        );
+    });
+}
+
+#[test]
+fn test_all_explicit_drain_bindings_resolve_to_exact_chains_without_fallback() {
+    with_default_timeout(|| {
+        // All 6 drains explicitly bound to distinct chains.
+        // Verify that each drain resolves to exactly its specified chain name
+        // without any tier-2/tier-3 drift.
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("plan-chain".to_string(), vec!["planner".to_string()]),
+                ("dev-chain".to_string(), vec!["developer".to_string()]),
+                ("review-chain".to_string(), vec!["reviewer".to_string()]),
+                ("fix-chain".to_string(), vec!["fixer".to_string()]),
+                ("commit-chain".to_string(), vec!["committer".to_string()]),
+                ("analysis-chain".to_string(), vec!["analyst".to_string()]),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("plan-chain".to_string()),
+                ),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("dev-chain".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("review-chain".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("fix-chain".to_string()),
+                ),
+                (
+                    "commit".to_string(),
+                    DrainConfigToml::Chain("commit-chain".to_string()),
+                ),
+                (
+                    "analysis".to_string(),
+                    DrainConfigToml::Chain("analysis-chain".to_string()),
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        let resolved = unified
+            .resolve_agent_drains_checked()
+            .expect("all-explicit drain config must resolve")
+            .expect("named drain config should resolve");
+
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Planning)
+                .expect("planning")
+                .chain_name,
+            "plan-chain"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Development)
+                .expect("development")
+                .chain_name,
+            "dev-chain"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Review)
+                .expect("review")
+                .chain_name,
+            "review-chain"
+        );
+        assert_eq!(
+            resolved.binding(AgentDrain::Fix).expect("fix").chain_name,
+            "fix-chain"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Commit)
+                .expect("commit")
+                .chain_name,
+            "commit-chain"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Analysis)
+                .expect("analysis")
+                .chain_name,
+            "analysis-chain"
+        );
+    });
+}
+
+#[test]
+fn test_merge_global_partial_local_produces_complete_drain_map() {
+    with_default_timeout(|| {
+        // Global config has 4 of 6 drains (missing commit and analysis).
+        // Local config adds the 2 missing drains.
+        // Verify the merged config resolves all 6 drains to the correct chains.
+        let global_toml = r#"
+[agent_chains]
+shared_dev = ["codex"]
+shared_review = ["claude"]
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+"#;
+        let local_toml = r#"
+[agent_chains]
+commit_chain = ["aider"]
+analysis_chain = ["gemini"]
+[agent_drains]
+commit = "commit_chain"
+analysis = "analysis_chain"
+"#;
+        let global = UnifiedConfig::load_from_content(global_toml).expect("global TOML must parse");
+        let local = UnifiedConfig::load_from_content(local_toml).expect("local TOML must parse");
+        let merged = global.merge_with_content(local_toml, &local);
+
+        let resolved = merged
+            .resolve_agent_drains_checked()
+            .expect("merged config must resolve all drains")
+            .expect("named drain config should resolve");
+
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Planning)
+                .expect("planning")
+                .chain_name,
+            "shared_dev"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Development)
+                .expect("development")
+                .chain_name,
+            "shared_dev"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Review)
+                .expect("review")
+                .chain_name,
+            "shared_review"
+        );
+        assert_eq!(
+            resolved.binding(AgentDrain::Fix).expect("fix").chain_name,
+            "shared_review"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Commit)
+                .expect("commit")
+                .chain_name,
+            "commit_chain"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Analysis)
+                .expect("analysis")
+                .chain_name,
+            "analysis_chain"
+        );
+    });
+}
+
+#[test]
+fn test_require_explicit_drain_bindings_rejects_tier1_only_drain() {
+    with_default_timeout(|| {
+        // When require_explicit_drain_bindings=true, every built-in drain must appear
+        // explicitly in agent_drains — tier-1 chain-name resolution is not enough.
+        //
+        // Config has 5 drains in agent_drains (all except "analysis").
+        // There IS a chain named "analysis" in agent_chains (tier-1 match),
+        // but require_explicit_drain_bindings=true must reject the implicit tier-1 resolution.
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("dev".to_string(), vec!["codex".to_string()]),
+                ("review".to_string(), vec!["claude".to_string()]),
+                // "analysis" chain exists for tier-1 resolution — must still be rejected
+                ("analysis".to_string(), vec!["gemini".to_string()]),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                (
+                    "planning".to_string(),
+                    DrainConfigToml::Chain("dev".to_string()),
+                ),
+                (
+                    "development".to_string(),
+                    DrainConfigToml::Chain("dev".to_string()),
+                ),
+                (
+                    "review".to_string(),
+                    DrainConfigToml::Chain("review".to_string()),
+                ),
+                (
+                    "fix".to_string(),
+                    DrainConfigToml::Chain("review".to_string()),
+                ),
+                (
+                    "commit".to_string(),
+                    DrainConfigToml::Chain("review".to_string()),
+                ),
+                // "analysis" is deliberately absent from agent_drains
+            ]),
+            orchestration: OrchestrationConfig {
+                forbid_sibling_drain_inference: true,
+                require_explicit_drain_bindings: true,
+            },
+            ..Default::default()
+        };
+
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("require_explicit_drain_bindings=true must reject tier-1-only drain");
+
+        assert!(
+            error.contains("analysis"),
+            "error should mention the missing explicit binding 'analysis': {error}"
+        );
+        assert!(
+            error.contains("missing bindings"),
+            "error should mention 'missing bindings': {error}"
         );
     });
 }

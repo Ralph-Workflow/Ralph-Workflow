@@ -38,6 +38,7 @@ mod tests {
                 crate::reducer::state::DevelopmentValidatedOutcome {
                     iteration: 2,
                     status: crate::reducer::state::DevelopmentStatus::Completed,
+                    analysis_decision: None,
                     summary: "test".to_string(),
                     files_changed: None,
                     next_steps: None,

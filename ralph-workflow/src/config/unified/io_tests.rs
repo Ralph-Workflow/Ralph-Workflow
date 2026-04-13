@@ -207,3 +207,7 @@ mod merge;
 // Agent chain per-key merge tests
 #[path = "io_tests/agent_chain_merge.rs"]
 mod agent_chain_merge;
+
+// Startup validation rule tests (Rules 1, 2, 9, 10, 11, 12, 23, 24)
+#[path = "io_tests/validation_rules.rs"]
+mod validation_rules;

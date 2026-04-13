@@ -68,7 +68,6 @@ pub fn render_ui_event(event: &UIEvent) -> String {
 mod tests {
     use super::*;
     use crate::reducer::event::PipelinePhase;
-    use crate::reducer::ui_event::{XmlOutputContext, XmlOutputType};
 
     #[test]
     fn test_render_phase_transition() {
@@ -109,23 +108,6 @@ mod tests {
         let output = render_ui_event(&event);
         assert!(output.contains("[claude]"));
         assert!(output.contains("Processing request"));
-    }
-
-    #[test]
-    fn test_render_xml_output_routes_to_xml_module() {
-        let event = UIEvent::XmlOutput {
-            xml_type: XmlOutputType::DevelopmentResult,
-            content: r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary>Done</ralph-summary>
-</ralph-development-result>"
-                .to_string(),
-            context: Some(XmlOutputContext::default()),
-        };
-        let output = render_ui_event(&event);
-        // Should be semantically rendered, not raw XML
-        assert!(output.contains("✅") || output.contains("Completed"));
-        assert!(output.contains("Done"));
     }
 
     #[test]

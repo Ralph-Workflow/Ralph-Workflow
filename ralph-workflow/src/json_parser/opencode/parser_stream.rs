@@ -269,84 +269,6 @@ impl OpenCodeParser {
         Ok(())
     }
 
-    fn with_xml_tail_bound(accumulated: &str, max_bytes: usize) -> &str {
-        if accumulated.len() <= max_bytes {
-            return accumulated;
-        }
-
-        let start = (accumulated.len() - max_bytes..accumulated.len())
-            .find(|&i| accumulated.is_char_boundary(i))
-            .unwrap_or(accumulated.len());
-        &accumulated[start..]
-    }
-
-    fn persist_extracted_xml(
-        workspace: &dyn crate::workspace::Workspace,
-        output_path: &str,
-        xml: &str,
-    ) -> std::io::Result<()> {
-        if xml.len() > MAX_XML_BYTES {
-            return Ok(());
-        }
-
-        workspace.create_dir_all(Path::new(".agent/tmp"))?;
-        workspace.write(Path::new(output_path), xml)?;
-        Ok(())
-    }
-
-    fn persist_extracted_xml_artifacts(
-        &self,
-        workspace: &dyn crate::workspace::Workspace,
-    ) -> std::io::Result<()> {
-        let Some(accumulated) = self.get_accumulated_text() else {
-            return Ok(());
-        };
-        let tail = Self::with_xml_tail_bound(&accumulated, MAX_XML_SEARCH_BYTES);
-        self.persist_commit_xml_if_present(workspace, tail)?;
-        self.persist_issues_xml_if_present(workspace, tail)
-    }
-
-    fn get_accumulated_text(&self) -> Option<String> {
-        let session = self.state.streaming_session.borrow();
-        session
-            .get_accumulated(ContentType::Text, "main")
-            .map(str::to_string)
-    }
-
-    fn persist_commit_xml_if_present(
-        &self,
-        workspace: &dyn crate::workspace::Workspace,
-        tail: &str,
-    ) -> std::io::Result<()> {
-        if let Some(xml) =
-            crate::files::llm_output_extraction::xml_extraction::extract_xml_commit(tail)
-        {
-            Self::persist_extracted_xml(
-                workspace,
-                crate::files::llm_output_extraction::file_based_extraction::paths::COMMIT_MESSAGE_XML,
-                &xml,
-            )?;
-        }
-        Ok(())
-    }
-
-    fn persist_issues_xml_if_present(
-        &self,
-        workspace: &dyn crate::workspace::Workspace,
-        tail: &str,
-    ) -> std::io::Result<()> {
-        if let Some(xml) =
-            crate::files::llm_output_extraction::extract_issues_xml(tail)
-        {
-            Self::persist_extracted_xml(
-                workspace,
-                crate::files::llm_output_extraction::file_based_extraction::paths::ISSUES_XML,
-                &xml,
-            )?;
-        }
-        Ok(())
-    }
-
     fn write_monitor_warning_if_needed(&mut self, monitor: &HealthMonitor) -> std::io::Result<()> {
         if let Some(warning) = monitor.check_and_warn(self.colors) {
             self.with_printer_mut(|printer| {
@@ -389,7 +311,6 @@ impl OpenCodeParser {
         self.tool_activity_tracker.reset(); // hard-reset at stream end — no more tool events can arrive
 
         self.write_log_buffer_if_enabled(workspace, &log_buffer)?;
-        self.persist_extracted_xml_artifacts(workspace)?;
         self.write_monitor_warning_if_needed(&monitor)?;
         Ok(())
     }

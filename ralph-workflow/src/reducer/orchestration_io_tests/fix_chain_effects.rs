@@ -123,6 +123,7 @@ fn test_fix_chain_applies_all_issues_addressed_to_fix_attempt_completed() {
             pass: 0,
             status: crate::reducer::state::FixStatus::AllIssuesAddressed,
             summary: Some("ok".to_string()),
+            analysis_decision: None,
         }),
         fix_result_xml_archived_pass: Some(0),
         agent_chain: PipelineState::initial(1, 1)
@@ -166,6 +167,7 @@ fn test_fix_chain_emits_archive_fix_result_xml_after_validated() {
             pass: 0,
             status: crate::reducer::state::FixStatus::AllIssuesAddressed,
             summary: None,
+            analysis_decision: None,
         }),
         agent_chain: PipelineState::initial(1, 1)
             .agent_chain
@@ -194,6 +196,7 @@ fn test_fix_chain_emits_apply_fix_outcome_after_fix_result_xml_archived() {
             pass: 0,
             status: crate::reducer::state::FixStatus::AllIssuesAddressed,
             summary: None,
+            analysis_decision: None,
         }),
         fix_result_xml_archived_pass: Some(0),
         agent_chain: PipelineState::initial(1, 1)

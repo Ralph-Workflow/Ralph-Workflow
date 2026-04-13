@@ -1,7 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::development::boundary_domain::{
     build_development_prompt_content_id, PromptModeData, PromptModeResult,
 };
@@ -17,16 +16,14 @@ use crate::prompts::{
     get_stored_or_generate_prompt, prompt_developer_iteration_continuation_xml,
     prompt_developer_iteration_continuation_xml_with_log,
     prompt_developer_iteration_xml_with_references,
-    prompt_developer_iteration_xml_with_references_and_log,
-    prompt_developer_iteration_xsd_retry_with_context_files_and_log, PromptScopeKey, RetryMode,
+    prompt_developer_iteration_xml_with_references_and_log, PromptScopeKey, RetryMode,
     SessionCapabilities,
 };
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::{
-    MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
-    PromptMaterializationReason, PromptMode,
+    MaterializedPromptInput, PromptInputRepresentation, PromptMode,
 };
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
@@ -56,7 +53,6 @@ impl MainEffectHandler {
             DevelopmentPromptExecutionPath::Continuation => {
                 Ok(self.prompt_mode_continuation(ctx, iteration))
             }
-            DevelopmentPromptExecutionPath::XsdRetry => self.prompt_mode_xsd_retry(ctx, iteration),
             DevelopmentPromptExecutionPath::SameAgentRetry => {
                 self.prompt_mode_same_agent_retry(ctx, iteration)
             }
@@ -109,89 +105,6 @@ impl MainEffectHandler {
             rendered_log,
             additional_events: Vec::new(),
         })
-    }
-
-    fn prompt_mode_xsd_retry(
-        &self,
-        ctx: &PhaseContext<'_>,
-        iteration: u32,
-    ) -> Result<PromptModeResult> {
-        let last_output = read_xsd_retry_last_output(ctx)?;
-        let content_id_sha256 = sha256_hex_str(&last_output);
-        let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
-        let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
-        let xsd_retry_events = maybe_materialize_xsd_retry_events(
-            ctx,
-            &self.state,
-            iteration,
-            &last_output,
-            &content_id_sha256,
-            &consumer_signature_sha256,
-            inline_budget_bytes,
-        )?;
-        self.build_xsd_retry_prompt_result(
-            ctx,
-            iteration,
-            content_id_sha256,
-            consumer_signature_sha256,
-            xsd_retry_events,
-        )
-    }
-
-    fn build_xsd_retry_prompt_result(
-        &self,
-        ctx: &PhaseContext<'_>,
-        iteration: u32,
-        content_id_sha256: String,
-        consumer_signature_sha256: String,
-        xsd_retry_events: Option<Vec<PipelineEvent>>,
-    ) -> Result<PromptModeResult> {
-        let is_continuation = self.state.continuation.is_continuation();
-        let scope_key = PromptScopeKey::for_development(
-            iteration,
-            None,
-            RetryMode::Xsd {
-                count: self.state.continuation.xsd_retry_count,
-            },
-            self.state.recovery_epoch,
-        );
-        let prompt_key = scope_key.to_string();
-        let prompt_content_id = sha256_hex_str(&format!(
-            "development_xsd_retry:last_output:{content_id_sha256}:consumer:{consumer_signature_sha256}"
-        ));
-        let (prompt, was_replayed) = get_stored_or_generate_prompt(
-            &scope_key,
-            &self.state.prompt_history,
-            Some(&prompt_content_id),
-            || {
-                prompt_developer_iteration_xsd_retry_with_context_files_and_log(
-                    ctx.template_context,
-                    "XML output failed validation. Provide valid XML output.",
-                    ctx.workspace,
-                    "developer_iteration_xsd_retry",
-                    is_continuation,
-                    SessionCapabilities::new(
-                        &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
-                    ),
-                )
-                .content
-            },
-        );
-        let rendered_log =
-            match build_xsd_retry_rendered_log(ctx, &prompt_key, was_replayed, is_continuation) {
-                Ok(log) => log,
-                Err(early) => return Ok(PromptModeResult::EarlyReturn(*early)),
-            };
-        Ok(PromptModeResult::Data(PromptModeData {
-            prompt,
-            template_name: "developer_iteration_xsd_retry",
-            prompt_key: Some(prompt_key),
-            was_replayed,
-            prompt_content_id: Some(prompt_content_id),
-            rendered_log,
-            additional_events: xsd_retry_events.unwrap_or_default(),
-        }))
     }
 
     pub(super) fn prompt_mode_same_agent_retry(
@@ -348,167 +261,6 @@ fn build_normal_rendered_log(
         rendered.log,
         AgentRole::Developer,
         "developer_iteration_xml",
-        prompt_key,
-        was_replayed,
-    )
-}
-
-fn read_xsd_retry_last_output(ctx: &PhaseContext<'_>) -> Result<String, ErrorEvent> {
-    ctx.workspace
-        .read(Path::new(xml_paths::DEVELOPMENT_RESULT_XML))
-        .or_else(|err| {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                let processed_path = Path::new(".agent/tmp/development_result.xml.processed");
-                ctx.workspace.read(processed_path).inspect(|_| {
-                    ctx.logger
-                        .info("XSD retry: using archived .processed file as last output");
-                })
-            } else {
-                Err(err)
-            }
-        })
-        .map_err(|err| ErrorEvent::WorkspaceReadFailed {
-            path: xml_paths::DEVELOPMENT_RESULT_XML.to_string(),
-            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-        })
-}
-
-fn is_xsd_retry_already_materialized(
-    ctx: &PhaseContext<'_>,
-    state: &crate::reducer::state::PipelineState,
-    iteration: u32,
-    content_id_sha256: &str,
-    consumer_signature_sha256: &str,
-) -> bool {
-    state
-        .prompt_inputs
-        .xsd_retry_last_output
-        .as_ref()
-        .is_some_and(|m| {
-            m.phase == crate::reducer::event::PipelinePhase::Development
-                && m.scope_id == iteration
-                && m.last_output.content_id_sha256 == content_id_sha256
-                && m.last_output.consumer_signature_sha256 == consumer_signature_sha256
-                && ctx
-                    .workspace
-                    .exists(Path::new(".agent/tmp/last_output.xml"))
-        })
-}
-
-fn write_xsd_retry_last_output(
-    ctx: &PhaseContext<'_>,
-    last_output: &str,
-) -> Result<(), ErrorEvent> {
-    let tmp_dir = Path::new(".agent/tmp");
-    if !ctx.workspace.exists(tmp_dir) {
-        ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
-            ErrorEvent::WorkspaceCreateDirAllFailed {
-                path: tmp_dir.display().to_string(),
-                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-            }
-        })?;
-    }
-    let last_output_path = Path::new(".agent/tmp/last_output.xml");
-    ctx.workspace
-        .write_atomic(last_output_path, last_output)
-        .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
-            path: last_output_path.display().to_string(),
-            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-        })
-}
-
-fn build_xsd_retry_materialized_events(
-    iteration: u32,
-    content_id_sha256: &str,
-    consumer_signature_sha256: &str,
-    last_output_bytes: u64,
-    inline_budget_bytes: u64,
-) -> Vec<PipelineEvent> {
-    let last_output_path = Path::new(".agent/tmp/last_output.xml");
-    let input = MaterializedPromptInput {
-        kind: PromptInputKind::LastOutput,
-        content_id_sha256: content_id_sha256.to_string(),
-        consumer_signature_sha256: consumer_signature_sha256.to_string(),
-        original_bytes: last_output_bytes,
-        final_bytes: last_output_bytes,
-        model_budget_bytes: None,
-        inline_budget_bytes: Some(inline_budget_bytes),
-        representation: PromptInputRepresentation::FileReference {
-            path: last_output_path.to_path_buf(),
-        },
-        reason: PromptMaterializationReason::PolicyForcedReference,
-    };
-    std::iter::once(PipelineEvent::xsd_retry_last_output_materialized(
-        crate::reducer::event::PipelinePhase::Development,
-        iteration,
-        input,
-    ))
-    .chain((last_output_bytes > inline_budget_bytes).then_some(
-        PipelineEvent::prompt_input_oversize_detected(
-            crate::reducer::event::PipelinePhase::Development,
-            PromptInputKind::LastOutput,
-            content_id_sha256.to_string(),
-            last_output_bytes,
-            inline_budget_bytes,
-            "xsd-retry-context".to_string(),
-        ),
-    ))
-    .collect()
-}
-
-fn maybe_materialize_xsd_retry_events(
-    ctx: &PhaseContext<'_>,
-    state: &crate::reducer::state::PipelineState,
-    iteration: u32,
-    last_output: &str,
-    content_id_sha256: &str,
-    consumer_signature_sha256: &str,
-    inline_budget_bytes: u64,
-) -> Result<Option<Vec<PipelineEvent>>, ErrorEvent> {
-    if is_xsd_retry_already_materialized(
-        ctx,
-        state,
-        iteration,
-        content_id_sha256,
-        consumer_signature_sha256,
-    ) {
-        return Ok(None);
-    }
-    write_xsd_retry_last_output(ctx, last_output)?;
-    let last_output_bytes = last_output.len() as u64;
-    Ok(Some(build_xsd_retry_materialized_events(
-        iteration,
-        content_id_sha256,
-        consumer_signature_sha256,
-        last_output_bytes,
-        inline_budget_bytes,
-    )))
-}
-
-fn build_xsd_retry_rendered_log(
-    ctx: &PhaseContext<'_>,
-    prompt_key: &str,
-    was_replayed: bool,
-    is_continuation: bool,
-) -> Result<Option<crate::prompts::SubstitutionLog>, Box<EffectResult>> {
-    if was_replayed {
-        return Ok(None);
-    }
-    let rendered = prompt_developer_iteration_xsd_retry_with_context_files_and_log(
-        ctx.template_context,
-        "XML output failed validation. Provide valid XML output.",
-        ctx.workspace,
-        "developer_iteration_xsd_retry",
-        is_continuation,
-        SessionCapabilities::new(
-            &CapabilitySet::defaults_for_drain(SessionDrain::Development),
-            &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
-        ),
-    );
-    check_template_log_complete(
-        rendered.log,
-        AgentRole::Developer,
-        "developer_iteration_xsd_retry",
         prompt_key,
         was_replayed,
     )

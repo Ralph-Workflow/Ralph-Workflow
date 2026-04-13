@@ -456,6 +456,10 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
     let registry = AgentRegistry::new().unwrap();
 
     let toml_str = r#"
+        [orchestration]
+        forbid_sibling_drain_inference = false
+        require_explicit_drain_bindings = false
+
         [agent_chains]
         shared_dev = ["codex", "claude"]
         shared_review = ["claude", "opencode"]

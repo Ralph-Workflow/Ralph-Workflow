@@ -106,12 +106,11 @@ The caller is responsible for emitting `PromptInputEvent::PromptCaptured` when a
 
 All prompt generation functions accept a `&dyn Workspace` parameter and use `workspace.absolute_str()` to generate absolute paths for output files. This ensures prompts embed paths rooted at the workspace directory, not the process's current working directory (`std::env::current_dir()`).
 
-**Why this matters:** In multi-worktree setups or isolation mode, the process CWD may differ from the workspace root. Using CWD-based paths would cause agents to write output XML to the wrong directory, triggering XSD retry loops that cannot converge.
+**Why this matters:** In multi-worktree setups or isolation mode, the process CWD may differ from the workspace root. Using CWD-based paths would cause agents to write artifacts to the wrong directory, leading to failed artifact submissions.
 
 **Implementation:**
-- All `prompt_*_xml_with_*` functions take `workspace: &dyn Workspace`
-- XSD retry functions check for missing schema files and emit diagnostics including workspace root
-- Effect handlers pass `ctx.workspace` to prompt generation functions
+- Prompt generation functions take `workspace: &dyn Workspace`
+- Effect handlers pass `ctx.workspace` to prompt generation functions so all artifact paths are workspace-rooted
 
 ### Template Rendering Error Handling
 
@@ -131,7 +130,6 @@ Immediately before each `Invoke*Agent` effect execution, the effect handler norm
 
 - Verify current role matches expected role for the phase
 - Apply session ID policy based on retry mode:
-  - XSD retry: preserve session ID (same conversation)
   - Same-agent retry: clear session ID (fresh conversation)
   - Normal invocation: use session policy from reducer state
 
@@ -188,7 +186,7 @@ The session model is defined in `ralph-workflow/src/agents/session/mod.rs`:
 | Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
 | Commit | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `GitWrite`, `ArtifactSubmit`, `RunReportProgress` | `AllowGitWrite` |
 
-**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, XML archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
+**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, MCP artifact archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
 
 ### Session Handshake
 

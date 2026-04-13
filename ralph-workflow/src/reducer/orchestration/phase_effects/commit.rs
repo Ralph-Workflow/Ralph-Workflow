@@ -9,18 +9,13 @@
 //! 4. Otherwise:
 //!    a. Materialize commit inputs (diff)
 //!    b. Prepare commit prompt
-//!    c. Cleanup commit XML (on attempt 1 only, not on XSD retries)
+//!    c. Cleanup commit XML (on attempt 1 only)
 //!    d. Invoke commit agent
 //!    e. Extract commit XML
 //!    f. Validate commit XML
 //!    g. Archive commit XML
 //!    h. Create commit
 //! 5. Save checkpoint (transition to `FinalValidation`)
-//!
-//! XSD retry handling:
-//! - On attempt > 1 (XSD retry), skip cleanup to preserve invalid XML
-//! - The agent reads the invalid output before overwriting it
-//! - See `commit_xsd_retry` prompt for details
 //!
 //! Diff content ID:
 //! - `commit_diff_content_id_sha256` tracks the diff content hash
@@ -36,8 +31,6 @@ use crate::reducer::state::{CommitState, PipelineState, PromptMode};
 ///
 /// These files are cleaned up before each commit agent invocation to ensure
 /// fresh output. The commit agent writes to `.agent/tmp/commit_message.xml`.
-///
-/// Note: XSD retry handling skips cleanup on attempt > 1 (see above).
 pub(super) const REQUIRED_FILES: &[&str] = &[
     ".agent/tmp/commit_message.xml",
     ".agent/tmp/commit_message.json",
@@ -68,9 +61,6 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
             // inputs (or re-checking the diff) before re-cleaning XML and reinvoking.
             // The prompt file on disk is the source of truth for invocation.
             if state.commit_prompt_prepared {
-                // IMPORTANT: For commit XSD retries, the agent must be able to read the
-                // previous invalid output at `.agent/tmp/commit_message.xml` before overwriting
-                // it (see commit_xsd_retry prompt). Therefore, skip cleanup on retry attempts.
                 if current_attempt == 1 && !state.commit_required_files_cleaned {
                     return Effect::CleanupRequiredFiles {
                         files: REQUIRED_FILES.iter().map(ToString::to_string).collect(),
@@ -138,10 +128,6 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
                     && !state.continuation.same_agent_retries_exhausted()
                 {
                     PromptMode::SameAgentRetry
-                } else if state.continuation.xsd_retry_pending
-                    && !state.continuation.xsd_retries_exhausted()
-                {
-                    PromptMode::XsdRetry
                 } else {
                     PromptMode::Normal
                 };

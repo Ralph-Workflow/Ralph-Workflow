@@ -22,15 +22,20 @@
 //! │   └── CcsAliasToml (Command string or CcsAliasConfig)
 //! ├── agents (HashMap<String, AgentConfigToml>)
 //! ├── agent_chains (HashMap<String, Vec<String>>)
-//! ├── agent_drains (HashMap<String, String>)
+//! ├── agent_drains (HashMap<String, DrainConfigToml>)
 //! └── agent_chain (legacy migration detection only)
 //! ```
 
 use crate::agents::fallback::{
     AgentDrain, FallbackConfig, ResolvedDrainBinding, ResolvedDrainConfig,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+// Re-export policy types so existing import paths in ralph-workflow continue to work.
+pub use ralph_workflow_policy::config::{
+    DrainConfigTable, DrainConfigToml, OrchestrationConfig, ResolveDrainError,
+};
 
 // =============================================================================
 // General Configuration
@@ -139,14 +144,6 @@ pub struct GeneralConfig {
     /// Default: 2 continuations (3 total attempts per iteration).
     #[serde(default = "default_max_dev_continuations")]
     pub max_dev_continuations: u32,
-    /// Maximum XSD retry attempts when agent output fails XML validation.
-    ///
-    /// Higher values allow more attempts to fix XML formatting issues before
-    /// switching to the next agent in the fallback chain.
-    ///
-    /// Default: 10 retries before falling back to the next agent.
-    #[serde(default = "default_max_xsd_retries")]
-    pub max_xsd_retries: u32,
     /// Maximum same-agent retry attempts for transient invocation failures (timeout/internal).
     ///
     /// Semantics: this is a *failure budget* for the current agent. With a value of `2`:
@@ -194,13 +191,6 @@ pub struct GeneralConfig {
 /// for fast iteration cycles.
 const fn default_max_dev_continuations() -> u32 {
     2
-}
-
-/// Default maximum XSD retry attempts before agent fallback.
-///
-/// This allows 10 retries to fix XML formatting issues before switching agents.
-const fn default_max_xsd_retries() -> u32 {
-    10
 }
 
 /// Default maximum same-agent retry attempts before agent fallback.
@@ -269,7 +259,6 @@ impl Default for GeneralConfig {
             git_user_email: None,
             provider_fallback: HashMap::new(),
             max_dev_continuations: default_max_dev_continuations(),
-            max_xsd_retries: default_max_xsd_retries(),
             max_same_agent_retries: default_max_same_agent_retries(),
             max_commit_residual_retries: default_max_commit_residual_retries(),
             max_retries: default_max_retries(),
@@ -452,93 +441,20 @@ pub struct AgentConfigToml {
 // Unified Configuration
 // =============================================================================
 
-// =============================================================================
-// Agent Drain Error
-// =============================================================================
-
-/// Error returned by [`UnifiedConfig::resolve_agent_drains_checked`].
-///
-/// Each variant preserves the original human-facing guidance text via `Display`.
-#[derive(Debug)]
-pub enum ResolveDrainError {
-    /// `[agent_chain]` has conflicting named-key definitions with `[agent_chains]`.
-    ConflictingLegacyChainNames { names: Vec<String> },
-    /// `[agent_drains]` found alongside the singular `[agent_chain]` key; probably meant `[agent_chains]`.
-    SingularAgentChainWithDrains,
-    /// Legacy `[agent_chain]` role bindings cannot be combined with the named schema.
-    LegacyRoleCombinedWithNamedSchema,
-    /// A key in `agent_drains` is not a recognised built-in drain.
-    UnknownBuiltinDrain { drain_name: String },
-    /// A value in `agent_drains` references a chain absent from `agent_chains`.
-    UnknownChainReference {
-        drain_name: String,
-        chain_name: String,
-    },
-    /// After iterative default-resolution some built-in drains remain unbound.
-    MissingBuiltinCoverage { missing: String },
-    /// A built-in drain resolves to an empty agent list via its named chain.
-    EmptyChainBinding { drain: String, chain: String },
-}
-
-impl std::fmt::Display for ResolveDrainError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ConflictingLegacyChainNames { names } => write!(
-                f,
-                "conflicting agent chain definitions in [agent_chain] and [agent_chains] for: {};                  remove the duplicate legacy definitions and keep the canonical agent_chains/agent_drains config                  ([agent_chains]/[agent_drains])",
-                names.join(", ")
-            ),
-            Self::SingularAgentChainWithDrains => write!(
-                f,
-                "found [agent_drains] with singular [agent_chain]; did you mean [agent_chains]?                  Move retry/backoff settings to [general]                  (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)"
-            ),
-            Self::LegacyRoleCombinedWithNamedSchema => write!(
-                f,
-                "deprecated legacy [agent_chain] role bindings cannot be combined with the canonical                  agent_chains/agent_drains schema; migrate agent lists to [agent_chains] + [agent_drains]                  and move retry/backoff settings to [general]                  (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)"
-            ),
-            Self::UnknownBuiltinDrain { drain_name } => {
-                write!(f, "agent_drains.{drain_name} is not a built-in drain")
-            }
-            Self::UnknownChainReference {
-                drain_name,
-                chain_name,
-            } => write!(
-                f,
-                "agent_drains.{drain_name} references unknown chain '{chain_name}'"
-            ),
-            Self::MissingBuiltinCoverage { missing } => write!(
-                f,
-                "agent_drains does not resolve all built-in drains; missing bindings for: {missing}"
-            ),
-            Self::EmptyChainBinding { drain, chain } => write!(
-                f,
-                "agent_drains.{drain} must not resolve to an empty chain (chain '{chain}')"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ResolveDrainError {}
-
-impl ResolveDrainError {
-    /// Helper used by legacy integration assertions that expect `contains`.
-    #[must_use]
-    pub fn contains(&self, needle: &str) -> bool {
-        self.to_string().contains(needle)
-    }
-}
-
 /// Unified configuration file structure.
 ///
 /// This is the sole source of truth for Ralph configuration,
 /// located at `~/.config/ralph-workflow.toml`.
-#[derive(Debug, Clone, Deserialize, serde::Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct UnifiedConfig {
     /// General settings.
     pub general: GeneralConfig,
     /// CCS defaults for aliases.
     pub ccs: CcsConfig,
+    /// Orchestration policy settings.
+    #[serde(default)]
+    pub orchestration: OrchestrationConfig,
     /// Agent definitions (used via serde deserialization for future expansion).
     #[serde(default)]
     pub agents: HashMap<String, AgentConfigToml>,
@@ -549,8 +465,11 @@ pub struct UnifiedConfig {
     #[serde(default)]
     pub agent_chains: HashMap<String, Vec<String>>,
     /// Drain-to-chain bindings for the built-in drains.
+    ///
+    /// Accepts both the flat string form (`planning = "planner"`) and the
+    /// table form (`[agent_drains.planning]\nchain = "planner"`).
     #[serde(default)]
-    pub agent_drains: HashMap<String, String>,
+    pub agent_drains: HashMap<String, DrainConfigToml>,
     /// Legacy role-keyed agent chain configuration.
     ///
     /// This is retained only so validation can produce an explicit migration
@@ -567,6 +486,12 @@ impl UnifiedConfig {
     }
 
     /// Resolve configuration into explicit built-in drain bindings with diagnostics.
+    ///
+    /// When `orchestration.forbid_sibling_drain_inference = true` (the default),
+    /// sibling-drain inference (tier 2) and legacy role-family lookup (tier 3) are
+    /// disabled. Every built-in drain must either have an explicit `agent_drains`
+    /// binding or resolve via a chain named exactly after the drain (tier 1). Missing
+    /// drains are rejected with [`ResolveDrainError::MissingBuiltinCoverage`].
     ///
     /// # Errors
     ///
@@ -597,22 +522,23 @@ impl UnifiedConfig {
             let bindings: HashMap<AgentDrain, ResolvedDrainBinding> = self
                 .agent_drains
                 .iter()
-                .map(|(drain_name, chain_name)| {
+                .map(|(drain_name, drain_config)| {
                     let drain = AgentDrain::from_name(drain_name).ok_or_else(|| {
                         ResolveDrainError::UnknownBuiltinDrain {
                             drain_name: drain_name.clone(),
                         }
                     })?;
+                    let chain_name = drain_config.chain_name();
                     let agents = self.agent_chains.get(chain_name).ok_or_else(|| {
                         ResolveDrainError::UnknownChainReference {
                             drain_name: drain_name.clone(),
-                            chain_name: chain_name.clone(),
+                            chain_name: chain_name.to_string(),
                         }
                     })?;
                     Ok::<_, ResolveDrainError>((
                         drain,
                         ResolvedDrainBinding {
-                            chain_name: chain_name.clone(),
+                            chain_name: chain_name.to_string(),
                             agents: agents.clone(),
                         },
                     ))
@@ -620,6 +546,12 @@ impl UnifiedConfig {
                 .collect::<Result<HashMap<_, _>, _>>()?;
 
             let all_drains = AgentDrain::all();
+
+            // When forbid_sibling_drain_inference is true (the default), skip tiers 2
+            // and 3 of the fallback chain. Only tier 1 (drain-specific chain name) is
+            // allowed as a fallback for drains not explicitly bound in agent_drains.
+            let forbid_sibling = self.orchestration.forbid_sibling_drain_inference;
+
             let bindings = (0..all_drains.len()).try_fold(bindings, |current_bindings, _| {
                 let unresolved: Vec<AgentDrain> = all_drains
                     .iter()
@@ -634,8 +566,14 @@ impl UnifiedConfig {
                 let new_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = unresolved
                     .iter()
                     .filter_map(|drain| {
-                        default_chain_binding_for_drain(self, &current_bindings, *drain)
-                            .map(|binding| (*drain, binding))
+                        if forbid_sibling {
+                            // Only tier 1: drain-specific chain name
+                            drain_tier1_chain_binding(self, *drain)
+                        } else {
+                            // All three tiers (legacy behavior)
+                            default_chain_binding_for_drain(self, &current_bindings, *drain)
+                        }
+                        .map(|binding| (*drain, binding))
                     })
                     .collect();
 
@@ -697,6 +635,26 @@ impl UnifiedConfig {
                         }
                     },
                 );
+            }
+
+            // When require_explicit_drain_bindings=true, every built-in drain must appear
+            // in agent_drains explicitly — tier-1 chain-name resolution is not sufficient.
+            if self.orchestration.require_explicit_drain_bindings {
+                let explicit_drains: std::collections::HashSet<AgentDrain> = self
+                    .agent_drains
+                    .keys()
+                    .filter_map(|k| AgentDrain::from_name(k))
+                    .collect();
+                let missing: Vec<&str> = AgentDrain::all()
+                    .iter()
+                    .filter(|drain| !explicit_drains.contains(drain))
+                    .map(|drain| drain.as_str())
+                    .collect();
+                if !missing.is_empty() {
+                    return Err(ResolveDrainError::MissingBuiltinCoverage {
+                        missing: missing.join(", "),
+                    });
+                }
             }
 
             let provider_fallback = if self.general.provider_fallback.is_empty() {
@@ -786,14 +744,24 @@ fn conflicting_legacy_chain_names(config: &UnifiedConfig) -> Vec<&'static str> {
         .collect()
 }
 
+/// Tier-1 only: look for a chain named exactly after the drain (e.g., chain "planning"
+/// for the planning drain). Does NOT fall back to siblings or legacy role families.
+fn drain_tier1_chain_binding(
+    config: &UnifiedConfig,
+    drain: AgentDrain,
+) -> Option<ResolvedDrainBinding> {
+    drain_specific_chain_names_for_drain(drain)
+        .iter()
+        .find_map(|&chain_name| resolve_named_chain_binding(config, chain_name))
+}
+
+/// All-three-tiers fallback (legacy behavior, used when forbid_sibling_drain_inference = false).
 fn default_chain_binding_for_drain(
     config: &UnifiedConfig,
     bindings: &HashMap<AgentDrain, ResolvedDrainBinding>,
     drain: AgentDrain,
 ) -> Option<ResolvedDrainBinding> {
-    let explicit_drain_binding = drain_specific_chain_names_for_drain(drain)
-        .iter()
-        .find_map(|&chain_name| resolve_named_chain_binding(config, chain_name));
+    let explicit_drain_binding = drain_tier1_chain_binding(config, drain);
 
     let sibling_binding = fallback_source_drains_for_drain(drain)
         .iter()

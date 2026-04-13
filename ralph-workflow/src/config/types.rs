@@ -274,10 +274,6 @@ pub struct Config {
     ///
     /// Default: 2 continuations (3 total attempts per iteration).
     pub max_dev_continuations: Option<u32>,
-    /// Maximum XSD retry attempts when agent output fails XML validation.
-    /// Higher values allow more attempts to fix XML formatting before agent fallback.
-    /// Default: 10 (10 retries before falling back to next agent).
-    pub max_xsd_retries: Option<u32>,
     /// Maximum same-agent retry attempts for invocation failures that should not
     /// immediately trigger agent fallback (e.g., timeout/internal/unknown and other
     /// non-auth, non-rate-limit failures).
@@ -355,7 +351,6 @@ impl Config {
             show_streaming_metrics: false,
             review_format_retries: 5,
             max_dev_continuations: Some(2),
-            max_xsd_retries: Some(10),
             max_same_agent_retries: Some(2),
             max_commit_residual_retries: Some(10),
             execution_history_limit: 1000,

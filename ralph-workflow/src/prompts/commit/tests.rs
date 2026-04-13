@@ -460,23 +460,6 @@ fn test_context_based_commit_uses_workspace_paths() {
 }
 
 #[test]
-fn test_commit_xsd_retry_prompt_warning_prefix_is_ascii_only() {
-    let context = TemplateContext::default();
-    let workspace = MemoryWorkspace::new_test();
-
-    let result = prompt_commit_xsd_retry_with_context(&context, "xsd error", &workspace);
-
-    assert!(
-        result.contains("WARNING: Required XSD retry files are missing:"),
-        "prompt should include a deterministic WARNING prefix when retry artifacts are missing"
-    );
-    assert!(
-        !result.contains('⚠'),
-        "prompt must not include non-ASCII glyphs"
-    );
-}
-
-#[test]
 fn commit_message_xsd_allows_code_in_skip_reason() {
     // The Rust validator reads text via helpers that support inline <code> elements.
     // The published schema must match by typing ralph-skip as TextWithCodeType.

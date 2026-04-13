@@ -10,9 +10,9 @@ use crate::reducer::PipelineState;
 
 /// Create initial pipeline state with continuation limits from config.
 ///
-/// This function creates a `PipelineState` with XSD retry and continuation limits
-/// loaded from the config, ensuring these values are available for the reducer
-/// to make deterministic retry decisions.
+/// This function creates a `PipelineState` with continuation limits loaded from
+/// the config, ensuring these values are available for the reducer to make
+/// deterministic retry decisions.
 pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState {
     // Config semantics: max_dev_continuations counts continuation attempts *beyond*
     // the initial attempt. ContinuationState::max_continue_count semantics are
@@ -30,10 +30,6 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
         "BUG: max_dev_continuations is None when it should always have a value from config loading. \
          This indicates config_from_unified() did not properly set the field, or Config was \
          constructed directly without defaults."
-    );
-    debug_assert!(
-        ctx.config.max_xsd_retries.is_some(),
-        "BUG: max_xsd_retries is None when it should always have a value from config loading."
     );
     debug_assert!(
         ctx.config.max_same_agent_retries.is_some(),
@@ -70,7 +66,6 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
     }
 
     let continuation = ContinuationState::with_limits(
-        ctx.config.max_xsd_retries.unwrap_or(10),
         max_continue_count,
         ctx.config.max_same_agent_retries.unwrap_or(2),
     );

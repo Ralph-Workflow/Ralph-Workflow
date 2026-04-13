@@ -125,6 +125,22 @@ impl PipelineEvent {
             pass,
             status,
             summary,
+            analysis_decision: None,
+        })
+    }
+
+    #[must_use]
+    pub const fn fix_result_xml_validated_with_decision(
+        pass: u32,
+        status: crate::reducer::state::FixStatus,
+        summary: Option<String>,
+        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+    ) -> Self {
+        Self::Review(ReviewEvent::FixResultXmlValidated {
+            pass,
+            status,
+            summary,
+            analysis_decision,
         })
     }
 

@@ -159,30 +159,6 @@ fn test_ensure_files_creates_directories() {
 }
 
 #[test]
-fn test_ensure_files_writes_xsd_schemas() {
-    let mut handler = MockAppEffectHandler::new();
-
-    let result = ensure_files_effectful(&mut handler, true);
-
-    assert!(result.is_ok());
-
-    // Verify XSD schemas were written via effects
-    let captured = handler.captured();
-    assert!(
-        captured
-            .iter()
-            .any(|e| matches!(e, AppEffect::WriteFile { path, .. } if path.ends_with("plan.xsd"))),
-        "should write plan.xsd"
-    );
-    assert!(
-        captured.iter().any(
-            |e| matches!(e, AppEffect::WriteFile { path, .. } if path.ends_with("issues.xsd"))
-        ),
-        "should write issues.xsd"
-    );
-}
-
-#[test]
 fn test_ensure_files_non_isolation_creates_context_files() {
     let mut handler = MockAppEffectHandler::new();
 

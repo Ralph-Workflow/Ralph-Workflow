@@ -177,7 +177,6 @@ mod tests {
             show_streaming_metrics: false,
             review_format_retries: 5,
             max_dev_continuations: Some(2),
-            max_xsd_retries: Some(10),
             max_same_agent_retries: Some(2),
             max_commit_residual_retries: Some(10),
             execution_history_limit: 1000,

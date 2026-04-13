@@ -40,6 +40,5 @@
 pub mod json_pretty;
 mod ui_event;
 pub mod xml;
-pub mod xml_pretty;
 
 pub use ui_event::render_ui_event;

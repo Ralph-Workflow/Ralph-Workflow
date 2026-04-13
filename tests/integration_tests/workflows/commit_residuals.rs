@@ -36,15 +36,12 @@ fn create_handlers_with_residuals(
         .with_diff("diff --git a/src/foo.rs b/src/foo.rs\n+mock\n")
         .with_staged_changes(true);
 
-    let commit_xml = r"<ralph-commit>
-<ralph-subject>feat: selective commit</ralph-subject>
-<ralph-files>
-  <ralph-file>src/foo.rs</ralph-file>
-</ralph-files>
-</ralph-commit>";
-
     let effect_handler = MockEffectHandler::new(PipelineState::initial(0, 0))
-        .with_commit_message_xml(commit_xml)
+        .with_commit_json(serde_json::json!({
+            "type": "commit",
+            "subject": "feat: selective commit",
+            "files": ["src/foo.rs"]
+        }))
         .with_residual_files_for_pass(1, pass1_residual)
         .with_residual_files_for_pass(2, pass2_residual);
 

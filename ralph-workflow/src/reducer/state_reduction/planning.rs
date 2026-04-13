@@ -43,8 +43,6 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
         PlanningEvent::PromptPrepared { iteration } => PipelineState {
             planning_prompt_prepared_iteration: Some(iteration),
             continuation: ContinuationState {
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: state.continuation.xsd_retry_session_reuse_pending,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
                 ..state.continuation
@@ -58,8 +56,6 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
         PlanningEvent::AgentInvoked { iteration } => PipelineState {
             planning_agent_invoked_iteration: Some(iteration),
             continuation: ContinuationState {
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
                 ..state.continuation
@@ -111,9 +107,6 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
                     planning_xml_archived_iteration: None,
                     continuation: ContinuationState {
                         invalid_output_attempts: 0,
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         ..state.continuation
                     },
                     ..state
@@ -137,13 +130,11 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
 
         PlanningEvent::OutputValidationFailed { iteration, attempt }
         | PlanningEvent::PlanXmlMissing { iteration, attempt } => {
-            let new_xsd_count = state.continuation.xsd_retry_count + 1;
-
-            // Only increment metrics if we're actually retrying (not exhausted)
-            let will_retry = new_xsd_count < state.continuation.max_xsd_retry_count;
-
-            if new_xsd_count >= state.continuation.max_xsd_retry_count {
-                // XSD retries exhausted - switch to next agent
+            // When a same-agent retry was pending (timeout/internal-error recovery) but the
+            // agent still produced invalid output, switch to the next agent and reset the
+            // invalid-output counter.  Otherwise stay on the current agent and increment the
+            // counter so we can accumulate several failures before switching.
+            if state.continuation.same_agent_retry_pending {
                 let new_agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Planning,
@@ -158,27 +149,18 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
                     planning_xml_archived_iteration: None,
                     continuation: ContinuationState {
                         invalid_output_attempts: 0,
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         same_agent_retry_count: 0,
                         same_agent_retry_pending: false,
                         same_agent_retry_reason: None,
                         ..state.continuation
                     },
-                    metrics: if will_retry {
-                        state.metrics.increment_xsd_retry_planning()
-                    } else {
-                        state.metrics
-                    },
                     ..state
                 }
             } else {
-                // Stay in Planning, increment attempt counters, set retry pending
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Planning,
                     iteration,
-                    agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
+                    agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
                     planning_prompt_prepared_iteration: None,
                     planning_required_files_cleaned_iteration: None,
                     planning_agent_invoked_iteration: None,
@@ -187,17 +169,8 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
                     planning_markdown_written_iteration: None,
                     planning_xml_archived_iteration: None,
                     continuation: ContinuationState {
-                        invalid_output_attempts: attempt + 1,
-                        xsd_retry_count: new_xsd_count,
-                        xsd_retry_pending: true,
-                        // Reuse last session id for planning XSD retry when available.
-                        xsd_retry_session_reuse_pending: true,
+                        invalid_output_attempts: attempt.saturating_add(1),
                         ..state.continuation
-                    },
-                    metrics: if will_retry {
-                        state.metrics.increment_xsd_retry_planning()
-                    } else {
-                        state.metrics
                     },
                     ..state
                 }

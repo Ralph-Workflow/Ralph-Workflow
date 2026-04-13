@@ -15,7 +15,6 @@ pub(crate) mod snippet_domain;
 mod types;
 mod validation;
 mod xml_processing;
-pub(crate) mod xsd_retry_input_strategy;
 
 pub use pass::{run_fix_pass, run_review_pass};
 pub use types::{FixPassResult, ReviewPassResult};

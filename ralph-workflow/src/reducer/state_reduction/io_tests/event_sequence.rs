@@ -6,17 +6,12 @@
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
 use crate::reducer::io_tests::create_test_state;
-use crate::reducer::state::ContinuationState;
 use crate::reducer::state::PipelineState;
 use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_event_sequence_output_validation_retry_then_success() {
     let mut state = PipelineState {
-        continuation: ContinuationState {
-            max_xsd_retry_count: 3,
-            ..ContinuationState::new()
-        },
         ..create_test_state()
     };
     state.phase = PipelinePhase::Development;
@@ -45,18 +40,13 @@ fn test_event_sequence_output_validation_retry_then_success() {
         state,
         PipelineEvent::development_iteration_completed(0, true),
     );
-    assert_eq!(state.phase, PipelinePhase::CommitMessage);
+    // Phase 2: IterationCompleted routes to Review for per-iteration code review
+    assert_eq!(state.phase, PipelinePhase::Review);
 }
 
 #[test]
 fn test_event_sequence_validation_failures_trigger_agent_switch() {
-    use crate::reducer::state::ContinuationState;
-
     let mut state = PipelineState {
-        continuation: ContinuationState {
-            max_xsd_retry_count: 3,
-            ..ContinuationState::new()
-        },
         ..create_test_state()
     };
     state.phase = PipelinePhase::Development;

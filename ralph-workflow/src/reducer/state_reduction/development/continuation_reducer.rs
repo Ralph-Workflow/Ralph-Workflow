@@ -63,11 +63,24 @@ pub(super) fn reduce_continuation_event(
             iteration,
             total_continuation_attempts: _,
         } => {
-            // Continuation succeeded; proceed to CommitMessage and reset continuation state.
+            // Continuation succeeded after multiple attempts; proceed to Review phase.
+            // After development completes (either directly or via continuations),
+            // the correct workflow path is Review, not CommitMessage.
+            // Reset the agent chain so the reviewer chain is used, not the developer chain.
+            let agent_chain = crate::reducer::state::AgentChainState::initial()
+                .with_max_cycles(state.agent_chain.max_cycles)
+                .with_backoff_policy(
+                    state.agent_chain.retry_delay_ms,
+                    state.agent_chain.backoff_multiplier,
+                    state.agent_chain.max_backoff_ms,
+                )
+                .reset_for_drain(crate::agents::AgentDrain::Review);
             PipelineState {
-                phase: crate::reducer::event::PipelinePhase::CommitMessage,
+                phase: crate::reducer::event::PipelinePhase::Review,
                 previous_phase: Some(crate::reducer::event::PipelinePhase::Development),
                 iteration,
+                // Reset reviewer_pass to 0 so each dev iteration's Review cycle starts fresh.
+                reviewer_pass: 0,
                 commit: crate::reducer::state::CommitState::NotStarted,
                 commit_prompt_prepared: false,
                 commit_diff_prepared: false,
@@ -82,7 +95,7 @@ pub(super) fn reduce_continuation_event(
                     context_cleanup_pending: true,
                     ..state.continuation.reset()
                 },
-                agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
+                agent_chain,
                 development_context_prepared_iteration: None,
                 development_prompt_prepared_iteration: None,
                 development_required_files_cleaned_iteration: None,
@@ -96,31 +109,30 @@ pub(super) fn reduce_continuation_event(
         }
         DevelopmentEvent::OutputValidationFailed { iteration, attempt }
         | DevelopmentEvent::XmlMissing { iteration, attempt } => {
-            // Policy: After configured XSD retries are exhausted, switch to next agent.
-            // This keeps invalid output retry logic in the reducer, not the handler.
-            let new_xsd_count = state.continuation.xsd_retry_count + 1;
+            // Switch to the next agent when:
+            // - a same-agent retry was already pending (the retry still produced invalid output), OR
+            // - the accumulated invalid-output counter has reached the threshold, OR
+            // - this attempt value implies we've hit the threshold.
+            // Otherwise accumulate the counter on the current agent and retry.
+            const MAX_INVALID_OUTPUT_ATTEMPTS: u32 = 3;
+            let should_switch = state.continuation.same_agent_retry_pending
+                || state.continuation.invalid_output_attempts >= MAX_INVALID_OUTPUT_ATTEMPTS
+                || attempt.saturating_add(1) >= MAX_INVALID_OUTPUT_ATTEMPTS;
 
-            // Only increment metrics if we're actually retrying (not exhausted)
-            let will_retry = new_xsd_count < state.continuation.max_xsd_retry_count;
-
-            if new_xsd_count >= state.continuation.max_xsd_retry_count {
-                // XSD retries exhausted - switch to next agent
-                let new_agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
+            if should_switch {
+                let new_agent_chain =
+                    state.agent_chain.switch_to_next_agent().clear_session_id();
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Development,
                     iteration,
                     agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
                     continuation: ContinuationState {
                         invalid_output_attempts: 0,
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         same_agent_retry_count: 0,
                         same_agent_retry_pending: false,
                         same_agent_retry_reason: None,
                         ..state.continuation
                     },
-                    // IMPORTANT: XSD retry is for the analysis agent's XML output.
                     // Preserve developer-agent progress and retry analysis only.
                     development_context_prepared_iteration: state
                         .development_context_prepared_iteration,
@@ -133,25 +145,15 @@ pub(super) fn reduce_continuation_event(
                     development_xml_extracted_iteration: None,
                     development_validated_outcome: None,
                     development_xml_archived_iteration: None,
-                    metrics: if will_retry {
-                        state.metrics.increment_xsd_retry_development()
-                    } else {
-                        state.metrics
-                    },
                     ..state
                 }
             } else {
-                // Stay in Development, increment attempt counters, set retry pending
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Development,
                     iteration,
-                    agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
+                    agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
                     continuation: ContinuationState {
-                        invalid_output_attempts: attempt + 1,
-                        xsd_retry_count: new_xsd_count,
-                        xsd_retry_pending: true,
-                        // Reuse last session id for analysis XSD retry when available.
-                        xsd_retry_session_reuse_pending: true,
+                        invalid_output_attempts: attempt.saturating_add(1),
                         ..state.continuation
                     },
                     // Preserve developer-agent progress and retry analysis only.
@@ -166,11 +168,6 @@ pub(super) fn reduce_continuation_event(
                     development_xml_extracted_iteration: None,
                     development_validated_outcome: None,
                     development_xml_archived_iteration: None,
-                    metrics: if will_retry {
-                        state.metrics.increment_xsd_retry_development()
-                    } else {
-                        state.metrics
-                    },
                     ..state
                 }
             }
@@ -212,9 +209,6 @@ pub(super) fn reduce_continuation_event(
                     continuation: ContinuationState {
                         continuation_attempt: 0,
                         invalid_output_attempts: 0,
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         same_agent_retry_count: 0,
                         same_agent_retry_pending: false,
                         same_agent_retry_reason: None,
@@ -251,9 +245,6 @@ pub(super) fn reduce_continuation_event(
                     continuation: ContinuationState {
                         continuation_attempt: 0,
                         invalid_output_attempts: 0,
-                        xsd_retry_count: 0,
-                        xsd_retry_pending: false,
-                        xsd_retry_session_reuse_pending: false,
                         same_agent_retry_count: 0,
                         same_agent_retry_pending: false,
                         same_agent_retry_reason: None,

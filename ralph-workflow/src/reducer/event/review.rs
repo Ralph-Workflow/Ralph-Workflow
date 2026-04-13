@@ -135,6 +135,9 @@ pub enum ReviewEvent {
         pass: u32,
         status: crate::reducer::state::FixStatus,
         summary: Option<String>,
+        /// Phase 2: typed analysis decision from fix analysis agent.
+        /// `None` means no explicit decision — use status-based continuation logic.
+        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
     },
 
     /// Fix result XML cleaned before invoking the fix agent.

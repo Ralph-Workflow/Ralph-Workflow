@@ -32,8 +32,6 @@ enum MonitorEventClassification {
     Ignored,
 }
 
-const MAX_XML_SEARCH_BYTES: usize = 512 * 1024;
-const MAX_XML_BYTES: usize = 128 * 1024;
 
 impl OpenCodeParser {
     pub(crate) fn new(colors: Colors, verbosity: Verbosity) -> Self {

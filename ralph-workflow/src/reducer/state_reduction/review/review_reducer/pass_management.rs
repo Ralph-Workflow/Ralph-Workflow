@@ -53,11 +53,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_completed(
             commit_xml_archived: false,
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
-                // Clear review error when transitioning to commit phase
-                last_review_xsd_error: None,
                 ..state.continuation
             },
             fix_required_files_cleaned_pass: None,
@@ -98,9 +93,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_completed(
             review_issues_xml_archived_pass: None,
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 ..state.continuation
             },
             fix_required_files_cleaned_pass: None,
@@ -188,9 +180,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_pass_completed_clean(
             commit_xml_archived: false,
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 ..state.continuation
             },
             fix_required_files_cleaned_pass: None,
@@ -214,9 +203,6 @@ pub(in crate::reducer::state_reduction::review) fn reduce_pass_completed_clean(
             review_issues_xml_archived_pass: None,
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
-                xsd_retry_count: 0,
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: false,
                 ..state.continuation
             },
             fix_required_files_cleaned_pass: None,

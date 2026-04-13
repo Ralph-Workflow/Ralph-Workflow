@@ -6,7 +6,7 @@ use super::helpers::{handle_postflight_validation, stderr_contains_auth_error};
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::files::delete_issues_file_for_isolation_with_workspace;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::files::{artifact_paths, has_valid_artifact_output};
 use crate::phases::context::PhaseContext;
 use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
@@ -162,7 +162,7 @@ pub fn run_review_pass(
         logfile: &logfile,
         parser_type: agent_config.json_parser,
         env_vars: &agent_config.env_vars,
-        completion_output_path: Some(Path::new(xml_paths::ISSUES_XML)),
+        completion_output_path: Some(Path::new(artifact_paths::ISSUES_XML)),
     };
 
     let attempt_start = capture_time();
@@ -186,11 +186,11 @@ pub fn run_review_pass(
             return Ok(ReviewPassResult::agent_failed(true));
         }
         // Non-auth non-zero exit: fail only when no valid result file exists.
-        // A valid ISSUES_XML despite non-zero exit means the agent completed
+        // A valid ISSUES_JSON despite non-zero exit means the agent completed
         // its work (e.g., proprietary exit codes like reason:91 from OpenCode).
-        if !crate::files::llm_output_extraction::has_valid_xml_output(
+        if !has_valid_artifact_output(
             ctx.workspace,
-            Path::new(xml_paths::ISSUES_XML),
+            Path::new(artifact_paths::ISSUES_JSON),
         ) {
             return Ok(ReviewPassResult::agent_failed(false));
         }

@@ -166,10 +166,12 @@ fn test_ai_can_skip_commit_after_diff_failure() {
             .with_file("PROMPT.md", STANDARD_PROMPT)
             .with_staged_changes(false); // No actual staged changes
 
-        let skip_xml = "<ralph-commit><ralph-skip>No changes found</ralph-skip></ralph-commit>";
         let mut effect_handler = MockEffectHandler::new(PipelineState::initial(0, 0))
             .with_commit_diff_error("diff failed (simulated)")
-            .with_commit_message_xml(skip_xml);
+            .with_commit_json(serde_json::json!({
+                "type": "skip",
+                "reason": "No changes found"
+            }));
         let config = create_test_config_struct();
         let executor = mock_executor_with_success();
 

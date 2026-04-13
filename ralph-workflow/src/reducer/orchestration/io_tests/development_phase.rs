@@ -186,10 +186,11 @@ fn test_development_runs_exactly_n_iterations() {
     // Track which iterations actually run
     let mut iterations_run = Vec::new();
 
-    // Simulate the development phase
+    // Simulate the development phase (Phase 2: each iteration includes a Review cycle)
     while state.phase == PipelinePhase::Planning
         || state.phase == PipelinePhase::Development
         || state.phase == PipelinePhase::CommitMessage
+        || state.phase == PipelinePhase::Review
     {
         let effect = determine_next_effect(&state);
 
@@ -421,8 +422,19 @@ fn test_development_runs_exactly_n_iterations() {
                 );
             }
             Effect::SaveCheckpoint { .. } => {
-                // Phase complete
-                break;
+                // Phase 2: SaveCheckpoint is emitted in Review (0 reviewer passes) before
+                // transitioning to CommitMessage. Save the checkpoint and complete the Review.
+                state = reduce(
+                    state,
+                    PipelineEvent::checkpoint_saved(
+                        crate::reducer::event::CheckpointTrigger::PhaseTransition,
+                    ),
+                );
+                if state.phase == PipelinePhase::Review
+                    && state.reviewer_pass >= state.total_reviewer_passes
+                {
+                    state = reduce(state, PipelineEvent::review_phase_completed(false));
+                }
             }
             Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
@@ -658,6 +670,7 @@ fn test_completed_final_iteration_should_transition_not_rerun() {
         development_validated_outcome: Some(DevelopmentValidatedOutcome {
             iteration: 1,
             status: DevelopmentStatus::Completed,
+            analysis_decision: None,
             summary: "Test complete".to_string(),
             files_changed: None,
             next_steps: None,

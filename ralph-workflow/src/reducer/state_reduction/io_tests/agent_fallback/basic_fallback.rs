@@ -186,12 +186,10 @@ fn test_fallback_triggered_respects_to_agent_and_resets_retry_state() {
         phase: PipelinePhase::Development,
         agent_chain: chain,
         continuation: ContinuationState {
-            xsd_retry_count: 3,
-            xsd_retry_pending: true,
             same_agent_retry_count: 1,
             same_agent_retry_pending: true,
             same_agent_retry_reason: Some(SameAgentRetryReason::Timeout),
-            ..ContinuationState::with_limits(2, 3, 2)
+            ..ContinuationState::with_limits(3, 2)
         },
         ..base_state
     };
@@ -215,8 +213,6 @@ fn test_fallback_triggered_respects_to_agent_and_resets_retry_state() {
         .rate_limit_continuation_prompt
         .is_none());
     assert!(new_state.agent_chain.last_session_id.is_none());
-    assert_eq!(new_state.continuation.xsd_retry_count, 0);
-    assert!(!new_state.continuation.xsd_retry_pending);
     assert_eq!(new_state.continuation.same_agent_retry_count, 0);
     assert!(!new_state.continuation.same_agent_retry_pending);
     assert!(new_state.continuation.same_agent_retry_reason.is_none());

@@ -1,6 +1,6 @@
 [workspace]
-members = ["mcp-server", "ralph-workflow", "test-helpers", "tests", "xtask"]
-default-members = ["mcp-server", "ralph-workflow", "test-helpers", "xtask"]
+members = ["mcp-server", "ralph-workflow", "ralph-workflow-policy", "test-helpers", "tests", "xtask"]
+default-members = ["mcp-server", "ralph-workflow", "ralph-workflow-policy", "test-helpers", "xtask"]
 resolver = "2"
 
 [workspace.metadata.test-workspace]
@@ -16,6 +16,7 @@ libraries = [
 # Shared dependencies for all workspace members.
 # Using workspace references prevents version drift that can cause
 # duplicate crate compilation when versions diverge.
+ralph-workflow-policy = { path = "ralph-workflow-policy" }
 git2 = "0.18"
 tempfile = "3.10"
 anyhow = "1"

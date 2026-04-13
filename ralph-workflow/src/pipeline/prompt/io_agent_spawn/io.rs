@@ -7,7 +7,7 @@
 
 use crate::agents::{is_glm_like_agent, JsonParserType};
 use crate::common::{format_argv_for_log, split_command, truncate_text};
-use crate::files::llm_output_extraction::has_valid_xml_output;
+use crate::files::has_valid_artifact_output;
 use crate::logger::argv_requests_json;
 use crate::pipeline::idle_timeout::KillConfig;
 use crate::pipeline::idle_timeout::{
@@ -95,7 +95,7 @@ fn make_completion_check(
     let path = path?.to_owned();
     let workspace = std::sync::Arc::clone(workspace);
     Some(std::sync::Arc::new(move || {
-        has_valid_xml_output(workspace.as_ref(), &path)
+        has_valid_artifact_output(workspace.as_ref(), &path)
             || json_artifact_completion_ready(workspace.as_ref(), &path)
     }))
 }

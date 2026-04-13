@@ -11,6 +11,7 @@ fn test_apply_development_outcome_exhausts_when_next_attempt_reaches_limit() {
     handler.state.development_validated_outcome = Some(DevelopmentValidatedOutcome {
         iteration: 0,
         status: DevelopmentStatus::Partial,
+        analysis_decision: None,
         summary: "partial".to_string(),
         files_changed: None,
         next_steps: None,

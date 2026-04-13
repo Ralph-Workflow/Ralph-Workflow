@@ -579,11 +579,7 @@ fn test_xml_output_format_for_display_renders_semantically() {
     with_default_timeout(|| {
         let event = UIEvent::XmlOutput {
             xml_type: XmlOutputType::DevelopmentResult,
-            content: r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary>Test complete</ralph-summary>
-</ralph-development-result>"
-                .to_string(),
+            content: r#"{"status":"completed","summary":"Test complete"}"#.to_string(),
             context: Some(XmlOutputContext {
                 iteration: Some(1),
                 pass: None,
@@ -593,7 +589,7 @@ fn test_xml_output_format_for_display_renders_semantically() {
 
         let output = event.format_for_display();
 
-        // Verify semantic rendering, not raw XML
+        // Verify semantic rendering — JSON content is rendered with status emoji, not raw JSON
         assert!(
             !output.contains("<ralph-"),
             "Should not contain raw XML tags in output: {output}"
@@ -670,10 +666,8 @@ fn test_single_writer_xml_output_via_ui_event_only() {
     with_default_timeout(|| {
         use ralph_workflow::rendering::render_ui_event;
 
-        let xml_content = r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary>Test summary for single-writer verification</ralph-summary>
-</ralph-development-result>";
+        let xml_content =
+            r#"{"status":"completed","summary":"Test summary for single-writer verification"}"#;
 
         let event = UIEvent::XmlOutput {
             xml_type: XmlOutputType::DevelopmentResult,
@@ -724,22 +718,17 @@ fn test_single_writer_handles_all_xml_output_types() {
     with_default_timeout(|| {
         use ralph_workflow::rendering::render_ui_event;
 
-        // Well-formed XML: semantic rendering produces user-friendly output
+        // Well-formed JSON artifact content: semantic rendering produces user-friendly output.
+        // CommitMessage still uses XML (legacy format for that type).
         let wellformed_cases = [
             (
                 XmlOutputType::DevelopmentResult,
-                r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary>done</ralph-summary>
-</ralph-development-result>",
+                r#"{"status":"completed","summary":"done"}"#,
                 "✅", // expected indicator in output
             ),
             (
                 XmlOutputType::ReviewIssues,
-                // Note: <ralph-no-issues-found> must be nested inside <ralph-issues>
-                r"<ralph-issues>
-<ralph-no-issues-found>All code is approved</ralph-no-issues-found>
-</ralph-issues>",
+                r#"{"type":"no_issues_found","explanation":"All code is approved"}"#,
                 "✅", // approval checkmark
             ),
             (

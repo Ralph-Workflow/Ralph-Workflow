@@ -88,6 +88,8 @@ pub(super) fn merge_fallback_configs(
                 reviewer: merge_chain("reviewer", &l.reviewer, &g.reviewer),
                 commit: merge_chain("commit", &l.commit, &g.commit),
                 analysis: merge_chain("analysis", &l.analysis, &g.analysis),
+                planning: merge_chain("planning", &l.planning, &g.planning),
+                fix: merge_chain("fix", &l.fix, &g.fix),
                 provider_fallback,
                 max_retries: if is_local_field_present("max_retries") {
                     l.max_retries
@@ -141,6 +143,16 @@ pub(super) fn merge_fallback_configs(
                         l.analysis.clone()
                     } else {
                         defaults.analysis
+                    },
+                    planning: if is_local_field_present("planning") {
+                        l.planning.clone()
+                    } else {
+                        defaults.planning
+                    },
+                    fix: if is_local_field_present("fix") {
+                        l.fix.clone()
+                    } else {
+                        defaults.fix
                     },
                     provider_fallback: l.provider_fallback.clone(),
                     max_retries: if is_local_field_present("max_retries") {

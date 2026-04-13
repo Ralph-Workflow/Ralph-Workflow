@@ -24,7 +24,7 @@ use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
 use ralph_workflow::reducer::orchestration::determine_next_effect;
 use ralph_workflow::reducer::reduce;
 use ralph_workflow::reducer::state::{
-    CommitState, ContinuationState, PipelineState, PromptPermissionsState, RebaseState,
+    CommitState, PipelineState, PromptPermissionsState, RebaseState,
 };
 use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
 
@@ -344,32 +344,6 @@ fn test_commit_no_cleanup_on_xsd_retry() {
             matches!(effect, Effect::InvokeCommitAgent),
             "Expected `InvokeCommitAgent` on XSD retry, got {effect:?}"
         );
-    });
-}
-
-/// Test that cleanup is skipped on development analysis XSD retry.
-#[test]
-fn test_development_no_cleanup_on_xsd_retry() {
-    with_default_timeout(|| {
-        let mut state = create_development_state_ready_for_cleanup(0);
-        // Simulate that developer has already been invoked and we're in XSD retry
-        state.development_agent_invoked_iteration = Some(0);
-        state.development_required_files_cleaned_iteration = Some(0);
-        // XSD retry pending means we're retrying analysis
-        state.continuation = ContinuationState {
-            xsd_retry_pending: true,
-            xsd_retry_session_reuse_pending: true,
-            ..ContinuationState::new()
-        };
-
-        let effect = determine_next_effect(&state);
-
-        // Should NOT emit `CleanupRequiredFiles` on XSD retry
-        if let Effect::CleanupRequiredFiles { files } = &effect {
-            panic!(
-                "Expected NO `CleanupRequiredFiles` on development XSD retry, got cleanup for {files:?}"
-            );
-        }
     });
 }
 

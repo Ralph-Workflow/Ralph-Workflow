@@ -7,7 +7,9 @@
 
 use crate::agents::DrainMode;
 use crate::reducer::event::DevelopmentEvent;
-use crate::reducer::state::{ContinuationState, DevelopmentStatus, PipelineState};
+use crate::reducer::state::{
+    AnalysisDecision, ContinuationState, DevelopmentStatus, PipelineState,
+};
 
 use super::reduce_development_event;
 
@@ -77,8 +79,6 @@ pub(super) fn reduce_iteration_event(
         DevelopmentEvent::PromptPrepared { iteration } => PipelineState {
             development_prompt_prepared_iteration: Some(iteration),
             continuation: crate::reducer::state::ContinuationState {
-                xsd_retry_pending: false,
-                xsd_retry_session_reuse_pending: state.continuation.xsd_retry_session_reuse_pending,
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
                 ..state.continuation
@@ -95,8 +95,6 @@ pub(super) fn reduce_iteration_event(
             PipelineState {
                 development_agent_invoked_iteration: Some(iteration),
                 continuation: crate::reducer::state::ContinuationState {
-                    xsd_retry_pending: false,
-                    xsd_retry_session_reuse_pending: false,
                     same_agent_retry_pending: false,
                     same_agent_retry_reason: None,
                     ..state.continuation
@@ -108,10 +106,6 @@ pub(super) fn reduce_iteration_event(
         DevelopmentEvent::AnalysisAgentInvoked { iteration } => {
             PipelineState {
                 analysis_agent_invoked_iteration: Some(iteration),
-                // If analysis was invoked as part of an XSD retry cycle, clear the retry flag here
-                // so orchestration can proceed to Extract/Validate instead of repeatedly deriving
-                // the XSD retry effect.
-                continuation: state.continuation.clear_xsd_retry_pending(),
                 metrics: state
                     .metrics
                     .increment_analysis_attempts_total()
@@ -129,11 +123,13 @@ pub(super) fn reduce_iteration_event(
             summary,
             files_changed,
             next_steps,
+            analysis_decision,
         } => PipelineState {
             development_validated_outcome: Some(
                 crate::reducer::state::DevelopmentValidatedOutcome {
                     iteration,
                     status,
+                    analysis_decision,
                     summary,
                     files_changed: files_changed.map(std::vec::Vec::into_boxed_slice),
                     next_steps,
@@ -202,11 +198,86 @@ pub(super) fn reduce_iteration_event(
             output_valid,
         } => {
             if output_valid {
-                // After a successful dev iteration, go to CommitMessage phase to create a commit.
+                // Determine AnalysisDecision for routing.
+                //
+                // Priority: explicit artifact decision field > status-derived decision.
+                // When the artifact carries an explicit `decision` field (Phase 2+), use it
+                // directly. For pre-Phase-2 artifacts (or XML path), fall back to deriving
+                // from `status`.
+                //
+                // When called directly (e.g., from tests bypassing OutcomeApplied),
+                // development_validated_outcome may be None — assume ReadyForReview.
+                let decision = match state.development_validated_outcome.as_ref() {
+                    Some(outcome) => {
+                        outcome.analysis_decision.unwrap_or(
+                            // Phase 2 default: route to Review unless explicitly told otherwise.
+                            // Only ReadyToCommit bypasses Review and goes straight to CommitMessage.
+                            AnalysisDecision::ReadyForReview,
+                        )
+                    }
+                    None => {
+                        // No validated outcome means this was called directly (e.g. from tests).
+                        // Phase 2 default: route to Review.
+                        AnalysisDecision::ReadyForReview
+                    }
+                };
+
+                // Route based on AnalysisDecision.
+                let (next_phase, prev_phase) = match decision {
+                    AnalysisDecision::ReadyForReview | AnalysisDecision::NeedsAnotherReview => (
+                        crate::reducer::event::PipelinePhase::Review,
+                        Some(crate::reducer::event::PipelinePhase::Development),
+                    ),
+                    AnalysisDecision::NeedsReplanning => {
+                        // Analysis determined the plan needs to be regenerated.
+                        // Route back to Planning so the planning agent can produce a new plan.
+                        (
+                            crate::reducer::event::PipelinePhase::Planning,
+                            Some(crate::reducer::event::PipelinePhase::Development),
+                        )
+                    }
+                    AnalysisDecision::NeedsMoreWork => {
+                        // Should not normally occur with output_valid=true, but handle safely
+                        // by staying in Development for retry.
+                        (
+                            crate::reducer::event::PipelinePhase::Development,
+                            Some(crate::reducer::event::PipelinePhase::Development),
+                        )
+                    }
+                    AnalysisDecision::ReadyToCommit => {
+                        // Explicit commit decision (normally after fix, but respect it here too)
+                        (
+                            crate::reducer::event::PipelinePhase::CommitMessage,
+                            Some(crate::reducer::event::PipelinePhase::Development),
+                        )
+                    }
+                };
+
+                // When routing to Review directly from Development (Phase 2), reset the
+                // agent chain so the reviewer fallback chain is used, not the developer chain.
+                // This mirrors the clearing that commit/mod.rs does when commit_created
+                // transitions to Review.
+                let agent_chain = if next_phase == crate::reducer::event::PipelinePhase::Review {
+                    crate::reducer::state::AgentChainState::initial()
+                        .with_max_cycles(state.agent_chain.max_cycles)
+                        .with_backoff_policy(
+                            state.agent_chain.retry_delay_ms,
+                            state.agent_chain.backoff_multiplier,
+                            state.agent_chain.max_backoff_ms,
+                        )
+                        .reset_for_drain(crate::agents::AgentDrain::Review)
+                } else {
+                    state.agent_chain.with_mode(DrainMode::Normal)
+                };
+
                 PipelineState {
-                    phase: crate::reducer::event::PipelinePhase::CommitMessage,
-                    previous_phase: Some(crate::reducer::event::PipelinePhase::Development),
+                    phase: next_phase,
+                    previous_phase: prev_phase,
                     iteration,
+                    // Reset reviewer_pass to 0 so each dev iteration's Review cycle starts fresh.
+                    // compute_post_commit_transition also resets this when returning to Planning,
+                    // but setting it here is the canonical reset point for Phase 2 routing.
+                    reviewer_pass: 0,
                     commit: crate::reducer::state::CommitState::NotStarted,
                     commit_prompt_prepared: false,
                     commit_diff_prepared: false,
@@ -218,12 +289,12 @@ pub(super) fn reduce_iteration_event(
                     commit_xml_archived: false,
                     context_cleaned: false,
                     // Reset continuation state on successful completion
-                    // Use reset() to preserve configured limits (max_xsd_retry_count, etc.)
+                    // Use reset() to preserve configured limits (max_continue_count, etc.)
                     continuation: ContinuationState {
                         context_cleanup_pending: true,
                         ..state.continuation.reset()
                     },
-                    agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
+                    agent_chain,
                     development_context_prepared_iteration: None,
                     development_prompt_prepared_iteration: None,
                     development_required_files_cleaned_iteration: None,
@@ -237,7 +308,7 @@ pub(super) fn reduce_iteration_event(
             } else {
                 // Output was not valid enough to proceed to commit; retry in Development.
                 let invalid_output_attempts = state.continuation.invalid_output_attempts + 1;
-                if invalid_output_attempts > crate::reducer::state::MAX_DEV_INVALID_OUTPUT_RERUNS {
+                if invalid_output_attempts > crate::reducer::state::MAX_VALIDATION_RETRY_ATTEMPTS {
                     let new_agent_chain = state
                         .agent_chain
                         .switch_to_next_agent()
@@ -248,9 +319,6 @@ pub(super) fn reduce_iteration_event(
                         iteration,
                         continuation: ContinuationState {
                             invalid_output_attempts: 0,
-                            xsd_retry_count: 0,
-                            xsd_retry_pending: false,
-                            xsd_retry_session_reuse_pending: false,
                             same_agent_retry_count: 0,
                             same_agent_retry_pending: false,
                             same_agent_retry_reason: None,

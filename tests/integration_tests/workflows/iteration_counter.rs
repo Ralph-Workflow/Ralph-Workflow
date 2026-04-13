@@ -197,6 +197,7 @@ fn test_xml_validated_completed_does_not_increment_iteration() {
         let event = PipelineEvent::Development(DevelopmentEvent::XmlValidated {
             iteration: 0,
             status: DevelopmentStatus::Completed,
+            analysis_decision: None,
             summary: "All work done".to_string(),
             files_changed: Some(vec!["src/main.rs".to_string()]),
             next_steps: None,
@@ -385,11 +386,11 @@ fn test_dev_iteration_completed_semantics() {
             "Dev iteration completion should increment completed counter"
         );
 
-        // And: Phase should advance to CommitMessage
+        // And: Phase should advance to Review (Phase 2 default routing: Dev → Review → CommitMessage)
         assert_eq!(
             state.phase,
-            PipelinePhase::CommitMessage,
-            "Completed dev iteration should advance to commit phase"
+            PipelinePhase::Review,
+            "Completed dev iteration should advance to Review phase (Phase 2)"
         );
     });
 }
@@ -447,6 +448,7 @@ fn test_exactly_completes_at_total_iterations() {
         let mut state = PipelineState::initial(3, 0);
 
         // Run iterations 0, 1, 2 with a uniform event sequence.
+        // Phase 2 routing: Development → Review → CommitMessage (per iteration).
         for i in 0..3 {
             state = reduce(state, PipelineEvent::development_iteration_started(i));
             assert_eq!(state.iteration, i);
@@ -455,6 +457,12 @@ fn test_exactly_completes_at_total_iterations() {
                 state,
                 PipelineEvent::development_iteration_completed(i, true),
             );
+            // Phase 2: Dev completion routes to Review first (with 0 reviewer passes, Review
+            // immediately routes to CommitMessage after review_phase_completed).
+            assert_eq!(state.phase, PipelinePhase::Review);
+
+            // With total_reviewer_passes=0, review phase completes immediately.
+            state = reduce(state, PipelineEvent::review_phase_completed(false));
             assert_eq!(state.phase, PipelinePhase::CommitMessage);
 
             state = reduce(

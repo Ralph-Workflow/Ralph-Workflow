@@ -241,12 +241,12 @@ fn test_agent_chain_serialization_round_trip_preserves_drain_and_mode() {
             AgentRole::Developer,
         )
         .with_drain(crate::agents::AgentDrain::Analysis)
-        .with_mode(crate::agents::DrainMode::XsdRetry);
+        .with_mode(crate::agents::DrainMode::Continuation);
 
     let json = serde_json::to_string(&chain).expect("agent chain should serialize");
     let restored: AgentChainState =
         serde_json::from_str(&json).expect("agent chain should deserialize");
 
     assert_eq!(restored.current_drain, crate::agents::AgentDrain::Analysis);
-    assert_eq!(restored.current_mode, crate::agents::DrainMode::XsdRetry);
+    assert_eq!(restored.current_mode, crate::agents::DrainMode::Continuation);
 }

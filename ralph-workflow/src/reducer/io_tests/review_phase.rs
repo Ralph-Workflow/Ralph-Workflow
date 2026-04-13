@@ -4,7 +4,6 @@
 //! one of the 7 bugs we fixed in the reducer.
 
 use super::*;
-use crate::reducer::state::ContinuationState;
 
 // Tests for review validation logic
 include!("review_phase/validation_tests.rs");

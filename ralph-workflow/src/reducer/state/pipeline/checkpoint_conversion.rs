@@ -211,7 +211,6 @@ impl PipelineState {
                     review_passes_completed: checkpoint.actual_reviewer_runs,
                     max_dev_iterations: checkpoint.total_iterations,
                     max_review_passes: checkpoint.total_reviewer_passes,
-                    max_xsd_retry_count: continuation.max_xsd_retry_count,
                     max_dev_continuation_count: continuation.max_continue_count,
                     max_fix_continuation_count: continuation.max_fix_continue_count,
                     max_same_agent_retry_count: continuation.max_same_agent_retry_count,

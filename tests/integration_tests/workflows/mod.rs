@@ -10,7 +10,6 @@
 //! - PLAN workflow tests (plan.rs)
 //! - Review workflow tests (review.rs)
 //! - Resume/checkpoint tests (resume/)
-//! - Development XML tests (`development_xml.rs`)
 //! - Continuation handling tests (continuation.rs)
 //! - Independent result analysis tests (analysis.rs)
 //! - Iteration counter invariant tests (`iteration_counter.rs`)
@@ -38,7 +37,6 @@ pub(crate) mod config;
 pub(crate) mod config_test;
 pub(crate) mod continuation;
 pub(crate) mod continuation_budget;
-pub(crate) mod development_xml;
 pub(crate) mod fallback;
 pub(crate) mod iteration_counter;
 pub(crate) mod mcp_end_to_end;

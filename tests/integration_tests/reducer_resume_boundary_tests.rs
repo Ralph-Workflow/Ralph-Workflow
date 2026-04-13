@@ -257,20 +257,20 @@ fn test_resume_at_boundary_continues_through_remaining_phases() {
             PipelineEvent::development_iteration_completed(1, true),
         );
 
-        // After development iteration completes, the reducer transitions to CommitMessage
-        // phase first (not directly to Review). The post-commit transition logic in
-        // compute_post_commit_transition() then determines the next phase:
-        // - If total_iterations done AND total_reviewer_passes > 0: Review
-        // - If total_iterations done AND total_reviewer_passes == 0: FinalValidation
-        // - If more iterations remain: Planning (for next iteration)
+        // Phase 2: After development iteration completes, the reducer transitions to Review
+        // (default Phase 2 routing: Development → Review → CommitMessage).
+        // compute_post_commit_transition() handles the post-commit next phase:
+        // - If more reviewer passes remain: Review (continue reviewing)
+        // - If all reviewer passes done AND more iterations remain: Planning
+        // - If all done: FinalValidation
         //
         // With total_reviewer_passes=1 (configured in this test), the full transition
-        // sequence would be: Development → CommitMessage → Review.
+        // sequence is: Development → Review → CommitMessage.
         // This assertion checks the first step of that transition.
         assert_eq!(
             state.phase,
-            PipelinePhase::CommitMessage,
-            "Should transition to CommitMessage phase immediately after development iteration completes. Got: {:?}",
+            PipelinePhase::Review,
+            "Phase 2: Should transition to Review phase immediately after development iteration completes. Got: {:?}",
             state.phase
         );
 
@@ -307,6 +307,6 @@ fn test_resume_at_boundary_continues_through_remaining_phases() {
         );
 
         // This proves the bug is fixed: after resuming at iteration boundary,
-        // the pipeline continues through remaining phases (CommitMessage → Review) instead of exiting
+        // the pipeline continues through remaining phases (Review → CommitMessage) instead of exiting
     });
 }

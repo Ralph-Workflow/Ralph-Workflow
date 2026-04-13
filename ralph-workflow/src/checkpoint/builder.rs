@@ -345,8 +345,7 @@ impl CheckpointBuilder {
         let is_empty = prompt_inputs.planning.is_none()
             && prompt_inputs.development.is_none()
             && prompt_inputs.review.is_none()
-            && prompt_inputs.commit.is_none()
-            && prompt_inputs.xsd_retry_last_output.is_none();
+            && prompt_inputs.commit.is_none();
         let prompt_inputs = if is_empty { None } else { Some(prompt_inputs) };
         Self {
             prompt_inputs,

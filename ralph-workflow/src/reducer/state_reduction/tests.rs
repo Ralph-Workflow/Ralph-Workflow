@@ -61,9 +61,6 @@ mod event_sequence;
 #[path = "io_tests/dev_review_transition.rs"]
 mod dev_review_transition;
 
-#[path = "io_tests/xsd_retry/mod.rs"]
-mod xsd_retry;
-
 #[path = "io_tests/fix_continuation.rs"]
 mod fix_continuation;
 

@@ -28,9 +28,11 @@ mod error_formatting;
 mod key_detection;
 mod keys;
 mod levenshtein;
+mod policy_files;
 
 // Re-export public API
 pub use levenshtein::suggest_key;
+pub use policy_files::{validate_artifacts_toml, validate_pipeline_toml};
 
 /// Configuration validation error.
 #[derive(Debug, Clone, Error)]
@@ -96,17 +98,19 @@ pub fn validate_config_file(
     let valid_keys = keys::get_valid_config_keys();
     let unknown_errors: Vec<ConfigValidationError> = unknown_keys
         .iter()
-        .map(|(key, location)| ConfigValidationError::UnknownKey {
+        .map(|(key, location, suggestion_override)| ConfigValidationError::UnknownKey {
             file: path.to_path_buf(),
             key: format!("{location}{key}"),
-            suggestion: levenshtein::suggest_key(key, &valid_keys),
+            suggestion: suggestion_override
+                .clone()
+                .or_else(|| levenshtein::suggest_key(key, &valid_keys)),
         })
         .collect();
 
     // Collect deprecated keys as warnings using iterator
     let deprecation_warnings: Vec<String> = deprecated_keys
         .iter()
-        .map(|(key, location)| {
+        .map(|(key, location, _suggestion)| {
             let full_key = format!("{location}{key}");
             format!(
                 "Deprecated key '{}' in {} - this key is no longer used and can be safely removed",
@@ -679,6 +683,10 @@ fix = "shared_review"
     #[test]
     fn test_validate_config_file_accepts_commit_and_analysis_derived_from_bound_drains() {
         let content = r#"
+[orchestration]
+forbid_sibling_drain_inference = false
+require_explicit_drain_bindings = false
+
 [agent_chains]
 shared_dev = ["codex"]
 shared_review = ["claude"]

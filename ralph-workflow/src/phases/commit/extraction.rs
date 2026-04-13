@@ -1,3 +1,19 @@
+/// Wrapper type for a commit message string.
+///
+/// Used in `CommitExtractionOutcome::Valid` as the extracted result.
+#[derive(Clone)]
+struct CommitExtractionResult(String);
+
+impl CommitExtractionResult {
+    fn new(msg: String) -> Self {
+        Self(msg)
+    }
+
+    fn into_message(self) -> String {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 enum CommitExtractionOutcome {
     MissingFile(String),
@@ -10,6 +26,12 @@ enum CommitExtractionOutcome {
     Skipped(String),
 }
 
+impl std::fmt::Debug for CommitExtractionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CommitExtractionResult").field(&self.0).finish()
+    }
+}
+
 pub(crate) enum ParsedCommitXmlOutcome {
     Skipped(String),
     Invalid(String),
@@ -18,23 +40,6 @@ pub(crate) enum ParsedCommitXmlOutcome {
         files: Vec<String>,
         excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
     },
-}
-
-pub(crate) fn parse_commit_xml_document(xml_content: &str) -> ParsedCommitXmlOutcome {
-    let (message, skip_reason, files, excluded_files, detail) =
-        try_extract_xml_commit_document_with_trace(xml_content);
-
-    if let Some(reason) = skip_reason {
-        return ParsedCommitXmlOutcome::Skipped(reason);
-    }
-
-    message.map_or(ParsedCommitXmlOutcome::Invalid(detail), |message| {
-        ParsedCommitXmlOutcome::Valid {
-            message,
-            files,
-            excluded_files,
-        }
-    })
 }
 
 #[cfg(test)]
@@ -181,18 +186,11 @@ mod json_extraction_tests {
     }
 
     #[test]
-    fn json_preferred_over_xml() {
+    fn json_artifact_present_is_used() {
         let ws = workspace_with_commit_json(serde_json::json!({
             "type": "commit",
             "subject": "feat: from JSON"
         }));
-        // Also write an XML file
-        ws.write(
-            Path::new(xml_paths::COMMIT_MESSAGE_XML),
-            "<ralph-commit><ralph-subject>feat: from XML</ralph-subject></ralph-commit>",
-        )
-        .unwrap();
-
         let outcome = extract_commit_message_from_file_with_workspace(&ws);
         match outcome {
             CommitExtractionOutcome::Valid { extracted, .. } => {
@@ -203,25 +201,7 @@ mod json_extraction_tests {
     }
 
     #[test]
-    fn xml_fallback_when_no_json() {
-        let ws = MemoryWorkspace::new_test();
-        ws.write(
-            Path::new(xml_paths::COMMIT_MESSAGE_XML),
-            "<ralph-commit><ralph-subject>fix: from XML</ralph-subject></ralph-commit>",
-        )
-        .unwrap();
-
-        let outcome = extract_commit_message_from_file_with_workspace(&ws);
-        match outcome {
-            CommitExtractionOutcome::Valid { extracted, .. } => {
-                assert_eq!(extracted.into_message(), "fix: from XML");
-            }
-            other => panic!("Expected Valid with XML content, got: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn missing_both_json_and_xml() {
+    fn missing_json_returns_missing_file() {
         let ws = MemoryWorkspace::new_test();
         let outcome = extract_commit_message_from_file_with_workspace(&ws);
         assert!(matches!(outcome, CommitExtractionOutcome::MissingFile(_)));
@@ -395,31 +375,10 @@ pub(crate) fn has_json_commit_artifact(workspace: &dyn Workspace) -> bool {
 fn extract_commit_message_from_file_with_workspace(
     workspace: &dyn Workspace,
 ) -> CommitExtractionOutcome {
-    // Try JSON artifact first (MCP submission path)
-    if let Some(outcome) = try_extract_from_json_artifact(workspace) {
-        return outcome;
-    }
-
-    // Fall back to XML file
-    let Ok(xml) = workspace.read(Path::new(xml_paths::COMMIT_MESSAGE_XML)) else {
-        return CommitExtractionOutcome::MissingFile(
-            "No commit message found: neither JSON artifact (.agent/tmp/commit_message.json) \
-             nor XML file (.agent/tmp/commit_message.xml) present"
+    try_extract_from_json_artifact(workspace).unwrap_or_else(|| {
+        CommitExtractionOutcome::MissingFile(
+            "No commit message found: JSON artifact (.agent/tmp/commit_message.json) absent"
                 .to_string(),
-        );
-    };
-
-    match parse_commit_xml_document(&xml) {
-        ParsedCommitXmlOutcome::Skipped(reason) => CommitExtractionOutcome::Skipped(reason),
-        ParsedCommitXmlOutcome::Invalid(detail) => CommitExtractionOutcome::InvalidXml(detail),
-        ParsedCommitXmlOutcome::Valid {
-            message,
-            files,
-            excluded_files,
-        } => CommitExtractionOutcome::Valid {
-            extracted: CommitExtractionResult::new(message),
-            files,
-            excluded_files,
-        },
-    }
+        )
+    })
 }

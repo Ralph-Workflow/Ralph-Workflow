@@ -58,10 +58,6 @@ const RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS: &[ScopeGlob] = &[
         dir: "ralph-workflow/src/prompts/templates",
         pattern: "*",
     },
-    ScopeGlob {
-        dir: "ralph-workflow/src/files/llm_output_extraction",
-        pattern: "*",
-    },
 ];
 const RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES: &[&str] = &[];
 const INTEGRATION_TEST_AND_RALPH_WORKFLOW_EXTRA_GLOBS: &[ScopeGlob] = &[
@@ -75,10 +71,6 @@ const INTEGRATION_TEST_AND_RALPH_WORKFLOW_EXTRA_GLOBS: &[ScopeGlob] = &[
     },
     ScopeGlob {
         dir: "ralph-workflow/src/prompts/templates",
-        pattern: "*",
-    },
-    ScopeGlob {
-        dir: "ralph-workflow/src/files/llm_output_extraction",
         pattern: "*",
     },
 ];
@@ -285,13 +277,6 @@ mod tests {
                         glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
                     }),
                     "clippy-core must track embedded prompt template text files consumed by ralph-workflow"
-                );
-                assert!(
-                    globs.iter().any(|glob| {
-                        glob.dir == "ralph-workflow/src/files/llm_output_extraction"
-                            && glob.pattern == "*"
-                    }),
-                    "clippy-core must track embedded XSD files consumed by ralph-workflow"
                 );
                 assert!(
                     files.is_empty(),

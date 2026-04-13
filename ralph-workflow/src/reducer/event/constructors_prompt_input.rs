@@ -53,19 +53,6 @@ impl PipelineEvent {
         Self::PromptInput(PromptInputEvent::CommitInputsMaterialized { attempt, diff })
     }
 
-    #[must_use] 
-    pub const fn xsd_retry_last_output_materialized(
-        phase: PipelinePhase,
-        scope_id: u32,
-        last_output: MaterializedPromptInput,
-    ) -> Self {
-        Self::PromptInput(PromptInputEvent::XsdRetryLastOutputMaterialized {
-            phase,
-            scope_id,
-            last_output,
-        })
-    }
-
     /// Create a `PromptPermissionsLocked` event.
     #[must_use] 
     pub const fn prompt_permissions_locked(warning: Option<String>) -> Self {

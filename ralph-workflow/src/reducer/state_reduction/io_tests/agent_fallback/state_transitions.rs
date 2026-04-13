@@ -4,12 +4,11 @@
 //! when `current_drain` is set (e.g., to Fix) and when `agents` is populated
 //! by a subsequent `ChainInitialized` event.
 
-use crate::agents::DrainMode;
 use crate::agents::{AgentDrain, AgentRole};
 use crate::common::domain_types::AgentName;
 use crate::reducer::create_test_state;
 use crate::reducer::event::{PipelineEvent, PipelinePhase, TimeoutOutputKind};
-use crate::reducer::state::{AgentChainState, ArtifactType, PipelineState};
+use crate::reducer::state::{AgentChainState, PipelineState};
 use crate::reducer::state_reduction::reduce;
 
 /// Build a state that represents a reviewer in mid-review (pass 0, issues not yet found,
@@ -58,38 +57,8 @@ fn test_invocation_started_with_empty_agents_does_not_panic() {
         PipelineEvent::agent_invocation_started(AgentRole::Reviewer, agent, None),
     );
 
-    // Must not panic; xsd_retry_session_reuse_pending must be cleared
-    assert!(!next.continuation.xsd_retry_session_reuse_pending);
+    // Must not panic
     assert_eq!(next.agent_chain.current_drain, AgentDrain::Fix);
-}
-
-#[test]
-fn test_xsd_validation_failed_with_empty_agents_transitions_to_xsd_retry_mode() {
-    // XsdValidationFailed must set drain mode to XsdRetry even when agents=[].
-    // This represents the case where validation fails before ChainInitialized.
-    let state = state_with_fix_drain_and_empty_agents();
-    assert!(state.agent_chain.agents.is_empty());
-
-    let next = reduce(
-        state,
-        PipelineEvent::agent_xsd_validation_failed(
-            AgentRole::Reviewer,
-            ArtifactType::Issues,
-            "schema error".to_string(),
-            0,
-        ),
-    );
-
-    assert_eq!(
-        next.agent_chain.current_mode,
-        DrainMode::XsdRetry,
-        "XsdValidationFailed must transition to XsdRetry mode even with empty agents list"
-    );
-    assert_eq!(next.agent_chain.current_drain, AgentDrain::Fix);
-    assert!(
-        next.continuation.xsd_retry_pending,
-        "xsd_retry_pending must be set after XsdValidationFailed"
-    );
 }
 
 #[test]

@@ -1,7 +1,6 @@
 //! Budget tracking logic for continuation attempts.
 //!
 //! Provides methods for tracking and checking budget exhaustion for:
-//! - XSD retries
 //! - Same-agent retries
 //! - Development continuations
 //! - Fix continuations
@@ -15,46 +14,8 @@ impl ContinuationState {
     pub fn with_artifact(self, artifact: ArtifactType) -> Self {
         Self {
             current_artifact: Some(artifact),
-            xsd_retry_count: 0,
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
-            last_xsd_error: None,
-            last_review_xsd_error: None,
-            last_fix_xsd_error: None,
             ..self
         }
-    }
-
-    /// Mark XSD validation as failed, triggering a retry.
-    ///
-    /// For XSD retry, we want to re-invoke the same agent in the same session when possible,
-    /// to keep retries deterministic and to preserve provider-side context.
-    #[must_use]
-    pub fn trigger_xsd_retry(self) -> Self {
-        Self {
-            xsd_retry_pending: true,
-            xsd_retry_count: self.xsd_retry_count.saturating_add(1),
-            xsd_retry_session_reuse_pending: true,
-            ..self
-        }
-    }
-
-    /// Clear XSD retry pending flag after starting retry.
-    #[must_use]
-    pub fn clear_xsd_retry_pending(self) -> Self {
-        Self {
-            xsd_retry_pending: false,
-            last_xsd_error: None,
-            last_review_xsd_error: None,
-            last_fix_xsd_error: None,
-            ..self
-        }
-    }
-
-    /// Check if XSD retries are exhausted.
-    #[must_use]
-    pub const fn xsd_retries_exhausted(&self) -> bool {
-        self.xsd_retry_count >= self.max_xsd_retry_count
     }
 
     /// Mark a same-agent retry as pending for a transient invocation failure.
@@ -170,12 +131,6 @@ impl ContinuationState {
             invalid_output_attempts: 0,
             context_write_pending: true,
             context_cleanup_pending: false,
-            xsd_retry_count: 0,
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
-            last_xsd_error: None,
-            last_review_xsd_error: None,
-            last_fix_xsd_error: None,
             same_agent_retry_count: 0,
             same_agent_retry_pending: false,
             same_agent_retry_reason: None,
@@ -205,12 +160,6 @@ impl ContinuationState {
             fix_previous_summary: summary,
             fix_continuation_attempt: self.fix_continuation_attempt.saturating_add(1),
             fix_continue_pending: true,
-            xsd_retry_count: 0,
-            xsd_retry_pending: false,
-            xsd_retry_session_reuse_pending: false,
-            last_xsd_error: None,
-            last_review_xsd_error: None,
-            last_fix_xsd_error: None,
             invalid_output_attempts: 0,
             same_agent_retry_count: 0,
             same_agent_retry_pending: false,

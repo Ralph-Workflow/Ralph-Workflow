@@ -122,7 +122,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
     // - Second timeout falls back to next agent
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: crate::reducer::state::ContinuationState::with_limits(2, 3, 2),
+        continuation: crate::reducer::state::ContinuationState::with_limits(3, 2),
         agent_chain: base_state.agent_chain.with_agents(
             vec!["agent-a".to_string(), "agent-b".to_string()],
             vec![
@@ -149,16 +149,6 @@ fn test_timed_out_retries_same_agent_before_fallback() {
             Some(".agent/logs/developer_0.log".to_string()),
             None,
         ),
-    );
-
-    // Timeout retries MUST NOT reuse XSD retry mechanism.
-    assert!(
-        !after_first_timeout.continuation.xsd_retry_pending,
-        "Timeout retry should not set xsd_retry_pending (XSD retry is only for invalid XML)"
-    );
-    assert_eq!(
-        after_first_timeout.continuation.xsd_retry_count, 0,
-        "Timeout retry should not increment xsd_retry_count (XSD retry is only for invalid XML)"
     );
 
     assert_eq!(
@@ -200,12 +190,12 @@ fn test_timed_out_retries_same_agent_before_fallback() {
 }
 
 #[test]
-fn test_internal_error_retries_same_agent_before_fallback_without_xsd_retry() {
+fn test_internal_error_retries_same_agent_before_fallback() {
     use crate::reducer::event::AgentErrorKind;
 
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: crate::reducer::state::ContinuationState::with_limits(2, 3, 2),
+        continuation: crate::reducer::state::ContinuationState::with_limits(3, 2),
         agent_chain: base_state.agent_chain.with_agents(
             vec!["agent-a".to_string(), "agent-b".to_string()],
             vec![vec![], vec![]],
@@ -232,14 +222,6 @@ fn test_internal_error_retries_same_agent_before_fallback_without_xsd_retry() {
             .map(String::as_str),
         Some("agent-a"),
         "Internal error should retry same agent first"
-    );
-    assert!(
-        !after_first_failure.continuation.xsd_retry_pending,
-        "Internal error retry should not set xsd_retry_pending (XSD retry is only for invalid XML)"
-    );
-    assert_eq!(
-        after_first_failure.continuation.xsd_retry_count, 0,
-        "Internal error retry should not increment xsd_retry_count (XSD retry is only for invalid XML)"
     );
 }
 
@@ -277,22 +259,11 @@ fn test_timed_out_partial_output_preserves_session_id_for_context_retry() {
         ),
     );
 
-    assert!(
-        !new_state.continuation.xsd_retry_pending,
-        "Timeout retry should not set xsd_retry_pending (XSD retry is only for invalid XML)"
-    );
-
     // Session ID should be PRESERVED for TimeoutWithContext (PartialResult)
     assert_eq!(
         new_state.agent_chain.last_session_id,
         Some("session-123".to_string()),
         "PartialResult timeout should preserve session ID for context reuse"
-    );
-
-    // Should set session reuse pending flag
-    assert!(
-        new_state.continuation.xsd_retry_session_reuse_pending,
-        "PartialResult timeout should set xsd_retry_session_reuse_pending"
     );
 }
 
@@ -336,11 +307,6 @@ fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
         "NoResult timeout should clear session ID (immediate agent switch)"
     );
 
-    // Should NOT set session reuse pending flag
-    assert!(
-        !new_state.continuation.xsd_retry_session_reuse_pending,
-        "NoResult timeout should not set xsd_retry_session_reuse_pending"
-    );
 }
 
 #[test]
@@ -354,7 +320,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
     // - Falling back from last agent => wrap to first agent and increment retry_cycle
     let base_state = create_test_state();
     let state = PipelineState {
-        continuation: crate::reducer::state::ContinuationState::with_limits(1, 3, 2)
+        continuation: crate::reducer::state::ContinuationState::with_limits(3, 2)
             .with_max_same_agent_retry(2), // Fallback on the 2nd timeout when max=2
         agent_chain: base_state
             .agent_chain
@@ -387,10 +353,6 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
         ),
     );
 
-    assert!(
-        !after_first_timeout.continuation.xsd_retry_pending,
-        "Timeout retry should not set xsd_retry_pending (XSD retry is only for invalid XML)"
-    );
     assert_eq!(
         after_first_timeout
             .agent_chain

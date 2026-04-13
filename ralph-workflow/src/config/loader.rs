@@ -25,7 +25,9 @@
 use super::path_resolver::ConfigEnvironment;
 use super::types::Config;
 use super::unified::UnifiedConfig;
-use super::validation::{validate_config_file, ConfigValidationError};
+use super::validation::{
+    validate_artifacts_toml, validate_config_file, validate_pipeline_toml, ConfigValidationError,
+};
 use std::path::PathBuf;
 
 mod error_types;
@@ -232,6 +234,53 @@ fn load_local_config(env: &dyn ConfigEnvironment) -> LocalLoadResult {
     LocalLoadResult::default()
 }
 
+/// Validate `.agent/pipeline.toml` and `.agent/artifacts.toml` if they exist.
+///
+/// Returns any validation errors found. Missing files are not an error — these
+/// policy files are optional. When present, they are validated against the
+/// `PipelineConfig` and `ArtifactsConfig` schemas in `ralph_workflow_policy`.
+fn load_policy_files(env: &dyn ConfigEnvironment) -> Vec<ConfigValidationError> {
+    let mut errors: Vec<ConfigValidationError> = Vec::new();
+
+    let pipeline_path = std::path::PathBuf::from(".agent/pipeline.toml");
+    if env.file_exists(&pipeline_path) {
+        match env.read_file(&pipeline_path) {
+            Ok(content) => {
+                if let Err(errs) = validate_pipeline_toml(&pipeline_path, &content) {
+                    errors.extend(errs);
+                }
+            }
+            Err(e) => {
+                errors.push(ConfigValidationError::InvalidValue {
+                    file: pipeline_path,
+                    key: "pipeline.toml".to_string(),
+                    message: format!("Failed to read file: {e}"),
+                });
+            }
+        }
+    }
+
+    let artifacts_path = std::path::PathBuf::from(".agent/artifacts.toml");
+    if env.file_exists(&artifacts_path) {
+        match env.read_file(&artifacts_path) {
+            Ok(content) => {
+                if let Err(errs) = validate_artifacts_toml(&artifacts_path, &content) {
+                    errors.extend(errs);
+                }
+            }
+            Err(e) => {
+                errors.push(ConfigValidationError::InvalidValue {
+                    file: artifacts_path,
+                    key: "artifacts.toml".to_string(),
+                    message: format!("Failed to read file: {e}"),
+                });
+            }
+        }
+    }
+
+    errors
+}
+
 pub fn load_config_from_path_with_env(
     config_path: Option<&std::path::Path>,
     env: &dyn ConfigEnvironment,
@@ -246,6 +295,9 @@ pub fn load_config_from_path_with_env(
     } else {
         LocalLoadResult::default()
     };
+
+    // Step 3: Validate policy files (.agent/pipeline.toml, .agent/artifacts.toml).
+    let policy_errors = load_policy_files(env);
 
     let GlobalLoadResult {
         unified: global_unified,
@@ -262,7 +314,8 @@ pub fn load_config_from_path_with_env(
     } = local;
 
     // Combine warnings and validation errors
-    let all_validation_errors = [global_validation_errors, local_validation_errors].concat();
+    let all_validation_errors =
+        [global_validation_errors, local_validation_errors, policy_errors].concat();
 
     // Fail-fast: if there are any validation errors, return them immediately
     if !all_validation_errors.is_empty() {
@@ -271,7 +324,7 @@ pub fn load_config_from_path_with_env(
         ));
     }
 
-    // Step 3: Merge configs (local overrides global)
+    // Step 4: Merge configs (local overrides global)
     let merged_unified = match (global_unified, global_content, local_unified, local_content) {
         (Some(global_cfg), Some(global_raw_content), Some(local_cfg), Some(local_content)) => {
             let normalized_global =
@@ -313,7 +366,7 @@ pub fn load_config_from_path_with_env(
         }
     }
 
-    // Step 4: Convert to Config
+    // Step 5: Convert to Config
     let cloud = super::types::CloudConfig::from_env_fn(|k| env.get_env_var(k));
     let conversion_result = merged_unified.as_ref().map_or_else(
         || ConfigConversionResult::new(default_config()),
@@ -324,11 +377,11 @@ pub fn load_config_from_path_with_env(
         ..conversion_result.config
     };
 
-    // Step 5: Apply environment variable overrides
+    // Step 6: Apply environment variable overrides
     let override_result = apply_env_overrides(config, env);
     let config = override_result.config;
 
-    // Step 6: Validate cloud configuration (fail-fast)
+    // Step 7: Validate cloud configuration (fail-fast)
     if let Err(e) = config.cloud.validate() {
         return Err(ConfigLoadWithValidationError::ValidationErrors(vec![
             ConfigValidationError::InvalidValue {

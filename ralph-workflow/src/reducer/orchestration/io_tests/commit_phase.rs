@@ -70,134 +70,6 @@ fn test_determine_effect_commit_message_not_started() {
 }
 
 #[test]
-fn test_commit_phase_uses_xsd_retry_prompt_when_pending() {
-    // When XSD retry is pending, orchestration should select the XSD retry prompt mode
-    // instead of the normal prompt mode. This ensures we converge on valid XML quickly.
-    let state = PipelineState {
-        phase: PipelinePhase::CommitMessage,
-        commit: CommitState::Generating {
-            attempt: 1,
-            max_attempts: 3,
-        },
-        commit_diff_prepared: true,
-        commit_diff_empty: false,
-        commit_diff_content_id_sha256: Some("id".to_string()),
-        commit_prompt_prepared: false,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["commit-agent".to_string()],
-            vec![vec![]],
-            AgentRole::Commit,
-        ),
-        prompt_inputs: crate::reducer::state::PromptInputsState {
-            commit: Some(crate::reducer::state::MaterializedCommitInputs {
-                attempt: 1,
-                diff: crate::reducer::state::MaterializedPromptInput {
-                    kind: crate::reducer::state::PromptInputKind::Diff,
-                    content_id_sha256: "id".to_string(),
-                    consumer_signature_sha256: PipelineState::initial(5, 2)
-                        .agent_chain
-                        .with_agents(
-                            vec!["commit-agent".to_string()],
-                            vec![vec![]],
-                            AgentRole::Commit,
-                        )
-                        .consumer_signature_sha256(),
-                    original_bytes: 1,
-                    final_bytes: 1,
-                    model_budget_bytes: Some(200_000),
-                    inline_budget_bytes: Some(100_000),
-                    representation: crate::reducer::state::PromptInputRepresentation::Inline,
-                    reason: crate::reducer::state::PromptMaterializationReason::WithinBudgets,
-                },
-            }),
-            ..Default::default()
-        },
-        continuation: crate::reducer::state::ContinuationState {
-            xsd_retry_pending: true,
-            ..crate::reducer::state::ContinuationState::default()
-        },
-        ..create_test_state()
-    };
-
-    let effect = determine_next_effect(&state);
-    assert!(
-        matches!(
-            effect,
-            Effect::PrepareCommitPrompt {
-                prompt_mode: PromptMode::XsdRetry
-            }
-        ),
-        "Expected XSD retry prompt when xsd_retry_pending=true, got {effect:?}"
-    );
-}
-
-#[test]
-fn test_commit_phase_effects_uses_xsd_retry_prompt_mode_when_pending() {
-    // Regression: phase-specific commit orchestration must also derive the XSD retry
-    // prompt mode when the reducer marks xsd_retry_pending, so retry prompts remain
-    // reachable even if retry routing is bypassed (e.g., during refactors or targeted
-    // phase effect determination).
-    let state = PipelineState {
-        phase: PipelinePhase::CommitMessage,
-        commit: CommitState::Generating {
-            attempt: 1,
-            max_attempts: 3,
-        },
-        commit_diff_prepared: true,
-        commit_diff_empty: false,
-        commit_diff_content_id_sha256: Some("id".to_string()),
-        commit_prompt_prepared: false,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["commit-agent".to_string()],
-            vec![vec![]],
-            AgentRole::Commit,
-        ),
-        prompt_inputs: crate::reducer::state::PromptInputsState {
-            commit: Some(crate::reducer::state::MaterializedCommitInputs {
-                attempt: 1,
-                diff: crate::reducer::state::MaterializedPromptInput {
-                    kind: crate::reducer::state::PromptInputKind::Diff,
-                    content_id_sha256: "id".to_string(),
-                    consumer_signature_sha256: PipelineState::initial(5, 2)
-                        .agent_chain
-                        .with_agents(
-                            vec!["commit-agent".to_string()],
-                            vec![vec![]],
-                            AgentRole::Commit,
-                        )
-                        .consumer_signature_sha256(),
-                    original_bytes: 1,
-                    final_bytes: 1,
-                    model_budget_bytes: Some(200_000),
-                    inline_budget_bytes: Some(100_000),
-                    representation: crate::reducer::state::PromptInputRepresentation::Inline,
-                    reason: crate::reducer::state::PromptMaterializationReason::WithinBudgets,
-                },
-            }),
-            ..Default::default()
-        },
-        continuation: crate::reducer::state::ContinuationState {
-            xsd_retry_pending: true,
-            xsd_retry_count: 1,
-            max_xsd_retry_count: 10,
-            ..crate::reducer::state::ContinuationState::default()
-        },
-        ..create_test_state()
-    };
-
-    let effect = determine_next_effect_for_phase(&state);
-    assert!(
-        matches!(
-            effect,
-            Effect::PrepareCommitPrompt {
-                prompt_mode: PromptMode::XsdRetry
-            }
-        ),
-        "Expected phase effect to use XSD retry prompt when xsd_retry_pending=true, got {effect:?}"
-    );
-}
-
-#[test]
 fn test_determine_effect_commit_message_ignores_stale_validated_outcome() {
     // Stale outcome (attempt 1) should be ignored when current attempt is 2
     // Should proceed to prepare prompt instead of applying stale outcome
@@ -725,6 +597,18 @@ fn test_check_commit_diff_emitted_on_each_commit_phase_entry() {
                 state = reduce(state, PipelineEvent::final_state_validation_completed());
             }
             Effect::SaveCheckpoint { .. } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::checkpoint_saved(
+                        crate::reducer::event::CheckpointTrigger::PhaseTransition,
+                    ),
+                );
+                // Review -> CommitMessage: after all review passes complete (or 0 passes)
+                if state.phase == PipelinePhase::Review
+                    && state.reviewer_pass >= state.total_reviewer_passes
+                {
+                    state = reduce(state, PipelineEvent::review_phase_completed(false));
+                }
                 if state.phase == PipelinePhase::Complete {
                     break;
                 }
@@ -772,7 +656,7 @@ fn test_determine_effect_complete() {
 #[test]
 fn test_commit_orchestrator_never_derives_continuation_mode() {
     // Phase 4 policy violation fix: commit orchestrator must constrain prompt_mode
-    // to admissible set {Normal, XsdRetry, SameAgentRetry} before deriving
+    // to admissible set {Normal, SameAgentRetry} before deriving
     // Effect::PrepareCommitPrompt. Continuation mode is semantically invalid for
     // commit phase (commit is atomic, not incremental work).
     //
@@ -842,38 +726,9 @@ fn test_commit_orchestrator_never_derives_continuation_mode() {
         );
     }
 
-    // Test case 3: XSD retry pending
-    let mut state = base_state();
-    state.continuation.xsd_retry_pending = true;
-    state.continuation.xsd_retry_count = 0;
-    let effect = determine_next_effect(&state);
-    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
-        assert_eq!(
-            prompt_mode,
-            PromptMode::XsdRetry,
-            "XSD retry should derive XsdRetry mode"
-        );
-    }
-
-    // Test case 4: Both retries pending (same-agent takes priority per orchestration logic)
-    let mut state = base_state();
-    state.continuation.same_agent_retry_pending = true;
-    state.continuation.same_agent_retry_count = 0;
-    state.continuation.xsd_retry_pending = true;
-    state.continuation.xsd_retry_count = 0;
-    let effect = determine_next_effect(&state);
-    if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
-        assert_ne!(
-            prompt_mode,
-            PromptMode::Continuation,
-            "Commit phase must never derive Continuation mode (even with both retries)"
-        );
-    }
-
-    // Test case 5: Neither retry pending (clean state, should be Normal)
+    // Test case 3: Neither retry pending (clean state, should be Normal)
     let mut state = base_state();
     state.continuation.same_agent_retry_pending = false;
-    state.continuation.xsd_retry_pending = false;
     let effect = determine_next_effect(&state);
     if let Effect::PrepareCommitPrompt { prompt_mode } = effect {
         assert_eq!(

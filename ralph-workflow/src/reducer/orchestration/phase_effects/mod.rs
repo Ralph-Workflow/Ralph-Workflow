@@ -15,13 +15,12 @@
 //! # Priority Order
 //!
 //! The main `determine_next_effect_for_phase()` function is called by the
-//! higher-level orchestration layer in `xsd_retry.rs`, which handles:
+//! higher-level orchestration layer in `orchestration.rs`, which handles:
 //!
 //! 1. **Continuation cleanup** - Write pending continuation context
 //! 2. **Retry logic** - Same-agent retry after timeout/failure
-//! 3. **XSD retry** - Re-invoke agent after XSD validation failure
-//! 4. **Continuation** - Re-invoke agent with continuation prompt
-//! 5. **Normal progression** - Call phase-specific orchestration (this module)
+//! 3. **Continuation** - Re-invoke agent with continuation prompt
+//! 4. **Normal progression** - Call phase-specific orchestration (this module)
 //!
 //! # Phase Modules
 //!
@@ -208,6 +207,7 @@ mod tests {
             recovery_escalation_level: 0,
             agent_chain: AgentChainState {
                 current_role: AgentRole::Developer,
+                current_drain: crate::agents::AgentDrain::Development,
                 retry_cycle: 7,
                 ..AgentChainState::default()
             },

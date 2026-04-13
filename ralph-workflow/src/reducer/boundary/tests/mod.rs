@@ -26,6 +26,6 @@ mod planning_prompt;
 mod prompt_permissions;
 mod review_prompt;
 mod review_validation;
-mod run_review_xsd_retry_input;
+
 mod stale_xml_cleanup;
 mod timeout_context;

@@ -2,16 +2,14 @@
 //!
 //! Handles all effects for the Planning phase:
 //! - Input materialization (PROMPT.md size handling)
-//! - Prompt preparation (normal, XSD retry, same-agent retry modes)
-//! - Agent invocation and XML cleanup
-//! - XML extraction and validation
+//! - Prompt preparation (normal, same-agent retry modes)
+//! - Agent invocation
+//! - JSON artifact extraction and validation
 //! - Output processing (PLAN.md writing, archiving)
 
 use super::planning_helpers::{
-    self, ensure_planning_tmp_dir, gen_planning_normal_rendered_log,
-    gen_planning_xsd_retry_rendered_log, get_planning_inputs,
-    materialize_planning_xsd_retry_last_output, maybe_add_planning_invoked_event, planning_outcome,
-    read_planning_xsd_retry_last_output, write_planning_prompt, XsdRetryLastOutputParams,
+    self, ensure_planning_tmp_dir, gen_planning_normal_rendered_log, get_planning_inputs,
+    maybe_add_planning_invoked_event, planning_outcome, write_planning_prompt,
 };
 use super::MainEffectHandler;
 use crate::agents::session::parallel::{
@@ -19,16 +17,13 @@ use crate::agents::session::parallel::{
 };
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
-use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
-use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
-use crate::files::llm_output_extraction::validate_plan_xml;
+use crate::files::artifact_paths;
+use crate::files::result_types::{ParallelPlanElements, WorkUnitElements};
 use crate::phases::development::format_plan_as_markdown;
-use crate::phases::planning::{planning_prompt_content_id, planning_xsd_retry_prompt_content_id};
+use crate::phases::planning::planning_prompt_content_id;
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
-use crate::prompts::{
-    get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SessionCapabilities,
-};
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SessionCapabilities};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -47,26 +42,8 @@ fn planning_json_artifact_present(ctx: &PhaseContext<'_>) -> bool {
     !matches!(ctx.workspace.read_artifact_json("plan"), Ok(None))
 }
 
-fn extract_planning_xml_from_disk(
-    ctx: &PhaseContext<'_>,
-    iteration: u32,
-    invalid_output_attempts: u32,
-) -> EffectResult {
-    match ctx.workspace.read(Path::new(xml_paths::PLAN_XML)) {
-        Ok(_) => EffectResult::event(PipelineEvent::planning_xml_extracted(iteration)),
-        Err(_) => EffectResult::event(PipelineEvent::planning_xml_missing(
-            iteration,
-            invalid_output_attempts,
-        )),
-    }
-}
-
-/// Convert `ParallelPlanElements` (from XSD parsing) to `AgentParallelPlan` (for state).
-fn convert_parallel_plan_elements(
-    elements: &crate::files::llm_output_extraction::xsd_validation_plan::ParallelPlanElements,
-) -> AgentParallelPlan {
-    use crate::files::llm_output_extraction::xsd_validation_plan::WorkUnitElements;
-
+/// Convert `ParallelPlanElements` (from JSON parsing) to `AgentParallelPlan` (for state).
+fn convert_parallel_plan_elements(elements: &ParallelPlanElements) -> AgentParallelPlan {
     let work_units: Vec<WorkUnit> = elements
         .work_units
         .iter()
@@ -163,89 +140,12 @@ impl MainEffectHandler {
     ) -> Result<EffectResult> {
         ensure_planning_tmp_dir(ctx)?;
         match prompt_mode {
-            PromptMode::XsdRetry => self.prepare_planning_xsd_retry_prompt(ctx, iteration),
             PromptMode::SameAgentRetry => {
                 self.prepare_planning_same_agent_retry_prompt(ctx, iteration)
             }
             PromptMode::Normal => self.prepare_planning_normal_prompt(ctx, iteration),
             PromptMode::Continuation => Err(ErrorEvent::PlanningContinuationNotSupported.into()),
         }
-    }
-
-    fn prepare_planning_xsd_retry_prompt(
-        &self,
-        ctx: &PhaseContext<'_>,
-        iteration: u32,
-    ) -> Result<EffectResult> {
-        let last_output = read_planning_xsd_retry_last_output(ctx)?;
-        let content_id_sha256 = sha256_hex_str(&last_output);
-        let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
-        let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
-        let last_output_bytes = last_output.len() as u64;
-
-        let xsd_retry_events = materialize_planning_xsd_retry_last_output(
-            self,
-            ctx,
-            iteration,
-            &last_output,
-            XsdRetryLastOutputParams {
-                content_id_sha256: &content_id_sha256,
-                consumer_signature_sha256: &consumer_signature_sha256,
-                inline_budget_bytes,
-                last_output_bytes,
-            },
-        )?;
-
-        let scope_key = PromptScopeKey::for_planning(
-            iteration,
-            RetryMode::Xsd {
-                count: self.state.continuation.xsd_retry_count,
-            },
-            self.state.recovery_epoch,
-        );
-        let prompt_key = scope_key.to_string();
-        let prompt_content_id =
-            planning_xsd_retry_prompt_content_id(&content_id_sha256, &consumer_signature_sha256);
-
-        let (prompt, was_replayed) = get_stored_or_generate_prompt(
-            &scope_key,
-            &self.state.prompt_history,
-            Some(&prompt_content_id),
-            || {
-                crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
-                    ctx.template_context,
-                    "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
-                    ctx.workspace,
-                    "planning_xsd_retry",
-                    SessionCapabilities::new(
-                        &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
-                        &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
-                    ),
-                )
-                .content
-            },
-        );
-
-        let rendered_log = match gen_planning_xsd_retry_rendered_log(ctx, was_replayed, &prompt_key)
-        {
-            Ok(log) => log,
-            Err(early) => return Ok(*early),
-        };
-
-        let capture = planning_helpers::PlanningPromptCapture {
-            prompt,
-            prompt_key: Some(prompt_key),
-            was_replayed,
-            prompt_content_id: Some(prompt_content_id),
-        };
-        write_planning_prompt(ctx, &capture.prompt);
-        Ok(planning_helpers::assemble_planning_prompt_result(
-            iteration,
-            capture,
-            "planning_xsd_retry",
-            rendered_log,
-            xsd_retry_events,
-        ))
     }
 
     fn prepare_planning_same_agent_retry_prompt(
@@ -275,7 +175,6 @@ impl MainEffectHandler {
             capture,
             "planning_xml",
             rendered_log,
-            None,
         ))
     }
 
@@ -340,7 +239,6 @@ impl MainEffectHandler {
             capture,
             "planning_xml",
             rendered_log,
-            None,
         ))
     }
 
@@ -375,7 +273,7 @@ impl MainEffectHandler {
         let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Planning,
-            AgentRole::Developer,
+            AgentRole::Planning,
             &agent,
             None,
             |session: &crate::agents::session::AgentSession| {
@@ -395,11 +293,11 @@ impl MainEffectHandler {
         if planning_json_artifact_present(ctx) {
             return EffectResult::event(PipelineEvent::planning_xml_extracted(iteration));
         }
-        extract_planning_xml_from_disk(
-            ctx,
+        // No JSON artifact present — report as missing.
+        EffectResult::event(PipelineEvent::planning_xml_missing(
             iteration,
             self.state.continuation.invalid_output_attempts,
-        )
+        ))
     }
 
     pub(in crate::reducer::boundary) fn validate_planning_xml(
@@ -408,71 +306,27 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> Result<EffectResult> {
         let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
-        if let Some(result) =
-            self.try_validate_planning_from_json(ctx, iteration, invalid_output_attempts)
-        {
-            return Ok(result);
-        }
-        Ok(self.validate_planning_from_xml(ctx, iteration, invalid_output_attempts))
-    }
-
-    fn validate_planning_json_envelope(
-        &self,
-        envelope: &crate::workspace::ArtifactEnvelope,
-        iteration: u32,
-        planning_failed: EffectResult,
-    ) -> EffectResult {
-        match super::json_artifact::plan_elements_from_envelope(envelope) {
-            Ok(elements) => {
-                let display = serde_json::to_string_pretty(&envelope.content)
-                    .unwrap_or_else(|_| "{}".to_string());
-                self.build_planning_validation_result(&elements, iteration, display)
-            }
-            Err(_) => planning_failed,
-        }
-    }
-
-    fn try_validate_planning_from_json(
-        &self,
-        ctx: &PhaseContext<'_>,
-        iteration: u32,
-        invalid_output_attempts: u32,
-    ) -> Option<EffectResult> {
         let planning_failed = EffectResult::event(
             PipelineEvent::planning_output_validation_failed(iteration, invalid_output_attempts),
         );
         match ctx.workspace.read_artifact_json("plan") {
-            Ok(Some(envelope)) => {
-                Some(self.validate_planning_json_envelope(&envelope, iteration, planning_failed))
-            }
-            Ok(None) => None,
-            Err(_) => Some(planning_failed),
+            Ok(Some(envelope)) => match super::json_artifact::plan_elements_from_envelope(&envelope) {
+                Ok(elements) => {
+                    let display = serde_json::to_string_pretty(&envelope.content)
+                        .unwrap_or_else(|_| "{}".to_string());
+                    Ok(self.build_planning_validation_result(&elements, iteration, display))
+                }
+                Err(_) => Ok(planning_failed),
+            },
+            Ok(None) => Ok(planning_failed),
+            Err(_) => Ok(planning_failed),
         }
     }
 
-    fn validate_planning_from_xml(
-        &self,
-        ctx: &PhaseContext<'_>,
-        iteration: u32,
-        invalid_output_attempts: u32,
-    ) -> EffectResult {
-        let planning_failed = EffectResult::event(
-            PipelineEvent::planning_output_validation_failed(iteration, invalid_output_attempts),
-        );
-        let Ok(plan_xml) = ctx.workspace.read(Path::new(xml_paths::PLAN_XML)) else {
-            return planning_failed;
-        };
-        match validate_plan_xml(&plan_xml) {
-            Ok(elements) => self.build_planning_validation_result(&elements, iteration, plan_xml),
-            Err(_) => planning_failed,
-        }
-    }
-
-    /// Build the `EffectResult` for a successfully validated plan, regardless of whether
-    /// it originated from JSON or XML.
+    /// Build the `EffectResult` for a successfully validated plan from a JSON artifact.
     fn build_planning_validation_result(
         &self,
-        elements: &crate::files::llm_output_extraction::xsd_validation_plan::PlanElements,
+        elements: &crate::files::result_types::PlanElements,
         iteration: u32,
         display_content: String,
     ) -> EffectResult {
@@ -532,11 +386,11 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
-        archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::PLAN_XML));
-        crate::files::llm_output_extraction::archive_json_artifact_with_workspace(
+        artifact_paths::archive_xml_file_with_workspace(
             ctx.workspace,
-            "plan",
+            std::path::Path::new(artifact_paths::PLAN_XML),
         );
+        crate::files::archive_json_artifact_with_workspace(ctx.workspace, "plan");
         EffectResult::event(PipelineEvent::planning_xml_archived(iteration))
     }
 

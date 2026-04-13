@@ -8,72 +8,6 @@
 
 use super::*;
 #[test]
-fn test_phase_specific_xsd_retry_increments_review_metrics() {
-    let mut state = PipelineState::initial(0, 3);
-    state.phase = crate::reducer::event::PipelinePhase::Review;
-    assert_eq!(state.metrics.xsd_retry_review, 0);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 0);
-
-    let event = PipelineEvent::Review(ReviewEvent::OutputValidationFailed {
-        pass: 0,
-        attempt: 0,
-        error_detail: None,
-    });
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_review, 1);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-}
-
-#[test]
-fn test_phase_specific_xsd_retry_increments_fix_metrics() {
-    let mut state = PipelineState::initial(0, 3);
-    state.phase = crate::reducer::event::PipelinePhase::Review;
-    assert_eq!(state.metrics.xsd_retry_fix, 0);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 0);
-
-    let event = PipelineEvent::Review(ReviewEvent::FixOutputValidationFailed {
-        pass: 0,
-        attempt: 0,
-        error_detail: None,
-    });
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_fix, 1);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-}
-
-#[test]
-fn test_xsd_retry_does_not_increment_when_exhausted() {
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = crate::reducer::event::PipelinePhase::Development;
-    state.continuation.xsd_retry_count = 98; // One below max (default is 99)
-    state.continuation.max_xsd_retry_count = 99;
-
-    // This retry should NOT increment: (98 + 1 = 99) is treated as exhausted.
-    let event = PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed {
-        iteration: 0,
-        attempt: 0,
-    });
-    let state = reduce(state, event);
-
-    // (98 + 1) hits exhaustion and switches agents, so metrics do not increment.
-    assert_eq!(state.metrics.xsd_retry_development, 0);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 0);
-
-    // Try another validation failure. Because XSD retry count is reset when switching
-    // agents, this one is a retry attempt and should increment.
-    let event = PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed {
-        iteration: 0,
-        attempt: 0,
-    });
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_development, 1);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-}
-
-#[test]
 fn test_fix_continuation_triggered_increments_counter() {
     use crate::reducer::state::FixStatus;
 
@@ -216,8 +150,6 @@ fn test_metrics_survive_checkpoint_serialization() {
     state.metrics.analysis_attempts_total = 2;
     state.metrics.review_passes_started = 1;
     state.metrics.review_runs_total = 1;
-    state.metrics.xsd_retry_attempts_total = 5;
-    state.metrics.xsd_retry_development = 3;
     state.metrics.same_agent_retry_attempts_total = 2;
     state.metrics.commits_created_total = 1;
 
@@ -232,8 +164,6 @@ fn test_metrics_survive_checkpoint_serialization() {
     assert_eq!(restored.metrics.analysis_attempts_total, 2);
     assert_eq!(restored.metrics.review_passes_started, 1);
     assert_eq!(restored.metrics.review_runs_total, 1);
-    assert_eq!(restored.metrics.xsd_retry_attempts_total, 5);
-    assert_eq!(restored.metrics.xsd_retry_development, 3);
     assert_eq!(restored.metrics.same_agent_retry_attempts_total, 2);
     assert_eq!(restored.metrics.commits_created_total, 1);
 }
@@ -269,10 +199,6 @@ fn test_metrics_default_for_old_checkpoints() {
             "continue_pending": false,
             "context_write_pending": false,
             "context_cleanup_pending": false,
-            "xsd_retry_count": 0,
-            "xsd_retry_pending": false,
-            "xsd_retry_session_reuse_pending": false,
-            "max_xsd_retry_count": 99,
             "same_agent_retry_count": 0,
             "same_agent_retry_pending": false,
             "same_agent_retry_reason": null,
@@ -280,9 +206,6 @@ fn test_metrics_default_for_old_checkpoints() {
             "fix_continuation_attempt": 0,
             "max_fix_continue_count": 3,
             "fix_continue_pending": false,
-            "last_xsd_error": null,
-            "last_review_xsd_error": null,
-            "last_fix_xsd_error": null,
             "dev_continuation_context": null
         },
         "rebase": "NotStarted",

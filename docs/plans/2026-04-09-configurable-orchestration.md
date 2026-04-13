@@ -290,10 +290,36 @@ Hard rule:
 - TOML schemas, normalized policy types, and validation logic belong to `ralph-workflow-policy`
 - reducer/runtime execution belongs to `ralph-workflow`
 - prompt assets and prompt rendering should move only after their current dependencies on `PhaseContext`, capability mapping, and runtime-only prompt assembly are untangled; that extraction is a later hardening step, not a prerequisite for fixing drain resolution or orchestration correctness
+- the end state still places prompt templates themselves under `ralph-workflow-policy` ownership, even if some runtime-heavy rendering helpers are extracted later than the initial TOML/schema move
+
+Most importantly, this crate boundary is meant to make `ralph-workflow-policy` the **single source of truth for orchestration policy and the policy-owned prompt/template contract that travels with it**. The prompt templates themselves are part of that policy-owned surface, not an afterthought owned elsewhere. That means a reader should be able to answer the following questions by reading policy types, prompt/template definitions, and `agents.toml`, `pipeline.toml`, and `artifacts.toml`, without reverse-engineering reducer code:
+
+- which drain/agent role starts first
+- which top-level phase comes after which
+- which phases embed analysis as a decision point
+- where analysis success routes next and where analysis failure/loopback routes next
+- which commit checkpoints are mandatory between cycles
+- when a development cycle increments and when a review cycle increments
+- which artifact contracts and parallel-work constraints apply at each drain
+- which prompt/template contract is sent for each drain and decision point as part of that policy surface
+
+If any of those answers still live primarily in `ralph-workflow` reducer branching or runtime-only prompt assembly, then the migration is incomplete. `ralph-workflow` should execute the policy mechanically; it should not remain the place where the effective orchestration contract or the policy-owned prompt/template contract is discovered.
 
 That separation prevents circular dependency, keeps normalization/validation testable without booting the whole workflow engine, and avoids forcing runtime-heavy prompt assembly into a crate boundary before its dependencies are understood.
 
-At the user/project level, the policy crate still materializes the same contract shape:
+At the user/project level, the policy crate still materializes the same contract shape. In other words, `pipeline.toml` and `artifacts.toml` are not outside the policy crate's responsibility; they are part of the policy crate's owned contract surface, schema, and validation boundary.
+
+Because these are INTERNAL policy documents, shipping default versions of them is a **must**, not an optional convenience. The default `pipeline.toml` and `artifacts.toml` owned by the policy crate must describe the exact orchestration behavior this proposal is trying to implement. In particular, the default `pipeline.toml` must match the Section 1 target flow rather than merely serving as placeholder schema coverage:
+
+- the default phase/drain ordering must reflect the intended flow from Section 1
+- the default embedded analysis decision points must match the intended development and review/fix loops from Section 1
+- the default decision routes must express where analysis success and loopback paths go next
+- the default cycle-budget semantics must agree with the Section 1 definition of when development and review cycles complete and increment
+- if the shipped defaults do not match Section 1, then the policy layer is lying about the orchestration contract and the migration is incomplete
+
+That requirement applies equally to the default prompt/template mappings referenced by those policy files: the shipped internal defaults must correspond to the same orchestration behavior they declare.
+
+The contract shape is:
 
 ```text
 .agent/
@@ -340,7 +366,13 @@ The internal metadata (role, policy_mode, drain_class, artifact_type) is shown t
 
 ### `pipeline.toml`: phase transitions and orchestration rules
 
+`pipeline.toml` is part of the `ralph-workflow-policy` contract surface. It is the concrete TOML artifact through which the policy crate declares and validates orchestration flow. It should not be thought of as a separate runtime-owned file format; it is one of the primary ways the policy crate expresses orchestration policy to the rest of the system.
+
+Since it is an INTERNAL policy document, the default `pipeline.toml` shipped by the policy layer is normative. It must match the Section 1 orchestration behavior exactly enough that reading the shipped default tells a truthful story about the behavior Ralph is trying to enforce.
+
 This file is the visible policy contract for orchestration decisions. It should describe the allowed phase sequencing, embedded decision points, legal analysis routes, cycle budgets, and parallel-work policy in a form the runtime validates and executes. Rust remains responsible for execution mechanics, but the orchestration policy itself should be readable here instead of being recoverable only from reducer/orchestration code.
+
+Stated more bluntly: `pipeline.toml`, together with the policy-owned prompt/template definitions in `ralph-workflow-policy`, is where the main orchestration logic is declared. It is where the project should be able to see the phase order, the drains that require analysis, the legal next steps after analysis succeeds or fails, the mandatory commit checkpoints between cycles, the exact points at which development and review cycles are considered complete and incremented, and which prompt/template contract is paired with each drain-owned step. Reducers in `ralph-workflow` should consume and enforce that declared policy; they should not be the authoritative place where those answers are invented.
 
 This file holds:
 
@@ -373,7 +405,7 @@ max_dev_continuations = 3
 max_fix_continuations = 10
 loop_detection_threshold = 100
 
-The cycle budgets count **completed cycles**, not internal retries or loopbacks:
+The cycle budgets count **completed cycles**, not internal retries or loopbacks. This is part of the policy contract, not an implementation detail hidden in Rust:
 
 - one **development cycle** is `planning -> development -> analysis`, followed by the mandatory commit checkpoint before the next planning or review cycle starts
 - one **review cycle** is `review -> fix -> analysis`, followed by the mandatory commit checkpoint before the next review cycle or finalization starts
@@ -399,6 +431,12 @@ dispatch_remains_runtime_owned = true
 ```
 
 ### `artifacts.toml`: prompt and artifact contracts
+
+Like `pipeline.toml`, `artifacts.toml` is part of the `ralph-workflow-policy` contract surface rather than a separate runtime concern. The policy crate owns the schema, validation rules, and meaning of this file. The same ownership rule applies to the prompt templates referenced by this contract.
+
+Since it is also an INTERNAL policy document, the default `artifacts.toml` shipped by the policy layer is likewise normative and must stay aligned with the Section 1 orchestration behavior and the prompt/template contracts paired with that behavior.
+
+This file is not merely metadata about accepted artifacts. It is part of the policy-owned contract that travels with orchestration: it defines the artifact expectations and the prompt/template-facing contract for each drain, so the same policy layer that declares routing also declares what each agent is expected to submit.
 
 This file replaces the old prompt/schema framing with artifact-only rules.
 

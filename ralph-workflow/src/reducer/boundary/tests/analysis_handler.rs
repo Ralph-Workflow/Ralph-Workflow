@@ -44,58 +44,6 @@ fn test_invoke_analysis_agent_gracefully_handles_missing_plan_and_diff() {
 }
 
 #[test]
-fn test_invoke_analysis_agent_xsd_retry_uses_existing_xsd_retry_template() {
-    let workspace = MemoryWorkspace::new_test()
-        .with_dir(".agent/tmp")
-        .with_file(".agent/PLAN.md", "# Plan\n")
-        .with_file(".agent/tmp/development_result.xml", "<invalid xml")
-        .with_file(
-            ".agent/tmp/development_xsd_error.txt",
-            "missing closing tag",
-        );
-
-    let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-    ctx.developer_agent = "claude";
-
-    let mut handler = MainEffectHandler::new(PipelineState {
-        phase: crate::reducer::event::PipelinePhase::Development,
-        iteration: 0,
-        continuation: ContinuationState {
-            xsd_retry_pending: true,
-            ..ContinuationState::new()
-        },
-        ..PipelineState::initial(1, 0)
-    });
-
-    handler
-        .invoke_analysis_agent(&mut ctx, 0)
-        .expect("invoke_analysis_agent should succeed");
-
-    let calls = fixture.executor.agent_calls();
-    assert_eq!(calls.len(), 1);
-    let prompt = &calls[0].prompt;
-    assert!(
-        prompt.contains("VALIDATION FAILED - FIX JSON SUBMISSION ONLY"),
-        "expected current submission-fix retry template, got: {prompt}"
-    );
-    assert!(
-        prompt.contains("THIS IS A SUBMISSION-FIX-ONLY RETRY"),
-        "expected submission-fix retry guardrail, got: {prompt}"
-    );
-    assert!(
-        prompt.contains("artifact_type=\"development_result\""),
-        "expected development_result resubmission guidance, got: {prompt}"
-    );
-
-    let last_output = fixture
-        .workspace
-        .read(std::path::Path::new(".agent/tmp/last_output.xml"))
-        .expect("last_output.xml should be materialized for analysis XSD retry");
-    assert_eq!(last_output, "<invalid xml");
-}
-
-#[test]
 fn test_invoke_analysis_agent_same_agent_retry_timeout_with_context_includes_context_file_guidance()
 {
     let timeout_context_file_path = ".agent/tmp/timeout-context-analysis_1.md";
@@ -419,16 +367,14 @@ fn test_invoke_analysis_agent_uses_head_baseline_not_start_commit() {
 /// regardless of the exit code. If the path were `None`, the valid-file check is skipped
 /// and the result would be `InvocationFailed`.
 #[test]
-fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result_xml() {
-    // Workspace contains a valid development_result.xml as the agent's output.
+fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result_json() {
+    // Workspace contains a valid development_result.json as the agent's output.
     let workspace = MemoryWorkspace::new_test()
         .with_dir(".agent/tmp")
         .with_file(".agent/PLAN.md", "# Plan\n")
         .with_file(
-            ".agent/tmp/development_result.xml",
-            "<ralph-development-result>\
-             <ralph-status>completed</ralph-status>\
-             </ralph-development-result>",
+            ".agent/tmp/development_result.json",
+            r#"{"status":"completed","summary":"done"}"#,
         );
 
     // Mock returns exit code 91 — a proprietary exit that does not map to a
@@ -487,9 +433,9 @@ fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result
         .invoke_analysis_agent(&mut ctx, 0)
         .expect("invoke_analysis_agent should not fail");
 
-    // The key assertion: with a valid development_result.xml AND exit code 91, the
+    // The key assertion: with a valid development_result.json AND exit code 91, the
     // additional_events must contain InvocationSucceeded — proving that
-    // completion_output_path was correctly wired to development_result.xml (not None).
+    // completion_output_path was correctly wired to development_result.json (not None).
     //
     // `build_agent_invocation_result` always puts InvocationStarted as the primary
     // event and the actual execution result in additional_events. So we look there.
@@ -513,8 +459,8 @@ fn test_invoke_analysis_agent_completion_output_path_wired_to_development_result
             execution_event,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
         ),
-        "analysis drain with valid development_result.xml and exit code 91 must produce \
-         InvocationSucceeded — completion_output_path must be wired to development_result.xml; \
+        "analysis drain with valid development_result.json and exit code 91 must produce \
+         InvocationSucceeded — completion_output_path must be wired to development_result.json; \
          got primary={:?} additional={:?}",
         result.event,
         result.additional_events

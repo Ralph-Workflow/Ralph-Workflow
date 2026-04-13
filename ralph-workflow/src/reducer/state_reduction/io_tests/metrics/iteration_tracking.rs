@@ -135,44 +135,6 @@ fn test_fix_agent_invoked_increments_fix_runs() {
 }
 
 #[test]
-fn test_xsd_retry_increments_total_and_phase_counters() {
-    use crate::reducer::event::PipelinePhase;
-
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = PipelinePhase::Development;
-
-    let event = PipelineEvent::agent_xsd_validation_failed(
-        AgentRole::Developer,
-        ArtifactType::DevelopmentResult,
-        "validation error".to_string(),
-        1,
-    );
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-    assert_eq!(state.metrics.xsd_retry_development, 1);
-}
-
-#[test]
-fn test_agent_xsd_validation_failed_always_increments_total_even_outside_known_phases() {
-    use crate::reducer::event::PipelinePhase;
-
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = PipelinePhase::AwaitingDevFix;
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 0);
-
-    let event = PipelineEvent::agent_xsd_validation_failed(
-        AgentRole::Developer,
-        ArtifactType::DevelopmentResult,
-        "validation error".to_string(),
-        1,
-    );
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-}
-
-#[test]
 fn test_agent_fallback_increments_counter() {
     let state = PipelineState::initial(3, 0);
     let event = PipelineEvent::agent_fallback_triggered(
@@ -194,38 +156,3 @@ fn test_commit_created_increments_counter() {
     assert_eq!(state.metrics.commits_created_total, 1);
 }
 
-#[test]
-fn test_phase_specific_xsd_retry_increments_planning_metrics() {
-    use crate::reducer::event::PlanningEvent;
-
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = crate::reducer::event::PipelinePhase::Planning;
-    assert_eq!(state.metrics.xsd_retry_planning, 0);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 0);
-
-    let event = PipelineEvent::Planning(PlanningEvent::OutputValidationFailed {
-        iteration: 0,
-        attempt: 0,
-    });
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_planning, 1);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-}
-
-#[test]
-fn test_phase_specific_xsd_retry_increments_development_metrics() {
-    let mut state = PipelineState::initial(3, 0);
-    state.phase = crate::reducer::event::PipelinePhase::Development;
-    assert_eq!(state.metrics.xsd_retry_development, 0);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 0);
-
-    let event = PipelineEvent::Development(DevelopmentEvent::OutputValidationFailed {
-        iteration: 0,
-        attempt: 0,
-    });
-    let state = reduce(state, event);
-
-    assert_eq!(state.metrics.xsd_retry_development, 1);
-    assert_eq!(state.metrics.xsd_retry_attempts_total, 1);
-}

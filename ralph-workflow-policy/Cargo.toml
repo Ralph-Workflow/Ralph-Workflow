@@ -1,0 +1,16 @@
+[package]
+name = "ralph-workflow-policy"
+version = "0.1.0"
+edition = "2021"
+description = "Orchestration policy types, TOML schemas, and validation rules for ralph-workflow"
+authors = ["Mistlight"]
+license = "AGPL-3.0-only"
+repository = "https://codeberg.org/mistlight/RalphWithReviewer"
+
+[lib]
+name = "ralph_workflow_policy"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = "2.0"
