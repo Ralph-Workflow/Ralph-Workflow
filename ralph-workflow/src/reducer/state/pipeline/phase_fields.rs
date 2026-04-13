@@ -73,7 +73,7 @@ pub struct DevelopmentValidatedOutcome {
     /// Default is `None` for backwards compatibility with checkpoints that
     /// predate the `decision` field.
     #[serde(default)]
-    pub analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+    pub analysis_decision: Option<crate::reducer::state::DevelopmentAnalysisDecision>,
     pub summary: String,
     /// Files changed during development. `Option<Box<[String]>>` saves 8 bytes
     /// per instance vs `Option<Vec<String>>` when Some, and is None when empty
@@ -87,10 +87,15 @@ pub struct FixValidatedOutcome {
     pub pass: u32,
     pub status: FixStatus,
     pub summary: Option<String>,
-    /// Phase 2: typed analysis decision from fix analysis agent.
+    /// Phase 2: typed review-cycle analysis decision from the fix analysis agent.
+    ///
+    /// Uses `ReviewAnalysisDecision` which routes within the review cycle:
+    /// - `NeedsMoreFix` → return to fix agent
+    /// - `CycleComplete` → proceed to review_commit
+    ///
     /// `None` means no explicit decision — use status-based continuation logic.
     #[serde(default)]
-    pub analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+    pub analysis_decision: Option<crate::reducer::state::ReviewAnalysisDecision>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

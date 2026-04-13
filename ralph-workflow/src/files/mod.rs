@@ -71,7 +71,6 @@ pub use self::archive::archive_json_artifact_with_workspace;
 pub mod artifact_paths;
 pub use self::artifact_paths::{archive_xml_file_with_workspace, has_valid_artifact_output};
 
-
 pub mod result_extraction;
 
 pub mod result_types;

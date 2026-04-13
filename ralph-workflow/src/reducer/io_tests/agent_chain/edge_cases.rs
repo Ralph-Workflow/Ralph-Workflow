@@ -306,7 +306,6 @@ fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
         new_state.agent_chain.last_session_id, None,
         "NoResult timeout should clear session ID (immediate agent switch)"
     );
-
 }
 
 #[test]

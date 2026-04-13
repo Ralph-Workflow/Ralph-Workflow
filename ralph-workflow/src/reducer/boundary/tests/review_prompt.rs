@@ -5,7 +5,6 @@ mod materialize_inputs;
 mod prepare_fix_prompt;
 mod prepare_review_prompt;
 
-
 #[derive(Debug, Clone)]
 struct AtomicWriteEnforcingWorkspace {
     inner: MemoryWorkspace,

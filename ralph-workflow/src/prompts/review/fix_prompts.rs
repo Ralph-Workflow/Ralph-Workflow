@@ -71,8 +71,8 @@ pub fn prompt_fix_xml_with_log(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("fix_mode_xml")
-        .unwrap_or_else(|_| include_str!("../templates/fix_mode_xml.txt").to_string());
+        .get_template("fix_mode")
+        .unwrap_or_else(|_| ralph_workflow_policy::FIX_MODE_TEMPLATE.to_string());
 
     // Base variables for fix prompt
     let base_vars: HashMap<&str, String> = HashMap::from([
@@ -176,8 +176,8 @@ pub fn prompt_fix_xml_with_context(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("fix_mode_xml")
-        .unwrap_or_else(|_| include_str!("../templates/fix_mode_xml.txt").to_string());
+        .get_template("fix_mode")
+        .unwrap_or_else(|_| ralph_workflow_policy::FIX_MODE_TEMPLATE.to_string());
 
     // Base variables for fix prompt
     let base_vars: HashMap<&str, String> = HashMap::from([

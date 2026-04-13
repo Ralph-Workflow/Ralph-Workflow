@@ -22,9 +22,7 @@ use crate::prompts::{
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
-use crate::reducer::state::{
-    MaterializedPromptInput, PromptInputRepresentation, PromptMode,
-};
+use crate::reducer::state::{MaterializedPromptInput, PromptInputRepresentation, PromptMode};
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
@@ -98,7 +96,7 @@ impl MainEffectHandler {
         };
         PromptModeResult::Data(PromptModeData {
             prompt,
-            template_name: "developer_iteration_continuation_xml",
+            template_name: "developer_iteration_continuation",
             prompt_key: Some(prompt_key),
             was_replayed,
             prompt_content_id: Some(prompt_content_id),
@@ -158,7 +156,7 @@ impl MainEffectHandler {
 
         Ok(PromptModeResult::Data(PromptModeData {
             prompt,
-            template_name: "developer_iteration_xml",
+            template_name: "developer_iteration",
             prompt_key: Some(prompt_key),
             was_replayed,
             prompt_content_id: Some(prompt_content_id),
@@ -211,7 +209,7 @@ impl MainEffectHandler {
                     ctx.template_context,
                     &refs,
                     ctx.workspace,
-                    "developer_iteration_xml",
+                    "developer_iteration",
                     SessionCapabilities::new(
                         &CapabilitySet::defaults_for_drain(SessionDrain::Development),
                         &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
@@ -228,7 +226,7 @@ impl MainEffectHandler {
 
         Ok(PromptModeResult::Data(PromptModeData {
             prompt,
-            template_name: "developer_iteration_xml",
+            template_name: "developer_iteration",
             prompt_key: Some(prompt_key),
             was_replayed,
             prompt_content_id: Some(prompt_content_id),
@@ -251,7 +249,7 @@ fn build_normal_rendered_log(
         ctx.template_context,
         refs,
         ctx.workspace,
-        "developer_iteration_xml",
+        "developer_iteration",
         SessionCapabilities::new(
             &CapabilitySet::defaults_for_drain(SessionDrain::Development),
             &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
@@ -260,7 +258,7 @@ fn build_normal_rendered_log(
     check_template_log_complete(
         rendered.log,
         AgentRole::Developer,
-        "developer_iteration_xml",
+        "developer_iteration",
         prompt_key,
         was_replayed,
     )
@@ -279,7 +277,7 @@ fn build_continuation_rendered_log(
         ctx.template_context,
         continuation_state,
         ctx.workspace,
-        "developer_iteration_continuation_xml",
+        "developer_iteration_continuation",
         SessionCapabilities::new(
             &CapabilitySet::defaults_for_drain(SessionDrain::Development),
             &PolicyFlagSet::defaults_for_drain(SessionDrain::Development),
@@ -288,7 +286,7 @@ fn build_continuation_rendered_log(
     check_template_log_complete(
         rendered.log,
         AgentRole::Developer,
-        "developer_iteration_continuation_xml",
+        "developer_iteration_continuation",
         prompt_key,
         was_replayed,
     )

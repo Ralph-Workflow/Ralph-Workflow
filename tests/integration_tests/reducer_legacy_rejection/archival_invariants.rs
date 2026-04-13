@@ -111,7 +111,6 @@ fn test_legacy_artifact_files_completely_ignored() {
     });
 }
 
-
 /// Test that archived XML files use .processed suffix consistently.
 ///
 /// All XML archiving must use the `.processed` suffix for consistency.

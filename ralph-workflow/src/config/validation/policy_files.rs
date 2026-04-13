@@ -12,13 +12,13 @@
 //!
 //! - Rule 7:  Phase expects one artifact type while the bound drain declares another
 //! - Rule 11: Phase/drain/state identifiers are not mapped canonically
-//! - Rule 12: The analysis drain's declared artifact type does not define the decision outcomes
-//!            the runtime needs
+//! - Rule 12: The analysis drain's declared artifact type does not define the decision
+//!   outcomes the runtime needs
 //! - Rule 13: The documented decision routes do not allow the target flow
 //! - Rule 14: Cycle policy and decision-route policy disagree
 
-use std::path::Path;
 use super::{ConfigValidationError, ValidationResult};
+use std::path::Path;
 
 /// Validate `.agent/pipeline.toml` content against the `PipelineConfig` schema.
 ///
@@ -29,9 +29,9 @@ use super::{ConfigValidationError, ValidationResult};
 /// Returns validation errors for TOML syntax failures, unknown fields, or invariant
 /// violations (budget inconsistencies, missing required sections).
 pub fn validate_pipeline_toml(path: &Path, content: &str) -> ValidationResult {
+    use super::levenshtein;
     use ralph_workflow_policy::config::PipelineConfig;
     use ralph_workflow_policy::validation::VALID_PIPELINE_KEYS;
-    use super::levenshtein;
 
     // Step 1: Check TOML syntax.
     let parsed: toml::Value = toml::from_str(content).map_err(|e| {
@@ -72,43 +72,38 @@ pub fn validate_pipeline_toml(path: &Path, content: &str) -> ValidationResult {
         all
     })?;
 
-    // Step 4: Budget-consistency checks (Rule 14).
-    let mut invariant_errors: Vec<ConfigValidationError> = Vec::new();
-
-    if pipeline.budgets.max_development_cycles == 0 {
-        invariant_errors.push(ConfigValidationError::InvalidValue {
-            file: path.to_path_buf(),
-            key: "budgets.max_development_cycles".to_string(),
-            message: "must be at least 1".to_string(),
-        });
-    }
-    if pipeline.budgets.max_review_cycles == 0 {
-        invariant_errors.push(ConfigValidationError::InvalidValue {
+    // Steps 4 & 5: Budget and parallel execution consistency checks (Rules 14–16).
+    let invariant_errors: Vec<ConfigValidationError> = [
+        (pipeline.budgets.max_development_cycles == 0).then(|| {
+            ConfigValidationError::InvalidValue {
+                file: path.to_path_buf(),
+                key: "budgets.max_development_cycles".to_string(),
+                message: "must be at least 1".to_string(),
+            }
+        }),
+        (pipeline.budgets.max_review_cycles == 0).then(|| ConfigValidationError::InvalidValue {
             file: path.to_path_buf(),
             key: "budgets.max_review_cycles".to_string(),
             message: "must be at least 1".to_string(),
-        });
-    }
+        }),
+        (pipeline.parallel_execution.default_concurrent_agents
+            > pipeline.parallel_execution.max_concurrent_agents)
+            .then(|| ConfigValidationError::InvalidValue {
+                file: path.to_path_buf(),
+                key: "parallel_execution.default_concurrent_agents".to_string(),
+                message: format!(
+                    "default_concurrent_agents ({}) must not exceed max_concurrent_agents ({})",
+                    pipeline.parallel_execution.default_concurrent_agents,
+                    pipeline.parallel_execution.max_concurrent_agents
+                ),
+            }),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
-    // Step 5: Parallel execution consistency checks (Rules 15-16).
-    if pipeline.parallel_execution.default_concurrent_agents
-        > pipeline.parallel_execution.max_concurrent_agents
-    {
-        invariant_errors.push(ConfigValidationError::InvalidValue {
-            file: path.to_path_buf(),
-            key: "parallel_execution.default_concurrent_agents".to_string(),
-            message: format!(
-                "default_concurrent_agents ({}) must not exceed max_concurrent_agents ({})",
-                pipeline.parallel_execution.default_concurrent_agents,
-                pipeline.parallel_execution.max_concurrent_agents
-            ),
-        });
-    }
-
-    let all_errors: Vec<ConfigValidationError> = unknown_errors
-        .into_iter()
-        .chain(invariant_errors)
-        .collect();
+    let all_errors: Vec<ConfigValidationError> =
+        unknown_errors.into_iter().chain(invariant_errors).collect();
 
     if all_errors.is_empty() {
         Ok(Vec::new())
@@ -122,8 +117,8 @@ pub fn validate_pipeline_toml(path: &Path, content: &str) -> ValidationResult {
 /// Enforces:
 /// - Rule 7:  Each drain's declared `artifact_type` matches the canonical DRAIN_INVARIANTS value.
 /// - Rule 12: The `analysis` drain's required_decision_outcomes list covers all canonical outcomes.
-/// - Rule 13: At least the two required flows (`development → review` and `fix → review`) can be
-///            expressed through the declared decision outcomes.
+/// - Rule 13: At least the two required flows (`development → review` and `fix → review`)
+///   can be expressed through the declared decision outcomes.
 ///
 /// Returns `Ok(warnings)` on success or `Err(errors)` if any invariant is violated.
 ///
@@ -131,11 +126,12 @@ pub fn validate_pipeline_toml(path: &Path, content: &str) -> ValidationResult {
 ///
 /// Returns validation errors for schema violations or invariant violations.
 pub fn validate_artifacts_toml(path: &Path, content: &str) -> ValidationResult {
+    use super::levenshtein;
     use ralph_workflow_policy::config::{drain_invariant, ArtifactsConfig};
     use ralph_workflow_policy::validation::{
-        CANONICAL_ANALYSIS_DECISION_OUTCOMES, VALID_ARTIFACTS_KEYS,
+        CANONICAL_DEVELOPMENT_ANALYSIS_DECISIONS, CANONICAL_REVIEW_ANALYSIS_DECISIONS,
+        VALID_ARTIFACTS_KEYS,
     };
-    use super::levenshtein;
 
     // Step 1: Check TOML syntax.
     let parsed: toml::Value = toml::from_str(content).map_err(|e| {
@@ -176,115 +172,166 @@ pub fn validate_artifacts_toml(path: &Path, content: &str) -> ValidationResult {
         all
     })?;
 
-    let mut invariant_errors: Vec<ConfigValidationError> = Vec::new();
+    // Step 4: Rule 7 — artifact_type must match DRAIN_INVARIANTS for regular drains.
+    let drain_type_errors: Vec<ConfigValidationError> = [
+        (
+            "planning",
+            artifacts
+                .planning
+                .as_ref()
+                .map(|c| c.artifact_type.as_str()),
+        ),
+        (
+            "development",
+            artifacts
+                .development
+                .as_ref()
+                .map(|c| c.artifact_type.as_str()),
+        ),
+        (
+            "review",
+            artifacts.review.as_ref().map(|c| c.artifact_type.as_str()),
+        ),
+        (
+            "fix",
+            artifacts.fix.as_ref().map(|c| c.artifact_type.as_str()),
+        ),
+        (
+            "commit",
+            artifacts.commit.as_ref().map(|c| c.artifact_type.as_str()),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(drain_name, artifact_type_opt)| {
+        let artifact_type = artifact_type_opt?;
+        let invariant = drain_invariant(drain_name)?;
+        (artifact_type != invariant.artifact_type).then(|| ConfigValidationError::InvalidValue {
+            file: path.to_path_buf(),
+            key: format!("{drain_name}.artifact_type"),
+            message: format!(
+                "artifact_type '{}' does not match canonical value '{}' for the {} drain",
+                artifact_type, invariant.artifact_type, drain_name
+            ),
+        })
+    })
+    .collect();
 
-    // Step 4: Rule 7 — artifact_type must match DRAIN_INVARIANTS.
-    macro_rules! check_artifact_type {
-        ($drain_name:literal, $config:expr) => {
-            if let Some(drain_config) = $config {
-                if let Some(invariant) = drain_invariant($drain_name) {
-                    if drain_config.artifact_type != invariant.artifact_type {
-                        invariant_errors.push(ConfigValidationError::InvalidValue {
-                            file: path.to_path_buf(),
-                            key: concat!($drain_name, ".artifact_type").to_owned(),
-                            message: format!(
-                                "artifact_type '{}' does not match canonical value '{}' for the {} drain",
-                                drain_config.artifact_type, invariant.artifact_type, $drain_name
-                            ),
-                        });
+    // Steps 5–7: typed analysis-specific checks (Rules 7, 12, 13).
+    // Validates development_analysis and review_analysis sections using the new binary
+    // vocabulary (CANONICAL_DEVELOPMENT_ANALYSIS_DECISIONS and
+    // CANONICAL_REVIEW_ANALYSIS_DECISIONS respectively).
+
+    // Validate development_analysis section if present.
+    let dev_analysis_errors: Vec<ConfigValidationError> =
+        artifacts.development_analysis.as_ref().map_or_else(Vec::new, |dev_analysis| {
+            let canonical: &[&str] = CANONICAL_DEVELOPMENT_ANALYSIS_DECISIONS;
+            let declared = &dev_analysis.decision_vocabulary;
+
+            // Rule 7: development_analysis artifact_type must be "analysis_decision".
+            let artifact_type_error: Option<ConfigValidationError> =
+                (dev_analysis.artifact_type != "analysis_decision").then(|| {
+                    ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key: "development_analysis.artifact_type".to_owned(),
+                        message: format!(
+                            "artifact_type '{}' does not match canonical value 'analysis_decision'",
+                            dev_analysis.artifact_type
+                        ),
                     }
-                }
-            }
-        };
-    }
+                });
 
-    check_artifact_type!("planning", &artifacts.planning);
-    check_artifact_type!("development", &artifacts.development);
-    check_artifact_type!("review", &artifacts.review);
-    check_artifact_type!("fix", &artifacts.fix);
-    check_artifact_type!("commit", &artifacts.commit);
-
-    // Step 5: Rule 7 — analysis artifact_type.
-    if let Some(analysis) = &artifacts.analysis {
-        if let Some(invariant) = drain_invariant("analysis") {
-            if analysis.artifact_type != invariant.artifact_type {
-                invariant_errors.push(ConfigValidationError::InvalidValue {
+            // Rule 12: every canonical decision vocabulary entry must appear in declared.
+            let missing_vocabulary = canonical
+                .iter()
+                .filter(|expected| !declared.iter().any(|d| d == *expected))
+                .map(|expected| ConfigValidationError::InvalidValue {
                     file: path.to_path_buf(),
-                    key: "analysis.artifact_type".to_owned(),
+                    key: "development_analysis.decision_vocabulary".to_owned(),
                     message: format!(
-                        "artifact_type '{}' does not match canonical value '{}' for the analysis drain",
-                        analysis.artifact_type, invariant.artifact_type
+                        "missing canonical decision '{expected}'; all of {canonical:?} must be declared"
                     ),
                 });
-            }
-        }
 
-        // Step 6: Rule 12 — required_decision_outcomes must cover all canonical outcomes.
-        let canonical: &[&str] = CANONICAL_ANALYSIS_DECISION_OUTCOMES;
-        let declared = &analysis.required_decision_outcomes;
-
-        // Every canonical outcome must appear in declared.
-        for expected in canonical {
-            if !declared.iter().any(|d| d == expected) {
-                invariant_errors.push(ConfigValidationError::InvalidValue {
+            // Rule 12: no unknown vocabulary allowed.
+            let unknown_vocabulary = declared
+                .iter()
+                .filter(|d| !canonical.contains(&d.as_str()))
+                .map(|d| ConfigValidationError::InvalidValue {
                     file: path.to_path_buf(),
-                    key: "analysis.required_decision_outcomes".to_owned(),
+                    key: "development_analysis.decision_vocabulary".to_owned(),
                     message: format!(
-                        "missing canonical outcome '{expected}'; \
-                         all of {canonical:?} must be declared"
+                        "unknown decision '{d}'; valid decisions are: {canonical:?}"
                     ),
                 });
-            }
-        }
 
-        // No unknown outcomes are allowed.
-        for declared_outcome in declared {
-            if !canonical.contains(&declared_outcome.as_str()) {
-                invariant_errors.push(ConfigValidationError::InvalidValue {
-                    file: path.to_path_buf(),
-                    key: "analysis.required_decision_outcomes".to_owned(),
-                    message: format!(
-                        "unknown decision outcome '{declared_outcome}'; \
-                         valid outcomes are: {canonical:?}"
-                    ),
-                });
-            }
-        }
+            artifact_type_error
+                .into_iter()
+                .chain(missing_vocabulary)
+                .chain(unknown_vocabulary)
+                .collect()
+        });
 
-        // Step 7: Rule 13 — verify the two required flows are expressible.
-        // The flow `development → review` requires "ready_for_review" to be present.
-        // The flow `fix → commit` requires "ready_to_commit" to be present.
-        let required_for_dev_flow = ["ready_for_review", "needs_more_work", "needs_replanning"];
-        let required_for_fix_flow = ["ready_to_commit", "needs_another_review"];
-        for outcome in &required_for_dev_flow {
-            if !declared.iter().any(|d| d == outcome) {
-                invariant_errors.push(ConfigValidationError::InvalidValue {
+    // Validate review_analysis section if present.
+    let review_analysis_errors: Vec<ConfigValidationError> =
+        artifacts.review_analysis.as_ref().map_or_else(Vec::new, |review_analysis| {
+            let canonical: &[&str] = CANONICAL_REVIEW_ANALYSIS_DECISIONS;
+            let declared = &review_analysis.decision_vocabulary;
+
+            // Rule 7: review_analysis artifact_type must be "analysis_decision".
+            let artifact_type_error: Option<ConfigValidationError> =
+                (review_analysis.artifact_type != "analysis_decision").then(|| {
+                    ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key: "review_analysis.artifact_type".to_owned(),
+                        message: format!(
+                            "artifact_type '{}' does not match canonical value 'analysis_decision'",
+                            review_analysis.artifact_type
+                        ),
+                    }
+                });
+
+            // Rule 12: every canonical decision vocabulary entry must appear in declared.
+            let missing_vocabulary = canonical
+                .iter()
+                .filter(|expected| !declared.iter().any(|d| d == *expected))
+                .map(|expected| ConfigValidationError::InvalidValue {
                     file: path.to_path_buf(),
-                    key: "analysis.required_decision_outcomes".to_owned(),
+                    key: "review_analysis.decision_vocabulary".to_owned(),
                     message: format!(
-                        "outcome '{outcome}' is required for the development→analysis flow \
-                         (planning → development → analysis)"
+                        "missing canonical decision '{expected}'; all of {canonical:?} must be declared"
                     ),
                 });
-            }
-        }
-        for outcome in &required_for_fix_flow {
-            if !declared.iter().any(|d| d == outcome) {
-                invariant_errors.push(ConfigValidationError::InvalidValue {
+
+            // Rule 12: no unknown vocabulary allowed.
+            let unknown_vocabulary = declared
+                .iter()
+                .filter(|d| !canonical.contains(&d.as_str()))
+                .map(|d| ConfigValidationError::InvalidValue {
                     file: path.to_path_buf(),
-                    key: "analysis.required_decision_outcomes".to_owned(),
+                    key: "review_analysis.decision_vocabulary".to_owned(),
                     message: format!(
-                        "outcome '{outcome}' is required for the review→fix→analysis flow \
-                         (review → fix → analysis)"
+                        "unknown decision '{d}'; valid decisions are: {canonical:?}"
                     ),
                 });
-            }
-        }
-    }
+
+            artifact_type_error
+                .into_iter()
+                .chain(missing_vocabulary)
+                .chain(unknown_vocabulary)
+                .collect()
+        });
+
+    // Legacy [analysis] section is no longer validated — the new system uses
+    // development_analysis and review_analysis instead. Accept it silently for
+    // backwards compatibility but it has no effect on validation.
+    let legacy_analysis_errors: Vec<ConfigValidationError> = Vec::new();
 
     let all_errors: Vec<ConfigValidationError> = unknown_errors
         .into_iter()
-        .chain(invariant_errors)
+        .chain(drain_type_errors)
+        .chain(dev_analysis_errors)
+        .chain(review_analysis_errors)
+        .chain(legacy_analysis_errors)
         .collect();
 
     if all_errors.is_empty() {
@@ -310,7 +357,10 @@ max_concurrent_agents = 20
 default_concurrent_agents = 5
 "#;
         let result = validate_pipeline_toml(Path::new(".agent/pipeline.toml"), content);
-        assert!(result.is_ok(), "valid pipeline.toml should pass: {result:?}");
+        assert!(
+            result.is_ok(),
+            "valid pipeline.toml should pass: {result:?}"
+        );
     }
 
     #[test]
@@ -374,16 +424,15 @@ submission_mode = "mcp_artifact"
 artifact_type = "development_result"
 submission_mode = "mcp_artifact"
 
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete"]
+
+[review_analysis]
+artifact_type = "analysis_decision"
+submission_mode = "mcp_artifact"
+decision_vocabulary = ["needs_more_fix", "cycle_complete"]
 
 [review]
 artifact_type = "issues"
@@ -398,25 +447,25 @@ artifact_type = "commit_message"
 submission_mode = "mcp_artifact"
 "#;
         let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
-        assert!(result.is_ok(), "valid artifacts.toml should pass: {result:?}");
+        assert!(
+            result.is_ok(),
+            "valid artifacts.toml should pass: {result:?}"
+        );
     }
 
     #[test]
-    fn test_validate_artifacts_toml_rejects_wrong_analysis_artifact_type() {
+    fn test_validate_artifacts_toml_rejects_wrong_dev_analysis_artifact_type() {
         let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "development_result"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete"]
 "#;
         let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
-        assert!(result.is_err(), "wrong analysis artifact_type must fail");
+        assert!(
+            result.is_err(),
+            "wrong development_analysis artifact_type must fail"
+        );
         let errors = result.unwrap_err();
         assert!(
             errors.iter().any(|e| matches!(
@@ -429,58 +478,94 @@ required_decision_outcomes = [
     }
 
     #[test]
-    fn test_validate_artifacts_toml_rejects_missing_decision_outcome() {
+    fn test_validate_artifacts_toml_rejects_missing_dev_analysis_decision() {
         let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-]
+decision_vocabulary = ["needs_more_work"]
 "#;
-        // Missing "ready_to_commit" and "needs_another_review"
+        // Missing "cycle_complete"
         let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
-        assert!(result.is_err(), "missing decision outcomes must fail");
+        assert!(result.is_err(), "missing decision vocabulary must fail");
         let errors = result.unwrap_err();
         assert!(
             errors.iter().any(|e| matches!(
                 e,
                 ConfigValidationError::InvalidValue { key, message, .. }
-                    if key.contains("required_decision_outcomes")
-                        && message.contains("ready_to_commit")
+                    if key.contains("decision_vocabulary")
+                        && message.contains("cycle_complete")
             )),
-            "expected missing outcome error, got: {errors:?}"
+            "expected missing decision error, got: {errors:?}"
         );
     }
 
     #[test]
-    fn test_validate_artifacts_toml_rejects_unknown_decision_outcome() {
+    fn test_validate_artifacts_toml_rejects_unknown_dev_analysis_decision() {
         let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-  "unknown_outcome",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete", "unknown_decision"]
 "#;
         let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
-        assert!(result.is_err(), "unknown decision outcome must fail");
+        assert!(result.is_err(), "unknown decision vocabulary must fail");
         let errors = result.unwrap_err();
         assert!(
             errors.iter().any(|e| matches!(
                 e,
                 ConfigValidationError::InvalidValue { key, message, .. }
-                    if key.contains("required_decision_outcomes")
-                        && message.contains("unknown_outcome")
+                    if key.contains("decision_vocabulary")
+                        && message.contains("unknown_decision")
             )),
-            "expected unknown outcome error, got: {errors:?}"
+            "expected unknown decision error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_artifacts_toml_rejects_wrong_review_analysis_artifact_type() {
+        let content = r#"
+[review_analysis]
+artifact_type = "issues"
+submission_mode = "mcp_artifact"
+decision_vocabulary = ["needs_more_fix", "cycle_complete"]
+"#;
+        let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
+        assert!(
+            result.is_err(),
+            "wrong review_analysis artifact_type must fail"
+        );
+        let errors = result.unwrap_err();
+        assert!(
+            errors.iter().any(|e| matches!(
+                e,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key.contains("artifact_type") && message.contains("analysis_decision")
+            )),
+            "expected artifact_type mismatch error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_artifacts_toml_rejects_missing_review_analysis_decision() {
+        let content = r#"
+[review_analysis]
+artifact_type = "analysis_decision"
+submission_mode = "mcp_artifact"
+decision_vocabulary = ["cycle_complete"]
+"#;
+        // Missing "needs_more_fix"
+        let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
+        assert!(result.is_err(), "missing decision vocabulary must fail");
+        let errors = result.unwrap_err();
+        assert!(
+            errors.iter().any(|e| matches!(
+                e,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key.contains("decision_vocabulary")
+                        && message.contains("needs_more_fix")
+            )),
+            "expected missing decision error, got: {errors:?}"
         );
     }
 }

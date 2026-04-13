@@ -97,6 +97,41 @@ include!("workspace/dir_entry.rs");
 // Artifact Envelope
 // ============================================================================
 
+/// Reason an artifact was rejected during identity validation.
+///
+/// Returned by [`ArtifactEnvelope::check_identity`] when the envelope does not
+/// match the expected run/drain/namespace context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactRejectionReason {
+    /// The envelope's `run_id` does not match the current run.
+    StaleRunId { expected: String, got: String },
+    /// The envelope's `drain` does not match the expected drain.
+    WrongDrain { expected: String, got: String },
+    /// The envelope's `namespace` does not match the expected namespace.
+    WrongNamespace { expected: String, got: String },
+    /// A required identity field is missing from the envelope.
+    MissingRequiredField { field: String },
+}
+
+impl std::fmt::Display for ArtifactRejectionReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StaleRunId { expected, got } => {
+                write!(f, "stale run_id: expected {expected:?}, got {got:?}")
+            }
+            Self::WrongDrain { expected, got } => {
+                write!(f, "wrong drain: expected {expected:?}, got {got:?}")
+            }
+            Self::WrongNamespace { expected, got } => {
+                write!(f, "wrong namespace: expected {expected:?}, got {got:?}")
+            }
+            Self::MissingRequiredField { field } => {
+                write!(f, "missing required identity field: {field:?}")
+            }
+        }
+    }
+}
+
 /// JSON artifact envelope for broker-owned persistence.
 ///
 /// Wraps artifact content with metadata for the MCP artifact submission flow.
@@ -117,6 +152,18 @@ pub struct ArtifactEnvelope {
     /// Validation errors present in a partial submission.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<ValidationError>,
+    /// The drain that submitted this artifact (e.g., "development", "review").
+    /// Used for identity enforcement to reject artifacts from the wrong drain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drain: Option<String>,
+    /// The run ID under which this artifact was submitted.
+    /// Used for identity enforcement to reject stale artifacts from a previous run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// The parallel worker namespace that submitted this artifact.
+    /// Only set when parallel execution is active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
 }
 
 impl ArtifactEnvelope {
@@ -133,6 +180,9 @@ impl ArtifactEnvelope {
             validated_at: validated_at.into(),
             partial: false,
             errors: Vec::new(),
+            drain: None,
+            run_id: None,
+            namespace: None,
         }
     }
 
@@ -150,7 +200,81 @@ impl ArtifactEnvelope {
             validated_at: validated_at.into(),
             partial: true,
             errors,
+            drain: None,
+            run_id: None,
+            namespace: None,
         }
+    }
+
+    /// Check that the envelope's identity matches the expected context.
+    ///
+    /// - `expected_run_id`: if `Some`, the envelope's `run_id` must match.
+    /// - `expected_drain`: if `Some`, the envelope's `drain` must match.
+    /// - `expected_namespace`: if `Some`, the envelope's `namespace` must match.
+    ///   When `require_namespace` is `true` and expected is `Some`, a missing
+    ///   envelope namespace is also rejected.
+    ///
+    /// Returns `Ok(())` if all checks pass, or `Err(ArtifactRejectionReason)`
+    /// describing the first mismatch found.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `ArtifactRejectionReason` when identity validation fails.
+    pub fn check_identity(
+        &self,
+        expected_run_id: Option<&str>,
+        expected_drain: Option<&str>,
+        expected_namespace: Option<&str>,
+    ) -> Result<(), ArtifactRejectionReason> {
+        if let Some(expected) = expected_run_id {
+            match &self.run_id {
+                None => {
+                    return Err(ArtifactRejectionReason::MissingRequiredField {
+                        field: "run_id".to_string(),
+                    });
+                }
+                Some(got) if got != expected => {
+                    return Err(ArtifactRejectionReason::StaleRunId {
+                        expected: expected.to_string(),
+                        got: got.clone(),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        if let Some(expected) = expected_drain {
+            match &self.drain {
+                None => {
+                    return Err(ArtifactRejectionReason::MissingRequiredField {
+                        field: "drain".to_string(),
+                    });
+                }
+                Some(got) if got != expected => {
+                    return Err(ArtifactRejectionReason::WrongDrain {
+                        expected: expected.to_string(),
+                        got: got.clone(),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        if let Some(expected) = expected_namespace {
+            match &self.namespace {
+                None => {
+                    return Err(ArtifactRejectionReason::MissingRequiredField {
+                        field: "namespace".to_string(),
+                    });
+                }
+                Some(got) if got != expected => {
+                    return Err(ArtifactRejectionReason::WrongNamespace {
+                        expected: expected.to_string(),
+                        got: got.clone(),
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(())
     }
 }
 

@@ -155,4 +155,3 @@ fn test_commit_created_increments_counter() {
 
     assert_eq!(state.metrics.commits_created_total, 1);
 }
-

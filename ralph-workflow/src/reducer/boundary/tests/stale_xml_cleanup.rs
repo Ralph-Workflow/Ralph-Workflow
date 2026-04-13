@@ -28,13 +28,15 @@ fn test_invoke_planning_agent_does_not_clear_stale_plan_xml() {
         .expect("invoke_planning_agent should succeed");
 
     drop(ctx);
-    assert!(fixture.workspace.exists(Path::new(artifact_paths::PLAN_XML)));
+    assert!(fixture
+        .workspace
+        .exists(Path::new(artifact_paths::PLAN_XML)));
 }
 
 #[test]
 fn test_cleanup_required_files_clears_stale_plan_xml() {
-    let workspace =
-        MemoryWorkspace::new_test().with_file(artifact_paths::PLAN_XML, "<ralph-plan>old</ralph-plan>");
+    let workspace = MemoryWorkspace::new_test()
+        .with_file(artifact_paths::PLAN_XML, "<ralph-plan>old</ralph-plan>");
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 1));
@@ -43,7 +45,9 @@ fn test_cleanup_required_files_clears_stale_plan_xml() {
     handler.cleanup_required_files(&ctx, &files);
 
     drop(ctx);
-    assert!(!fixture.workspace.exists(Path::new(artifact_paths::PLAN_XML)));
+    assert!(!fixture
+        .workspace
+        .exists(Path::new(artifact_paths::PLAN_XML)));
 }
 
 #[test]
@@ -94,7 +98,10 @@ fn test_cleanup_required_files_clears_stale_dev_xml() {
 fn test_invoke_review_agent_does_not_clear_stale_issues_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/review_prompt.txt", "prompt")
-        .with_file(artifact_paths::ISSUES_XML, "<ralph-issues>old</ralph-issues>");
+        .with_file(
+            artifact_paths::ISSUES_XML,
+            "<ralph-issues>old</ralph-issues>",
+        );
     let mut fixture = TestFixture::with_workspace(workspace);
     let mut ctx = fixture.ctx();
     ctx.developer_agent = "claude";
@@ -106,13 +113,17 @@ fn test_invoke_review_agent_does_not_clear_stale_issues_xml() {
         .expect("invoke_review_agent should succeed");
 
     drop(ctx);
-    assert!(fixture.workspace.exists(Path::new(artifact_paths::ISSUES_XML)));
+    assert!(fixture
+        .workspace
+        .exists(Path::new(artifact_paths::ISSUES_XML)));
 }
 
 #[test]
 fn test_cleanup_required_files_clears_stale_issues_xml() {
-    let workspace = MemoryWorkspace::new_test()
-        .with_file(artifact_paths::ISSUES_XML, "<ralph-issues>old</ralph-issues>");
+    let workspace = MemoryWorkspace::new_test().with_file(
+        artifact_paths::ISSUES_XML,
+        "<ralph-issues>old</ralph-issues>",
+    );
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 1));
@@ -121,7 +132,9 @@ fn test_cleanup_required_files_clears_stale_issues_xml() {
     handler.cleanup_required_files(&ctx, &files);
 
     drop(ctx);
-    assert!(!fixture.workspace.exists(Path::new(artifact_paths::ISSUES_XML)));
+    assert!(!fixture
+        .workspace
+        .exists(Path::new(artifact_paths::ISSUES_XML)));
 }
 
 #[test]
@@ -211,7 +224,8 @@ fn test_cleanup_required_files_clears_stale_commit_xml() {
         ..PipelineState::initial(1, 1)
     });
 
-    let files: Box<[String]> = vec![artifact_paths::COMMIT_MESSAGE_XML.to_string()].into_boxed_slice();
+    let files: Box<[String]> =
+        vec![artifact_paths::COMMIT_MESSAGE_XML.to_string()].into_boxed_slice();
     handler.cleanup_required_files(&ctx, &files);
 
     drop(ctx);

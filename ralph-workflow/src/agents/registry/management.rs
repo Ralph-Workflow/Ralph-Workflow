@@ -86,9 +86,18 @@ impl AgentRegistry {
     pub fn new() -> Result<Self, AgentConfigError> {
         let config: AgentsConfigFile =
             toml::from_str(DEFAULT_AGENTS_TOML).map_err(AgentConfigError::DefaultTemplateToml)?;
-        let resolved_drains = config.resolve_drains_checked()?.unwrap_or_else(|| {
-            crate::agents::fallback::ResolvedDrainConfig::from_legacy(&FallbackConfig::default())
-        });
+        // resolve_drains_checked returns Ok(None) only when neither agent_chains,
+        // agent_drains, nor fallback are configured in the source TOML.
+        // DEFAULT_AGENTS_TOML always has explicit [agent_chains]/[agent_drains] sections, so
+        // this error path is a programming error (corrupt build asset), not a user error.
+        let resolved_drains = config.resolve_drains_checked()?.ok_or_else(|| {
+            AgentConfigError::InvalidDrainConfig(
+                "Built-in agents.toml has no agent chain configuration. \
+                 This is a programming error — the shipped agents.toml must define \
+                 [agent_chains] and [agent_drains] sections."
+                    .to_string(),
+            )
+        })?;
         let agents = config.agents;
 
         // Create agents map functionally

@@ -31,13 +31,7 @@ impl MainEffectHandler {
             template_name,
             prompt_content_id,
             rendered_log,
-        ) = match dispatch_prompt_mode(
-            self,
-            ctx,
-            pass,
-            prompt_mode,
-            &baseline_oid,
-        ) {
+        ) = match dispatch_prompt_mode(self, ctx, pass, prompt_mode, &baseline_oid) {
             Ok(tuple) => tuple,
             Err(DispatchError::EarlyReturn(early)) => return Ok(*early),
             Err(DispatchError::Other(e)) => return Err(e),
@@ -308,7 +302,7 @@ fn render_and_check_review_xml_log(
         ctx.template_context,
         refs,
         ctx.workspace,
-        "review_xml",
+        "review",
         SessionCapabilities::new(&capabilities, &policy_flags),
     );
     if rendered.log.is_complete() {
@@ -316,7 +310,7 @@ fn render_and_check_review_xml_log(
     }
     Err(Box::new(build_incomplete_template_result(
         rendered.log,
-        "review_xml",
+        "review",
         prompt_key,
         was_replayed,
     )))
@@ -460,7 +454,7 @@ fn build_same_agent_retry_prompt(
         prompt_key,
         prompt,
         was_replayed,
-        "review_xml",
+        "review",
         Some(content_id),
         rendered_log,
     ))
@@ -508,7 +502,7 @@ fn build_normal_prompt(
                 ctx.template_context,
                 &refs,
                 ctx.workspace,
-                "review_xml",
+                "review",
                 SessionCapabilities::new(&capabilities, &policy_flags),
             );
             rendered.content
@@ -527,7 +521,7 @@ fn build_normal_prompt(
         prompt_key,
         prompt,
         was_replayed,
-        "review_xml",
+        "review",
         Some(current_prompt_content_id),
         rendered_log,
     ))

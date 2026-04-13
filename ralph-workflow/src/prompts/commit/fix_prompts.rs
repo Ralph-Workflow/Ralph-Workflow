@@ -39,7 +39,7 @@ pub fn prompt_fix(prompt_content: &str, plan_content: &str, issues_content: &str
 
     let workspace = WorkspaceFs::new(env::current_dir().unwrap());
     let partials = get_shared_partials();
-    let template_content = include_str!("../templates/fix_mode_xml.txt");
+    let template_content = ralph_workflow_policy::FIX_MODE_TEMPLATE;
 
     // Extract file paths from ISSUES content to provide explicit list
     let files_to_modify = extract_file_paths_from_issues(issues_content);
@@ -93,8 +93,8 @@ pub fn prompt_fix_with_context(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("fix_mode_xml")
-        .unwrap_or_else(|_| include_str!("../templates/fix_mode_xml.txt").to_string());
+        .get_template("fix_mode")
+        .unwrap_or_else(|_| ralph_workflow_policy::FIX_MODE_TEMPLATE.to_string());
 
     // Extract file paths from ISSUES content to provide explicit list
     let files_to_modify = extract_file_paths_from_issues(issues_content);

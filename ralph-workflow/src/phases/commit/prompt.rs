@@ -174,7 +174,7 @@ fn build_commit_prompt(
         template_context,
         working_diff,
         workspace,
-        "commit_message_xml",
+        "commit_message",
         session_caps,
     );
     (rendered.content, rendered.log)

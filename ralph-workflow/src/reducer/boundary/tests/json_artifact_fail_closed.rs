@@ -99,7 +99,10 @@ fn planning_invalid_json_does_not_fall_back_to_xml() {
 fn development_invalid_json_does_not_fall_back_to_xml() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/development_result.json", "{broken")
-        .with_file(artifact_paths::DEVELOPMENT_RESULT_XML, VALID_DEVELOPMENT_XML);
+        .with_file(
+            artifact_paths::DEVELOPMENT_RESULT_XML,
+            VALID_DEVELOPMENT_XML,
+        );
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
@@ -116,8 +119,10 @@ fn development_invalid_json_does_not_fall_back_to_xml() {
 fn development_missing_json_fails_without_xml_fallback() {
     // Development validation is JSON-only: missing JSON always produces
     // OutputValidationFailed, even when an XML file is present.
-    let workspace = MemoryWorkspace::new_test()
-        .with_file(artifact_paths::DEVELOPMENT_RESULT_XML, VALID_DEVELOPMENT_XML);
+    let workspace = MemoryWorkspace::new_test().with_file(
+        artifact_paths::DEVELOPMENT_RESULT_XML,
+        VALID_DEVELOPMENT_XML,
+    );
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
@@ -270,7 +275,8 @@ fn fix_invalid_json_does_not_fall_back_to_xml() {
 fn fix_missing_json_fails_without_xml_fallback() {
     // Fix validation is JSON-only: missing JSON always produces FixOutputValidationFailed,
     // even when an XML file is present.
-    let workspace = MemoryWorkspace::new_test().with_file(artifact_paths::FIX_RESULT_XML, VALID_FIX_XML);
+    let workspace =
+        MemoryWorkspace::new_test().with_file(artifact_paths::FIX_RESULT_XML, VALID_FIX_XML);
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
@@ -299,4 +305,3 @@ fn commit_invalid_json_does_not_fall_back_to_xml() {
         PipelineEvent::Commit(CommitEvent::CommitXmlValidationFailed { .. })
     ));
 }
-

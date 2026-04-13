@@ -135,10 +135,7 @@ fn test_sigterm_without_timeout_context_with_partial_result_returns_invocation_f
     let config = Config::default();
 
     // Completion file exists but is empty (agent was interrupted before writing).
-    let workspace = MemoryWorkspace::new_test().with_file(
-        ".agent/tmp/development_result.xml",
-        "",
-    );
+    let workspace = MemoryWorkspace::new_test().with_file(".agent/tmp/development_result.xml", "");
 
     let executor = Arc::new(
         crate::executor::MockProcessExecutor::new().with_agent_result(
@@ -369,10 +366,7 @@ fn test_explicit_timeout_with_invalid_result_file_returns_timed_out_partial_resu
     let config = Config::default();
 
     // Completion file exists but is empty (agent was interrupted before writing content).
-    let workspace = MemoryWorkspace::new_test().with_file(
-        ".agent/tmp/development_result.xml",
-        "",
-    );
+    let workspace = MemoryWorkspace::new_test().with_file(".agent/tmp/development_result.xml", "");
 
     let executor = Arc::new(crate::executor::MockProcessExecutor::new());
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;
@@ -591,10 +585,7 @@ fn test_analysis_drain_explicit_timeout_with_invalid_result_returns_timed_out_pa
     let mut timer = Timer::new();
     let config = Config::default();
 
-    let workspace = MemoryWorkspace::new_test().with_file(
-        ".agent/tmp/development_result.xml",
-        "",
-    );
+    let workspace = MemoryWorkspace::new_test().with_file(".agent/tmp/development_result.xml", "");
 
     let executor = Arc::new(crate::executor::MockProcessExecutor::new());
     let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor;

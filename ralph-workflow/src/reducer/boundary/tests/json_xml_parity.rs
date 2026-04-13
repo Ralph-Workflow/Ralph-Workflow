@@ -32,7 +32,10 @@ fn development_result_json_produces_validated_outcome() {
         .development_validated_outcome
         .expect("json development outcome should be populated");
 
-    assert_eq!(outcome.status, crate::reducer::state::DevelopmentStatus::Completed);
+    assert_eq!(
+        outcome.status,
+        crate::reducer::state::DevelopmentStatus::Completed
+    );
     assert_eq!(outcome.summary, "Fixed all bugs");
     assert_eq!(outcome.files_changed, None);
     assert_eq!(outcome.next_steps, None);
@@ -66,7 +69,9 @@ fn fix_result_json_produces_validated_outcome() {
         .expect("json fix outcome should be populated");
 
     assert_eq!(outcome.pass, 0);
-    assert_eq!(outcome.status, crate::reducer::state::FixStatus::AllIssuesAddressed);
+    assert_eq!(
+        outcome.status,
+        crate::reducer::state::FixStatus::AllIssuesAddressed
+    );
     assert_eq!(outcome.summary, None);
 }
-

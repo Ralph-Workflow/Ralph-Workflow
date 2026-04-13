@@ -224,6 +224,16 @@ fn parse_mock_commit_json_event(json: &serde_json::Value, attempt: u32) -> Pipel
         );
     }
 
+    let files: Vec<String> = json
+        .get("files")
+        .and_then(|f| f.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile> = json
         .get("excluded_files")
         .and_then(|f| f.as_array())
@@ -239,7 +249,9 @@ fn parse_mock_commit_json_event(json: &serde_json::Value, attempt: u32) -> Pipel
                         "not_task_related" => {
                             crate::reducer::state::pipeline::ExcludedFileReason::NotTaskRelated
                         }
-                        "sensitive" => crate::reducer::state::pipeline::ExcludedFileReason::Sensitive,
+                        "sensitive" => {
+                            crate::reducer::state::pipeline::ExcludedFileReason::Sensitive
+                        }
                         "deferred" => crate::reducer::state::pipeline::ExcludedFileReason::Deferred,
                         _ => crate::reducer::state::pipeline::ExcludedFileReason::NotTaskRelated,
                     };
@@ -249,7 +261,7 @@ fn parse_mock_commit_json_event(json: &serde_json::Value, attempt: u32) -> Pipel
         })
         .unwrap_or_default();
 
-    PipelineEvent::commit_xml_validated(subject.to_string(), vec![], excluded_files, attempt)
+    PipelineEvent::commit_xml_validated(subject.to_string(), files, excluded_files, attempt)
 }
 
 #[cfg(test)]
@@ -293,5 +305,4 @@ mod tests {
             other => panic!("expected CommitXmlValidated event, got {other:?}"),
         }
     }
-
 }

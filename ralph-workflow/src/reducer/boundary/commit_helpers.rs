@@ -142,7 +142,7 @@ fn render_commit_template(ctx: &PhaseContext<'_>, diff_for_prompt: &str) -> Rend
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
-        "commit_message_xml",
+        "commit_message",
         session_caps,
     )
 }
@@ -170,12 +170,12 @@ pub(in crate::reducer::boundary) fn build_commit_template_invalid_result(
     let missing = log.unsubstituted.clone();
     EffectResult::event(PipelineEvent::template_rendered(
         PipelinePhase::CommitMessage,
-        "commit_message_xml".to_string(),
+        "commit_message".to_string(),
         log,
     ))
     .with_additional_event(PipelineEvent::agent_template_variables_invalid(
         AgentRole::Commit,
-        "commit_message_xml".to_string(),
+        "commit_message".to_string(),
         missing,
         Vec::new(),
     ))
@@ -201,7 +201,7 @@ pub(in crate::reducer::boundary) fn gen_same_agent_retry_prompt_text(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
-        "commit_message_xml",
+        "commit_message",
         session_caps,
     )
     .content;
@@ -224,7 +224,7 @@ pub(in crate::reducer::boundary) fn gen_normal_commit_prompt_text(
         ctx.template_context,
         diff_for_prompt,
         ctx.workspace,
-        "commit_message_xml",
+        "commit_message",
         session_caps,
     );
     commit::prepend_residual_files_context(&rendered.content, residual_files)

@@ -15,10 +15,7 @@ pub(super) fn reduce_commit_validation_failed(
     let new_agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
 
     let continuation = crate::reducer::state::ContinuationState {
-        invalid_output_attempts: state
-            .continuation
-            .invalid_output_attempts
-            .saturating_add(1),
+        invalid_output_attempts: state.continuation.invalid_output_attempts.saturating_add(1),
         same_agent_retry_count: 0,
         same_agent_retry_pending: false,
         same_agent_retry_reason: None,

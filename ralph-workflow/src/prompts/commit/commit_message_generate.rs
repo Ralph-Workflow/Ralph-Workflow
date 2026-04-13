@@ -48,7 +48,7 @@ pub fn prompt_generate_commit_message_with_diff(diff: &str) -> String {
             .to_string();
     }
 
-    let template_content = include_str!("../templates/commit_message_xml.txt");
+    let template_content = ralph_workflow_policy::COMMIT_MESSAGE_TEMPLATE;
     let template = Template::new(template_content);
     let partials = get_shared_partials();
     let variables = HashMap::from([
@@ -121,8 +121,8 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
 
     let template_content = context
         .registry()
-        .get_template("commit_message_xml")
-        .unwrap_or_else(|_| include_str!("../templates/commit_message_xml.txt").to_string());
+        .get_template("commit_message")
+        .unwrap_or_else(|_| ralph_workflow_policy::COMMIT_MESSAGE_TEMPLATE.to_string());
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
 
@@ -221,8 +221,8 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
 
     let template_content = context
         .registry()
-        .get_template("commit_message_xml")
-        .unwrap_or_else(|_| include_str!("../templates/commit_message_xml.txt").to_string());
+        .get_template("commit_message")
+        .unwrap_or_else(|_| ralph_workflow_policy::COMMIT_MESSAGE_TEMPLATE.to_string());
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
 

@@ -48,7 +48,7 @@ pub(super) fn build_conflict_resolution_prompt(
     prompt_md_content: Option<&str>,
     plan_content: Option<&str>,
 ) -> String {
-    let template_content = include_str!("templates/conflict_resolution.txt");
+    let template_content = ralph_workflow_policy::CONFLICT_RESOLUTION_TEMPLATE;
     let template = Template::new(template_content);
 
     let context = format_context_section(prompt_md_content, plan_content);
@@ -61,7 +61,8 @@ pub(super) fn build_conflict_resolution_prompt(
 
     template.render(&variables).unwrap_or_else(|e| {
         eprintln!("Warning: Failed to render conflict resolution template: {e}");
-        let fallback_template_content = include_str!("templates/conflict_resolution_fallback.txt");
+        let fallback_template_content =
+            ralph_workflow_policy::CONFLICT_RESOLUTION_FALLBACK_TEMPLATE;
         let fallback_template = Template::new(fallback_template_content);
         fallback_template.render(&variables).unwrap_or_else(|e| {
             eprintln!("Critical: Failed to render fallback template: {e}");
@@ -98,7 +99,7 @@ pub fn build_conflict_resolution_prompt_with_context<S: std::hash::BuildHasher>(
     let template_content = context
         .registry()
         .get_template("conflict_resolution")
-        .unwrap_or_else(|_| include_str!("templates/conflict_resolution.txt").to_string());
+        .unwrap_or_else(|_| ralph_workflow_policy::CONFLICT_RESOLUTION_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     let ctx_section = format_context_section(prompt_md_content, plan_content);
@@ -116,7 +117,7 @@ pub fn build_conflict_resolution_prompt_with_context<S: std::hash::BuildHasher>(
             .registry()
             .get_template("conflict_resolution_fallback")
             .unwrap_or_else(|_| {
-                include_str!("templates/conflict_resolution_fallback.txt").to_string()
+                ralph_workflow_policy::CONFLICT_RESOLUTION_FALLBACK_TEMPLATE.to_string()
             });
         let fallback_template = Template::new(&fallback_template_content);
         fallback_template.render(&variables).unwrap_or_else(|e| {
@@ -267,7 +268,7 @@ pub fn build_enhanced_conflict_resolution_prompt<S: std::hash::BuildHasher>(
     let template_content = context
         .registry()
         .get_template("conflict_resolution")
-        .unwrap_or_else(|_| include_str!("templates/conflict_resolution.txt").to_string());
+        .unwrap_or_else(|_| ralph_workflow_policy::CONFLICT_RESOLUTION_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     let ctx_section = match branch_info {
@@ -292,7 +293,7 @@ pub fn build_enhanced_conflict_resolution_prompt<S: std::hash::BuildHasher>(
             .registry()
             .get_template("conflict_resolution_fallback")
             .unwrap_or_else(|_| {
-                include_str!("templates/conflict_resolution_fallback.txt").to_string()
+                ralph_workflow_policy::CONFLICT_RESOLUTION_FALLBACK_TEMPLATE.to_string()
             });
         let fallback_template = Template::new(&fallback_template_content);
         fallback_template.render(&variables).unwrap_or_else(|e| {

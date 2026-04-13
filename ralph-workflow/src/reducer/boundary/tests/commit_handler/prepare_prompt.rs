@@ -50,7 +50,7 @@ fn test_prepare_commit_prompt_does_not_emit_generation_started() {
 #[test]
 fn test_prepare_commit_prompt_emits_template_rendered_on_validation_failure() {
     let tempdir = tempdir().expect("create temp dir");
-    let template_path = tempdir.path().join("commit_message_xml.txt");
+    let template_path = tempdir.path().join("commit_message.txt");
     fs::write(&template_path, "Diff:\n{{DIFF}}\nMissing: {{MISSING}}\n")
         .expect("write commit template");
 
@@ -89,7 +89,7 @@ fn test_prepare_commit_prompt_emits_template_rendered_on_validation_failure() {
             log,
         }) => {
             assert_eq!(phase, PipelinePhase::CommitMessage);
-            assert_eq!(template_name, "commit_message_xml");
+            assert_eq!(template_name, "commit_message");
             assert!(log.unsubstituted.contains(&"MISSING".to_string()));
         }
         other => panic!("expected TemplateRendered event, got {other:?}"),

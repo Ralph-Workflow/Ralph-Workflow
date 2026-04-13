@@ -104,17 +104,7 @@ fn read_plan_content_with_fallback(ctx: &PhaseContext<'_>) -> String {
     let plan_path = Path::new(".agent/PLAN.md");
     match ctx.workspace.read(plan_path) {
         Ok(s) => s,
-        Err(err) => {
-            let xml_fallback = Path::new(".agent/tmp/plan.xml");
-            match ctx.workspace.read(xml_fallback) {
-                Ok(xml) => format!(
-                    "[PLAN unavailable: failed to read .agent/PLAN.md ({err}); using fallback .agent/tmp/plan.xml]\n\n{xml}"
-                ),
-                Err(fallback_err) => format!(
-                    "[PLAN unavailable: failed to read .agent/PLAN.md ({err}); also failed to read .agent/tmp/plan.xml ({fallback_err})]"
-                ),
-            }
-        }
+        Err(err) => format!("[PLAN unavailable: failed to read .agent/PLAN.md ({err})]"),
     }
 }
 

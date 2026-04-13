@@ -30,50 +30,56 @@ use std::collections::HashMap;
 
 /// Get all shared partials as a `HashMap`.
 ///
-/// Partials are loaded at compile time via `include_str!` for efficiency.
-/// The `HashMap` uses partial name (without .txt extension) as the key.
+/// Partials are embedded at compile time via the `ralph-workflow-policy` crate,
+/// which owns the template assets. The `HashMap` uses the partial name
+/// (without `.txt` extension) as the key.
 #[must_use]
 pub fn get_shared_partials() -> HashMap<String, String> {
+    use ralph_workflow_policy::{
+        PARTIAL_CONTEXT_SECTION, PARTIAL_CRITICAL_HEADER, PARTIAL_DEVELOPER_ITERATION_GUIDANCE,
+        PARTIAL_DIFF_SECTION, PARTIAL_MCP_TOOLS, PARTIAL_NO_GIT_COMMIT, PARTIAL_OUTPUT_CHECKLIST,
+        PARTIAL_SAFETY_NO_EXECUTE, PARTIAL_SESSION_CAPABILITIES, PARTIAL_UNATTENDED_MODE,
+    };
     HashMap::from([
         (
             "shared/_critical_header".to_string(),
-            include_str!("templates/shared/_critical_header.txt").to_string(),
+            PARTIAL_CRITICAL_HEADER.to_string(),
         ),
         (
             "shared/_context_section".to_string(),
-            include_str!("templates/shared/_context_section.txt").to_string(),
+            PARTIAL_CONTEXT_SECTION.to_string(),
         ),
         (
             "shared/_diff_section".to_string(),
-            include_str!("templates/shared/_diff_section.txt").to_string(),
+            PARTIAL_DIFF_SECTION.to_string(),
         ),
         (
             "shared/_developer_iteration_guidance".to_string(),
-            include_str!("templates/shared/_developer_iteration_guidance.txt").to_string(),
+            PARTIAL_DEVELOPER_ITERATION_GUIDANCE.to_string(),
         ),
         (
             "shared/_no_git_commit".to_string(),
-            include_str!("templates/shared/_no_git_commit.txt").to_string(),
+            PARTIAL_NO_GIT_COMMIT.to_string(),
         ),
         (
             "shared/_output_checklist".to_string(),
-            include_str!("templates/shared/_output_checklist.txt").to_string(),
+            PARTIAL_OUTPUT_CHECKLIST.to_string(),
         ),
         (
             "shared/_session_capabilities".to_string(),
-            include_str!("templates/shared/_session_capabilities.txt").to_string(),
+            PARTIAL_SESSION_CAPABILITIES.to_string(),
         ),
         (
             "shared/_safety_no_execute".to_string(),
-            include_str!("templates/shared/_safety_no_execute.txt").to_string(),
+            PARTIAL_SAFETY_NO_EXECUTE.to_string(),
         ),
         (
             "shared/_unattended_mode".to_string(),
-            include_str!("templates/shared/_unattended_mode.txt").to_string(),
+            PARTIAL_UNATTENDED_MODE.to_string(),
         ),
         (
             "shared/_mcp_tools".to_string(),
-            include_str!("templates/shared/_mcp_tools.txt").to_string(),
+            PARTIAL_MCP_TOOLS.to_string(),
         ),
     ])
 }

@@ -3,7 +3,6 @@
 //! Split boundary handlers for review/fix flows.
 
 use super::MainEffectHandler;
-use crate::files::artifact_paths;
 use crate::phases::review::boundary_domain::{
     derive_review_validation_flags, render_issues_markdown, review_outcome_event,
 };
@@ -144,7 +143,15 @@ impl MainEffectHandler {
         pass: u32,
     ) -> EffectResult {
         let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
-        match try_validate_review_from_json(ctx, pass, invalid_output_attempts) {
+        let current_drain = self.state.agent_chain.current_drain;
+        let run_id = &ctx.run_context.run_id;
+        match try_validate_review_from_json(
+            ctx,
+            pass,
+            invalid_output_attempts,
+            current_drain,
+            run_id,
+        ) {
             Some(result) => result,
             None => EffectResult::event(PipelineEvent::review_output_validation_failed(
                 pass,
@@ -229,10 +236,6 @@ impl MainEffectHandler {
     }
 
     pub(super) fn archive_review_issues_xml(ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
-        artifact_paths::archive_xml_file_with_workspace(
-            ctx.workspace,
-            Path::new(artifact_paths::ISSUES_XML),
-        );
         crate::files::archive_json_artifact_with_workspace(ctx.workspace, "issues");
         EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
@@ -245,7 +248,6 @@ impl MainEffectHandler {
     ) -> EffectResult {
         EffectResult::event(review_outcome_event(pass, issues_found, clean_no_issues))
     }
-
 }
 
 fn log_prompt_backup_result(ctx: &PhaseContext<'_>) {
@@ -628,7 +630,52 @@ fn validate_review_json_envelope(
     envelope: crate::workspace::ArtifactEnvelope,
     pass: u32,
     invalid_output_attempts: u32,
+    current_drain: crate::agents::AgentDrain,
+    run_id: &str,
+    logger: &crate::logger::Logger,
 ) -> EffectResult {
+    // Validate envelope identity to reject stale or misrouted artifacts.
+    // Only enforce checks when the envelope has the identity fields set.
+    // This allows backward compatibility with artifacts that don't yet have identity metadata.
+    let run_id_mismatch = envelope.run_id.as_ref().is_some_and(|id| id != run_id);
+    let drain_mismatch = envelope
+        .drain
+        .as_ref()
+        .is_some_and(|d| d != current_drain.as_str());
+
+    if run_id_mismatch || drain_mismatch {
+        let reason = if run_id_mismatch && drain_mismatch {
+            format!(
+                "run_id mismatch (expected {}, got {:?}) and drain mismatch (expected {}, got {:?})",
+                run_id,
+                envelope.run_id,
+                current_drain.as_str(),
+                envelope.drain
+            )
+        } else if run_id_mismatch {
+            format!(
+                "run_id mismatch (expected {}, got {:?})",
+                run_id, envelope.run_id
+            )
+        } else {
+            format!(
+                "drain mismatch (expected {}, got {:?})",
+                current_drain.as_str(),
+                envelope.drain
+            )
+        };
+        logger.warn(&format!(
+            "Review artifact rejected: {} (run_id={}, drain={})",
+            reason,
+            run_id,
+            current_drain.as_str()
+        ));
+        return EffectResult::event(PipelineEvent::review_output_validation_failed(
+            pass,
+            invalid_output_attempts,
+            Some(format!("artifact identity check failed: {}", reason)),
+        ));
+    }
     match super::json_artifact::issues_elements_from_envelope(&envelope) {
         Ok(elements) => {
             build_review_validation_from_elements(pass, elements, invalid_output_attempts)
@@ -648,12 +695,17 @@ fn try_validate_review_from_json(
     ctx: &PhaseContext<'_>,
     pass: u32,
     invalid_output_attempts: u32,
+    current_drain: crate::agents::AgentDrain,
+    run_id: &str,
 ) -> Option<EffectResult> {
     match ctx.workspace.read_artifact_json("issues") {
         Ok(Some(envelope)) => Some(validate_review_json_envelope(
             envelope,
             pass,
             invalid_output_attempts,
+            current_drain,
+            run_id,
+            ctx.logger,
         )),
         Ok(None) => None,
         Err(err) => Some(EffectResult::event(

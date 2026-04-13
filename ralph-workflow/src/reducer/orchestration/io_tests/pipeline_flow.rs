@@ -457,8 +457,8 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
     );
     assert_eq!(
         review_passes_run,
-        vec![0, 0],
-        "Phase 2: each of 2 dev iterations runs review pass 0 before committing"
+        vec![0],
+        "Commit-gated: review happens once after all dev iterations complete, not per-iteration"
     );
     assert_eq!(
         state.phase,

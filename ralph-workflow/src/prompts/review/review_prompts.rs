@@ -36,8 +36,8 @@ pub fn prompt_review_xml_with_context(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("review_xml")
-        .unwrap_or_else(|_| include_str!("../templates/review_xml.txt").to_string());
+        .get_template("review")
+        .unwrap_or_else(|_| ralph_workflow_policy::REVIEW_TEMPLATE.to_string());
 
     // Base variables for review prompt
     let base_vars: HashMap<&str, String> = HashMap::from([
@@ -104,8 +104,8 @@ pub fn prompt_review_xml_with_references_and_log(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("review_xml")
-        .unwrap_or_else(|_| include_str!("../templates/review_xml.txt").to_string());
+        .get_template("review")
+        .unwrap_or_else(|_| ralph_workflow_policy::REVIEW_TEMPLATE.to_string());
 
     // Base variables for review prompt
     let base_vars: HashMap<&str, String> = HashMap::from([
@@ -194,8 +194,8 @@ pub fn prompt_review_xml_with_references(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("review_xml")
-        .unwrap_or_else(|_| include_str!("../templates/review_xml.txt").to_string());
+        .get_template("review")
+        .unwrap_or_else(|_| ralph_workflow_policy::REVIEW_TEMPLATE.to_string());
 
     // Base variables for review prompt
     let base_vars: HashMap<&str, String> = HashMap::from([

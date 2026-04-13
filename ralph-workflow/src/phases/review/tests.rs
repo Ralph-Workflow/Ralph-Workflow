@@ -15,7 +15,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::tempdir;
 
-
 #[test]
 fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
     let cloud = crate::config::types::CloudConfig::disabled();
@@ -147,7 +146,7 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
 fn test_run_review_pass_errors_on_missing_template_variables() {
     let cloud = crate::config::types::CloudConfig::disabled();
     let tempdir = tempdir().expect("create temp dir");
-    let template_path = tempdir.path().join("review_xml.txt");
+    let template_path = tempdir.path().join("review.txt");
     fs::write(
         &template_path,
         "Review {{PLAN}}\n{{CHANGES}}\nMissing: {{MISSING}}\n",
@@ -210,7 +209,7 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
 fn test_run_fix_pass_errors_on_missing_template_variables() {
     let cloud = crate::config::types::CloudConfig::disabled();
     let tempdir = tempdir().expect("create temp dir");
-    let template_path = tempdir.path().join("fix_mode_xml.txt");
+    let template_path = tempdir.path().join("fix_mode.txt");
     fs::write(
         &template_path,
         "Fix {{PROMPT}}\n{{PLAN}}\n{{ISSUES}}\nMissing: {{MISSING}}\n",

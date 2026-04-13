@@ -27,6 +27,7 @@ use super::types::Config;
 use super::unified::UnifiedConfig;
 use super::validation::{
     validate_artifacts_toml, validate_config_file, validate_pipeline_toml, ConfigValidationError,
+    ValidationResult,
 };
 use std::path::PathBuf;
 
@@ -234,51 +235,107 @@ fn load_local_config(env: &dyn ConfigEnvironment) -> LocalLoadResult {
     LocalLoadResult::default()
 }
 
+/// Validate a single optional policy file if it exists.
+///
+/// Returns any validation errors found. A missing file is not an error.
+fn load_policy_file_errors(
+    env: &dyn ConfigEnvironment,
+    path_str: &str,
+    validator: fn(&std::path::Path, &str) -> ValidationResult,
+) -> Vec<ConfigValidationError> {
+    let path = std::path::PathBuf::from(path_str);
+    if !env.file_exists(&path) {
+        return Vec::new();
+    }
+    match env.read_file(&path) {
+        Ok(content) => validator(&path, &content).err().unwrap_or_default(),
+        Err(e) => vec![ConfigValidationError::InvalidValue {
+            file: path,
+            key: path_str.to_string(),
+            message: format!("Failed to read file: {e}"),
+        }],
+    }
+}
+
 /// Validate `.agent/pipeline.toml` and `.agent/artifacts.toml` if they exist.
 ///
 /// Returns any validation errors found. Missing files are not an error — these
 /// policy files are optional. When present, they are validated against the
 /// `PipelineConfig` and `ArtifactsConfig` schemas in `ralph_workflow_policy`.
 fn load_policy_files(env: &dyn ConfigEnvironment) -> Vec<ConfigValidationError> {
-    let mut errors: Vec<ConfigValidationError> = Vec::new();
+    load_policy_file_errors(env, ".agent/pipeline.toml", validate_pipeline_toml)
+        .into_iter()
+        .chain(load_policy_file_errors(
+            env,
+            ".agent/artifacts.toml",
+            validate_artifacts_toml,
+        ))
+        .collect()
+}
 
-    let pipeline_path = std::path::PathBuf::from(".agent/pipeline.toml");
-    if env.file_exists(&pipeline_path) {
-        match env.read_file(&pipeline_path) {
-            Ok(content) => {
-                if let Err(errs) = validate_pipeline_toml(&pipeline_path, &content) {
-                    errors.extend(errs);
-                }
-            }
-            Err(e) => {
-                errors.push(ConfigValidationError::InvalidValue {
-                    file: pipeline_path,
-                    key: "pipeline.toml".to_string(),
-                    message: format!("Failed to read file: {e}"),
-                });
-            }
+/// Validate the shipped policy documents embedded in the ralph-workflow-policy crate.
+///
+/// Calls `load_pipeline()`, `load_artifacts()`, and `load_shipped_phases()` to verify
+/// the embedded TOML is structurally sound and that every phase referenced in
+/// `pipeline.toml` is defined in the shipped phase documents.
+///
+/// Returns any validation errors. In normal builds these should never fail (a malformed
+/// embedded TOML would be a programming error caught at development time). The check is
+/// here so that a corrupt build fails loudly at startup rather than silently misbehaving.
+fn validate_shipped_policy() -> Vec<ConfigValidationError> {
+    use ralph_workflow_policy::{load_artifacts, load_pipeline, load_shipped_phases};
+
+    let pipeline = match load_pipeline() {
+        Ok(p) => p,
+        Err(e) => {
+            return vec![ConfigValidationError::InvalidValue {
+                file: PathBuf::from("<shipped:pipeline.toml>"),
+                key: "pipeline".to_string(),
+                message: format!("Shipped pipeline.toml failed to load: {e}"),
+            }];
         }
+    };
+
+    if let Err(e) = load_artifacts() {
+        return vec![ConfigValidationError::InvalidValue {
+            file: PathBuf::from("<shipped:artifacts.toml>"),
+            key: "artifacts".to_string(),
+            message: format!("Shipped artifacts.toml failed to load: {e}"),
+        }];
     }
 
-    let artifacts_path = std::path::PathBuf::from(".agent/artifacts.toml");
-    if env.file_exists(&artifacts_path) {
-        match env.read_file(&artifacts_path) {
-            Ok(content) => {
-                if let Err(errs) = validate_artifacts_toml(&artifacts_path, &content) {
-                    errors.extend(errs);
-                }
-            }
-            Err(e) => {
-                errors.push(ConfigValidationError::InvalidValue {
-                    file: artifacts_path,
-                    key: "artifacts.toml".to_string(),
-                    message: format!("Failed to read file: {e}"),
-                });
-            }
+    let phases = match load_shipped_phases() {
+        Ok(p) => p,
+        Err(e) => {
+            return vec![ConfigValidationError::InvalidValue {
+                file: PathBuf::from("<shipped:phases/*.toml>"),
+                key: "phases".to_string(),
+                message: format!("Shipped phase documents failed to load: {e}"),
+            }];
         }
-    }
+    };
 
-    errors
+    // Validate: every phase ID in the default_sequence must appear in the shipped phases.
+    let phase_ids: std::collections::HashSet<&str> =
+        phases.iter().map(|p| p.phase_id.as_str()).collect();
+    pipeline
+        .top_level_phases
+        .default_sequence
+        .iter()
+        .filter_map(|seq_id| {
+            if phase_ids.contains(seq_id.as_str()) {
+                None
+            } else {
+                Some(ConfigValidationError::InvalidValue {
+                    file: PathBuf::from("<shipped:pipeline.toml>"),
+                    key: "top_level_phases.default_sequence".to_string(),
+                    message: format!(
+                        "Phase {seq_id:?} referenced in default_sequence has no shipped phase document"
+                    ),
+                })
+            }
+        })
+        .collect()
 }
 
 pub fn load_config_from_path_with_env(
@@ -296,8 +353,12 @@ pub fn load_config_from_path_with_env(
         LocalLoadResult::default()
     };
 
-    // Step 3: Validate policy files (.agent/pipeline.toml, .agent/artifacts.toml).
-    let policy_errors = load_policy_files(env);
+    // Step 3: Validate policy files (.agent/pipeline.toml, .agent/artifacts.toml)
+    // and the shipped policy documents embedded in the policy crate.
+    let policy_errors: Vec<ConfigValidationError> = load_policy_files(env)
+        .into_iter()
+        .chain(validate_shipped_policy())
+        .collect();
 
     let GlobalLoadResult {
         unified: global_unified,
@@ -314,8 +375,12 @@ pub fn load_config_from_path_with_env(
     } = local;
 
     // Combine warnings and validation errors
-    let all_validation_errors =
-        [global_validation_errors, local_validation_errors, policy_errors].concat();
+    let all_validation_errors = [
+        global_validation_errors,
+        local_validation_errors,
+        policy_errors,
+    ]
+    .concat();
 
     // Fail-fast: if there are any validation errors, return them immediately
     if !all_validation_errors.is_empty() {

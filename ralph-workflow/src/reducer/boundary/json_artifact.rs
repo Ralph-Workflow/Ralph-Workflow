@@ -6,10 +6,10 @@
 
 use crate::files::result_types::{
     ContentElement, CriticalFiles, DevelopmentResultElements, EditAreaElements, FileAction,
-    InlineElement, IssueEntry, IssuesElements, FixResultElements, Paragraph, ParallelPlanElements,
-    PlanElements, PlanSummary, PrimaryFile, Priority, ReferenceFile, RichContent, RiskPair,
-    ScopeItem, Severity, Step, StepType, SkillEntry, SkillsMcp, McpEntry, TargetFile, Verification,
-    WorkUnitElements,
+    FixResultElements, InlineElement, IssueEntry, IssuesElements, McpEntry, Paragraph,
+    ParallelPlanElements, PlanElements, PlanSummary, PrimaryFile, Priority, ReferenceFile,
+    RichContent, RiskPair, ScopeItem, Severity, SkillEntry, SkillsMcp, Step, StepType, TargetFile,
+    Verification, WorkUnitElements,
 };
 use crate::workspace::ArtifactEnvelope;
 
@@ -89,7 +89,10 @@ pub(crate) fn development_result_from_envelope(
     let v = &envelope.content;
     let status = get_string_field(v, "status")?;
     let summary = get_string_field(v, "summary")?;
-    let analysis_decision = v.get("decision").map(parse_analysis_decision).transpose()?;
+    let analysis_decision = v
+        .get("decision")
+        .map(parse_development_analysis_decision)
+        .transpose()?;
     let files_changed = v
         .get("files_changed")
         .and_then(|s| s.as_str())
@@ -356,11 +359,7 @@ fn parse_verification_strategy(
         .collect())
 }
 
-fn parse_skills_mcp(
-    v: &serde_json::Value,
-) -> Result<SkillsMcp, JsonConversionError>
-{
-
+fn parse_skills_mcp(v: &serde_json::Value) -> Result<SkillsMcp, JsonConversionError> {
     let skills = v
         .get("skills")
         .and_then(|a| a.as_array())
@@ -470,9 +469,7 @@ pub(crate) fn issues_elements_from_envelope(
 /// Convert an `ArtifactEnvelope` with `artifact_type == "fix_result"` to `FixResultElements`.
 pub(crate) fn fix_result_from_envelope(
     envelope: &ArtifactEnvelope,
-) -> Result<FixResultElements, JsonConversionError>
-{
-
+) -> Result<FixResultElements, JsonConversionError> {
     let v = &envelope.content;
 
     let status = v
@@ -613,7 +610,6 @@ fn parse_issue_entries(
     issues_value: Option<&serde_json::Value>,
     allow_legacy_skills_mcp: bool,
 ) -> Result<Vec<IssueEntry>, JsonConversionError> {
-
     let arr = issues_value
         .ok_or_else(|| JsonConversionError {
             message: "'issues' must be present".to_string(),
@@ -690,8 +686,7 @@ fn parse_string_field_array(
 
 fn parse_skills_mcp_from_canonical_fields(
     item: &serde_json::Value,
-) -> Result<Option<SkillsMcp>, JsonConversionError>
-{
+) -> Result<Option<SkillsMcp>, JsonConversionError> {
     let skills = parse_string_field_array(item, "skills")?;
     let mcps = parse_string_field_array(item, "mcps")?;
     if skills.is_empty() && mcps.is_empty() {
@@ -710,17 +705,17 @@ fn parse_skills_mcp_from_canonical_fields(
     }))
 }
 
-fn parse_analysis_decision(
+fn parse_development_analysis_decision(
     v: &serde_json::Value,
-) -> Result<crate::reducer::state::AnalysisDecision, JsonConversionError> {
-    use crate::reducer::state::AnalysisDecision;
+) -> Result<crate::reducer::state::DevelopmentAnalysisDecision, JsonConversionError> {
+    use crate::reducer::state::DevelopmentAnalysisDecision;
     let s = v.as_str().ok_or_else(|| JsonConversionError {
         message: "decision field must be a string".to_string(),
     })?;
-    AnalysisDecision::from_artifact_key(s).ok_or_else(|| JsonConversionError {
+    DevelopmentAnalysisDecision::from_artifact_key(s).ok_or_else(|| JsonConversionError {
         message: format!(
             "unknown decision value '{s}'; expected one of: {}",
-            AnalysisDecision::all_artifact_keys().join(", ")
+            DevelopmentAnalysisDecision::all_artifact_keys().join(", ")
         ),
     })
 }

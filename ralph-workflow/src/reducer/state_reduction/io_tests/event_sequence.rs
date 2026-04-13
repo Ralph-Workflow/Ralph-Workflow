@@ -40,8 +40,8 @@ fn test_event_sequence_output_validation_retry_then_success() {
         state,
         PipelineEvent::development_iteration_completed(0, true),
     );
-    // Phase 2: IterationCompleted routes to Review for per-iteration code review
-    assert_eq!(state.phase, PipelinePhase::Review);
+    // Commit-gated: IterationCompleted routes to CommitMessage; post-commit routing handles Review
+    assert_eq!(state.phase, PipelinePhase::CommitMessage);
 }
 
 #[test]

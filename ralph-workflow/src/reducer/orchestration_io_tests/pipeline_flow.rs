@@ -375,8 +375,8 @@ fn test_complete_pipeline_flow() {
     assert_eq!(iterations_run, vec![0, 1], "Should run 2 dev iterations");
     assert_eq!(
         review_passes_run,
-        vec![0, 0],
-        "Phase 2: each of 2 dev iterations runs review pass 0 before committing"
+        vec![0],
+        "Commit-gated: review happens once after all dev iterations complete, not per-iteration"
     );
     assert_eq!(state.phase, PipelinePhase::Complete);
 

@@ -332,6 +332,8 @@ impl MainEffectHandler {
     ) -> EffectResult {
         let is_continuation = self.state.continuation.is_continuation();
         let invalid_output_attempts = self.state.continuation.invalid_output_attempts;
+        let current_drain = self.state.agent_chain.current_drain;
+        let run_id = &ctx.run_context.run_id;
         match ctx.workspace.read_artifact_json("development_result") {
             Ok(Some(envelope)) => validate_development_json_envelope(
                 ctx,
@@ -339,13 +341,15 @@ impl MainEffectHandler {
                 iteration,
                 is_continuation,
                 invalid_output_attempts,
+                current_drain,
+                run_id,
             ),
-            Ok(None) | Err(_) => EffectResult::event(
-                PipelineEvent::development_output_validation_failed(
+            Ok(None) | Err(_) => {
+                EffectResult::event(PipelineEvent::development_output_validation_failed(
                     iteration,
                     invalid_output_attempts,
-                ),
-            ),
+                ))
+            }
         }
     }
 }
@@ -411,7 +415,50 @@ fn validate_development_json_envelope(
     iteration: u32,
     is_continuation: bool,
     invalid_output_attempts: u32,
+    current_drain: crate::agents::AgentDrain,
+    run_id: &str,
 ) -> EffectResult {
+    // Validate envelope identity to reject stale or misrouted artifacts.
+    // Only enforce checks when the envelope has the identity fields set.
+    // This allows backward compatibility with artifacts that don't yet have identity metadata.
+    let run_id_mismatch = envelope.run_id.as_ref().is_some_and(|id| id != run_id);
+    let drain_mismatch = envelope
+        .drain
+        .as_ref()
+        .is_some_and(|d| d != current_drain.as_str());
+
+    if run_id_mismatch || drain_mismatch {
+        let reason = if run_id_mismatch && drain_mismatch {
+            format!(
+                "run_id mismatch (expected {}, got {:?}) and drain mismatch (expected {}, got {:?})",
+                run_id,
+                envelope.run_id,
+                current_drain.as_str(),
+                envelope.drain
+            )
+        } else if run_id_mismatch {
+            format!(
+                "run_id mismatch (expected {}, got {:?})",
+                run_id, envelope.run_id
+            )
+        } else {
+            format!(
+                "drain mismatch (expected {}, got {:?})",
+                current_drain.as_str(),
+                envelope.drain
+            )
+        };
+        ctx.logger.warn(&format!(
+            "Development artifact rejected: {} (run_id={}, drain={})",
+            reason,
+            run_id,
+            current_drain.as_str()
+        ));
+        return EffectResult::event(PipelineEvent::development_output_validation_failed(
+            iteration,
+            invalid_output_attempts,
+        ));
+    }
     match super::json_artifact::development_result_from_envelope(envelope) {
         Ok(elements) => apply_continuation_and_build_result(
             ctx,
@@ -426,4 +473,3 @@ fn validate_development_json_envelope(
         )),
     }
 }
-

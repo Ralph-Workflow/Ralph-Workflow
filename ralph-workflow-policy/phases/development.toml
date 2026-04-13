@@ -1,0 +1,61 @@
+# phases/development.toml — Normative development phase definition
+#
+# Development performs implementation work for the current cycle, either
+# sequentially or concurrently (when the planning artifact contains work_units[]).
+#
+# The embedded development_analysis decision point decides whether the
+# development iteration loops back (needs_more_work) or completes successfully
+# and routes into development_commit (cycle_complete). The cycle counter
+# advances only after development_commit.
+
+phase_id = "development"
+origin = "shipped_default"
+drain = "development"
+template_key = "development"
+artifact_profile = "development"
+embedded_decision_points = ["development_analysis"]
+
+[decision_point_template_keys]
+development_analysis = "development_analysis"
+
+# ---------------------------------------------------------------------------
+# Transition rules from the development_analysis decision point.
+#
+# analysis_decision vocabulary for development_analysis:
+#   needs_more_work  → remain in development (loop; does not advance counter)
+#   cycle_complete   → proceed to development_commit
+#
+# Legacy status mapping (from MCP artifact status field):
+#   partial / failed → needs_more_work
+#   completed        → cycle_complete
+# ---------------------------------------------------------------------------
+[[transitions]]
+when = { decision_point = "development_analysis", status = "partial" }
+next = ["development"]
+increment_counter = false
+
+[[transitions]]
+when = { decision_point = "development_analysis", status = "failed" }
+next = ["development"]
+increment_counter = false
+
+[[transitions]]
+when = { decision_point = "development_analysis", status = "completed" }
+next = ["development_commit"]
+increment_counter = false
+increment_counter_after_commit = "development"
+
+# ---------------------------------------------------------------------------
+# Post-commit routes (evaluated by development_commit after the counter advances).
+#
+# These routes encode the guarded decisions that happen at the cycle boundary:
+#   - if development cycles remain: return to planning for another cycle
+#   - if development budget is exhausted: proceed to review
+# ---------------------------------------------------------------------------
+[[post_commit_routes]]
+when = { counter = "development", comparison = "less_than_budget" }
+next = ["planning"]
+
+[[post_commit_routes]]
+when = { counter = "development", comparison = "budget_exhausted" }
+next = ["review"]

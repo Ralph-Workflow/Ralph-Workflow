@@ -39,10 +39,7 @@ fn test_validate_fix_result_xml_emits_ui_output() {
         event,
         UIEvent::XmlOutput {
             xml_type: XmlOutputType::FixResult,
-            context: Some(XmlOutputContext {
-                pass: Some(0),
-                ..
-            }),
+            context: Some(XmlOutputContext { pass: Some(0), .. }),
             ..
         }
     )));

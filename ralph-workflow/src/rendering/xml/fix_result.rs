@@ -49,7 +49,10 @@ mod tests {
             pass: Some(2),
             snippets: Vec::new(),
         });
-        let output = render(r#"{"status":"all_issues_addressed","summary":"done"}"#, ctx.as_ref());
+        let output = render(
+            r#"{"status":"all_issues_addressed","summary":"done"}"#,
+            ctx.as_ref(),
+        );
 
         assert!(output.contains("Fix Pass 2"), "Should show pass number");
         assert!(output.contains("done"), "Should include summary");
@@ -58,7 +61,10 @@ mod tests {
 
     #[test]
     fn test_render_fix_result_issues_remain() {
-        let output = render(r#"{"status":"issues_remain","summary":"needs more work"}"#, None);
+        let output = render(
+            r#"{"status":"issues_remain","summary":"needs more work"}"#,
+            None,
+        );
 
         assert!(output.contains("🔄"), "Should show in-progress indicator");
         assert!(output.contains("Issues Remain"), "Should show label");

@@ -87,7 +87,10 @@ mod tests {
 
         assert!(output.contains("Review Results"), "Should show header");
         assert!(output.contains("2"), "Should show issue count");
-        assert!(output.contains("Fix the null check"), "Should list first issue");
+        assert!(
+            output.contains("Fix the null check"),
+            "Should list first issue"
+        );
         assert!(
             output.contains("Add error handling"),
             "Should list second issue"
@@ -109,9 +112,15 @@ mod tests {
 
     #[test]
     fn test_render_review_issues_no_context() {
-        let output = render(r#"{"type":"no_issues_found","explanation":"All good"}"#, None);
+        let output = render(
+            r#"{"type":"no_issues_found","explanation":"All good"}"#,
+            None,
+        );
 
-        assert!(output.contains("Review Results"), "Should show review results header");
+        assert!(
+            output.contains("Review Results"),
+            "Should show review results header"
+        );
         assert!(output.contains("✅"), "Should show approval");
     }
 
@@ -119,7 +128,10 @@ mod tests {
     fn test_render_review_issues_fallback_for_non_json() {
         let output = render("raw content", None);
 
-        assert!(output.contains("Review Results"), "Should show review results header");
+        assert!(
+            output.contains("Review Results"),
+            "Should show review results header"
+        );
         assert!(output.contains("raw content"), "Should include content");
     }
 }

@@ -35,6 +35,9 @@ pub(super) fn render(content: &str, output_context: Option<&XmlOutputContext>) -
         }
     }
 
+    if content.trim_start().starts_with('<') {
+        return format!("{header}⚠️ Unable to parse development result artifact\n");
+    }
     format!("{header}{content}")
 }
 
@@ -49,7 +52,10 @@ mod tests {
             pass: None,
             snippets: Vec::new(),
         });
-        let output = render(r#"{"status":"completed","summary":"some content"}"#, ctx.as_ref());
+        let output = render(
+            r#"{"status":"completed","summary":"some content"}"#,
+            ctx.as_ref(),
+        );
 
         assert!(
             output.contains("Development Iteration 2"),

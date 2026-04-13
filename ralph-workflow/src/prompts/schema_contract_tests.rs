@@ -106,7 +106,7 @@ fn assert_schema_valid(schema_str: &str, payload: &Value, context: &str) {
 #[test]
 fn test_planning_template_example_matches_plan_schema() {
     let rendered = render_template(
-        include_str!("templates/planning_xml.txt"),
+        ralph_workflow_policy::PLANNING_TEMPLATE,
         SessionDrain::Planning,
         HashMap::from([("PROMPT", "test requirements".to_string())]),
     );
@@ -122,7 +122,7 @@ fn test_planning_template_example_matches_plan_schema() {
 #[test]
 fn test_development_template_examples_match_development_result_schema() {
     let rendered = render_template(
-        include_str!("templates/developer_iteration_xml.txt"),
+        ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE,
         SessionDrain::Development,
         HashMap::from([
             ("PROMPT", "test prompt".to_string()),
@@ -142,7 +142,7 @@ fn test_development_template_examples_match_development_result_schema() {
 #[test]
 fn test_review_template_examples_match_issues_schema() {
     let rendered = render_template(
-        include_str!("templates/review_xml.txt"),
+        ralph_workflow_policy::REVIEW_TEMPLATE,
         SessionDrain::Review,
         HashMap::from([
             ("PLAN", "test plan".to_string()),
@@ -161,7 +161,7 @@ fn test_review_template_examples_match_issues_schema() {
 #[test]
 fn test_commit_template_examples_match_commit_schema() {
     let rendered = render_template(
-        include_str!("templates/commit_message_xml.txt"),
+        ralph_workflow_policy::COMMIT_MESSAGE_TEMPLATE,
         SessionDrain::Commit,
         HashMap::from([("DIFF", "diff --git a/a b/b".to_string())]),
     );

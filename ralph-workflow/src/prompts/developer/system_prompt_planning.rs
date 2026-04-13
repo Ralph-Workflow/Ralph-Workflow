@@ -24,7 +24,7 @@ pub fn prompt_plan(prompt_content: Option<&str>) -> String {
 
     let workspace = WorkspaceFs::new(env::current_dir().unwrap());
     let partials = get_shared_partials();
-    let template_content = include_str!("../templates/planning_xml.txt");
+    let template_content = ralph_workflow_policy::PLANNING_TEMPLATE;
     let template = Template::new(template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
     let base_vars: HashMap<&str, String> = HashMap::from([
@@ -82,10 +82,10 @@ pub fn prompt_plan_with_context(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("planning_xml")
+        .get_template("planning")
         .unwrap_or_else(|_| {
             // Fallback to embedded template if registry fails
-            include_str!("../templates/planning_xml.txt").to_string()
+            ralph_workflow_policy::PLANNING_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
@@ -150,8 +150,8 @@ pub fn prompt_planning_xml_with_context(
 
     let template_content = context
         .registry()
-        .get_template("planning_xml")
-        .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
+        .get_template("planning")
+        .unwrap_or_else(|_| ralph_workflow_policy::PLANNING_TEMPLATE.to_string());
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
 
@@ -224,8 +224,8 @@ pub fn prompt_planning_xml_with_references_and_log(
 
     let template_content = context
         .registry()
-        .get_template("planning_xml")
-        .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
+        .get_template("planning")
+        .unwrap_or_else(|_| ralph_workflow_policy::PLANNING_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     // Base variables for planning prompt
@@ -311,8 +311,8 @@ pub fn prompt_planning_xml_with_references(
 
     let template_content = context
         .registry()
-        .get_template("planning_xml")
-        .unwrap_or_else(|_| include_str!("../templates/planning_xml.txt").to_string());
+        .get_template("planning")
+        .unwrap_or_else(|_| ralph_workflow_policy::PLANNING_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     // Base variables for planning prompt

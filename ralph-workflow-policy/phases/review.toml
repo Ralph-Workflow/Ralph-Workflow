@@ -1,0 +1,62 @@
+# phases/review.toml — Normative review phase definition
+#
+# Review inspects the current implementation for the review cycle.
+# The fix subflow executes when review finds issues.
+# The embedded review_analysis decision point decides whether fix work
+# loops back (needs_more_fix) or completes the cycle (cycle_complete)
+# and routes into review_commit. The review counter advances only after
+# review_commit.
+
+phase_id = "review"
+origin = "shipped_default"
+drain = "review"
+template_key = "review"
+artifact_profile = "review"
+next = ["fix"]
+subflow = ["fix", "review_analysis"]
+
+[subflow_template_keys]
+fix = "fix"
+review_analysis = "review_analysis"
+
+# ---------------------------------------------------------------------------
+# Transition rules from the review_analysis decision point.
+#
+# analysis_decision vocabulary for review_analysis:
+#   needs_more_fix   → remain in fix (loop; does not advance counter)
+#   cycle_complete   → proceed to review_commit
+#
+# Legacy status mapping (from MCP artifact status field):
+#   partial / failed → needs_more_fix
+#   completed        → cycle_complete
+# ---------------------------------------------------------------------------
+[[transitions]]
+when = { decision_point = "review_analysis", status = "partial" }
+next = ["fix"]
+increment_counter = false
+
+[[transitions]]
+when = { decision_point = "review_analysis", status = "failed" }
+next = ["fix"]
+increment_counter = false
+
+[[transitions]]
+when = { decision_point = "review_analysis", status = "completed" }
+next = ["review_commit"]
+increment_counter = false
+increment_counter_after_commit = "review"
+
+# ---------------------------------------------------------------------------
+# Post-commit routes (evaluated by review_commit after the counter advances).
+#
+# These routes encode the guarded decisions at the review cycle boundary:
+#   - if review cycles remain: return to review for another cycle
+#   - if review budget is exhausted: proceed to complete
+# ---------------------------------------------------------------------------
+[[post_commit_routes]]
+when = { counter = "review", comparison = "less_than_budget" }
+next = ["review"]
+
+[[post_commit_routes]]
+when = { counter = "review", comparison = "budget_exhausted" }
+next = ["complete"]

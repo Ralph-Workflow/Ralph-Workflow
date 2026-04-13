@@ -317,6 +317,5 @@ mod tests {
             assert!(!workspace.exists(Path::new(".agent/commit-message.txt")));
             assert!(!workspace.exists(Path::new(".git/ralph/no_agent_commit")));
         }
-
     }
 }

@@ -112,13 +112,9 @@ fn format_steps_section(elements: &PlanElements) -> String {
     format!("## Implementation Steps\n\n{}", steps.join("\n"))
 }
 
-fn format_step_item(
-    step: &crate::files::result_types::Step,
-) -> String {
+fn format_step_item(step: &crate::files::result_types::Step) -> String {
     let step_type_str = match step.kind {
-        crate::files::result_types::StepType::FileChange => {
-            "file-change"
-        }
+        crate::files::result_types::StepType::FileChange => "file-change",
         crate::files::result_types::StepType::Action => "action",
         crate::files::result_types::StepType::Research => "research",
     };
@@ -128,13 +124,9 @@ fn format_step_item(
         .as_ref()
         .map(|p| {
             let s = match p {
-                crate::files::result_types::Priority::Critical => {
-                    "critical"
-                }
+                crate::files::result_types::Priority::Critical => "critical",
                 crate::files::result_types::Priority::High => "high",
-                crate::files::result_types::Priority::Medium => {
-                    "medium"
-                }
+                crate::files::result_types::Priority::Medium => "medium",
                 crate::files::result_types::Priority::Low => "low",
             };
             format!(" [{s}]")
@@ -154,15 +146,9 @@ fn format_step_item(
             .iter()
             .map(|tf| {
                 let action_str = match tf.action {
-                    crate::files::result_types::FileAction::Create => {
-                        "create"
-                    }
-                    crate::files::result_types::FileAction::Modify => {
-                        "modify"
-                    }
-                    crate::files::result_types::FileAction::Delete => {
-                        "delete"
-                    }
+                    crate::files::result_types::FileAction::Create => "create",
+                    crate::files::result_types::FileAction::Modify => "modify",
+                    crate::files::result_types::FileAction::Delete => "delete",
                 };
                 format!("- `{}` ({})", tf.path, action_str)
             })
@@ -216,15 +202,9 @@ fn format_critical_files_section(elements: &PlanElements) -> String {
         .iter()
         .map(|pf| {
             let action_str = match pf.action {
-                crate::files::result_types::FileAction::Create => {
-                    "create"
-                }
-                crate::files::result_types::FileAction::Modify => {
-                    "modify"
-                }
-                crate::files::result_types::FileAction::Delete => {
-                    "delete"
-                }
+                crate::files::result_types::FileAction::Create => "create",
+                crate::files::result_types::FileAction::Modify => "modify",
+                crate::files::result_types::FileAction::Delete => "delete",
             };
             pf.estimated_changes
                 .as_ref()
@@ -276,18 +256,10 @@ fn format_risks_section(elements: &PlanElements) -> String {
                 .as_ref()
                 .map(|s| {
                     let sev_str = match s {
-                        crate::files::result_types::Severity::Low => {
-                            "low"
-                        }
-                        crate::files::result_types::Severity::Medium => {
-                            "medium"
-                        }
-                        crate::files::result_types::Severity::High => {
-                            "high"
-                        }
-                        crate::files::result_types::Severity::Critical => {
-                            "critical"
-                        }
+                        crate::files::result_types::Severity::Low => "low",
+                        crate::files::result_types::Severity::Medium => "medium",
+                        crate::files::result_types::Severity::High => "high",
+                        crate::files::result_types::Severity::Critical => "critical",
                     };
                     format!(" [{sev_str}]")
                 })
@@ -325,9 +297,7 @@ fn format_verification_section(elements: &PlanElements) -> String {
 }
 
 /// Format rich content elements to markdown.
-fn format_rich_content(
-    content: &crate::files::result_types::RichContent,
-) -> String {
+fn format_rich_content(content: &crate::files::result_types::RichContent) -> String {
     use crate::files::result_types::ContentElement;
 
     let elements: Vec<String> = content
@@ -406,9 +376,7 @@ fn format_table(t: &crate::files::result_types::Table) -> String {
 }
 
 /// Format inline content elements.
-fn format_inline_content(
-    content: &[crate::files::result_types::InlineElement],
-) -> String {
+fn format_inline_content(content: &[crate::files::result_types::InlineElement]) -> String {
     use crate::files::result_types::InlineElement;
 
     content
@@ -423,10 +391,7 @@ fn format_inline_content(
 }
 
 /// Format a list element with proper indentation.
-fn format_list(
-    list: &crate::files::result_types::List,
-    indent: usize,
-) -> String {
+fn format_list(list: &crate::files::result_types::List, indent: usize) -> String {
     use crate::files::result_types::ListType;
 
     let indent_str = "  ".repeat(indent);

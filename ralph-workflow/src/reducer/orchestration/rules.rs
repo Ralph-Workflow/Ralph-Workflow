@@ -40,7 +40,7 @@
 //! the orchestrator at runtime.
 
 use crate::agents::{AgentDrain, AgentRole};
-use crate::reducer::state::AnalysisDecision;
+use crate::reducer::state::{DevelopmentAnalysisDecision, ReviewAnalysisDecision};
 
 /// Read/write capability of a drain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,14 +84,41 @@ pub struct DrainRule {
     /// Transitions not in this list must be treated as invariant violations.
     /// An empty list means the drain is terminal (only Commit leads to this).
     pub allowed_transitions: &'static [AgentDrain],
-    /// Decision-outcome-to-drain routing table for analysis-style drains.
+    /// Whether retries and continuations preserve drain identity (same drain, same session).
     ///
-    /// `Some` only for the Analysis drain. Maps each `AnalysisDecision` variant
-    /// to the drain that should be activated when that outcome is produced.
-    /// Every `AnalysisDecision` variant must appear exactly once.
+    /// When `true`, retry and continuation dispatch stays within this drain without
+    /// performing a validated transition. When `false`, every retry must go through
+    /// the transition graph (e.g. Analysis routes through explicit decision outcomes).
+    pub preserves_drain_on_retry: bool,
+    /// Whether this drain can launch parallel worker instances for fan-out execution.
     ///
-    /// `None` for all non-analysis drains.
-    pub analysis_decision_routes: Option<&'static [(AnalysisDecision, AgentDrain)]>,
+    /// Currently only the Development drain supports parallel workers driven by
+    /// `work_units[]` in the planning artifact. All other drains are single-shot.
+    pub parallel_capable: bool,
+    /// Whether parallel workers spawned by this drain require a verifier step.
+    ///
+    /// Only meaningful when `parallel_capable` is `true`. When `true`, a dedicated
+    /// verifier agent must run after all parallel workers complete before the drain
+    /// may transition to the next phase.
+    pub parallel_verifier_required: bool,
+    /// Development-cycle analysis routes for this drain.
+    ///
+    /// Populated only for the Development drain. After the Analysis agent completes
+    /// a development-cycle assessment, the orchestrator consults this table to
+    /// determine the next drain: `NeedsMoreWork` loops back to Development;
+    /// `CycleComplete` proceeds to Commit (development_commit).
+    ///
+    /// `None` for all other drains.
+    pub development_analysis_routes: Option<&'static [(DevelopmentAnalysisDecision, AgentDrain)]>,
+    /// Review-cycle analysis routes for this drain.
+    ///
+    /// Populated only for the Review drain. After the Analysis agent completes a
+    /// review-cycle assessment (following a fix attempt), the orchestrator consults
+    /// this table: `NeedsMoreFix` loops back to Fix; `CycleComplete` proceeds to
+    /// Commit (review_commit).
+    ///
+    /// `None` for all other drains.
+    pub review_analysis_routes: Option<&'static [(ReviewAnalysisDecision, AgentDrain)]>,
 }
 
 /// The canonical drain rule table.
@@ -107,7 +134,11 @@ pub const DRAIN_RULES: &[DrainRule] = &[
         allow_continuation: true,
         // Planning transitions to Development or stays (re-planning).
         allowed_transitions: &[AgentDrain::Development],
-        analysis_decision_routes: None,
+        preserves_drain_on_retry: true,
+        parallel_capable: false,
+        parallel_verifier_required: false,
+        development_analysis_routes: None,
+        review_analysis_routes: None,
     },
     DrainRule {
         drain: AgentDrain::Development,
@@ -117,7 +148,25 @@ pub const DRAIN_RULES: &[DrainRule] = &[
         allow_continuation: true,
         // Development transitions to Analysis, or loops back via continuation.
         allowed_transitions: &[AgentDrain::Analysis],
-        analysis_decision_routes: None,
+        preserves_drain_on_retry: true,
+        // Development is the only drain that supports parallel worker fan-out,
+        // driven by work_units[] in the planning artifact.
+        parallel_capable: true,
+        // Parallel workers require a verifier step after all workers complete.
+        parallel_verifier_required: true,
+        // After development_analysis completes: NeedsMoreWork loops back to
+        // Development, CycleComplete proceeds to Commit (development_commit).
+        development_analysis_routes: Some(&[
+            (
+                DevelopmentAnalysisDecision::NeedsMoreWork,
+                AgentDrain::Development,
+            ),
+            (
+                DevelopmentAnalysisDecision::CycleComplete,
+                AgentDrain::Commit,
+            ),
+        ]),
+        review_analysis_routes: None,
     },
     DrainRule {
         drain: AgentDrain::Analysis,
@@ -127,7 +176,8 @@ pub const DRAIN_RULES: &[DrainRule] = &[
         artifact_type: "analysis_decision",
         // Analysis produces a single decision per invocation — no continuations.
         allow_continuation: false,
-        // Analysis decision can route back to Development, Planning, Commit, Review, or Fix.
+        // Analysis can route to Development, Planning, Commit, Review, or Fix
+        // based on the decision point outcome (routing handled by phase config).
         allowed_transitions: &[
             AgentDrain::Development,
             AgentDrain::Planning,
@@ -135,14 +185,13 @@ pub const DRAIN_RULES: &[DrainRule] = &[
             AgentDrain::Review,
             AgentDrain::Fix,
         ],
-        // Canonical decision-outcome routing: each AnalysisDecision maps to exactly one drain.
-        analysis_decision_routes: Some(&[
-            (AnalysisDecision::NeedsMoreWork, AgentDrain::Development),
-            (AnalysisDecision::NeedsReplanning, AgentDrain::Planning),
-            (AnalysisDecision::ReadyForReview, AgentDrain::Review),
-            (AnalysisDecision::ReadyToCommit, AgentDrain::Commit),
-            (AnalysisDecision::NeedsAnotherReview, AgentDrain::Fix),
-        ]),
+        // Analysis does NOT preserve drain on retry: each invocation is a fresh
+        // single-shot assessment. Retries go through the normal transition graph.
+        preserves_drain_on_retry: false,
+        parallel_capable: false,
+        parallel_verifier_required: false,
+        development_analysis_routes: None,
+        review_analysis_routes: None,
     },
     DrainRule {
         drain: AgentDrain::Review,
@@ -152,7 +201,16 @@ pub const DRAIN_RULES: &[DrainRule] = &[
         allow_continuation: true,
         // Review transitions to Fix when issues are found, or to Commit when clean.
         allowed_transitions: &[AgentDrain::Fix, AgentDrain::Commit],
-        analysis_decision_routes: None,
+        preserves_drain_on_retry: true,
+        parallel_capable: false,
+        parallel_verifier_required: false,
+        development_analysis_routes: None,
+        // After review_analysis completes (following a fix attempt): NeedsMoreFix
+        // loops back to Fix, CycleComplete proceeds to Commit (review_commit).
+        review_analysis_routes: Some(&[
+            (ReviewAnalysisDecision::NeedsMoreFix, AgentDrain::Fix),
+            (ReviewAnalysisDecision::CycleComplete, AgentDrain::Commit),
+        ]),
     },
     DrainRule {
         drain: AgentDrain::Fix,
@@ -162,7 +220,11 @@ pub const DRAIN_RULES: &[DrainRule] = &[
         allow_continuation: true,
         // Fix transitions to Analysis (for verification) after implementation.
         allowed_transitions: &[AgentDrain::Analysis],
-        analysis_decision_routes: None,
+        preserves_drain_on_retry: true,
+        parallel_capable: false,
+        parallel_verifier_required: false,
+        development_analysis_routes: None,
+        review_analysis_routes: None,
     },
     DrainRule {
         drain: AgentDrain::Commit,
@@ -172,7 +234,11 @@ pub const DRAIN_RULES: &[DrainRule] = &[
         allow_continuation: false,
         // Commit is a checkpoint; after it the pipeline continues to Review or terminates.
         allowed_transitions: &[AgentDrain::Review, AgentDrain::Planning],
-        analysis_decision_routes: None,
+        preserves_drain_on_retry: true,
+        parallel_capable: false,
+        parallel_verifier_required: false,
+        development_analysis_routes: None,
+        review_analysis_routes: None,
     },
 ];
 
@@ -194,31 +260,14 @@ pub fn transition_allowed(from: AgentDrain, to: AgentDrain) -> bool {
     rule_for(from).is_some_and(|rule| rule.allowed_transitions.contains(&to))
 }
 
-/// Look up the drain that an `AnalysisDecision` routes to.
-///
-/// Returns `None` only if `decision` is not covered by the Analysis drain rule,
-/// which would be a bug (all variants must be present per invariant tests).
-#[must_use]
-pub fn route_for_decision(decision: AnalysisDecision) -> Option<AgentDrain> {
-    rule_for(AgentDrain::Analysis)
-        .and_then(|r| r.analysis_decision_routes)
-        .and_then(|routes| {
-            routes
-                .iter()
-                .find(|(d, _)| *d == decision)
-                .map(|(_, drain)| *drain)
-        })
-}
-
 /// Validate the drain rule table for internal consistency.
 ///
 /// Checks:
 /// 1. Every built-in drain appears exactly once.
 /// 2. Each rule's `role` matches `AgentDrain::role()`.
-/// 3. The Analysis drain has `analysis_decision_routes` covering every
-///    `AnalysisDecision` variant exactly once.
-/// 4. Every decision route target is present in `allowed_transitions`.
-/// 5. All non-analysis drains have `analysis_decision_routes: None`.
+/// 3. Analysis routes are present only on the drains that own them.
+/// 4. `parallel_verifier_required` is only true when `parallel_capable` is true.
+/// 5. Analysis drain never has `preserves_drain_on_retry = true` (single-shot only).
 ///
 /// Returns `Ok(())` on success, or a descriptive error string on the first
 /// violation found. Intended for startup assertion via `validate_drain_rules().unwrap()`.
@@ -232,71 +281,70 @@ pub fn validate_drain_rules() -> Result<(), String> {
             all_drains.len()
         ));
     }
-    for drain in all_drains {
+    if let Some(err) = all_drains.iter().find_map(|&drain| {
         let count = DRAIN_RULES.iter().filter(|r| r.drain == drain).count();
-        if count != 1 {
-            return Err(format!(
+        (count != 1).then(|| {
+            format!(
                 "drain {:?} appears {} times in DRAIN_RULES (expected 1)",
                 drain, count
-            ));
-        }
+            )
+        })
+    }) {
+        return Err(err);
     }
 
     // 2. Each rule's role must match AgentDrain::role().
-    for rule in DRAIN_RULES {
+    if let Some(err) = DRAIN_RULES.iter().find_map(|rule| {
         let canonical = rule.drain.role();
-        if rule.role != canonical {
-            return Err(format!(
+        (rule.role != canonical).then(|| {
+            format!(
                 "DrainRule for {:?} declares role {:?} but AgentDrain::role() returns {:?}",
                 rule.drain, rule.role, canonical
-            ));
-        }
+            )
+        })
+    }) {
+        return Err(err);
     }
 
-    // 3 & 4 & 5. analysis_decision_routes correctness.
-    let expected_decisions = [
-        AnalysisDecision::NeedsMoreWork,
-        AnalysisDecision::NeedsReplanning,
-        AnalysisDecision::ReadyForReview,
-        AnalysisDecision::ReadyToCommit,
-        AnalysisDecision::NeedsAnotherReview,
-    ];
-    for rule in DRAIN_RULES {
-        if rule.drain == AgentDrain::Analysis {
-            let routes = rule.analysis_decision_routes.ok_or_else(|| {
-                "Analysis drain must have analysis_decision_routes: Some(...)".to_owned()
-            })?;
-            // Every expected decision must appear exactly once.
-            for decision in &expected_decisions {
-                let count = routes.iter().filter(|(d, _)| d == decision).count();
-                if count != 1 {
-                    return Err(format!(
-                        "AnalysisDecision::{:?} appears {} times in analysis_decision_routes (expected 1)",
-                        decision, count
-                    ));
-                }
-            }
-            if routes.len() != expected_decisions.len() {
-                return Err(format!(
-                    "analysis_decision_routes has {} entries but there are {} AnalysisDecision variants",
-                    routes.len(),
-                    expected_decisions.len()
-                ));
-            }
-            // Every route target must be in allowed_transitions.
-            for (decision, target) in routes {
-                if !rule.allowed_transitions.contains(target) {
-                    return Err(format!(
-                        "analysis_decision_routes maps {:?} → {:?} but {:?} is not in allowed_transitions",
-                        decision, target, target
-                    ));
-                }
-            }
-        } else if rule.analysis_decision_routes.is_some() {
-            return Err(format!(
-                "DrainRule for {:?} has analysis_decision_routes: Some(...) but only Analysis may have routes",
+    // 3. Development analysis routes belong only to the Development drain;
+    //    review analysis routes belong only to the Review drain.
+    if let Some(err) = DRAIN_RULES.iter().find_map(|rule| {
+        if rule.drain != AgentDrain::Development && rule.development_analysis_routes.is_some() {
+            return Some(format!(
+                "DrainRule for {:?} has development_analysis_routes but only Development may have these",
                 rule.drain
             ));
+        }
+        if rule.drain != AgentDrain::Review && rule.review_analysis_routes.is_some() {
+            return Some(format!(
+                "DrainRule for {:?} has review_analysis_routes but only Review may have these",
+                rule.drain
+            ));
+        }
+        None
+    }) {
+        return Err(err);
+    }
+
+    // 4. parallel_verifier_required may only be true when parallel_capable is true.
+    if let Some(err) = DRAIN_RULES.iter().find_map(|rule| {
+        (rule.parallel_verifier_required && !rule.parallel_capable).then(|| {
+            format!(
+                "DrainRule for {:?}: parallel_verifier_required=true but parallel_capable=false",
+                rule.drain
+            )
+        })
+    }) {
+        return Err(err);
+    }
+
+    // 5. Analysis is a single-shot drain; it must not preserve drain on retry.
+    if let Some(analysis_rule) = rule_for(AgentDrain::Analysis) {
+        if analysis_rule.preserves_drain_on_retry {
+            return Err(
+                "DrainRule for Analysis: preserves_drain_on_retry must be false (single-shot drain)"
+                    .to_owned(),
+            );
         }
     }
 
@@ -508,7 +556,7 @@ mod tests {
     }
 
     // =========================================================================
-    // Step 11: Analysis decision routing invariant tests
+    // Analysis artifact type invariant
     // =========================================================================
 
     /// Analysis produces an `analysis_decision` artifact, not a `development_result`.
@@ -523,84 +571,6 @@ mod tests {
         );
     }
 
-    /// Analysis must have analysis_decision_routes declared.
-    #[test]
-    fn test_analysis_has_decision_routes() {
-        assert!(
-            rule_for(AgentDrain::Analysis)
-                .unwrap()
-                .analysis_decision_routes
-                .is_some(),
-            "Analysis drain must have analysis_decision_routes: Some(...)"
-        );
-    }
-
-    /// All five AnalysisDecision variants must appear exactly once in routes.
-    #[test]
-    fn test_analysis_decision_routes_cover_all_variants() {
-        use crate::reducer::state::AnalysisDecision;
-        let routes = rule_for(AgentDrain::Analysis)
-            .unwrap()
-            .analysis_decision_routes
-            .unwrap();
-        let expected = [
-            AnalysisDecision::NeedsMoreWork,
-            AnalysisDecision::NeedsReplanning,
-            AnalysisDecision::ReadyForReview,
-            AnalysisDecision::ReadyToCommit,
-            AnalysisDecision::NeedsAnotherReview,
-        ];
-        assert_eq!(
-            routes.len(),
-            expected.len(),
-            "analysis_decision_routes must have exactly {} entries",
-            expected.len()
-        );
-        for decision in &expected {
-            let count = routes.iter().filter(|(d, _)| d == decision).count();
-            assert_eq!(
-                count, 1,
-                "AnalysisDecision::{:?} must appear exactly once in analysis_decision_routes",
-                decision
-            );
-        }
-    }
-
-    /// Every decision route target must be listed in Analysis allowed_transitions.
-    ///
-    /// A route that points to a drain not in allowed_transitions would be
-    /// an unreachable dead route — a configuration inconsistency.
-    #[test]
-    fn test_analysis_decision_route_targets_in_allowed_transitions() {
-        let rule = rule_for(AgentDrain::Analysis).unwrap();
-        let routes = rule.analysis_decision_routes.unwrap();
-        for (decision, target) in routes {
-            assert!(
-                rule.allowed_transitions.contains(target),
-                "analysis_decision_routes maps {:?} → {:?} but {:?} is not in allowed_transitions",
-                decision,
-                target,
-                target
-            );
-        }
-    }
-
-    /// No non-analysis drain may declare analysis_decision_routes.
-    ///
-    /// Only the Analysis drain drives routing decisions based on AnalysisDecision.
-    #[test]
-    fn test_non_analysis_drains_have_no_decision_routes() {
-        for rule in DRAIN_RULES {
-            if rule.drain != AgentDrain::Analysis {
-                assert!(
-                    rule.analysis_decision_routes.is_none(),
-                    "DrainRule for {:?} must have analysis_decision_routes: None",
-                    rule.drain
-                );
-            }
-        }
-    }
-
     /// `validate_drain_rules()` must pass for the canonical table.
     ///
     /// This is the single integration test that verifies all validate_drain_rules()
@@ -608,106 +578,6 @@ mod tests {
     #[test]
     fn test_validate_drain_rules_passes() {
         validate_drain_rules().expect("DRAIN_RULES must pass validate_drain_rules()");
-    }
-
-    /// Analysis → NeedsMoreWork routes to Development.
-    #[test]
-    fn test_analysis_needs_more_work_routes_to_development() {
-        use crate::reducer::state::AnalysisDecision;
-        let routes = rule_for(AgentDrain::Analysis)
-            .unwrap()
-            .analysis_decision_routes
-            .unwrap();
-        let target = routes
-            .iter()
-            .find(|(d, _)| *d == AnalysisDecision::NeedsMoreWork)
-            .map(|(_, t)| *t)
-            .expect("NeedsMoreWork must be present");
-        assert_eq!(
-            target,
-            AgentDrain::Development,
-            "NeedsMoreWork must route to Development"
-        );
-    }
-
-    /// Analysis → NeedsReplanning routes to Planning.
-    #[test]
-    fn test_analysis_needs_replanning_routes_to_planning() {
-        use crate::reducer::state::AnalysisDecision;
-        let routes = rule_for(AgentDrain::Analysis)
-            .unwrap()
-            .analysis_decision_routes
-            .unwrap();
-        let target = routes
-            .iter()
-            .find(|(d, _)| *d == AnalysisDecision::NeedsReplanning)
-            .map(|(_, t)| *t)
-            .expect("NeedsReplanning must be present");
-        assert_eq!(
-            target,
-            AgentDrain::Planning,
-            "NeedsReplanning must route to Planning"
-        );
-    }
-
-    /// Analysis → ReadyForReview routes to Review.
-    #[test]
-    fn test_analysis_ready_for_review_routes_to_review() {
-        use crate::reducer::state::AnalysisDecision;
-        let routes = rule_for(AgentDrain::Analysis)
-            .unwrap()
-            .analysis_decision_routes
-            .unwrap();
-        let target = routes
-            .iter()
-            .find(|(d, _)| *d == AnalysisDecision::ReadyForReview)
-            .map(|(_, t)| *t)
-            .expect("ReadyForReview must be present");
-        assert_eq!(
-            target,
-            AgentDrain::Review,
-            "ReadyForReview must route to Review"
-        );
-    }
-
-    /// Analysis → ReadyToCommit routes to Commit.
-    #[test]
-    fn test_analysis_ready_to_commit_routes_to_commit() {
-        use crate::reducer::state::AnalysisDecision;
-        let routes = rule_for(AgentDrain::Analysis)
-            .unwrap()
-            .analysis_decision_routes
-            .unwrap();
-        let target = routes
-            .iter()
-            .find(|(d, _)| *d == AnalysisDecision::ReadyToCommit)
-            .map(|(_, t)| *t)
-            .expect("ReadyToCommit must be present");
-        assert_eq!(
-            target,
-            AgentDrain::Commit,
-            "ReadyToCommit must route to Commit"
-        );
-    }
-
-    /// Analysis → NeedsAnotherReview routes to Fix.
-    #[test]
-    fn test_analysis_needs_another_review_routes_to_fix() {
-        use crate::reducer::state::AnalysisDecision;
-        let routes = rule_for(AgentDrain::Analysis)
-            .unwrap()
-            .analysis_decision_routes
-            .unwrap();
-        let target = routes
-            .iter()
-            .find(|(d, _)| *d == AnalysisDecision::NeedsAnotherReview)
-            .map(|(_, t)| *t)
-            .expect("NeedsAnotherReview must be present");
-        assert_eq!(
-            target,
-            AgentDrain::Fix,
-            "NeedsAnotherReview must route to Fix"
-        );
     }
 
     /// Commit transitions: Review (post-commit code review) and Planning (re-plan loop).
@@ -727,16 +597,243 @@ mod tests {
         );
     }
 
-    /// Commit is a checkpoint: it is terminal in the sense it has no continuation
-    /// and no Analysis routing.
+    // =========================================================================
+    // Drain identity and parallel invariants
+    // =========================================================================
+
+    /// Analysis drain must not preserve drain on retry (single-shot decision).
     #[test]
-    fn test_commit_has_no_decision_routes() {
+    fn test_analysis_does_not_preserve_drain_on_retry() {
         assert!(
-            rule_for(AgentDrain::Commit)
+            !rule_for(AgentDrain::Analysis)
                 .unwrap()
-                .analysis_decision_routes
-                .is_none(),
-            "Commit must not have analysis_decision_routes"
+                .preserves_drain_on_retry,
+            "Analysis must not preserve drain on retry (single-shot drain)"
         );
+    }
+
+    /// Write-capable drains (Development, Fix, Commit) must preserve drain on retry.
+    ///
+    /// Retries within a write-capable drain stay in the same drain to avoid
+    /// unintended cross-drain transitions when agent invocation fails.
+    #[test]
+    fn test_write_capable_drains_preserve_drain_on_retry() {
+        for drain in [AgentDrain::Development, AgentDrain::Fix, AgentDrain::Commit] {
+            assert!(
+                rule_for(drain).unwrap().preserves_drain_on_retry,
+                "{:?} must preserve drain on retry",
+                drain
+            );
+        }
+    }
+
+    /// Development is the only drain that is parallel-capable.
+    #[test]
+    fn test_only_development_is_parallel_capable() {
+        assert!(
+            rule_for(AgentDrain::Development).unwrap().parallel_capable,
+            "Development must be parallel-capable"
+        );
+        for drain in [
+            AgentDrain::Planning,
+            AgentDrain::Analysis,
+            AgentDrain::Review,
+            AgentDrain::Fix,
+            AgentDrain::Commit,
+        ] {
+            assert!(
+                !rule_for(drain).unwrap().parallel_capable,
+                "{:?} must NOT be parallel-capable",
+                drain
+            );
+        }
+    }
+
+    /// Development requires a verifier step after parallel workers.
+    #[test]
+    fn test_development_parallel_verifier_required() {
+        assert!(
+            rule_for(AgentDrain::Development)
+                .unwrap()
+                .parallel_verifier_required,
+            "Development must require a parallel verifier step"
+        );
+    }
+
+    /// Development drain declares development_analysis_routes; all others do not.
+    #[test]
+    fn test_development_analysis_routes_only_on_development() {
+        assert!(
+            rule_for(AgentDrain::Development)
+                .unwrap()
+                .development_analysis_routes
+                .is_some(),
+            "Development must have development_analysis_routes"
+        );
+        for drain in [
+            AgentDrain::Planning,
+            AgentDrain::Analysis,
+            AgentDrain::Review,
+            AgentDrain::Fix,
+            AgentDrain::Commit,
+        ] {
+            assert!(
+                rule_for(drain)
+                    .unwrap()
+                    .development_analysis_routes
+                    .is_none(),
+                "{:?} must NOT have development_analysis_routes",
+                drain
+            );
+        }
+    }
+
+    /// Review drain declares review_analysis_routes; all others do not.
+    #[test]
+    fn test_review_analysis_routes_only_on_review() {
+        assert!(
+            rule_for(AgentDrain::Review)
+                .unwrap()
+                .review_analysis_routes
+                .is_some(),
+            "Review must have review_analysis_routes"
+        );
+        for drain in [
+            AgentDrain::Planning,
+            AgentDrain::Development,
+            AgentDrain::Analysis,
+            AgentDrain::Fix,
+            AgentDrain::Commit,
+        ] {
+            assert!(
+                rule_for(drain).unwrap().review_analysis_routes.is_none(),
+                "{:?} must NOT have review_analysis_routes",
+                drain
+            );
+        }
+    }
+
+    /// Development analysis routes cover all DevelopmentAnalysisDecision variants.
+    #[test]
+    fn test_development_analysis_routes_cover_all_decisions() {
+        use crate::reducer::state::DevelopmentAnalysisDecision;
+        let routes = rule_for(AgentDrain::Development)
+            .unwrap()
+            .development_analysis_routes
+            .unwrap();
+        // Exhaustive check: every variant must have a route entry.
+        for &decision in &[
+            DevelopmentAnalysisDecision::NeedsMoreWork,
+            DevelopmentAnalysisDecision::CycleComplete,
+        ] {
+            assert!(
+                routes.iter().any(|(d, _)| *d == decision),
+                "development_analysis_routes missing entry for {:?}",
+                decision
+            );
+        }
+    }
+
+    /// Review analysis routes cover all ReviewAnalysisDecision variants.
+    #[test]
+    fn test_review_analysis_routes_cover_all_decisions() {
+        use crate::reducer::state::ReviewAnalysisDecision;
+        let routes = rule_for(AgentDrain::Review)
+            .unwrap()
+            .review_analysis_routes
+            .unwrap();
+        // Exhaustive check: every variant must have a route entry.
+        for &decision in &[
+            ReviewAnalysisDecision::NeedsMoreFix,
+            ReviewAnalysisDecision::CycleComplete,
+        ] {
+            assert!(
+                routes.iter().any(|(d, _)| *d == decision),
+                "review_analysis_routes missing entry for {:?}",
+                decision
+            );
+        }
+    }
+
+    /// Development analysis NeedsMoreWork routes back to Development.
+    #[test]
+    fn test_development_analysis_needs_more_work_routes_to_development() {
+        use crate::reducer::state::DevelopmentAnalysisDecision;
+        let routes = rule_for(AgentDrain::Development)
+            .unwrap()
+            .development_analysis_routes
+            .unwrap();
+        let dest = routes
+            .iter()
+            .find(|(d, _)| *d == DevelopmentAnalysisDecision::NeedsMoreWork)
+            .map(|(_, drain)| drain);
+        assert_eq!(
+            dest,
+            Some(&AgentDrain::Development),
+            "NeedsMoreWork must route back to Development"
+        );
+    }
+
+    /// Development analysis CycleComplete routes to Commit (development_commit).
+    #[test]
+    fn test_development_analysis_cycle_complete_routes_to_commit() {
+        use crate::reducer::state::DevelopmentAnalysisDecision;
+        let routes = rule_for(AgentDrain::Development)
+            .unwrap()
+            .development_analysis_routes
+            .unwrap();
+        let dest = routes
+            .iter()
+            .find(|(d, _)| *d == DevelopmentAnalysisDecision::CycleComplete)
+            .map(|(_, drain)| drain);
+        assert_eq!(
+            dest,
+            Some(&AgentDrain::Commit),
+            "CycleComplete must route to Commit (development_commit)"
+        );
+    }
+
+    /// Review analysis NeedsMoreFix routes back to Fix.
+    #[test]
+    fn test_review_analysis_needs_more_fix_routes_to_fix() {
+        use crate::reducer::state::ReviewAnalysisDecision;
+        let routes = rule_for(AgentDrain::Review)
+            .unwrap()
+            .review_analysis_routes
+            .unwrap();
+        let dest = routes
+            .iter()
+            .find(|(d, _)| *d == ReviewAnalysisDecision::NeedsMoreFix)
+            .map(|(_, drain)| drain);
+        assert_eq!(
+            dest,
+            Some(&AgentDrain::Fix),
+            "NeedsMoreFix must route back to Fix"
+        );
+    }
+
+    /// Review analysis CycleComplete routes to Commit (review_commit).
+    #[test]
+    fn test_review_analysis_cycle_complete_routes_to_commit() {
+        use crate::reducer::state::ReviewAnalysisDecision;
+        let routes = rule_for(AgentDrain::Review)
+            .unwrap()
+            .review_analysis_routes
+            .unwrap();
+        let dest = routes
+            .iter()
+            .find(|(d, _)| *d == ReviewAnalysisDecision::CycleComplete)
+            .map(|(_, drain)| drain);
+        assert_eq!(
+            dest,
+            Some(&AgentDrain::Commit),
+            "CycleComplete must route to Commit (review_commit)"
+        );
+    }
+
+    /// `validate_drain_rules()` extended checks pass for the canonical table.
+    #[test]
+    fn test_validate_drain_rules_extended_passes() {
+        validate_drain_rules().expect("DRAIN_RULES must pass all validate_drain_rules() checks");
     }
 }

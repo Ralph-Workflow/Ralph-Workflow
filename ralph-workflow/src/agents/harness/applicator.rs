@@ -112,10 +112,11 @@ pub fn apply_harness_config_with_lease(
         AgentType::OpenCode => apply_opencode_harness(session, mcp_endpoint, workspace, lease),
         AgentType::Aider => apply_aider_harness(session, mcp_endpoint, workspace),
         AgentType::Codex => apply_codex_harness(session, mcp_endpoint, workspace, lease),
-        AgentType::Unknown => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "MCP harness setup failed: unknown agent type is not allowed",
-        )),
+        AgentType::Unknown => Ok(HarnessApplyResult {
+            extra_env_vars: HashMap::new(),
+            config_path: None,
+            extra_cmd_args: Vec::new(),
+        }),
     }
 }
 

@@ -154,4 +154,3 @@ fn test_prepare_fix_prompt_does_not_mask_non_not_found_issues_read_errors() {
         "expected WorkspaceReadFailed for ISSUES read, got: {error_event:?}"
     );
 }
-

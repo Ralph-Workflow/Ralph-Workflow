@@ -289,4 +289,3 @@ fn test_fix_continuation_metrics_tracked_in_reducer() {
         assert_eq!(summary.changes_detected, 1);
     });
 }
-

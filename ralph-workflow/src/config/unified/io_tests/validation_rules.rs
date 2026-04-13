@@ -4,9 +4,9 @@
 // policy rules. Some rules are enforced in validate_config_file (agents.toml path),
 // others in validate_artifacts_toml / validate_pipeline_toml (.agent/ path).
 
-use std::path::Path;
-use crate::config::validation::{validate_config_file, ConfigValidationError};
 use crate::config::validation::validate_artifacts_toml;
+use crate::config::validation::{validate_config_file, ConfigValidationError};
+use std::path::Path;
 
 // ===========================================================================
 // Rule 1 — Every built-in drain must have an explicit binding
@@ -118,9 +118,18 @@ fn rule9_retry_config_is_within_drain_not_cross_drain() {
     //   max_cycles (cycles through the same drain's chain)
     let config = GeneralConfig::default();
     // All retry semantics are within-drain: no drain_fallback_chain field exists
-    assert!(config.max_retries > 0, "max_retries should have a positive default");
-    assert!(config.max_same_agent_retries > 0, "max_same_agent_retries should have a positive default");
-    assert!(config.max_cycles > 0, "max_cycles should have a positive default");
+    assert!(
+        config.max_retries > 0,
+        "max_retries should have a positive default"
+    );
+    assert!(
+        config.max_same_agent_retries > 0,
+        "max_same_agent_retries should have a positive default"
+    );
+    assert!(
+        config.max_cycles > 0,
+        "max_cycles should have a positive default"
+    );
     // No cross-drain routing fields exist in GeneralConfig — enforced by compiler
 }
 
@@ -218,12 +227,9 @@ dev = "shared_dev"
     let errors = result.expect_err("validation should fail");
     // Should get an UnknownKey or InvalidValue error naming "dev"
     let has_dev_error = errors.iter().any(|error| match error {
-        ConfigValidationError::UnknownKey { key, suggestion, .. } => {
-            key.contains("dev")
-                && suggestion
-                    .as_deref()
-                    .is_some_and(|s| s == "development")
-        }
+        ConfigValidationError::UnknownKey {
+            key, suggestion, ..
+        } => key.contains("dev") && suggestion.as_deref().is_some_and(|s| s == "development"),
         ConfigValidationError::InvalidValue { key, message, .. } => {
             (key.contains("dev") || message.contains("dev"))
                 && (message.contains("development") || message.contains("not a built-in"))
@@ -255,9 +261,9 @@ fixer = "shared_review"
 
     let errors = result.expect_err("validation should fail");
     let has_fixer_error = errors.iter().any(|error| match error {
-        ConfigValidationError::UnknownKey { key, suggestion, .. } => {
-            key.contains("fixer") && suggestion.as_deref().is_some_and(|s| s == "fix")
-        }
+        ConfigValidationError::UnknownKey {
+            key, suggestion, ..
+        } => key.contains("fixer") && suggestion.as_deref().is_some_and(|s| s == "fix"),
         ConfigValidationError::InvalidValue { key, message, .. } => {
             (key.contains("fixer") || message.contains("fixer"))
                 && (message.contains("fix") || message.contains("not a built-in"))
@@ -297,23 +303,18 @@ developer = "shared_dev"
 /// This is enforced in validate_artifacts_toml.
 #[test]
 fn rule12_analysis_artifact_type_must_be_analysis_decision() {
+    // Tests development_analysis with wrong artifact_type (should be "analysis_decision").
     let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "development_result"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete"]
 "#;
 
     let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
     assert!(
         result.is_err(),
-        "wrong analysis artifact_type must fail validation"
+        "wrong development_analysis artifact_type must fail validation"
     );
 
     let errors = result.expect_err("validation should fail");
@@ -331,52 +332,48 @@ required_decision_outcomes = [
     );
 }
 
-/// Rule 12: correct analysis artifact_type passes.
+/// Rule 12: correct development_analysis artifact_type passes.
 #[test]
 fn rule12_correct_analysis_artifact_type_passes() {
     let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete"]
+
+[review_analysis]
+artifact_type = "analysis_decision"
+submission_mode = "mcp_artifact"
+decision_vocabulary = ["needs_more_fix", "cycle_complete"]
 "#;
 
     let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
     assert!(
         result.is_ok(),
-        "correct analysis artifact_type should pass: {result:?}"
+        "correct development_analysis artifact_type should pass: {result:?}"
     );
 }
 
 // ===========================================================================
-// Rule 24 — Analysis decision vocabulary must contain all 5 canonical outcomes
+// Rule 24 — Analysis decision vocabulary must contain all canonical binary outcomes
 // ===========================================================================
 
-/// Rule 24: required_decision_outcomes must contain all 5 canonical values.
+/// Rule 24: decision_vocabulary must contain all binary canonical values.
 #[test]
 fn rule24_incomplete_required_decision_outcomes_rejected() {
+    // Tests development_analysis with incomplete vocabulary (missing "cycle_complete").
     let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-]
+decision_vocabulary = ["needs_more_work"]
 "#;
-    // Missing "ready_to_commit" and "needs_another_review"
+    // Missing "cycle_complete"
 
     let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
     assert!(
         result.is_err(),
-        "incomplete decision outcomes must fail validation"
+        "incomplete decision vocabulary must fail validation"
     );
 
     let errors = result.expect_err("validation should fail");
@@ -384,13 +381,13 @@ required_decision_outcomes = [
         matches!(
             error,
             ConfigValidationError::InvalidValue { key, message, .. }
-                if key.contains("required_decision_outcomes")
-                    && message.contains("ready_to_commit")
+                if key.contains("decision_vocabulary")
+                    && message.contains("cycle_complete")
         )
     });
     assert!(
         names_missing_outcome,
-        "error must name the missing outcome 'ready_to_commit'; got: {errors:?}"
+        "error must name the missing outcome 'cycle_complete'; got: {errors:?}"
     );
 }
 
@@ -398,23 +395,16 @@ required_decision_outcomes = [
 #[test]
 fn rule24_unknown_decision_outcome_rejected() {
     let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-  "not_a_real_outcome",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete", "not_a_real_outcome"]
 "#;
 
     let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
     assert!(
         result.is_err(),
-        "unknown decision outcome must fail validation"
+        "unknown decision vocabulary must fail validation"
     );
 
     let errors = result.expect_err("validation should fail");
@@ -422,7 +412,7 @@ required_decision_outcomes = [
         matches!(
             error,
             ConfigValidationError::InvalidValue { key, message, .. }
-                if key.contains("required_decision_outcomes")
+                if key.contains("decision_vocabulary")
                     && message.contains("not_a_real_outcome")
         )
     });
@@ -432,25 +422,24 @@ required_decision_outcomes = [
     );
 }
 
-/// Rule 24: complete and correct required_decision_outcomes passes.
+/// Rule 24: complete and correct decision_vocabulary passes.
 #[test]
 fn rule24_complete_decision_outcomes_passes() {
     let content = r#"
-[analysis]
+[development_analysis]
 artifact_type = "analysis_decision"
 submission_mode = "mcp_artifact"
-required_decision_outcomes = [
-  "needs_more_work",
-  "needs_replanning",
-  "ready_for_review",
-  "ready_to_commit",
-  "needs_another_review",
-]
+decision_vocabulary = ["needs_more_work", "cycle_complete"]
+
+[review_analysis]
+artifact_type = "analysis_decision"
+submission_mode = "mcp_artifact"
+decision_vocabulary = ["needs_more_fix", "cycle_complete"]
 "#;
 
     let result = validate_artifacts_toml(Path::new(".agent/artifacts.toml"), content);
     assert!(
         result.is_ok(),
-        "complete decision outcomes should pass: {result:?}"
+        "complete decision vocabulary should pass: {result:?}"
     );
 }

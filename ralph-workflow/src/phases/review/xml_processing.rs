@@ -1,6 +1,4 @@
 use super::types::ParseResult;
-use crate::files::artifact_paths;
-use crate::files::archive_xml_file_with_workspace;
 use crate::files::result_types::{IssueEntry, IssuesElements};
 use crate::phases::context::PhaseContext;
 use crate::rendering::xml::render_skills_mcp_markdown;
@@ -31,8 +29,6 @@ pub(super) fn extract_and_validate_review_output_xml(
             ctx.logger
                 .info("Review output missing at .agent/tmp/issues.json");
         }
-        // Archive legacy XML if present so it doesn't linger
-        archive_xml_file_with_workspace(ctx.workspace, Path::new(artifact_paths::ISSUES_XML));
         return Ok(ParseResult::ParseFailed(
             "No review output captured. Agent did not submit a JSON artifact via MCP. \
              Ensure the agent uses the submit_issues tool."
@@ -45,7 +41,6 @@ pub(super) fn extract_and_validate_review_output_xml(
 
     let markdown = render_issues_markdown(&elements);
     ctx.workspace.write(issues_path, &markdown)?;
-    archive_xml_file_with_workspace(ctx.workspace, Path::new(artifact_paths::ISSUES_XML));
 
     if elements.no_issues_found.is_some() {
         return Ok(ParseResult::NoIssuesExplicit {
@@ -86,10 +81,11 @@ fn parse_issues_json(value: &serde_json::Value) -> IssuesElements {
         .map(|arr| {
             arr.iter()
                 .filter_map(|item| {
-                    let text = item
-                        .as_str()
-                        .map(str::to_string)
-                        .or_else(|| item.get("text").and_then(|t| t.as_str()).map(str::to_string))?;
+                    let text = item.as_str().map(str::to_string).or_else(|| {
+                        item.get("text")
+                            .and_then(|t| t.as_str())
+                            .map(str::to_string)
+                    })?;
                     Some(IssueEntry {
                         text,
                         skills_mcp: None,

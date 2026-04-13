@@ -18,7 +18,8 @@ fn test_state_transitions_via_reducer_only() {
     use ralph_workflow::reducer::state_reduction::reduce;
 
     with_default_timeout(|| {
-        // Phase 2 flow: Dev → Review → CommitMessage (per iteration), not Dev → CommitMessage.
+        // Commit-gated design flow: Dev → CommitMessage → Planning → ... → FinalValidation.
+        // With 1 review pass, Review phase is visited only after the final development iteration.
         // Start at Planning with 2 dev iterations and 1 reviewer pass each.
         let state = with_locked_prompt_permissions(PipelineState::initial(2, 1));
         assert_eq!(state.phase, PipelinePhase::Planning);
@@ -33,28 +34,19 @@ fn test_state_transitions_via_reducer_only() {
         );
         assert_eq!(state.iteration, 0, "Iteration unchanged by plan completion");
 
-        // Phase 2: Development iteration completion -> Review (not CommitMessage directly)
+        // Commit-gated design: Development iteration completion -> CommitMessage
         let state = reduce(
             state,
             PipelineEvent::development_iteration_completed(0, true),
         );
         assert_eq!(
             state.phase,
-            PipelinePhase::Review,
-            "Phase 2: Dev iteration completion transitions to Review"
+            PipelinePhase::CommitMessage,
+            "Commit-gated: Dev iteration completion transitions to CommitMessage"
         );
         assert_eq!(state.iteration, 0, "Iteration unchanged until commit");
 
-        // Review -> CommitMessage (after review pass completes)
-        let state = reduce(state, PipelineEvent::review_phase_completed(false));
-        assert_eq!(
-            state.phase,
-            PipelinePhase::CommitMessage,
-            "Review completes and transitions to CommitMessage"
-        );
-
-        // After commit created with more iterations, goes to Planning for next iteration
-        // The reducer pattern is: Dev -> Review -> Commit -> Planning -> Dev (per iteration)
+        // CommitMessage -> Planning (commit created, iterations remain)
         let state = reduce(
             state,
             PipelineEvent::Commit(CommitEvent::Created {
@@ -73,15 +65,11 @@ fn test_state_transitions_via_reducer_only() {
         let state = reduce(state, PipelineEvent::plan_generation_completed(2, true));
         assert_eq!(state.phase, PipelinePhase::Development);
 
-        // Phase 2: Complete iteration 1 -> Review
+        // Commit-gated: Complete iteration 1 -> CommitMessage
         let state = reduce(
             state,
             PipelineEvent::development_iteration_completed(1, true),
         );
-        assert_eq!(state.phase, PipelinePhase::Review);
-
-        // Review -> CommitMessage
-        let state = reduce(state, PipelineEvent::review_phase_completed(false));
         assert_eq!(state.phase, PipelinePhase::CommitMessage);
 
         // After final commit (iteration 1+1=2 >= total=2), transitions to FinalValidation
@@ -95,9 +83,9 @@ fn test_state_transitions_via_reducer_only() {
         assert_eq!(
             state.phase,
             PipelinePhase::FinalValidation,
-            "After final iteration commit with all reviews done, should transition to FinalValidation"
+            "After final iteration commit, should transition to FinalValidation"
         );
-        // Phase 2: iteration is not incremented when transitioning to FinalValidation
+        // Iteration is not incremented when transitioning to FinalValidation
         // (only incremented when transitioning to Planning for the next iteration)
         assert_eq!(
             state.iteration, 1,

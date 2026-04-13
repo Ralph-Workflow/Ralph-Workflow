@@ -120,8 +120,7 @@ pub(super) fn reduce_continuation_event(
                 || attempt.saturating_add(1) >= MAX_INVALID_OUTPUT_ATTEMPTS;
 
             if should_switch {
-                let new_agent_chain =
-                    state.agent_chain.switch_to_next_agent().clear_session_id();
+                let new_agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Development,
                     iteration,

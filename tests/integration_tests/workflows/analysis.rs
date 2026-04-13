@@ -338,7 +338,6 @@ fn test_continuation_triggered_resets_analysis_invoked_tracking() {
     });
 }
 
-
 /// Test complete pipeline flow with analysis verification.
 ///
 /// End-to-end test verifying the full flow: Development -> Analysis -> Extract -> Validate.

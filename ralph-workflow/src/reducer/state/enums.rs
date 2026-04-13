@@ -82,76 +82,11 @@ pub enum DevelopmentStatus {
     Failed,
 }
 
-/// Typed analysis decision for routing after development or fix analysis.
-///
-/// This enum captures the reducer's decision about what to do next after
-/// the analysis agent has verified the development or fix output. It provides
-/// richer routing semantics than raw DevelopmentStatus by encoding the
-/// intended workflow path.
-///
-/// Derived FROM DevelopmentStatus/FixStatus in the reducer after analysis,
-/// not extracted directly from XML.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AnalysisDecision {
-    /// Development work is incomplete and needs to loop back to the current phase.
-    ///
-    /// This is derived when `DevelopmentStatus` is `Partial` or `Failed`,
-    /// or when `FixStatus` is `IssuesRemain` or `Failed`.
-    /// Triggers continuation within the current phase.
-    NeedsMoreWork,
-    /// The plan needs to be regenerated before continuing.
-    ///
-    /// This is derived when the analysis agent indicates that the current plan
-    /// is inadequate and a new plan should be created. Routes to Planning phase.
-    NeedsReplanning,
-    /// Development is complete and ready for review.
-    ///
-    /// This is derived when `DevelopmentStatus` is `Completed`.
-    /// Routes to Review phase.
-    ReadyForReview,
-    /// Fix is complete and ready to commit.
-    ///
-    /// This is derived when fix analysis determines all issues are addressed.
-    /// Routes to CommitMessage phase.
-    ReadyToCommit,
-    /// Fix addressed some issues but another review pass is needed.
-    ///
-    /// This is derived when fix analysis determines issues remain but
-    /// meaningful progress was made. Routes back to Review phase.
-    NeedsAnotherReview,
-}
-
-impl AnalysisDecision {
-    /// Parse an `AnalysisDecision` from its artifact key string.
-    ///
-    /// Returns `None` for unrecognized values. Callers should convert
-    /// `None` to an appropriate error at the boundary.
-    #[must_use]
-    pub fn from_artifact_key(s: &str) -> Option<Self> {
-        match s {
-            "needs_more_work" => Some(Self::NeedsMoreWork),
-            "needs_replanning" => Some(Self::NeedsReplanning),
-            "ready_for_review" => Some(Self::ReadyForReview),
-            "ready_to_commit" => Some(Self::ReadyToCommit),
-            "needs_another_review" => Some(Self::NeedsAnotherReview),
-            _ => None,
-        }
-    }
-
-    /// Returns all valid artifact key strings, in declaration order.
-    ///
-    /// Used in error messages to list accepted values.
-    #[must_use]
-    pub const fn all_artifact_keys() -> &'static [&'static str] {
-        &[
-            "needs_more_work",
-            "needs_replanning",
-            "ready_for_review",
-            "ready_to_commit",
-            "needs_another_review",
-        ]
-    }
-}
+// Re-export typed analysis decision enums from policy crate.
+// These replace the old 5-variant AnalysisDecision with separate enums for
+// development analysis (NeedsMoreWork, CycleComplete) and review analysis
+// (NeedsMoreFix, CycleComplete).
+pub use ralph_workflow_policy::{DevelopmentAnalysisDecision, ReviewAnalysisDecision};
 
 /// Fix status from agent output.
 ///

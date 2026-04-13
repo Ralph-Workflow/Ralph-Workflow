@@ -136,8 +136,13 @@ pub enum ReviewEvent {
         status: crate::reducer::state::FixStatus,
         summary: Option<String>,
         /// Phase 2: typed analysis decision from fix analysis agent.
+        ///
+        /// Uses `ReviewAnalysisDecision` which routes within the review cycle:
+        /// - `NeedsMoreFix` → return to fix agent
+        /// - `CycleComplete` → proceed to review_commit
+        ///
         /// `None` means no explicit decision — use status-based continuation logic.
-        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+        analysis_decision: Option<crate::reducer::state::ReviewAnalysisDecision>,
     },
 
     /// Fix result XML cleaned before invoking the fix agent.

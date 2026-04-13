@@ -915,7 +915,7 @@ fn test_continuation_prompt_includes_original_request_and_plan_sections() {
     fs::write(
         template_dir
             .path()
-            .join("developer_iteration_continuation_xml.txt"),
+            .join("developer_iteration_continuation.txt"),
         "broken {{MISSING_VARIABLE}} template",
     )
     .expect("write broken continuation template");

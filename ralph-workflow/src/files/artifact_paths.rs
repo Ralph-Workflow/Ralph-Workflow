@@ -72,12 +72,9 @@ mod tests {
 
     #[test]
     fn has_valid_artifact_output_present_nonempty() {
-        let ws = MemoryWorkspace::new_test()
-            .with_file(".agent/tmp/plan.json", r#"{"type":"plan"}"#);
-        assert!(has_valid_artifact_output(
-            &ws,
-            Path::new(PLAN_JSON)
-        ));
+        let ws =
+            MemoryWorkspace::new_test().with_file(".agent/tmp/plan.json", r#"{"type":"plan"}"#);
+        assert!(has_valid_artifact_output(&ws, Path::new(PLAN_JSON)));
     }
 
     #[test]
@@ -100,8 +97,7 @@ mod tests {
 
     #[test]
     fn archive_xml_file_moves_to_processed() {
-        let ws =
-            MemoryWorkspace::new_test().with_file(PLAN_XML, "<ralph-plan/>");
+        let ws = MemoryWorkspace::new_test().with_file(PLAN_XML, "<ralph-plan/>");
         archive_xml_file_with_workspace(&ws, Path::new(PLAN_XML));
         assert!(!ws.exists(Path::new(PLAN_XML)));
         assert!(ws.exists(Path::new(".agent/tmp/plan.xml.processed")));

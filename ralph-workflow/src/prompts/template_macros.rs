@@ -69,21 +69,38 @@ macro_rules! assert_template_has_variable {
 
 #[cfg(test)]
 mod tests {
+    use ralph_workflow_policy::CONFLICT_RESOLUTION_TEMPLATE;
+
     #[test]
     fn test_include_template_macro() {
-        // Test that we can include a template using the macro
-        let _ = include_template!("conflict_resolution.txt");
+        // Templates are now embedded in ralph-workflow-policy via include_str!
+        // Verify the template content is available and non-empty.
+        let template = CONFLICT_RESOLUTION_TEMPLATE;
+        assert!(
+            !template.is_empty(),
+            "conflict_resolution template must not be empty"
+        );
     }
 
     #[test]
     fn test_assert_template_exists() {
-        assert_template_exists!("conflict_resolution.txt");
+        // Verify the embedded template is loaded and not empty
+        let content = CONFLICT_RESOLUTION_TEMPLATE;
+        assert!(
+            !content.is_empty(),
+            "Template conflict_resolution.txt must not be empty"
+        );
     }
 
     #[test]
     fn test_assert_template_has_variable() {
-        assert_template_has_variable!("conflict_resolution.txt", "CONTEXT");
-        assert_template_has_variable!("conflict_resolution.txt", "CONFLICTS");
+        // Verify the embedded template contains expected variables
+        let content = CONFLICT_RESOLUTION_TEMPLATE;
+        let has_context = content.contains("{{CONTEXT}}") || content.contains("{{ CONTEXT }}");
+        let has_conflicts =
+            content.contains("{{CONFLICTS}}") || content.contains("{{ CONFLICTS }}");
+        assert!(has_context, "Template must contain CONTEXT variable");
+        assert!(has_conflicts, "Template must contain CONFLICTS variable");
     }
 
     #[test]

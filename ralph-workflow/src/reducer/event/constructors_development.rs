@@ -76,7 +76,7 @@ impl PipelineEvent {
     pub fn development_xml_validated_with_decision(
         iteration: u32,
         status: DevelopmentStatus,
-        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+        analysis_decision: Option<crate::reducer::state::DevelopmentAnalysisDecision>,
         summary: String,
         files_changed: Option<Vec<String>>,
         next_steps: Option<String>,

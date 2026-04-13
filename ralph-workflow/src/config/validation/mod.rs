@@ -98,13 +98,15 @@ pub fn validate_config_file(
     let valid_keys = keys::get_valid_config_keys();
     let unknown_errors: Vec<ConfigValidationError> = unknown_keys
         .iter()
-        .map(|(key, location, suggestion_override)| ConfigValidationError::UnknownKey {
-            file: path.to_path_buf(),
-            key: format!("{location}{key}"),
-            suggestion: suggestion_override
-                .clone()
-                .or_else(|| levenshtein::suggest_key(key, &valid_keys)),
-        })
+        .map(
+            |(key, location, suggestion_override)| ConfigValidationError::UnknownKey {
+                file: path.to_path_buf(),
+                key: format!("{location}{key}"),
+                suggestion: suggestion_override
+                    .clone()
+                    .or_else(|| levenshtein::suggest_key(key, &valid_keys)),
+            },
+        )
         .collect();
 
     // Collect deprecated keys as warnings using iterator
@@ -667,14 +669,16 @@ fix = "shared_review"
         );
 
         let errors = result.expect_err("validation should fail");
+        // With forbid_sibling=true (default), `commit` can be inferred from `review`/`fix`
+        // siblings (tier 2), but that inference is blocked. The diagnostic names `commit`
+        // and the tier, and provides a TOML fix hint.
         assert!(
             errors.iter().any(|error| matches!(
                 error,
                 ConfigValidationError::InvalidValue { key, message, .. }
                     if key == "agent_drains"
-                        && message.contains("planning")
-                        && message.contains("development")
-                        && message.contains("analysis")
+                        && message.contains("commit")
+                        && message.contains("tier 2")
             )),
             "expected incomplete drain coverage error, got: {errors:?}"
         );

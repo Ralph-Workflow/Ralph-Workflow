@@ -33,7 +33,7 @@ fn test_prepare_fix_prompt_allows_literal_placeholders_in_issues() {
                 phase: PipelinePhase::Review,
                 template_name,
                 log,
-            }) if template_name == "fix_mode_xml" && log.is_complete()
+            }) if template_name == "fix_mode" && log.is_complete()
         )),
         "expected TemplateRendered event for fix prompt"
     );
@@ -42,7 +42,7 @@ fn test_prepare_fix_prompt_allows_literal_placeholders_in_issues() {
 #[test]
 fn test_prepare_fix_prompt_emits_prompt_replay_hit_on_template_validation_failure() {
     let tempdir = tempdir().expect("create temp dir");
-    let template_path = tempdir.path().join("fix_mode_xml.txt");
+    let template_path = tempdir.path().join("fix_mode.txt");
     fs::write(
         &template_path,
         "Issues:\n{{ISSUES}}\nMissing: {{MISSING}}\n",
@@ -82,7 +82,7 @@ fn test_prepare_fix_prompt_emits_prompt_replay_hit_on_template_validation_failur
             phase: PipelinePhase::Review,
             template_name,
             ..
-        }) if template_name == "fix_mode_xml"
+        }) if template_name == "fix_mode"
     ));
 }
 

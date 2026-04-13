@@ -14,9 +14,7 @@ use crate::prompts::{
 };
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
-use crate::reducer::state::{
-    MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
-};
+use crate::reducer::state::{MaterializedPromptInput, PromptInputKind, PromptInputRepresentation};
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
@@ -267,7 +265,7 @@ pub(in crate::reducer::boundary) fn gen_planning_normal_rendered_log(
         ctx.template_context,
         prompt_ref,
         ctx.workspace,
-        "planning_xml",
+        "planning",
         SessionCapabilities::new(
             &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
             &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
@@ -280,12 +278,12 @@ pub(in crate::reducer::boundary) fn gen_planning_normal_rendered_log(
             Err(Box::new(
                 EffectResult::event(PipelineEvent::template_rendered(
                     PipelinePhase::Planning,
-                    "planning_xml".to_string(),
+                    "planning".to_string(),
                     rendered.log,
                 ))
                 .with_additional_event(PipelineEvent::agent_template_variables_invalid(
                     crate::agents::AgentRole::Developer,
-                    "planning_xml".to_string(),
+                    "planning".to_string(),
                     missing,
                     Vec::new(),
                 ))
@@ -357,7 +355,6 @@ pub(in crate::reducer::boundary) fn maybe_add_planning_invoked_event(
         result
     }
 }
-
 
 pub(in crate::reducer::boundary) fn build_planning_prompt_ref(
     ctx: &PhaseContext<'_>,

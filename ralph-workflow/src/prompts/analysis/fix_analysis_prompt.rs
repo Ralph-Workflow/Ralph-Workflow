@@ -92,9 +92,7 @@ pub fn generate_fix_analysis_prompt(
     let template_content = context
         .registry()
         .get_template("fix_analysis_system_prompt")
-        .unwrap_or_else(|_| {
-            include_str!("../templates/fix_analysis_system_prompt.txt").to_string()
-        });
+        .unwrap_or_else(|_| ralph_workflow_policy::FIX_ANALYSIS_SYSTEM_PROMPT_TEMPLATE.to_string());
 
     let base_vars = build_template_variables(
         issues_content,

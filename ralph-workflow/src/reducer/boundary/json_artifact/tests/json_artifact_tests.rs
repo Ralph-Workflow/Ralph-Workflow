@@ -830,15 +830,15 @@ fn fix_result_non_string_status_returns_error() {
 // (fail closed). Known values must be parsed and stored.
 // ---------------------------------------------------------------------------
 
-/// An artifact with decision="needs_replanning" must parse to NeedsReplanning.
+/// An artifact with decision="needs_more_work" must parse to NeedsMoreWork.
 #[test]
-fn development_result_with_needs_replanning_decision_parses_correctly() {
-    use crate::reducer::state::AnalysisDecision;
+fn development_result_with_needs_more_work_decision_parses_correctly() {
+    use crate::reducer::state::DevelopmentAnalysisDecision;
 
     let content = serde_json::json!({
-        "status": "completed",
-        "summary": "done but plan needs rework",
-        "decision": "needs_replanning"
+        "status": "partial",
+        "summary": "done but needs more work",
+        "decision": "needs_more_work"
     });
     let envelope = ArtifactEnvelope::new("development_result", content, "t");
 
@@ -847,20 +847,20 @@ fn development_result_with_needs_replanning_decision_parses_correctly() {
 
     assert_eq!(
         result.analysis_decision,
-        Some(AnalysisDecision::NeedsReplanning),
-        "decision='needs_replanning' must parse to AnalysisDecision::NeedsReplanning"
+        Some(DevelopmentAnalysisDecision::NeedsMoreWork),
+        "decision='needs_more_work' must parse to DevelopmentAnalysisDecision::NeedsMoreWork"
     );
 }
 
-/// An artifact with decision="ready_for_review" must parse to ReadyForReview.
+/// An artifact with decision="cycle_complete" must parse to CycleComplete.
 #[test]
-fn development_result_with_ready_for_review_decision_parses_correctly() {
-    use crate::reducer::state::AnalysisDecision;
+fn development_result_with_cycle_complete_decision_parses_correctly() {
+    use crate::reducer::state::DevelopmentAnalysisDecision;
 
     let content = serde_json::json!({
         "status": "completed",
         "summary": "implementation complete",
-        "decision": "ready_for_review"
+        "decision": "cycle_complete"
     });
     let envelope = ArtifactEnvelope::new("development_result", content, "t");
 
@@ -869,30 +869,8 @@ fn development_result_with_ready_for_review_decision_parses_correctly() {
 
     assert_eq!(
         result.analysis_decision,
-        Some(AnalysisDecision::ReadyForReview),
-        "decision='ready_for_review' must parse to AnalysisDecision::ReadyForReview"
-    );
-}
-
-/// An artifact with decision="ready_to_commit" must parse to ReadyToCommit.
-#[test]
-fn development_result_with_ready_to_commit_decision_parses_correctly() {
-    use crate::reducer::state::AnalysisDecision;
-
-    let content = serde_json::json!({
-        "status": "completed",
-        "summary": "ready to commit",
-        "decision": "ready_to_commit"
-    });
-    let envelope = ArtifactEnvelope::new("development_result", content, "t");
-
-    let result = development_result_from_envelope(&envelope)
-        .expect("valid artifact with decision field must parse");
-
-    assert_eq!(
-        result.analysis_decision,
-        Some(AnalysisDecision::ReadyToCommit),
-        "decision='ready_to_commit' must parse to AnalysisDecision::ReadyToCommit"
+        Some(DevelopmentAnalysisDecision::CycleComplete),
+        "decision='cycle_complete' must parse to DevelopmentAnalysisDecision::CycleComplete"
     );
 }
 

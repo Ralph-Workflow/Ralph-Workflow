@@ -1,7 +1,7 @@
 /// Wrapper type for a commit message string.
 ///
 /// Used in `CommitExtractionOutcome::Valid` as the extracted result.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CommitExtractionResult(String);
 
 impl CommitExtractionResult {
@@ -26,11 +26,6 @@ enum CommitExtractionOutcome {
     Skipped(String),
 }
 
-impl std::fmt::Debug for CommitExtractionResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("CommitExtractionResult").field(&self.0).finish()
-    }
-}
 
 pub(crate) enum ParsedCommitXmlOutcome {
     Skipped(String),

@@ -186,10 +186,7 @@ fn try_agent_execution(
             // Result-file pre-check: a valid result file means the agent completed its work
             // before run_with_prompt failed. Treat as success regardless of the I/O error.
             if let Some(path) = config.completion_output_path {
-                if crate::files::has_valid_artifact_output(
-                    runtime.workspace,
-                    path,
-                ) {
+                if crate::files::has_valid_artifact_output(runtime.workspace, path) {
                     return AgentExecutionResult {
                         event: PipelineEvent::agent_invocation_succeeded(
                             config.role,

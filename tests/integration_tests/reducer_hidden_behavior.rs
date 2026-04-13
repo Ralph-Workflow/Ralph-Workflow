@@ -75,28 +75,31 @@ fn test_marker_file_check_is_documented_intentional() {
             PipelineEvent::development_iteration_completed(0, true),
         );
 
+        // Commit-gated design: development_iteration_completed transitions to CommitMessage phase,
+        // which requires explicit CleanupContinuationContext before proceeding.
         let effect = determine_next_effect(&state);
         assert!(
             matches!(effect, Effect::CleanupContinuationContext),
             "Commit transition cleanup must be explicit; got {effect:?}"
         );
 
-        // Phase 2: After cleanup, we're in Review phase. The Review orchestrator always
-        // initializes the agent chain first before deciding whether review work is needed.
+        // After cleanup, CommitMessage phase initializes the commit agent chain first.
         state = reduce(
             state,
             PipelineEvent::development_continuation_context_cleaned(),
         );
         let effect = determine_next_effect(&state);
+        // Commit-gated design: we're in CommitMessage phase, so drain is Commit (not Review yet).
+        // Review phase is reached only after commit completes.
         assert!(
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    drain: ralph_workflow::agents::AgentDrain::Review,
+                    drain: ralph_workflow::agents::AgentDrain::Commit,
                     ..
                 }
             ),
-            "Phase 2: After cleanup, Review phase should initialize agent chain; got {effect:?}"
+            "After cleanup, CommitMessage phase should initialize Commit agent chain; got {effect:?}"
         );
     });
 }
@@ -135,4 +138,3 @@ fn test_event_loop_does_not_inject_checkpoint_saved_events() {
         );
     });
 }
-

@@ -51,7 +51,6 @@ mod cli;
 #[path = "../integration_tests/commit/mod.rs"]
 mod commit;
 
-
 // Logging and tracing
 #[path = "../integration_tests/event_loop_trace_dump.rs"]
 mod event_loop_trace_dump;

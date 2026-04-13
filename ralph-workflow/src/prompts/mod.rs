@@ -102,9 +102,8 @@ pub use rebase::{
     FileConflict,
 };
 pub use review::{
-    prompt_fix_xml_with_context, prompt_fix_xml_with_log,
-    prompt_review_xml_with_context, prompt_review_xml_with_references,
-    prompt_review_xml_with_references_and_log,
+    prompt_fix_xml_with_context, prompt_fix_xml_with_log, prompt_review_xml_with_context,
+    prompt_review_xml_with_references, prompt_review_xml_with_references_and_log,
 };
 
 pub use rebase::build_enhanced_conflict_resolution_prompt;

@@ -94,4 +94,3 @@ fn load_file_ref_commit_diff(
     }
     .render_for_template())
 }
-

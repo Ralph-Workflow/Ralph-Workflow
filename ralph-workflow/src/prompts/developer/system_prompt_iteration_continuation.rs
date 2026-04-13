@@ -15,9 +15,9 @@ fn fallback_continuation_prompt(
         format!(
             "You are in IMPLEMENTATION MODE. Recover from the previous failure to fully complete the entire plan.\n"
         ),
-        include_str!("../templates/shared/_unattended_mode.txt").to_string(),
+        ralph_workflow_policy::PARTIAL_UNATTENDED_MODE.to_string(),
         "\n\n".to_string(),
-        include_str!("../templates/shared/_no_git_commit.txt").to_string(),
+        ralph_workflow_policy::PARTIAL_NO_GIT_COMMIT.to_string(),
         "\n\n".to_string(),
         "═══════════════════════════════════════════════════════════════════════════════\n".to_string(),
         "IMPORTANT: EXECUTION CONTEXT\n".to_string(),
@@ -66,7 +66,7 @@ fn fallback_continuation_prompt(
         "IMPLEMENTATION PLAN\n".to_string(),
         "====================\n".to_string(),
         format!("{plan_content}\n"),
-        include_str!("../templates/shared/_developer_iteration_guidance.txt").to_string(),
+        ralph_workflow_policy::PARTIAL_DEVELOPER_ITERATION_GUIDANCE.to_string(),
         "\n\n".to_string(),
         "═══════════════════════════════════════════════════════════════════════════════\n"
             .to_string(),
@@ -101,9 +101,9 @@ pub fn prompt_developer_iteration_continuation_xml(
 
     let template_content = context
         .registry()
-        .get_template("developer_iteration_continuation_xml")
+        .get_template("developer_iteration_continuation")
         .unwrap_or_else(|_| {
-            include_str!("../templates/developer_iteration_continuation_xml.txt").to_string()
+            ralph_workflow_policy::DEVELOPER_ITERATION_CONTINUATION_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
@@ -188,9 +188,9 @@ pub fn prompt_developer_iteration_continuation_xml(
                 .previous_summary
                 .as_ref()
                 .map_or("No summary", |s| s.as_str());
-            let builtin_template = Template::new(include_str!(
-                "../templates/developer_iteration_continuation_xml.txt"
-            ));
+            let builtin_template = Template::new(
+                ralph_workflow_policy::DEVELOPER_ITERATION_CONTINUATION_TEMPLATE,
+            );
 
             builtin_template
                 .render_with_partials(&variables_ref, &partials)
@@ -232,9 +232,9 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
 
     let template_content = context
         .registry()
-        .get_template("developer_iteration_continuation_xml")
+        .get_template("developer_iteration_continuation")
         .unwrap_or_else(|_| {
-            include_str!("../templates/developer_iteration_continuation_xml.txt").to_string()
+            ralph_workflow_policy::DEVELOPER_ITERATION_CONTINUATION_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
     let partials = get_shared_partials();
@@ -319,9 +319,9 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
                 .previous_summary
                 .as_ref()
                 .map_or("No summary", |s| s.as_str());
-            let prompt_content = Template::new(include_str!(
-                "../templates/developer_iteration_continuation_xml.txt"
-            ))
+            let prompt_content = Template::new(
+                ralph_workflow_policy::DEVELOPER_ITERATION_CONTINUATION_TEMPLATE,
+            )
             .render_with_partials(&variables_ref, &partials)
             .unwrap_or_else(|_| {
                 fallback_continuation_prompt(

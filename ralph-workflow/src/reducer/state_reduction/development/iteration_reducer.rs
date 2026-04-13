@@ -8,7 +8,7 @@
 use crate::agents::DrainMode;
 use crate::reducer::event::DevelopmentEvent;
 use crate::reducer::state::{
-    AnalysisDecision, ContinuationState, DevelopmentStatus, PipelineState,
+    ContinuationState, DevelopmentAnalysisDecision, DevelopmentStatus, PipelineState,
 };
 
 use super::reduce_development_event;
@@ -103,16 +103,14 @@ pub(super) fn reduce_iteration_event(
                 ..state
             }
         }
-        DevelopmentEvent::AnalysisAgentInvoked { iteration } => {
-            PipelineState {
-                analysis_agent_invoked_iteration: Some(iteration),
-                metrics: state
-                    .metrics
-                    .increment_analysis_attempts_total()
-                    .increment_analysis_attempts_in_current_iteration(),
-                ..state
-            }
-        }
+        DevelopmentEvent::AnalysisAgentInvoked { iteration } => PipelineState {
+            analysis_agent_invoked_iteration: Some(iteration),
+            metrics: state
+                .metrics
+                .increment_analysis_attempts_total()
+                .increment_analysis_attempts_in_current_iteration(),
+            ..state
+        },
         DevelopmentEvent::XmlExtracted { iteration } => PipelineState {
             development_xml_extracted_iteration: Some(iteration),
             ..state
@@ -198,7 +196,7 @@ pub(super) fn reduce_iteration_event(
             output_valid,
         } => {
             if output_valid {
-                // Determine AnalysisDecision for routing.
+                // Determine DevelopmentAnalysisDecision for routing.
                 //
                 // Priority: explicit artifact decision field > status-derived decision.
                 // When the artifact carries an explicit `decision` field (Phase 2+), use it
@@ -206,77 +204,61 @@ pub(super) fn reduce_iteration_event(
                 // from `status`.
                 //
                 // When called directly (e.g., from tests bypassing OutcomeApplied),
-                // development_validated_outcome may be None — assume ReadyForReview.
+                // development_validated_outcome may be None — default to CycleComplete.
                 let decision = match state.development_validated_outcome.as_ref() {
                     Some(outcome) => {
                         outcome.analysis_decision.unwrap_or(
-                            // Phase 2 default: route to Review unless explicitly told otherwise.
-                            // Only ReadyToCommit bypasses Review and goes straight to CommitMessage.
-                            AnalysisDecision::ReadyForReview,
+                            // Phase 2 default: cycle complete, proceed to development_commit.
+                            DevelopmentAnalysisDecision::CycleComplete,
                         )
                     }
                     None => {
                         // No validated outcome means this was called directly (e.g. from tests).
-                        // Phase 2 default: route to Review.
-                        AnalysisDecision::ReadyForReview
+                        // Phase 2 default: cycle complete.
+                        DevelopmentAnalysisDecision::CycleComplete
                     }
                 };
 
-                // Route based on AnalysisDecision.
+                // Route based on DevelopmentAnalysisDecision.
+                // - NeedsMoreWork: stay in Development for retry
+                // - CycleComplete: proceed to development_commit (CommitMessage phase)
                 let (next_phase, prev_phase) = match decision {
-                    AnalysisDecision::ReadyForReview | AnalysisDecision::NeedsAnotherReview => (
-                        crate::reducer::event::PipelinePhase::Review,
+                    DevelopmentAnalysisDecision::NeedsMoreWork => (
+                        crate::reducer::event::PipelinePhase::Development,
                         Some(crate::reducer::event::PipelinePhase::Development),
                     ),
-                    AnalysisDecision::NeedsReplanning => {
-                        // Analysis determined the plan needs to be regenerated.
-                        // Route back to Planning so the planning agent can produce a new plan.
-                        (
-                            crate::reducer::event::PipelinePhase::Planning,
-                            Some(crate::reducer::event::PipelinePhase::Development),
-                        )
-                    }
-                    AnalysisDecision::NeedsMoreWork => {
-                        // Should not normally occur with output_valid=true, but handle safely
-                        // by staying in Development for retry.
-                        (
-                            crate::reducer::event::PipelinePhase::Development,
-                            Some(crate::reducer::event::PipelinePhase::Development),
-                        )
-                    }
-                    AnalysisDecision::ReadyToCommit => {
-                        // Explicit commit decision (normally after fix, but respect it here too)
-                        (
-                            crate::reducer::event::PipelinePhase::CommitMessage,
-                            Some(crate::reducer::event::PipelinePhase::Development),
-                        )
-                    }
+                    DevelopmentAnalysisDecision::CycleComplete => (
+                        // Commit-gated progression: development_commit before Planning or Review.
+                        // compute_post_commit_transition handles routing to Planning (more cycles)
+                        // or Review (budget exhausted) after the commit completes.
+                        crate::reducer::event::PipelinePhase::CommitMessage,
+                        Some(crate::reducer::event::PipelinePhase::Development),
+                    ),
                 };
 
-                // When routing to Review directly from Development (Phase 2), reset the
-                // agent chain so the reviewer fallback chain is used, not the developer chain.
-                // This mirrors the clearing that commit/mod.rs does when commit_created
-                // transitions to Review.
-                let agent_chain = if next_phase == crate::reducer::event::PipelinePhase::Review {
-                    crate::reducer::state::AgentChainState::initial()
-                        .with_max_cycles(state.agent_chain.max_cycles)
-                        .with_backoff_policy(
-                            state.agent_chain.retry_delay_ms,
-                            state.agent_chain.backoff_multiplier,
-                            state.agent_chain.max_backoff_ms,
-                        )
-                        .reset_for_drain(crate::agents::AgentDrain::Review)
-                } else {
-                    state.agent_chain.with_mode(DrainMode::Normal)
-                };
+                // When routing to CommitMessage from Development, reset the
+                // agent chain so the commit fallback chain is used, not the developer chain.
+                let agent_chain =
+                    if next_phase == crate::reducer::event::PipelinePhase::CommitMessage {
+                        crate::reducer::state::AgentChainState::initial()
+                            .with_max_cycles(state.agent_chain.max_cycles)
+                            .with_backoff_policy(
+                                state.agent_chain.retry_delay_ms,
+                                state.agent_chain.backoff_multiplier,
+                                state.agent_chain.max_backoff_ms,
+                            )
+                            .reset_for_drain(crate::agents::AgentDrain::Commit)
+                    } else {
+                        state.agent_chain.with_mode(DrainMode::Normal)
+                    };
 
                 PipelineState {
                     phase: next_phase,
                     previous_phase: prev_phase,
                     iteration,
-                    // Reset reviewer_pass to 0 so each dev iteration's Review cycle starts fresh.
-                    // compute_post_commit_transition also resets this when returning to Planning,
-                    // but setting it here is the canonical reset point for Phase 2 routing.
+                    // Reset reviewer_pass to 0 when transitioning to CommitMessage so the
+                    // subsequent Review cycle (if budget exhausted) starts fresh.
+                    // compute_post_commit_transition handles further routing after commit.
                     reviewer_pass: 0,
                     commit: crate::reducer::state::CommitState::NotStarted,
                     commit_prompt_prepared: false,

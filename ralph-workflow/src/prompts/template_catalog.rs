@@ -78,16 +78,26 @@ pub fn get_templates_map() -> BTreeMap<String, (String, String)> {
 
 /// Build the embedded templates map.
 ///
-/// This function creates the map of all embedded templates using functional construction.
+/// All canonical-named templates (without `_xml` suffix) are loaded from
+/// exported constants in the `ralph-workflow-policy` crate, which owns the
+/// prompt asset files. Using constants rather than a runtime lookup avoids
+/// `.expect()` outside of boundary modules.
 fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
+    use ralph_workflow_policy::{
+        ANALYSIS_SYSTEM_PROMPT_TEMPLATE, COMMIT_MESSAGE_TEMPLATE, COMMIT_SIMPLIFIED_TEMPLATE,
+        CONFLICT_RESOLUTION_FALLBACK_TEMPLATE, CONFLICT_RESOLUTION_TEMPLATE,
+        DEVELOPER_ITERATION_CONTINUATION_TEMPLATE, DEVELOPER_ITERATION_TEMPLATE,
+        FIX_ANALYSIS_SYSTEM_PROMPT_TEMPLATE, FIX_MODE_TEMPLATE, PARALLEL_DEV_WORKER_TEMPLATE,
+        PARALLEL_PLANNING_TEMPLATE, PARALLEL_VERIFIER_TEMPLATE, PLANNING_TEMPLATE, REVIEW_TEMPLATE,
+    };
     [
-        // Commit Templates
+        // Commit Templates — canonical names (no _xml suffix)
         (
-            "commit_message_xml",
+            "commit_message",
             EmbeddedTemplate {
-                name: "commit_message_xml",
-                content: include_str!("templates/commit_message_xml.txt"),
-                description: "Generate Conventional Commits messages from git diffs (XML format)",
+                name: "commit_message",
+                content: COMMIT_MESSAGE_TEMPLATE,
+                description: "Generate Conventional Commits messages from git diffs",
                 deprecated: false,
             },
         ),
@@ -95,18 +105,18 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
             "commit_simplified",
             EmbeddedTemplate {
                 name: "commit_simplified",
-                content: include_str!("templates/commit_simplified.txt"),
+                content: COMMIT_SIMPLIFIED_TEMPLATE,
                 description: "Simplified commit prompt with direct instructions",
                 deprecated: false,
             },
         ),
-        // Analysis Templates
+        // Analysis Templates — canonical names
         (
             "analysis_system_prompt",
             EmbeddedTemplate {
                 name: "analysis_system_prompt",
-                content: include_str!("templates/analysis_system_prompt.txt"),
-                description: "Independent analysis agent system prompt (verifies PLAN vs DIFF and writes development_result.xml)",
+                content: ANALYSIS_SYSTEM_PROMPT_TEMPLATE,
+                description: "Independent analysis agent system prompt (verifies PLAN vs DIFF)",
                 deprecated: false,
             },
         ),
@@ -114,65 +124,66 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
             "fix_analysis_system_prompt",
             EmbeddedTemplate {
                 name: "fix_analysis_system_prompt",
-                content: include_str!("templates/fix_analysis_system_prompt.txt"),
-                description: "Independent analysis agent system prompt for verifying fix output against review issues",
+                content: FIX_ANALYSIS_SYSTEM_PROMPT_TEMPLATE,
+                description: "Independent analysis agent system prompt for verifying fix output",
                 deprecated: false,
             },
         ),
-        // Developer Templates
+        // Developer Templates — canonical names (no _xml suffix)
         (
-            "developer_iteration_xml",
+            "developer_iteration",
             EmbeddedTemplate {
-                name: "developer_iteration_xml",
-                content: include_str!("templates/developer_iteration_xml.txt"),
-                description: "Developer agent implementation mode prompt (no structured output; analysis verifies progress)",
-                deprecated: false,
-            },
-        ),
-        (
-            "planning_xml",
-            EmbeddedTemplate {
-                name: "planning_xml",
-                content: include_str!("templates/planning_xml.txt"),
-                description: "Planning phase prompt with XML output format and XSD validation",
+                name: "developer_iteration",
+                content: DEVELOPER_ITERATION_TEMPLATE,
+                description:
+                    "Developer agent implementation mode prompt (analysis verifies progress)",
                 deprecated: false,
             },
         ),
         (
-            "developer_iteration_continuation_xml",
+            "planning",
             EmbeddedTemplate {
-                name: "developer_iteration_continuation_xml",
-                content: include_str!("templates/developer_iteration_continuation_xml.txt"),
+                name: "planning",
+                content: PLANNING_TEMPLATE,
+                description: "Planning phase prompt",
+                deprecated: false,
+            },
+        ),
+        (
+            "developer_iteration_continuation",
+            EmbeddedTemplate {
+                name: "developer_iteration_continuation",
+                content: DEVELOPER_ITERATION_CONTINUATION_TEMPLATE,
                 description: "Continuation prompt when previous attempt returned partial/failed",
                 deprecated: false,
             },
         ),
-        // Review XML Templates
+        // Review Templates — canonical name (no _xml suffix)
         (
-            "review_xml",
+            "review",
             EmbeddedTemplate {
-                name: "review_xml",
-                content: include_str!("templates/review_xml.txt"),
-                description: "Review mode prompt with XML output format and XSD validation",
+                name: "review",
+                content: REVIEW_TEMPLATE,
+                description: "Review mode prompt",
                 deprecated: false,
             },
         ),
-        // Fix Mode Templates
+        // Fix Mode Templates — canonical name (no _xml suffix)
         (
-            "fix_mode_xml",
+            "fix_mode",
             EmbeddedTemplate {
-                name: "fix_mode_xml",
-                content: include_str!("templates/fix_mode_xml.txt"),
-                description: "Fix mode prompt with XML output format and XSD validation",
+                name: "fix_mode",
+                content: FIX_MODE_TEMPLATE,
+                description: "Fix mode prompt",
                 deprecated: false,
             },
         ),
-        // Rebase Templates
+        // Rebase Templates — no rename needed (never had _xml suffix)
         (
             "conflict_resolution",
             EmbeddedTemplate {
                 name: "conflict_resolution",
-                content: include_str!("templates/conflict_resolution.txt"),
+                content: CONFLICT_RESOLUTION_TEMPLATE,
                 description: "Merge conflict resolution prompt",
                 deprecated: false,
             },
@@ -181,35 +192,35 @@ fn build_embedded_templates() -> BTreeMap<&'static str, EmbeddedTemplate> {
             "conflict_resolution_fallback",
             EmbeddedTemplate {
                 name: "conflict_resolution_fallback",
-                content: include_str!("templates/conflict_resolution_fallback.txt"),
+                content: CONFLICT_RESOLUTION_FALLBACK_TEMPLATE,
                 description: "Fallback conflict resolution prompt",
                 deprecated: false,
             },
         ),
-        // Phase 4: Parallel Worker Templates
+        // Parallel Worker Templates — canonical names (no _xml suffix)
         (
-            "parallel_planning_xml",
+            "parallel_planning",
             EmbeddedTemplate {
-                name: "parallel_planning_xml",
-                content: include_str!("templates/parallel_planning_xml.txt"),
-                description: "Parallel planning phase prompt with XML output for splitting work across workers",
+                name: "parallel_planning",
+                content: PARALLEL_PLANNING_TEMPLATE,
+                description: "Parallel planning phase prompt for splitting work across workers",
                 deprecated: false,
             },
         ),
         (
-            "parallel_dev_worker_xml",
+            "parallel_dev_worker",
             EmbeddedTemplate {
-                name: "parallel_dev_worker_xml",
-                content: include_str!("templates/parallel_dev_worker_xml.txt"),
+                name: "parallel_dev_worker",
+                content: PARALLEL_DEV_WORKER_TEMPLATE,
                 description: "Parallel development worker prompt scoped to restricted edit area",
                 deprecated: false,
             },
         ),
         (
-            "parallel_verifier_xml",
+            "parallel_verifier",
             EmbeddedTemplate {
-                name: "parallel_verifier_xml",
-                content: include_str!("templates/parallel_verifier_xml.txt"),
+                name: "parallel_verifier",
+                content: PARALLEL_VERIFIER_TEMPLATE,
                 description: "Verifier/reconciler prompt for reviewing parallel worker outputs",
                 deprecated: false,
             },
@@ -232,7 +243,8 @@ mod tests {
 
     #[test]
     fn test_get_embedded_template_existing() {
-        let result = get_embedded_template("developer_iteration_xml");
+        // Uses canonical name without _xml suffix
+        let result = get_embedded_template("developer_iteration");
         assert!(result.is_some());
         let content = result.unwrap();
         assert!(!content.is_empty());
@@ -247,10 +259,11 @@ mod tests {
 
     #[test]
     fn test_get_template_metadata() {
-        let metadata = get_template_metadata("commit_message_xml");
+        // Uses canonical name without _xml suffix
+        let metadata = get_template_metadata("commit_message");
         assert!(metadata.is_some());
         let template = metadata.unwrap();
-        assert_eq!(template.name, "commit_message_xml");
+        assert_eq!(template.name, "commit_message");
         assert!(!template.description.is_empty());
     }
 
@@ -258,7 +271,7 @@ mod tests {
     fn test_list_all_templates() {
         let templates = list_all_templates();
         assert!(!templates.is_empty());
-        assert!(templates.len() >= 10); // At least 10 templates (reduced after removing unused reviewer templates)
+        assert!(templates.len() >= 10); // At least 10 templates
 
         assert!(templates
             .windows(2)
@@ -269,10 +282,11 @@ mod tests {
     fn test_get_templates_map() {
         let map = get_templates_map();
         assert!(!map.is_empty());
-        assert!(map.contains_key("developer_iteration_xml"));
-        assert!(map.contains_key("commit_message_xml"));
+        // Canonical names (no _xml suffix)
+        assert!(map.contains_key("developer_iteration"));
+        assert!(map.contains_key("commit_message"));
 
-        let (content, description) = map.get("developer_iteration_xml").unwrap();
+        let (content, description) = map.get("developer_iteration").unwrap();
         assert!(!content.is_empty());
         assert!(!description.is_empty());
     }
@@ -303,12 +317,29 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_non_xml_templates_removed() {
-        // Verify legacy non-XML templates have been removed
-        assert!(get_embedded_template("developer_iteration").is_none());
-        assert!(get_embedded_template("planning").is_none());
-        assert!(get_embedded_template("fix_mode").is_none());
-        // Note: Use *_xml variants instead
+    fn test_xml_suffixed_template_names_removed() {
+        // Verify legacy _xml-suffixed template names no longer exist in the catalog.
+        // Templates have been migrated to canonical names (planning, developer_iteration, etc.)
+        assert!(get_embedded_template("developer_iteration_xml").is_none());
+        assert!(get_embedded_template("planning_xml").is_none());
+        assert!(get_embedded_template("fix_mode_xml").is_none());
+        assert!(get_embedded_template("review_xml").is_none());
+        assert!(get_embedded_template("commit_message_xml").is_none());
+        assert!(get_embedded_template("parallel_planning_xml").is_none());
+        assert!(get_embedded_template("parallel_dev_worker_xml").is_none());
+        assert!(get_embedded_template("parallel_verifier_xml").is_none());
+        assert!(get_embedded_template("developer_iteration_continuation_xml").is_none());
+    }
+
+    #[test]
+    fn test_canonical_template_names_exist() {
+        // Canonical names (no _xml suffix) must exist after migration
+        assert!(get_embedded_template("developer_iteration").is_some());
+        assert!(get_embedded_template("planning").is_some());
+        assert!(get_embedded_template("fix_mode").is_some());
+        assert!(get_embedded_template("review").is_some());
+        assert!(get_embedded_template("commit_message").is_some());
+        assert!(get_embedded_template("developer_iteration_continuation").is_some());
     }
 
     #[test]
@@ -321,17 +352,16 @@ mod tests {
         assert!(get_embedded_template("universal_review").is_none());
         assert!(get_embedded_template("standard_review_minimal").is_none());
         assert!(get_embedded_template("standard_review_normal").is_none());
-        // Note: The review phase uses review_xml template via prompt_review_xml_with_context()
     }
 
     #[test]
-    fn test_review_xml_template_exists() {
-        // Verify the actually-used review template exists
-        assert!(get_embedded_template("review_xml").is_some());
-        let content = get_embedded_template("review_xml").unwrap();
+    fn test_review_template_exists() {
+        // Verify the review template exists under its canonical name
+        assert!(get_embedded_template("review").is_some());
+        let content = get_embedded_template("review").unwrap();
         assert!(
             content.contains("REVIEW MODE"),
-            "review_xml should contain REVIEW MODE"
+            "review template should contain REVIEW MODE"
         );
     }
 

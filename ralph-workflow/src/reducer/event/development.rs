@@ -90,7 +90,7 @@ pub enum DevelopmentEvent {
         ///
         /// When `Some`, the reducer uses this decision directly instead of
         /// deriving one from `status`. `None` means fall back to status-derived routing.
-        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+        analysis_decision: Option<crate::reducer::state::DevelopmentAnalysisDecision>,
         /// Summary of what was accomplished.
         summary: String,
         /// Files changed in this attempt.

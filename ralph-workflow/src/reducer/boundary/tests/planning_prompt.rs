@@ -301,7 +301,7 @@ fn test_prepare_planning_prompt_same_agent_retry_uses_previous_prepared_prompt()
 #[test]
 fn test_prepare_planning_prompt_emits_template_rendered_on_validation_failure() {
     let tempdir = tempdir().expect("create temp dir");
-    let template_path = tempdir.path().join("planning_xml.txt");
+    let template_path = tempdir.path().join("planning.txt");
     fs::write(
         &template_path,
         "Prompt:\n{{PROMPT}}\nMissing: {{MISSING}}\n",
@@ -339,7 +339,7 @@ fn test_prepare_planning_prompt_emits_template_rendered_on_validation_failure() 
             log,
         }) => {
             assert_eq!(phase, PipelinePhase::Planning);
-            assert_eq!(template_name, "planning_xml");
+            assert_eq!(template_name, "planning");
             assert!(log.unsubstituted.contains(&"MISSING".to_string()));
         }
         other => panic!("expected TemplateRendered event, got {other:?}"),
@@ -529,4 +529,3 @@ fn test_prepare_planning_prompt_errors_when_inputs_not_materialized() {
         "Expected Err when planning inputs are missing, got {result:?}",
     );
 }
-

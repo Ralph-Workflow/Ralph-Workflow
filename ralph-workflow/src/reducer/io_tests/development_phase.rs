@@ -58,8 +58,8 @@ fn test_development_iteration_started_resets_agent_chain() {
 
 #[test]
 fn test_development_iteration_completed_increments_iteration() {
-    // Phase 2: After dev iteration completes, go to Review (not CommitMessage directly).
-    // Iteration stays at current value until commit happens after the review cycle.
+    // Commit-gated: After dev iteration completes, go to CommitMessage (development_commit).
+    // Iteration stays at current value until commit completes.
     let state = PipelineState {
         phase: PipelinePhase::Development,
         iteration: 2,
@@ -71,8 +71,8 @@ fn test_development_iteration_completed_increments_iteration() {
         PipelineEvent::development_iteration_completed(2, true),
     );
 
-    // Phase 2: Routes to Review, not CommitMessage
-    assert_eq!(new_state.phase, PipelinePhase::Review);
+    // Routes to CommitMessage for development_commit
+    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
     assert_eq!(new_state.iteration, 2); // Don't increment yet
 }
 
@@ -142,8 +142,8 @@ fn test_development_iteration_invalid_output_retries_then_falls_back() {
 
 #[test]
 fn test_development_iteration_completed_routes_to_review() {
-    // Phase 2: Dev iteration complete -> Review (not CommitMessage directly).
-    // The commit happens after the review cycle.
+    // Commit-gated: Dev iteration complete -> CommitMessage (development_commit).
+    // Post-commit routing routes to Planning (if cycles remain) or Review (if exhausted).
     let state = PipelineState {
         phase: PipelinePhase::Development,
         iteration: 2,
@@ -155,16 +155,16 @@ fn test_development_iteration_completed_routes_to_review() {
         PipelineEvent::development_iteration_completed(2, true),
     );
 
-    // Phase 2: Routes to Review, not CommitMessage
-    assert_eq!(new_state.phase, PipelinePhase::Review);
+    // Routes to CommitMessage for development_commit
+    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
     assert_eq!(new_state.iteration, 2);
     assert_eq!(new_state.previous_phase, Some(PipelinePhase::Development));
 }
 
 #[test]
-fn test_development_iteration_completed_transitions_to_review_when_done() {
-    // Phase 2: After dev iteration complete, transition to Review (before CommitMessage).
-    // This is the correct Phase 2 flow: Development → Review → CommitMessage.
+fn test_development_iteration_completed_transitions_to_commit_when_done() {
+    // Commit-gated: After dev iteration complete, transition to CommitMessage.
+    // Post-commit routing: if budget exhausted, routes to Review.
     let state = PipelineState {
         phase: PipelinePhase::Development,
         iteration: 2,
@@ -176,8 +176,8 @@ fn test_development_iteration_completed_transitions_to_review_when_done() {
         PipelineEvent::development_iteration_completed(2, true),
     );
 
-    // Phase 2: Goes to Review phase (was CommitMessage before Phase 2)
-    assert_eq!(new_state.phase, PipelinePhase::Review);
+    // Goes to CommitMessage for development_commit
+    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn test_development_iteration_continuation_succeeded_transitions_to_review() {
 
 #[test]
 fn test_development_iteration_completed_with_large_iteration_number() {
-    // Phase 2: Large iteration numbers route to Review (not CommitMessage directly)
+    // Commit-gated: Large iteration numbers route to CommitMessage for development_commit
     let state = PipelineState {
         phase: PipelinePhase::Development,
         iteration: u32::MAX - 2,
@@ -228,8 +228,8 @@ fn test_development_iteration_completed_with_large_iteration_number() {
         PipelineEvent::development_iteration_completed(u32::MAX - 2, true),
     );
 
-    // Phase 2: Routes to Review, not CommitMessage
-    assert_eq!(new_state.phase, PipelinePhase::Review);
+    // Routes to CommitMessage for development_commit
+    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
     assert_eq!(new_state.iteration, u32::MAX - 2);
 }
 
@@ -243,7 +243,8 @@ fn test_development_phase_completed_transitions_to_review() {
 
 #[test]
 fn test_development_iteration_completed_with_zero_total_iterations() {
-    // Phase 2: iteration 0 with total 0 -> Review (not CommitMessage directly)
+    // Commit-gated: even when total_iterations=0, iteration completion routes to CommitMessage.
+    // Post-commit routing (compute_post_commit_transition) then decides next phase.
     let state = PipelineState {
         phase: PipelinePhase::Development,
         iteration: 0,
@@ -255,8 +256,8 @@ fn test_development_iteration_completed_with_zero_total_iterations() {
         PipelineEvent::development_iteration_completed(0, true),
     );
 
-    // Phase 2: Routes to Review, not CommitMessage
-    assert_eq!(new_state.phase, PipelinePhase::Review);
+    // Commit-gated: routes to CommitMessage, not directly to Review
+    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
     assert_eq!(new_state.iteration, 0);
 }
 
@@ -273,7 +274,7 @@ fn test_development_iteration_started_with_max_u32() {
 
 #[test]
 fn test_development_iteration_with_review_cycle() {
-    // Phase 2: Test the cycle: Planning -> Dev -> Review (not CommitMessage directly)
+    // Commit-gated: Planning -> Dev -> CommitMessage -> (Planning or Review via post-commit routing)
     let mut state = PipelineState::initial(3, 0); // 3 dev iterations, 0 reviews
 
     // Start at Planning phase, iteration 0
@@ -284,12 +285,12 @@ fn test_development_iteration_with_review_cycle() {
     state = reduce(state, PipelineEvent::plan_generation_completed(0, true));
     assert_eq!(state.phase, PipelinePhase::Development);
 
-    // Phase 2: After dev iteration completes, go to Review (not CommitMessage)
+    // Commit-gated: After dev iteration completes, go to CommitMessage first
     state = reduce(
         state,
         PipelineEvent::development_iteration_completed(0, true),
     );
-    assert_eq!(state.phase, PipelinePhase::Review);
+    assert_eq!(state.phase, PipelinePhase::CommitMessage);
     assert_eq!(state.iteration, 0); // Don't increment yet
     assert_eq!(state.previous_phase, Some(PipelinePhase::Development));
 
@@ -300,7 +301,7 @@ fn test_development_iteration_with_review_cycle() {
         state,
         PipelineEvent::development_iteration_completed(1, true),
     );
-    assert_eq!(state.phase, PipelinePhase::Review);
+    assert_eq!(state.phase, PipelinePhase::CommitMessage);
 }
 
 // =========================================================================

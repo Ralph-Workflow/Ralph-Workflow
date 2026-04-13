@@ -32,7 +32,8 @@ fn test_cleanup_required_files_removes_stale_commit_xml() {
         ..PipelineState::initial(1, 1)
     });
 
-    let files: Box<[String]> = vec![artifact_paths::COMMIT_MESSAGE_XML.to_string()].into_boxed_slice();
+    let files: Box<[String]> =
+        vec![artifact_paths::COMMIT_MESSAGE_XML.to_string()].into_boxed_slice();
     handler.cleanup_required_files(&ctx, &files);
 
     assert!(

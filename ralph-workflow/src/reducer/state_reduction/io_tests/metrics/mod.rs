@@ -14,8 +14,6 @@ mod summary_accuracy;
 
 use crate::agents::AgentRole;
 use crate::common::domain_types::{AgentName, ModelName};
-use crate::reducer::event::{
-    DevelopmentEvent, PipelineEvent, ReviewEvent, TimeoutOutputKind,
-};
+use crate::reducer::event::{DevelopmentEvent, PipelineEvent, ReviewEvent, TimeoutOutputKind};
 use crate::reducer::state::{DevelopmentStatus, PipelineState};
 use crate::reducer::state_reduction::reduce;

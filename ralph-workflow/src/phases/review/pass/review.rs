@@ -84,7 +84,7 @@ pub fn run_review_pass(
         ctx.template_context,
         &refs,
         ctx.workspace,
-        "review_xml",
+        "review",
         SessionCapabilities::new(&capabilities, &policy_flags),
     );
     let review_prompt_xml = rendered.content;
@@ -188,10 +188,7 @@ pub fn run_review_pass(
         // Non-auth non-zero exit: fail only when no valid result file exists.
         // A valid ISSUES_JSON despite non-zero exit means the agent completed
         // its work (e.g., proprietary exit codes like reason:91 from OpenCode).
-        if !has_valid_artifact_output(
-            ctx.workspace,
-            Path::new(artifact_paths::ISSUES_JSON),
-        ) {
+        if !has_valid_artifact_output(ctx.workspace, Path::new(artifact_paths::ISSUES_JSON)) {
             return Ok(ReviewPassResult::agent_failed(false));
         }
     }

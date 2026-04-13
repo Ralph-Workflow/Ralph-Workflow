@@ -1502,13 +1502,16 @@ development = "shared_dev"
             panic!("expected merged named schema validation failure");
         };
 
+        // With forbid_sibling=true (default), `analysis` can be inferred from the bound
+        // `planning`/`development` siblings (tier 2), but that inference is blocked.
+        // The diagnostic names `analysis` and tier 2 with a concrete TOML fix hint.
         assert!(
             errors.iter().any(|error| matches!(
                 error,
                 ConfigValidationError::InvalidValue { key, message, .. }
                     if key == "agent_drains"
-                        && message.contains("review")
-                        && message.contains("fix")
+                        && message.contains("analysis")
+                        && message.contains("tier 2")
             )),
             "expected merged named schema resolution error, got: {errors:?}"
         );
@@ -1981,9 +1984,12 @@ fn test_tier3_legacy_chain_rejected_when_forbid_sibling_drain_inference_true() {
             .resolve_agent_drains_checked()
             .expect_err("tier-3 only chain must fail when forbid_sibling_drain_inference=true");
 
+        // Now emits ImplicitInferenceDisabled (tier 3) rather than MissingBuiltinCoverage,
+        // because the first unresolved drain (planning) would have been resolved by the
+        // "developer" legacy role-family chain if forbid_sibling_drain_inference were false.
         assert!(
-            error.contains("missing bindings"),
-            "expected 'missing bindings' in error: {error}"
+            error.contains("no explicit chain binding") && error.contains("tier 3"),
+            "expected 'no explicit chain binding' and 'tier 3' in error: {error}"
         );
     });
 }

@@ -6,8 +6,8 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
     let registry = TemplateRegistry::new(Some(templates_dir.clone()));
 
     // Check if we're using user templates or embedded templates
-    let source = registry.template_source("commit_message_xml");
-    let has_user = registry.has_user_template("commit_message_xml");
+    let source = registry.template_source("commit_message");
+    let has_user = registry.has_user_template("commit_message");
 
     // Use the variables to avoid dead code warnings
     let _ = (source, has_user);

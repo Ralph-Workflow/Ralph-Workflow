@@ -336,7 +336,7 @@ pub struct DevelopmentResultElements {
     ///
     /// When `Some`, the reducer must use this decision instead of deriving one from `status`.
     /// When `None` (field absent), fall back to status-derived routing.
-    pub analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+    pub analysis_decision: Option<crate::reducer::state::DevelopmentAnalysisDecision>,
     /// Summary of what was done (required)
     pub summary: String,
     /// Optional skills and MCP recommendations for the next agent

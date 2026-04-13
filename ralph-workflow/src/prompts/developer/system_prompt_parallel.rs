@@ -24,10 +24,10 @@ pub fn prompt_parallel_planning_with_context(
 
     let template_content = context
         .registry()
-        .get_template("parallel_planning_xml")
+        .get_template("parallel_planning")
         .unwrap_or_else(|_| {
             // Fallback to embedded template if registry fails
-            include_str!("../templates/parallel_planning_xml.txt").to_string()
+            ralph_workflow_policy::PARALLEL_PLANNING_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
@@ -99,10 +99,10 @@ pub fn prompt_parallel_dev_worker_with_context(
 
     let template_content = context
         .registry()
-        .get_template("parallel_dev_worker_xml")
+        .get_template("parallel_dev_worker")
         .unwrap_or_else(|_| {
             // Fallback to embedded template if registry fails
-            include_str!("../templates/parallel_dev_worker_xml.txt").to_string()
+            ralph_workflow_policy::PARALLEL_DEV_WORKER_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
     let prompt_md = prompt_content.unwrap_or("No requirements provided");
@@ -207,10 +207,10 @@ pub fn prompt_parallel_verifier_with_context(
 
     let template_content = context
         .registry()
-        .get_template("parallel_verifier_xml")
+        .get_template("parallel_verifier")
         .unwrap_or_else(|_| {
             // Fallback to embedded template if registry fails
-            include_str!("../templates/parallel_verifier_xml.txt").to_string()
+            ralph_workflow_policy::PARALLEL_VERIFIER_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
 

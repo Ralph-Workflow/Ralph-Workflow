@@ -13,7 +13,8 @@ use ralph_workflow::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain
 use ralph_workflow::prompts::content_reference::{DiffContentReference, PlanContentReference};
 use ralph_workflow::prompts::{
     prompt_generate_commit_message_with_diff_with_context, prompt_planning_xml_with_references,
-    prompt_review_xml_with_references, PromptContentReference, SessionCapabilities, TemplateContext,
+    prompt_review_xml_with_references, PromptContentReference, SessionCapabilities,
+    TemplateContext,
 };
 use ralph_workflow::workspace::MemoryWorkspace;
 use std::path::{Path, PathBuf};

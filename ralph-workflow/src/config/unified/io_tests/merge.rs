@@ -344,20 +344,28 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
         .resolve_agent_drains_checked()
         .expect_err("missing built-in drains should fail");
 
+    // With forbid_sibling=true (default), `commit` can be inferred from the bound `review`/`fix`
+    // siblings (tier 2), but that inference is blocked. The most specific error emitted is
+    // ImplicitInferenceDisabled for `commit` rather than a generic MissingBuiltinCoverage,
+    // because the former provides a concrete TOML fix hint.
+    // With forbid_sibling=true (default), `commit` can be inferred from the bound `review`/`fix`
+    // siblings (tier 2), but that inference is blocked. The most specific error emitted is
+    // ImplicitInferenceDisabled for `commit` rather than a generic MissingBuiltinCoverage,
+    // because the former provides a concrete TOML fix hint.
     assert!(
         matches!(
-            error,
-            crate::config::unified::types::ResolveDrainError::MissingBuiltinCoverage { .. }
+            &error,
+            crate::config::unified::types::ResolveDrainError::ImplicitInferenceDisabled {
+                drain_name,
+                attempted_tier: 2,
+                ..
+            } if drain_name == "commit"
         ),
-        "expected MissingBuiltinCoverage variant, got: {error}"
+        "expected ImplicitInferenceDisabled (commit, tier 2), got: {error}"
     );
     let msg = error.to_string();
-    assert!(msg.contains("planning"), "expected planning in: {msg}");
-    assert!(
-        msg.contains("development"),
-        "expected development in: {msg}"
-    );
-    assert!(msg.contains("analysis"), "expected analysis in: {msg}");
+    assert!(msg.contains("commit"), "expected commit in: {msg}");
+    assert!(msg.contains("tier 2"), "expected tier 2 in: {msg}");
 }
 
 #[test]
@@ -1067,12 +1075,18 @@ fn test_resolve_agent_drains_checked_tier3_developer_chain_rejected_when_forbid_
         .resolve_agent_drains_checked()
         .expect_err("tier-3 only chain must fail when forbid_sibling_drain_inference=true");
 
+    // With forbid_sibling=true, any drain resolvable only via tier 3 should emit
+    // ImplicitInferenceDisabled (naming the tier and providing a TOML fix hint),
+    // not a generic MissingBuiltinCoverage.
     assert!(
         matches!(
             error,
-            crate::config::unified::types::ResolveDrainError::MissingBuiltinCoverage { .. }
+            crate::config::unified::types::ResolveDrainError::ImplicitInferenceDisabled {
+                attempted_tier: 3,
+                ..
+            }
         ),
-        "expected MissingBuiltinCoverage, got: {error}"
+        "expected ImplicitInferenceDisabled (tier 3), got: {error}"
     );
 }
 

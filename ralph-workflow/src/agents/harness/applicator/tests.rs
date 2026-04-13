@@ -694,11 +694,25 @@ fn apply_codex_preserves_config_dir_env() {
 }
 
 #[test]
-fn apply_unknown_returns_error() {
+fn apply_unknown_returns_empty_noop() {
+    // AgentType::Unknown is a documented no-op: it returns an empty HarnessApplyResult
+    // so unknown agents can be invoked without MCP harness configuration.
     let ws = MemoryWorkspace::new_test();
     let session = test_session();
     let result = apply_harness_config(AgentType::Unknown, &session, TEST_ENDPOINT, &ws);
-    assert!(result.is_err());
+    let result = result.expect("Unknown agent type should return Ok (no-op)");
+    assert!(
+        result.extra_env_vars.is_empty(),
+        "no env vars for unknown agent"
+    );
+    assert!(
+        result.config_path.is_none(),
+        "no config path for unknown agent"
+    );
+    assert!(
+        result.extra_cmd_args.is_empty(),
+        "no extra args for unknown agent"
+    );
 }
 
 /// Regression: Codex -c override args must use the resolved executable path,
@@ -907,7 +921,20 @@ fn round_trip_detect_and_apply() {
                 assert_eq!(result.extra_cmd_args[4], "--strict-mcp-config");
             }
             AgentType::Unknown => {
-                assert!(apply_harness_config(agent_type, &session, TEST_ENDPOINT, &ws).is_err());
+                let result = apply_harness_config(agent_type, &session, TEST_ENDPOINT, &ws)
+                    .expect("Unknown agent type should return Ok (no-op)");
+                assert!(
+                    result.extra_env_vars.is_empty(),
+                    "no env vars for unknown agent"
+                );
+                assert!(
+                    result.config_path.is_none(),
+                    "no config path for unknown agent"
+                );
+                assert!(
+                    result.extra_cmd_args.is_empty(),
+                    "no extra args for unknown agent"
+                );
             }
             _ => {
                 let result = apply_harness_config(agent_type, &session, TEST_ENDPOINT, &ws)

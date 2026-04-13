@@ -57,7 +57,7 @@ fn test_prepare_review_prompt_writes_prompt_file_with_required_markers() {
 #[test]
 fn test_prepare_review_prompt_emits_template_rendered_on_validation_failure() {
     let tempdir = tempdir().expect("create temp dir");
-    let template_path = tempdir.path().join("review_xml.txt");
+    let template_path = tempdir.path().join("review.txt");
     fs::write(
         &template_path,
         "Plan:\n{{PLAN}}\nChanges:\n{{CHANGES}}\nMissing: {{MISSING}}\n",
@@ -106,7 +106,7 @@ fn test_prepare_review_prompt_emits_template_rendered_on_validation_failure() {
             log,
         }) => {
             assert_eq!(phase, PipelinePhase::Review);
-            assert_eq!(template_name, "review_xml");
+            assert_eq!(template_name, "review");
             assert!(log.unsubstituted.contains(&"MISSING".to_string()));
         }
         other => panic!("expected TemplateRendered event, got {other:?}"),

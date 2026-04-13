@@ -109,7 +109,7 @@ pub fn generate_analysis_prompt(
     let template_content = context
         .registry()
         .get_template("analysis_system_prompt")
-        .unwrap_or_else(|_| include_str!("../templates/analysis_system_prompt.txt").to_string());
+        .unwrap_or_else(|_| ralph_workflow_policy::ANALYSIS_SYSTEM_PROMPT_TEMPLATE.to_string());
     let base_vars =
         analysis_common_variables(plan_content, diff_content, is_continuation, workspace);
 

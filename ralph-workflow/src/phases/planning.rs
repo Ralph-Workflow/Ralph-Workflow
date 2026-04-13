@@ -31,5 +31,4 @@ mod tests {
         let expected = sha256_hex_str("planning_normal:prompt:abc123:consumer:sig789");
         assert_eq!(actual, expected);
     }
-
 }

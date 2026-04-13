@@ -154,7 +154,6 @@ pub fn generate_commit_message(
         CommitExtractionOutcome::InvalidXml(detail)
         | CommitExtractionOutcome::MissingFile(detail) => anyhow::bail!(detail),
         CommitExtractionOutcome::Skipped(reason) => {
-            artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
             crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
             return Ok(CommitMessageResult {
                 outcome: CommitMessageOutcome::Skipped { reason },
@@ -162,7 +161,6 @@ pub fn generate_commit_message(
         }
     };
 
-    artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
     crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
 
     Ok(CommitMessageResult {
@@ -274,11 +272,11 @@ fn try_single_commit_agent(
         ) {
             Ok(result) => (result.extra_env_vars, result.extra_cmd_args),
             Err(e) => {
-                return TryAgentResult::Fatal(anyhow::anyhow!(
-                "MCP harness setup failed for commit agent '{}': {}. MCP is mandatory and execution was aborted.",
-                commit_agent,
-                e
-            ));
+                return TryAgentResult::Skip(Some(anyhow::anyhow!(
+                    "MCP harness setup failed for commit agent '{}': {}. Skipping to next agent in chain.",
+                    commit_agent,
+                    e
+                )));
             }
         };
 
@@ -390,15 +388,13 @@ fn try_single_commit_agent(
             files: _,
             ..
         } => {
-            artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
-            crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
+crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
             TryAgentResult::Success(CommitMessageResult {
                 outcome: CommitMessageOutcome::Message(extracted.into_message()),
             })
         }
         CommitExtractionOutcome::Skipped(reason) => {
-            artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
-            crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
+crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
             TryAgentResult::Success(CommitMessageResult {
                 outcome: CommitMessageOutcome::Skipped { reason },
             })
@@ -426,14 +422,12 @@ fn try_single_commit_agent(
                         files: _,
                         ..
                     } => {
-                        artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
                         crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
                         TryAgentResult::Success(CommitMessageResult {
                             outcome: CommitMessageOutcome::Message(extracted.into_message()),
                         })
                     }
                     CommitExtractionOutcome::Skipped(reason) => {
-                        artifact_paths::archive_xml_file_with_workspace(workspace, Path::new(artifact_paths::COMMIT_MESSAGE_XML));
                         crate::files::archive_json_artifact_with_workspace(workspace, "commit_message");
                         TryAgentResult::Success(CommitMessageResult {
                             outcome: CommitMessageOutcome::Skipped { reason },

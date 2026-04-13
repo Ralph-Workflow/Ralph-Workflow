@@ -17,13 +17,14 @@ use crate::agents::session::parallel::{
 };
 use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::agents::AgentRole;
-use crate::files::artifact_paths;
 use crate::files::result_types::{ParallelPlanElements, WorkUnitElements};
 use crate::phases::development::format_plan_as_markdown;
 use crate::phases::planning::planning_prompt_content_id;
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
-use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SessionCapabilities};
+use crate::prompts::{
+    get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SessionCapabilities,
+};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -173,7 +174,7 @@ impl MainEffectHandler {
         Ok(planning_helpers::assemble_planning_prompt_result(
             iteration,
             capture,
-            "planning_xml",
+            "planning",
             rendered_log,
         ))
     }
@@ -206,7 +207,7 @@ impl MainEffectHandler {
                     ctx.template_context,
                     &prompt_ref_for_template,
                     ctx.workspace,
-                    "planning_xml",
+                    "planning",
                     SessionCapabilities::new(
                         &CapabilitySet::defaults_for_drain(SessionDrain::Planning),
                         &PolicyFlagSet::defaults_for_drain(SessionDrain::Planning),
@@ -237,7 +238,7 @@ impl MainEffectHandler {
         Ok(planning_helpers::assemble_planning_prompt_result(
             iteration,
             capture,
-            "planning_xml",
+            "planning",
             rendered_log,
         ))
     }
@@ -309,18 +310,24 @@ impl MainEffectHandler {
         let planning_failed = EffectResult::event(
             PipelineEvent::planning_output_validation_failed(iteration, invalid_output_attempts),
         );
-        match ctx.workspace.read_artifact_json("plan") {
-            Ok(Some(envelope)) => match super::json_artifact::plan_elements_from_envelope(&envelope) {
-                Ok(elements) => {
-                    let display = serde_json::to_string_pretty(&envelope.content)
-                        .unwrap_or_else(|_| "{}".to_string());
-                    Ok(self.build_planning_validation_result(&elements, iteration, display))
-                }
-                Err(_) => Ok(planning_failed),
-            },
-            Ok(None) => Ok(planning_failed),
-            Err(_) => Ok(planning_failed),
-        }
+        let validated = ctx
+            .workspace
+            .read_artifact_json("plan")
+            .ok()
+            .flatten()
+            .and_then(|envelope| self.try_validate_plan_from_envelope(&envelope, iteration));
+        Ok(validated.unwrap_or(planning_failed))
+    }
+
+    fn try_validate_plan_from_envelope(
+        &self,
+        envelope: &crate::workspace::ArtifactEnvelope,
+        iteration: u32,
+    ) -> Option<EffectResult> {
+        let elements = super::json_artifact::plan_elements_from_envelope(envelope).ok()?;
+        let display =
+            serde_json::to_string_pretty(&envelope.content).unwrap_or_else(|_| "{}".to_string());
+        Some(self.build_planning_validation_result(&elements, iteration, display))
     }
 
     /// Build the `EffectResult` for a successfully validated plan from a JSON artifact.
@@ -386,10 +393,6 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
-        artifact_paths::archive_xml_file_with_workspace(
-            ctx.workspace,
-            std::path::Path::new(artifact_paths::PLAN_XML),
-        );
         crate::files::archive_json_artifact_with_workspace(ctx.workspace, "plan");
         EffectResult::event(PipelineEvent::planning_xml_archived(iteration))
     }

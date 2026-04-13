@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn test_commit_prompt_prepared_result_adds_template_rendered_event_when_present() {
         let rendered_log = SubstitutionLog {
-            template_name: "commit_message_xml".to_string(),
+            template_name: "commit_message".to_string(),
             substituted: Vec::new(),
             unsubstituted: Vec::new(),
         };
@@ -262,7 +262,7 @@ mod tests {
             false,
             None,
             Some(rendered_log),
-            "commit_message_xml",
+            "commit_message",
         );
 
         assert!(matches!(
@@ -287,7 +287,7 @@ mod tests {
                     template_name,
                     ..
                 }
-            )] if template_name == "commit_message_xml"
+            )] if template_name == "commit_message"
         ));
     }
 

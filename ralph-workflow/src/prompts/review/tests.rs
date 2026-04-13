@@ -61,7 +61,7 @@ fn test_planning_prompt_has_validation_checklist() {
     // Use in-memory workspace
     let workspace = MemoryWorkspace::new_test();
     let partials = crate::prompts::partials::get_shared_partials();
-    let template_content = include_str!("../templates/planning_xml.txt");
+    let template_content = ralph_workflow_policy::PLANNING_TEMPLATE;
     let template = crate::prompts::Template::new(template_content);
     let base_variables = std::collections::HashMap::from([
         ("PROMPT", "test prompt".to_string()),

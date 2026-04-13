@@ -51,8 +51,7 @@ fn test_loop_detection_fields_exist() {
         state.phase = PipelinePhase::Review;
         state.continuation.continue_pending = true;
         state.continuation.consecutive_same_effect_count = 3;
-        state.continuation.last_effect_kind =
-            Some("Review:Reviewer:0:0:continue=true".to_string());
+        state.continuation.last_effect_kind = Some("Review:Reviewer:0:0:continue=true".to_string());
 
         // Loop detection fields should be accessible
         assert_eq!(state.continuation.consecutive_same_effect_count, 3);
@@ -97,4 +96,3 @@ fn test_no_loop_recovery_when_interrupted() {
         );
     });
 }
-

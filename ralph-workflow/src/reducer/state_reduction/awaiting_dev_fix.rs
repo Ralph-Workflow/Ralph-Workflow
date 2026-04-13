@@ -177,22 +177,18 @@ pub(super) fn reduce_awaiting_dev_fix_event(
                     // reruns from scratch for the restarted phase.
                     let reset = PipelineState {
                         prompt_inputs: match target_phase {
-                            PipelinePhase::Planning => reset
-                                .prompt_inputs
-                                .clone()
-                                .with_planning_cleared(),
-                            PipelinePhase::Development => reset
-                                .prompt_inputs
-                                .clone()
-                                .with_development_cleared(),
-                            PipelinePhase::Review => reset
-                                .prompt_inputs
-                                .clone()
-                                .with_review_cleared(),
-                            PipelinePhase::CommitMessage => reset
-                                .prompt_inputs
-                                .clone()
-                                .with_commit_cleared(),
+                            PipelinePhase::Planning => {
+                                reset.prompt_inputs.clone().with_planning_cleared()
+                            }
+                            PipelinePhase::Development => {
+                                reset.prompt_inputs.clone().with_development_cleared()
+                            }
+                            PipelinePhase::Review => {
+                                reset.prompt_inputs.clone().with_review_cleared()
+                            }
+                            PipelinePhase::CommitMessage => {
+                                reset.prompt_inputs.clone().with_commit_cleared()
+                            }
                             _ => reset.prompt_inputs.clone(),
                         },
                         ..reset

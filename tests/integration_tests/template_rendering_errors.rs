@@ -28,7 +28,7 @@ use crate::test_timeout::with_default_timeout;
 #[test]
 fn test_planning_template_includes_guidance_and_checklist() {
     with_default_timeout(|| {
-        let template = include_str!("../../ralph-workflow/src/prompts/templates/planning_xml.txt");
+        let template = ralph_workflow_policy::PLANNING_TEMPLATE;
 
         assert!(
             template.contains("Required sections:") || template.contains("REQUIRED SECTIONS"),

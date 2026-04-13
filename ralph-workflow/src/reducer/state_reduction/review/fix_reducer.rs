@@ -172,13 +172,13 @@ pub(super) fn reduce_fix_result_xml_extracted(state: PipelineState, pass: u32) -
 
 /// Handles `ReviewEvent::FixResultXmlValidated`.
 ///
-/// Stores fix validation outcome and clears XSD error (validation succeeded).
+/// Stores fix validation outcome.
 pub(super) fn reduce_fix_result_xml_validated(
     state: PipelineState,
     pass: u32,
     status: FixStatus,
     summary: Option<String>,
-    analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+    analysis_decision: Option<crate::reducer::state::ReviewAnalysisDecision>,
 ) -> PipelineState {
     PipelineState {
         fix_validated_outcome: Some(FixValidatedOutcome {
@@ -203,15 +203,12 @@ pub(super) fn reduce_fix_result_xml_archived(state: PipelineState, pass: u32) ->
 
 /// Handles `ReviewEvent::FixOutcomeApplied`.
 ///
-/// Applies the fix outcome using explicit `AnalysisDecision` when present; falls
+/// Applies the fix outcome using explicit `ReviewAnalysisDecision` when present; falls
 /// back to status-based continuation logic when `analysis_decision` is `None`.
 ///
-/// Phase 2 routing table:
-/// - `ReadyToCommit` → CommitMessage (same as current `AllIssuesAddressed` path)
-/// - `NeedsAnotherReview` → Review (fresh review pass with same reviewer_pass index)
-/// - `NeedsReplanning` → Planning (start a new development cycle)
-/// - `NeedsMoreWork` | `None` → status-based continuation logic (unchanged)
-/// - `ReadyForReview` → treated as `NeedsAnotherReview` in post-fix context
+/// Phase 2 routing table (review cycle):
+/// - `CycleComplete` → CommitMessage (review cycle finished, proceed to review_commit)
+/// - `NeedsMoreFix` | `None` → status-based continuation logic (stay in fix cycle)
 pub(super) fn reduce_fix_outcome_applied(state: PipelineState, pass: u32) -> PipelineState {
     let Some(outcome) = state
         .fix_validated_outcome
@@ -221,24 +218,22 @@ pub(super) fn reduce_fix_outcome_applied(state: PipelineState, pass: u32) -> Pip
         return state;
     };
 
-    // Phase 2: check explicit analysis decision first
-    use crate::reducer::state::AnalysisDecision;
+    // Phase 2: check explicit review-cycle analysis decision first
+    use crate::reducer::state::ReviewAnalysisDecision;
     match outcome.analysis_decision {
-        Some(AnalysisDecision::NeedsAnotherReview) | Some(AnalysisDecision::ReadyForReview) => {
-            return transition_to_review_after_fix(state, pass);
+        Some(ReviewAnalysisDecision::NeedsMoreFix) => {
+            // Fix needs more work — fall through to status-based continuation logic
         }
-        Some(AnalysisDecision::NeedsReplanning) => {
-            return transition_to_planning_after_fix(state, pass);
-        }
-        Some(AnalysisDecision::ReadyToCommit) => {
+        Some(ReviewAnalysisDecision::CycleComplete) => {
+            // Fix cycle is complete - proceed to review_commit
             let next_event = ReviewEvent::FixAttemptCompleted {
                 pass,
                 changes_made: true,
             };
             return super::reduce_review_event(state, next_event);
         }
-        // NeedsMoreWork or None: fall through to status-based logic
-        Some(AnalysisDecision::NeedsMoreWork) | None => {}
+        // None: fall through to status-based logic
+        None => {}
     }
 
     let next_event = if outcome.status.needs_continuation() {
@@ -263,74 +258,6 @@ pub(super) fn reduce_fix_outcome_applied(state: PipelineState, pass: u32) -> Pip
 
     // Recursively reduce the derived event
     super::reduce_review_event(state, next_event)
-}
-
-/// Route back to Review phase after fix (Phase 2: NeedsAnotherReview decision).
-///
-/// Clears fix drain progress and resets the chain to Review drain for a fresh
-/// review pass. The reviewer_pass index is unchanged — the review orchestrator
-/// re-invokes the reviewer agent for the same pass number.
-fn transition_to_review_after_fix(state: PipelineState, pass: u32) -> PipelineState {
-    let state = clear_fix_drain_progress(state);
-    PipelineState {
-        phase: PipelinePhase::Review,
-        previous_phase: Some(PipelinePhase::Review),
-        reviewer_pass: pass,
-        agent_chain: AgentChainState::initial()
-            .with_max_cycles(state.agent_chain.max_cycles)
-            .with_backoff_policy(
-                state.agent_chain.retry_delay_ms,
-                state.agent_chain.backoff_multiplier,
-                state.agent_chain.max_backoff_ms,
-            )
-            .reset_for_drain(AgentDrain::Review)
-            .with_mode(DrainMode::Normal),
-        continuation: state.continuation.reset(),
-        ..state
-    }
-}
-
-/// Route to Planning phase after fix (Phase 2: NeedsReplanning decision).
-///
-/// Clears fix and review drain progress and resets for a new development cycle.
-/// The iteration is incremented because a commit checkpoint is expected before
-/// replanning (the plan says "commit first, then continue to planning").
-fn transition_to_planning_after_fix(state: PipelineState, pass: u32) -> PipelineState {
-    let state = clear_fix_drain_progress(state);
-    // Clear review progress as well since we're leaving the review cycle entirely
-    let state = clear_review_drain_progress(state);
-    PipelineState {
-        phase: PipelinePhase::Planning,
-        previous_phase: Some(PipelinePhase::Review),
-        reviewer_pass: pass,
-        agent_chain: AgentChainState::initial()
-            .with_max_cycles(state.agent_chain.max_cycles)
-            .with_backoff_policy(
-                state.agent_chain.retry_delay_ms,
-                state.agent_chain.backoff_multiplier,
-                state.agent_chain.max_backoff_ms,
-            )
-            .reset_for_drain(AgentDrain::Planning)
-            .with_mode(DrainMode::Normal),
-        continuation: state.continuation.reset(),
-        ..state
-    }
-}
-
-fn clear_review_drain_progress(state: PipelineState) -> PipelineState {
-    PipelineState {
-        review_issues_found: false,
-        review_context_prepared_pass: None,
-        review_prompt_prepared_pass: None,
-        review_required_files_cleaned_pass: None,
-        review_agent_invoked_pass: None,
-        review_issues_xml_extracted_pass: None,
-        review_validated_outcome: None,
-        review_issues_markdown_written_pass: None,
-        review_issue_snippets_extracted_pass: None,
-        review_issues_xml_archived_pass: None,
-        ..state
-    }
 }
 
 /// Handles `ReviewEvent::FixAttemptCompleted`.

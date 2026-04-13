@@ -195,8 +195,8 @@ fn test_iteration_completed_resets_continuation() {
     );
 
     assert!(!new_state.continuation.is_continuation());
-    // Phase 2: IterationCompleted routes to Review for per-iteration code review
-    assert_eq!(new_state.phase, PipelinePhase::Review);
+    // Commit-gated: IterationCompleted routes to CommitMessage; post-commit routing handles Review
+    assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
 }
 
 #[test]
@@ -307,16 +307,16 @@ fn test_continuation_budget_exhausted_switches_to_next_agent() {
         state,
         PipelineEvent::development_continuation_budget_exhausted(0, 3, DevelopmentStatus::Partial),
     );
-    // Phase 2: After budget exhaustion, the iteration completes and transitions to Review
-    // for per-iteration code review (not directly to CommitMessage).
+    // Commit-gated: After budget exhaustion, iteration completes and routes to CommitMessage.
+    // Post-commit routing (compute_post_commit_transition) handles Planning or Review.
     assert_eq!(
         new_state.phase,
-        PipelinePhase::Review,
-        "Should complete iteration and transition to Review after budget exhaustion"
+        PipelinePhase::CommitMessage,
+        "Should complete iteration and transition to CommitMessage after budget exhaustion"
     );
     assert_eq!(
         new_state.agent_chain.current_agent_index, 0,
-        "Agent chain should be reset after iteration completion"
+        "Agent chain should be reset for commit drain after iteration completion"
     );
     assert_eq!(
         new_state.continuation.continuation_attempt, 0,
@@ -400,12 +400,13 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
         }
     };
 
-    // Phase 2: After continuation budget exhaustion, the system completes the iteration and
-    // transitions to Review for per-iteration code review. This prevents the infinite loop
-    // (wt-39) where continuation would restart after cycling through all agents.
+    // Commit-gated: After continuation budget exhaustion, the system completes the iteration
+    // and transitions to CommitMessage. This prevents the infinite loop (wt-39) where
+    // continuation would restart after cycling through all agents.
     //
     // One continuation budget per iteration. After exhaustion, the iteration completes and:
-    // 1. Transitions to Review for code review (Phase 2 behavior), OR
+    // 1. Transitions to CommitMessage (commit-gated progression), then post-commit routing
+    //    decides Planning (more dev iters remain) or Review (budget exhausted), OR
     // 2. Transitions to AwaitingDevFix if all agents exhausted with incomplete work
     //
     // This ensures bounded execution per iteration and prevents unbounded agent fallback cycles.
@@ -414,26 +415,26 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
         PipelineEvent::development_continuation_budget_exhausted(0, 3, DevelopmentStatus::Failed),
     );
 
-    // After budget exhaustion, iteration completes and transitions to Review (Phase 2)
+    // After budget exhaustion, iteration completes and transitions to CommitMessage (commit-gated)
     assert_eq!(
         state.phase,
-        PipelinePhase::Review,
-        "Should complete iteration and transition to Review after continuation budget exhaustion"
+        PipelinePhase::CommitMessage,
+        "Should complete iteration and transition to CommitMessage after continuation budget exhaustion"
     );
     assert_eq!(
         state.agent_chain.current_agent_index, 0,
-        "Agent chain should be reset to first agent after iteration completion"
+        "Agent chain should be reset to commit drain after iteration completion"
     );
     assert_eq!(
         state.continuation.continuation_attempt, 0,
         "Continuation attempt should be reset after iteration completion"
     );
-    // Phase 2: After IterationCompleted → Review, context cleanup runs first if pending.
+    // Commit-gated: After IterationCompleted → CommitMessage, cleanup or commit diff check runs.
     let effect = determine_next_effect(&state);
     assert!(
         matches!(effect, Effect::CheckCommitDiff)
             || matches!(effect, Effect::CleanupContinuationContext),
-        "Should clean up continuation context before proceeding; got {effect:?}"
+        "Should clean up continuation context or check commit diff before proceeding; got {effect:?}"
     );
 }
 

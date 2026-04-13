@@ -129,12 +129,14 @@ impl PipelineEvent {
         })
     }
 
+    /// `analysis_decision`: typed review-cycle analysis decision from the fix analysis agent.
+    /// Routes within the review cycle: NeedsMoreFix → fix, CycleComplete → review_commit.
     #[must_use]
     pub const fn fix_result_xml_validated_with_decision(
         pass: u32,
         status: crate::reducer::state::FixStatus,
         summary: Option<String>,
-        analysis_decision: Option<crate::reducer::state::AnalysisDecision>,
+        analysis_decision: Option<crate::reducer::state::ReviewAnalysisDecision>,
     ) -> Self {
         Self::Review(ReviewEvent::FixResultXmlValidated {
             pass,

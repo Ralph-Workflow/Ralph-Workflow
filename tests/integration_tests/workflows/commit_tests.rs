@@ -239,8 +239,8 @@ fn ralph_generate_commit_msg_succeeds_without_prompt_md() {
             .with_cwd(PathBuf::from("/mock/repo"))
             .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
-                ".agent/tmp/commit_message.xml",
-                "<ralph-commit><ralph-subject>feat: generated without prompt</ralph-subject></ralph-commit>",
+                ".agent/tmp/commit_message.json",
+                r#"{"artifact_type":"commit_message","version":"1.0","content":{"subject":"feat: generated without prompt"},"validated_at":"2026-01-01T00:00:00Z","partial":false}"#,
             );
 
         let config = create_test_config_struct();
@@ -268,8 +268,8 @@ fn ralph_generate_commit_msg_keeps_generated_message_after_command_cleanup() {
             .with_cwd(PathBuf::from("/mock/repo"))
             .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
             .with_file(
-                ".agent/tmp/commit_message.xml",
-                "<ralph-commit><ralph-subject>feat: preserved message</ralph-subject></ralph-commit>",
+                ".agent/tmp/commit_message.json",
+                r#"{"artifact_type":"commit_message","version":"1.0","content":{"subject":"feat: preserved message"},"validated_at":"2026-01-01T00:00:00Z","partial":false}"#,
             );
 
         let config = create_test_config_struct();
@@ -295,12 +295,11 @@ fn ralph_generate_commit_generates_and_applies_commit() {
             .with_file("src/new_file.rs", "pub fn new_file() {}\n")
             .with_diff("diff --git a/src/new_file.rs b/src/new_file.rs\n+pub fn new_file() {}\n")
             .with_file(
-                ".agent/tmp/commit_message.xml",
-                // NOTE: This is a mock commit-message string in MockAppEffectHandler,
-                // not a real git commit. The string "feat: add new file flow" is the
-                // XML-encoded subject line that the CLI parser extracts for the commit
-                // template, not an actual commit SHA or git object reference.
-                "<ralph-commit><ralph-subject>feat: add new file flow</ralph-subject></ralph-commit>",
+                ".agent/tmp/commit_message.json",
+                // NOTE: This is a mock commit-message artifact in MockAppEffectHandler,
+                // not a real git commit. The "feat: add new file flow" subject line is what
+                // the chain extracts for the commit template, not an actual commit SHA.
+                r#"{"artifact_type":"commit_message","version":"1.0","content":{"subject":"feat: add new file flow"},"validated_at":"2026-01-01T00:00:00Z","partial":false}"#,
             )
             .with_staged_changes(true);
 

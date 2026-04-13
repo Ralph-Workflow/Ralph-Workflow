@@ -17,7 +17,7 @@ fn test_reduce_template_rendered_complete_with_defaults() {
     let state = PipelineState::initial(1, 0);
 
     let log = SubstitutionLog {
-        template_name: "commit_message_xml".to_string(),
+        template_name: "commit_message".to_string(),
         substituted: vec![
             SubstitutionEntry {
                 name: "DIFF".to_string(),
@@ -33,7 +33,7 @@ fn test_reduce_template_rendered_complete_with_defaults() {
 
     let event = PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
         phase: PipelinePhase::CommitMessage,
-        template_name: "commit_message_xml".to_string(),
+        template_name: "commit_message".to_string(),
         log,
     });
 
@@ -82,7 +82,7 @@ fn test_reduce_template_rendered_complete_with_defaults() {
     );
 
     // Verify template name
-    assert_eq!(stored_log.template_name, "commit_message_xml");
+    assert_eq!(stored_log.template_name, "commit_message");
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn test_reduce_template_rendered_incomplete() {
     let state = PipelineState::initial(1, 0);
 
     let log = SubstitutionLog {
-        template_name: "commit_message_xml".to_string(),
+        template_name: "commit_message".to_string(),
         substituted: vec![SubstitutionEntry {
             name: "A".to_string(),
             source: SubstitutionSource::Value,
@@ -101,7 +101,7 @@ fn test_reduce_template_rendered_incomplete() {
 
     let event = PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
         phase: PipelinePhase::CommitMessage,
-        template_name: "commit_message_xml".to_string(),
+        template_name: "commit_message".to_string(),
         log,
     });
 
@@ -162,7 +162,7 @@ fn test_reduce_template_rendered_empty_with_default() {
 
     let event = PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
         phase: PipelinePhase::CommitMessage,
-        template_name: "commit_message_xml".to_string(),
+        template_name: "commit_message".to_string(),
         log,
     });
 

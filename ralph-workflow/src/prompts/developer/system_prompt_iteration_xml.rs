@@ -33,7 +33,7 @@ pub fn prompt_developer_iteration(
     // but are intentionally not exposed to the agent to prevent context pollution.
     let _ = (iteration, total, context);
 
-    let template_content = include_str!("../templates/developer_iteration_xml.txt");
+    let template_content = ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE;
     let template = Template::new(template_content);
     let base_vars: HashMap<&str, String> = HashMap::from([
         ("PROMPT", prompt_content.to_string()),
@@ -97,10 +97,10 @@ pub fn prompt_developer_iteration_with_context(
 
     let template_content = context
         .registry()
-        .get_template("developer_iteration_xml")
+        .get_template("developer_iteration")
         .unwrap_or_else(|_| {
             // Fallback to embedded template if registry fails
-            include_str!("../templates/developer_iteration_xml.txt").to_string()
+            ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE.to_string()
         });
     let template = Template::new(&template_content);
 
@@ -162,8 +162,8 @@ pub fn prompt_developer_iteration_xml_with_context(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("developer_iteration_xml")
-        .unwrap_or_else(|_| include_str!("../templates/developer_iteration_xml.txt").to_string());
+        .get_template("developer_iteration")
+        .unwrap_or_else(|_| ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     // Base variables for developer iteration prompt
@@ -237,8 +237,8 @@ pub fn prompt_developer_iteration_xml_with_references_and_log(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("developer_iteration_xml")
-        .unwrap_or_else(|_| include_str!("../templates/developer_iteration_xml.txt").to_string());
+        .get_template("developer_iteration")
+        .unwrap_or_else(|_| ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     // Base variables for developer iteration prompt
@@ -334,8 +334,8 @@ pub fn prompt_developer_iteration_xml_with_references(
     let partials = get_shared_partials();
     let template_content = context
         .registry()
-        .get_template("developer_iteration_xml")
-        .unwrap_or_else(|_| include_str!("../templates/developer_iteration_xml.txt").to_string());
+        .get_template("developer_iteration")
+        .unwrap_or_else(|_| ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE.to_string());
     let template = Template::new(&template_content);
 
     // Base variables for developer iteration prompt

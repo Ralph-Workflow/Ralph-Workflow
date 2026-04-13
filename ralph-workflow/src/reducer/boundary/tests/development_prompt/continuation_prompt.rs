@@ -276,4 +276,3 @@ fn test_prepare_development_prompt_continuation_replay_skips_template_rendered()
         "Continuation prompt replay should skip TemplateRendered emission"
     );
 }
-

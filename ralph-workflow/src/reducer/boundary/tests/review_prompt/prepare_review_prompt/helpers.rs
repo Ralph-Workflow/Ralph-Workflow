@@ -26,7 +26,6 @@ impl ReadFailingWorkspace {
             kind,
         }
     }
-
 }
 
 impl Workspace for ReadFailingWorkspace {

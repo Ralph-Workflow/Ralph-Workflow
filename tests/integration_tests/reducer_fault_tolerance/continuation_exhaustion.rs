@@ -44,19 +44,19 @@ fn test_continuation_exhaustion_triggers_agent_fallback() {
             ),
         );
 
-        // Phase 2: After continuation budget exhaustion, the system completes the iteration
-        // and transitions to Review (default Phase 2 routing: Development → Review → CommitMessage).
-        // This prevents the infinite loop bug where the system would cycle through all agents.
+        // Commit-gated design: After continuation budget exhaustion with agents remaining,
+        // the iteration completes and transitions to CommitMessage (development_commit checkpoint)
+        // before routing to Review (if development budget exhausted) or back to Planning.
         //
-        // The new behavior: budget exhaustion completes the iteration and routes to Review.
+        // The behavior: budget exhaustion completes the iteration and routes to CommitMessage.
         assert_eq!(
             new_state.agent_chain.current_agent_index, 0,
             "Agent chain should be reset after iteration completion"
         );
         assert_eq!(
             new_state.phase,
-            ralph_workflow::reducer::event::PipelinePhase::Review,
-            "Phase 2: Should complete iteration and transition to Review after budget exhaustion"
+            ralph_workflow::reducer::event::PipelinePhase::CommitMessage,
+            "Should complete iteration and transition to CommitMessage after budget exhaustion (commit-gated design)"
         );
 
         // And: The continuation state should be reset
@@ -96,8 +96,8 @@ fn test_all_agents_exhausted_reports_chain_exhaustion() {
         // fix, the FIRST budget exhaustion completes the iteration, so we never get to the
         // "all agents exhausted" state within a single iteration.
         //
-        // The new behavior: complete iteration after budget exhaustion, preventing infinite
-        // agent fallback cycles within the same iteration.
+        // Commit-gated design: iteration completes through CommitMessage (development_commit
+        // checkpoint) before routing to Review or back to Planning.
         state = reduce(
             state,
             PipelineEvent::development_continuation_budget_exhausted(
@@ -107,11 +107,11 @@ fn test_all_agents_exhausted_reports_chain_exhaustion() {
             ),
         );
 
-        // Phase 2: After budget exhaustion, iteration completes and transitions to Review
+        // Commit-gated design: iteration completes and transitions to CommitMessage
         assert_eq!(
             state.phase,
-            PipelinePhase::Review,
-            "Phase 2: Should complete iteration and transition to Review after budget exhaustion"
+            PipelinePhase::CommitMessage,
+            "Should complete iteration and transition to CommitMessage after budget exhaustion (commit-gated design)"
         );
         assert_eq!(
             state.agent_chain.current_agent_index, 0,
@@ -361,16 +361,17 @@ fn test_budget_exhausted_with_completed_status_proceeds_to_commit() {
             ),
         );
 
-        // Phase 2: After continuation budget exhaustion, the iteration completes and routes to
-        // Review (default Phase 2 routing). This applies regardless of status: budget exhaustion
-        // always completes the iteration and uses the standard Development → Review path.
+        // Commit-gated design: After continuation budget exhaustion, the iteration completes
+        // and routes through CommitMessage (development_commit checkpoint) before proceeding.
+        // This applies regardless of status: budget exhaustion always completes the iteration
+        // and uses the commit-gated path: Development → CommitMessage → (Review or Planning).
         //
         // Note: In practice, Completed status would trigger ContinuationSucceeded or
         // IterationCompleted before reaching budget exhaustion, so this scenario is theoretical.
         assert_eq!(
             new_state.phase,
-            PipelinePhase::Review,
-            "Phase 2: Should complete iteration and transition to Review after budget exhaustion"
+            PipelinePhase::CommitMessage,
+            "Should complete iteration and transition to CommitMessage after budget exhaustion (commit-gated design)"
         );
     });
 }

@@ -14,3 +14,4 @@ path = "src/lib.rs"
 [dependencies]
 serde = { workspace = true }
 thiserror = "2.0"
+toml = "0.8"

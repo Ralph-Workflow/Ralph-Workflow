@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn test_planning_prompt_capability_driven() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/planning_xml.txt");
+        let template_content = ralph_workflow_policy::PLANNING_TEMPLATE;
         let template = Template::new(template_content);
 
         // Use Planning drain defaults
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn test_development_prompt_capability_driven() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/developer_iteration_xml.txt");
+        let template_content = ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE;
         let template = Template::new(template_content);
 
         // Use Development drain defaults
@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn test_review_prompt_capability_driven() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/review_xml.txt");
+        let template_content = ralph_workflow_policy::REVIEW_TEMPLATE;
         let template = Template::new(template_content);
 
         // Use Review drain defaults
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_commit_prompt_capability_driven() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/commit_message_xml.txt");
+        let template_content = ralph_workflow_policy::COMMIT_MESSAGE_TEMPLATE;
         let template = Template::new(template_content);
 
         // Use Commit drain defaults
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_fix_prompt_capability_driven() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/fix_mode_xml.txt");
+        let template_content = ralph_workflow_policy::FIX_MODE_TEMPLATE;
         let template = Template::new(template_content);
 
         // Use Fix drain defaults
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn test_analysis_prompt_capability_driven() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/analysis_system_prompt.txt");
+        let template_content = ralph_workflow_policy::ANALYSIS_SYSTEM_PROMPT_TEMPLATE;
         let template = Template::new(template_content);
 
         // Use Analysis drain defaults
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn test_prompt_generation_is_deterministic() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/developer_iteration_xml.txt");
+        let template_content = ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE;
         let template = Template::new(template_content);
 
         let caps = CapabilitySet::defaults_for_drain(SessionDrain::Development);
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn test_capabilities_affect_template_output() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/developer_iteration_xml.txt");
+        let template_content = ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE;
         let template = Template::new(template_content);
 
         // Development drain (no GitWrite)
@@ -661,7 +661,7 @@ mod tests {
     #[test]
     fn test_prompt_render_equivalence_session_vs_drain_default() {
         let partials = get_shared_partials();
-        let template_content = include_str!("templates/developer_iteration_xml.txt");
+        let template_content = ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE;
         let template = Template::new(template_content);
 
         for drain in [

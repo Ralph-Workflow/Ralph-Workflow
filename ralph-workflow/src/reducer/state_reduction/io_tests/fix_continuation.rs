@@ -5,8 +5,8 @@
 
 use crate::agents::{AgentDrain, AgentRole, DrainMode};
 use crate::reducer::create_test_state;
+use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
-use crate::reducer::event::{PipelineEvent, ReviewEvent};
 use crate::reducer::state::AgentChainState;
 use crate::reducer::state::ContinuationState;
 use crate::reducer::state::FixStatus;
@@ -435,117 +435,5 @@ fn test_fix_continuation_from_analysis_budget_exhausted_path_keeps_metrics_consi
     assert_eq!(
         exhausted.continuation.fix_continuation_attempt, 0,
         "Commit transition should reset continuation state after exhaustion"
-    );
-}
-
-/// Phase 2 — AnalysisDecision::NeedsAnotherReview routes back to Review phase.
-///
-/// When fix analysis emits NeedsAnotherReview, the outcome application must
-/// route to Review (for a fresh review pass), NOT to CommitMessage.
-/// This is distinct from a fix continuation (which loops within the fix drain).
-#[test]
-fn test_fix_analysis_needs_another_review_routes_to_review_phase() {
-    use crate::reducer::state::AnalysisDecision;
-
-    let mut state = PipelineState {
-        phase: PipelinePhase::Review,
-        reviewer_pass: 0,
-        review_issues_found: true,
-        ..create_test_state()
-    };
-    state.agent_chain = state.agent_chain.with_drain(AgentDrain::Analysis);
-
-    // Fix analysis result: NeedsAnotherReview decision
-    let state = reduce(
-        state,
-        PipelineEvent::Review(ReviewEvent::FixResultXmlValidated {
-            pass: 0,
-            status: FixStatus::AllIssuesAddressed,
-            summary: Some("All issues addressed but another review pass is needed".to_string()),
-            analysis_decision: Some(AnalysisDecision::NeedsAnotherReview),
-        }),
-    );
-
-    // Apply the fix outcome
-    let state = reduce(state, PipelineEvent::fix_outcome_applied(0));
-
-    assert_eq!(
-        state.phase,
-        PipelinePhase::Review,
-        "NeedsAnotherReview must route to Review phase, not CommitMessage"
-    );
-}
-
-/// Phase 2 — AnalysisDecision::ReadyToCommit routes to CommitMessage phase.
-///
-/// When fix analysis emits ReadyToCommit, the outcome application must
-/// route to CommitMessage (same as the existing AllIssuesAddressed path).
-#[test]
-fn test_fix_analysis_ready_to_commit_routes_to_commit_message_phase() {
-    use crate::reducer::state::AnalysisDecision;
-
-    let mut state = PipelineState {
-        phase: PipelinePhase::Review,
-        reviewer_pass: 0,
-        review_issues_found: true,
-        ..create_test_state()
-    };
-    state.agent_chain = state.agent_chain.with_drain(AgentDrain::Analysis);
-
-    // Fix analysis result: ReadyToCommit decision
-    let state = reduce(
-        state,
-        PipelineEvent::Review(ReviewEvent::FixResultXmlValidated {
-            pass: 0,
-            status: FixStatus::AllIssuesAddressed,
-            summary: Some("All issues resolved, ready to commit".to_string()),
-            analysis_decision: Some(AnalysisDecision::ReadyToCommit),
-        }),
-    );
-
-    // Apply the fix outcome
-    let state = reduce(state, PipelineEvent::fix_outcome_applied(0));
-
-    assert_eq!(
-        state.phase,
-        PipelinePhase::CommitMessage,
-        "ReadyToCommit must route to CommitMessage phase"
-    );
-}
-
-/// Phase 2 — AnalysisDecision::NeedsReplanning routes to Planning phase.
-///
-/// When fix analysis emits NeedsReplanning, the outcome application must
-/// route to Planning (for a new development cycle), NOT to CommitMessage or Review.
-#[test]
-fn test_fix_analysis_needs_replanning_routes_to_planning_phase() {
-    use crate::reducer::state::AnalysisDecision;
-
-    let mut state = PipelineState {
-        phase: PipelinePhase::Review,
-        reviewer_pass: 0,
-        review_issues_found: true,
-        ..create_test_state()
-    };
-    state.agent_chain = state.agent_chain.with_drain(AgentDrain::Analysis);
-
-    // Fix analysis result: NeedsReplanning decision
-    let state = reduce(
-        state,
-        PipelineEvent::Review(ReviewEvent::FixResultXmlValidated {
-            pass: 0,
-            status: FixStatus::AllIssuesAddressed,
-            summary: Some("Issues require a new development cycle".to_string()),
-            analysis_decision: Some(AnalysisDecision::NeedsReplanning),
-        }),
-    );
-
-    // Apply the fix outcome
-    let state = reduce(state, PipelineEvent::fix_outcome_applied(0));
-
-    assert_eq!(
-        state.phase,
-        PipelinePhase::Planning,
-        "NeedsReplanning must route to Planning phase"
     );
 }

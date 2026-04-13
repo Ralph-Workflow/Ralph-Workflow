@@ -580,6 +580,26 @@ impl UnifiedConfig {
                 let resolved_any = !new_bindings.is_empty();
 
                 if !resolved_any {
+                    // When forbid_sibling is true, check if any unresolved drain would have
+                    // been resolved by tier 2 (sibling) or tier 3 (legacy role-family). If so,
+                    // emit a targeted diagnostic that names the tier and provides a TOML fix.
+                    if forbid_sibling {
+                        if let Some(implicit_drain) = unresolved.iter().find(|drain| {
+                            default_chain_binding_for_drain(self, &current_bindings, **drain)
+                                .is_some()
+                        }) {
+                            let (attempted_tier, toml_fix_hint) = classify_blocked_implicit_tier(
+                                self,
+                                &current_bindings,
+                                *implicit_drain,
+                            );
+                            return Err(ResolveDrainError::ImplicitInferenceDisabled {
+                                drain_name: implicit_drain.as_str().to_string(),
+                                attempted_tier,
+                                toml_fix_hint,
+                            });
+                        }
+                    }
                     let missing = unresolved
                         .iter()
                         .map(|drain| drain.as_str())
@@ -787,6 +807,44 @@ fn resolve_named_chain_binding(
             chain_name: chain_name.to_string(),
             agents: agents.clone(),
         })
+}
+
+/// Determine which implicit fallback tier would have resolved `drain` (if any) and return the
+/// tier number plus a minimal TOML fix hint.
+///
+/// - Tier 2: sibling-drain inference (e.g. `planning` borrows `development`'s chain)
+/// - Tier 3: legacy role-family name (e.g. `planning` → chain named `"developer"`)
+///
+/// Returns `(2, hint)` when tier-2 would have resolved the drain, `(3, hint)` otherwise.
+fn classify_blocked_implicit_tier(
+    config: &UnifiedConfig,
+    current_bindings: &HashMap<AgentDrain, ResolvedDrainBinding>,
+    drain: AgentDrain,
+) -> (u8, String) {
+    let drain_name = drain.as_str();
+    let sibling_binding = fallback_source_drains_for_drain(drain)
+        .iter()
+        .find_map(|source| current_bindings.get(source).cloned());
+
+    if sibling_binding.is_some() {
+        let sibling_chain = sibling_binding
+            .as_ref()
+            .map(|b| b.chain_name.as_str())
+            .unwrap_or("...");
+        (2, format!("{drain_name}.chain = \"{sibling_chain}\""))
+    } else {
+        let legacy_chain = legacy_role_chain_names_for_drain(drain)
+            .first()
+            .copied()
+            .unwrap_or("developer");
+        // Check if the legacy chain actually exists in agent_chains, else fall back to placeholder
+        let chain_name = if config.agent_chains.contains_key(legacy_chain) {
+            legacy_chain.to_string()
+        } else {
+            "...".to_string()
+        };
+        (3, format!("{drain_name}.chain = \"{chain_name}\""))
+    }
 }
 
 const fn drain_specific_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {

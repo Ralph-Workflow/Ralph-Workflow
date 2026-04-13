@@ -338,7 +338,7 @@ fn test_pipeline_state_from_checkpoint_restores_substitution_log() {
         CheckpointRebaseState::NotStarted,
     );
     let log = SubstitutionLog {
-        template_name: "planning_xml".to_string(),
+        template_name: "planning".to_string(),
         substituted: vec![SubstitutionEntry {
             name: "PROMPT".to_string(),
             source: SubstitutionSource::Value,
@@ -352,7 +352,7 @@ fn test_pipeline_state_from_checkpoint_restores_substitution_log() {
     let restored_log = state
         .last_substitution_log
         .expect("substitution log should be restored from checkpoint");
-    assert_eq!(restored_log.template_name, "planning_xml");
+    assert_eq!(restored_log.template_name, "planning");
     assert_eq!(restored_log.unsubstituted, vec!["PLAN".to_string()]);
     assert!(
         state.template_validation_failed,

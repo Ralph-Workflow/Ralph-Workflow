@@ -97,7 +97,7 @@ fn extract_balanced_json(input: &str) -> Option<String> {
 #[test]
 fn plan_phase_contract_chain_sample_to_reducer_state() {
     let rendered = render_template(
-        include_str!("../../../prompts/templates/planning_xml.txt"),
+        ralph_workflow_policy::PLANNING_TEMPLATE,
         SessionDrain::Planning,
         HashMap::from([("PROMPT", "test requirements".to_string())]),
     );
@@ -161,7 +161,7 @@ fn plan_phase_contract_chain_sample_to_reducer_state() {
 #[test]
 fn development_phase_contract_chain_sample_to_reducer_state() {
     let rendered = render_template(
-        include_str!("../../../prompts/templates/developer_iteration_xml.txt"),
+        ralph_workflow_policy::DEVELOPER_ITERATION_TEMPLATE,
         SessionDrain::Development,
         HashMap::from([
             ("PROMPT", "test prompt".to_string()),
@@ -227,7 +227,7 @@ fn development_phase_contract_chain_sample_to_reducer_state() {
 #[test]
 fn review_phase_contract_chain_sample_to_reducer_state() {
     let rendered = render_template(
-        include_str!("../../../prompts/templates/review_xml.txt"),
+        ralph_workflow_policy::REVIEW_TEMPLATE,
         SessionDrain::Review,
         HashMap::from([
             ("PLAN", "test plan".to_string()),
@@ -272,7 +272,7 @@ fn review_phase_contract_chain_sample_to_reducer_state() {
 #[test]
 fn fix_phase_contract_chain_sample_to_reducer_state() {
     let rendered = render_template(
-        include_str!("../../../prompts/templates/fix_mode_xml.txt"),
+        ralph_workflow_policy::FIX_MODE_TEMPLATE,
         SessionDrain::Fix,
         HashMap::from([
             ("PROMPT", "test prompt".to_string()),
@@ -317,7 +317,7 @@ fn fix_phase_contract_chain_sample_to_reducer_state() {
 #[test]
 fn commit_phase_contract_chain_sample_to_reducer_state() {
     let rendered = render_template(
-        include_str!("../../../prompts/templates/commit_message_xml.txt"),
+        ralph_workflow_policy::COMMIT_MESSAGE_TEMPLATE,
         SessionDrain::Commit,
         HashMap::from([("DIFF", "diff --git a/a b/b".to_string())]),
     );

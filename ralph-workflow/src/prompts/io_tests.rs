@@ -85,7 +85,7 @@ fn test_prompts_are_agent_agnostic() {
             prompt_developer_iteration(1, 5, ContextLevel::Minimal, "", ""),
         ),
         (
-            "review_xml",
+            "review",
             prompt_review_xml_with_context(
                 &template_context,
                 "",

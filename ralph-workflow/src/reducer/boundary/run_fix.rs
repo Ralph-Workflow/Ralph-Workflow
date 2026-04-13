@@ -22,10 +22,8 @@ impl MainEffectHandler {
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
         ensure_tmp_dir(ctx)?;
-        let inputs = read_fix_prompt_inputs(
-            ctx,
-            Self::sentinel_plan_content(ctx.config.isolation_mode),
-        )?;
+        let inputs =
+            read_fix_prompt_inputs(ctx, Self::sentinel_plan_content(ctx.config.isolation_mode))?;
         self.build_fix_prompt_result(ctx, pass, prompt_mode, inputs)
     }
 
@@ -89,7 +87,7 @@ impl MainEffectHandler {
             prompt_key,
             fix_prompt: prompt,
             was_replayed,
-            template_name: "fix_mode_xml",
+            template_name: "fix_mode",
             prompt_content_id: Some(prompt_content_id),
             should_validate,
         }
@@ -123,7 +121,7 @@ impl MainEffectHandler {
                     ),
                     &[],
                     ctx.workspace,
-                    "fix_mode_xml",
+                    "fix_mode",
                     SessionCapabilities::new(
                         &CapabilitySet::defaults_for_drain(SessionDrain::Fix),
                         &PolicyFlagSet::defaults_for_drain(SessionDrain::Fix),
@@ -136,7 +134,7 @@ impl MainEffectHandler {
             prompt_key,
             fix_prompt: prompt,
             was_replayed,
-            template_name: "fix_mode_xml",
+            template_name: "fix_mode",
             prompt_content_id: Some(prompt_content_id),
             should_validate: true,
         }
@@ -181,7 +179,7 @@ impl MainEffectHandler {
             prompt_key,
             fix_prompt: prompt,
             was_replayed,
-            template_name: "fix_mode_xml",
+            template_name: "fix_mode",
             prompt_content_id: Some(prompt_content_id),
             should_validate: true,
         }
@@ -316,6 +314,11 @@ impl MainEffectHandler {
         let fix_analysis_continuation = self.fix_analysis_continuation_active(is_analysis);
         let invalid_attempts = self.state.continuation.invalid_output_attempts;
         let json_type = fix_json_artifact_type(is_analysis);
+        let identity = ArtifactIdentity {
+            current_drain: self.state.agent_chain.current_drain,
+            run_id: &ctx.run_context.run_id,
+            logger: ctx.logger,
+        };
         match try_validate_fix_from_json(
             ctx,
             pass,
@@ -323,6 +326,7 @@ impl MainEffectHandler {
             fix_analysis_continuation,
             invalid_attempts,
             json_type,
+            identity,
         ) {
             Some(result) => result,
             None => EffectResult::event(PipelineEvent::fix_output_validation_failed(
@@ -355,10 +359,7 @@ impl MainEffectHandler {
         crate::files::archive_json_artifact_with_workspace(ctx.workspace, "fix_result");
 
         if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
-            crate::files::archive_json_artifact_with_workspace(
-                ctx.workspace,
-                "development_result",
-            );
+            crate::files::archive_json_artifact_with_workspace(ctx.workspace, "development_result");
         }
 
         EffectResult::event(PipelineEvent::fix_result_xml_archived(pass))

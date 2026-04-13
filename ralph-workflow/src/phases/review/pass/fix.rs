@@ -6,7 +6,7 @@ use crate::agents::session::{CapabilitySet, PolicyFlagSet, SessionDrain};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::checkpoint::restore::ResumeContext;
 use crate::files::artifact_paths;
-use crate::files::{archive_xml_file_with_workspace, has_valid_artifact_output};
+use crate::files::has_valid_artifact_output;
 use crate::files::result_extraction::extract_file_paths_from_issues;
 use crate::files::update_status_with_workspace;
 use crate::phases::context::PhaseContext;
@@ -83,7 +83,7 @@ pub fn run_fix_pass(
         FixPromptContent::new(&prompt_content, &plan_content, &issues_content),
         &files_to_modify,
         ctx.workspace,
-        "fix_mode_xml",
+        "fix_mode",
         SessionCapabilities::new(&capabilities, &policy_flags),
     );
     let fix_prompt = rendered.content;
@@ -190,10 +190,7 @@ pub fn run_fix_pass(
         // Non-auth non-zero exit: fail only when no valid result file exists.
         // A valid FIX_RESULT_JSON despite non-zero exit means the agent completed
         // its work (e.g., proprietary exit codes like reason:91 from OpenCode).
-        if !has_valid_artifact_output(
-            ctx.workspace,
-            Path::new(artifact_paths::FIX_RESULT_JSON),
-        ) {
+        if !has_valid_artifact_output(ctx.workspace, Path::new(artifact_paths::FIX_RESULT_JSON)) {
             return Ok(FixPassResult::agent_failed(false));
         }
     }
@@ -206,7 +203,6 @@ pub fn run_fix_pass(
         .and_then(|opt| opt);
 
     let Some(envelope) = artifact else {
-        archive_xml_file_with_workspace(ctx.workspace, Path::new(artifact_paths::FIX_RESULT_XML));
         return Ok(FixPassResult::output_invalid(None));
     };
 
@@ -231,15 +227,9 @@ pub fn run_fix_pass(
         _ => {
             ctx.logger
                 .warn(&format!("Fix result JSON has unknown status: {status}"));
-            archive_xml_file_with_workspace(
-                ctx.workspace,
-                Path::new(artifact_paths::FIX_RESULT_XML),
-            );
             return Ok(FixPassResult::output_invalid(Some(artifact_json)));
         }
     };
-
-    archive_xml_file_with_workspace(ctx.workspace, Path::new(artifact_paths::FIX_RESULT_XML));
 
     let changes_made = canonical_status != "no_issues_found";
 

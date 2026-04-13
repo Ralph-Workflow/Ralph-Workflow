@@ -1,5 +1,4 @@
 use super::commit_helpers::*;
-use crate::files::artifact_paths;
 use crate::phases::PhaseContext;
 use crate::phases::{effective_model_budget_bytes, truncate_diff_to_model_budget};
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
@@ -174,7 +173,7 @@ impl crate::reducer::boundary::MainEffectHandler {
             gen.was_replayed,
             prompt_captured_event,
             rendered_log,
-            "commit_message_xml",
+            "commit_message",
         ))
     }
 
@@ -187,9 +186,12 @@ impl crate::reducer::boundary::MainEffectHandler {
         prompt_content_id: &str,
     ) -> CommitPromptGenerated {
         match prompt_mode {
-            PromptMode::SameAgentRetry => {
-                self.gen_same_agent_retry_commit_prompt(ctx, diff_for_prompt, attempt, prompt_content_id)
-            }
+            PromptMode::SameAgentRetry => self.gen_same_agent_retry_commit_prompt(
+                ctx,
+                diff_for_prompt,
+                attempt,
+                prompt_content_id,
+            ),
             PromptMode::Normal => {
                 self.gen_normal_commit_prompt(ctx, diff_for_prompt, attempt, prompt_content_id)
             }
@@ -423,10 +425,6 @@ impl crate::reducer::boundary::MainEffectHandler {
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
         let attempt = current_commit_attempt(&self.state.commit);
-        artifact_paths::archive_xml_file_with_workspace(
-            ctx.workspace,
-            Path::new(artifact_paths::COMMIT_MESSAGE_XML),
-        );
         crate::files::archive_json_artifact_with_workspace(ctx.workspace, "commit_message");
         EffectResult::event(PipelineEvent::commit_xml_archived(attempt))
     }
@@ -645,4 +643,3 @@ fn commit_event_from_parsed_outcome(
         } => PipelineEvent::commit_xml_validated(message, files, excluded_files, attempt),
     }
 }
-
