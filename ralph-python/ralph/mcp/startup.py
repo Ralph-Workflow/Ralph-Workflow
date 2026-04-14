@@ -19,6 +19,8 @@ from ralph.mcp.capability_mapping import AccessMode, SessionDrain, drain_to_acce
 from ralph.mcp.tool_bridge import build_ralph_tool_registry
 from ralph.workspace import Workspace
 
+_HTTP_OK = 200
+
 if TYPE_CHECKING:
     import io
 
@@ -64,6 +66,9 @@ def tools_list_request() -> JsonRpcResponse:
 class SessionLike(Protocol):
     """Minimum API surface needed from an agent session."""
 
+    session_id: str
+    run_id: str
+    drain: str
     capabilities: set[str]
 
 
@@ -385,12 +390,10 @@ def post_http_jsonrpc_with_session(
 ) -> tuple[JsonRpcResponse, str | None]:
     if isinstance(endpoint_or_target, HttpEndpointTarget):
         endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
-        target = endpoint_or_target
         assert payload is None
         payload_obj = cast("JsonRpcResponse", target_or_payload)
     else:
         endpoint = endpoint_or_target
-        target = cast("HttpEndpointTarget", target_or_payload)
         assert payload is not None
         payload_obj = payload
 
@@ -409,7 +412,7 @@ def post_http_jsonrpc_with_session(
             f"failed to connect to MCP endpoint {endpoint}: {exc}"
         ) from exc
 
-    if response.status_code != 200:
+    if response.status_code != _HTTP_OK:
         raise PermanentPreflightError(
             f"HTTP MCP request failed with status '{response.status_code}': {response.text}"
         )
@@ -420,7 +423,8 @@ def post_http_jsonrpc_with_session(
         raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}") from exc
     if not isinstance(response_payload, dict):
         raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
-    return cast("JsonRpcResponse", response_payload), response.headers.get("mcp-session-id")
+    session_id = cast("str | None", response.headers.get("mcp-session-id"))
+    return cast("JsonRpcResponse", response_payload), session_id
 
 
 def _normalize_http_jsonrpc_body(body_bytes: bytes) -> bytes:

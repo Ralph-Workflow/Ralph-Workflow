@@ -114,7 +114,7 @@ def session_from_env() -> AgentSession | None:
     if not isinstance(payload, dict):
         raise ValueError(f"{SESSION_ENV} must encode an object")
 
-    capabilities_value = payload.get("capabilities", [])
+    capabilities_value: object = payload.get("capabilities", [])
     capabilities = (
         set(cast("list[str]", capabilities_value))
         if isinstance(capabilities_value, list)

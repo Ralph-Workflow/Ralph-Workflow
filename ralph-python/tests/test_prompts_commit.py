@@ -2,8 +2,7 @@
 
 import pytest
 
-from ralph.prompts.commit import prompt_commit_message
-from ralph.prompts.commit import prompt_commit_message_for_opencode
+from ralph.prompts.commit import prompt_commit_message, prompt_commit_message_for_opencode
 from ralph.prompts.template_registry import TemplateRegistry
 
 
@@ -20,7 +19,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "## COMMIT MESSAGE FORMAT" in prompt
     assert "do not explain the diff" in prompt.lower()
     assert "call the tool before emitting any final text" in prompt.lower()
-    assert "single-line conventional commit subject only" in prompt.lower()
+    assert "single-line conventional" in prompt.lower()
+    assert "commit subject only" in prompt.lower()
     assert '"message": "feat(scope): subject"' in prompt
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()

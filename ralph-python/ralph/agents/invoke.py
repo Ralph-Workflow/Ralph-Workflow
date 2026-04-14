@@ -49,6 +49,14 @@ class InvokeOptions:
     pure: bool = False
 
 
+@dataclass(frozen=True)
+class _BuildCommandOptions:
+    model_flag: str | None = None
+    session_id: str | None = None
+    verbose: bool = False
+    pure: bool = False
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -213,10 +221,12 @@ def invoke_agent(
     cmd = _build_command(
         config,
         prompt_file,
-        model_flag=opts.model_flag,
-        session_id=opts.session_id,
-        verbose=opts.verbose,
-        pure=opts.pure,
+        options=_BuildCommandOptions(
+            model_flag=opts.model_flag,
+            session_id=opts.session_id,
+            verbose=opts.verbose,
+            pure=opts.pure,
+        ),
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
 
@@ -452,10 +462,7 @@ def _build_command(
     config: AgentConfig,
     prompt_file: str,
     *,
-    model_flag: str | None = None,
-    session_id: str | None = None,
-    verbose: bool = False,
-    pure: bool = False,
+    options: _BuildCommandOptions | None = None,
 ) -> list[str]:
     """Build the command line for agent invocation.
 
@@ -469,14 +476,12 @@ def _build_command(
     Returns:
         List of command arguments.
     """
+    build_options = options or _BuildCommandOptions()
     if config.cmd.split()[0] == "opencode":
         return _build_opencode_command(
             config,
             prompt_file,
-            model_flag=model_flag,
-            session_id=session_id,
-            verbose=verbose,
-            pure=pure,
+            options=build_options,
         )
 
     cmd = config.cmd.split()
@@ -488,16 +493,16 @@ def _build_command(
     if config.streaming_flag:
         cmd.append(config.streaming_flag)
 
-    if config.session_flag and session_id:
-        cmd.extend(config.session_flag.format(session_id).split())
+    if config.session_flag and build_options.session_id:
+        cmd.extend(config.session_flag.format(build_options.session_id).split())
 
     if config.yolo_flag:
         cmd.append(config.yolo_flag)
 
-    if verbose and config.verbose_flag:
+    if build_options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
 
-    effective_model = model_flag or config.model_flag
+    effective_model = build_options.model_flag or config.model_flag
     if effective_model:
         cmd.extend(effective_model.split())
 
@@ -510,27 +515,24 @@ def _build_opencode_command(
     config: AgentConfig,
     prompt_file: str,
     *,
-    model_flag: str | None = None,
-    session_id: str | None = None,
-    verbose: bool = False,
-    pure: bool = False,
+    options: _BuildCommandOptions,
 ) -> list[str]:
     prompt_text = Path(prompt_file).read_text(encoding="utf-8")
     cmd = [config.cmd.split()[0], "run"]
-    if pure:
+    if options.pure:
         cmd.append("--pure")
     cmd.extend(["--format", "json"])
 
-    if config.session_flag and session_id:
-        cmd.extend(config.session_flag.format(session_id).split())
+    if config.session_flag and options.session_id:
+        cmd.extend(config.session_flag.format(options.session_id).split())
 
     if config.yolo_flag:
         cmd.append(config.yolo_flag)
 
-    if verbose and config.verbose_flag:
+    if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
 
-    effective_model = model_flag or config.model_flag
+    effective_model = options.model_flag or config.model_flag
     if effective_model:
         cmd.extend(_normalize_opencode_model_flag(effective_model))
 

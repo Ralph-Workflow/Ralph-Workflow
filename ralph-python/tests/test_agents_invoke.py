@@ -6,7 +6,13 @@ import json
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke import InvokeOptions, _build_command, _command_for_log, invoke_agent
+from ralph.agents.invoke import (
+    InvokeOptions,
+    _build_command,
+    _BuildCommandOptions,
+    _command_for_log,
+    invoke_agent,
+)
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig
 
@@ -29,9 +35,11 @@ def test_build_command_includes_print_streaming_and_session_flags() -> None:
     cmd = _build_command(
         config,
         "PROMPT.md",
-        model_flag="--model claude-sonnet-4",
-        session_id="abc123",
-        verbose=True,
+        options=_BuildCommandOptions(
+            model_flag="--model claude-sonnet-4",
+            session_id="abc123",
+            verbose=True,
+        ),
     )
 
     assert cmd == [
@@ -55,7 +63,11 @@ def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) 
     prompt_file.write_text("plain prompt", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    cmd = _build_command(config, str(prompt_file), session_id="abc123", verbose=False)
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(session_id="abc123", verbose=False),
+    )
 
     assert cmd == ["opencode", "run", "--format", "json", "plain prompt"]
 
@@ -70,7 +82,11 @@ def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Pat
         model_flag="-m minimax/MiniMax-M2.7-highspeed",
     )
 
-    cmd = _build_command(config, str(prompt_file), session_id="abc123", verbose=False)
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(session_id="abc123", verbose=False),
+    )
 
     assert cmd == [
         "opencode",
@@ -88,7 +104,11 @@ def test_build_command_uses_opencode_pure_mode_when_requested(tmp_path: Path) ->
     prompt_file.write_text("say hello", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    cmd = _build_command(config, str(prompt_file), verbose=False, pure=True)
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(verbose=False, pure=True),
+    )
 
     assert cmd == [
         "opencode",
@@ -108,7 +128,11 @@ def test_command_for_log_redacts_opencode_inline_prompt_and_shows_prompt_file(
     prompt_file.write_text("super secret prompt body", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    cmd = _build_command(config, str(prompt_file), session_id="abc123", verbose=False)
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(session_id="abc123", verbose=False),
+    )
     logged = _command_for_log(config, cmd, str(prompt_file))
 
     assert "super secret prompt body" not in logged

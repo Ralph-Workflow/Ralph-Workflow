@@ -17,6 +17,7 @@ from ralph.mcp.startup import (
     preflight_http_mcp_server_tools,
 )
 from ralph.mcp.tool_bridge import build_ralph_tool_registry
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.mcp.startup import SessionBridgeFactory, SessionLike, WorkspaceLike
@@ -95,11 +96,8 @@ def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike
 
 
 def _workspace_root(workspace: WorkspaceLike) -> Path:
-    root = getattr(workspace, "_root", None)
-    if isinstance(root, Path):
-        return root
-    if isinstance(root, str):
-        return Path(root)
+    if isinstance(workspace, FsWorkspace):
+        return workspace._root
     return Path.cwd()
 
 
@@ -111,18 +109,13 @@ def _reserve_port() -> int:
 
 def _subprocess_env(session: SessionLike) -> dict[str, str]:
     env = dict(os.environ)
-    session_id = cast("str", getattr(session, "session_id"))
-    run_id = cast("str", getattr(session, "run_id"))
-    drain = cast("str", getattr(session, "drain"))
-    capabilities = cast("set[str]", getattr(session, "capabilities", set()))
-    env[SESSION_ENV] = json.dumps(
-        {
-            "session_id": session_id,
-            "run_id": run_id,
-            "drain": drain,
-            "capabilities": sorted(capabilities),
-        }
-    )
+    session_payload: dict[str, object] = {
+        "session_id": session.session_id,
+        "run_id": session.run_id,
+        "drain": session.drain,
+        "capabilities": sorted(session.capabilities),
+    }
+    env[SESSION_ENV] = json.dumps(session_payload)
     return env
 
 
