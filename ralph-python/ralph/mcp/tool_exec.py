@@ -1,0 +1,405 @@
+"""MCP exec tool handler.
+
+Ports the Rust MCP `exec` tool so agents can execute bounded subprocesses
+from the workspace root after capability checks and blacklist filtering.
+"""
+
+from __future__ import annotations
+
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping, Protocol, runtime_checkable
+
+from ralph.mcp.tool_coordination import (
+    CapabilityDeniedError,
+    InvalidParamsError,
+    SessionLike,
+    ToolContent,
+    ToolError,
+    ToolResult,
+    require_capability,
+)
+
+PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
+_DEFAULT_TIMEOUT_MS = 30_000
+_TIMEOUT_NOTE_THRESHOLD_MS = 60_000
+
+_BLACKLIST_DESCRIPTIONS = {
+    "version_control": "version control system",
+    "privilege_escalation": "privilege escalation",
+    "destructive_system": "destructive system operation",
+    "network_exfiltration": "network/exfiltration",
+    "package_manager": "package manager",
+    "container_escape": "container/VM escape",
+    "multi_file_operation": "multi-file operation",
+}
+
+_VERSION_CONTROL_COMMANDS = {"git", "svn", "hg", "fossil", "bzr", "darcs"}
+_PRIVILEGE_ESCALATION_COMMANDS = {"sudo", "su", "doas", "pkexec", "runuser"}
+_DESTRUCTIVE_SYSTEM_COMMANDS = {"shutdown", "reboot", "halt", "poweroff", "killall"}
+_NETWORK_TUNNEL_COMMANDS = {"nc", "ncat", "netcat", "socat"}
+_REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
+_CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
+_PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
+
+
+class ExecutionError(ToolError):
+    """Raised when the exec subprocess cannot be started or times out."""
+
+
+@dataclass(frozen=True)
+class ExecParams:
+    """Parsed parameters for the MCP exec tool."""
+
+    command: str
+    args: list[str]
+    timeout_ms: int
+
+
+@runtime_checkable
+class WorkspaceWithRoot(Protocol):
+    """Workspace surface required for command execution."""
+
+    @property
+    def root(self) -> Path:
+        """Return the absolute workspace root path."""
+        ...
+
+
+def parse_exec_params(params: Mapping[str, Any]) -> ExecParams:
+    """Parse and validate exec tool parameters."""
+    command_value = params.get("command")
+    if not isinstance(command_value, str):
+        raise InvalidParamsError("Missing 'command' parameter")
+
+    args_value = params.get("args")
+    args = [value for value in args_value if isinstance(value, str)] if isinstance(args_value, list) else []
+
+    timeout_value = params.get("timeout_ms", _DEFAULT_TIMEOUT_MS)
+    timeout_ms = timeout_value if isinstance(timeout_value, int) and timeout_value >= 0 else _DEFAULT_TIMEOUT_MS
+
+    return ExecParams(command=command_value, args=args, timeout_ms=timeout_ms)
+
+
+def check_command(command: str, args: list[str]) -> str | None:
+    """Return a denial reason when a command matches the blacklist policy."""
+    cmd = command.strip()
+    if not cmd:
+        return None
+
+    for checker in (
+        check_version_control,
+        check_privilege_escalation,
+        check_destructive_system,
+        check_network_exfiltration,
+        check_package_manager,
+        check_container_escape,
+        check_multi_file_operation,
+    ):
+        reason = checker(cmd, args)
+        if reason:
+            return reason
+    return None
+
+
+def _description(key: str) -> str:
+    return _BLACKLIST_DESCRIPTIONS.get(key, "operation")
+
+
+def _command_key(command: str) -> str:
+    return command.strip().lower()
+
+
+def _lower_args(args: list[str]) -> list[str]:
+    return [arg.lower() for arg in args]
+
+
+def _contains_any(arg_list: list[str], targets: set[str]) -> bool:
+    return any(arg in targets for arg in arg_list)
+
+
+def check_version_control(command: str, _args: list[str]) -> str | None:
+    key = _command_key(command)
+    if key in _VERSION_CONTROL_COMMANDS:
+        desc = _description("version_control")
+        return f"Command '{command}' is blacklisted: {desc} commands must go through Ralph's git capabilities"
+    return None
+
+
+def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
+    key = _command_key(command)
+    if key in _PRIVILEGE_ESCALATION_COMMANDS:
+        desc = _description("privilege_escalation")
+        return f"Command '{command}' is blacklisted: {desc} is not allowed"
+    return None
+
+
+def check_destructive_system(command: str, args: list[str]) -> str | None:
+    key = _command_key(command)
+    args_lower = _lower_args(args)
+
+    if key == "rm":
+        if _contains_any(args_lower, {"-rf", "-r", "-f"}):
+            if any(
+                target == "/"
+                or target.startswith("/." )
+                or target.startswith("~")
+                or target.startswith("/home")
+                for target in args
+            ):
+                desc = _description("destructive_system")
+                return (
+                    "Command 'rm' with recursive force flag targeting root/home is blacklisted: "
+                    f"{desc}"
+                )
+        return None
+
+    if key in {"mkfs", "dd"}:
+        if any(arg.startswith("/dev/") or "of=/dev/" in arg for arg in args_lower):
+            desc = _description("destructive_system")
+            return (
+                f"Command '{command}' targeting devices is blacklisted: {desc}"
+            )
+        return None
+
+    if key in _DESTRUCTIVE_SYSTEM_COMMANDS:
+        desc = _description("destructive_system")
+        return f"Command '{command}' is blacklisted: {desc} is not allowed"
+
+    if key == "kill" and len(args_lower) >= 2 and args_lower[0] == "-9" and args_lower[1] == "1":
+        desc = _description("destructive_system")
+        return f"Command 'kill -9 1' (init) is blacklisted: {desc} is not allowed"
+
+    return None
+
+
+def check_network_exfiltration(command: str, args: list[str]) -> str | None:
+    key = _command_key(command)
+    args_lower = _lower_args(args)
+
+    if key in {"curl", "wget"}:
+        if any(_is_external_url(arg) for arg in args):
+            desc = _description("network_exfiltration")
+            return (
+                f"Command '{command}' to external URLs is blacklisted: {desc} risk. Use Ralph's HTTP capabilities instead."
+            )
+        return None
+
+    if key in _NETWORK_TUNNEL_COMMANDS:
+        desc = _description("network_exfiltration")
+        return f"Command '{command}' is blacklisted: {desc} is not allowed"
+
+    if key in _REMOTE_NETWORK_COMMANDS:
+        joined = " ".join(args_lower)
+        if "@" in joined or ":/" in joined or "::" in joined:
+            desc = _description("network_exfiltration")
+            return f"Command '{command}' to remote hosts is blacklisted: {desc} is not allowed"
+    return None
+
+
+def _is_external_url(arg: str) -> bool:
+    token = arg.strip()
+    if not token or token.startswith("-"):
+        return False
+    lower = token.lower()
+    if "localhost" in lower or "127.0.0.1" in lower:
+        return False
+    return lower.startswith("http://") or lower.startswith("https://") or "://" in lower
+
+
+def check_package_manager(command: str, args: list[str]) -> str | None:
+    key = _command_key(command)
+    args_lower = _lower_args(args)
+
+    if key in _PACKAGE_MANAGERS:
+        if any(flag in args_lower for flag in {"install", "update", "upgrade", "remove", "-s", "--sync"}):
+            desc = _description("package_manager")
+            return (
+                f"Command '{command}' with install/update is blacklisted: {desc} operations require Ralph's approval"
+            )
+        return None
+
+    if key in {"pip", "pip3"}:
+        if "install" in args_lower and any(flag in args_lower for flag in {"--user", "-g", "--global"}):
+            desc = _description("package_manager")
+            return (
+                f"Command '{key} install --user/-g' is blacklisted: {desc} operations require Ralph's approval"
+            )
+        return None
+
+    if key == "npm" and "install" in args_lower and "-g" in args_lower:
+        desc = _description("package_manager")
+        return (
+            f"Command 'npm install -g' is blacklisted: {desc} operations require Ralph's approval"
+        )
+
+    if key == "cargo" and args_lower and args_lower[0] == "install":
+        desc = _description("package_manager")
+        return (
+            f"Command 'cargo install' is blacklisted: {desc} operations require Ralph's approval"
+        )
+
+    if key == "gem" and "install" in args_lower and "--user-install" not in args_lower:
+        desc = _description("package_manager")
+        return (
+            f"Command 'gem install' (global) is blacklisted: {desc} operations require Ralph's approval"
+        )
+
+    return None
+
+
+def check_container_escape(command: str, _args: list[str]) -> str | None:
+    key = _command_key(command)
+    if key in _CONTAINER_COMMANDS:
+        desc = _description("container_escape")
+        return f"Command '{command}' is blacklisted: {desc} is not allowed"
+    return None
+
+
+def check_multi_file_operation(command: str, args: list[str]) -> str | None:
+    key = _command_key(command)
+    args_lower = _lower_args(args)
+    desc = _description("multi_file_operation")
+
+    if key == "find" and any(flag in args_lower for flag in {"-exec", "-delete"}):
+        return (
+            f"Command 'find' with -exec/-delete is blacklisted: {desc} must go through Ralph's workspace write"
+        )
+
+    if key == "xargs" and any(flag in args_lower for flag in {"rm", "mv", "cp", "chmod", "chown"}):
+        return (
+            f"Command 'xargs' with destructive commands is blacklisted: {desc} must go through Ralph's workspace write"
+        )
+
+    if key == "sed" and "-i" in args_lower:
+        return (
+            f"Command 'sed -i' is blacklisted: {desc} must go through Ralph's workspace write"
+        )
+
+    if key == "awk" and ("-i" in args_lower or "-inplace" in args_lower):
+        return (
+            f"Command 'awk -i' is blacklisted: {desc} must go through Ralph's workspace write"
+        )
+
+    if key in {"rename", "mmv"}:
+        return f"Command '{command}' is blacklisted: {desc} must go through Ralph's workspace write"
+
+    if key in {"chmod", "chown"} and any(flag in args_lower for flag in {"-r", "-R"}):
+        return (
+            f"Command '{command} -R' is blacklisted: {desc} must go through Ralph's workspace write"
+        )
+
+    if key in {"cp", "mv"}:
+        has_glob = any("*" in arg or "?" in arg for arg in args)
+        has_recursive = any(flag in args_lower for flag in {"-r", "-rf", "-R", "-f"})
+        if has_glob and has_recursive:
+            return (
+                f"Command '{command}' with recursive glob is blacklisted: {desc} must go through Ralph's workspace write"
+            )
+
+    if key in {"tar", "zip", "unzip"}:
+        if any("-x" in arg or "--extract" in arg or "-d" in arg or "--delete" in arg for arg in args_lower):
+            if any(arg.endswith(ext) for arg in args_lower for ext in (".tar", ".zip", ".gz", ".bz2", ".xz")):
+                return (
+                    f"Command '{command}' extracting archives in-place is blacklisted: {desc} must go through Ralph's workspace write"
+                )
+    return None
+
+
+def apply_exec_policy(command: str, args: list[str]) -> None:
+    """Apply command policy and raise if the command is denied."""
+    reason = check_command(command, args)
+    if reason is None:
+        return
+    raise CapabilityDeniedError(f"Command '{command}' denied by policy: {reason}")
+
+
+def _workspace_root(workspace: object) -> Path:
+    if isinstance(workspace, WorkspaceWithRoot):
+        return workspace.root
+    root_value = getattr(workspace, "root", None)
+    if isinstance(root_value, Path):
+        return root_value
+    if isinstance(root_value, str):
+        return Path(root_value)
+    return Path.cwd()
+
+
+def run_command(command: str, args: list[str], workspace: object, timeout_ms: int) -> subprocess.CompletedProcess[bytes]:
+    """Execute a subprocess in the workspace root."""
+    cwd = _workspace_root(workspace)
+    timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
+    try:
+        return subprocess.run(
+            [command, *args],
+            cwd=cwd,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except FileNotFoundError as exc:
+        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    except PermissionError as exc:
+        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ExecutionError(
+            f"Failed to execute '{command}': timed out after {timeout_ms}ms"
+        ) from exc
+    except OSError as exc:
+        raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+
+
+def format_exec_result(
+    command: str,
+    args: list[str],
+    output: subprocess.CompletedProcess[bytes],
+    timeout_ms: int,
+) -> str:
+    """Format subprocess output to match the Rust tool response."""
+    stdout = output.stdout.decode("utf-8", errors="replace")
+    stderr = output.stderr.decode("utf-8", errors="replace")
+    exit_code = output.returncode
+    text = (
+        f"Command: {command} {args!r}\n"
+        f"Exit code: {exit_code}\n\n"
+        f"Stdout:\n{stdout}\n\n"
+        f"Stderr:\n{stderr}"
+    )
+    if 0 < timeout_ms < _TIMEOUT_NOTE_THRESHOLD_MS:
+        text = f"{text}\n\nNote: This command had a {timeout_ms}ms timeout"
+    return text
+
+
+def handle_exec_command(
+    session: SessionLike,
+    workspace: object,
+    params: Mapping[str, Any],
+) -> ToolResult:
+    """Execute a bounded subprocess in the workspace root."""
+    require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
+    parsed = parse_exec_params(params)
+    apply_exec_policy(parsed.command, parsed.args)
+    output = run_command(parsed.command, parsed.args, workspace, parsed.timeout_ms)
+    return ToolResult(
+        content=[
+            ToolContent.text_content(
+                format_exec_result(parsed.command, parsed.args, output, parsed.timeout_ms)
+            )
+        ],
+        is_error=output.returncode != 0,
+    )
+
+
+__all__ = [
+    "ExecutionError",
+    "ExecParams",
+    "PROCESS_EXEC_BOUNDED_CAPABILITY",
+    "WorkspaceWithRoot",
+    "apply_exec_policy",
+    "check_command",
+    "format_exec_result",
+    "handle_exec_command",
+    "parse_exec_params",
+    "run_command",
+]

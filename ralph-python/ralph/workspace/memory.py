@@ -19,10 +19,11 @@ class MemoryWorkspace:
     All paths are normalized to POSIX-style relative paths.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, root: str = "/workspace") -> None:
         """Initialize empty in-memory workspace."""
         self._storage: dict[str, str] = {}
         self._dirs: set[str] = {""}  # Root is always present
+        self._root = PurePosixPath(root)
 
     def _normalize(self, path: str) -> str:
         """Normalize path to POSIX-style relative path.
@@ -181,3 +182,7 @@ class MemoryWorkspace:
         normalized = self._normalize(path)
         if normalized:
             self._dirs.add(normalized)
+
+    def absolute_path(self, path: str) -> str:
+        """Return an absolute-like path string for the workspace."""
+        return str(self._root / self._normalize(path))

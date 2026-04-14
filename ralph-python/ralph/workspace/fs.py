@@ -138,3 +138,7 @@ class FsWorkspace:
             Root Path object.
         """
         return self._root
+
+    def absolute_path(self, path: str) -> str:
+        """Return the absolute filesystem path for a workspace-relative path."""
+        return str(self._abs(path).resolve())

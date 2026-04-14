@@ -15,10 +15,23 @@ from ralph.mcp.artifacts import (
     submit_artifact,
     update_artifact,
 )
+ToolBridge: Any
+ToolBridgeError: Any
+ToolDefinition: Any
+ToolMetadata: Any
+from importlib import import_module
+from typing import Any
+
 from ralph.mcp.bridge import (
     BridgeConfig,
     BridgeError,
     MCPBridge,
+)
+from ralph.mcp.startup import (
+    HeartbeatPolicy,
+    SessionBridgeError,
+    access_mode_for_drain,
+    start_mcp_server_for_session,
 )
 from ralph.mcp.transport import (
     MCPTransport,
@@ -33,6 +46,14 @@ __all__ = [
     "BridgeConfig",
     "BridgeError",
     "MCPBridge",
+    "HeartbeatPolicy",
+    "SessionBridgeError",
+    "access_mode_for_drain",
+    "start_mcp_server_for_session",
+    "ToolBridge",
+    "ToolBridgeError",
+    "ToolDefinition",
+    "ToolMetadata",
     "MCPTransport",
     "StdioTransport",
     "TransportError",
@@ -41,3 +62,20 @@ __all__ = [
     "submit_artifact",
     "update_artifact",
 ]
+
+
+_TOOL_BRIDGE_SYMBOLS = {
+    "ToolBridge",
+    "ToolBridgeError",
+    "ToolDefinition",
+    "ToolMetadata",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _TOOL_BRIDGE_SYMBOLS:
+        module = import_module(".tool_bridge", __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__} has no attribute {name}")

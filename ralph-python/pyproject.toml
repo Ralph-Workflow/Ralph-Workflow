@@ -7,7 +7,7 @@ name = "ralph-workflow"
 version = "0.1.0"
 description = "Multi-agent AI orchestration CLI"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = {text = "MIT"}
 authors = [
     {name = "Ralph Team", email = "ralph@example.com"}
@@ -28,6 +28,7 @@ dependencies = [
     "rich-click>=1.8",
     "pydantic>=2.7",
     "httpx>=0.27",
+    "jinja2>=3.1",
     "loguru>=0.7",
     "tqdm>=4.66",
     "watchdog>=4.0",

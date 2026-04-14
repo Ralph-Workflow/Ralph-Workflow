@@ -103,3 +103,7 @@ class Workspace(Protocol):
             True if path is a file.
         """
         ...
+
+    def absolute_path(self, path: str) -> str:
+        """Resolve a relative path to its absolute workspace path."""
+        ...
