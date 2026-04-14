@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import ralph.pipeline.runner as runner_module
+from ralph.config.enums import JsonParserType
+from ralph.config.models import AgentConfig
 from ralph.pipeline.effects import (
     CommitEffect,
     ExitFailureEffect,
@@ -493,6 +495,110 @@ class TestExecuteAgentEffect:
         assert started["value"] is True
         assert shutdown["value"] is True
         assert seen_options
+
+    def test_streams_parsed_agent_activity_to_console_by_default(self, monkeypatch) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        agent_config = AgentConfig(
+            cmd="codex",
+            output_flag="--json-stream",
+            json_parser=JsonParserType.CODEX,
+        )
+        registry = _registry_factory(agent_config)
+
+        class FakeBridge:
+            def start(self) -> None:
+                return
+
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "tcp://127.0.0.1:12345"
+
+            def endpoint_uri(self) -> str:
+                return "tcp://127.0.0.1:12345"
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server_for_session",
+            lambda *_args, **_kwargs: FakeBridge(),
+        )
+
+        console_mock = MagicMock()
+        monkeypatch.setattr(runner_module, "console", console_mock)
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            lambda *_args, **_kwargs: iter(
+                [
+                    '{"type":"text_delta","delta":"thinking"}',
+                    '{"type":"tool_use","name":"bash","input":{"command":"ls"}}',
+                ]
+            ),
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        printed = "\n".join(
+            " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
+        )
+        assert "thinking" in printed
+        assert "bash" in printed
+
+    def test_streams_non_text_parsed_events_too(self, monkeypatch) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        agent_config = AgentConfig(
+            cmd="codex",
+            output_flag="--json-stream",
+            json_parser=JsonParserType.CODEX,
+        )
+        registry = _registry_factory(agent_config)
+
+        class FakeBridge:
+            def start(self) -> None:
+                return
+
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "tcp://127.0.0.1:12345"
+
+            def endpoint_uri(self) -> str:
+                return "tcp://127.0.0.1:12345"
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server_for_session",
+            lambda *_args, **_kwargs: FakeBridge(),
+        )
+
+        console_mock = MagicMock()
+        monkeypatch.setattr(runner_module, "console", console_mock)
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            lambda *_args, **_kwargs: iter(
+                [
+                    '{"type":"thread.started"}',
+                    '{"type":"result","result":"plan complete"}',
+                    '{"type":"turn.completed"}',
+                ]
+            ),
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        printed = "\n".join(
+            " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
+        )
+        assert "message_start" in printed
+        assert "plan complete" in printed
+        assert "stop" in printed
 
 
 class TestExecuteCommitEffect:

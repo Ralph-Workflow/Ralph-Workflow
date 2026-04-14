@@ -9,6 +9,7 @@ the handlers (I/O execution), and the reducer (state transitions).
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 from rich.console import Console
 
+from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_FAILED,
@@ -66,6 +68,7 @@ class _AgentRegistryFactory(Protocol):
 
 console = Console()
 _VERBOSE_LOG_LEVEL = 2
+_AGENT_ACTIVITY_LOG_LEVEL = 1
 
 
 def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
@@ -334,8 +337,14 @@ def _execute_agent_effect(
         )
 
         options = InvokeOptions(verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL)
-        for _ in invoke_agent(agent_config, effect.prompt_file, options=options):
-            pass
+        output_lines = invoke_agent(agent_config, effect.prompt_file, options=options)
+        if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:
+            _stream_parsed_agent_activity(
+                output_lines, str(agent_config.json_parser), effect.agent_name
+            )
+        else:
+            for _ in output_lines:
+                pass
     except agent_invocation_error as exc:
         logger.error("Agent invocation failed: {}", exc)
         return PipelineEvent.AGENT_FAILURE
@@ -363,3 +372,60 @@ def _execute_commit_effect(
         logger.error("Commit failed: {}", exc)
         return PipelineEvent.COMMIT_FAILURE
     return PipelineEvent.COMMIT_SUCCESS
+
+
+def _stream_parsed_agent_activity(
+    lines: Iterable[object],
+    parser_type: str,
+    agent_name: str,
+) -> None:
+    parser = _resolve_parser(parser_type)
+    str_lines = (str(line) for line in lines)
+    for parsed_line in parser.parse(str_lines):
+        rendered = _render_agent_activity_line(parsed_line, agent_name)
+        if rendered is not None:
+            console.print(rendered)
+
+
+def _resolve_parser(parser_type: str) -> AgentParser:
+    try:
+        return get_parser(parser_type)
+    except ValueError:
+        logger.warning("Unknown parser '{}'; falling back to generic", parser_type)
+        return get_parser("generic")
+
+
+def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> str | None:
+    rendered: str | None = None
+
+    if output.type == "text":
+        content = output.content.strip()
+        if content:
+            rendered = f"[white]{agent_name}:[/white] {content}"
+    elif output.type == "tool_use":
+        tool_name = output.content.strip() or "unknown-tool"
+        rendered = f"[magenta]{agent_name} tool:[/magenta] {tool_name}"
+    elif output.type == "tool_result":
+        result = output.content.strip()
+        if result:
+            rendered = f"[dim]{agent_name} tool result:[/dim] {result[:200]}"
+    elif output.type == "error":
+        error = output.content.strip() or "unknown error"
+        rendered = f"[red]{agent_name} error:[/red] {error}"
+    else:
+        summary = _event_summary(output)
+        rendered = f"[dim]{agent_name} {output.type}:[/dim] {summary}"
+
+    return rendered
+
+
+def _event_summary(output: AgentOutputLine) -> str:
+    content = output.content.strip()
+    if content:
+        return content
+
+    if output.metadata:
+        compact = json.dumps(output.metadata, separators=(",", ":"), sort_keys=True)
+        return compact[:200]
+
+    return "(no details)"
