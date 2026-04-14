@@ -1,7 +1,0 @@
-{"type":"turn.started","turn_id":"turn-1"}
-{"type":"item.started","item":{"type":"reasoning","text":"Analyzing"}}
-{"type":"item.started","item":{"type":"reasoning","text":" a"}}
-{"type":"item.started","item":{"type":"reasoning","text":" large diff"}}
-{"type":"item.completed","item":{"type":"reasoning"}}
-{"type":"item.started","item":{"type":"agent_message","text":"Done"}}
-{"type":"item.completed","item":{"type":"agent_message","text":"Done"}}

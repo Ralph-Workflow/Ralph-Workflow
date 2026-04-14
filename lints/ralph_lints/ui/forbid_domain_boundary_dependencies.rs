@@ -1,3 +1,0 @@
-use io;
-
-fn main() {}

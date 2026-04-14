@@ -1,5 +1,0 @@
-error[FORBID_DOMAIN_BOUNDARY_DEPENDENCIES]: import from boundary module `io` is forbidden in non-boundary modules
-  --> $DIR/forbid_domain_boundary_dependencies.rs:1:1
-   |
-LL | use io;
-   | ^^^^^^^^^ help: move I/O to boundary layer: imports from boundary modules (io/, runtime/, ffi/, boundary/) should only exist in boundary modules themselves

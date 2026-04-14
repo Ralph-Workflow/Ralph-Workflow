@@ -6,12 +6,13 @@ structure from the Rust implementation.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
+import pathlib
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from ralph.config.enums import JsonParserType, ReviewDepth
+
+PATH_RUNTIME_CLASS = pathlib.Path
 
 
 class AgentConfig(BaseModel):  # type: ignore[explicit-any]
@@ -140,8 +141,8 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
     developer_context: int = Field(default=1, ge=1)
     reviewer_context: int = Field(default=0, ge=0)
     review_depth: ReviewDepth = ReviewDepth.STANDARD
-    prompt_path: Path | None = None
-    templates_dir: Path | None = None
+    prompt_path: pathlib.Path | None = None
+    templates_dir: pathlib.Path | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
