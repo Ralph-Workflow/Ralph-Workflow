@@ -12,7 +12,9 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
 
     assert "conventional" in prompt.lower()
     assert diff in prompt
-    assert "<ralph-commit>" in prompt
+    assert "<ralph-commit>" not in prompt
+    assert "<ralph-subject>" not in prompt
+    assert "plain-text" in prompt.lower()
     assert "## COMMIT MESSAGE FORMAT" in prompt
 
 
@@ -23,7 +25,7 @@ def test_commit_prompt_rejects_empty_diff() -> None:
 
 def test_commit_prompt_uses_registry_templates() -> None:
     registry = TemplateRegistry()
-    registry.register_template("commit_message", "OVERRIDE {DIFF}\n")
+    registry.register_template("commit_message", "OVERRIDE {{ DIFF }}\n")
 
     result = prompt_commit_message("custom diff", template_registry=registry)
 

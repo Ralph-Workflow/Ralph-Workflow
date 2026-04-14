@@ -15,6 +15,7 @@ This module handles the three-layer configuration merging from the Rust implemen
 from __future__ import annotations
 
 import tomllib
+from os import getenv
 from pathlib import Path
 from typing import cast
 
@@ -89,11 +90,45 @@ def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
     _migrate_workflow_flags(data, general)
     _migrate_execution_flags(data, general)
     _migrate_simple_fields(data, general)
+    _migrate_agent_policy_tables(data)
 
     if general:
         data["general"] = general
 
     return data
+
+
+def _migrate_agent_policy_tables(data: dict[str, object]) -> None:
+    """Flatten policy-style chain/drain tables into UnifiedConfig shapes."""
+    chains = data.get("agent_chains")
+    if isinstance(chains, dict):
+        normalized_chains: dict[str, object] = {}
+        for name, value in chains.items():
+            if not isinstance(name, str):
+                continue
+            normalized_chains[name] = (
+                value.get("agents", value) if isinstance(value, dict) else value
+            )
+        data["agent_chains"] = normalized_chains
+
+    drains = data.get("agent_drains")
+    if isinstance(drains, dict):
+        normalized_drains: dict[str, object] = {}
+        for name, value in drains.items():
+            if not isinstance(name, str):
+                continue
+            normalized_drains[name] = (
+                value.get("chain", value) if isinstance(value, dict) else value
+            )
+        data["agent_drains"] = normalized_drains
+
+
+def _global_config_path() -> Path:
+    """Resolve the global config path, honoring XDG_CONFIG_HOME when set."""
+    xdg_config_home = getenv("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        return Path(xdg_config_home) / "ralph-workflow.toml"
+    return GLOBAL_CONFIG_PATH
 
 
 def _migrate_verbosity(data: dict[str, object], general: dict[str, object]) -> None:
@@ -181,7 +216,7 @@ def load_config(
     Raises:
         SystemExit: If configuration validation fails.
     """
-    global_data = load_toml(GLOBAL_CONFIG_PATH)
+    global_data = load_toml(_global_config_path())
     local_path = config_path or LOCAL_CONFIG_PATH
     local_data = load_toml(local_path)
 
@@ -191,10 +226,12 @@ def load_config(
 
     # Merge: global -> local
     merged = _deep_merge(global_data, local_data)
+    _migrate_agent_policy_tables(merged)
 
     # Apply CLI overrides last
     if cli_overrides:
         merged = _deep_merge(merged, cli_overrides)
+        _migrate_agent_policy_tables(merged)
 
     try:
         config = UnifiedConfig.model_validate(merged)

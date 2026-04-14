@@ -6,10 +6,10 @@ Your only job is to analyze the implementation, not to edit code or commit chang
 Read the changed files and compare the implementation against the plan and requirements.
 
 PLAN:
-{PLAN}
+{{ PLAN }}
 
 CHANGES:
-{CHANGES}
+{{ CHANGES }}
 
 Deliver any findings using the configured review workflow.
 """

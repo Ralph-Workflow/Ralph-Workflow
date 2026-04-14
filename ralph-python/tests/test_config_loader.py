@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 DEFAULT_DEVELOPER_ITERS = 5
 DEFAULT_REVIEWER_REVIEWS = 2
 DEFAULT_VERBOSITY = 2
+XDG_DEVELOPER_ITERS = 8
+LOCAL_DEVELOPER_ITERS = 3
 
 
 def _assert_validation_error(action: Callable[[], object]) -> None:
@@ -85,6 +87,94 @@ def test_load_config_validation_error() -> None:
     _assert_validation_error_or_system_exit(
         lambda: load_config(cli_overrides={"general": {"developer_iters": -1}})
     )
+
+
+def test_load_config_supports_xdg_config_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir()
+    (config_home / "ralph-workflow.toml").write_text(
+        "[general]\ndeveloper_iters = 8\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.setattr(
+        "ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / ".agent" / "ralph-workflow.toml"
+    )
+
+    config = load_config()
+
+    assert config.general.developer_iters == XDG_DEVELOPER_ITERS
+
+
+def test_load_config_converts_nested_chain_and_drain_tables(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "\n".join(
+            [
+                "[agent_chains.commit_chain]",
+                'agents = ["claude"]',
+                "[agent_drains.commit]",
+                'chain = "commit_chain"',
+                "[agent_drains.review]",
+                'chain = "commit_chain"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config()
+
+    assert config.agent_chains == {"commit_chain": ["claude"]}
+    assert config.agent_drains == {"commit": "commit_chain", "review": "commit_chain"}
+
+
+def test_load_config_local_normalized_tables_override_xdg_global(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir()
+    (config_home / "ralph-workflow.toml").write_text(
+        (
+            "[agent_chains.commit_chain]\n"
+            'agents = ["claude"]\n'
+            "[agent_drains.commit]\n"
+            'chain = "commit_chain"\n'
+            "[general]\n"
+            "developer_iters = 8\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        (
+            "[agent_chains.commit_chain]\n"
+            'agents = ["codex"]\n'
+            "[agent_drains.commit]\n"
+            'chain = "commit_chain"\n'
+            "[general]\n"
+            "developer_iters = 3\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config()
+
+    assert config.general.developer_iters == LOCAL_DEVELOPER_ITERS
+    assert config.agent_chains["commit_chain"] == ["codex"]
+    assert config.agent_drains["commit"] == "commit_chain"
 
 
 def test_unified_config_frozen() -> None:

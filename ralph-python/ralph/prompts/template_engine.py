@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from jinja2 import (
+    DictLoader,
+    Environment,
+    StrictUndefined,
+    TemplateError,
+    TemplateNotFound,
+    Undefined,
+)
 
 from ralph.prompts.template_parsing import (
     ConditionalNode,
@@ -12,7 +21,6 @@ from ralph.prompts.template_parsing import (
     TextNode,
     VariableNode,
     eval_conditional,
-    parse_template,
     split_loop_items,
 )
 
@@ -32,9 +40,28 @@ def render_template(
     """Render the provided template text with partials and variables."""
 
     try:
-        return _render_nodes(parse_template(template_text), variables, partials)
+        templates = {"__main__.j2": template_text}
+        templates.update({f"{name}.j2": content for name, content in partials.items()})
+
+        strict_undefined = cast("type[Undefined]", StrictUndefined)
+
+        environment = Environment(
+            loader=DictLoader(templates),
+            autoescape=False,
+            undefined=strict_undefined,
+            keep_trailing_newline=True,
+        )
+        filters = cast("dict[str, object]", environment.filters)
+        filters["split_items"] = split_loop_items
+
+        template = environment.get_template("__main__.j2")
+        return template.render(**dict(variables))
+    except TemplateNotFound as exc:
+        raise TemplateRenderingError(str(exc)) from exc
     except TemplateRenderingError:
         raise
+    except TemplateError as exc:
+        raise TemplateRenderingError(str(exc)) from exc
     except Exception as exc:  # pragma: no cover - defensive wrapper
         raise TemplateRenderingError(str(exc)) from exc
 

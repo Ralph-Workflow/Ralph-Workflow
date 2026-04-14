@@ -17,8 +17,9 @@ from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegis
 def test_render_template_supports_variables_partials_loops_and_conditionals() -> None:
     template = (
         "Hello {{NAME}}!\n"
-        "{{> footer}}\n"
-        "{% if HAS_ITEMS %}Items: {% for ITEM in ITEMS %}[{{ITEM}}]{% endfor %}{% endif %}"
+        "{% include 'footer.j2' %}\n"
+        "{% if HAS_ITEMS %}Items: "
+        "{% for ITEM in ITEMS|split_items %}[{{ITEM}}]{% endfor %}{% endif %}"
         "{% if HAS_FALLBACK %}unused{% else %} done{% endif %}"
     )
 
@@ -37,13 +38,13 @@ def test_render_template_supports_variables_partials_loops_and_conditionals() ->
 
 
 def test_render_template_uses_default_and_reports_missing_partial_or_variable() -> None:
-    assert render_template('{{MISSING|default="fallback"}}', {}, {}) == "fallback"
+    assert render_template("{{ MISSING|default('fallback') }}", {}, {}) == "fallback"
 
     with pytest.raises(TemplateRenderingError, match="'MISSING' is undefined"):
         render_template("{{MISSING}}", {}, {})
 
     with pytest.raises(TemplateRenderingError, match=re.escape("footer.txt")):
-        render_template("{{> footer}}", {}, {})
+        render_template("{% include 'footer.txt' %}", {}, {})
 
 
 def test_template_registries_cover_success_and_error_paths() -> None:

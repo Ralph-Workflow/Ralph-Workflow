@@ -27,7 +27,7 @@ def test_render_template_replaces_variables() -> None:
 
 def test_render_template_renders_partials_with_variables() -> None:
     rendered = render_template(
-        "Intro {{> greeting}} Outro",
+        "Intro {% include 'greeting.j2' %} Outro",
         {"NAME": "Ada"},
         {"greeting": "Hello, {{ NAME }}"},
     )
@@ -37,7 +37,7 @@ def test_render_template_renders_partials_with_variables() -> None:
 
 def test_render_template_applies_default_filter_for_missing_variable() -> None:
     rendered = render_template(
-        'Plan: {{ PLAN|default="(no plan available)" }}',
+        "Plan: {{ PLAN|default('(no plan available)') }}",
         {},
         {},
     )
@@ -52,7 +52,17 @@ def test_render_template_raises_for_missing_variable_without_default() -> None:
 
 def test_render_template_raises_for_missing_partial() -> None:
     with pytest.raises(TemplateRenderingError, match=re.escape("missing.txt")):
+        render_template("Before {% include 'missing.txt' %} After", {}, {})
+
+
+def test_render_template_rejects_legacy_partial_shorthand() -> None:
+    with pytest.raises(TemplateRenderingError):
         render_template("Before {{> missing}} After", {}, {})
+
+
+def test_render_template_rejects_legacy_default_shorthand() -> None:
+    with pytest.raises(TemplateRenderingError):
+        render_template('Plan: {{ PLAN|default="fallback" }}', {}, {})
 
 
 def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:

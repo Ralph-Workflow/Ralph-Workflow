@@ -6,12 +6,15 @@ to their executable commands and settings.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, CcsAliasConfig, CcsConfig
+
+_MIN_OPENCODE_SEGMENTS = 3
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -103,7 +106,10 @@ class AgentRegistry:
         Returns:
             AgentConfig if found, None otherwise.
         """
-        return self.agents.get(name)
+        config = self.agents.get(name)
+        if config is not None:
+            return config
+        return _resolve_dynamic_agent(name)
 
     def list_agents(self) -> list[str]:
         """List all registered agent names.
@@ -188,3 +194,23 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
         if alias_value.session_flag is not None
         else defaults.session_flag,
     )
+
+
+def _resolve_dynamic_agent(name: str) -> AgentConfig | None:
+    if not name.startswith("opencode/"):
+        return None
+
+    segments = name.split("/")
+    if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
+        return None
+
+    base_config = deepcopy(_builtin_agents()["opencode"])
+    dynamic_overrides: dict[str, object] = {
+        "model_flag": f"-m {_normalize_opencode_model_id(name)}",
+        "can_commit": True,
+    }
+    return base_config.model_copy(update=dynamic_overrides)
+
+
+def _normalize_opencode_model_id(name: str) -> str:
+    return name.removeprefix("opencode/")

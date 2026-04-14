@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from ralph.agents.registry import AgentRegistry
 from ralph.config.models import AgentConfig, CcsAliasConfig, UnifiedConfig
 
@@ -91,3 +93,29 @@ def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:
     assert ccs_agent.verbose_flag == "--vv"
     assert ccs_agent.model_flag == "--model custom"
     assert ccs_agent.can_commit is False
+
+
+def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("opencode/minimax/MiniMax-M2.7-highspeed")
+
+    assert agent is not None
+    assert agent.cmd == "opencode"
+    assert agent.output_flag == "--json-stream"
+    assert agent.json_parser == "opencode"
+    assert agent.model_flag == "-m minimax/MiniMax-M2.7-highspeed"
+    assert agent.can_commit is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "opencode/",
+        "opencode//model",
+    ],
+)
+def test_agent_registry_rejects_malformed_direct_opencode_reference(name: str) -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    assert registry.get(name) is None

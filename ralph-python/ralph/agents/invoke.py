@@ -16,10 +16,13 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 from tqdm import tqdm
+
+_MODELED_FLAG_PARTS = 2
 
 
 @dataclass(frozen=True)
@@ -43,7 +46,6 @@ class InvokeOptions:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from ralph.config.models import AgentConfig
 
@@ -217,7 +219,6 @@ def invoke_agent(
         yield from lines_iter
 
         _log_workspace_completion(monitor)
-        _check_process_result(cmd, config.cmd.split()[0])
     finally:
         _stop_workspace_monitor(monitor)
 
@@ -282,6 +283,7 @@ def _run_subprocess_and_read_lines(
             yield from lines_iter
 
         proc.wait()
+        _check_process_result(proc, config.cmd.split()[0])
 
 
 def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
@@ -339,29 +341,24 @@ def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
     )
 
 
-def _check_process_result(cmd: list[str], agent_name: str) -> None:
+def _check_process_result(proc: subprocess.Popen[str], agent_name: str) -> None:
     """Check subprocess return code and raise error if non-zero.
 
     Args:
-        cmd: Command that was executed.
+        proc: Completed subprocess.
         agent_name: Name of the agent.
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
     """
-    proc_result = subprocess.run(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=False,
-    )
-    if proc_result.returncode == 0:
+    returncode = int(proc.returncode)
+    if returncode == 0:
         return
 
-    stderr = proc_result.stderr or "(unable to read stderr)"
-    logger.error("Agent exited with code {}: {}", proc_result.returncode, stderr)
-    raise AgentInvocationError(agent_name, proc_result.returncode, stderr)
+    stderr_pipe = proc.stderr
+    stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
+    logger.error("Agent exited with code {}: {}", returncode, stderr)
+    raise AgentInvocationError(agent_name, returncode, stderr)
 
 
 def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
@@ -394,6 +391,15 @@ def _build_command(
     Returns:
         List of command arguments.
     """
+    if config.cmd.split()[0] == "opencode":
+        return _build_opencode_command(
+            config,
+            prompt_file,
+            model_flag=model_flag,
+            session_id=session_id,
+            verbose=verbose,
+        )
+
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
 
@@ -419,6 +425,41 @@ def _build_command(
     cmd.append(prompt_file)
 
     return cmd
+
+
+def _build_opencode_command(
+    config: AgentConfig,
+    prompt_file: str,
+    *,
+    model_flag: str | None = None,
+    session_id: str | None = None,
+    verbose: bool = False,
+) -> list[str]:
+    prompt_text = Path(prompt_file).read_text(encoding="utf-8")
+    cmd = [config.cmd.split()[0], "run", "--format", "json"]
+
+    if config.session_flag and session_id:
+        cmd.extend(config.session_flag.format(session_id).split())
+
+    if config.yolo_flag:
+        cmd.append(config.yolo_flag)
+
+    if verbose and config.verbose_flag:
+        cmd.append(config.verbose_flag)
+
+    effective_model = model_flag or config.model_flag
+    if effective_model:
+        cmd.extend(_normalize_opencode_model_flag(effective_model))
+
+    cmd.append(prompt_text)
+    return cmd
+
+
+def _normalize_opencode_model_flag(model_flag: str) -> list[str]:
+    parts = model_flag.split()
+    if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
+        return [parts[0], parts[1].removeprefix("opencode/")]
+    return parts
 
 
 def check_agent_available(config: AgentConfig) -> bool:

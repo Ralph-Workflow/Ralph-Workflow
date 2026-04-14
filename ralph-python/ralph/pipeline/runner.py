@@ -216,7 +216,7 @@ def _planning_agent(config: UnifiedConfig) -> str | None:
 
 
 def _commit_effect() -> CommitEffect:
-    return CommitEffect(message_file=".agent/tmp/commit_message.xml")
+    return CommitEffect(message_file=".agent/tmp/commit-message.txt")
 
 
 def _agent_or_advance(state: PipelineState, fallback_phase: str) -> Effect:

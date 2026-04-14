@@ -15,7 +15,7 @@ def test_review_prompt_includes_instructions_and_plan() -> None:
 
 def test_review_prompt_uses_custom_template_when_available() -> None:
     registry = TemplateRegistry()
-    registry.register_template("review", "Custom review: {PLAN} | {CHANGES}")
+    registry.register_template("review", "Custom review: {{ PLAN }} | {{ CHANGES }}")
 
     prompt = render_review_prompt("Plan content", "Changes content", template_registry=registry)
 

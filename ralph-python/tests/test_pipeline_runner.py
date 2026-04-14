@@ -244,7 +244,7 @@ class TestCommitEffect:
     def test_returns_commit_effect(self) -> None:
         effect = _commit_effect()
         assert isinstance(effect, CommitEffect)
-        assert ".agent/tmp/commit_message.xml" in effect.message_file
+        assert ".agent/tmp/commit-message.txt" in effect.message_file
 
 
 class TestPipelineRunnerLoop:

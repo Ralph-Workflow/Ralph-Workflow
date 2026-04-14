@@ -26,13 +26,13 @@ DEVELOPER_ITERATION_TEMPLATE = textwrap.dedent("""
 
 You are in IMPLEMENTATION MODE. Execute the plan and make progress.
 
-{{> shared/_unattended_mode}}
+{% include 'shared/_unattended_mode.j2' %}
 
-{{> shared/_session_capabilities}}
+{% include 'shared/_session_capabilities.j2' %}
 
-{{> shared/_mcp_tools}}
+{% include 'shared/_mcp_tools.j2' %}
 
-{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
+{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
 ═══════════════════════════════════════════════════════════════════════════════
 IMPORTANT: EXECUTION CONTEXT
@@ -64,9 +64,9 @@ ORIGINAL REQUEST
 IMPLEMENTATION PLAN
 ═══════════════════════════════════════════════════════════════════════════════
 
-{{PLAN|default="(no plan available)"}}
+{{ PLAN|default('(no plan available)') }}
 
-{{> shared/_developer_iteration_guidance}}
+{% include 'shared/_developer_iteration_guidance.j2' %}
 
 ═══════════════════════════════════════════════════════════════════════════════
 RESULT SUBMISSION
@@ -112,13 +112,13 @@ PLANNING_TEMPLATE = textwrap.dedent("""
 
 You are in PLANNING MODE. Create a detailed, structured implementation plan.
 
-{{> shared/_unattended_mode}}
+{% include 'shared/_unattended_mode.j2' %}
 
-{{> shared/_session_capabilities}}
+{% include 'shared/_session_capabilities.j2' %}
 
-{{> shared/_mcp_tools}}
+{% include 'shared/_mcp_tools.j2' %}
 
-{% if HAS_GIT_WRITE %}{% else %}{{> shared/_no_git_commit}}{% endif %}
+{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
 CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
 - Creating, modifying, or deleting any files

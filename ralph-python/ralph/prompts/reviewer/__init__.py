@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.prompts.template_engine import TemplateRenderingError, render_template
 from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegistry
 
 from .templates import DEFAULT_REVIEW_TEMPLATE
@@ -50,9 +51,9 @@ def render_review_prompt(
             template = DEFAULT_REVIEW_TEMPLATE
 
     try:
-        return template.format(PLAN=plan_value, CHANGES=changes_value)
-    except KeyError as err:
-        raise ValueError("Unable to render review prompt; missing template variable") from err
+        return render_template(template, {"PLAN": plan_value, "CHANGES": changes_value}, {})
+    except TemplateRenderingError as err:
+        raise ValueError("Unable to render review prompt; invalid Jinja template") from err
 
 
 prompt_review = render_review_prompt
