@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import ralph.pipeline.runner as runner_module
+from ralph.agents.parsers import AgentOutputLine
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.pipeline.effects import (
@@ -649,3 +650,43 @@ class TestExecuteEffect:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
+
+
+class TestRenderAgentActivityLine:
+    def test_tool_use_includes_human_readable_input_summary(self) -> None:
+        output = AgentOutputLine(
+            type="tool_use",
+            content="bash",
+            metadata={
+                "tool": "bash",
+                "input": {
+                    "command": "pytest -q",
+                    "workdir": "/tmp/project",
+                },
+            },
+        )
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "bash" in rendered
+        assert "command=pytest -q" in rendered
+        assert "workdir=/tmp/project" in rendered
+        assert "{" not in rendered
+
+    def test_non_text_event_summary_avoids_raw_json_dump(self) -> None:
+        output = AgentOutputLine(
+            type="item_plan_result",
+            metadata={
+                "status": "completed",
+                "summary": "Plan submitted",
+                "result": {"steps": 3},
+            },
+        )
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "status=completed" in rendered
+        assert "summary=Plan submitted" in rendered
+        assert "{" not in rendered

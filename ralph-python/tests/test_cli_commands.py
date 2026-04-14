@@ -70,6 +70,52 @@ def test_commit_plumbing_prints_no_staged_changes(monkeypatch: pytest.MonkeyPatc
     assert "No staged changes to commit" in stream.getvalue()
 
 
+def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: Path("/tmp"))
+    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+
+    state = {"staged": False}
+
+    monkeypatch.setattr(commit_module, "has_staged_changes", lambda _root: state["staged"])
+    monkeypatch.setattr(commit_module, "is_repo_clean", lambda _root: False, raising=False)
+
+    staged_all_calls: list[Path] = []
+
+    def fake_stage_all(repo_root: Path) -> None:
+        staged_all_calls.append(repo_root)
+        state["staged"] = True
+
+    monkeypatch.setattr(commit_module, "stage_all", fake_stage_all, raising=False)
+    monkeypatch.setattr(commit_module, "get_staged_files", lambda _root: ["src/app.py"])
+    monkeypatch.setattr(
+        commit_module, "_generate_commit_message", lambda _staged, _root: "auto msg"
+    )
+
+    commit_calls: list[str] = []
+
+    def fake_create_commit(
+        _repo_root: Path,
+        _message: str,
+        author_name: str | None,
+        author_email: str | None,
+    ) -> str:
+        commit_calls.append(f"{author_name}:{author_email}")
+        return "cafebabe1234"
+
+    monkeypatch.setattr(commit_module, "create_commit", fake_create_commit)
+
+    commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
+
+    assert staged_all_calls == [Path("/tmp")]
+    assert commit_calls == ["user:user@example.com"]
+    output = stream.getvalue()
+    assert "Created commit" in output
+    assert "No staged changes to commit" not in output
+
+
 def test_handle_show_or_generate_displays_staged_files(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     files = [f"file_{i}" for i in range(commit_module._MAX_DISPLAY_FILES + 2)]

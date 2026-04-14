@@ -263,6 +263,55 @@ def test_codex_parser_text_delta_supports_delta_text_field() -> None:
     assert results[0].content == "Delta text field"
 
 
+def test_codex_parser_response_output_text_delta_is_parsed_as_text() -> None:
+    """Codex response.output_text.delta should parse to a text event."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"response.output_text.delta","delta":"streamed thought"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "streamed thought"
+
+
+def test_codex_parser_accepts_sse_data_prefix_lines() -> None:
+    """Codex parser should decode SSE-style lines prefixed with data:."""
+    parser = CodexParser()
+    lines = [
+        'data: {"type":"text_delta","delta":"prefixed text"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "prefixed text"
+
+
+def test_codex_parser_item_completed_mcp_tool_result_maps_to_tool_result() -> None:
+    """Codex parser should map completed MCP tool result items to tool_result."""
+    parser = CodexParser()
+    lines = [
+        (
+            '{"type":"item.completed","item":{'
+            '"type":"mcp_tool_result",'
+            '"tool":"write_memory",'
+            '"result":{"status":"ok","written":2}'
+            "}}"
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "tool_result"
+    assert results[0].metadata["tool"] == "write_memory"
+    assert results[0].metadata["result"] == {"status": "ok", "written": 2}
+
+
 def test_get_parser_unknown_raises() -> None:
     """Test get_parser raises ValueError for unknown type."""
     with pytest.raises(ValueError, match="Unknown parser type"):

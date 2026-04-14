@@ -9,7 +9,6 @@ the handlers (I/O execution), and the reducer (state transitions).
 
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -69,6 +68,7 @@ class _AgentRegistryFactory(Protocol):
 console = Console()
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_ACTIVITY_LOG_LEVEL = 1
+_MAX_METADATA_PARTS = 3
 
 
 def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
@@ -405,10 +405,13 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> str
     elif output.type == "tool_use":
         tool_name = output.content.strip() or "unknown-tool"
         rendered = f"[magenta]{agent_name} tool:[/magenta] {tool_name}"
+        input_summary = _tool_input_summary(output.metadata)
+        if input_summary:
+            rendered = f"{rendered} ({input_summary})"
     elif output.type == "tool_result":
         result = output.content.strip()
         if result:
-            rendered = f"[dim]{agent_name} tool result:[/dim] {result[:200]}"
+            rendered = f"[dim]{agent_name} tool result:[/dim] {result}"
     elif output.type == "error":
         error = output.content.strip() or "unknown error"
         rendered = f"[red]{agent_name} error:[/red] {error}"
@@ -425,7 +428,81 @@ def _event_summary(output: AgentOutputLine) -> str:
         return content
 
     if output.metadata:
-        compact = json.dumps(output.metadata, separators=(",", ":"), sort_keys=True)
-        return compact[:200]
+        summary = _metadata_summary(output.metadata)
+        if summary:
+            return summary
 
     return "(no details)"
+
+
+def _tool_input_summary(metadata: dict[str, object]) -> str:
+    input_obj = metadata.get("input")
+    if isinstance(input_obj, dict):
+        return _metadata_summary(cast("dict[str, object]", input_obj))
+    return ""
+
+
+def _metadata_summary(metadata: dict[str, object]) -> str:
+    preferred_keys = (
+        "status",
+        "summary",
+        "phase",
+        "tool",
+        "name",
+        "command",
+        "workdir",
+        "path",
+        "result",
+        "output",
+        "error",
+        "message",
+    )
+
+    parts: list[str] = []
+    for key in preferred_keys:
+        if key not in metadata:
+            continue
+        value = _format_metadata_value(metadata[key])
+        if value:
+            parts.append(f"{key}={value}")
+
+    if parts:
+        return "; ".join(parts)
+
+    for key, value_obj in metadata.items():
+        value = _format_metadata_value(value_obj)
+        if value:
+            parts.append(f"{key}={value}")
+        if len(parts) >= _MAX_METADATA_PARTS:
+            break
+
+    return "; ".join(parts)
+
+
+def _format_metadata_value(value: object) -> str:
+    formatted = ""
+    if isinstance(value, str):
+        formatted = value.strip()
+    elif isinstance(value, (bool, int, float)):
+        formatted = str(value)
+    elif isinstance(value, dict):
+        dict_value = cast("dict[str, object]", value)
+        nested = _metadata_summary(dict_value)
+        formatted = nested or f"{len(dict_value)} field(s)"
+    elif isinstance(value, list):
+        if not value:
+            return formatted
+        formatted = _format_list_metadata_value(value)
+    return formatted
+
+
+def _format_list_metadata_value(value: list[object]) -> str:
+    scalar_items: list[str] = []
+    for item in value:
+        if isinstance(item, (str, int, float, bool)):
+            item_str = str(item).strip()
+            if item_str:
+                scalar_items.append(item_str)
+        else:
+            return f"{len(value)} item(s)"
+    return ", ".join(scalar_items)

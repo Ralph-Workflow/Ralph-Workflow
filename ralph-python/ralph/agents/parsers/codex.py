@@ -18,7 +18,13 @@ class CodexParser:
         """Parse Codex streaming NDJSON lines."""
         for line in lines:
             stripped = line.strip()
+            if stripped.startswith("data:"):
+                stripped = stripped.removeprefix("data:").strip()
             if not stripped:
+                continue
+
+            if stripped == "[DONE]":
+                yield AgentOutputLine(type="stop", raw=stripped)
                 continue
 
             try:
@@ -42,6 +48,8 @@ class CodexParser:
             "text": self._parse_text_content,
             "content": self._parse_text_content,
             "text_delta": self._parse_text_delta,
+            "response.output_text": self._parse_text_content,
+            "response.output_text.delta": self._parse_text_delta,
             "tool_use": self._parse_tool_use,
             "tool_result": self._parse_tool_result,
             "tool_result_delta": self._parse_tool_result,
@@ -63,7 +71,7 @@ class CodexParser:
             yield AgentOutputLine(type="message_start", raw=stripped, metadata=obj)
             return
 
-        if event_type in {"turn.completed", "message_stop", "done", "stop"}:
+        if event_type in {"turn.completed", "message_stop", "done", "stop", "response.completed"}:
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
@@ -176,6 +184,18 @@ class CodexParser:
                     raw=stripped,
                     metadata=item_obj,
                 )
+            return
+
+        if item_type in {"mcp_tool_result", "tool_result", "mcp_result"}:
+            tool_name = str(item_obj.get("tool", "unknown"))
+            result_obj = item_obj.get("result", item_obj.get("output", item_obj.get("content", "")))
+            content = result_obj if isinstance(result_obj, str) else ""
+            yield AgentOutputLine(
+                type="tool_result",
+                content=content,
+                raw=stripped,
+                metadata={"tool": tool_name, "result": result_obj},
+            )
             return
 
         yield AgentOutputLine(type=f"item_{item_type}", raw=stripped, metadata=item_obj)

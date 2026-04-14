@@ -18,6 +18,8 @@ from ralph.git.operations import (
     find_repo_root,
     get_staged_files,
     has_staged_changes,
+    is_repo_clean,
+    stage_all,
 )
 
 if TYPE_CHECKING:
@@ -79,6 +81,9 @@ def commit_plumbing(
     git_user_email = config.general.git_user_email
 
     # Check for staged changes
+    if not has_staged_changes(repo_root) and opts.generate_commit and not is_repo_clean(repo_root):
+        stage_all(repo_root)
+
     if not has_staged_changes(repo_root):
         console.print("[yellow]No staged changes to commit[/yellow]")
         return
