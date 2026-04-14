@@ -28,12 +28,14 @@ class InvokeOptions:
 
     Attributes:
         model_flag: Optional model override flag string.
+        session_id: Optional session identifier for resume-capable agents.
         verbose: Whether to pass verbose flag to agent.
         show_progress: Whether to show tqdm progress bar.
         workspace_path: Optional path to workspace for file-change monitoring.
     """
 
     model_flag: str | None = None
+    session_id: str | None = None
     verbose: bool = False
     show_progress: bool = True
     workspace_path: Path | None = None
@@ -199,7 +201,13 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     opts = options or InvokeOptions()
-    cmd = _build_command(config, prompt_file, model_flag=opts.model_flag, verbose=opts.verbose)
+    cmd = _build_command(
+        config,
+        prompt_file,
+        model_flag=opts.model_flag,
+        session_id=opts.session_id,
+        verbose=opts.verbose,
+    )
     logger.info("Invoking agent: {}", " ".join(cmd))
 
     monitor = _start_workspace_monitor(opts.workspace_path)
@@ -371,6 +379,7 @@ def _build_command(
     prompt_file: str,
     *,
     model_flag: str | None = None,
+    session_id: str | None = None,
     verbose: bool = False,
 ) -> list[str]:
     """Build the command line for agent invocation.
@@ -379,6 +388,7 @@ def _build_command(
         config: Agent configuration.
         prompt_file: Path to prompt file.
         model_flag: Optional model flag override.
+        session_id: Optional session ID for session-enabled agents.
         verbose: Whether to include verbose flag.
 
     Returns:
@@ -386,6 +396,15 @@ def _build_command(
     """
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
+
+    if config.print_flag:
+        cmd.append(config.print_flag)
+
+    if config.streaming_flag:
+        cmd.append(config.streaming_flag)
+
+    if config.session_flag and session_id:
+        cmd.extend(config.session_flag.format(session_id).split())
 
     if config.yolo_flag:
         cmd.append(config.yolo_flag)

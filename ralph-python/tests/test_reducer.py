@@ -17,7 +17,13 @@ from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.policy.models import (
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PostCommitRoute,
+    PostCommitRouteWhen,
+)
 
 if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
@@ -78,6 +84,72 @@ def _policy_with_transition(target_phase: PipelinePhase) -> PipelinePolicy:
         },
         entry_phase="budget_transition",
         terminal_phase=PHASE_COMPLETE,
+    )
+
+
+def _policy_with_post_commit_routes() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                transitions=PhaseTransition(on_success=PHASE_DEVELOPMENT),
+            ),
+            PHASE_DEVELOPMENT: PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(on_success="development_analysis"),
+            ),
+            "development_analysis": PhaseDefinition(
+                drain="development_analysis",
+                transitions=PhaseTransition(
+                    on_success="development_commit",
+                    on_loopback=PHASE_DEVELOPMENT,
+                ),
+            ),
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                transitions=PhaseTransition(on_success=PHASE_REVIEW),
+            ),
+            PHASE_REVIEW: PhaseDefinition(
+                drain="review",
+                transitions=PhaseTransition(on_success="review_analysis", on_loopback=PHASE_FIX),
+            ),
+            "review_analysis": PhaseDefinition(
+                drain="review_analysis",
+                transitions=PhaseTransition(on_success="review_commit", on_loopback=PHASE_FIX),
+            ),
+            PHASE_FIX: PhaseDefinition(
+                drain="fix",
+                transitions=PhaseTransition(on_success=PHASE_REVIEW),
+            ),
+            "review_commit": PhaseDefinition(
+                drain="review_commit",
+                transitions=PhaseTransition(on_success=PHASE_COMPLETE),
+            ),
+            PHASE_COMPLETE: PhaseDefinition(
+                drain="complete",
+                transitions=PhaseTransition(on_success=PHASE_COMPLETE, on_loopback=PHASE_COMPLETE),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase=PHASE_COMPLETE,
+        post_commit_routes=[
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="development_commit", budget_state="remaining"),
+                target="planning",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="development_commit", budget_state="exhausted"),
+                target=PHASE_REVIEW,
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="review_commit", budget_state="remaining"),
+                target=PHASE_REVIEW,
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="review_commit", budget_state="exhausted"),
+                target=PHASE_COMPLETE,
+            ),
+        ],
     )
 
 
@@ -210,6 +282,50 @@ def test_phase_advance_clamps_review_budget_at_zero() -> None:
 
     assert new_state.phase == PHASE_REVIEW
     assert new_state.review_budget_remaining == 0
+
+
+def test_commit_success_routes_development_commit_to_planning_when_budget_remaining() -> None:
+    """COMMIT_SUCCESS should route development_commit to planning when budget remains."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase="development_commit", development_budget_remaining=1)
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == "planning"
+    assert new_state.previous_phase == "development_commit"
+
+
+def test_commit_success_routes_development_commit_to_review_when_budget_exhausted() -> None:
+    """COMMIT_SUCCESS should route development_commit to review when budget exhausted."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase="development_commit", development_budget_remaining=0)
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == PHASE_REVIEW
+    assert new_state.previous_phase == "development_commit"
+
+
+def test_commit_success_routes_review_commit_to_review_when_budget_remaining() -> None:
+    """COMMIT_SUCCESS should route review_commit to review when budget remains."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase="review_commit", review_budget_remaining=1)
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == PHASE_REVIEW
+    assert new_state.previous_phase == "review_commit"
+
+
+def test_commit_success_routes_review_commit_to_complete_when_budget_exhausted() -> None:
+    """COMMIT_SUCCESS should route review_commit to complete when budget exhausted."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase="review_commit", review_budget_remaining=0)
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == PHASE_COMPLETE
+    assert new_state.previous_phase == "review_commit"
 
 
 def test_agent_failure_triggers_retry() -> None:

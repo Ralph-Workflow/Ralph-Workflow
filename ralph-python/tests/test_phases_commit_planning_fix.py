@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from ralph.config.enums import (
@@ -30,8 +32,10 @@ from ralph.pipeline.events import PipelineEvent
 
 
 def _stub_context() -> PhaseContext:
+    workspace = MagicMock()
+    workspace.exists.return_value = False
     return PhaseContext.construct(
-        workspace=object(),
+        workspace=workspace,
         registry=object(),
         chain_manager=object(),
         pipeline_policy=object(),
@@ -118,6 +122,23 @@ def test_handle_planning_invokes_agent_successfully() -> None:
     assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
+def test_handle_planning_invalid_work_units_returns_failed() -> None:
+    ctx = _stub_context()
+    ctx.workspace.exists.return_value = True
+    ctx.workspace.read.return_value = (
+        '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
+        '"dependencies":["missing"]}]}'
+    )
+
+    effect = InvokeAgentEffect(
+        agent_name="planner",
+        phase=PHASE_PLANNING,
+        prompt_file="planning.txt",
+    )
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.FAILED]
+
+
 def test_handle_planning_ignores_unrelated_effects() -> None:
     ctx = _stub_context()
     effect = CommitEffect(message_file="message.txt")
@@ -155,6 +176,7 @@ def test_handle_phase_dispatches_to_registered_handler() -> None:
 
     @register_handler("custom_phase")
     def _custom_handler(effect: Effect, context: PhaseContext) -> list[PipelineEvent]:
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "custom_phase"
         assert context is ctx
         return [PipelineEvent.COMPLETE]

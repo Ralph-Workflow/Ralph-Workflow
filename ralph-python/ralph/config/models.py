@@ -26,6 +26,9 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
         can_commit: Whether the agent can run git commit.
         json_parser: Which JSON parser to use for agent output.
         model_flag: Optional model/provider flag.
+        print_flag: Optional print flag for non-interactive output mode.
+        streaming_flag: Optional streaming flag for partial JSON messages.
+        session_flag: Optional session continuation flag template.
         display_name: Human-readable display name for UI/UX.
     """
 
@@ -38,6 +41,9 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
     can_commit: bool = False
     json_parser: JsonParserType = JsonParserType.GENERIC
     model_flag: str | None = None
+    print_flag: str | None = None
+    streaming_flag: str | None = None
+    session_flag: str | None = None
     display_name: str | None = None
 
 

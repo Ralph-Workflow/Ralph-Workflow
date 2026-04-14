@@ -79,5 +79,34 @@ requires_commit = false
 on_success = "complete"
 on_loopback = "complete"
 
+[[post_commit_routes]]
+target = "planning"
+[post_commit_routes.when]
+phase = "development_commit"
+budget_state = "remaining"
+
+[[post_commit_routes]]
+target = "review"
+[post_commit_routes.when]
+phase = "development_commit"
+budget_state = "exhausted"
+
+[[post_commit_routes]]
+target = "review"
+[post_commit_routes.when]
+phase = "review_commit"
+budget_state = "remaining"
+
+[[post_commit_routes]]
+target = "complete"
+[post_commit_routes.when]
+phase = "review_commit"
+budget_state = "exhausted"
+
+[parallel_execution]
+source = "planning_artifact_work_units"
+max_parallel_workers = 8
+require_allowed_directories = true
+
 entry_phase = "planning"
 terminal_phase = "complete"

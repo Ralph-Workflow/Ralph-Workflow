@@ -9,7 +9,9 @@ the handlers (I/O execution), and the reducer (state transitions).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 from rich.console import Console
@@ -19,6 +21,8 @@ from ralph.config.enums import (
     PHASE_FAILED,
     PHASE_PLANNING,
 )
+from ralph.mcp.session_bridge import AgentSession, SessionBridge
+from ralph.mcp.startup import SessionBridgeLike, start_mcp_server_for_session
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -32,14 +36,36 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
+from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from ralph.agents.registry import AgentRegistry
+    from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
 
+
+class _InvokeAgentFn(Protocol):
+    def __call__(
+        self,
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterable[object]: ...
+
+
+class _RegistryLike(Protocol):
+    def get(self, name: str) -> AgentConfig | None: ...
+
+
+class _AgentRegistryFactory(Protocol):
+    @classmethod
+    def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
+
+
 console = Console()
+_VERBOSE_LOG_LEVEL = 2
 
 
 def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
@@ -71,6 +97,14 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 ckpt.save(state)
                 new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED)
                 state = new_state
+                continue
+
+            if isinstance(effect, PreparePromptEffect):
+                state = state.copy_with(
+                    phase=effect.phase,
+                    iteration=effect.iteration,
+                )
+                ckpt.save(state)
                 continue
 
             if isinstance(effect, ExitSuccessEffect):
@@ -139,9 +173,9 @@ def _determine_effect(state: PipelineState, config: UnifiedConfig) -> Effect:
     Returns:
         Next Effect to execute.
     """
-    del config
+    planner_agent = _planning_agent(config)
     phase_handlers: dict[str, Callable[[], Effect]] = {
-        "planning": lambda: PreparePromptEffect(phase=state.phase, iteration=state.iteration),
+        "planning": lambda: _planning_effect(state, planner_agent),
         "development": lambda: _agent_or_advance(state, "review"),
         "review": lambda: _agent_or_next_phase(state, "development_commit"),
         "fix": lambda: _agent_or_next_phase(state, "review"),
@@ -154,6 +188,28 @@ def _determine_effect(state: PipelineState, config: UnifiedConfig) -> Effect:
     if handler is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
     return handler()
+
+
+def _planning_effect(state: PipelineState, planner_agent: str | None) -> Effect:
+    if planner_agent:
+        return InvokeAgentEffect(
+            agent_name=planner_agent,
+            phase=state.phase,
+            prompt_file="PROMPT.md",
+        )
+    return PreparePromptEffect(phase="development", iteration=0)
+
+
+def _planning_agent(config: UnifiedConfig) -> str | None:
+    planning_chain = config.agent_drains.get("planning")
+    if planning_chain is None:
+        return None
+
+    planning_agents = config.agent_chains.get(planning_chain, [])
+    if not planning_agents:
+        return None
+
+    return planning_agents[0]
 
 
 def _commit_effect() -> CommitEffect:
@@ -215,13 +271,20 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
     Returns:
         Event resulting from effect execution.
     """
-    from ralph.agents.invoke import AgentInvocationError, invoke_agent  # noqa: PLC0415
+    from ralph.agents.invoke import (  # noqa: PLC0415
+        AgentInvocationError,
+        invoke_agent,
+    )
     from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
     from ralph.git.operations import create_commit, stage_all  # noqa: PLC0415
 
     if isinstance(effect, InvokeAgentEffect):
         return _execute_agent_effect(
-            effect, config, invoke_agent, AgentInvocationError, AgentRegistry
+            effect,
+            config,
+            invoke_agent,
+            AgentInvocationError,
+            AgentRegistry,
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(create_commit, stage_all)
@@ -235,9 +298,9 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
 def _execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
-    invoke_agent: Callable[[AgentConfig, str], Iterable[object]],
+    invoke_agent: _InvokeAgentFn,
     agent_invocation_error: type[Exception],
-    agent_registry: type[AgentRegistry],
+    agent_registry: _AgentRegistryFactory,
 ) -> PipelineEvent:
     console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
     registry = agent_registry.from_config(config)
@@ -246,8 +309,32 @@ def _execute_agent_effect(
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
 
+    bridge: SessionBridgeLike | None = None
     try:
-        for _ in invoke_agent(agent_config, effect.prompt_file):
+        from ralph.agents.invoke import InvokeOptions  # noqa: PLC0415
+
+        session = AgentSession(
+            session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
+            run_id=str(uuid.uuid4()),
+            drain=effect.phase,
+            capabilities=set(),
+        )
+        workspace = FsWorkspace(Path())
+
+        def _bridge_factory(session_like: object, workspace_like: object) -> SessionBridgeLike:
+            return SessionBridge(
+                cast("AgentSession", session_like),
+                cast("FsWorkspace", workspace_like),
+            )
+
+        bridge = start_mcp_server_for_session(
+            session,
+            workspace,
+            bridge_factory=_bridge_factory,
+        )
+
+        options = InvokeOptions(verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL)
+        for _ in invoke_agent(agent_config, effect.prompt_file, options=options):
             pass
     except agent_invocation_error as exc:
         logger.error("Agent invocation failed: {}", exc)
@@ -255,6 +342,12 @@ def _execute_agent_effect(
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
         return PipelineEvent.AGENT_FAILURE
+    finally:
+        if bridge is not None:
+            try:
+                bridge.shutdown()
+            except Exception:
+                logger.exception("Failed to shut down MCP bridge")
     return PipelineEvent.AGENT_SUCCESS
 
 

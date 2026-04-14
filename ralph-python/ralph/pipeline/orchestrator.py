@@ -118,12 +118,6 @@ def _derive_effect_for_phase(
     """
     phase = state.phase
 
-    # For commit-gated phases, check budget first — if exhausted, route immediately
-    # without invoking the agent (no point invoking if we can't commit)
-    if phase_def.requires_commit and _commit_budget_exhausted(state, phase):
-        # Budget exhausted — advance to next phase
-        return _route_transition(state, phase_def, "on_success")
-
     # For fix phase, route immediately to review — issues were already identified
     # in the review phase, so fix should run without requiring separate invocation
     if phase == PHASE_FIX:
@@ -172,25 +166,6 @@ def _is_agent_invoked_for_phase(state: PipelineState, phase: PipelinePhase) -> b
         pass
 
     # Default: no invocation tracked, always invoke
-    return False
-
-
-def _commit_budget_exhausted(state: PipelineState, phase: PipelinePhase) -> bool:
-    """Check if the commit budget is exhausted for a commit-gated phase.
-
-    Args:
-        state: Current pipeline state.
-        phase: Commit-gated phase name.
-
-    Returns:
-        True if budget is exhausted and we should advance.
-    """
-    if phase == "development_commit":
-        return state.development_budget_remaining <= 0
-
-    if phase == "review_commit":
-        return state.review_budget_remaining <= 0
-
     return False
 
 
@@ -367,3 +342,27 @@ def resolve_next_phase(
         raise ValueError(msg)
 
     return target
+
+
+def resolve_post_commit_phase(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> PipelinePhase:
+    """Resolve next phase for a successful commit with optional budget guards.
+
+    If pipeline_policy.post_commit_routes has a matching route for the current
+    commit phase and budget state, that target is used. Otherwise fallback to
+    regular on_success transition from resolve_next_phase().
+    """
+    if state.phase == "development_commit":
+        budget_state = "remaining" if state.development_budget_remaining > 0 else "exhausted"
+    elif state.phase == "review_commit":
+        budget_state = "remaining" if state.review_budget_remaining > 0 else "exhausted"
+    else:
+        return resolve_next_phase(state.phase, "success", pipeline_policy)
+
+    for route in pipeline_policy.post_commit_routes:
+        if route.when.phase == state.phase and route.when.budget_state == budget_state:
+            return route.target
+
+    return resolve_next_phase(state.phase, "success", pipeline_policy)

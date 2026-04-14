@@ -7,6 +7,9 @@ whether to continue development or loop back for more iterations.
 
 from __future__ import annotations
 
+import json
+from typing import cast
+
 from loguru import logger
 
 from ralph.config.enums import AnalysisDecision
@@ -14,6 +17,8 @@ from ralph.phases import PhaseContext, register_handler
 from ralph.phases.analysis import parse_analysis_decision
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
+from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
 
 @register_handler("development")
@@ -36,6 +41,18 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
     if isinstance(effect, InvokeAgentEffect):
         logger.info("Development phase: invoking development agent")
+        planning_artifact_path = ".agent/artifacts/planning.json"
+        if ctx.workspace.exists(planning_artifact_path):
+            try:
+                artifact_obj: object = json.loads(ctx.workspace.read(planning_artifact_path))
+                if isinstance(artifact_obj, dict):
+                    artifact = cast("dict[str, object]", artifact_obj)
+                    parsed = parse_work_units_from_artifact(artifact)
+                    if parsed is not None:
+                        validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+            except (json.JSONDecodeError, WorkUnitsValidationError, PolicyValidationError) as exc:
+                logger.warning("Invalid planning work_units artifact: {}", exc)
+                return [PipelineEvent.FAILED]
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

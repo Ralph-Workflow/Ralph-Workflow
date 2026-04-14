@@ -28,7 +28,7 @@ from ralph.config.enums import (
 )
 from ralph.pipeline.effects import Effect, ExitFailureEffect, SaveCheckpointEffect
 from ralph.pipeline.events import Event, PipelineEvent
-from ralph.pipeline.orchestrator import resolve_next_phase
+from ralph.pipeline.orchestrator import resolve_next_phase, resolve_post_commit_phase
 from ralph.pipeline.state import (
     AgentChainState,
     CommitState,
@@ -425,7 +425,7 @@ def _handle_commit_success(
     """Handle successful commit."""
     if policy is not None:
         try:
-            next_phase = resolve_next_phase(state.phase, "success", policy)
+            next_phase = resolve_post_commit_phase(state, policy)
             return _advance_phase(state, next_phase)
         except ValueError:
             return state, []

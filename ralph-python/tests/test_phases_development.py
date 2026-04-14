@@ -27,6 +27,36 @@ class TestHandleDevelopment:
     def test_invoke_agent_effect_returns_agent_success(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
+        ctx.workspace.exists.return_value = False
+
+        result = handle_development(effect, ctx)
+        assert result == [PipelineEvent.AGENT_SUCCESS]
+
+    def test_invoke_agent_effect_with_invalid_work_units_returns_failed(self) -> None:
+        effect = MagicMock(spec=InvokeAgentEffect)
+        ctx = self._make_context()
+        ctx.workspace.exists.return_value = True
+        ctx.workspace.read.return_value = (
+            '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
+            '"dependencies":["missing"]}]}'
+        )
+        ctx.pipeline_policy.parallel_execution = None
+
+        result = handle_development(effect, ctx)
+        assert result == [PipelineEvent.FAILED]
+
+    def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
+        effect = MagicMock(spec=InvokeAgentEffect)
+        ctx = self._make_context()
+        ctx.workspace.exists.return_value = True
+        ctx.workspace.read.return_value = (
+            '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"]}]}'
+        )
+
+        parallel_execution = MagicMock()
+        parallel_execution.max_parallel_workers = 8
+        parallel_execution.require_allowed_directories = True
+        ctx.pipeline_policy.parallel_execution = parallel_execution
 
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]

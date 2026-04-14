@@ -158,6 +158,50 @@ class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]
     )
 
 
+class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]
+    """Condition selector for post-commit budget-guarded routing."""
+
+    model_config = ConfigDict(frozen=True)
+
+    phase: Literal["development_commit", "review_commit"] = Field(
+        ...,
+        description="Commit phase that this route applies to",
+    )
+    budget_state: Literal["remaining", "exhausted"] = Field(
+        ...,
+        description="Whether relevant budget remains (>0) or is exhausted (<=0)",
+    )
+
+
+class PostCommitRoute(BaseModel):  # type: ignore[explicit-any]
+    """Budget-guarded route applied after commit success."""
+
+    model_config = ConfigDict(frozen=True)
+
+    when: PostCommitRouteWhen = Field(..., description="Route condition")
+    target: str = Field(..., description="Target phase when condition matches")
+
+
+class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]
+    """Policy controls for planning-artifact work_units fanout."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: Literal["planning_artifact_work_units"] = Field(
+        default="planning_artifact_work_units",
+        description="Source of parallel fanout declarations",
+    )
+    max_parallel_workers: int = Field(
+        default=8,
+        ge=1,
+        description="Maximum allowed concurrent work units from planning artifact",
+    )
+    require_allowed_directories: bool = Field(
+        default=True,
+        description="Require each work unit to declare allowed_directories",
+    )
+
+
 class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]
     """Top-level pipeline.toml policy document.
 
@@ -180,6 +224,14 @@ class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]
     terminal_phase: str = Field(
         default="complete",
         description="Phase that marks successful pipeline completion",
+    )
+    post_commit_routes: list[PostCommitRoute] = Field(
+        default_factory=list,
+        description="Optional budget-guarded routes for commit success transitions",
+    )
+    parallel_execution: ParallelExecutionPolicy | None = Field(
+        default=None,
+        description="Optional planning-artifact parallel execution policy",
     )
 
     @model_validator(mode="after")
@@ -224,6 +276,29 @@ class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]
                     f"Phase '{name}' transitions.on_success to itself with no "
                     f"on_loopback — this creates an infinite loop with no escape"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def post_commit_routes_reference_known_targets(self) -> PipelinePolicy:
+        """Ensure post_commit route targets are defined phases or terminal pseudo-phases."""
+        terminal_states = {self.terminal_phase, "failed"}
+        for route in self.post_commit_routes:
+            if route.target not in terminal_states and route.target not in self.phases:
+                raise ValueError(f"post_commit_routes target '{route.target}' is not a known phase")
+        return self
+
+    @model_validator(mode="after")
+    def post_commit_routes_unique_conditions(self) -> PipelinePolicy:
+        """Ensure there is at most one route per (phase, budget_state) pair."""
+        seen: set[tuple[str, str]] = set()
+        for route in self.post_commit_routes:
+            key = (route.when.phase, route.when.budget_state)
+            if key in seen:
+                raise ValueError(
+                    "Duplicate post_commit_routes condition for "
+                    f"phase='{route.when.phase}', budget_state='{route.when.budget_state}'"
+                )
+            seen.add(key)
         return self
 
 

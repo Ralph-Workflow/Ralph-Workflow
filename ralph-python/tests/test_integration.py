@@ -32,8 +32,8 @@ def _make_initial_state() -> PipelineState:
         ),
         rebase=RebaseState(),
         commit=CommitState(),
-        development_budget_remaining=2,
-        review_budget_remaining=2,
+        development_budget_remaining=1,
+        review_budget_remaining=1,
     )
 
 

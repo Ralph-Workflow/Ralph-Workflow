@@ -80,6 +80,37 @@ def test_claude_parser_invalid_json() -> None:
     assert results[1].type == "text"
 
 
+def test_claude_parser_stream_event_wrapper_for_ccs() -> None:
+    """Claude/CCS stream_event wrapper should parse nested text deltas."""
+    parser = ClaudeParser()
+    lines = [
+        (
+            '{"type":"stream_event","event":{"type":"content_block_delta",'
+            '"delta":{"type":"text_delta","text":"Hello from stream"}}}'
+        ),
+        '{"type":"stream_event","event":{"type":"message_stop"}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert results[0].type == "text"
+    assert results[0].content == "Hello from stream"
+    assert results[1].type == "stop"
+
+
+def test_claude_parser_assistant_message_content_blocks() -> None:
+    """Claude assistant message should extract text blocks."""
+    parser = ClaudeParser()
+    lines = [
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"Final response"}]}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert results[0].type == "text"
+    assert results[0].content == "Final response"
+
+
 def test_opencode_parser_stream() -> None:
     """Test OpenCode parser handles stream events."""
     parser = OpenCodeParser()
@@ -105,6 +136,37 @@ def test_opencode_parser_tool_use() -> None:
 
     assert results[0].type == "tool_use"
     assert results[0].content == "bash"
+
+
+def test_opencode_parser_text_event_with_part_payload() -> None:
+    """OpenCode text event should parse text from nested part payload."""
+    parser = OpenCodeParser()
+    lines = [
+        '{"type":"text","part":{"type":"text","text":"Nested OpenCode text"}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "Nested OpenCode text"
+
+
+def test_opencode_parser_tool_use_completed_state_emits_result() -> None:
+    """OpenCode completed tool state should emit tool_result."""
+    parser = OpenCodeParser()
+    lines = [
+        (
+            '{"type":"tool_use","part":{"tool":"read","state":'
+            '{"status":"completed","output":"file content"}}}'
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "tool_result"
+    assert results[0].content == "file content"
 
 
 def test_generic_parser_content_fields() -> None:
@@ -171,6 +233,34 @@ def test_get_parser_codex() -> None:
     """Test get_parser returns CodexParser for 'codex'."""
     parser = get_parser("codex")
     assert isinstance(parser, CodexParser)
+
+
+def test_codex_parser_dot_event_item_completed_agent_message() -> None:
+    """Codex parser should handle dot-style item events from Rust reference."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"item.completed","item":{"type":"agent_message","text":"Codex says hi"}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "Codex says hi"
+
+
+def test_codex_parser_text_delta_supports_delta_text_field() -> None:
+    """Codex text_delta should parse delta.text in addition to delta.content."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"text_delta","delta":{"text":"Delta text field"}}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "Delta text field"
 
 
 def test_get_parser_unknown_raises() -> None:

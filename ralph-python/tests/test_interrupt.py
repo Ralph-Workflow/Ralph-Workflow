@@ -49,7 +49,6 @@ pipeline_state_module = importlib.import_module("ralph.pipeline.state")
 
 GeneralConfig = config_models.GeneralConfig
 UnifiedConfig = config_models.UnifiedConfig
-PreparePromptEffect = pipeline_effects.PreparePromptEffect
 run_pipeline_runner = runner_module.run
 PipelineState = pipeline_state_module.PipelineState
 
@@ -106,19 +105,13 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 ) -> None:
     saved_states: list[PipelineState] = []
 
-    monkeypatch.setattr(
-        runner_module,
-        "_determine_effect",
-        lambda state, config: PreparePromptEffect(phase=state.phase, iteration=state.iteration),
-    )
-
     def raise_keyboard_interrupt(
-        effect: object,
-        config: UnifiedConfig,
+        _state: PipelineState,
+        _config: UnifiedConfig,
     ) -> object:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(runner_module, "_execute_effect", raise_keyboard_interrupt)
+    monkeypatch.setattr(runner_module, "_determine_effect", raise_keyboard_interrupt)
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
 
     state = PipelineState(phase="planning")

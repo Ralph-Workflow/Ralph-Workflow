@@ -80,13 +80,25 @@ class TestDetermineEffect:
         state.current_agent.return_value = current_agent
         return state
 
-    def test_planning_phase_returns_prepare_prompt(self) -> None:
+    def test_planning_phase_with_planner_returns_invoke(self) -> None:
         config = MagicMock()
+        config.agent_drains = {"planning": "plan"}
+        config.agent_chains = {"plan": ["claude"]}
+        state = self._make_state(phase="planning")
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.agent_name == "claude"
+
+    def test_planning_phase_without_planner_returns_prepare_prompt(self) -> None:
+        config = MagicMock()
+        config.agent_drains = {}
+        config.agent_chains = {}
         state = self._make_state(phase="planning")
 
         effect = _determine_effect(state, config)
         assert isinstance(effect, PreparePromptEffect)
-        assert effect.phase == "planning"
+        assert effect.phase == "development"
 
     def test_development_with_no_agent_returns_prepare_prompt(self) -> None:
         config = MagicMock()
@@ -322,10 +334,53 @@ class TestPipelineRunnerLoop:
         assert result == 1
         console_mock.print.assert_called_once_with("[red]Pipeline failed:[/red] bad error")
 
+    def test_prepare_prompt_effect_advances_state_without_execute_effect(
+        self,
+        monkeypatch,
+    ) -> None:
+        state = MagicMock()
+        state.phase = "planning"
+        advanced_state = MagicMock()
+        advanced_state.phase = "development"
+        state.copy_with.return_value = advanced_state
+
+        effects = [
+            PreparePromptEffect(phase="development", iteration=0),
+            ExitSuccessEffect(),
+        ]
+
+        def stub_determine_effect(_state, _config):
+            return effects.pop(0)
+
+        execute_effect = MagicMock(return_value=PipelineEvent.AGENT_FAILURE)
+        reducer = MagicMock()
+        ckpt_save = MagicMock()
+        console_mock = MagicMock()
+
+        monkeypatch.setattr(runner_module, "_determine_effect", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
+        monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
+        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(runner_module, "console", console_mock)
+
+        result = runner_module.run(MagicMock(), initial_state=state)
+
+        assert result == 0
+        state.copy_with.assert_called_once_with(phase="development", iteration=0)
+        execute_effect.assert_not_called()
+        reducer.assert_not_called()
+        ckpt_save.assert_called_once_with(advanced_state)
+
 
 class TestExecuteAgentEffect:
     class AgentError(Exception):
         pass
+
+    @staticmethod
+    def _config(verbosity: int = 2) -> MagicMock:
+        config = MagicMock()
+        config.general.verbosity = verbosity
+        return config
 
     def test_returns_success_when_invocation_succeeds(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -333,8 +388,8 @@ class TestExecuteAgentEffect:
 
         result = runner_module._execute_agent_effect(
             effect,
-            MagicMock(),
-            lambda *_: iter(["line"]),
+            self._config(),
+            lambda *_args, **_kwargs: iter(["line"]),
             self.AgentError,
             registry,
         )
@@ -347,8 +402,8 @@ class TestExecuteAgentEffect:
 
         result = runner_module._execute_agent_effect(
             effect,
-            MagicMock(),
-            lambda *_: iter(["line"]),
+            self._config(),
+            lambda *_args, **_kwargs: iter(["line"]),
             self.AgentError,
             registry,
         )
@@ -359,12 +414,12 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        def raising_invoke(*_):
+        def raising_invoke(*_args, **_kwargs):
             raise self.AgentError("boom")
 
         result = runner_module._execute_agent_effect(
             effect,
-            MagicMock(),
+            self._config(),
             raising_invoke,
             self.AgentError,
             registry,
@@ -376,18 +431,68 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        def raising_value_error(*_):
+        def raising_value_error(*_args, **_kwargs):
             raise ValueError("boom")
 
         result = runner_module._execute_agent_effect(
             effect,
-            MagicMock(),
+            self._config(),
             raising_value_error,
             self.AgentError,
             registry,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_starts_and_shuts_down_mcp_bridge_around_invocation(self, monkeypatch) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        started: dict[str, bool] = {"value": False}
+        shutdown: dict[str, bool] = {"value": False}
+
+        class FakeBridge:
+            def start(self) -> None:
+                started["value"] = True
+
+            def shutdown(self) -> None:
+                shutdown["value"] = True
+
+            def agent_endpoint_uri(self) -> str:
+                return "tcp://127.0.0.1:12345"
+
+            def endpoint_uri(self) -> str:
+                return "tcp://127.0.0.1:12345"
+
+        def fake_start_mcp_server_for_session(session, workspace, *, bridge_factory=None):
+            bridge = FakeBridge()
+            bridge.start()
+            return bridge
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server_for_session",
+            fake_start_mcp_server_for_session,
+        )
+
+        seen_options: list[object] = []
+
+        def record_invoke(*_args, **kwargs):
+            seen_options.append(kwargs.get("options"))
+            return iter(["line"])
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            record_invoke,
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert started["value"] is True
+        assert shutdown["value"] is True
+        assert seen_options
 
 
 class TestExecuteCommitEffect:

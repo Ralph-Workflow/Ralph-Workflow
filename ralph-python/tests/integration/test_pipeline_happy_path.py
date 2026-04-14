@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import pytest
 
-from ralph.pipeline.effects import ExitSuccessEffect, InvokeAgentEffect, PreparePromptEffect
+from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.orchestrator import determine_next_effect
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
@@ -153,7 +153,7 @@ class TestPipelineHappyPath:
         default_policy: tuple[Any, Any, Any],
         initial_state: PipelineState,
     ) -> None:
-        """Test that development with budget=0 routes to review."""
+        """development_commit should still run commit even when budget is exhausted."""
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to development_commit phase with exhausted budget
@@ -166,16 +166,16 @@ class TestPipelineHappyPath:
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-        # development_commit with budget=0 should route to review
+        # development_commit should execute commit checkpoint before routing
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-        assert effect.phase == "review"
+        assert effect.phase == "development_commit"
 
     def test_review_commit_to_complete(
         self,
         default_policy: tuple[Any, Any, Any],
         initial_state: PipelineState,
     ) -> None:
-        """Test that review_commit routes to complete on success."""
+        """review_commit should run commit checkpoint before terminal routing."""
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to review_commit phase
@@ -188,8 +188,8 @@ class TestPipelineHappyPath:
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-        # review_commit on success routes to complete, which returns ExitSuccessEffect
-        assert isinstance(effect, ExitSuccessEffect)
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+        assert effect.phase == "review_commit"
 
     def test_memory_workspace_persistence(
         self,

@@ -27,6 +27,7 @@ from ralph.pipeline.orchestrator import (
     PhaseHandlerNotFoundError,
     determine_next_effect,
     resolve_next_phase,
+    resolve_post_commit_phase,
 )
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
@@ -36,6 +37,8 @@ from ralph.policy.models import (
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
+    PostCommitRoute,
+    PostCommitRouteWhen,
 )
 
 
@@ -117,6 +120,24 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
         },
         entry_phase="planning",
         terminal_phase="complete",
+        post_commit_routes=[
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="development_commit", budget_state="remaining"),
+                target="planning",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="development_commit", budget_state="exhausted"),
+                target="review",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="review_commit", budget_state="remaining"),
+                target="review",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="review_commit", budget_state="exhausted"),
+                target="complete",
+            ),
+        ],
     )
 
 
@@ -224,22 +245,28 @@ class TestAnalysisRouting:
 class TestCommitBudgetRouting:
     """Tests for commit-gated phase routing based on budget."""
 
-    def test_development_commit_with_budget_routes_to_review(self) -> None:
-        """Test that development_commit with budget > 0 routes to review."""
-        next_phase = resolve_next_phase(
-            current_phase="development_commit",
-            signal="success",
-            pipeline_policy=_make_minimal_pipeline_policy(),
-        )
+    def test_development_commit_with_budget_remaining_routes_to_planning(self) -> None:
+        """Post-commit route should send development_commit to planning when budget remains."""
+        state = PipelineState(phase="development_commit", development_budget_remaining=1)
+        next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
+        assert next_phase == "planning"
+
+    def test_development_commit_with_budget_exhausted_routes_to_review(self) -> None:
+        """Post-commit route should send development_commit to review when budget exhausted."""
+        state = PipelineState(phase="development_commit", development_budget_remaining=0)
+        next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
+        assert next_phase == "review"
+
+    def test_review_commit_with_budget_remaining_routes_to_review(self) -> None:
+        """Post-commit route should send review_commit to review when budget remains."""
+        state = PipelineState(phase="review_commit", review_budget_remaining=1)
+        next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "review"
 
     def test_review_commit_on_success_routes_to_complete(self) -> None:
-        """Test that review_commit on success routes to complete."""
-        next_phase = resolve_next_phase(
-            current_phase="review_commit",
-            signal="success",
-            pipeline_policy=_make_minimal_pipeline_policy(),
-        )
+        """Test that review_commit with exhausted budget routes to complete."""
+        state = PipelineState(phase="review_commit", review_budget_remaining=0)
+        next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "complete"
 
 

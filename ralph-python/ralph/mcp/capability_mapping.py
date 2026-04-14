@@ -16,8 +16,12 @@ class SessionDrain(StrEnum):
 
     PLANNING = "planning"
     DEVELOPMENT = "development"
+    DEVELOPMENT_ANALYSIS = "development_analysis"
+    DEVELOPMENT_COMMIT = "development_commit"
     ANALYSIS = "analysis"
     REVIEW = "review"
+    REVIEW_ANALYSIS = "review_analysis"
+    REVIEW_COMMIT = "review_commit"
     FIX = "fix"
     COMMIT = "commit"
 
@@ -248,8 +252,12 @@ def _coerce_session_drain(value: SessionDrain | str) -> SessionDrain:
     aliases = {
         "planning": SessionDrain.PLANNING,
         "development": SessionDrain.DEVELOPMENT,
+        "development_analysis": SessionDrain.DEVELOPMENT_ANALYSIS,
+        "development_commit": SessionDrain.DEVELOPMENT_COMMIT,
         "analysis": SessionDrain.ANALYSIS,
         "review": SessionDrain.REVIEW,
+        "review_analysis": SessionDrain.REVIEW_ANALYSIS,
+        "review_commit": SessionDrain.REVIEW_COMMIT,
         "fix": SessionDrain.FIX,
         "commit": SessionDrain.COMMIT,
     }
@@ -328,19 +336,19 @@ def _resolved_policy_status(
 def drain_class_for_session(drain: SessionDrain | str) -> DrainClass:
     """Classify a session drain into its drain class."""
     session_drain = _coerce_session_drain(drain)
-    if session_drain is SessionDrain.PLANNING:
-        return DrainClass.PLANNING
-    if session_drain is SessionDrain.DEVELOPMENT:
-        return DrainClass.DEVELOPMENT
-    if session_drain is SessionDrain.ANALYSIS:
-        return DrainClass.ANALYSIS
-    if session_drain is SessionDrain.REVIEW:
-        return DrainClass.REVIEW
-    if session_drain is SessionDrain.FIX:
-        return DrainClass.FIX
-    if session_drain is SessionDrain.COMMIT:
-        return DrainClass.COMMIT
-    raise ValueError(f"Unknown session drain: {drain!r}")
+    mapping: dict[SessionDrain, DrainClass] = {
+        SessionDrain.PLANNING: DrainClass.PLANNING,
+        SessionDrain.DEVELOPMENT: DrainClass.DEVELOPMENT,
+        SessionDrain.DEVELOPMENT_ANALYSIS: DrainClass.ANALYSIS,
+        SessionDrain.REVIEW_ANALYSIS: DrainClass.ANALYSIS,
+        SessionDrain.DEVELOPMENT_COMMIT: DrainClass.COMMIT,
+        SessionDrain.REVIEW_COMMIT: DrainClass.COMMIT,
+        SessionDrain.ANALYSIS: DrainClass.ANALYSIS,
+        SessionDrain.REVIEW: DrainClass.REVIEW,
+        SessionDrain.FIX: DrainClass.FIX,
+        SessionDrain.COMMIT: DrainClass.COMMIT,
+    }
+    return mapping[session_drain]
 
 
 def drain_to_access_mode(drain: SessionDrain | str) -> AccessMode:
@@ -353,19 +361,19 @@ def drain_to_access_mode(drain: SessionDrain | str) -> AccessMode:
 def drain_to_policy_mode(drain: SessionDrain | str) -> PolicyMode:
     """Map a session drain to the matching policy mode."""
     session_drain = _coerce_session_drain(drain)
-    if session_drain is SessionDrain.PLANNING:
-        return PolicyMode.PLANNING
-    if session_drain is SessionDrain.DEVELOPMENT:
-        return PolicyMode.DEVELOPMENT
-    if session_drain is SessionDrain.ANALYSIS:
-        return PolicyMode.ANALYSIS
-    if session_drain is SessionDrain.REVIEW:
-        return PolicyMode.REVIEW
-    if session_drain is SessionDrain.FIX:
-        return PolicyMode.FIX
-    if session_drain is SessionDrain.COMMIT:
-        return PolicyMode.COMMIT
-    raise ValueError(f"Unknown session drain: {drain!r}")
+    mapping: dict[SessionDrain, PolicyMode] = {
+        SessionDrain.PLANNING: PolicyMode.PLANNING,
+        SessionDrain.DEVELOPMENT: PolicyMode.DEVELOPMENT,
+        SessionDrain.DEVELOPMENT_ANALYSIS: PolicyMode.ANALYSIS,
+        SessionDrain.REVIEW_ANALYSIS: PolicyMode.ANALYSIS,
+        SessionDrain.DEVELOPMENT_COMMIT: PolicyMode.COMMIT,
+        SessionDrain.REVIEW_COMMIT: PolicyMode.COMMIT,
+        SessionDrain.ANALYSIS: PolicyMode.ANALYSIS,
+        SessionDrain.REVIEW: PolicyMode.REVIEW,
+        SessionDrain.FIX: PolicyMode.FIX,
+        SessionDrain.COMMIT: PolicyMode.COMMIT,
+    }
+    return mapping[session_drain]
 
 
 def lookup_ralph_capability(capability: McpCapability | str) -> Capability | None:

@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.pipeline.work_units import parse_work_units_from_artifact
 from ralph.policy.loader import PolicyValidationError as LoaderPolicyValidationError
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
@@ -38,6 +39,7 @@ from ralph.policy.validation import (
     validate_drain_bound,
     validate_drain_contracts,
     validate_phase_exists_in_policy,
+    validate_work_units_against_policy,
 )
 
 ValidationError = importlib.import_module("pydantic").ValidationError
@@ -622,3 +624,54 @@ class TestCheckpointPolicyMismatchError:
         assert "phase_a" in str(error)
         assert "phase_b" in str(error)
         assert "--no-resume" in str(error)
+
+
+class TestValidateWorkUnitsAgainstPolicy:
+    """Tests for planning work_units policy validation."""
+
+    def _minimal_pipeline(self, **kwargs: object) -> PipelinePolicy:
+        return PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+            **kwargs,
+        )
+
+    def test_multi_work_units_requires_parallel_execution_policy(self) -> None:
+        pipeline = self._minimal_pipeline()
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
+                    {"unit_id": "u2", "description": "B", "allowed_directories": ["tests"]},
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="parallel_execution"):
+            validate_work_units_against_policy(work_units, pipeline)
+
+    def test_multi_work_units_respects_max_parallel_workers(self) -> None:
+        pipeline = self._minimal_pipeline(parallel_execution={"max_parallel_workers": 1})
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
+                    {"unit_id": "u2", "description": "B", "allowed_directories": ["tests"]},
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="max_parallel_workers"):
+            validate_work_units_against_policy(work_units, pipeline)

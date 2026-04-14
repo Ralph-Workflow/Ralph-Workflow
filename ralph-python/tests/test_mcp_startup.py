@@ -23,6 +23,22 @@ def test_access_mode_for_drain_accepts_string_alias() -> None:
     assert startup.access_mode_for_drain("fix") is AccessMode.READ_WRITE
 
 
+def test_access_mode_for_development_analysis_is_read_only() -> None:
+    assert startup.access_mode_for_drain("development_analysis") is AccessMode.READ_ONLY
+
+
+def test_access_mode_for_development_commit_is_read_only() -> None:
+    assert startup.access_mode_for_drain("development_commit") is AccessMode.READ_ONLY
+
+
+def test_access_mode_for_review_analysis_is_read_only() -> None:
+    assert startup.access_mode_for_drain("review_analysis") is AccessMode.READ_ONLY
+
+
+def test_access_mode_for_review_commit_is_read_only() -> None:
+    assert startup.access_mode_for_drain("review_commit") is AccessMode.READ_ONLY
+
+
 def test_parse_tcp_endpoint_requires_tcp_scheme() -> None:
     with pytest.raises(ValueError, match="tcp://"):
         startup.parse_tcp_endpoint("127.0.0.1:1234")

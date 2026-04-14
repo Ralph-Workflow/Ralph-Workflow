@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from ralph.guidelines import stack
 from ralph.guidelines.go import GoGuidelines
@@ -146,8 +147,7 @@ def test_java_php_and_ruby_guidelines_apply_framework_extensions() -> None:
     )
     assert (
         "Document service wiring, bundles, and configuration conventions "
-        "when defaults are overridden."
-        in php_guidelines.documentation_checks
+        "when defaults are overridden." in php_guidelines.documentation_checks
     )
     assert (
         "Keep Rails CSRF protection enabled for state-changing requests."
@@ -155,8 +155,7 @@ def test_java_php_and_ruby_guidelines_apply_framework_extensions() -> None:
     )
     assert (
         "Document middleware, extensions, and route organization when "
-        "structure is not obvious from the app file."
-        in ruby_guidelines.documentation_checks
+        "structure is not obvious from the app file." in ruby_guidelines.documentation_checks
     )
     assert ruby_guidelines.as_review_guidelines() is ruby_guidelines
 
@@ -181,7 +180,7 @@ def test_stack_guidelines_merge_from_deduplicates_items_per_category() -> None:
         api_design_checks=[],
     )
 
-    merged.merge_from(source)
+    merged.merge_from(cast("Any", source))
 
     assert merged.quality_checks.count("Code follows consistent style and formatting") == 1
     assert merged.quality_checks[-1] == "New quality rule"

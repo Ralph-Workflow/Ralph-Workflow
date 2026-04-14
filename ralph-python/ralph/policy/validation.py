@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.pipeline.work_units import WorkUnitsPlan
     from ralph.policy.models import DrainName, PipelinePolicy, PolicyBundle
 
 
@@ -187,3 +188,33 @@ def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str
             "max_retries": str(chain_config.max_retries) if chain_config else "",
         }
     return matrix
+
+
+def validate_work_units_against_policy(
+    work_units: WorkUnitsPlan,
+    pipeline_policy: PipelinePolicy,
+) -> None:
+    """Validate parsed planning work_units against pipeline parallel policy."""
+    parallel_policy = pipeline_policy.parallel_execution
+    if len(work_units.work_units) <= 1:
+        return
+
+    if parallel_policy is None:
+        raise PolicyValidationError(
+            "Planning artifact declares multiple work_units but "
+            "pipeline.parallel_execution is not configured"
+        )
+
+    if len(work_units.work_units) > parallel_policy.max_parallel_workers:
+        raise PolicyValidationError(
+            "Planning artifact declares "
+            f"{len(work_units.work_units)} work_units, exceeding "
+            f"max_parallel_workers={parallel_policy.max_parallel_workers}"
+        )
+
+    if parallel_policy.require_allowed_directories:
+        for unit in work_units.work_units:
+            if not unit.allowed_directories:
+                raise PolicyValidationError(
+                    f"Work unit '{unit.unit_id}' must declare allowed_directories"
+                )
