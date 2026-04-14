@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Iterable, Sequence, Tuple
+from typing import TYPE_CHECKING, Any
 
 from ralph.mcp.capability_mapping import Capability, SessionDrain
-from ralph.mcp.session_bridge import AgentSession
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ralph.mcp.session_bridge import AgentSession
 
 SUBMIT_ARTIFACT_TOOL = "ralph_submit_artifact"
 DECLARE_COMPLETE_TOOL = "declare_complete"
@@ -133,11 +138,11 @@ class CapabilitySet:
         return tuple(self._values)
 
     @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> "CapabilitySet":
+    def defaults_for_drain(cls, drain: SessionDrain) -> CapabilitySet:
         return cls(DEFAULT_CAPABILITIES.get(drain, ()))
 
     @classmethod
-    def from_identifiers(cls, identifiers: Iterable[str] | None) -> "CapabilitySet":
+    def from_identifiers(cls, identifiers: Iterable[str] | None) -> CapabilitySet:
         if not identifiers:
             return cls()
         values: list[Capability] = []
@@ -165,11 +170,11 @@ class PolicyFlagSet:
         return tuple(self._values)
 
     @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> "PolicyFlagSet":
+    def defaults_for_drain(cls, drain: SessionDrain) -> PolicyFlagSet:
         return cls(DEFAULT_POLICY_FLAGS.get(drain, ()))
 
     @classmethod
-    def from_identifiers(cls, identifiers: Iterable[str] | None) -> "PolicyFlagSet":
+    def from_identifiers(cls, identifiers: Iterable[str] | None) -> PolicyFlagSet:
         if not identifiers:
             return cls()
         values: list[PolicyFlag] = []
@@ -189,11 +194,11 @@ class SessionCapabilities:
     policy_flags: PolicyFlagSet
 
     @classmethod
-    def new(cls, capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> "SessionCapabilities":
+    def new(cls, capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> SessionCapabilities:
         return cls(capabilities=capabilities, policy_flags=policy_flags)
 
     @classmethod
-    def from_session(cls, session: AgentSession) -> "SessionCapabilities":
+    def from_session(cls, session: AgentSession) -> SessionCapabilities:
         raw_caps = _resolve_session_iterable(session, "capabilities")
         raw_flags = _resolve_session_iterable(session, "policy_flags")
         caps = CapabilitySet.from_identifiers(raw_caps)
@@ -204,7 +209,7 @@ class SessionCapabilities:
     def from_drain(cls, drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
         return default_caps_and_flags_for_drain(drain)
 
-    def as_parts(self) -> Tuple[CapabilitySet, PolicyFlagSet]:
+    def as_parts(self) -> tuple[CapabilitySet, PolicyFlagSet]:
         return self.capabilities, self.policy_flags
 
 
@@ -215,13 +220,19 @@ def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet
 def capability_template_variables(
     capabilities: CapabilitySet, policy_flags: PolicyFlagSet
 ) -> dict[str, str]:
-    capability_vars: Sequence[Tuple[str, str]] = [
-        ("HAS_WORKSPACE_WRITE", bool_to_string(capabilities.contains(Capability.WORKSPACE_WRITE_TRACKED))),
-        ("HAS_PROCESS_EXEC", bool_to_string(capabilities.contains(Capability.PROCESS_EXEC_BOUNDED))),
+    capability_vars: Sequence[tuple[str, str]] = [
+        (
+            "HAS_WORKSPACE_WRITE",
+            bool_to_string(capabilities.contains(Capability.WORKSPACE_WRITE_TRACKED)),
+        ),
+        (
+            "HAS_PROCESS_EXEC",
+            bool_to_string(capabilities.contains(Capability.PROCESS_EXEC_BOUNDED)),
+        ),
         ("HAS_GIT_WRITE", bool_to_string(capabilities.contains(Capability.GIT_WRITE))),
     ]
 
-    policy_vars: Sequence[Tuple[str, str]] = [
+    policy_vars: Sequence[tuple[str, str]] = [
         ("POLICY_NO_EDIT", bool_to_string(policy_flags.contains(PolicyFlag.NO_EDIT))),
         ("POLICY_ALLOW_SHELL", bool_to_string(policy_flags.contains(PolicyFlag.ALLOW_SHELL))),
         (
@@ -242,14 +253,14 @@ def capability_template_variables(
     )
 
     visible_tools = visible_mcp_tool_names(capabilities)
-    mcp_vars: Sequence[Tuple[str, str]] = [
+    mcp_vars: Sequence[tuple[str, str]] = [
         ("MCP_TOOLS_LIST", format_mcp_tools_list(visible_tools)),
         ("HAS_MCP_WRITE", bool_to_string(has_mcp_write)),
         ("HAS_MCP_EXEC", bool_to_string(has_mcp_exec)),
         ("HAS_MCP_GIT", bool_to_string(has_mcp_git)),
     ]
 
-    mcp_tool_name_vars: Sequence[Tuple[str, str]] = [
+    mcp_tool_name_vars: Sequence[tuple[str, str]] = [
         tool_name_var(visible_tools, "SUBMIT_ARTIFACT_TOOL_NAME", SUBMIT_ARTIFACT_TOOL),
         tool_name_var(visible_tools, "DECLARE_COMPLETE_TOOL_NAME", DECLARE_COMPLETE_TOOL),
         tool_name_var(visible_tools, "COORDINATE_TOOL_NAME", COORDINATE_TOOL),
@@ -272,17 +283,14 @@ def capability_template_variables(
         format_capability_summary(capabilities, policy_flags),
     )
 
-    variables: dict[str, str] = {}
-    for key, value in (
+    all_items = (
         *capability_vars,
         *policy_vars,
         *mcp_vars,
         *mcp_tool_name_vars,
         summary_var,
-    ):
-        variables[key] = value
-
-    return variables
+    )
+    return {key: value for key, value in all_items}
 
 
 def capability_template_variables_from_session(session: AgentSession) -> dict[str, str]:
@@ -297,7 +305,7 @@ def bool_to_string(value: bool) -> str:
 
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
     results: list[str] = []
-    tool_matrix: Sequence[Tuple[Capability, Sequence[str]]] = (
+    tool_matrix: Sequence[tuple[Capability, Sequence[str]]] = (
         (Capability.WORKSPACE_READ, WORKSPACE_READ_TOOLS),
         (Capability.GIT_STATUS_READ, GIT_STATUS_READ_TOOLS),
         (Capability.GIT_DIFF_READ, GIT_DIFF_READ_TOOLS),
@@ -317,7 +325,11 @@ def format_mcp_tools_list(tool_names: Sequence[str]) -> str:
     return ", ".join(tool_names)
 
 
-def tool_name_var(visible_tools: Sequence[str], variable_name: str, tool_name: str) -> Tuple[str, str]:
+def tool_name_var(
+    visible_tools: Sequence[str],
+    variable_name: str,
+    tool_name: str,
+) -> tuple[str, str]:
     return (variable_name, tool_name if tool_name in visible_tools else "")
 
 
@@ -325,26 +337,34 @@ def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyF
     cap_list = sorted(capabilities.iter(), key=lambda cap: cap.value)
     flag_list = sorted(policy_flags.iter(), key=lambda flag: flag.value)
 
-    cap_section = "  (none)" if not cap_list else "\n".join(f"  - {cap.value}" for cap in cap_list)
-    flag_section = "  (none)" if not flag_list else "\n".join(f"  - {flag.value}" for flag in flag_list)
+    cap_section = (
+        "  (none)" if not cap_list else "\n".join(f"  - {cap.value}" for cap in cap_list)
+    )
+    flag_section = (
+        "  (none)" if not flag_list else "\n".join(f"  - {flag.value}" for flag in flag_list)
+    )
 
     return f"Capabilities:\n{cap_section}\n\nPolicy Flags:\n{flag_section}"
 
 
-def _resolve_session_iterable(session: Any, attribute: str) -> Iterable[str] | None:
+def _resolve_session_iterable(session: object, attribute: str) -> Iterable[str] | None:
     candidate = getattr(session, attribute, None)
     if candidate is None:
         return None
     if callable(candidate):
-        return candidate()
-    return candidate
+        candidate = candidate()
+    if isinstance(candidate, (str, bytes)):
+        return None
+    if isinstance(candidate, Iterable):
+        return candidate
+    return None
 
 
 __all__ = [
     "CapabilitySet",
     "PolicyFlagSet",
     "SessionCapabilities",
-    "default_caps_and_flags_for_drain",
     "capability_template_variables",
     "capability_template_variables_from_session",
+    "default_caps_and_flags_for_drain",
 ]

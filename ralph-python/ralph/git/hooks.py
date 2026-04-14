@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import os
 import shutil
-from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from loguru import logger as default_logger
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from loguru import Logger
+
+import contextlib
 
 from ralph.git.operations import find_repo_root
 
@@ -59,7 +62,7 @@ def install_hooks_in_repo(repo_root: Path | str | None = None) -> Path:
 
 def reinstall_hooks_if_tampered(
     *,
-    logger: Optional["Logger"] = None,
+    logger: Logger | None = None,
     repo_root: Path | str | None = None,
 ) -> bool:
     """Reinstall hooks when they are missing or do not contain the marker."""
@@ -78,7 +81,7 @@ def reinstall_hooks_if_tampered(
 
 def uninstall_hooks(
     *,
-    logger: Optional["Logger"] = None,
+    logger: Logger | None = None,
     repo_root: Path | str | None = None,
 ) -> bool:
     """Remove Ralph-managed hooks from the repository."""
@@ -178,10 +181,8 @@ def _orig_hook_path(hooks_dir: Path, hook_name: str) -> Path:
 def _write_hook_file(hook_path: Path, content: str) -> None:
     if hook_path.exists():
         _make_writable(hook_path)
-        try:
+        with contextlib.suppress(OSError):
             hook_path.unlink()
-        except OSError:
-            pass
     hook_path.write_text(content)
     _make_executable(hook_path)
 
@@ -189,19 +190,15 @@ def _write_hook_file(hook_path: Path, content: str) -> None:
 def _make_executable(path: Path) -> None:
     if os.name == "nt":
         return
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(0o555)
-    except OSError:
-        pass
 
 
 def _make_writable(path: Path) -> None:
     if os.name == "nt":
         return
-    try:
+    with contextlib.suppress(OSError):
         path.chmod(0o755)
-    except OSError:
-        pass
 
 
 def _hooks_missing_or_tampered(hooks_dir: Path) -> bool:
@@ -228,10 +225,8 @@ def _remove_hook(hook_path: Path) -> int:
         _make_writable(hook_path)
         return 1
 
-    try:
+    with contextlib.suppress(FileNotFoundError):
         hook_path.unlink()
-    except FileNotFoundError:
-        pass
     return 1
 
 

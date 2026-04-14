@@ -45,7 +45,7 @@ class MCPTransport(ABC):
         pass
 
     @abstractmethod
-    async def recv(self) -> AsyncIterator[MCPMessage]:
+    def recv(self) -> AsyncIterator[MCPMessage]:
         """Receive messages as an async iterator."""
         pass
 
@@ -140,7 +140,7 @@ class StdioTransport(MCPTransport):
             msg_dict["id"] = message.msg_id
         self._send_queue.put(msg_dict)
 
-    async def recv(self) -> AsyncIterator[MCPMessage]:  # type: ignore[override]
+    async def recv(self) -> AsyncIterator[MCPMessage]:
         """Receive messages as an async iterator."""
         while not self._closed:
             try:

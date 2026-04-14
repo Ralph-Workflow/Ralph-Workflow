@@ -3,31 +3,69 @@
 from __future__ import annotations
 
 import errno
-import io
 import json
 import os
 import socket
 import time
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Callable, Iterable, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlparse
 
 from ralph.mcp.capability_mapping import AccessMode, SessionDrain, drain_to_access_mode
 from ralph.mcp.tool_bridge import build_ralph_tool_registry
+from ralph.workspace import Workspace
+
+if TYPE_CHECKING:
+    import io
 
 JsonRpcResponse = dict[str, Any]
+
+
+def initialize_request() -> JsonRpcResponse:
+    """Build the standard JSON-RPC initialize request payload."""
+
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "ralph-preflight", "version": "0"},
+        },
+    }
+
+
+def initialized_notification() -> JsonRpcResponse:
+    """Build the post-initialize notification payload."""
+
+    return {
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {},
+    }
+
+
+def tools_list_request() -> JsonRpcResponse:
+    """Build the JSON-RPC request for tool discovery."""
+
+    return {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {},
+    }
 
 
 class SessionLike(Protocol):
     """Minimum API surface needed from an agent session."""
 
-    def capabilities(self) -> Iterable[str]:
-        """Return the capability names that the session owns."""
+    capabilities: set[str]
 
 
-class WorkspaceLike(Protocol):
-    """Placeholder workspace protocol for startup helpers."""
+WorkspaceLike = Workspace
 
 
 class SessionBridgeLike(Protocol):
@@ -36,14 +74,22 @@ class SessionBridgeLike(Protocol):
     def start(self) -> None:
         """Start accepting MCP connections."""
 
+        ...
+
     def agent_endpoint_uri(self) -> str:
         """Return the agent-facing endpoint URI."""
+
+        ...
 
     def endpoint_uri(self) -> str:
         """Return the raw endpoint URI used for transport-level preflight."""
 
+        ...
+
     def shutdown(self) -> None:
         """Shut down the bridge."""
+
+        ...
 
 
 SessionBridgeFactory = Callable[[SessionLike, WorkspaceLike], SessionBridgeLike]
@@ -224,10 +270,12 @@ def connect_to_endpoint(
     timeout = max(0.001, _connect_timeout_budget(remaining).total_seconds())
     try:
         return socket.create_connection(address, timeout=timeout)
-    except socket.timeout as exc:
-        raise RetryablePreflightError(f"failed to connect to MCP endpoint {endpoint}: {exc}")
+    except TimeoutError as exc:
+        raise RetryablePreflightError(
+            f"failed to connect to MCP endpoint {endpoint}: {exc}"
+        ) from exc
     except OSError as exc:
-        raise classify_connect_error(endpoint, exc)
+        raise classify_connect_error(endpoint, exc) from exc
 
 
 def classify_connect_error(endpoint: str, error: OSError) -> PreflightError:
@@ -288,9 +336,14 @@ def read_jsonrpc_response(reader: io.BufferedReader) -> JsonRpcResponse:
     if len(body) != length:
         raise PermanentPreflightError("failed to read MCP response body")
     try:
-        return json.loads(body)
+        payload = json.loads(body)
     except json.JSONDecodeError as exc:
-        raise PermanentPreflightError(f"failed to parse MCP response JSON: {exc}")
+        raise PermanentPreflightError(
+            f"failed to parse MCP response JSON: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise PermanentPreflightError("failed to parse MCP response JSON: expected object")
+    return payload
 
 
 def _read_content_length(reader: io.BufferedReader) -> int:
@@ -307,8 +360,8 @@ def _read_content_length(reader: io.BufferedReader) -> int:
         if text.lower().startswith("content-length:"):
             try:
                 length = int(text.split(":", 1)[1].strip())
-            except ValueError:
-                raise PermanentPreflightError("invalid Content-Length header")
+            except ValueError as exc:
+                raise PermanentPreflightError("invalid Content-Length header") from exc
 
 
 def post_http_jsonrpc(target: HttpEndpointTarget, payload: JsonRpcResponse) -> JsonRpcResponse:
@@ -341,13 +394,19 @@ def post_http_jsonrpc(target: HttpEndpointTarget, payload: JsonRpcResponse) -> J
     body_bytes = bytes(data[header_end + 4 :])
     status_line = header.splitlines()[0] if header else ""
     if " 200 " not in status_line:
+        response_body = body_bytes.decode("utf-8", errors="ignore")
         raise PermanentPreflightError(
-            f"HTTP MCP request failed with status '{status_line}': {body_bytes.decode('utf-8', errors='ignore')}"
+            f"HTTP MCP request failed with status '{status_line}': {response_body}"
         )
     try:
-        return json.loads(body_bytes)
+        payload = json.loads(body_bytes)
     except json.JSONDecodeError as exc:
-        raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}")
+        raise PermanentPreflightError(
+            f"failed to parse HTTP MCP response JSON: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
+    return payload
 
 
 def ensure_http_initialize(target: HttpEndpointTarget) -> None:
@@ -372,13 +431,17 @@ def ensure_no_preflight_error(label: str, error: Mapping[str, Any] | None) -> No
         raise PermanentPreflightError(f"{label} failed: {error}")
 
 
-def extract_preflight_tool_names(result: Any, label: str) -> list[str]:
+def extract_preflight_tool_names(result: object, label: str) -> list[str]:
     if not isinstance(result, Mapping):
         raise PermanentPreflightError(f"{label} tools/list response missing result")
     tools = result.get("tools")
     if not isinstance(tools, list):
         raise PermanentPreflightError("MCP tools/list result missing tools array")
-    return [tool["name"] for tool in tools if isinstance(tool, Mapping) and isinstance(tool.get("name"), str)]
+    return [
+        tool["name"]
+        for tool in tools
+        if isinstance(tool, Mapping) and isinstance(tool.get("name"), str)
+    ]
 
 
 def parse_tcp_endpoint(endpoint: str) -> tuple[str, int]:
@@ -396,7 +459,9 @@ def parse_http_endpoint(endpoint: str) -> HttpEndpointTarget:
     parsed = urlparse(endpoint)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError(
-            f"unsupported MCP HTTP scheme '{parsed.scheme}' for endpoint '{endpoint}' (only http:// is supported)"
+            "unsupported MCP HTTP scheme "
+            f"'{parsed.scheme}' for endpoint '{endpoint}' "
+            "(only http:// is supported)"
         )
     host = parsed.hostname
     if host is None:

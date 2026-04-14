@@ -6,14 +6,11 @@ structure from the Rust implementation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from ralph.config.enums import JsonParserType, ReviewDepth
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class AgentConfig(BaseModel):

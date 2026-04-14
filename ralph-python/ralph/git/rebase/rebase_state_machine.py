@@ -6,33 +6,33 @@ from enum import Enum
 
 from .rebase_checkpoint import (
     RebaseCheckpoint,
-    RebasePhase,
     RebaseLock,
+    RebasePhase,
     acquire_rebase_lock,
     clear_rebase_checkpoint,
     load_rebase_checkpoint,
+    rebase_checkpoint_exists,
     release_rebase_lock,
     restore_from_backup,
     save_rebase_checkpoint,
-    rebase_checkpoint_exists,
 )
 from .rebase_kinds import RebaseErrorKind, RebaseKind
 
 __all__ = [
     "InvalidTransitionError",
-    "RebasePhase",
     "RebaseCheckpoint",
-    "RebaseStateMachine",
     "RebaseEvent",
     "RebaseLock",
+    "RebasePhase",
+    "RebaseStateMachine",
     "RecoveryAction",
     "acquire_rebase_lock",
     "clear_rebase_checkpoint",
     "load_rebase_checkpoint",
-    "release_rebase_lock",
-    "save_rebase_checkpoint",
     "rebase_checkpoint_exists",
+    "release_rebase_lock",
     "restore_from_backup",
+    "save_rebase_checkpoint",
 ]
 
 DEFAULT_MAX_RECOVERY_ATTEMPTS = 3
@@ -75,7 +75,7 @@ class RebaseStateMachine:
         *,
         persist: bool = True,
         max_recovery_attempts: int = DEFAULT_MAX_RECOVERY_ATTEMPTS,
-    ) -> "RebaseStateMachine":
+    ) -> RebaseStateMachine:
         checkpoint = RebaseCheckpoint.new(upstream_branch)
         if persist:
             save_rebase_checkpoint(checkpoint)
@@ -88,7 +88,7 @@ class RebaseStateMachine:
         *,
         persist: bool = True,
         max_recovery_attempts: int = DEFAULT_MAX_RECOVERY_ATTEMPTS,
-    ) -> "RebaseStateMachine":
+    ) -> RebaseStateMachine:
         checkpoint: RebaseCheckpoint | None = None
         if rebase_checkpoint_exists():
             try:
@@ -165,11 +165,11 @@ class RebaseStateMachine:
             save_rebase_checkpoint(self.checkpoint)
 
     def can_recover(self) -> bool:
-        limit = self.phase.max_recovery_attempts()
+        limit = self.max_recovery_attempts
         return self.checkpoint.phase_error_count < limit
 
     def should_abort(self) -> bool:
-        limit = self.phase.max_recovery_attempts()
+        limit = self.max_recovery_attempts
         return self.checkpoint.phase_error_count >= limit
 
     def unresolved_conflict_count(self) -> int:
@@ -217,7 +217,7 @@ class RecoveryAction(Enum):
     Skip = "skip"
 
     @staticmethod
-    def decide(error_kind: RebaseErrorKind, error_count: int, max_attempts: int) -> "RecoveryAction":
+    def decide(error_kind: RebaseErrorKind, error_count: int, max_attempts: int) -> RecoveryAction:
         if error_count >= max_attempts:
             return RecoveryAction.Abort
         kind = error_kind.kind

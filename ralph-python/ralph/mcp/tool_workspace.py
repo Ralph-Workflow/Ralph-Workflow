@@ -18,6 +18,7 @@ from ralph.mcp.tool_coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.workspace import Workspace
 
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
 WORKSPACE_WRITE_TRACKED_CAPABILITY = "WorkspaceWriteTracked"
@@ -47,7 +48,7 @@ def _join_path(base: str, entry: str) -> str:
     return _normalize_relative_path(str(PurePosixPath(base) / entry))
 
 
-def _list_dir_entries(workspace: object, path: str) -> list[str]:
+def _list_dir_entries(workspace: Workspace, path: str) -> list[str]:
     try:
         return workspace.list_dir(path)
     except Exception as exc:
@@ -91,14 +92,14 @@ def _check_edit_area_restriction(session: object, path: str) -> None:
     )
 
 
-def _write_file_to_workspace(workspace: object, path: str, content: str) -> None:
+def _write_file_to_workspace(workspace: Workspace, path: str, content: str) -> None:
     try:
         workspace.write(path, content)
     except Exception as exc:
         raise ToolError(f"Failed to write file '{path}': {exc}") from exc
 
 
-def _is_path_git_tracked(workspace: object, path: str) -> bool:
+def _is_path_git_tracked(workspace: Workspace, path: str) -> bool:
     normalized = _normalize_relative_path(path)
     if not normalized:
         return False
@@ -112,7 +113,7 @@ def _is_path_git_tracked(workspace: object, path: str) -> bool:
     )
 
 
-def _list_dir_flat(workspace: object, path: str) -> str:
+def _list_dir_flat(workspace: Workspace, path: str) -> str:
     normalized = _normalize_relative_path(path)
     entries = _list_dir_entries(workspace, normalized)
     output = f"Directory: {path}\n"
@@ -123,7 +124,7 @@ def _list_dir_flat(workspace: object, path: str) -> str:
     return output
 
 
-def _append_dir_entry(workspace: object, entry_path: str, output: list[str], depth: int) -> None:
+def _append_dir_entry(workspace: Workspace, entry_path: str, output: list[str], depth: int) -> None:
     indent = "  " * depth
     is_dir = workspace.is_dir(entry_path)
     entry_type = "[DIR]" if is_dir else "[FILE]"
@@ -133,7 +134,7 @@ def _append_dir_entry(workspace: object, entry_path: str, output: list[str], dep
 
 
 def _walk_directory_recursive(
-    workspace: object,
+    workspace: Workspace,
     path: str,
     output: list[str],
     depth: int,
@@ -144,7 +145,7 @@ def _walk_directory_recursive(
         _append_dir_entry(workspace, entry_path, output, depth)
 
 
-def _collect_matching_files(workspace: object, base_path: str, pattern: str) -> list[str]:
+def _collect_matching_files(workspace: Workspace, base_path: str, pattern: str) -> list[str]:
     matches: list[str] = []
     entries = _list_dir_entries(workspace, base_path)
     for entry in sorted(entries):
@@ -160,7 +161,7 @@ def _collect_matching_files(workspace: object, base_path: str, pattern: str) -> 
 
 def handle_read_file(
     session: SessionLike,
-    workspace: object,
+    workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Workspace read")
@@ -177,7 +178,7 @@ def handle_read_file(
 
 def handle_list_directory(
     session: SessionLike,
-    workspace: object,
+    workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory listing")
@@ -191,7 +192,7 @@ def handle_list_directory(
     return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
 
 
-def _list_dir_recursive_output(workspace: object, path: str) -> str:
+def _list_dir_recursive_output(workspace: Workspace, path: str) -> str:
     normalized = _normalize_relative_path(path)
     output_lines: list[str] = [f"Directory (recursive): {path}\n"]
     _walk_directory_recursive(workspace, normalized, output_lines, 0)
@@ -200,7 +201,7 @@ def _list_dir_recursive_output(workspace: object, path: str) -> str:
 
 def handle_list_directory_recursive(
     session: SessionLike,
-    workspace: object,
+    workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Recursive directory listing")
@@ -211,7 +212,7 @@ def handle_list_directory_recursive(
 
 def handle_search_files(
     session: SessionLike,
-    workspace: object,
+    workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
     require_capability(session, WORKSPACE_READ_CAPABILITY, "File search")
@@ -229,7 +230,7 @@ def handle_search_files(
 
 def handle_write_file(
     session: SessionLike,
-    workspace: object,
+    workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
     path = required_string_param(params, "path")

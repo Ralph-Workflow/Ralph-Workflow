@@ -37,6 +37,8 @@ from ralph.pipeline.state import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.policy.models import PipelinePolicy
 
 # Maximum number of agent retries before giving up
@@ -64,43 +66,51 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
-    match event:
-        case PipelineEvent.AGENT_SUCCESS:
-            return _handle_agent_success(state, pipeline_policy)
-        case PipelineEvent.AGENT_FAILURE:
-            return _handle_agent_failure(state)
-        case PipelineEvent.AGENT_RETRY:
-            return _handle_agent_retry(state)
-        case PipelineEvent.ANALYSIS_SUCCESS:
-            return _handle_analysis_success(state, pipeline_policy)
-        case PipelineEvent.ANALYSIS_LOOPBACK:
-            return _handle_analysis_loopback(state, pipeline_policy)
-        case PipelineEvent.REVIEW_CLEAN:
-            return _handle_review_clean(state, pipeline_policy)
-        case PipelineEvent.REVIEW_ISSUES_FOUND:
-            return _handle_review_issues_found(state, pipeline_policy)
-        case PipelineEvent.FIX_SUCCESS:
-            return _handle_fix_success(state, pipeline_policy)
-        case PipelineEvent.FIX_FAILURE:
-            return _handle_fix_failure(state, pipeline_policy)
-        case PipelineEvent.COMMIT_SUCCESS:
-            return _handle_commit_success(state, pipeline_policy)
-        case PipelineEvent.COMMIT_FAILURE:
-            return _handle_commit_failure(state)
-        case PipelineEvent.CHECKPOINT_SAVED:
-            return _handle_checkpoint_saved(state)
-        case PipelineEvent.CONTEXT_CLEANED:
-            return state, []
-        case PipelineEvent.INTERRUPTED:
-            return _handle_interrupted(state)
-        case PipelineEvent.COMPLETE:
-            return _handle_complete(state)
-        case PipelineEvent.FAILED:
-            return _handle_failed(state)
-        case PipelineEvent.PHASE_ADVANCE:
-            return _handle_phase_advance(state, pipeline_policy)
-        case _:
-            return state, []
+    handlers: dict[
+        PipelineEvent,
+        Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
+    ] = {
+        PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
+        PipelineEvent.AGENT_FAILURE: _ignore_policy(_handle_agent_failure),
+        PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
+        PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
+        PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
+        PipelineEvent.REVIEW_CLEAN: _handle_review_clean,
+        PipelineEvent.REVIEW_ISSUES_FOUND: _handle_review_issues_found,
+        PipelineEvent.FIX_SUCCESS: _handle_fix_success,
+        PipelineEvent.FIX_FAILURE: _handle_fix_failure,
+        PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
+        PipelineEvent.COMMIT_FAILURE: _ignore_policy(_handle_commit_failure),
+        PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
+        PipelineEvent.CONTEXT_CLEANED: _return_state,
+        PipelineEvent.INTERRUPTED: _ignore_policy(_handle_interrupted),
+        PipelineEvent.COMPLETE: _ignore_policy(_handle_complete),
+        PipelineEvent.FAILED: _ignore_policy(_handle_failed),
+        PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
+    }
+    handler = handlers.get(event)
+    if handler is None:
+        return state, []
+    return handler(state, pipeline_policy)
+
+
+def _ignore_policy(
+    handler: Callable[[PipelineState], tuple[PipelineState, list[Effect]]],
+) -> Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]]:
+    def wrapper(
+        state: PipelineState,
+        _policy: PipelinePolicy | None,
+    ) -> tuple[PipelineState, list[Effect]]:
+        return handler(state)
+
+    return wrapper
+
+
+def _return_state(
+    state: PipelineState,
+    _policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    return state, []
 
 
 def _handle_agent_success(

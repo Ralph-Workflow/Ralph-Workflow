@@ -127,5 +127,32 @@ class RustGuidelines:
         ]
     )
 
+    def summary(self) -> str:
+        """Return a short human-readable summary."""
+        return (
+            f"{len(self.quality_checks)} quality checks, "
+            f"{len(self.security_checks)} security checks, "
+            f"{len(self.anti_patterns)} anti-patterns"
+        )
+
+    def total_checks(self) -> int:
+        """Return the total number of configured checks."""
+        return sum(
+            [
+                len(self.quality_checks),
+                len(self.security_checks),
+                len(self.performance_checks),
+                len(self.testing_checks),
+                len(self.documentation_checks),
+                len(self.idioms),
+                len(self.anti_patterns),
+                len(self.concurrency_checks),
+                len(self.resource_checks),
+                len(self.observability_checks),
+                len(self.secrets_checks),
+                len(self.api_design_checks),
+            ]
+        )
+
 
 __all__ = ["RustGuidelines"]

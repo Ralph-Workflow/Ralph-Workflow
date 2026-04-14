@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Iterable
+from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 WORKSPACE_READ_TOOLS = (
     "read_file",
@@ -21,7 +24,7 @@ PROGRESS_TOOLS = ("report_progress",)
 ENV_READ_TOOLS = ("read_env",)
 
 
-class SessionDrain(StrEnum):
+class SessionDrain(str, Enum):
     """Pipeline drain identity for prompt generation."""
 
     PLANNING = "planning"
@@ -32,7 +35,7 @@ class SessionDrain(StrEnum):
     COMMIT = "commit"
 
 
-class Capability(StrEnum):
+class Capability(str, Enum):
     WORKSPACE_READ = "workspace.read"
     WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
     WORKSPACE_WRITE_TRACKED = "workspace.write_tracked"
@@ -59,11 +62,11 @@ class CapabilitySet:
     def contains(self, capability: Capability) -> bool:
         return capability in self._capabilities
 
-    def __iter__(self) -> Iterable[Capability]:
+    def __iter__(self) -> Iterator[Capability]:
         return iter(self._capabilities)
 
     @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> "CapabilitySet":
+    def defaults_for_drain(cls, drain: SessionDrain) -> CapabilitySet:
         if drain in {SessionDrain.PLANNING, SessionDrain.ANALYSIS, SessionDrain.REVIEW}:
             caps = [
                 Capability.WORKSPACE_READ,
@@ -108,7 +111,7 @@ class CapabilitySet:
         return cls(caps)
 
 
-class PolicyFlag(StrEnum):
+class PolicyFlag(str, Enum):
     NO_EDIT = "no_edit"
     ALLOW_SHELL = "allow_shell"
     ALLOW_GIT_WRITE = "allow_git_write"
@@ -130,11 +133,11 @@ class PolicyFlagSet:
     def contains(self, flag: PolicyFlag) -> bool:
         return flag in self._flags
 
-    def __iter__(self) -> Iterable[PolicyFlag]:
+    def __iter__(self) -> Iterator[PolicyFlag]:
         return iter(self._flags)
 
     @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> "PolicyFlagSet":
+    def defaults_for_drain(cls, drain: SessionDrain) -> PolicyFlagSet:
         if drain in {SessionDrain.PLANNING, SessionDrain.ANALYSIS, SessionDrain.REVIEW}:
             flags = [PolicyFlag.NO_EDIT]
         elif drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}:
@@ -152,7 +155,7 @@ class SessionCapabilities:
     policy_flags: PolicyFlagSet
 
     @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> "SessionCapabilities":
+    def defaults_for_drain(cls, drain: SessionDrain) -> SessionCapabilities:
         return cls(
             capabilities=CapabilitySet.defaults_for_drain(drain),
             policy_flags=PolicyFlagSet.defaults_for_drain(drain),

@@ -1,6 +1,6 @@
 import pytest
 
-from ralph.prompts.template_registry import TemplateNotFound, TemplateRegistry
+from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegistry
 
 
 def test_returns_registered_template_content():
@@ -15,5 +15,5 @@ def test_returns_registered_template_content():
 def test_get_template_raises_when_missing():
     registry = TemplateRegistry()
 
-    with pytest.raises(TemplateNotFound):
+    with pytest.raises(TemplateNotFoundError):
         registry.get_template("does_not_exist")

@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Tuple
-
-from ralph.workspace.protocol import Workspace
+from typing import TYPE_CHECKING
 
 from .scanner import collect_signature_files
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from ralph.workspace.protocol import Workspace
 
 
 class DetectionResults:
     def __init__(self) -> None:
-        self.frameworks: List[str] = []
-        self.test_frameworks: List[str] = []
-        self.package_managers: List[str] = []
+        self.frameworks: list[str] = []
+        self.test_frameworks: list[str] = []
+        self.package_managers: list[str] = []
 
     def with_framework(self, value: str) -> DetectionResults:
         if value not in self.frameworks:
@@ -30,7 +33,7 @@ class DetectionResults:
             self.package_managers.append(value)
         return self
 
-    def finish(self) -> Tuple[List[str], Optional[str], Optional[str]]:
+    def finish(self) -> tuple[list[str], str | None, str | None]:
         return (
             self.frameworks,
             _combine_unique(self.test_frameworks),
@@ -38,7 +41,7 @@ class DetectionResults:
         )
 
 
-def _combine_unique(items: List[str]) -> Optional[str]:
+def _combine_unique(items: list[str]) -> str | None:
     if not items:
         return None
     if len(items) == 1:
@@ -46,8 +49,11 @@ def _combine_unique(items: List[str]) -> Optional[str]:
     return " + ".join(items)
 
 
-def _read_signature_contents(workspace: Workspace, signatures: Dict[str, List[str]]) -> Dict[str, str]:
-    contents: Dict[str, str] = {}
+def _read_signature_contents(
+    workspace: Workspace,
+    signatures: dict[str, list[str]],
+) -> dict[str, str]:
+    contents: dict[str, str] = {}
     for paths in signatures.values():
         for path in paths:
             try:
@@ -59,7 +65,7 @@ def _read_signature_contents(workspace: Workspace, signatures: Dict[str, List[st
 
 def detect_signature_files(
     workspace: Workspace, root: str = ""
-) -> Tuple[List[str], Optional[str], Optional[str]]:
+) -> tuple[list[str], str | None, str | None]:
     signatures = collect_signature_files(workspace, root)
     contents = _read_signature_contents(workspace, signatures)
     results = DetectionResults()
@@ -74,7 +80,7 @@ def detect_signature_files(
 
 
 def _detect_rust(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     files = signatures.get("cargo.toml")
     if not files:
@@ -101,7 +107,7 @@ def _detect_rust(
 
 
 def _detect_python(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     paths = signatures.get("pyproject.toml")
     if paths is not None:
@@ -134,7 +140,7 @@ def _detect_python(
 
 
 def _detect_javascript(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     paths = signatures.get("package.json")
     if paths is None:
@@ -180,7 +186,7 @@ def _detect_javascript(
 
 
 def _detect_go(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     paths = signatures.get("go.mod")
     if paths is None:
@@ -204,7 +210,7 @@ def _detect_go(
 
 
 def _detect_ruby(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     paths = signatures.get("gemfile")
     if paths is None:
@@ -227,7 +233,7 @@ def _detect_ruby(
 
 
 def _detect_java(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     pom_paths = signatures.get("pom.xml")
     if pom_paths is not None:
@@ -242,7 +248,7 @@ def _detect_java(
 
 
 def _detect_java_frameworks(
-    contents: Dict[str, str], paths: Iterable[str], results: DetectionResults
+    contents: dict[str, str], paths: Iterable[str], results: DetectionResults
 ) -> DetectionResults:
     for path in paths:
         content = contents.get(path)
@@ -256,7 +262,7 @@ def _detect_java_frameworks(
 
 
 def _detect_php(
-    signatures: Dict[str, List[str]], contents: Dict[str, str], results: DetectionResults
+    signatures: dict[str, list[str]], contents: dict[str, str], results: DetectionResults
 ) -> DetectionResults:
     paths = signatures.get("composer.json")
     if paths is None:

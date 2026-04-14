@@ -303,7 +303,7 @@ class MCPBridge:
     async def run(self) -> None:
         """Run the bridge message loop."""
         self.start()
-        async for message in self._transport.recv():  # type: ignore[attr-defined]
+        async for message in self._transport.recv():
             response = await self.handle_message(message)
             if response:
                 await self._transport.send(response)

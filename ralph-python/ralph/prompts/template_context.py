@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
 
 from ralph.prompts.policy_templates import (
     DEVELOPER_ITERATION_TEMPLATE,
@@ -15,7 +14,7 @@ class TemplateRegistry:
     """Simple registry of canonical templates."""
 
     def __init__(self) -> None:
-        self._templates: Dict[str, str] = {}
+        self._templates: dict[str, str] = {}
 
     def register_template(self, name: str, content: str) -> None:
         self._templates[name] = content
@@ -29,7 +28,7 @@ class TemplateContext:
     registry: TemplateRegistry
 
     @classmethod
-    def default(cls) -> "TemplateContext":
+    def default(cls) -> TemplateContext:
         registry = TemplateRegistry()
         registry.register_template("planning", PLANNING_TEMPLATE)
         registry.register_template("developer_iteration", DEVELOPER_ITERATION_TEMPLATE)

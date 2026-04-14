@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Any
+from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from git.config import GitConfigParser
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
@@ -39,10 +45,8 @@ def check_rebase_preconditions(repo_root: Path | str) -> None:
     concurrent = _detect_concurrent_operation(repo)
     if concurrent:
         raise RebasePreconditionError(
-            "Cannot start rebase: {} already in progress. "
-            "Please complete or abort the current operation first.".format(
-                concurrent.description
-            )
+            f"Cannot start rebase: {concurrent.description} already in progress. "
+            "Please complete or abort the current operation first."
         )
 
     _ensure_git_identity(repo)
@@ -118,7 +122,7 @@ def _ensure_git_identity(repo: Repo) -> None:
     username = _read_config_value(reader, "user", "name")
     email = _read_config_value(reader, "user", "email")
 
-    if not username and not email:
+    if not username or not email:
         raise RebasePreconditionError(
             "Git identity is not configured. Please set user.name and user.email:\n  "
             'git config --global user.name "Your Name"\n  '
@@ -145,9 +149,9 @@ def _check_shallow_clone(repo: Repo) -> None:
 
         line_count = len(content.splitlines())
         raise RebasePreconditionError(
-            "Repository is a shallow clone with {count} commits. "
+            f"Repository is a shallow clone with {line_count} commits. "
             "Rebasing may fail due to missing history. "
-            "Consider running: git fetch --unshallow".format(count=line_count)
+            "Consider running: git fetch --unshallow"
         )
 
 
@@ -179,10 +183,8 @@ def _check_worktree_conflicts(repo: Repo) -> None:
 
         if target_ref in content:
             raise RebasePreconditionError(
-                "Branch '{branch}' is already checked out in worktree '{worktree}'. "
-                "Use 'git worktree add' to create a new worktree for this branch.".format(
-                    branch=branch_name, worktree=entry.name
-                )
+                f"Branch '{branch_name}' is already checked out in worktree '{entry.name}'. "
+                "Use 'git worktree add' to create a new worktree for this branch."
             )
 
 
@@ -212,9 +214,8 @@ def _check_submodule_state(repo: Repo) -> None:
         submodule_path = workdir / path_value
         if not submodule_path.exists():
             raise RebasePreconditionError(
-                "Submodule '{name}' is not initialized. Run: git submodule update --init --recursive".format(
-                    name=path_value
-                )
+                f"Submodule '{path_value}' is not initialized. Run: "
+                "git submodule update --init --recursive"
             )
 
 
@@ -238,18 +239,20 @@ def _check_sparse_checkout_state(repo: Repo) -> None:
         )
 
 
-def _read_config_value(reader, section: str, key: str) -> str | None:
+def _read_config_value(reader: GitConfigParser, section: str, key: str) -> str | None:
     try:
         value = reader.get_value(section, key)
     except Exception:
         return None
     if not value:
         return None
-    stripped = value.strip()
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    stripped = str(value).strip()
     return stripped or None
 
 
-def _config_value_as_bool(reader, section: str, key: str) -> bool:
+def _config_value_as_bool(reader: GitConfigParser, section: str, key: str) -> bool:
     value = _read_config_value(reader, section, key)
     if value is None:
         return False

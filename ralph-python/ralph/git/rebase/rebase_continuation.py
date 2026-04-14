@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import subprocess
 import os
+import subprocess
 from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.git.operations import GitOperationError, find_repo_root
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 __all__ = [
     "ConflictRemainingError",
@@ -134,10 +137,7 @@ def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> b
     except (GitCommandError, ValueError) as exc:
         raise RebaseVerificationError("Upstream branch is invalid") from exc
 
-    if not _head_is_descendant(repo_root, upstream_branch):
-        return False
-
-    return True
+    return _head_is_descendant(repo_root, upstream_branch)
 
 
 def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None = None) -> bool:
@@ -164,9 +164,11 @@ def continue_rebase_at(repo_root: Path | str) -> None:
             env=_git_env(),
         )
     except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.strip() if exc.stderr else exc.stdout.strip() if exc.stdout else str(exc)
+        stderr = exc.stderr.strip() if exc.stderr else ""
+        stdout = exc.stdout.strip() if exc.stdout else ""
+        detail = stderr or stdout or str(exc)
         raise RebaseContinuationError(
-            f"Failed to continue rebase: {stderr}"
+            f"Failed to continue rebase: {detail}"
         ) from exc
 
 
@@ -183,6 +185,7 @@ def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
         capture_output=True,
         text=True,
         env=_git_env(),
+        check=False,
     )
     if result.returncode == 0:
         return True

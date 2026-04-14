@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-class TemplateNotFound(Exception):
+class TemplateNotFoundError(Exception):
     """Raised when a requested template is missing."""
 
     def __init__(self, template_name: str) -> None:
@@ -28,4 +28,4 @@ class TemplateRegistry:
         try:
             return self._templates[name]
         except KeyError as exc:
-            raise TemplateNotFound(name) from exc
+            raise TemplateNotFoundError(name) from exc

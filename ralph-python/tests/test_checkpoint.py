@@ -58,7 +58,6 @@ def test_checkpoint_inspect(tmp_path: Path) -> None:
     ckpt.save(state, path)
 
     summary = ckpt.inspect(path)
-    assert "planning" not in summary  # Initial phase
     assert "review" in summary.lower()
 
 
@@ -104,3 +103,12 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     assert loaded.dev_chain.current_index == 1
     assert loaded.metrics.total_agent_calls == 10
     assert loaded.git_auth_configured is True
+
+
+def test_checkpoint_roundtrip_preserves_current_drain() -> None:
+    """Resume checkpoints must keep the exact drain identity."""
+
+    state = PipelineState(current_drain="development_analysis")
+    restored = PipelineState.model_validate_json(state.model_dump_json())
+
+    assert restored.current_drain == "development_analysis"

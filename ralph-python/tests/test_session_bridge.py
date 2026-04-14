@@ -31,24 +31,27 @@ def test_endpoint_lease_path_is_nested(tmp_path: Path) -> None:
 
 def test_next_generation_for_run_behaves(tmp_path: Path) -> None:
     run_id = "run-x"
-    assert session_bridge.next_generation_for_run(tmp_path, run_id) == 1
+    drain = "development"
+    assert session_bridge.next_generation_for_run(tmp_path, run_id, drain) == 1
 
     lease_path = session_bridge.endpoint_lease_path(tmp_path)
     lease_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "endpoint": "tcp://127.0.0.1:12345",
         "run_id": run_id,
+        "drain": drain,
         "generation": 5,
         "ready_at": 123456,
     }
     lease_path.write_text(json.dumps(payload))
-    assert session_bridge.next_generation_for_run(tmp_path, run_id) == 6
+    assert session_bridge.next_generation_for_run(tmp_path, run_id, drain) == 6
 
-    assert session_bridge.next_generation_for_run(tmp_path, "other-run") == 1
+    assert session_bridge.next_generation_for_run(tmp_path, run_id, "analysis") == 1
+    assert session_bridge.next_generation_for_run(tmp_path, "other-run", drain) == 1
 
 
 def test_session_bridge_start_and_shutdown(tmp_path: Path) -> None:
-    workspace = MemoryWorkspace()
+    workspace = MemoryWorkspace(root=str(tmp_path))
     session = _dummy_session()
     bridge = session_bridge.SessionBridge(session, workspace)
 
@@ -59,15 +62,17 @@ def test_session_bridge_start_and_shutdown(tmp_path: Path) -> None:
     assert bridge.agent_endpoint_uri().startswith("http://127.0.0.1:")
 
     lease = bridge.endpoint_lease()
+    assert lease is not None
     assert lease.endpoint == bridge.endpoint_uri()
     assert lease.run_id == session.run_id
+    assert lease.drain == session.drain
 
     bridge.shutdown()
     assert bridge.is_shutdown()
 
 
 def test_audit_trail_and_drains(tmp_path: Path) -> None:
-    workspace = MemoryWorkspace()
+    workspace = MemoryWorkspace(root=str(tmp_path))
     session = _dummy_session()
     bridge = session_bridge.SessionBridge(session, workspace)
 
@@ -90,7 +95,7 @@ def test_audit_trail_and_drains(tmp_path: Path) -> None:
 
 
 def test_handle_request_in_process_returns_state(tmp_path: Path) -> None:
-    workspace = MemoryWorkspace()
+    workspace = MemoryWorkspace(root=str(tmp_path))
     session = _dummy_session()
     bridge = session_bridge.SessionBridge(session, workspace)
 

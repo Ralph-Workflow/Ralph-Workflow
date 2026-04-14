@@ -127,7 +127,8 @@ CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
 
 You MUST submit your plan via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool.
 - Not submitting the plan is a FAILURE.
-- Allowed operations: any non-mutating tools (for example file reads/search/listing and image analysis)
+- Allowed operations: any non-mutating tools
+  (for example file reads/search/listing and image analysis)
 
 ═══════════════════════════════════════════════════════════════════════════════
 PLANNING CONSTRAINTS (ANTI-RUNAWAY POLICY - PROGRESS-BASED)
@@ -141,19 +142,26 @@ Track these control signals while planning:
 Progress-based rules:
 1. Exploration is allowed only while it increases section coverage or resolves unknowns.
 2. If stagnation_count reaches 2, stop exploration and start drafting.
-3. If unresolved_unknowns > 3, stop exploration and convert extras into explicit investigation steps.
+3. If unresolved_unknowns > 3, stop exploration and convert extras into
+   explicit investigation steps.
 4. After drafting, run one critique pass.
 5. Critique may request at most one targeted re-exploration pass.
 6. Then finalize plan; no further exploration allowed.
 
 Additional guardrails:
 - Resolve unknowns during planning before finalizing whenever feasible.
-- If investigation is large or spans independent areas, split work into parallel investigation tracks.
-- Use subagents when parallel investigation is appropriate, and map each output to an explicit plan update.
+- If investigation is large or spans independent areas, split work into
+  parallel investigation tracks.
+- Use subagents when parallel investigation is appropriate, and map each
+  output to an explicit plan update.
 - Consolidate and synthesize parallel findings before finalizing.
-- If findings are inconsistent, run targeted follow-up investigation or record explicit unresolved risks.
-- If investigation yields a clear picture, convert it into actionable implementation tasks, not additional placeholders.
-- When open questions or unknowns cannot be resolved immediately, convert them into explicit investigation/research steps with question, why it blocks, and expected evidence.
+- If findings are inconsistent, run targeted follow-up investigation or
+  record explicit unresolved risks.
+- If investigation yields a clear picture, convert it into actionable
+  implementation tasks, not additional placeholders.
+- When open questions or unknowns cannot be resolved immediately, convert
+  them into explicit investigation/research steps with question, why it
+  blocks, and expected evidence.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 1: UNDERSTANDING
@@ -194,7 +202,8 @@ Design a practical implementation path:
 - key trade-off notes (brief)
 - risks and mitigations (brief)
 
-Choose a complete solution that fixes the problem at the root cause. Do not plan surface-level fixes or partial implementations.
+Choose a complete solution that fixes the problem at the root cause.
+Do not plan surface-level fixes or partial implementations.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 4: REVIEW
@@ -298,7 +307,9 @@ CRITICAL REQUIREMENTS:
 - If something is unclear, make the most reasonable assumption and proceed
 - If you encounter ambiguity, document your assumptions and continue
 - Complete your task autonomously from start to finish
-- DO NOT WRITE ANY STATUS .md FILES OF ANY TYPE UNLESS SPECIFICALLY REQUESTED, TEMPORARY DOCUMENTATION WILL POLLUTE CONTEXT AND SHOULD BE AVOIDED
+- DO NOT WRITE ANY STATUS .md FILES OF ANY TYPE UNLESS SPECIFICALLY
+  REQUESTED, TEMPORARY DOCUMENTATION WILL POLLUTE CONTEXT AND SHOULD BE
+  AVOIDED
 """),
     "shared/_session_capabilities": textwrap.dedent("""
 {# ============================================================================ #}
@@ -401,17 +412,35 @@ They are blocked and will fail. Use the MCP tools listed above.
 {% endif %}
 """),
     "shared/_no_git_commit": textwrap.dedent("""
-CRITICAL: Do NOT run ANY git command except read-only lookup commands (e.g. `git status`, `git diff`, `git log`, `git show`).
+CRITICAL: Do NOT run ANY git command except read-only lookup commands
+(e.g. `git status`, `git diff`, `git log`, `git show`).
 
-Ralph is the only actor that may commit, push, or perform staging operations. Accidental writes break the deterministic pipeline and cannot be auto-undone.
+Ralph is the only actor that may commit, push, or perform staging operations.
+Accidental writes break the deterministic pipeline and cannot be auto-undone.
 
-**Allowed:** `git status`, `git log`, `git diff`, `git show`, `git branch` (list only; no `-D`/`-d`), `git remote -v`, `git stash list` (never pop/apply/drop), `git rev-parse`, `git ls-files`, `git describe`.
+**Allowed:** `git status`, `git log`, `git diff`, `git show`, `git branch`
+(list only; no `-D`/`-d`), `git remote -v`, `git stash list`
+(never pop/apply/drop), `git rev-parse`, `git ls-files`, `git describe`.
 
-**Forbidden:** `commit`, `add`, `push`, `merge`, `rebase`, `tag`, `reset`, `cherry-pick`, `revert`, `am`/`apply`, destructive `checkout`/`restore`, mutating `stash`, `clean`, `branch -D`/`-d`, `init` — and anything else that mutates repo state or history.
+**Forbidden:** `commit`, `add`, `push`, `merge`, `rebase`, `tag`, `reset`,
+`cherry-pick`, `revert`, `am`/`apply`, destructive `checkout`/`restore`,
+mutating `stash`, `clean`, `branch -D`/`-d`, `init` — and anything else that
+mutates repo state or history.
 
-**MCP / tools:** Same prohibition — `mcp__git__git_commit`, `mcp__git__git_add`, `mcp__git__git_push`, `mcp__git__git_reset`, `mcp__git__git_checkout` (with `--`), `mcp__git__git_stash` (except list), `mcp__git__git_merge`, `mcp__git__git_init`, `mcp__git__git_create_branch`. Applies to CLI, MCP, libraries, subprocesses.
+**MCP / tools:** Same prohibition — `mcp__git__git_commit`,
+`mcp__git__git_add`, `mcp__git__git_push`, `mcp__git__git_reset`,
+`mcp__git__git_checkout` (with `--`), `mcp__git__git_stash` (except list),
+`mcp__git__git_merge`, `mcp__git__git_init`,
+`mcp__git__git_create_branch`. Applies to CLI, MCP, libraries, subprocesses.
 
-**Bypass (never):** Do not edit `.git/hooks/` (pre-commit, pre-push, pre-merge-commit) or `.git/ralph/` (including `.git/ralph/no_agent_commit`); do not use `/usr/bin/git` or other absolute paths; `--no-verify`; PATH tricks; `chmod`; `rm`/`unlink` on hooks; `exec`/`env`/`command` to skip the wrapper; `GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`. Hooks are **reinstalled** before every agent run. Unauthorized commits are detected via **HEAD OID** comparison. Bypass is **futile** — it wastes **execution budget** with no upside. Change files only; Ralph commits.
+**Bypass (never):** Do not edit `.git/hooks/` (pre-commit, pre-push,
+pre-merge-commit) or `.git/ralph/` (including `.git/ralph/no_agent_commit`);
+do not use `/usr/bin/git` or other absolute paths; `--no-verify`; PATH tricks;
+`chmod`; `rm`/`unlink` on hooks; `exec`/`env`/`command` to skip the wrapper;
+`GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`. Hooks are **reinstalled** before
+every agent run. Unauthorized commits are detected via **HEAD OID** comparison.
+Bypass is **futile** — it wastes **execution budget** with no upside.
+Change files only; Ralph commits.
 """),
     "shared/_developer_iteration_guidance": textwrap.dedent("""
 {# ============================================================================ #}

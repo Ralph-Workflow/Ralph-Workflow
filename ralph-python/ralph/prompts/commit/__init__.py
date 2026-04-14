@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..template_registry import TemplateNotFound, TemplateRegistry
+from ..template_registry import TemplateNotFoundError, TemplateRegistry
 
 DEFAULT_COMMIT_TEMPLATE_NAME = "commit_message"
 
@@ -41,6 +41,6 @@ def _select_template(template_registry: TemplateRegistry | None) -> str:
     if template_registry is not None:
         try:
             return template_registry.get_template(DEFAULT_COMMIT_TEMPLATE_NAME)
-        except TemplateNotFound:
+        except TemplateNotFoundError:
             pass
     return DEFAULT_COMMIT_MESSAGE_TEMPLATE

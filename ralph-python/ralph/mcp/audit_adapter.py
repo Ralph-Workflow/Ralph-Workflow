@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from threading import Lock
-from typing import List, Optional, Protocol
+from typing import Protocol
 
 from ralph.mcp.capability_mapping import (
     AccessDecision,
@@ -40,14 +40,14 @@ class AgentSessionId:
 class AuditSink(Protocol):
     """Protocol defining the MCP audit sink contract."""
 
-    def emit(self, record: "McpAuditRecord") -> None:
+    def emit(self, record: McpAuditRecord) -> None:
         ...
 
     def flush(self) -> None:
         ...
 
 
-class McpAuditEventType(str, Enum):
+class McpAuditEventType(StrEnum):
     TOOL = "tool"
     DENIAL = "denial"
     MODE_TRANSITION = "mode_transition"
@@ -59,20 +59,20 @@ class McpAuditEventType(str, Enum):
 class AuditCorrelation:
     """Correlation metadata emitted with a Ralph audit record."""
 
-    run_id: Optional[str] = None
-    generation: Optional[int] = None
-    drain: Optional[str] = None
-    policy_mode: Optional[str] = None
+    run_id: str | None = None
+    generation: int | None = None
+    drain: str | None = None
+    policy_mode: str | None = None
 
 
 @dataclass(frozen=True)
 class McpAuditCorrelation:
     """Correlation metadata that comes from the MCP dispatch layer."""
 
-    run_id: Optional[str] = None
-    generation: Optional[int] = None
-    drain: Optional[str] = None
-    policy_mode: Optional[PolicyMode] = None
+    run_id: str | None = None
+    generation: int | None = None
+    drain: str | None = None
+    policy_mode: PolicyMode | None = None
 
 
 @dataclass
@@ -80,7 +80,7 @@ class AuditMetadata:
     """Extended metadata attached to an MCP audit record."""
 
     event_type: McpAuditEventType = McpAuditEventType.TOOL
-    details: Optional[str] = None
+    details: str | None = None
     correlation: McpAuditCorrelation = field(default_factory=McpAuditCorrelation)
 
 
@@ -92,8 +92,8 @@ class McpAuditRecord:
     session_id: str
     tool_name: str
     decision: AccessDecision
-    path: Optional[str] = None
-    capability: Optional[McpCapability] = None
+    path: str | None = None
+    capability: McpCapability | None = None
     metadata: AuditMetadata = field(default_factory=AuditMetadata)
 
 
@@ -106,10 +106,10 @@ class RalphAuditRecord:
     capability: Capability
     outcome: PolicyOutcome
     description: str
-    duration_ms: Optional[int] = None
-    result_status: Optional[str] = None
-    event_type: Optional[str] = None
-    correlation: Optional[AuditCorrelation] = None
+    duration_ms: int | None = None
+    result_status: str | None = None
+    event_type: str | None = None
+    correlation: AuditCorrelation | None = None
 
 
 def outcome_from_decision(decision: AccessDecision) -> PolicyOutcome:
@@ -151,7 +151,7 @@ def resolve_description(record: McpAuditRecord) -> str:
     return record.metadata.details or default_description(record)
 
 
-def resolve_correlation(record: McpAuditRecord) -> Optional[AuditCorrelation]:
+def resolve_correlation(record: McpAuditRecord) -> AuditCorrelation | None:
     """Construct correlation metadata for Ralph audit records."""
 
     corr = record.metadata.correlation
@@ -190,7 +190,7 @@ class RalphAuditSinkAdapter:
     """Adapter that buffers Ralph audit records produced by MCP."""
 
     def __init__(self) -> None:
-        self._records: List[RalphAuditRecord] = []
+        self._records: list[RalphAuditRecord] = []
         self._lock = Lock()
 
     def emit(self, record: McpAuditRecord) -> None:
@@ -199,7 +199,7 @@ class RalphAuditSinkAdapter:
         with self._lock:
             self._records.append(to_ralph_record(record))
 
-    def drain_records(self) -> List[RalphAuditRecord]:
+    def drain_records(self) -> list[RalphAuditRecord]:
         """Return buffered records and clear the buffer."""
 
         with self._lock:
@@ -217,9 +217,9 @@ __all__ = [
     "AuditMetadata",
     "AuditSink",
     "Capability",
+    "McpAuditCorrelation",
     "McpAuditEventType",
     "McpAuditRecord",
-    "McpAuditCorrelation",
     "PolicyOutcome",
     "PolicyOutcomeStatus",
     "RalphAuditRecord",

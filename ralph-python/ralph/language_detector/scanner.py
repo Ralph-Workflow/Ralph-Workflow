@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import PurePosixPath
-from typing import Iterator
+from typing import TYPE_CHECKING
 
-from ralph.workspace.protocol import Workspace
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ralph.workspace.protocol import Workspace
 
 MAX_FILES_TO_SCAN = 2000
 MAX_SIGNATURE_SEARCH_DEPTH = 6
@@ -125,16 +128,20 @@ def collect_signature_files(workspace: Workspace, root: str = "") -> dict[str, l
 
 def is_test_file_name(file_name: str, primary_language: str, path_components: list[str]) -> bool:
     lower_name = file_name.lower()
+    language_checks = {
+        "Go": lambda: lower_name.endswith("_test.go"),
+        "PHP": lambda: lower_name.endswith("test.php") or lower_name.endswith("spec.php"),
+        "Python": lambda: (
+            lower_name.startswith("test_") and lower_name.endswith(".py")
+        ) or lower_name.endswith("_test.py"),
+        "Ruby": lambda: lower_name.endswith("_spec.rb") or lower_name.endswith("_test.rb"),
+    }
     if primary_language == "Rust":
         return (
             lower_name == "tests.rs"
             or lower_name.endswith("_test.rs")
             or (lower_name.endswith(".rs") and "tests" in path_components)
         )
-    if primary_language == "Python":
-        return (
-            lower_name.startswith("test_") and lower_name.endswith(".py")
-        ) or lower_name.endswith("_test.py")
     if primary_language in {"JavaScript", "TypeScript"}:
         return any(
             lower_name.endswith(suffix)
@@ -147,16 +154,13 @@ def is_test_file_name(file_name: str, primary_language: str, path_components: li
                 ".spec.tsx",
             )
         )
-    if primary_language == "Go":
-        return lower_name.endswith("_test.go")
     if primary_language == "Java":
         return (
             "src" in path_components and "test" in path_components
         ) or lower_name.endswith("test.java")
-    if primary_language == "Ruby":
-        return lower_name.endswith("_spec.rb") or lower_name.endswith("_test.rb")
-    if primary_language == "PHP":
-        return lower_name.endswith("test.php") or lower_name.endswith("spec.php")
+    check = language_checks.get(primary_language)
+    if check is not None:
+        return check()
     return "test" in lower_name or "spec" in lower_name
 
 

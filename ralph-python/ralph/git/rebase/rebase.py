@@ -5,15 +5,19 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from git import Repo
 from git.exc import BadName, GitCommandError, InvalidGitRepositoryError
 
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
+_STATUS_PREFIX_LEN = 3
 
 
 @dataclass(frozen=True)
@@ -59,8 +63,7 @@ class SubprocessExecutor:
             cwd=str(cwd) if cwd else None,
             env=env,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             check=False,
         )
         return ProcessResult(
@@ -187,7 +190,7 @@ def get_conflicted_files(
         if "U" not in prefix:
             continue
 
-        payload = line[3:] if len(line) > 3 else ""
+        payload = line[_STATUS_PREFIX_LEN:] if len(line) > _STATUS_PREFIX_LEN else ""
         filename = payload.split(" -> ")[-1].strip()
         if filename:
             conflicts.append(filename)
@@ -211,11 +214,28 @@ def rebase_onto(
     if head_commit is None:
         return RebaseNoOp("Repository has no commits yet (unborn branch)")
 
+    validation_result = _validate_rebase_request(repo, upstream_branch, executor, path)
+    if validation_result is not None:
+        return validation_result
+
+    result = executor.execute("git", ("rebase", upstream_branch), cwd=path)
+    return _rebase_result_from_process(result, path)
+
+
+def _validate_rebase_request(
+    repo: Repo,
+    upstream_branch: str,
+    executor: ProcessExecutor,
+    repo_root: Path,
+) -> RebaseResult | None:
     try:
         repo.commit(upstream_branch)
     except (BadName, GitCommandError):
         return RebaseFailed(
-            RebaseErrorKind(kind=RebaseKind.INVALID_REVISION, metadata={"revision": upstream_branch})
+            RebaseErrorKind(
+                kind=RebaseKind.INVALID_REVISION,
+                metadata={"revision": upstream_branch},
+            )
         )
 
     branch_name = _active_branch_name(repo)
@@ -225,10 +245,13 @@ def rebase_onto(
     if branch_name in {"main", "master"}:
         return RebaseNoOp(f"Already on '{branch_name}' branch, rebase not applicable")
 
-    if _merge_base_is_ancestor(executor, path, upstream_branch):
+    if _merge_base_is_ancestor(executor, repo_root, upstream_branch):
         return RebaseNoOp("Branch is already up-to-date with upstream")
 
-    result = executor.execute("git", ("rebase", upstream_branch), cwd=path)
+    return None
+
+
+def _rebase_result_from_process(result: ProcessResult, repo_root: Path) -> RebaseResult:
     if result.succeeded:
         return RebaseSuccess()
 
@@ -237,8 +260,7 @@ def rebase_onto(
 
     error_kind = classify_rebase_error(result.stderr, result.stdout)
     if error_kind.kind == RebaseKind.CONTENT_CONFLICT:
-        files = get_conflicted_files(repo_root=path)
-        return RebaseConflicts(files)
+        return RebaseConflicts(get_conflicted_files(repo_root=repo_root))
 
     return RebaseFailed(error_kind)
 
@@ -271,7 +293,7 @@ def _git_dir(repo_root: Path) -> Path:
     return Path(git_dir).resolve()
 
 
-def _safe_head_commit(repo: Repo):
+def _safe_head_commit(repo: Repo) -> object | None:
     try:
         return repo.head.commit
     except (ValueError, GitCommandError, AttributeError):
@@ -285,7 +307,11 @@ def _active_branch_name(repo: Repo) -> str | None:
         return None
 
 
-def _merge_base_is_ancestor(executor: ProcessExecutor, repo_root: Path, upstream_branch: str) -> bool:
+def _merge_base_is_ancestor(
+    executor: ProcessExecutor,
+    repo_root: Path,
+    upstream_branch: str,
+) -> bool:
     result = executor.execute(
         "git",
         ("merge-base", "--is-ancestor", upstream_branch, "HEAD"),
@@ -302,13 +328,13 @@ def _contains_up_to_date_message(result: ProcessResult) -> bool:
 __all__ = [
     "ProcessExecutor",
     "ProcessResult",
-    "SubprocessExecutor",
+    "RebaseConflicts",
+    "RebaseFailed",
+    "RebaseNoOp",
     "RebaseOperationError",
     "RebaseResult",
     "RebaseSuccess",
-    "RebaseConflicts",
-    "RebaseNoOp",
-    "RebaseFailed",
+    "SubprocessExecutor",
     "abort_rebase",
     "continue_rebase",
     "get_conflicted_files",

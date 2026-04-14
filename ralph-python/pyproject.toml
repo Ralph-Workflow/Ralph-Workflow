@@ -1,16 +1,16 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "ralph-workflow"
-version = "0.1.0"
-description = "Multi-agent AI orchestration CLI"
+dynamic = ["version"]
+description = "Python CLI for unattended multi-agent AI development workflows"
 readme = "README.md"
 requires-python = ">=3.14"
 license = {text = "MIT"}
 authors = [
-    {name = "Ralph Team", email = "ralph@example.com"}
+    {name = "Ralph Workflow maintainers"}
 ]
 keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent"]
 classifiers = [
@@ -55,13 +55,14 @@ bundle = [
 ralph = "ralph.cli.main:app"
 
 [project.urls]
-Homepage = "https://github.com/your-org/ralph-workflow"
-Documentation = "https://github.com/your-org/ralph-workflow#readme"
-Repository = "https://github.com/your-org/ralph-workflow"
-Issues = "https://github.com/your-org/ralph-workflow/issues"
+Homepage = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+Documentation = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-python/README.md"
+Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues"
 
 [tool.hatch.version]
-source = "vcs"
+source = "code"
+path = "ralph/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ralph"]
@@ -100,15 +101,10 @@ strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 
-[tool.pytest.ini_options]
-minversion = "8.0"
-testpaths = ["tests"]
-asyncio_mode = "auto"
-addopts = "-v --cov=ralph --cov-report=term-missing"
-
 [tool.coverage.run]
 source = ["ralph"]
 branch = true
+data_file = ".coverage.pytest"
 
 [tool.coverage.report]
 exclude_lines = [

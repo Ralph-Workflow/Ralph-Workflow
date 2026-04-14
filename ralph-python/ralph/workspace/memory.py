@@ -34,7 +34,8 @@ class MemoryWorkspace:
         Returns:
             Normalized path.
         """
-        return str(PurePosixPath(path))
+        normalized = str(PurePosixPath(path))
+        return "" if normalized == "." else normalized
 
     def _ensure_parent(self, path: str) -> None:
         """Ensure parent directory exists.
@@ -43,8 +44,12 @@ class MemoryWorkspace:
             path: File path.
         """
         p = PurePosixPath(path)
-        if p.parent != PurePosixPath("."):
-            self._dirs.add(str(p.parent))
+        if p.parent == PurePosixPath("."):
+            return
+        for parent in reversed(p.parents[:-1]):
+            normalized_parent = self._normalize(str(parent))
+            if normalized_parent:
+                self._dirs.add(normalized_parent)
 
     def read(self, path: str) -> str:
         """Read file contents.

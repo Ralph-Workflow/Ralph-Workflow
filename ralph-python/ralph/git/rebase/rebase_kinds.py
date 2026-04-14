@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class RebaseKind(Enum):
@@ -54,7 +58,7 @@ def classify_rebase_error(stderr: str, stdout: str) -> RebaseErrorKind:
     )
 
 
-def _classify_invalid_revision(output: str) -> Optional[RebaseErrorKind]:
+def _classify_invalid_revision(output: str) -> RebaseErrorKind | None:
     triggers = [
         "invalid revision",
         "unknown revision",
@@ -71,7 +75,7 @@ def _classify_invalid_revision(output: str) -> Optional[RebaseErrorKind]:
     return RebaseErrorKind(kind=RebaseKind.INVALID_REVISION, metadata={"revision": revision})
 
 
-def _classify_shallow_or_missing_history(output: str) -> Optional[RebaseErrorKind]:
+def _classify_shallow_or_missing_history(output: str) -> RebaseErrorKind | None:
     triggers = ["shallow", "depth", "unreachable", "needed single revision", "does not have"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -82,7 +86,7 @@ def _classify_shallow_or_missing_history(output: str) -> Optional[RebaseErrorKin
     )
 
 
-def _classify_worktree_conflict(output: str) -> Optional[RebaseErrorKind]:
+def _classify_worktree_conflict(output: str) -> RebaseErrorKind | None:
     triggers = ["worktree", "checked out", "another branch", "already checked out"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -93,7 +97,7 @@ def _classify_worktree_conflict(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_submodule_conflict(output: str) -> Optional[RebaseErrorKind]:
+def _classify_submodule_conflict(output: str) -> RebaseErrorKind | None:
     if ".gitmodules" not in output and "submodule" not in output:
         return None
 
@@ -103,7 +107,7 @@ def _classify_submodule_conflict(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_dirty_working_tree(output: str) -> Optional[RebaseErrorKind]:
+def _classify_dirty_working_tree(output: str) -> RebaseErrorKind | None:
     triggers = ["dirty", "uncommitted changes", "local changes", "cannot rebase"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -111,7 +115,7 @@ def _classify_dirty_working_tree(output: str) -> Optional[RebaseErrorKind]:
     return RebaseErrorKind(kind=RebaseKind.DIRTY_WORKING_TREE)
 
 
-def _classify_concurrent_operation(output: str) -> Optional[RebaseErrorKind]:
+def _classify_concurrent_operation(output: str) -> RebaseErrorKind | None:
     triggers = [
         "rebase in progress",
         "merge in progress",
@@ -128,7 +132,7 @@ def _classify_concurrent_operation(output: str) -> Optional[RebaseErrorKind]:
     return RebaseErrorKind(kind=RebaseKind.CONCURRENT_OPERATION, metadata={"operation": operation})
 
 
-def _classify_repository_corruption(output: str) -> Optional[RebaseErrorKind]:
+def _classify_repository_corruption(output: str) -> RebaseErrorKind | None:
     triggers = [
         "corrupt",
         "object not found",
@@ -147,7 +151,7 @@ def _classify_repository_corruption(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_environment_failure(output: str) -> Optional[RebaseErrorKind]:
+def _classify_environment_failure(output: str) -> RebaseErrorKind | None:
     triggers = ["user.name", "user.email", "author", "committer", "terminal", "editor"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -158,7 +162,7 @@ def _classify_environment_failure(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_hook_rejection(output: str) -> Optional[RebaseErrorKind]:
+def _classify_hook_rejection(output: str) -> RebaseErrorKind | None:
     if "pre-rebase" not in output and "hook" not in output and "rejected by" not in output:
         return None
 
@@ -168,7 +172,7 @@ def _classify_hook_rejection(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_content_conflict(output: str) -> Optional[RebaseErrorKind]:
+def _classify_content_conflict(output: str) -> RebaseErrorKind | None:
     triggers = ["Conflict", "conflict", "Resolve", "Merge conflict"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -179,7 +183,7 @@ def _classify_content_conflict(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_patch_failure(output: str) -> Optional[RebaseErrorKind]:
+def _classify_patch_failure(output: str) -> RebaseErrorKind | None:
     triggers = ["patch does not apply", "patch failed", "hunk failed", "context mismatch", "fuzz"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -190,7 +194,7 @@ def _classify_patch_failure(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_interactive_stop(output: str) -> Optional[RebaseErrorKind]:
+def _classify_interactive_stop(output: str) -> RebaseErrorKind | None:
     triggers = ["Stopped at", "paused", "edit command"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -201,7 +205,7 @@ def _classify_interactive_stop(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_empty_commit(output: str) -> Optional[RebaseErrorKind]:
+def _classify_empty_commit(output: str) -> RebaseErrorKind | None:
     triggers = ["empty", "no changes", "already applied"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -209,7 +213,7 @@ def _classify_empty_commit(output: str) -> Optional[RebaseErrorKind]:
     return RebaseErrorKind(kind=RebaseKind.EMPTY_COMMIT)
 
 
-def _classify_autostash_failure(output: str) -> Optional[RebaseErrorKind]:
+def _classify_autostash_failure(output: str) -> RebaseErrorKind | None:
     triggers = ["autostash", "stash"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -220,7 +224,7 @@ def _classify_autostash_failure(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_commit_creation_failure(output: str) -> Optional[RebaseErrorKind]:
+def _classify_commit_creation_failure(output: str) -> RebaseErrorKind | None:
     triggers = [
         "pre-commit",
         "commit-msg",
@@ -238,7 +242,7 @@ def _classify_commit_creation_failure(output: str) -> Optional[RebaseErrorKind]:
     )
 
 
-def _classify_reference_update_failure(output: str) -> Optional[RebaseErrorKind]:
+def _classify_reference_update_failure(output: str) -> RebaseErrorKind | None:
     triggers = ["cannot lock", "ref update", "packed-refs", "reflog"]
     if not any(trigger in output for trigger in triggers):
         return None
@@ -249,7 +253,10 @@ def _classify_reference_update_failure(output: str) -> Optional[RebaseErrorKind]
     )
 
 
-_REBASE_CLASSIFIERS: tuple[Any, ...] = (
+_Classifier = Callable[[str], RebaseErrorKind | None]
+
+
+_REBASE_CLASSIFIERS: tuple[_Classifier, ...] = (
     _classify_invalid_revision,
     _classify_shallow_or_missing_history,
     _classify_worktree_conflict,
@@ -269,7 +276,7 @@ _REBASE_CLASSIFIERS: tuple[Any, ...] = (
 )
 
 
-def _extract_revision(output: str) -> Optional[str]:
+def _extract_revision(output: str) -> str | None:
     patterns = [
         ("invalid revision '", "'"),
         ("unknown revision '", "'"),
@@ -317,7 +324,7 @@ def _extract_revision(output: str) -> Optional[str]:
     return None
 
 
-def _extract_operation(output: str) -> Optional[str]:
+def _extract_operation(output: str) -> str | None:
     mappings = [
         ("rebase in progress", "rebase"),
         ("merge in progress", "merge"),
@@ -362,8 +369,8 @@ def _extract_error_line(output: str) -> str:
     return output.strip()
 
 
-def _extract_conflict_files(output: str) -> List[str]:
-    files: List[str] = []
+def _extract_conflict_files(output: str) -> list[str]:
+    files: list[str] = []
     for line in output.splitlines():
         if not any(keyword in line for keyword in ("CONFLICT", "Conflict", "Merge conflict")):
             continue
@@ -376,4 +383,4 @@ def _extract_conflict_files(output: str) -> List[str]:
     return files
 
 
-__all__ = ["RebaseKind", "RebaseErrorKind", "classify_rebase_error"]
+__all__ = ["RebaseErrorKind", "RebaseKind", "classify_rebase_error"]

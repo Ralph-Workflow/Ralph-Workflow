@@ -5,10 +5,10 @@ This module implements the main pipeline execution command.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import importlib
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from loguru import logger
-from rich.console import Console
 
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
@@ -24,7 +24,26 @@ try:
 except ImportError:
     _run_func = None  # type: ignore[assignment]
 
-console = Console()
+
+class _FallbackConsole:
+    def print(self, *args: object, **kwargs: object) -> None:
+        return None
+
+
+class _ConsoleLike(Protocol):
+    def print(self, *args: object, **kwargs: object) -> None: ...
+
+
+def _create_console() -> _ConsoleLike:
+    try:
+        console_module = importlib.import_module("rich.console")
+    except ModuleNotFoundError:
+        return _FallbackConsole()
+
+    return cast(_ConsoleLike, console_module.Console())
+
+
+console: _ConsoleLike = _create_console()
 
 
 def run_pipeline(
@@ -78,7 +97,8 @@ def run_pipeline(
         console.print("\n[yellow]Interrupted by user[/yellow]")
         # Save checkpoint on interrupt
         if initial_state is not None:
-            ckpt.save(initial_state)
+            interrupted_state = initial_state.model_copy(update={"interrupted_by_user": True})
+            ckpt.save(interrupted_state)
         return 130
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")

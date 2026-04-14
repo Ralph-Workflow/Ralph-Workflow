@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
-from ralph.config.loader import _deep_merge, load_config
+from ralph.config.loader import (
+    GLOBAL_CONFIG_PATH,
+    LOCAL_CONFIG_PATH,
+    _deep_merge,
+    load_config,
+)
 
 
 def test_deep_merge_simple() -> None:
@@ -32,8 +39,17 @@ def test_deep_merge_override_wins() -> None:
     assert result == {"a": 1, "b": {"x": 1, "y": 3, "z": 4}}
 
 
-def test_load_config_with_defaults() -> None:
+def test_load_config_with_defaults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Test loading config with default values."""
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    monkeypatch.setattr(
+        "ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name
+    )
+
     config = load_config()
     assert config.general.developer_iters == 5
     assert config.general.reviewer_reviews == 2

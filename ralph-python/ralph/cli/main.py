@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, TypedDict
 
 import rich_click as click
@@ -20,15 +21,11 @@ from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.run import run_pipeline
 from ralph.cli.options import (
-    VerbosityOption,
     display_agents_table,
     display_providers_table,
 )
 from ralph.config.enums import PauseOnExit, RecoveryStrategy, ReviewDepth, Verbosity
 from ralph.config.loader import load_config
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # Late imports to avoid circular dependencies
 from ralph import __version__
@@ -247,7 +244,7 @@ def main(
     ] = None,
     verbosity: Annotated[
         Verbosity,
-        VerbosityOption(
+        typer.Option(
             "--verbosity",
             "-v",
             help="Output verbosity (quiet, normal, verbose, full, debug)",

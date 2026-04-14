@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from git import GitCommandError, Repo
 
@@ -17,9 +16,9 @@ HOOKS_DIR_NAME = "hooks"
 class GitHelpers:
     """Simple placeholder for Git wrapper state tracking."""
 
-    real_git: Optional[Path]
-    wrapper_dir: Optional[Path]
-    wrapper_repo_root: Optional[Path]
+    real_git: Path | None
+    wrapper_dir: Path | None
+    wrapper_repo_root: Path | None
 
     def __init__(self) -> None:
         self.real_git = None
@@ -27,7 +26,7 @@ class GitHelpers:
         self.wrapper_repo_root = None
 
 
-def start_agent_phase(repo_root: Path | str, helpers: Optional[GitHelpers] = None) -> None:
+def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
     """Enable git protections for an agent phase."""
 
     repo = Repo(repo_root)
@@ -44,7 +43,7 @@ def start_agent_phase(repo_root: Path | str, helpers: Optional[GitHelpers] = Non
     _set_hooks_path(repo, ralph_dir)
 
 
-def end_agent_phase(repo_root: Path | str, helpers: Optional[GitHelpers] = None) -> None:
+def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
     """Remove agent-phase protections and restore git state."""
     repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
@@ -112,7 +111,7 @@ def _set_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     repo.git.config("--local", "core.hooksPath", str(hooks_dir))
 
 
-def _read_hooks_path(repo: Repo) -> Optional[str]:
+def _read_hooks_path(repo: Repo) -> str | None:
     try:
         value = repo.git.config("--local", "--get", "core.hooksPath")
     except GitCommandError as exc:
@@ -154,10 +153,11 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
 
 
 def _unset_hooks_path(repo: Repo) -> None:
+    missing_key_status = 5
     try:
         repo.git.config("--local", "--unset-all", "core.hooksPath")
     except GitCommandError as exc:
-        if exc.status == 5:
+        if exc.status == missing_key_status:
             return
         raise
 

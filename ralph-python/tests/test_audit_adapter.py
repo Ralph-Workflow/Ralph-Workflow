@@ -28,11 +28,11 @@ def test_sink_adapter_records_tool_event() -> None:
     metadata = audit_adapter.AuditMetadata(
         event_type=audit_adapter.McpAuditEventType.TOOL,
         details="agent tool call",
-        correlation=audit_adapter.AuditCorrelation(
+        correlation=audit_adapter.McpAuditCorrelation(
             run_id="run-123",
             generation=2,
             drain="development",
-            policy_mode=PolicyMode.DEV,
+            policy_mode=PolicyMode.DEVELOPMENT,
         ),
     )
 
@@ -60,7 +60,7 @@ def test_sink_adapter_records_tool_event() -> None:
     correlation = ralph_record.correlation
     assert correlation is not None
     assert correlation.run_id == "run-123"
-    assert correlation.policy_mode == "dev"
+    assert correlation.policy_mode == "development"
 
 
 def test_drain_records_clears_buffer() -> None:

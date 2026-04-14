@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Mapping
@@ -21,6 +22,26 @@ from ralph.git.rebase.rebase import (
     continue_rebase,
     get_conflicted_files,
     rebase_onto,
+)
+from ralph.git.rebase.rebase_continuation import (
+    ConflictRemainingError,
+    NoRebaseInProgressError,
+    RebaseVerificationError,
+    continue_rebase_at,
+    rebase_in_progress_at,
+    verify_rebase_completed_at,
+)
+from ralph.git.rebase.rebase_kinds import RebaseKind, classify_rebase_error
+from ralph.git.rebase.rebase_preconditions import (
+    RebasePreconditionError,
+    check_rebase_preconditions,
+)
+from ralph.git.rebase.rebase_state_machine import (
+    InvalidTransitionError,
+    RebaseEvent,
+    RebasePhase,
+    RebaseStateMachine,
+    RecoveryAction,
 )
 
 
@@ -159,3 +180,127 @@ def test_get_conflicted_files_reports_conflicts(tmp_git_repo: Path) -> None:
         assert "README.md" in files
     finally:
         repo.git.merge("--abort")
+
+
+def test_classify_rebase_error_detects_interactive_stop_command() -> None:
+    stderr = "Stopped at deadbeef... edit command\n"
+
+    result = classify_rebase_error(stderr, "")
+
+    assert result.kind == RebaseKind.INTERACTIVE_STOP
+    assert result.metadata["command"] == "edit"
+
+
+def test_classify_rebase_error_detects_reference_update_failure() -> None:
+    stderr = "fatal: cannot lock ref 'refs/heads/main': is at abc123 but expected def456\n"
+
+    result = classify_rebase_error(stderr, "")
+
+    assert result.kind == RebaseKind.REFERENCE_UPDATE_FAILED
+    assert "cannot lock ref" in result.metadata["details"]
+
+
+def test_check_rebase_preconditions_requires_both_identity_fields(tmp_git_repo: Path) -> None:
+    repo = Repo(tmp_git_repo)
+    writer = repo.config_writer()
+    writer.set_value("user", "name", "Example User")
+    writer.set_value("user", "email", "")
+    writer.release()
+
+    with pytest.raises(RebasePreconditionError, match="Git identity is not configured"):
+        check_rebase_preconditions(tmp_git_repo)
+
+
+def test_check_rebase_preconditions_detects_sparse_checkout_without_patterns(tmp_git_repo: Path) -> None:
+    repo = Repo(tmp_git_repo)
+    writer = repo.config_writer()
+    writer.set_value("core", "sparseCheckout", "true")
+    writer.release()
+
+    info_dir = tmp_git_repo / ".git" / "info"
+    info_dir.mkdir(exist_ok=True)
+    (info_dir / "sparse-checkout").write_text("")
+
+    with pytest.raises(RebasePreconditionError, match="Sparse checkout configuration is empty"):
+        check_rebase_preconditions(tmp_git_repo)
+
+
+def test_state_machine_honors_custom_max_recovery_attempts() -> None:
+    machine = RebaseStateMachine.new("main", persist=False, max_recovery_attempts=1)
+
+    machine.record_error("boom")
+
+    assert machine.should_abort()
+    assert not machine.can_recover()
+
+
+def test_state_machine_apply_event_requires_file_for_conflict_transitions() -> None:
+    machine = RebaseStateMachine.new("main", persist=False)
+    machine.apply_event(RebaseEvent.START_REBASE)
+
+    with pytest.raises(InvalidTransitionError, match="requires a file"):
+        machine.apply_event(RebaseEvent.CONFLICT_DETECTED)
+
+
+def test_recovery_action_prefers_abort_once_attempt_limit_reached() -> None:
+    action = RecoveryAction.decide(
+        classify_rebase_error("CONFLICT (content): Merge conflict in app.py", ""),
+        error_count=2,
+        max_attempts=2,
+    )
+
+    assert action is RecoveryAction.Abort
+
+
+def test_continue_rebase_at_requires_active_rebase(tmp_git_repo: Path) -> None:
+    with pytest.raises(NoRebaseInProgressError):
+        continue_rebase_at(tmp_git_repo)
+
+
+def test_continue_rebase_at_blocks_when_index_has_conflicts(tmp_git_repo: Path) -> None:
+    base_branch = _setup_conflicted_rebase(tmp_git_repo)
+
+    with pytest.raises(ConflictRemainingError, match="Conflicts still exist"):
+        continue_rebase_at(tmp_git_repo)
+
+    assert rebase_in_progress_at(tmp_git_repo)
+    assert not verify_rebase_completed_at(tmp_git_repo, base_branch)
+
+
+def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) -> None:
+    repo = Repo(tmp_git_repo)
+    repo.git.checkout(repo.head.commit.hexsha)
+
+    with pytest.raises(RebaseVerificationError, match="HEAD is detached"):
+        verify_rebase_completed_at(tmp_git_repo, "main")
+
+
+def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:
+    repo = Repo(repo_root)
+    base_branch = repo.active_branch.name
+    conflict_file = repo_root / "conflict.txt"
+
+    conflict_file.write_text("base\n")
+    repo.index.add(["conflict.txt"])
+    repo.index.commit("add conflict file")
+
+    repo.git.checkout("-b", feature_branch)
+    conflict_file.write_text("feature\n")
+    repo.index.add(["conflict.txt"])
+    repo.index.commit("feature change")
+
+    repo.git.checkout(base_branch)
+    conflict_file.write_text("main\n")
+    repo.index.add(["conflict.txt"])
+    repo.index.commit("main change")
+
+    repo.git.checkout(feature_branch)
+    result = subprocess.run(
+        ["git", "rebase", base_branch],
+        cwd=str(repo_root),
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode != 0, "Expected the rebase command to conflict"
+
+    return base_branch

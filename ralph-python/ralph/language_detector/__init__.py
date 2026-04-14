@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Union
-
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.protocol import Workspace
 
@@ -13,7 +11,7 @@ from .models import MAX_SECONDARY_LANGUAGES, ProjectStack
 from .scanner import count_extensions, detect_tests
 from .signatures import detect_signature_files
 
-WorkspaceLike = Union[Workspace, str, Path]
+WorkspaceLike = Workspace | str | Path
 
 
 def _coerce_workspace(workspace_or_root: WorkspaceLike) -> tuple[Workspace, str]:

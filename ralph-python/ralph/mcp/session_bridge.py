@@ -9,13 +9,15 @@ import socketserver
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from enum import Enum
+from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
-from ralph.mcp.tool_bridge import ToolBridge, build_ralph_tool_registry
-from ralph.workspace import Workspace
+from ralph.mcp.tool_bridge import ToolBridge, ToolDispatchError, build_ralph_tool_registry
+
+if TYPE_CHECKING:
+    from ralph.workspace import Workspace
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ class EndpointLease:
 
     endpoint: str
     run_id: str
+    drain: str
     generation: int
     ready_at: float
 
@@ -93,7 +96,7 @@ class AuditSink:
         return drained
 
 
-class ServerState(str, Enum):
+class ServerState(StrEnum):
     """Simplified server state machine."""
 
     UNINITIALIZED = "uninitialized"
@@ -125,7 +128,7 @@ def _allocate_endpoint_port() -> int:
     """Pick an ephemeral port bound to loopback."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
-        _, port = sock.getsockname()
+        _, port = cast(tuple[str, int], sock.getsockname())
         return port
 
 
@@ -134,8 +137,8 @@ def endpoint_lease_path(workspace_root: Path) -> Path:
     return workspace_root.joinpath(".agent", "endpoint_lease.json")
 
 
-def next_generation_for_run(workspace_root: Path, run_id: str) -> int:
-    """Compute the next generation counter for the run."""
+def next_generation_for_run(workspace_root: Path, run_id: str, drain: str) -> int:
+    """Compute the next generation counter for the exact run/drain pair."""
     lease_path = endpoint_lease_path(workspace_root)
     if not lease_path.exists():
         return 1
@@ -143,7 +146,7 @@ def next_generation_for_run(workspace_root: Path, run_id: str) -> int:
         payload = json.loads(lease_path.read_text())
     except (json.JSONDecodeError, OSError):
         return 1
-    if payload.get("run_id") == run_id:
+    if payload.get("run_id") == run_id and payload.get("drain") == drain:
         return int(payload.get("generation", 0)) + 1
     return 1
 
@@ -155,7 +158,7 @@ def _workspace_root(workspace: Workspace) -> Path:
         return root
     if isinstance(root, str):
         return Path(root)
-    return Path(".")
+    return Path()
 
 
 class McpServer:
@@ -171,12 +174,61 @@ class McpServer:
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         """Handle a JSON-RPC request in-process (minimal behavior)."""
         if request.method == "initialize":
-            result = {"protocolVersion": "2024-11-05", "serverInfo": {"name": "ralph-mcp"}}
+            result = {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {"listChanged": False}},
+                "serverInfo": {"name": "ralph-mcp"},
+            }
             return (
                 JsonRpcResponse(jsonrpc="2.0", result=result, msg_id=request.msg_id),
                 ServerState.RUNNING,
             )
-        return (None, ServerState.RUNNING)
+        if request.method == "notifications/initialized":
+            return (None, ServerState.RUNNING)
+        if request.method == "tools/list":
+            tools = [
+                {
+                    "name": definition.name,
+                    "description": definition.description,
+                    "inputSchema": definition.input_schema,
+                }
+                for definition in self._registry.list_definitions()
+            ]
+            return (
+                JsonRpcResponse(
+                    jsonrpc="2.0",
+                    result={"tools": tools},
+                    msg_id=request.msg_id,
+                ),
+                ServerState.RUNNING,
+            )
+        if request.method == "tools/call":
+            params = request.params or {}
+            tool_name = params.get("name")
+            if not isinstance(tool_name, str) or not tool_name:
+                error = {"code": -32602, "message": "tools/call requires a tool name"}
+                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+            arguments_value = params.get("arguments", {})
+            if not isinstance(arguments_value, dict):
+                error = {"code": -32602, "message": "tools/call arguments must be an object"}
+                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+            try:
+                raw_result = self._registry.dispatch(tool_name, arguments_value)
+            except ToolDispatchError as exc:
+                error = {"code": -32603, "message": str(exc)}
+                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+            to_dict = getattr(raw_result, "to_dict", None)
+            payload = cast(Any, to_dict)() if callable(to_dict) else raw_result
+            return (
+                JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        error = {"code": -32601, "message": f"Method not found: {request.method}"}
+        return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
 
 @dataclass
@@ -186,19 +238,11 @@ class AgentSession:
     session_id: str
     run_id: str
     drain: str
-    capabilities: set[str] | None = None
+    capabilities: set[str] = field(default_factory=set)
     policy_flags: set[str] | None = None
     created_at: float = field(default_factory=time.time)
     parallel_worker: bool = False
     edit_area_result: Any | None = None
-    _capabilities: set[str] = field(init=False)
-
-    def __post_init__(self) -> None:
-        self._capabilities = set(self.capabilities or set())
-
-    def capabilities(self) -> set[str]:
-        """Return the granted capability identifiers."""
-        return set(self._capabilities)
 
     def check_capability(self, _: str) -> object:
         """Simplified capability gate that always approves."""
@@ -235,6 +279,7 @@ class McpSessionBridge:
         self._lease = EndpointLease(
             endpoint=f"tcp://127.0.0.1:{self._port}",
             run_id=self._session.run_id,
+            drain=self._session.drain,
             generation=generation,
             ready_at=ready_at,
         )
@@ -297,7 +342,14 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
         try:
             data = json.loads(payload or b"{}")
         except json.JSONDecodeError:
-            self._write_json({"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None}, 400)
+            self._write_json(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Parse error"},
+                    "id": None,
+                },
+                400,
+            )
             return
         request = JsonRpcRequest(
             jsonrpc=data.get("jsonrpc", "2.0"),
@@ -310,8 +362,12 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
             self.send_error(500, "Server bridge missing")
             return
         server = server_bridge.build_in_process_server()
-        response, next_state = server.handle_request(request, getattr(self.server, "state", ServerState.UNINITIALIZED))
-        self.server.state = next_state
+        gateway_server = cast("Any", self.server)
+        response, next_state = server.handle_request(
+            request,
+            getattr(gateway_server, "state", ServerState.UNINITIALIZED),
+        )
+        gateway_server.state = next_state
         if response is not None:
             body = {
                 "jsonrpc": response.jsonrpc,
@@ -323,8 +379,8 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
             body = {"jsonrpc": "2.0", "result": None, "id": request.msg_id}
         self._write_json(body, 200)
 
-    def log_message(self, _format: str, *args: Any) -> None:
-        return
+    def log_message(self, format: str, *args: object) -> None:
+        del format, args
 
     def _write_json(self, payload: dict[str, Any], status: int) -> None:
         encoded = json.dumps(payload).encode("utf-8")
@@ -336,6 +392,9 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
 
 
 class _HttpGatewayServer(socketserver.ThreadingMixIn, HTTPServer):
+    bridge: SessionBridge
+    state: ServerState
+
     daemon_threads = True
     allow_reuse_address = True
 
@@ -399,7 +458,11 @@ class SessionBridge:
         """Start the session bridge and its HTTP gateway."""
         if self.is_started():
             return
-        generation = next_generation_for_run(_workspace_root(self.workspace), self.session.run_id)
+        generation = next_generation_for_run(
+            _workspace_root(self.workspace),
+            self.session.run_id,
+            self.session.drain,
+        )
         self._inner.start_with_audit_sink(self.audit_adapter, generation)
         self._write_endpoint_lease()
         self._start_http_gateway()
@@ -448,8 +511,8 @@ class SessionBridge:
 
     def _start_http_gateway(self) -> None:
         server = _HttpGatewayServer(("127.0.0.1", 0), _HttpGatewayHandler)
-        server.bridge = self  # type: ignore[attr-defined]
-        server.state = ServerState.UNINITIALIZED  # type: ignore[attr-defined]
+        server.bridge = self
+        server.state = ServerState.UNINITIALIZED
         thread = threading.Thread(
             target=server.serve_forever, kwargs={"poll_interval": 0.5}, daemon=True
         )

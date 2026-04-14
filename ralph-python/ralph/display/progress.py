@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import contextmanager
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -50,10 +51,11 @@ except ImportError:
     _TQDM_AVAILABLE = False
 
 try:
-    from IPython import get_ipython
-
-    _IPYTHON_AVAILABLE = get_ipython is not None
+    _ipython = import_module("IPython")
+    get_ipython = getattr(_ipython, "get_ipython", None)
+    _IPYTHON_AVAILABLE = callable(get_ipython)
 except ImportError:
+    get_ipython = None
     _IPYTHON_AVAILABLE = False
 
 

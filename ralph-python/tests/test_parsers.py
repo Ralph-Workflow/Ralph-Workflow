@@ -6,7 +6,13 @@ from collections.abc import Iterator
 
 import pytest
 
-from ralph.agents.parsers import ClaudeParser, GenericParser, OpenCodeParser, get_parser
+from ralph.agents.parsers import (
+    ClaudeParser,
+    CodexParser,
+    GenericParser,
+    OpenCodeParser,
+    get_parser,
+)
 
 
 def _make_lines(data: list[str]) -> Iterator[str]:
@@ -157,9 +163,9 @@ def test_get_parser_generic() -> None:
 
 
 def test_get_parser_codex() -> None:
-    """Test get_parser returns GenericParser for 'codex'."""
+    """Test get_parser returns CodexParser for 'codex'."""
     parser = get_parser("codex")
-    assert isinstance(parser, GenericParser)
+    assert isinstance(parser, CodexParser)
 
 
 def test_get_parser_unknown_raises() -> None:

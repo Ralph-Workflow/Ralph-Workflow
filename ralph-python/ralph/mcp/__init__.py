@@ -6,6 +6,9 @@ Handles artifact submission, tool exposure, and communication with MCP clients.
 
 from __future__ import annotations
 
+from importlib import import_module
+from typing import Any
+
 from ralph.mcp.artifacts import (
     ArtifactError,
     ArtifactExistsError,
@@ -15,12 +18,11 @@ from ralph.mcp.artifacts import (
     submit_artifact,
     update_artifact,
 )
+
 ToolBridge: Any
 ToolBridgeError: Any
 ToolDefinition: Any
 ToolMetadata: Any
-from importlib import import_module
-from typing import Any
 
 from ralph.mcp.bridge import (
     BridgeConfig,
@@ -45,20 +47,20 @@ __all__ = [
     "ArtifactNotFoundError",
     "BridgeConfig",
     "BridgeError",
-    "MCPBridge",
     "HeartbeatPolicy",
+    "MCPBridge",
+    "MCPTransport",
     "SessionBridgeError",
-    "access_mode_for_drain",
-    "start_mcp_server_for_session",
+    "StdioTransport",
     "ToolBridge",
     "ToolBridgeError",
     "ToolDefinition",
     "ToolMetadata",
-    "MCPTransport",
-    "StdioTransport",
     "TransportError",
+    "access_mode_for_drain",
     "get_artifact",
     "list_artifacts",
+    "start_mcp_server_for_session",
     "submit_artifact",
     "update_artifact",
 ]
@@ -72,7 +74,7 @@ _TOOL_BRIDGE_SYMBOLS = {
 }
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     if name in _TOOL_BRIDGE_SYMBOLS:
         module = import_module(".tool_bridge", __name__)
         value = getattr(module, name)

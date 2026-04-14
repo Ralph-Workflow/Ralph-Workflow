@@ -12,6 +12,8 @@ Log levels map to verbosity as follows:
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -29,7 +31,44 @@ _VERBOSITY_LEVELS = {
 }
 
 
-def configure_logging(verbosity: int = 1) -> None:
+@dataclass(frozen=True)
+class LoggingPaths:
+    """Resolved file paths for a configured logging session."""
+
+    run_directory: Path | None
+    text_log_path: Path | None
+    structured_log_path: Path | None
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    """Logging configuration used to create handlers and run directories."""
+
+    verbosity: int = 1
+    log_directory: Path | None = None
+    run_id: str | None = None
+    structured: bool = False
+    rotation: str | int | None = "10 MB"
+
+
+@dataclass(frozen=True)
+class LoggingSession:
+    """Configured logger bundle for a single Ralph run."""
+
+    config: LoggingConfig
+    paths: LoggingPaths
+    logger: Logger
+    ralph: RalphLogger
+
+
+def configure_logging(
+    verbosity: int = 1,
+    *,
+    log_directory: str | Path | None = None,
+    run_id: str | None = None,
+    structured: bool = False,
+    rotation: str | int | None = "10 MB",
+) -> LoggingSession:
     """Configure loguru for Ralph CLI output.
 
     Removes the default handler and adds a new handler with formatting
@@ -38,14 +77,27 @@ def configure_logging(verbosity: int = 1) -> None:
     Args:
         verbosity: Verbosity level (0=quiet/errors only, 1=normal, 2=verbose,
             3=debug, 4+=trace).
+        log_directory: Optional base directory for file logging.
+        run_id: Optional run identifier for per-run log directories.
+        structured: Whether to emit JSON structured logs.
+        rotation: Optional loguru rotation policy for file handlers.
+
+    Returns:
+        Logging session with resolved paths and bound logger helpers.
     """
-    # Remove default handler
+    config = LoggingConfig(
+        verbosity=verbosity,
+        log_directory=Path(log_directory) if log_directory is not None else None,
+        run_id=run_id,
+        structured=structured,
+        rotation=rotation,
+    )
+
     logger.remove()
 
-    # Determine log level from verbosity
     level = _VERBOSITY_LEVELS.get(verbosity, "TRACE")
+    bound_logger = logger.bind(**_build_base_extra(run_id))
 
-    # Standard output format (without color for portability)
     standard_format = (
         "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
         "<level>{level: <8}</level> | "
@@ -53,7 +105,6 @@ def configure_logging(verbosity: int = 1) -> None:
         "<level>{message}</level>"
     )
 
-    # Add console handler
     logger.add(
         sys.stderr,
         level=level,
@@ -63,8 +114,63 @@ def configure_logging(verbosity: int = 1) -> None:
         diagnose=False,
     )
 
-    # Log startup message
-    logger.debug("Logging configured at {level} level", level=level)
+    paths = _configure_file_handlers(config, level)
+    session = LoggingSession(
+        config=config,
+        paths=paths,
+        logger=bound_logger,
+        ralph=RalphLogger(bound_logger),
+    )
+
+    session.logger.debug("Logging configured at {level} level", level=level)
+    return session
+
+
+def _build_base_extra(run_id: str | None) -> dict[str, str]:
+    if run_id is None:
+        return {}
+    return {"run_id": run_id}
+
+
+def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
+    if config.log_directory is None:
+        return LoggingPaths(
+            run_directory=None,
+            text_log_path=None,
+            structured_log_path=None,
+        )
+
+    run_directory = config.log_directory / config.run_id if config.run_id else config.log_directory
+    run_directory.mkdir(parents=True, exist_ok=True)
+
+    text_log_path = run_directory / "ralph.log"
+    logger.add(
+        text_log_path,
+        level=level,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+        colorize=False,
+        backtrace=True,
+        diagnose=False,
+        rotation=config.rotation,
+    )
+
+    structured_log_path: Path | None = None
+    if config.structured:
+        structured_log_path = run_directory / "ralph.jsonl"
+        logger.add(
+            structured_log_path,
+            level=level,
+            serialize=True,
+            backtrace=True,
+            diagnose=False,
+            rotation=config.rotation,
+        )
+
+    return LoggingPaths(
+        run_directory=run_directory,
+        text_log_path=text_log_path,
+        structured_log_path=structured_log_path,
+    )
 
 
 def get_logger() -> Logger:
@@ -83,9 +189,9 @@ class RalphLogger:
     in the Ralph pipeline.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, base_logger: Logger | None = None) -> None:
         """Initialize the Ralph logger."""
-        self._logger: Logger = logger
+        self._logger: Logger = base_logger if base_logger is not None else logger
 
     def phase_start(self, phase: str, drain: str) -> None:
         """Log the start of a pipeline phase.
@@ -94,7 +200,11 @@ class RalphLogger:
             phase: Phase name.
             drain: Drain name.
         """
-        self._logger.info("Starting phase '{phase}' on drain '{drain}'", phase=phase, drain=drain)
+        self._logger.bind(event="phase_start", phase=phase, drain=drain).info(
+            "Starting phase '{phase}' on drain '{drain}'",
+            phase=phase,
+            drain=drain,
+        )
 
     def phase_complete(self, phase: str, drain: str) -> None:
         """Log the completion of a pipeline phase.
@@ -103,7 +213,11 @@ class RalphLogger:
             phase: Phase name.
             drain: Drain name.
         """
-        self._logger.info("Completed phase '{phase}' on drain '{drain}'", phase=phase, drain=drain)
+        self._logger.bind(event="phase_complete", phase=phase, drain=drain).info(
+            "Completed phase '{phase}' on drain '{drain}'",
+            phase=phase,
+            drain=drain,
+        )
 
     def agent_invoked(self, agent_name: str, drain: str) -> None:
         """Log agent invocation.
@@ -112,7 +226,7 @@ class RalphLogger:
             agent_name: Name of the agent being invoked.
             drain: Drain name.
         """
-        self._logger.debug(
+        self._logger.bind(event="agent_invoked", agent=agent_name, drain=drain).debug(
             "Invoking agent '{agent}' for drain '{drain}'",
             agent=agent_name,
             drain=drain,
@@ -125,7 +239,11 @@ class RalphLogger:
             drain: Drain name.
             line: Output line from agent.
         """
-        self._logger.debug("agent_output | drain={drain} | line={line}", drain=drain, line=line)
+        self._logger.bind(event="agent_output", drain=drain).debug(
+            "agent_output | drain={drain} | line={line}",
+            drain=drain,
+            line=line,
+        )
 
     def checkpoint_saved(self, path: str) -> None:
         """Log checkpoint save.
@@ -133,7 +251,10 @@ class RalphLogger:
         Args:
             path: Path to checkpoint file.
         """
-        self._logger.debug("Checkpoint saved to '{path}'", path=path)
+        self._logger.bind(event="checkpoint_saved", path=path).debug(
+            "Checkpoint saved to '{path}'",
+            path=path,
+        )
 
     def checkpoint_loaded(self, path: str) -> None:
         """Log checkpoint load.
@@ -141,7 +262,10 @@ class RalphLogger:
         Args:
             path: Path to checkpoint file.
         """
-        self._logger.debug("Checkpoint loaded from '{path}'", path=path)
+        self._logger.bind(event="checkpoint_loaded", path=path).debug(
+            "Checkpoint loaded from '{path}'",
+            path=path,
+        )
 
     def policy_loaded(self, config_dir: str) -> None:
         """Log policy load.
@@ -149,7 +273,10 @@ class RalphLogger:
         Args:
             config_dir: Configuration directory path.
         """
-        self._logger.info("Policy loaded from '{config_dir}'", config_dir=config_dir)
+        self._logger.bind(event="policy_loaded", config_dir=config_dir).info(
+            "Policy loaded from '{config_dir}'",
+            config_dir=config_dir,
+        )
 
     def validation_error(self, error: str) -> None:
         """Log validation error.
@@ -157,7 +284,7 @@ class RalphLogger:
         Args:
             error: Error message.
         """
-        self._logger.error("Validation error: {error}", error=error)
+        self._logger.bind(event="validation_error").error("Validation error: {error}", error=error)
 
     def pipeline_error(self, phase: str, error: str) -> None:
         """Log pipeline error.
@@ -166,7 +293,7 @@ class RalphLogger:
             phase: Current phase name.
             error: Error message.
         """
-        self._logger.error(
+        self._logger.bind(event="pipeline_error", phase=phase).error(
             "Pipeline error in phase '{phase}': {error}",
             phase=phase,
             error=error,

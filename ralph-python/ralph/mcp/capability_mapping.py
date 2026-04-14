@@ -7,8 +7,7 @@ policy outcomes into MCP access-control decisions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Any
+from enum import Enum, StrEnum
 
 
 class SessionDrain(StrEnum):
@@ -25,17 +24,16 @@ class SessionDrain(StrEnum):
 class DrainClass(StrEnum):
     """Drain class used for capability defaults."""
 
-    DEV = "dev"
-    FIXER = "fixer"
-    COMMIT = "commit"
     PLANNING = "planning"
-    REVIEW = "review"
+    DEVELOPMENT = "development"
     ANALYSIS = "analysis"
-    UNKNOWN = "unknown"
+    REVIEW = "review"
+    FIX = "fix"
+    COMMIT = "commit"
 
     def allows_write(self) -> bool:
         """Return whether this drain class allows write operations."""
-        return self in {DrainClass.DEV, DrainClass.FIXER}
+        return self in {DrainClass.DEVELOPMENT, DrainClass.FIX}
 
 
 class AccessMode(StrEnum):
@@ -52,14 +50,16 @@ class AccessMode(StrEnum):
 class PolicyMode(StrEnum):
     """Runtime policy mode enforced by the MCP server."""
 
-    DEV = "dev"
-    FIXER = "fixer"
+    PLANNING = "planning"
+    DEVELOPMENT = "development"
+    ANALYSIS = "analysis"
+    REVIEW = "review"
+    FIX = "fix"
     COMMIT = "commit"
-    READ_ONLY = "read_only"
 
     def access_mode(self) -> AccessMode:
         """Return the matching access mode."""
-        if self in {PolicyMode.DEV, PolicyMode.FIXER}:
+        if self in {PolicyMode.DEVELOPMENT, PolicyMode.FIX}:
             return AccessMode.READ_WRITE
         return AccessMode.READ_ONLY
 
@@ -228,7 +228,7 @@ def _extract_text_field(value: object, field_name: str) -> str | None:
 def _extract_named_value(value: object) -> str | None:
     if isinstance(value, str):
         return value
-    if isinstance(value, StrEnum):
+    if isinstance(value, Enum) and isinstance(value.value, str):
         return value.value
     for field_name in ("status", "name", "value"):
         field_value = _extract_text_field(value, field_name)
@@ -245,11 +245,9 @@ def _coerce_session_drain(value: SessionDrain | str) -> SessionDrain:
     aliases = {
         "planning": SessionDrain.PLANNING,
         "development": SessionDrain.DEVELOPMENT,
-        "dev": SessionDrain.DEVELOPMENT,
         "analysis": SessionDrain.ANALYSIS,
         "review": SessionDrain.REVIEW,
         "fix": SessionDrain.FIX,
-        "fixer": SessionDrain.FIX,
         "commit": SessionDrain.COMMIT,
     }
     try:
@@ -299,39 +297,47 @@ def _normalize_policy_outcome(value: object) -> PolicyOutcome:
     reason = _extract_text_field(value, "reason")
     restriction = _extract_text_field(value, "restriction")
 
-    if normalized_status in _APPROVED_POLICY_VALUES:
-        return PolicyOutcome(status=PolicyOutcomeStatus.APPROVED, reason=reason)
-    if normalized_status in _APPROVED_WITH_RESTRICTION_VALUES:
-        return PolicyOutcome(
-            status=PolicyOutcomeStatus.APPROVED_WITH_RESTRICTION,
-            reason=reason,
-            restriction=restriction,
-        )
-    if normalized_status in _DENIED_POLICY_VALUES:
-        return PolicyOutcome(status=PolicyOutcomeStatus.DENIED, reason=reason)
-
-    if isinstance(value, dict) and "reason" in value:
-        return PolicyOutcome(status=PolicyOutcomeStatus.DENIED, reason=reason)
-    if reason is not None:
-        return PolicyOutcome(status=PolicyOutcomeStatus.DENIED, reason=reason)
+    status = _resolved_policy_status(value, normalized_status, reason)
+    if status is not None:
+        return PolicyOutcome(status=status, reason=reason, restriction=restriction)
 
     raise ValueError(f"Unsupported policy outcome: {value!r}")
+
+
+def _resolved_policy_status(
+    value: object,
+    normalized_status: str,
+    reason: str | None,
+) -> PolicyOutcomeStatus | None:
+    if normalized_status in _APPROVED_POLICY_VALUES:
+        return PolicyOutcomeStatus.APPROVED
+    if normalized_status in _APPROVED_WITH_RESTRICTION_VALUES:
+        return PolicyOutcomeStatus.APPROVED_WITH_RESTRICTION
+    if normalized_status in _DENIED_POLICY_VALUES:
+        return PolicyOutcomeStatus.DENIED
+    if isinstance(value, dict) and "reason" in value:
+        return PolicyOutcomeStatus.DENIED
+    if reason is not None:
+        return PolicyOutcomeStatus.DENIED
+    return None
 
 
 def drain_class_for_session(drain: SessionDrain | str) -> DrainClass:
     """Classify a session drain into its drain class."""
     session_drain = _coerce_session_drain(drain)
-    match session_drain:
-        case SessionDrain.PLANNING | SessionDrain.ANALYSIS:
-            return DrainClass.PLANNING
-        case SessionDrain.DEVELOPMENT:
-            return DrainClass.DEV
-        case SessionDrain.REVIEW:
-            return DrainClass.REVIEW
-        case SessionDrain.FIX:
-            return DrainClass.FIXER
-        case SessionDrain.COMMIT:
-            return DrainClass.COMMIT
+    if session_drain is SessionDrain.PLANNING:
+        return DrainClass.PLANNING
+    if session_drain is SessionDrain.DEVELOPMENT:
+        return DrainClass.DEVELOPMENT
+    if session_drain is SessionDrain.ANALYSIS:
+        return DrainClass.ANALYSIS
+    if session_drain is SessionDrain.REVIEW:
+        return DrainClass.REVIEW
+    if session_drain is SessionDrain.FIX:
+        return DrainClass.FIX
+    if session_drain is SessionDrain.COMMIT:
+        return DrainClass.COMMIT
+    raise ValueError(f"Unknown session drain: {drain!r}")
 
 
 def drain_to_access_mode(drain: SessionDrain | str) -> AccessMode:
@@ -344,15 +350,19 @@ def drain_to_access_mode(drain: SessionDrain | str) -> AccessMode:
 def drain_to_policy_mode(drain: SessionDrain | str) -> PolicyMode:
     """Map a session drain to the matching policy mode."""
     session_drain = _coerce_session_drain(drain)
-    match session_drain:
-        case SessionDrain.DEVELOPMENT:
-            return PolicyMode.DEV
-        case SessionDrain.FIX:
-            return PolicyMode.FIXER
-        case SessionDrain.COMMIT:
-            return PolicyMode.COMMIT
-        case SessionDrain.PLANNING | SessionDrain.ANALYSIS | SessionDrain.REVIEW:
-            return PolicyMode.READ_ONLY
+    if session_drain is SessionDrain.PLANNING:
+        return PolicyMode.PLANNING
+    if session_drain is SessionDrain.DEVELOPMENT:
+        return PolicyMode.DEVELOPMENT
+    if session_drain is SessionDrain.ANALYSIS:
+        return PolicyMode.ANALYSIS
+    if session_drain is SessionDrain.REVIEW:
+        return PolicyMode.REVIEW
+    if session_drain is SessionDrain.FIX:
+        return PolicyMode.FIX
+    if session_drain is SessionDrain.COMMIT:
+        return PolicyMode.COMMIT
+    raise ValueError(f"Unknown session drain: {drain!r}")
 
 
 def lookup_ralph_capability(capability: McpCapability | str) -> Capability | None:
@@ -456,18 +466,19 @@ def check_mcp_capability_policy(
         return evaluate_mapped_capability(normalized_capability, mapped_outcome)
     return AccessDecision.deny(
         "Unrecognized McpCapability "
-        f"{normalized_capability.value!r}: ralph-python has not been updated to handle this capability variant",
+        f"{normalized_capability.value!r}: ralph-python has not been updated "
+        "to handle this capability variant",
         AccessDeniedCode.CAPABILITY_DENIED,
     )
 
 
 __all__ = [
+    "MCP_TO_RALPH_CAPABILITY_MAP",
     "AccessDecision",
     "AccessDeniedCode",
     "AccessMode",
     "Capability",
     "DrainClass",
-    "MCP_TO_RALPH_CAPABILITY_MAP",
     "McpCapability",
     "PolicyMode",
     "PolicyOutcome",

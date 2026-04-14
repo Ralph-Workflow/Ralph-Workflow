@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
-import re
-from typing import Mapping
+from typing import TYPE_CHECKING
 
-from jinja2 import DictLoader, Environment, StrictUndefined, TemplateError
+from ralph.prompts.template_parsing import (
+    ConditionalNode,
+    LoopNode,
+    PartialNode,
+    TemplateNode,
+    TextNode,
+    VariableNode,
+    eval_conditional,
+    parse_template,
+    split_loop_items,
+)
 
-PARTIAL_INCLUDE_PATTERN = re.compile(r"\{\{\s*>\s*([^}\s]+)\s*\}\}")
-DEFAULT_FILTER_PATTERN = re.compile(r"\{\{\s*([A-Z0-9_]+)\s*\|\s*default=\"([^\"]*)\"\s*\}\}")
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class TemplateRenderingError(Exception):
     """Raised when a template cannot be rendered."""
+
 
 
 def render_template(
@@ -22,25 +32,61 @@ def render_template(
 ) -> str:
     """Render the provided template text with partials and variables."""
 
-    processed = _apply_partial_includes(template_text)
-    processed = _rewrite_default_filters(processed)
-    loader = DictLoader({f"{name}.txt": content for name, content in partials.items()})
-    env = Environment(loader=loader, undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True)
     try:
-        template = env.from_string(processed)
-        return template.render(**variables)
-    except TemplateError as exc:
+        return _render_nodes(parse_template(template_text), variables, partials)
+    except TemplateRenderingError:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive wrapper
         raise TemplateRenderingError(str(exc)) from exc
 
 
-def _apply_partial_includes(text: str) -> str:
-    return PARTIAL_INCLUDE_PATTERN.sub(lambda match: f"{{% include '{match.group(1)}.txt' %}}", text)
+
+def _render_nodes(
+    nodes: list[TemplateNode],
+    variables: Mapping[str, str],
+    partials: Mapping[str, str],
+) -> str:
+    rendered_parts: list[str] = []
+
+    for node in nodes:
+        if isinstance(node, TextNode):
+            rendered_parts.append(node.text)
+            continue
+
+        if isinstance(node, VariableNode):
+            rendered_parts.append(_render_variable(node, variables))
+            continue
+
+        if isinstance(node, PartialNode):
+            try:
+                partial_text = partials[node.name]
+            except KeyError as exc:
+                raise TemplateRenderingError(f"{node.name}.txt") from exc
+            rendered_parts.append(render_template(partial_text, variables, partials))
+            continue
+
+        if isinstance(node, LoopNode):
+            iterable_value = variables.get(node.iterable, "")
+            for item in split_loop_items(iterable_value):
+                loop_variables = dict(variables)
+                loop_variables[node.variable] = item
+                rendered_parts.append(_render_nodes(node.body, loop_variables, partials))
+            continue
+
+        if isinstance(node, ConditionalNode):
+            branch = node.truthy if eval_conditional(node.condition, variables) else node.falsy
+            rendered_parts.append(_render_nodes(branch, variables, partials))
+            continue
+
+        raise TemplateRenderingError(f"unsupported template node: {type(node).__name__}")
+
+    return "".join(rendered_parts)
 
 
-def _rewrite_default_filters(text: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        variable, default_value = match.group(1), match.group(2)
-        escaped = default_value.replace('"', '\\"')
-        return f"{{{{ {variable}|default(\"{escaped}\") }}}}"
 
-    return DEFAULT_FILTER_PATTERN.sub(replace, text)
+def _render_variable(node: VariableNode, variables: Mapping[str, str]) -> str:
+    if node.name in variables:
+        return variables[node.name]
+    if node.default is not None:
+        return node.default
+    raise TemplateRenderingError(f"'{node.name}' is undefined")

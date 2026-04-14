@@ -136,31 +136,25 @@ def _determine_effect(state: PipelineState, config: UnifiedConfig) -> Effect:
     Returns:
         Next Effect to execute.
     """
-    # Check for phase-specific effects
-    match state.phase:
-        case "planning":
-            return PreparePromptEffect(phase=state.phase, iteration=state.iteration)
+    del config
+    phase_handlers: dict[str, callable] = {
+        "planning": lambda: PreparePromptEffect(phase=state.phase, iteration=state.iteration),
+        "development": lambda: _agent_or_advance(state, "review"),
+        "review": lambda: _agent_or_next_phase(state, "development_commit"),
+        "fix": lambda: _agent_or_next_phase(state, "review"),
+        "development_commit": _commit_effect,
+        "review_commit": _commit_effect,
+        "complete": ExitSuccessEffect,
+        "failed": lambda: ExitFailureEffect(reason=state.last_error or "Unknown failure"),
+    }
+    handler = phase_handlers.get(state.phase)
+    if handler is None:
+        return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
+    return handler()
 
-        case "development":
-            return _agent_or_advance(state, "review")
 
-        case "review":
-            return _agent_or_next_phase(state, "development_commit")
-
-        case "fix":
-            return _agent_or_next_phase(state, "review")
-
-        case "development_commit" | "review_commit":
-            return CommitEffect(message_file=".agent/tmp/commit_message.xml")
-
-        case "complete":
-            return ExitSuccessEffect()
-
-        case "failed":
-            return ExitFailureEffect(reason=state.last_error or "Unknown failure")
-
-        case _:
-            return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
+def _commit_effect() -> CommitEffect:
+    return CommitEffect(message_file=".agent/tmp/commit_message.xml")
 
 
 def _agent_or_advance(state: PipelineState, fallback_phase: str) -> Effect:
@@ -222,43 +216,49 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
     from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
     from ralph.git.operations import create_commit, stage_all  # noqa: PLC0415
 
-    match effect:
-        case InvokeAgentEffect():
-            console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
-            registry = AgentRegistry.from_config(config)
-            agent_config = registry.get(effect.agent_name)
+    if isinstance(effect, InvokeAgentEffect):
+        return _execute_agent_effect(effect, config, invoke_agent, AgentInvocationError, AgentRegistry)
+    if isinstance(effect, CommitEffect):
+        return _execute_commit_effect(create_commit, stage_all)
+    if isinstance(effect, SaveCheckpointEffect):
+        return PipelineEvent.CHECKPOINT_SAVED
 
-            if agent_config is None:
-                logger.error("Agent not found: {}", effect.agent_name)
-                return PipelineEvent.AGENT_FAILURE
+    logger.warning("Unknown effect type: {}", type(effect))
+    return PipelineEvent.AGENT_FAILURE
 
-            try:
-                # Invoke the agent and consume output
-                for _ in invoke_agent(agent_config, effect.prompt_file):
-                    pass  # Output is streamed via tqdm
-                return PipelineEvent.AGENT_SUCCESS
-            except AgentInvocationError as e:
-                logger.error("Agent invocation failed: {}", e)
-                return PipelineEvent.AGENT_FAILURE
-            except Exception:
-                logger.exception("Unexpected error during agent invocation: {}")
-                return PipelineEvent.AGENT_FAILURE
 
-        case CommitEffect():
-            try:
-                stage_all(".")
-                sha = create_commit(".", "Pipeline-generated commit")
-                logger.info("Created commit: {}", sha[:8])
-                return PipelineEvent.COMMIT_SUCCESS
-            except Exception as e:
-                logger.error("Commit failed: {}", e)
-                return PipelineEvent.COMMIT_FAILURE
+def _execute_agent_effect(
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    invoke_agent: callable,
+    agent_invocation_error: type[Exception],
+    agent_registry: type,
+) -> PipelineEvent:
+    console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
+    registry = agent_registry.from_config(config)
+    agent_config = registry.get(effect.agent_name)
+    if agent_config is None:
+        logger.error("Agent not found: {}", effect.agent_name)
+        return PipelineEvent.AGENT_FAILURE
 
-        case SaveCheckpointEffect():
-            # This should not reach here as it's handled in run()
-            return PipelineEvent.CHECKPOINT_SAVED
+    try:
+        for _ in invoke_agent(agent_config, effect.prompt_file):
+            pass
+    except agent_invocation_error as exc:
+        logger.error("Agent invocation failed: {}", exc)
+        return PipelineEvent.AGENT_FAILURE
+    except Exception:
+        logger.exception("Unexpected error during agent invocation: {}")
+        return PipelineEvent.AGENT_FAILURE
+    return PipelineEvent.AGENT_SUCCESS
 
-        case _:
-            # Unknown effect type
-            logger.warning("Unknown effect type: {}", type(effect))
-            return PipelineEvent.AGENT_FAILURE
+
+def _execute_commit_effect(create_commit: callable, stage_all: callable) -> PipelineEvent:
+    try:
+        stage_all(".")
+        sha = create_commit(".", "Pipeline-generated commit")
+        logger.info("Created commit: {}", sha[:8])
+    except Exception as exc:
+        logger.error("Commit failed: {}", exc)
+        return PipelineEvent.COMMIT_FAILURE
+    return PipelineEvent.COMMIT_SUCCESS

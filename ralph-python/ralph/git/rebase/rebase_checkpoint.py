@@ -6,22 +6,25 @@ import json
 import os
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 __all__ = [
-    "RebasePhase",
     "RebaseCheckpoint",
     "RebaseLock",
-    "save_rebase_checkpoint",
-    "load_rebase_checkpoint",
-    "clear_rebase_checkpoint",
-    "rebase_checkpoint_exists",
-    "restore_from_backup",
+    "RebasePhase",
     "acquire_rebase_lock",
+    "clear_rebase_checkpoint",
+    "load_rebase_checkpoint",
+    "rebase_checkpoint_exists",
     "release_rebase_lock",
+    "restore_from_backup",
+    "save_rebase_checkpoint",
 ]
 
 AGENT_DIR = Path(".agent")
@@ -32,7 +35,7 @@ LOCK_TIMEOUT_SECONDS = 1_800
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _ensure_agent_dir() -> None:
@@ -51,7 +54,7 @@ def _lock_path() -> Path:
     return AGENT_DIR / LOCK_FILE
 
 
-class RebasePhase(str, Enum):
+class RebasePhase(StrEnum):
     NotStarted = "not_started"
     PreRebaseCheck = "pre_rebase_check"
     RebaseInProgress = "rebase_in_progress"
@@ -83,7 +86,7 @@ class RebaseCheckpoint:
     phase_error_count: int = 0
 
     @classmethod
-    def new(cls, upstream_branch: str) -> "RebaseCheckpoint":
+    def new(cls, upstream_branch: str) -> RebaseCheckpoint:
         return cls(upstream_branch=upstream_branch)
 
     def set_phase(self, phase: RebasePhase) -> None:
@@ -127,9 +130,13 @@ class RebaseCheckpoint:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "RebaseCheckpoint":
+    def from_dict(cls, data: Mapping[str, Any]) -> RebaseCheckpoint:
         phase_value = data.get("phase")
-        phase = RebasePhase(phase_value) if phase_value in RebasePhase._value2member_map_ else RebasePhase.NotStarted
+        phase = (
+            RebasePhase(phase_value)
+            if isinstance(phase_value, str) and phase_value in RebasePhase._value2member_map_
+            else RebasePhase.NotStarted
+        )
         return cls(
             phase=phase,
             upstream_branch=str(data.get("upstream_branch", "")),
@@ -176,7 +183,7 @@ def load_rebase_checkpoint() -> RebaseCheckpoint | None:
         checkpoint = RebaseCheckpoint.from_dict(payload)
         validate_checkpoint(checkpoint)
         return checkpoint
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError):
         restored = restore_from_backup()
         if restored is not None:
             return restored
@@ -256,7 +263,7 @@ def _is_lock_stale() -> bool:
                 cutoff = datetime.fromisoformat(timestamp)
             except ValueError:
                 return True
-            elapsed = datetime.now(timezone.utc) - cutoff
+            elapsed = datetime.now(UTC) - cutoff
             return elapsed.total_seconds() > LOCK_TIMEOUT_SECONDS
     return True
 
@@ -265,12 +272,17 @@ class RebaseLock:
     def __init__(self) -> None:
         self.owns_lock = False
 
-    def __enter__(self) -> "RebaseLock":
+    def __enter__(self) -> RebaseLock:
         acquire_rebase_lock()
         self.owns_lock = True
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         if self.owns_lock:
             release_rebase_lock()
 

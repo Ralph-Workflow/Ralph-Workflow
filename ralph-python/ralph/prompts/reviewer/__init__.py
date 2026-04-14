@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from ralph.prompts.template_registry import TemplateNotFound, TemplateRegistry
+from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegistry
 
 from .templates import DEFAULT_REVIEW_TEMPLATE
 
 __all__ = [
-    "PLAN_PLACEHOLDER",
     "CHANGES_PLACEHOLDER",
     "DEFAULT_REVIEW_TEMPLATE",
+    "PLAN_PLACEHOLDER",
     "prompt_review",
     "render_review_prompt",
 ]
@@ -32,7 +30,7 @@ def render_review_prompt(
     plan: str,
     changes: str,
     *,
-    template_registry: Optional[TemplateRegistry] = None,
+    template_registry: TemplateRegistry | None = None,
     template_name: str = "review",
 ) -> str:
     """Render the reviewer prompt using the requested template.
@@ -48,7 +46,7 @@ def render_review_prompt(
     if template_registry is not None:
         try:
             template = template_registry.get_template(template_name)
-        except TemplateNotFound:
+        except TemplateNotFoundError:
             template = DEFAULT_REVIEW_TEMPLATE
 
     try:

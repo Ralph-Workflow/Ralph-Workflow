@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import signal
 import threading
-from types import FrameType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from types import FrameType
 
 __all__ = [
-    "setup_interrupt_handler",
     "request_user_interrupt",
+    "setup_interrupt_handler",
     "user_interrupted_occurred",
 ]
 
 _USER_INTERRUPT_OCCURRED = threading.Event()
 _HANDLER_LOCK = threading.Lock()
-_HANDLER_INSTALLED = False
+_HANDLER_INSTALLED = threading.Event()
 
 
 def _sigint_handler(signum: int, frame: FrameType | None) -> None:
@@ -26,14 +29,12 @@ def _sigint_handler(signum: int, frame: FrameType | None) -> None:
 def setup_interrupt_handler() -> None:
     """Install a SIGINT handler that records user interrupts."""
 
-    global _HANDLER_INSTALLED
-
     with _HANDLER_LOCK:
-        if _HANDLER_INSTALLED:
+        if _HANDLER_INSTALLED.is_set():
             return
 
         signal.signal(signal.SIGINT, _sigint_handler)
-        _HANDLER_INSTALLED = True
+        _HANDLER_INSTALLED.set()
 
 
 def request_user_interrupt() -> None:

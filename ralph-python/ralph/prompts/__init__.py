@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from . import template_parsing as _template_parsing
 from .template_variables import (
     CapabilitySet,
     PolicyFlag,
@@ -12,18 +13,17 @@ from .template_variables import (
     default_caps_and_flags_for_drain,
     visible_mcp_tool_names,
 )
-from . import template_parsing as _template_parsing
 
 __all__ = [
     "CapabilitySet",
     "PolicyFlag",
     "PolicyFlagSet",
     "SessionCapabilities",
-    "default_caps_and_flags_for_drain",
     "capability_template_variables",
     "capability_template_variables_from_session",
-    "visible_mcp_tool_names",
+    "default_caps_and_flags_for_drain",
     "template_parsing",
+    "visible_mcp_tool_names",
 ]
 
 template_parsing = _template_parsing

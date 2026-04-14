@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Literal, TypedDict
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
 
 
 @dataclass
@@ -19,7 +22,7 @@ class TextNode(TemplateNode):
 @dataclass
 class VariableNode(TemplateNode):
     name: str
-    default: Optional[str]
+    default: str | None
     placeholder: str
 
 
@@ -32,17 +35,17 @@ class PartialNode(TemplateNode):
 class LoopNode(TemplateNode):
     variable: str
     iterable: str
-    body: List[TemplateNode]
+    body: list[TemplateNode]
 
 
 @dataclass
 class ConditionalNode(TemplateNode):
     condition: str
-    truthy: List[TemplateNode]
-    falsy: List[TemplateNode]
+    truthy: list[TemplateNode]
+    falsy: list[TemplateNode]
 
 
-TemplateAST = List[TemplateNode]
+TemplateAST = list[TemplateNode]
 
 
 __all__ = [
@@ -51,13 +54,13 @@ __all__ = [
     "PartialNode",
     "TextNode",
     "VariableNode",
+    "eval_conditional",
+    "is_metadata_comment",
     "parse_metadata_line",
     "parse_template",
     "parse_variable_spec",
-    "is_metadata_comment",
     "split_loop_items",
     "strip_comments",
-    "eval_conditional",
 ]
 
 
@@ -65,6 +68,12 @@ class _Token:
     def __init__(self, kind: str, value: str) -> None:
         self.kind = kind
         self.value = value
+
+
+class _AstFrame(TypedDict):
+    type: Literal["root", "loop", "if_truthy", "if_falsy"]
+    nodes: list[TemplateNode]
+    node: LoopNode | ConditionalNode | None
 
 
 def parse_template(content: str) -> TemplateAST:
@@ -78,7 +87,7 @@ def parse_template(content: str) -> TemplateAST:
 def strip_comments(content: str) -> str:
     """Remove `{# ... #}` comment blocks from a template."""
 
-    parts: List[str] = []
+    parts: list[str] = []
     cursor = 0
     length = len(content)
     while cursor < length:
@@ -135,8 +144,8 @@ def _tokenize(content: str) -> Iterable[_Token]:
 
 
 def _build_ast(tokens: Sequence[_Token]) -> TemplateAST:
-    root_nodes: List[TemplateNode] = []
-    stack: List[dict] = [{"type": "root", "nodes": root_nodes, "node": None}]
+    root_nodes: list[TemplateNode] = []
+    stack: list[_AstFrame] = [{"type": "root", "nodes": root_nodes, "node": None}]
 
     for token in tokens:
         context = stack[-1]
@@ -193,9 +202,11 @@ def _build_ast(tokens: Sequence[_Token]) -> TemplateAST:
             if keyword == "else":
                 if len(stack) > 1 and stack[-1]["type"] == "if_truthy":
                     frame = stack.pop()
-                    conditional = frame["node"]
+                    frame_node = frame["node"]
+                    if not isinstance(frame_node, ConditionalNode):
+                        continue
                     stack.append(
-                        {"type": "if_falsy", "nodes": conditional.falsy, "node": conditional}
+                        {"type": "if_falsy", "nodes": frame_node.falsy, "node": frame_node}
                     )
                 continue
 
@@ -209,7 +220,7 @@ def _build_ast(tokens: Sequence[_Token]) -> TemplateAST:
     return root_nodes
 
 
-def _parse_for_header(header: str) -> Tuple[str, str]:
+def _parse_for_header(header: str) -> tuple[str, str]:
     header = header.strip()
     if " in " in header:
         variable, iterable = header.split(" in ", 1)
@@ -220,7 +231,7 @@ def _parse_for_header(header: str) -> Tuple[str, str]:
     return "", ""
 
 
-def parse_variable_spec(var_spec: str) -> Optional[Tuple[str, Optional[str]]]:
+def parse_variable_spec(var_spec: str) -> tuple[str, str | None] | None:
     trimmed = var_spec.strip()
     if not trimmed or trimmed.startswith(">"):
         return None
@@ -228,7 +239,7 @@ def parse_variable_spec(var_spec: str) -> Optional[Tuple[str, Optional[str]]]:
         return trimmed, None
     name_part, rest = trimmed.split("|", 1)
     name = name_part.strip()
-    default_value: Optional[str] = None
+    default_value: str | None = None
     if "=" in rest:
         key, _, raw = rest.partition("=")
         if key.strip() == "default":
@@ -241,7 +252,7 @@ def parse_variable_spec(var_spec: str) -> Optional[Tuple[str, Optional[str]]]:
     return name, default_value
 
 
-def parse_metadata_line(line: str) -> Optional[Tuple[Optional[str], Optional[str]]]:
+def parse_metadata_line(line: str) -> tuple[str | None, str | None] | None:
     trimmed = line.strip()
     if len(trimmed) < 4 or not trimmed.startswith("{#") or not trimmed.endswith("#}"):
         return None
@@ -260,7 +271,7 @@ def is_metadata_comment(line: str) -> bool:
     return trimmed.startswith("{#") and trimmed.endswith("#}")
 
 
-def split_loop_items(values: str) -> List[str]:
+def split_loop_items(values: str) -> list[str]:
     if "," in values:
         return [item.strip() for item in values.split(",")]
     return [line.strip() for line in values.splitlines() if line.strip()]

@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from ralph.mcp.tool_coordination import (
     CapabilityDeniedError,
@@ -21,9 +21,15 @@ from ralph.mcp.tool_coordination import (
     require_capability,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 _DEFAULT_TIMEOUT_MS = 30_000
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
+_KILL_SIGNAL_ARG_COUNT = 2
+_ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
+_ARCHIVE_EXTRACT_FLAGS = ("-x", "--extract", "-d", "--delete")
 
 _BLACKLIST_DESCRIPTIONS = {
     "version_control": "version control system",
@@ -74,10 +80,18 @@ def parse_exec_params(params: Mapping[str, Any]) -> ExecParams:
         raise InvalidParamsError("Missing 'command' parameter")
 
     args_value = params.get("args")
-    args = [value for value in args_value if isinstance(value, str)] if isinstance(args_value, list) else []
+    args = (
+        [value for value in args_value if isinstance(value, str)]
+        if isinstance(args_value, list)
+        else []
+    )
 
     timeout_value = params.get("timeout_ms", _DEFAULT_TIMEOUT_MS)
-    timeout_ms = timeout_value if isinstance(timeout_value, int) and timeout_value >= 0 else _DEFAULT_TIMEOUT_MS
+    timeout_ms = (
+        timeout_value
+        if isinstance(timeout_value, int) and timeout_value >= 0
+        else _DEFAULT_TIMEOUT_MS
+    )
 
     return ExecParams(command=command_value, args=args, timeout_ms=timeout_ms)
 
@@ -123,7 +137,10 @@ def check_version_control(command: str, _args: list[str]) -> str | None:
     key = _command_key(command)
     if key in _VERSION_CONTROL_COMMANDS:
         desc = _description("version_control")
-        return f"Command '{command}' is blacklisted: {desc} commands must go through Ralph's git capabilities"
+        return (
+            f"Command '{command}' is blacklisted: {desc} commands must go through "
+            "Ralph's git capabilities"
+        )
     return None
 
 
@@ -138,40 +155,45 @@ def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
 def check_destructive_system(command: str, args: list[str]) -> str | None:
     key = _command_key(command)
     args_lower = _lower_args(args)
+    desc = _description("destructive_system")
 
-    if key == "rm":
-        if _contains_any(args_lower, {"-rf", "-r", "-f"}):
-            if any(
-                target == "/"
-                or target.startswith("/." )
-                or target.startswith("~")
-                or target.startswith("/home")
-                for target in args
-            ):
-                desc = _description("destructive_system")
-                return (
-                    "Command 'rm' with recursive force flag targeting root/home is blacklisted: "
-                    f"{desc}"
-                )
-        return None
+    if _is_destructive_rm(key, args, args_lower):
+        return (
+            "Command 'rm' with recursive force flag targeting root/home is blacklisted: "
+            f"{desc}"
+        )
 
-    if key in {"mkfs", "dd"}:
-        if any(arg.startswith("/dev/") or "of=/dev/" in arg for arg in args_lower):
-            desc = _description("destructive_system")
-            return (
-                f"Command '{command}' targeting devices is blacklisted: {desc}"
-            )
-        return None
+    if key in {"mkfs", "dd"} and any(
+        arg.startswith("/dev/") or "of=/dev/" in arg for arg in args_lower
+    ):
+        return f"Command '{command}' targeting devices is blacklisted: {desc}"
 
     if key in _DESTRUCTIVE_SYSTEM_COMMANDS:
-        desc = _description("destructive_system")
         return f"Command '{command}' is blacklisted: {desc} is not allowed"
 
-    if key == "kill" and len(args_lower) >= 2 and args_lower[0] == "-9" and args_lower[1] == "1":
-        desc = _description("destructive_system")
+    if _is_init_kill(key, args_lower):
         return f"Command 'kill -9 1' (init) is blacklisted: {desc} is not allowed"
 
     return None
+
+
+def _is_destructive_rm(key: str, args: list[str], args_lower: list[str]) -> bool:
+    return key == "rm" and _contains_any(args_lower, {"-rf", "-r", "-f"}) and any(
+        target == "/"
+        or target.startswith("/.")
+        or target.startswith("~")
+        or target.startswith("/home")
+        for target in args
+    )
+
+
+def _is_init_kill(key: str, args_lower: list[str]) -> bool:
+    return (
+        key == "kill"
+        and len(args_lower) >= _KILL_SIGNAL_ARG_COUNT
+        and args_lower[0] == "-9"
+        and args_lower[1] == "1"
+    )
 
 
 def check_network_exfiltration(command: str, args: list[str]) -> str | None:
@@ -182,7 +204,8 @@ def check_network_exfiltration(command: str, args: list[str]) -> str | None:
         if any(_is_external_url(arg) for arg in args):
             desc = _description("network_exfiltration")
             return (
-                f"Command '{command}' to external URLs is blacklisted: {desc} risk. Use Ralph's HTTP capabilities instead."
+                f"Command '{command}' to external URLs is blacklisted: {desc} risk. "
+                "Use Ralph's HTTP capabilities instead."
             )
         return None
 
@@ -211,37 +234,36 @@ def _is_external_url(arg: str) -> bool:
 def check_package_manager(command: str, args: list[str]) -> str | None:
     key = _command_key(command)
     args_lower = _lower_args(args)
+    desc = _description("package_manager")
 
-    if key in _PACKAGE_MANAGERS:
-        if any(flag in args_lower for flag in {"install", "update", "upgrade", "remove", "-s", "--sync"}):
-            desc = _description("package_manager")
-            return (
-                f"Command '{command}' with install/update is blacklisted: {desc} operations require Ralph's approval"
-            )
-        return None
+    if key in _PACKAGE_MANAGERS and any(
+        flag in args_lower
+        for flag in ("install", "update", "upgrade", "remove", "-s", "--sync")
+    ):
+        return (
+            f"Command '{command}' with install/update is blacklisted: {desc} "
+            "operations require Ralph's approval"
+        )
 
-    if key in {"pip", "pip3"}:
-        if "install" in args_lower and any(flag in args_lower for flag in {"--user", "-g", "--global"}):
-            desc = _description("package_manager")
-            return (
-                f"Command '{key} install --user/-g' is blacklisted: {desc} operations require Ralph's approval"
-            )
-        return None
+    if key in {"pip", "pip3"} and "install" in args_lower and any(
+        flag in args_lower for flag in ("--user", "-g", "--global")
+    ):
+        return (
+            f"Command '{key} install --user/-g' is blacklisted: {desc} operations "
+            "require Ralph's approval"
+        )
 
     if key == "npm" and "install" in args_lower and "-g" in args_lower:
-        desc = _description("package_manager")
         return (
             f"Command 'npm install -g' is blacklisted: {desc} operations require Ralph's approval"
         )
 
     if key == "cargo" and args_lower and args_lower[0] == "install":
-        desc = _description("package_manager")
         return (
             f"Command 'cargo install' is blacklisted: {desc} operations require Ralph's approval"
         )
 
     if key == "gem" and "install" in args_lower and "--user-install" not in args_lower:
-        desc = _description("package_manager")
         return (
             f"Command 'gem install' (global) is blacklisted: {desc} operations require Ralph's approval"
         )
@@ -262,49 +284,68 @@ def check_multi_file_operation(command: str, args: list[str]) -> str | None:
     args_lower = _lower_args(args)
     desc = _description("multi_file_operation")
 
-    if key == "find" and any(flag in args_lower for flag in {"-exec", "-delete"}):
-        return (
-            f"Command 'find' with -exec/-delete is blacklisted: {desc} must go through Ralph's workspace write"
-        )
-
-    if key == "xargs" and any(flag in args_lower for flag in {"rm", "mv", "cp", "chmod", "chown"}):
-        return (
-            f"Command 'xargs' with destructive commands is blacklisted: {desc} must go through Ralph's workspace write"
-        )
-
-    if key == "sed" and "-i" in args_lower:
-        return (
-            f"Command 'sed -i' is blacklisted: {desc} must go through Ralph's workspace write"
-        )
-
-    if key == "awk" and ("-i" in args_lower or "-inplace" in args_lower):
-        return (
-            f"Command 'awk -i' is blacklisted: {desc} must go through Ralph's workspace write"
-        )
-
-    if key in {"rename", "mmv"}:
-        return f"Command '{command}' is blacklisted: {desc} must go through Ralph's workspace write"
-
-    if key in {"chmod", "chown"} and any(flag in args_lower for flag in {"-r", "-R"}):
-        return (
-            f"Command '{command} -R' is blacklisted: {desc} must go through Ralph's workspace write"
-        )
-
-    if key in {"cp", "mv"}:
-        has_glob = any("*" in arg or "?" in arg for arg in args)
-        has_recursive = any(flag in args_lower for flag in {"-r", "-rf", "-R", "-f"})
-        if has_glob and has_recursive:
-            return (
-                f"Command '{command}' with recursive glob is blacklisted: {desc} must go through Ralph's workspace write"
-            )
-
-    if key in {"tar", "zip", "unzip"}:
-        if any("-x" in arg or "--extract" in arg or "-d" in arg or "--delete" in arg for arg in args_lower):
-            if any(arg.endswith(ext) for arg in args_lower for ext in (".tar", ".zip", ".gz", ".bz2", ".xz")):
-                return (
-                    f"Command '{command}' extracting archives in-place is blacklisted: {desc} must go through Ralph's workspace write"
-                )
+    checks = (
+        (
+            key == "find" and any(flag in args_lower for flag in ("-exec", "-delete")),
+            f"Command 'find' with -exec/-delete is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            key == "xargs"
+            and any(flag in args_lower for flag in ("rm", "mv", "cp", "chmod", "chown")),
+            f"Command 'xargs' with destructive commands is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            key == "sed" and "-i" in args_lower,
+            f"Command 'sed -i' is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            key == "awk" and ("-i" in args_lower or "-inplace" in args_lower),
+            f"Command 'awk -i' is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            key in {"rename", "mmv"},
+            f"Command '{command}' is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            key in {"chmod", "chown"} and any(flag in args_lower for flag in ("-r", "-R")),
+            f"Command '{command} -R' is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            _has_recursive_glob_copy(key, args, args_lower),
+            f"Command '{command}' with recursive glob is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+        (
+            _extracts_archive_in_place(key, args_lower),
+            f"Command '{command}' extracting archives in-place is blacklisted: {desc} must go through Ralph's workspace write",
+        ),
+    )
+    for applies, message in checks:
+        if applies:
+            return message
     return None
+
+
+def _has_recursive_glob_copy(key: str, args: list[str], args_lower: list[str]) -> bool:
+    if key not in {"cp", "mv"}:
+        return False
+    has_glob = any("*" in arg or "?" in arg for arg in args)
+    has_recursive = any(flag in args_lower for flag in ("-r", "-rf", "-R", "-f"))
+    return has_glob and has_recursive
+
+
+def _extracts_archive_in_place(key: str, args_lower: list[str]) -> bool:
+    if key not in {"tar", "zip", "unzip"}:
+        return False
+    has_extract_flag = any(
+        any(flag in arg for flag in _ARCHIVE_EXTRACT_FLAGS)
+        for arg in args_lower
+    )
+    has_archive = any(
+        arg.endswith(ext)
+        for arg in args_lower
+        for ext in _ARCHIVE_EXTENSIONS
+    )
+    return has_extract_flag and has_archive
 
 
 def apply_exec_policy(command: str, args: list[str]) -> None:
@@ -326,7 +367,12 @@ def _workspace_root(workspace: object) -> Path:
     return Path.cwd()
 
 
-def run_command(command: str, args: list[str], workspace: object, timeout_ms: int) -> subprocess.CompletedProcess[bytes]:
+def run_command(
+    command: str,
+    args: list[str],
+    workspace: object,
+    timeout_ms: int,
+) -> subprocess.CompletedProcess[bytes]:
     """Execute a subprocess in the workspace root."""
     cwd = _workspace_root(workspace)
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
@@ -392,9 +438,9 @@ def handle_exec_command(
 
 
 __all__ = [
-    "ExecutionError",
-    "ExecParams",
     "PROCESS_EXEC_BOUNDED_CAPABILITY",
+    "ExecParams",
+    "ExecutionError",
     "WorkspaceWithRoot",
     "apply_exec_policy",
     "check_command",
