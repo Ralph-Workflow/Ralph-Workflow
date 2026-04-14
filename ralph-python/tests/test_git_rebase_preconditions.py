@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -11,6 +11,9 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_allows_clean_repository(tmp_git_repo: Path) -> None:

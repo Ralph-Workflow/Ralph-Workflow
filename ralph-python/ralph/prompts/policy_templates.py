@@ -487,5 +487,5 @@ Read files beyond the plan to understand context and integration points.
 Search for related implementations, affected call sites, and existing tests.
 Confirm architectural/test guidance in AGENTS.md, CODE_STYLE.md, and any
 relevant architecture docs before changing behavior.
-""")
+"""),
 }

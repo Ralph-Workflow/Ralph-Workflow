@@ -8,13 +8,12 @@ to AgentOutputLine instances.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Any
 
 
 class CodexParser:
@@ -39,14 +38,14 @@ class CodexParser:
                 continue
 
             try:
-                obj: dict[str, Any] = json.loads(stripped)
+                obj: dict[str, object] = json.loads(stripped)
             except json.JSONDecodeError:
                 yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
                 continue
 
             yield from self._parse_object(obj, stripped)
 
-    def _parse_object(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances.
 
         Args:
@@ -79,19 +78,25 @@ class CodexParser:
         else:
             yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
-    def _parse_text_content(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_text_content(
+        self, obj: dict[str, object], stripped: str
+    ) -> Iterator[AgentOutputLine]:
         """Parse text/content event."""
         content = str(obj.get("content", "") or obj.get("text", ""))
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
 
-    def _parse_text_delta(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_text_delta(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse text_delta event."""
-        content = str(obj.get("delta", {}).get("content", ""))
+        delta_val = obj.get("delta")
+        if isinstance(delta_val, dict):
+            content = str(cast("dict[str, object]", delta_val).get("content", ""))
+        else:
+            content = ""
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
 
-    def _parse_tool_use(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_tool_use(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse tool_use event."""
         tool_name = str(obj.get("tool", obj.get("name", "unknown")))
         tool_input = obj.get("input", {})
@@ -102,21 +107,23 @@ class CodexParser:
             metadata={"tool": tool_name, "input": tool_input},
         )
 
-    def _parse_tool_result(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_tool_result(
+        self, obj: dict[str, object], stripped: str
+    ) -> Iterator[AgentOutputLine]:
         """Parse tool_result/tool_result_delta event."""
         result = str(obj.get("result", obj.get("content", "")))
         yield AgentOutputLine(type="tool_result", content=result, raw=stripped, metadata=obj)
 
-    def _parse_error(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_error(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse error/error_delta event."""
-        error_msg = str(
-            obj.get("error", {}).get("message", "")
-            if isinstance(obj.get("error"), dict)
-            else obj.get("error", "unknown error")
-        )
+        error_val = obj.get("error")
+        if isinstance(error_val, dict):
+            error_msg = str(cast("dict[str, object]", error_val).get("message", ""))
+        else:
+            error_msg = str(error_val) if error_val else "unknown error"
         yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
 
-    def _parse_assistant(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_assistant(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse assistant event."""
         content = str(obj.get("content", ""))
         if content:

@@ -6,10 +6,8 @@ components used throughout the CLI.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from collections.abc import Mapping
+from typing import Protocol
 
 import rich_click as click
 from rich.console import Console
@@ -18,6 +16,14 @@ from rich.table import Table
 from ralph.config.enums import (
     Verbosity,
 )
+from ralph.config.models import AgentConfig
+
+
+class _AnyCallable(Protocol):
+    """Protocol for any callable with any signature."""
+
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
 
 console = Console()
 
@@ -100,7 +106,7 @@ class VerbosityOption(click.Option):
 
 
 # Custom option classes for better help display
-def verbose_option(func: Callable[..., object]) -> Callable[..., object]:
+def verbose_option(func: _AnyCallable) -> _AnyCallable:
     """Add verbose option decorator."""
     return click.option(
         "--verbose",
@@ -110,7 +116,7 @@ def verbose_option(func: Callable[..., object]) -> Callable[..., object]:
     )(func)
 
 
-def quiet_option(func: Callable[..., object]) -> Callable[..., object]:
+def quiet_option(func: _AnyCallable) -> _AnyCallable:
     """Add quiet option decorator."""
     return click.option(
         "--quiet",
@@ -120,7 +126,7 @@ def quiet_option(func: Callable[..., object]) -> Callable[..., object]:
     )(func)
 
 
-def config_option(func: Callable[..., object]) -> Callable[..., object]:
+def config_option(func: _AnyCallable) -> _AnyCallable:
     """Add config file option decorator."""
     return click.option(
         "--config",
@@ -130,7 +136,7 @@ def config_option(func: Callable[..., object]) -> Callable[..., object]:
     )(func)
 
 
-def developer_iters_option(func: Callable[..., object]) -> Callable[..., object]:
+def developer_iters_option(func: _AnyCallable) -> _AnyCallable:
     """Add developer iterations option decorator."""
     return click.option(
         "--developer-iters",
@@ -142,7 +148,7 @@ def developer_iters_option(func: Callable[..., object]) -> Callable[..., object]
     )(func)
 
 
-def reviewer_reviews_option(func: Callable[..., object]) -> Callable[..., object]:
+def reviewer_reviews_option(func: _AnyCallable) -> _AnyCallable:
     """Add reviewer reviews option decorator."""
     return click.option(
         "--reviewer-reviews",
@@ -154,7 +160,10 @@ def reviewer_reviews_option(func: Callable[..., object]) -> Callable[..., object
     )(func)
 
 
-def display_agents_table(agents: dict[str, Any], console: Console | None = None) -> None:
+AgentTable = Mapping[str, AgentConfig]
+
+
+def display_agents_table(agents: AgentTable, console: Console | None = None) -> None:
     """Display a formatted table of agents.
 
     Args:
@@ -169,11 +178,10 @@ def display_agents_table(agents: dict[str, Any], console: Console | None = None)
     table.add_column("Can Commit", justify="center")
 
     for name, agent in agents.items():
-        if hasattr(agent, "cmd"):
-            cmd = str(getattr(agent, "cmd", ""))
-            parser = str(getattr(agent, "json_parser", "generic"))
-            can_commit = "yes" if getattr(agent, "can_commit", False) else "no"
-            table.add_row(name, cmd, parser, can_commit)
+        cmd = agent.cmd
+        parser = str(agent.json_parser)
+        can_commit = "yes" if agent.can_commit else "no"
+        table.add_row(name, cmd, parser, can_commit)
 
     c.print(table)
 

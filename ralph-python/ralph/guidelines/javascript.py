@@ -25,11 +25,16 @@ class JavaScriptGuidelines:
 
     __slots__ = (
         "anti_patterns",
+        "api_design_checks",
+        "concurrency_checks",
         "documentation_checks",
         "frameworks",
         "idioms",
+        "observability_checks",
         "performance_checks",
         "quality_checks",
+        "resource_checks",
+        "secrets_checks",
         "security_checks",
         "testing_checks",
         "typescript",
@@ -44,6 +49,11 @@ class JavaScriptGuidelines:
     documentation_checks: list[str]
     idioms: list[str]
     anti_patterns: list[str]
+    concurrency_checks: list[str]
+    resource_checks: list[str]
+    observability_checks: list[str]
+    secrets_checks: list[str]
+    api_design_checks: list[str]
 
     def __init__(self, frameworks: Iterable[str] = (), typescript: bool = False) -> None:
         normalized_frameworks = tuple(frameworks)
@@ -91,6 +101,26 @@ class JavaScriptGuidelines:
             "Avoid == for comparisons (use ===).",
             "Do not mutate function arguments.",
             "Avoid synchronous I/O in Node.js request or worker paths.",
+        ]
+        self.concurrency_checks = [
+            "Guard shared state in async flows to avoid race conditions.",
+            "Use cancellation/timeout handling for long-running asynchronous work.",
+        ]
+        self.resource_checks = [
+            "Close streams, sockets, and DB handles reliably on success and failure.",
+            "Bound memory use for large payload processing and caching.",
+        ]
+        self.observability_checks = [
+            "Emit structured logs with correlation identifiers for async requests.",
+            "Expose actionable metrics for latency, error rate, and saturation.",
+        ]
+        self.secrets_checks = [
+            "Load secrets from secure environment/config providers, never hardcode.",
+            "Ensure logs and error payloads redact API keys, tokens, and credentials.",
+        ]
+        self.api_design_checks = [
+            "Keep API contracts explicit, versioned, and backwards-compatible where required.",
+            "Validate and document request/response schemas at boundaries.",
         ]
 
         if any(framework.casefold() in {"react", "vue"} for framework in normalized_frameworks):

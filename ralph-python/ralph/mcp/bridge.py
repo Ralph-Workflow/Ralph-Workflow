@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -23,7 +23,16 @@ from ralph.mcp.artifacts import (
 from ralph.mcp.transport import MCPMessage, MCPTransport, StdioTransport
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+
+    class _ToolHandler(Protocol):
+        """Protocol for MCP tool handler callables."""
+
+        def __call__(self, *args: object, **kwargs: object) -> dict[str, object]: ...
+
+    class _MethodDispatcher(Protocol):
+        """Protocol for MCP method dispatcher callables."""
+
+        def __call__(self, message: MCPMessage, /) -> MCPMessage: ...
 
 
 class BridgeError(Exception):
@@ -60,8 +69,8 @@ class MCPTool:
 
     name: str
     description: str
-    input_schema: dict[str, Any]
-    handler: Callable[..., dict[str, Any]]
+    input_schema: dict[str, object]
+    handler: _ToolHandler
 
 
 class MCPBridge:
@@ -86,8 +95,8 @@ class MCPBridge:
         self,
         name: str,
         description: str,
-        input_schema: dict[str, Any],
-        handler: Callable[..., dict[str, Any]],
+        input_schema: dict[str, object],
+        handler: _ToolHandler,
     ) -> None:
         """Register an MCP tool.
 
@@ -106,7 +115,7 @@ class MCPBridge:
         self._tools[name] = tool
         logger.debug("Registered MCP tool: {}", name)
 
-    def tool_called(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def tool_called(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
         """Handle a tool call from an MCP client.
 
         Args:
@@ -135,9 +144,9 @@ class MCPBridge:
         self,
         name: str,
         artifact_type: str,
-        content: dict[str, Any],
-        metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        content: dict[str, object],
+        metadata: dict[str, object] | None = None,
+    ) -> dict[str, object]:
         """Submit an artifact via MCP.
 
         Args:
@@ -161,7 +170,7 @@ class MCPBridge:
         except ArtifactExistsError as exc:
             return {"success": False, "error": str(exc)}
 
-    def get_artifact_mcp(self, name: str) -> dict[str, Any]:
+    def get_artifact_mcp(self, name: str) -> dict[str, object]:
         """Get an artifact via MCP.
 
         Args:
@@ -176,7 +185,7 @@ class MCPBridge:
         except ArtifactNotFoundError as exc:
             return {"success": False, "error": str(exc)}
 
-    def list_artifacts_mcp(self) -> dict[str, Any]:
+    def list_artifacts_mcp(self) -> dict[str, object]:
         """List all artifacts via MCP.
 
         Returns:
@@ -199,7 +208,7 @@ class MCPBridge:
         """
         handler = self._method_dispatchers.get(message.method)
         if handler is not None:
-            return cast("MCPMessage", handler(message))
+            return handler(message)
 
         logger.warning("Unknown MCP method: {}", message.method)
         return MCPMessage(
@@ -233,8 +242,8 @@ class MCPBridge:
                 msg_id=message.msg_id,
             )
 
-        tool_name = message.params.get("name") or ""
-        arguments = message.params.get("arguments", {})
+        tool_name = cast("str", message.params.get("name", "")) or ""
+        arguments = cast("dict[str, object]", message.params.get("arguments", {}))
         result = self.tool_called(tool_name, arguments)
         return MCPMessage(
             method="tools/call",
@@ -252,10 +261,10 @@ class MCPBridge:
             )
 
         result = self.submit_artifact_mcp(
-            name=message.params.get("name", ""),
-            artifact_type=message.params.get("type", "unknown"),
-            content=message.params.get("content", {}),
-            metadata=message.params.get("metadata"),
+            name=cast("str", message.params.get("name", "")),
+            artifact_type=cast("str", message.params.get("type", "unknown")),
+            content=cast("dict[str, object]", message.params.get("content", {})),
+            metadata=cast("dict[str, object] | None", message.params.get("metadata")),
         )
         return MCPMessage(
             method="artifacts/submit",
@@ -265,7 +274,7 @@ class MCPBridge:
 
     def _dispatch_artifacts_get(self, message: MCPMessage) -> MCPMessage:
         """Handle artifacts/get method."""
-        name = message.params.get("name", "") if message.params else ""
+        name = cast("str", message.params.get("name", "")) if message.params else ""
         result = self.get_artifact_mcp(name)
         return MCPMessage(
             method="artifacts/get",
@@ -283,7 +292,7 @@ class MCPBridge:
         )
 
     @property
-    def _method_dispatchers(self) -> dict[str, Callable[..., Any]]:
+    def _method_dispatchers(self) -> dict[str, _MethodDispatcher]:
         """Return method dispatchers mapping."""
         return {
             "tools/list": self._dispatch_tools_list,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -66,7 +66,7 @@ class WorkspaceWithRoot(Protocol):
 def _workspace_root(workspace: object) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
-    root_value = getattr(workspace, "root", None)
+    root_value = cast("Path | str | None", getattr(workspace, "root", None))
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -74,7 +74,7 @@ def _workspace_root(workspace: object) -> Path:
     return Path.cwd()
 
 
-def parse_git_diff_params(params: Mapping[str, Any]) -> GitDiffParams:
+def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
     """Parse git diff params, keeping only string arguments."""
     args_value = params.get("args")
     args = (
@@ -85,18 +85,14 @@ def parse_git_diff_params(params: Mapping[str, Any]) -> GitDiffParams:
     return GitDiffParams(args=args)
 
 
-def parse_git_log_params(params: Mapping[str, Any]) -> GitLogParams:
+def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
     """Parse git log params with the Rust default count."""
     count_value = params.get("count", _DEFAULT_LOG_COUNT)
-    count = (
-        count_value
-        if isinstance(count_value, int) and count_value >= 0
-        else _DEFAULT_LOG_COUNT
-    )
+    count = count_value if isinstance(count_value, int) and count_value >= 0 else _DEFAULT_LOG_COUNT
     return GitLogParams(count=count)
 
 
-def parse_git_show_params(params: Mapping[str, Any]) -> GitShowParams:
+def parse_git_show_params(params: Mapping[str, object]) -> GitShowParams:
     """Parse git show params."""
     ref_value = params.get("ref")
     if not isinstance(ref_value, str):
@@ -155,7 +151,7 @@ def run_git_command_lenient(workspace: object, args: list[str]) -> str:
 def handle_git_status(
     session: SessionLike,
     workspace: object,
-    _params: Mapping[str, Any],
+    _params: Mapping[str, object],
 ) -> ToolResult:
     """Read the git status of the workspace."""
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
@@ -166,7 +162,7 @@ def handle_git_status(
 def handle_git_diff(
     session: SessionLike,
     workspace: object,
-    params: Mapping[str, Any],
+    params: Mapping[str, object],
 ) -> ToolResult:
     """Read the git diff of the workspace."""
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
@@ -178,7 +174,7 @@ def handle_git_diff(
 def handle_git_log(
     session: SessionLike,
     workspace: object,
-    params: Mapping[str, Any],
+    params: Mapping[str, object],
 ) -> ToolResult:
     """Read the git commit log."""
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
@@ -190,7 +186,7 @@ def handle_git_log(
 def handle_git_show(
     session: SessionLike,
     workspace: object,
-    params: Mapping[str, Any],
+    params: Mapping[str, object],
 ) -> ToolResult:
     """Show a git object by ref."""
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")

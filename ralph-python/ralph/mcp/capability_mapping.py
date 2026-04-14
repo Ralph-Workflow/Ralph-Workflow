@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from typing import cast
 
 
 class SessionDrain(StrEnum):
@@ -228,8 +229,10 @@ def _extract_text_field(value: object, field_name: str) -> str | None:
 def _extract_named_value(value: object) -> str | None:
     if isinstance(value, str):
         return value
-    if isinstance(value, Enum) and isinstance(value.value, str):
-        return value.value
+    if isinstance(value, Enum):
+        enum_value = cast("object", value.value)
+        if isinstance(enum_value, str):
+            return enum_value
     for field_name in ("status", "name", "value"):
         field_value = _extract_text_field(value, field_name)
         if field_value is not None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from loguru import logger
 
+from ralph.config.enums import AnalysisDecision
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.analysis import parse_analysis_decision
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -58,12 +59,13 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
         decision = parse_analysis_decision(ctx, "review_analysis")
         logger.info("Review analysis decision: {}", decision)
 
-        if decision in ("approve", "success", "continue"):
+        if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
             return [PipelineEvent.ANALYSIS_SUCCESS]
-        elif decision in ("request_changes", "loopback", "retry"):
+        elif decision == AnalysisDecision.REVISE:
             return [PipelineEvent.ANALYSIS_LOOPBACK]
-        elif decision in ("fail", "reject"):
-            return [PipelineEvent.ANALYSIS_SUCCESS]
+        elif decision in (AnalysisDecision.FAILURE, AnalysisDecision.ESCALATE):
+            logger.warning("Review analysis decision {} triggers pipeline failure", decision)
+            return [PipelineEvent.FAILED]
         else:
             logger.warning(
                 "Unknown review analysis decision: {}. Defaulting to success.",

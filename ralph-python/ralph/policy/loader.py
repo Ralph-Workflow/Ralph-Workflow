@@ -10,7 +10,9 @@ as a PolicyValidationError with field-level detail.
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 
 from loguru import logger
 from pydantic import ValidationError
@@ -21,6 +23,12 @@ from ralph.policy.models import (
     ArtifactsPolicy,
     PipelinePolicy,
     PolicyBundle,
+)
+from ralph.policy.validation import (
+    PolicyValidationError as PolicyContractValidationError,
+)
+from ralph.policy.validation import (
+    validate_drain_contracts,
 )
 
 
@@ -66,6 +74,39 @@ def _load_toml(path: Path) -> dict[str, object]:
         ) from exc
 
 
+ValidationErrorDetail = Mapping[str, object]
+ValidationErrorDetails = Sequence[ValidationErrorDetail]
+
+
+def _format_validation_error_messages(exc: ValidationError) -> list[str]:
+    details = cast("ValidationErrorDetails", exc.errors())
+    return [_format_validation_error_detail(detail) for detail in details]
+
+
+def _format_validation_error_detail(detail: ValidationErrorDetail) -> str:
+    loc = detail.get("loc")
+    msg = detail.get("msg")
+    return f"  {_format_validation_location(loc)}: {_format_validation_message(msg)}"
+
+
+def _format_validation_location(raw_loc: object | None) -> str:
+    if raw_loc is None:
+        return "<root>"
+    if isinstance(raw_loc, (list, tuple)):
+        if not raw_loc:
+            return "<root>"
+        return ".".join(str(component) for component in raw_loc)
+    return str(raw_loc)
+
+
+def _format_validation_message(raw_msg: object | None) -> str:
+    if isinstance(raw_msg, str):
+        return raw_msg
+    if raw_msg is None:
+        return "<missing message>"
+    return str(raw_msg)
+
+
 def _validate_agents(data: dict[str, object]) -> AgentsPolicy:
     """Validate and return AgentsPolicy.
 
@@ -81,7 +122,7 @@ def _validate_agents(data: dict[str, object]) -> AgentsPolicy:
     try:
         return AgentsPolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = [f"  {e['loc']}: {e['msg']}" for e in exc.errors()]
+        msgs = _format_validation_error_messages(exc)
         raise PolicyValidationError(
             "agents.toml validation failed:\n" + "\n".join(msgs),
             source="agents",
@@ -103,7 +144,7 @@ def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
     try:
         return PipelinePolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = [f"  {e['loc']}: {e['msg']}" for e in exc.errors()]
+        msgs = _format_validation_error_messages(exc)
         raise PolicyValidationError(
             "pipeline.toml validation failed:\n" + "\n".join(msgs),
             source="pipeline",
@@ -125,7 +166,7 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
     try:
         return ArtifactsPolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = [f"  {e['loc']}: {e['msg']}" for e in exc.errors()]
+        msgs = _format_validation_error_messages(exc)
         raise PolicyValidationError(
             "artifacts.toml validation failed:\n" + "\n".join(msgs),
             source="artifacts",
@@ -173,18 +214,28 @@ def load_policy(config_dir: Path) -> PolicyBundle:
 
     # Cross-policy validation
     try:
-        return PolicyBundle(
+        bundle = PolicyBundle(
             agents=agents_policy,
             pipeline=pipeline_policy,
             artifacts=artifacts_policy,
         )
     except ValidationError as exc:
-        msgs = [f"  {e['loc']}: {e['msg']}" for e in exc.errors()]
+        msgs = _format_validation_error_messages(exc)
         raise PolicyValidationError(
             "Cross-policy validation failed (drain bindings / analysis contracts):\n"
             + "\n".join(msgs),
             source=None,
         ) from exc
+
+    try:
+        validate_drain_contracts(bundle)
+    except PolicyContractValidationError as exc:
+        raise PolicyValidationError(
+            exc.message,
+            source="agents",
+        ) from exc
+
+    return bundle
 
 
 def _default_dir() -> Path:

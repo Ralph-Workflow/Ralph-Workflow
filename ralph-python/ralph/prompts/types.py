@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,7 +24,7 @@ PROGRESS_TOOLS = ("report_progress",)
 ENV_READ_TOOLS = ("read_env",)
 
 
-class SessionDrain(str, Enum):
+class SessionDrain(StrEnum):
     """Pipeline drain identity for prompt generation."""
 
     PLANNING = "planning"
@@ -35,7 +35,7 @@ class SessionDrain(str, Enum):
     COMMIT = "commit"
 
 
-class Capability(str, Enum):
+class Capability(StrEnum):
     WORKSPACE_READ = "workspace.read"
     WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
     WORKSPACE_WRITE_TRACKED = "workspace.write_tracked"
@@ -111,7 +111,7 @@ class CapabilitySet:
         return cls(caps)
 
 
-class PolicyFlag(str, Enum):
+class PolicyFlag(StrEnum):
     NO_EDIT = "no_edit"
     ALLOW_SHELL = "allow_shell"
     ALLOW_GIT_WRITE = "allow_git_write"
@@ -194,13 +194,9 @@ def capability_template_variables(
         "HAS_PROCESS_EXEC": bool_to_template_value(
             capabilities.contains(Capability.PROCESS_EXEC_BOUNDED)
         ),
-        "HAS_GIT_WRITE": bool_to_template_value(
-            capabilities.contains(Capability.GIT_WRITE)
-        ),
+        "HAS_GIT_WRITE": bool_to_template_value(capabilities.contains(Capability.GIT_WRITE)),
         "POLICY_NO_EDIT": bool_to_template_value(policy_flags.contains(PolicyFlag.NO_EDIT)),
-        "POLICY_ALLOW_SHELL": bool_to_template_value(
-            policy_flags.contains(PolicyFlag.ALLOW_SHELL)
-        ),
+        "POLICY_ALLOW_SHELL": bool_to_template_value(policy_flags.contains(PolicyFlag.ALLOW_SHELL)),
         "POLICY_ALLOW_GIT_WRITE": bool_to_template_value(
             policy_flags.contains(PolicyFlag.ALLOW_GIT_WRITE)
         ),

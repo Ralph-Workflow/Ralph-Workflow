@@ -7,7 +7,7 @@ and applying commit messages.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.panel import Panel
@@ -47,7 +47,7 @@ class CommitPlumbingOptions:
     generate_commit: bool = False
     show_commit_msg: bool = False
     config_path: Path | None = None
-    cli_overrides: dict[str, Any] | None = None
+    cli_overrides: dict[str, object] | None = None
 
 
 def commit_plumbing(

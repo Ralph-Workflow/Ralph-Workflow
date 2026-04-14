@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -15,6 +15,9 @@ from ralph.git.rebase.rebase_continuation import (
     rebase_in_progress_at,
     verify_rebase_completed_at,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_continue_rebase_finishes_conflicted_rebase(tmp_git_repo: Path) -> None:
@@ -74,6 +77,7 @@ def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -
         cwd=str(repo_root),
         text=True,
         capture_output=True,
+        check=False,
     )
     assert result.returncode != 0, "Expected the rebase command to conflict"
 

@@ -24,7 +24,6 @@ class TemplateRenderingError(Exception):
     """Raised when a template cannot be rendered."""
 
 
-
 def render_template(
     template_text: str,
     variables: Mapping[str, str],
@@ -38,7 +37,6 @@ def render_template(
         raise
     except Exception as exc:  # pragma: no cover - defensive wrapper
         raise TemplateRenderingError(str(exc)) from exc
-
 
 
 def _render_nodes(
@@ -81,7 +79,6 @@ def _render_nodes(
         raise TemplateRenderingError(f"unsupported template node: {type(node).__name__}")
 
     return "".join(rendered_parts)
-
 
 
 def _render_variable(node: VariableNode, variables: Mapping[str, str]) -> str:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.language_detector import detect_languages, get_project_stack
 from ralph.language_detector.extensions import extension_to_language, is_non_primary_language
@@ -15,6 +15,9 @@ from ralph.language_detector.scanner import (
 )
 from ralph.language_detector.signatures import DetectionResults, detect_signature_files
 from ralph.workspace.memory import MemoryWorkspace
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_extension_mapping_and_non_primary_language_flags() -> None:
@@ -117,10 +120,16 @@ def test_detection_results_deduplicate_and_combine_multiple_entries() -> None:
 
 def test_detect_signature_files_combines_frameworks_test_tools_and_package_managers() -> None:
     workspace = MemoryWorkspace()
-    workspace.write("repo/frontend/package.json", '{"dependencies": {"react": "18", "next": "14"}, "devDependencies": {"vitest": "1"}}')
+    workspace.write(
+        "repo/frontend/package.json",
+        '{"dependencies": {"react": "18", "next": "14"}, "devDependencies": {"vitest": "1"}}',
+    )
     workspace.write("repo/frontend/pnpm-lock.yaml", "lockfileVersion: '9'")
     workspace.write("repo/backend/go.mod", "require github.com/gin-gonic/gin v1.9.0")
-    workspace.write("repo/composer.json", '{"require": {"laravel/framework": "10"}, "require-dev": {"phpunit/phpunit": "10"}}')
+    workspace.write(
+        "repo/composer.json",
+        '{"require": {"laravel/framework": "10"}, "require-dev": {"phpunit/phpunit": "10"}}',
+    )
 
     frameworks, test_framework, package_manager = detect_signature_files(workspace, root="repo")
 
@@ -147,9 +156,16 @@ def test_count_extensions_and_collect_signature_files_skip_ignored_paths_and_exc
 
 def test_is_test_file_name_supports_language_specific_patterns() -> None:
     assert is_test_file_name("test_app.py", "Python", ["tests", "test_app.py"]) is True
-    assert is_test_file_name("component.spec.tsx", "TypeScript", ["src", "component.spec.tsx"]) is True
+    assert (
+        is_test_file_name("component.spec.tsx", "TypeScript", ["src", "component.spec.tsx"]) is True
+    )
     assert is_test_file_name("service_test.go", "Go", ["pkg", "service_test.go"]) is True
-    assert is_test_file_name("UserServiceTest.java", "Java", ["src", "test", "java", "UserServiceTest.java"]) is True
+    assert (
+        is_test_file_name(
+            "UserServiceTest.java", "Java", ["src", "test", "java", "UserServiceTest.java"]
+        )
+        is True
+    )
     assert is_test_file_name("orders_spec.rb", "Ruby", ["spec", "orders_spec.rb"]) is True
     assert is_test_file_name("InvoiceTest.php", "PHP", ["tests", "InvoiceTest.php"]) is True
     assert is_test_file_name("tests.rs", "Rust", ["src", "tests.rs"]) is True

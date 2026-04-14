@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
-from ralph.prompts.template_context import TemplateContext, TemplateRegistry as ContextTemplateRegistry
+from ralph.prompts import template_engine
+from ralph.prompts.template_context import TemplateContext
+from ralph.prompts.template_context import TemplateRegistry as ContextTemplateRegistry
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
 from ralph.prompts.template_parsing import TemplateNode
 from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegistry
@@ -38,7 +42,7 @@ def test_render_template_uses_default_and_reports_missing_partial_or_variable() 
     with pytest.raises(TemplateRenderingError, match="'MISSING' is undefined"):
         render_template("{{MISSING}}", {}, {})
 
-    with pytest.raises(TemplateRenderingError, match="footer.txt"):
+    with pytest.raises(TemplateRenderingError, match=re.escape("footer.txt")):
         render_template("{{> footer}}", {}, {})
 
 
@@ -64,6 +68,4 @@ def test_render_template_rejects_unsupported_node_types() -> None:
         pass
 
     with pytest.raises(TemplateRenderingError, match="unsupported template node: UnknownNode"):
-        from ralph.prompts import template_engine
-
         template_engine._render_nodes([UnknownNode()], {}, {})

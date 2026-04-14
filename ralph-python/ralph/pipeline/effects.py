@@ -73,12 +73,14 @@ class PushEffect:
 @dataclass(frozen=True)
 class SaveCheckpointEffect:
     """Effect to save a checkpoint."""
+
     pass
 
 
 @dataclass(frozen=True)
 class ExitSuccessEffect:
     """Effect to exit with success."""
+
     pass
 
 

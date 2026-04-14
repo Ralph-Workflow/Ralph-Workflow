@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.capability_mapping import Capability, SessionDrain
 
@@ -99,6 +99,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.RUN_REPORT_PROGRESS,
     ),
 }
+
 
 class PolicyFlag(StrEnum):
     """Policy flags that may modify prompt rendering."""
@@ -290,7 +291,7 @@ def capability_template_variables(
         *mcp_tool_name_vars,
         summary_var,
     )
-    return {key: value for key, value in all_items}
+    return dict(all_items)
 
 
 def capability_template_variables_from_session(session: AgentSession) -> dict[str, str]:
@@ -334,12 +335,10 @@ def tool_name_var(
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:
-    cap_list = sorted(capabilities.iter(), key=lambda cap: cap.value)
-    flag_list = sorted(policy_flags.iter(), key=lambda flag: flag.value)
+    cap_list = sorted(capabilities.to_vec(), key=_capability_value)
+    flag_list = sorted(policy_flags.to_vec(), key=_policy_flag_value)
 
-    cap_section = (
-        "  (none)" if not cap_list else "\n".join(f"  - {cap.value}" for cap in cap_list)
-    )
+    cap_section = "  (none)" if not cap_list else "\n".join(f"  - {cap.value}" for cap in cap_list)
     flag_section = (
         "  (none)" if not flag_list else "\n".join(f"  - {flag.value}" for flag in flag_list)
     )
@@ -347,16 +346,28 @@ def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyF
     return f"Capabilities:\n{cap_section}\n\nPolicy Flags:\n{flag_section}"
 
 
-def _resolve_session_iterable(session: object, attribute: str) -> Iterable[str] | None:
-    candidate = getattr(session, attribute, None)
+def _capability_value(capability: Capability) -> str:
+    return capability.value
+
+
+def _policy_flag_value(flag: PolicyFlag) -> str:
+    return flag.value
+
+
+def _resolve_session_iterable(session: object, attribute: str) -> Sequence[str] | None:
+    try:
+        attributes = cast("dict[str, object]", vars(session))
+        candidate = attributes.get(attribute)
+    except TypeError:
+        return None
     if candidate is None:
         return None
     if callable(candidate):
-        candidate = candidate()
+        candidate = cast("Callable[[], object]", candidate)()
     if isinstance(candidate, (str, bytes)):
         return None
     if isinstance(candidate, Iterable):
-        return candidate
+        return tuple(item for item in candidate if isinstance(item, str))
     return None
 
 

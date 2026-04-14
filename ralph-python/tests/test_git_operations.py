@@ -21,6 +21,10 @@ from ralph.git.operations import (
     stage_all,
 )
 
+FULL_SHA_LENGTH = 40
+INITIAL_OCCURRENCE_COUNT = 1
+DEFAULT_BRANCHES = {"main", "master"}
+
 
 def test_find_repo_root(tmp_git_repo: Path) -> None:
     """Test finding repository root."""
@@ -77,7 +81,7 @@ def test_create_commit(tmp_git_repo: Path) -> None:
 
     sha = create_commit(tmp_git_repo, "Test commit message")
 
-    assert len(sha) == 40  # Full SHA length
+    assert len(sha) == FULL_SHA_LENGTH
     assert is_repo_clean(tmp_git_repo)
 
 
@@ -103,13 +107,13 @@ def test_create_commit_with_author(tmp_git_repo: Path) -> None:
 def test_get_head_sha(tmp_git_repo: Path) -> None:
     """Test getting HEAD SHA."""
     sha = get_head_sha(tmp_git_repo)
-    assert len(sha) == 40
+    assert len(sha) == FULL_SHA_LENGTH
 
 
 def test_get_current_branch(tmp_git_repo: Path) -> None:
     """Test getting current branch name."""
     branch = get_current_branch(tmp_git_repo)
-    assert branch == "main" or branch == "master"
+    assert branch in DEFAULT_BRANCHES
 
 
 def test_append_to_gitignore(tmp_git_repo: Path) -> None:
@@ -134,18 +138,13 @@ def test_append_to_gitignore_existing(tmp_git_repo: Path) -> None:
 
     content = gitignore.read_text()
     # .existing should not be duplicated
-    assert content.count(".existing") == 1
+    assert content.count(".existing") == INITIAL_OCCURRENCE_COUNT
     assert ".new/" in content
 
 
 def test_merge_base(tmp_git_repo: Path) -> None:
     """Test finding merge base between commits."""
     # Create two branches with commits
-    repo = Repo(tmp_git_repo)
-
-    # Get initial commit
-    initial_sha = get_head_sha(tmp_git_repo)
-
     # Create a new commit on main
     readme = tmp_git_repo / "README.md"
     readme.write_text("update 1")

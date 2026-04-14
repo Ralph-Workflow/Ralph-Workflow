@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from loguru import logger
 
@@ -19,7 +19,7 @@ from loguru import logger
 class ArtifactSubmitOptions:
     """Options for artifact submission."""
 
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, object] | None = None
     overwrite: bool = False
 
 
@@ -56,12 +56,12 @@ class Artifact:
 
     name: str
     artifact_type: str
-    content: dict[str, Any]
+    content: dict[str, object]
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Convert artifact to dictionary for JSON serialization."""
         return {
             "name": self.name,
@@ -73,15 +73,15 @@ class Artifact:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Artifact:
+    def from_dict(cls, data: dict[str, object]) -> Artifact:
         """Create an artifact from a dictionary."""
         return cls(
-            name=data["name"],
-            artifact_type=data.get("type", "unknown"),
-            content=data["content"],
-            created_at=data.get("created_at", datetime.utcnow().isoformat()),
-            updated_at=data.get("updated_at", datetime.utcnow().isoformat()),
-            metadata=data.get("metadata", {}),
+            name=cast("str", data.get("name", "")),
+            artifact_type=cast("str", data.get("type", "unknown")),
+            content=cast("dict[str, object]", data.get("content", {})),
+            created_at=cast("str", data.get("created_at", datetime.utcnow().isoformat())),
+            updated_at=cast("str", data.get("updated_at", datetime.utcnow().isoformat())),
+            metadata=cast("dict[str, object]", data.get("metadata", {})),
         )
 
 
@@ -89,7 +89,7 @@ def submit_artifact(
     artifact_dir: Path,
     name: str,
     artifact_type: str,
-    content: dict[str, Any],
+    content: dict[str, object],
     options: ArtifactSubmitOptions | None = None,
 ) -> Artifact:
     """Submit a new artifact.
@@ -143,7 +143,7 @@ def get_artifact(artifact_dir: Path, name: str) -> Artifact:
     if not artifact_path.exists():
         raise ArtifactNotFoundError(f"Artifact '{name}' not found")
 
-    data = json.loads(artifact_path.read_text())
+    data = cast("dict[str, object]", json.loads(artifact_path.read_text()))
     return Artifact.from_dict(data)
 
 
@@ -160,22 +160,26 @@ def list_artifacts(artifact_dir: Path) -> list[Artifact]:
     if not artifacts_dir.exists():
         return []
 
-    artifacts = []
+    artifacts: list[Artifact] = []
     for path in artifacts_dir.glob("*.json"):
         try:
-            data = json.loads(path.read_text())
+            data = cast("dict[str, object]", json.loads(path.read_text()))
             artifacts.append(Artifact.from_dict(data))
         except (json.JSONDecodeError, KeyError) as exc:
             logger.warning("Failed to read artifact {}: {}", path, exc)
 
-    return sorted(artifacts, key=lambda a: a.updated_at)
+    return sorted(artifacts, key=_artifact_updated_at)
+
+
+def _artifact_updated_at(artifact: Artifact) -> str:
+    return artifact.updated_at
 
 
 def update_artifact(
     artifact_dir: Path,
     name: str,
-    content: dict[str, Any] | None = None,
-    metadata: dict[str, Any] | None = None,
+    content: dict[str, object] | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> Artifact:
     """Update an existing artifact.
 

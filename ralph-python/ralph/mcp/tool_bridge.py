@@ -8,10 +8,16 @@ wrappers for the Ralph MCP tool modules.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 JsonObject = dict[str, object]
+ToolHandler = Callable[[object, object, JsonObject], object]
 
 
 class ToolBridgeError(Exception):
@@ -84,8 +90,8 @@ class LazyToolHandler:
         params: JsonObject,
     ) -> object:
         del host_session, workspace
-        module = import_module(self._module_name)
-        handler = getattr(module, self._handler_name)
+        module: ModuleType = import_module(self._module_name)
+        handler = cast("ToolHandler", getattr(module, self._handler_name))
         return handler(self._session, self._workspace, params)
 
 

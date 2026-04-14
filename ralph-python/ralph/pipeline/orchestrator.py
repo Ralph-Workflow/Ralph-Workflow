@@ -10,14 +10,13 @@ No I/O, no side effects — fully deterministic and testable.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from loguru import logger
+from typing import TYPE_CHECKING, Literal
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
     PHASE_FAILED,
+    PHASE_FIX,
     PHASE_REVIEW,
     PipelinePhase,
 )
@@ -53,6 +52,9 @@ class PhaseHandlerNotFoundError(Exception):
             f"To use custom phase names, register a handler in ralph/phases/__init__.py"
         )
         super().__init__(msg)
+
+
+TransitionKey = Literal["on_success", "on_failure", "on_loopback"]
 
 
 def determine_next_effect(
@@ -116,6 +118,17 @@ def _derive_effect_for_phase(
     """
     phase = state.phase
 
+    # For commit-gated phases, check budget first — if exhausted, route immediately
+    # without invoking the agent (no point invoking if we can't commit)
+    if phase_def.requires_commit and _commit_budget_exhausted(state, phase):
+        # Budget exhausted — advance to next phase
+        return _route_transition(state, phase_def, "on_success")
+
+    # For fix phase, route immediately to review — issues were already identified
+    # in the review phase, so fix should run without requiring separate invocation
+    if phase == PHASE_FIX:
+        return _route_transition(state, phase_def, "on_success")
+
     # Check if we need to invoke the agent or prepare the prompt first
     if not _is_agent_invoked_for_phase(state, phase):
         # First time in this phase — prepare prompt then invoke agent
@@ -126,11 +139,6 @@ def _derive_effect_for_phase(
         # Analysis routing is handled via events, not here
         # The orchestrator returns InvokeAgentEffect when analysis is pending
         pass
-
-    # Check budget for commit-gated phases
-    if phase_def.requires_commit and _commit_budget_exhausted(state, phase):
-        # Budget exhausted — advance to next phase
-        return _route_transition(state, phase_def, "on_success")
 
     return InvokeAgentEffect(
         agent_name=_current_agent_name(state, chain),
@@ -218,7 +226,7 @@ def _current_agent_name(
 def _route_transition(
     state: PipelineState,
     phase_def: PhaseDefinition,
-    transition_key: str,
+    transition_key: TransitionKey,
 ) -> Effect:
     """Route to the phase specified by a transition.
 
@@ -231,7 +239,12 @@ def _route_transition(
         Effect for the target phase.
     """
     transitions = phase_def.transitions
-    target = getattr(transitions, transition_key, None)
+    transition_targets: dict[str, str | None] = {
+        "on_success": transitions.on_success,
+        "on_failure": transitions.on_failure,
+        "on_loopback": transitions.on_loopback,
+    }
+    target = transition_targets[transition_key]
 
     if target is None:
         # No transition defined — fail
@@ -271,10 +284,11 @@ def _handle_unknown_phase(state: PipelineState) -> Effect:
 
     Returns:
         ExitFailureEffect with an informative message.
+
+    Raises:
+        PhaseHandlerNotFoundError: Always, when the phase is not found.
     """
-    msg = f"Unknown phase '{state.phase}' — no handler registered"
-    logger.error(msg)
-    return ExitFailureEffect(reason=msg)
+    raise PhaseHandlerNotFoundError(state.phase)
 
 
 def get_phase_drain(

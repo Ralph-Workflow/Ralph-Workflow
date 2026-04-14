@@ -40,7 +40,5 @@ class ProjectStack:
         if self.frameworks:
             parts.append(f"[{', '.join(self.frameworks)}]")
         if self.has_tests:
-            parts.append(
-                f"tests:{self.test_framework}" if self.test_framework else "tests:yes"
-            )
+            parts.append(f"tests:{self.test_framework}" if self.test_framework else "tests:yes")
         return " ".join(parts)

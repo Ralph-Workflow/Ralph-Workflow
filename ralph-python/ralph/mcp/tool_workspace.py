@@ -8,6 +8,7 @@ session capabilities and edit area policies.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tool_coordination import (
     CapabilityDeniedError,
@@ -18,12 +19,22 @@ from ralph.mcp.tool_coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.workspace import Workspace
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.workspace import Workspace
 
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
 WORKSPACE_WRITE_TRACKED_CAPABILITY = "WorkspaceWriteTracked"
 WORKSPACE_WRITE_EPHEMERAL_CAPABILITY = "WorkspaceWriteEphemeral"
 _APPROVED_POLICY_OUTCOMES = {"approved", "allow", "allowed"}
+
+
+def _attribute_value(
+    obj: object, attribute_name: str, default: object | None = None
+) -> object | None:
+    return cast("object | None", getattr(obj, attribute_name, default))
 
 
 def required_string_param(params: dict[str, object], name: str) -> str:
@@ -61,18 +72,29 @@ def _is_policy_approved(outcome: object | None) -> bool:
     if isinstance(outcome, str):
         return outcome.strip().lower() in _APPROVED_POLICY_OUTCOMES
 
+    if isinstance(outcome, dict):
+        for attribute_name in ("name", "value", "status"):
+            attribute = outcome.get(attribute_name)
+            if (
+                isinstance(attribute, str)
+                and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES
+            ):
+                return True
+        return False
+
     for attribute_name in ("name", "value", "status"):
-        attribute = getattr(outcome, attribute_name, None)
+        attribute = _attribute_value(outcome, attribute_name)
         if isinstance(attribute, str) and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES:
             return True
     return False
 
 
 def _is_parallel_worker(session: object) -> bool:
-    flag = getattr(session, "is_parallel_worker", False)
+    flag = _attribute_value(session, "is_parallel_worker", False)
     if callable(flag):
         try:
-            return bool(flag())
+            executable = cast("Callable[[], object]", flag)
+            return bool(executable())
         except TypeError:
             return False
     return bool(flag)
@@ -81,15 +103,14 @@ def _is_parallel_worker(session: object) -> bool:
 def _check_edit_area_restriction(session: object, path: str) -> None:
     if not _is_parallel_worker(session):
         return
-    checker = getattr(session, "check_edit_area", None)
+    checker = _attribute_value(session, "check_edit_area")
     if not callable(checker):
         return
-    outcome = checker(path)
+    callable_checker = cast("Callable[[str], object]", checker)
+    outcome = callable_checker(path)
     if _is_policy_approved(outcome):
         return
-    raise CapabilityDeniedError(
-        f"Write to '{path}' denied: edit area restriction"
-    )
+    raise CapabilityDeniedError(f"Write to '{path}' denied: edit area restriction")
 
 
 def _write_file_to_workspace(workspace: Workspace, path: str, content: str) -> None:
@@ -239,18 +260,12 @@ def handle_write_file(
     _check_edit_area_restriction(session, normalized)
     is_tracked = _is_path_git_tracked(workspace, normalized)
     capability = (
-        WORKSPACE_WRITE_TRACKED_CAPABILITY
-        if is_tracked
-        else WORKSPACE_WRITE_EPHEMERAL_CAPABILITY
+        WORKSPACE_WRITE_TRACKED_CAPABILITY if is_tracked else WORKSPACE_WRITE_EPHEMERAL_CAPABILITY
     )
     require_capability(session, capability, "Workspace write")
     _write_file_to_workspace(workspace, normalized, content)
     return ToolResult(
-        content=[
-            ToolContent.text_content(
-                f"Successfully wrote {len(content)} bytes to {path}"
-            )
-        ],
+        content=[ToolContent.text_content(f"Successfully wrote {len(content)} bytes to {path}")],
         is_error=False,
     )
 

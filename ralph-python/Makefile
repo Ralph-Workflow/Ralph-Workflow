@@ -47,6 +47,9 @@ test-cov:
 lint:
 	ruff check ralph/ tests/
 
+typecheck:
+	mypy ralph/
+
 fmt:
 	ruff format ralph/ tests/
 

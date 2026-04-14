@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path as RuntimePath
 from typing import TYPE_CHECKING, Annotated, TypedDict
 
 import rich_click as click
@@ -16,6 +16,9 @@ import typer
 from loguru import logger
 from rich.console import Console
 
+# Late imports to avoid circular dependencies
+from ralph import __version__
+from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.init import init_command
@@ -26,11 +29,12 @@ from ralph.cli.options import (
 )
 from ralph.config.enums import PauseOnExit, RecoveryStrategy, ReviewDepth, Verbosity
 from ralph.config.loader import load_config
-
-# Late imports to avoid circular dependencies
-from ralph import __version__
-from ralph.api.opencode import list_providers as fetch_providers
 from ralph.pipeline import checkpoint as ckpt
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ralph.config.models import AgentConfig
 
 
 @dataclass(frozen=True)
@@ -97,7 +101,7 @@ class CLIOptions:
         version: Show version.
     """
 
-    config: Path | None = None
+    config: str | None = None
     developer_iters: int = 5
     reviewer_reviews: int = 2
     developer_agent: str | None = None
@@ -183,11 +187,18 @@ def version_callback(version: bool) -> None:
         raise typer.Exit()
 
 
-@app.callback(invoke_without_command=True)
-def main(
+def _config_path(config: str | None) -> RuntimePath | None:
+    """Convert CLI config string into a Path when provided."""
+    if config is None:
+        return None
+
+    return RuntimePath(config)
+
+
+def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
     ctx: typer.Context,
     config: Annotated[
-        Path | None,
+        str | None,
         typer.Option(
             "--config",
             "-c",
@@ -433,11 +444,11 @@ def main(
         raise typer.Exit(code=exit_code)
 
     if diagnose:
-        diagnose_command(config, cli_overrides)
+        diagnose_command(_config_path(config), cli_overrides)
         raise typer.Exit()
 
     if init is not None:
-        init_command(init, config)
+        init_command(init, _config_path(config))
         raise typer.Exit()
 
     if inspect_checkpoint:
@@ -451,7 +462,7 @@ def main(
             apply_commit=apply_commit,
             generate_commit=generate_commit,
             show_commit_msg=show_commit_msg,
-            config_path=config,
+            config_path=_config_path(config),
             cli_overrides=cli_overrides,
         ),
     )
@@ -471,8 +482,11 @@ def main(
     raise typer.Exit(code=exit_code)
 
 
+app.callback(invoke_without_command=True)(main)
+
+
 def _handle_list_agents(
-    config: Path | None,
+    config: str | None,
     cli_overrides: dict[str, object],
     list_agents: bool,
 ) -> int | None:
@@ -489,8 +503,9 @@ def _handle_list_agents(
     if not list_agents:
         return None
     try:
-        cfg = load_config(config, cli_overrides)
-        display_agents_table(cfg.agents)
+        cfg = load_config(_config_path(config), cli_overrides)
+        agents: Mapping[str, AgentConfig] = cfg.agents
+        display_agents_table(agents)
         return 0
     except Exception as e:
         logger.error("Failed to list agents: {}", e)
@@ -518,7 +533,7 @@ def _handle_list_providers(list_providers: bool) -> int | None:
 
 
 def _handle_check_config(
-    config: Path | None,
+    config: str | None,
     cli_overrides: dict[str, object],
     check_config: bool,
 ) -> int | None:
@@ -535,7 +550,7 @@ def _handle_check_config(
     if not check_config:
         return None
     try:
-        load_config(config, cli_overrides)
+        load_config(_config_path(config), cli_overrides)
         console.print("[green]Configuration is valid[/green]")
         return 0
     except Exception as e:
@@ -567,7 +582,7 @@ def _handle_commit_plumbing(
 
 
 def _run_pipeline(
-    config: Path | None,
+    config: str | None,
     cli_overrides: dict[str, object],
     dry_run: bool,
     resume: bool,
@@ -587,7 +602,7 @@ def _run_pipeline(
     """
     try:
         exit_code = run_pipeline(
-            config_path=config,
+            config_path=_config_path(config),
             cli_overrides=cli_overrides,
             dry_run=dry_run,
             resume=resume and not no_resume,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import cast
 
 import pytest
@@ -24,7 +25,6 @@ def test_render_template_replaces_variables() -> None:
     assert rendered == "Hello, Ada!"
 
 
-
 def test_render_template_renders_partials_with_variables() -> None:
     rendered = render_template(
         "Intro {{> greeting}} Outro",
@@ -35,10 +35,9 @@ def test_render_template_renders_partials_with_variables() -> None:
     assert rendered == "Intro Hello, Ada Outro"
 
 
-
 def test_render_template_applies_default_filter_for_missing_variable() -> None:
     rendered = render_template(
-        "Plan: {{ PLAN|default=\"(no plan available)\" }}",
+        'Plan: {{ PLAN|default="(no plan available)" }}',
         {},
         {},
     )
@@ -46,31 +45,28 @@ def test_render_template_applies_default_filter_for_missing_variable() -> None:
     assert rendered == "Plan: (no plan available)"
 
 
-
 def test_render_template_raises_for_missing_variable_without_default() -> None:
     with pytest.raises(TemplateRenderingError, match="NAME"):
         render_template("Hello, {{ NAME }}!", {}, {})
 
 
-
 def test_render_template_raises_for_missing_partial() -> None:
-    with pytest.raises(TemplateRenderingError, match="missing.txt"):
+    with pytest.raises(TemplateRenderingError, match=re.escape("missing.txt")):
         render_template("Before {{> missing}} After", {}, {})
-
 
 
 def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     capabilities = CapabilitySet()
-    capabilities.insert(cast(Capability, Capability.WORKSPACE_READ))
-    capabilities.insert(cast(Capability, Capability.WORKSPACE_WRITE_TRACKED))
-    capabilities.insert(cast(Capability, Capability.GIT_STATUS_READ))
-    capabilities.insert(cast(Capability, Capability.GIT_DIFF_READ))
-    capabilities.insert(cast(Capability, Capability.PROCESS_EXEC_BOUNDED))
-    capabilities.insert(cast(Capability, Capability.ARTIFACT_SUBMIT))
-    capabilities.insert(cast(Capability, Capability.RUN_REPORT_PROGRESS))
+    capabilities.insert(cast("Capability", Capability.WORKSPACE_READ))
+    capabilities.insert(cast("Capability", Capability.WORKSPACE_WRITE_TRACKED))
+    capabilities.insert(cast("Capability", Capability.GIT_STATUS_READ))
+    capabilities.insert(cast("Capability", Capability.GIT_DIFF_READ))
+    capabilities.insert(cast("Capability", Capability.PROCESS_EXEC_BOUNDED))
+    capabilities.insert(cast("Capability", Capability.ARTIFACT_SUBMIT))
+    capabilities.insert(cast("Capability", Capability.RUN_REPORT_PROGRESS))
 
     policy_flags = PolicyFlagSet()
-    policy_flags.insert(cast(PolicyFlag, PolicyFlag.ALLOW_SHELL))
+    policy_flags.insert(cast("PolicyFlag", PolicyFlag.ALLOW_SHELL))
 
     variables = capability_template_variables(capabilities, policy_flags)
 
@@ -90,7 +86,6 @@ def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     )
 
 
-
 def test_capability_template_variables_leave_disabled_tools_empty() -> None:
     variables = capability_template_variables(CapabilitySet(), PolicyFlagSet())
 
@@ -101,7 +96,4 @@ def test_capability_template_variables_leave_disabled_tools_empty() -> None:
     assert variables["EXEC_TOOL_NAME"] == ""
     assert variables["GIT_STATUS_TOOL_NAME"] == ""
     assert variables["MCP_TOOLS_LIST"] == ""
-    assert (
-        variables["CAPABILITY_SUMMARY"]
-        == "Capabilities:\n  (none)\n\nPolicy Flags:\n  (none)"
-    )
+    assert variables["CAPABILITY_SUMMARY"] == "Capabilities:\n  (none)\n\nPolicy Flags:\n  (none)"

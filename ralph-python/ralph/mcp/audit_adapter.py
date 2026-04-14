@@ -40,11 +40,9 @@ class AgentSessionId:
 class AuditSink(Protocol):
     """Protocol defining the MCP audit sink contract."""
 
-    def emit(self, record: McpAuditRecord) -> None:
-        ...
+    def emit(self, record: McpAuditRecord) -> None: ...
 
-    def flush(self) -> None:
-        ...
+    def flush(self) -> None: ...
 
 
 class McpAuditEventType(StrEnum):

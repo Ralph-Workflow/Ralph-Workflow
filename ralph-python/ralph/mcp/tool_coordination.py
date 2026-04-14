@@ -10,7 +10,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
@@ -54,7 +54,7 @@ class ToolResult:
     content: list[ToolContent]
     is_error: bool | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Serialize the result to an MCP-compatible dictionary."""
         return {
             "content": [item.to_dict() for item in self.content],
@@ -82,7 +82,13 @@ def _timestamp() -> int:
     return int(time.time())
 
 
-def _parameter_as_string(params: dict[str, Any], name: str) -> str:
+def _attribute_value(
+    obj: object, attribute_name: str, default: object | None = None
+) -> object | None:
+    return cast("object | None", getattr(obj, attribute_name, default))
+
+
+def _parameter_as_string(params: dict[str, object], name: str) -> str:
     value = params.get(name)
     if not isinstance(value, str):
         raise InvalidParamsError(f"Missing '{name}' parameter")
@@ -95,8 +101,18 @@ def _is_approved(outcome: object) -> bool:
     if isinstance(outcome, str):
         return outcome.strip().lower() in _APPROVED_POLICY_OUTCOMES
 
+    if isinstance(outcome, dict):
+        for attribute_name in ("name", "value", "status"):
+            attribute = outcome.get(attribute_name)
+            if (
+                isinstance(attribute, str)
+                and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES
+            ):
+                return True
+        return False
+
     for attribute_name in ("name", "value", "status"):
-        attribute = getattr(outcome, attribute_name, None)
+        attribute = _attribute_value(outcome, attribute_name)
         if isinstance(attribute, str) and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES:
             return True
 
@@ -133,7 +149,7 @@ def require_capability(session: SessionLike, capability: str, action: str) -> No
 def handle_report_progress(
     session: SessionLike,
     _workspace: WorkspaceLike,
-    params: dict[str, Any],
+    params: dict[str, object],
 ) -> ToolResult:
     """Report agent progress to the Ralph pipeline."""
     require_capability(session, RUN_REPORT_PROGRESS_CAPABILITY, "Progress reporting")
@@ -149,7 +165,7 @@ def handle_report_progress(
 def handle_declare_complete(
     session: SessionLike,
     _workspace: WorkspaceLike,
-    params: dict[str, Any],
+    params: dict[str, object],
 ) -> ToolResult:
     """Declare that the agent has completed its assigned task."""
     summary_value = params.get("summary", "No summary provided")
@@ -183,7 +199,7 @@ def format_coordination_text(
 def handle_coordinate(
     session: SessionLike,
     _workspace: WorkspaceLike,
-    params: dict[str, Any],
+    params: dict[str, object],
 ) -> ToolResult:
     """Coordinate parallel worker activities."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Workspace coordination")
@@ -204,7 +220,7 @@ def handle_coordinate(
 def handle_read_env(
     session: SessionLike,
     _workspace: WorkspaceLike,
-    params: dict[str, Any],
+    params: dict[str, object],
 ) -> ToolResult:
     """Read an environment variable by name."""
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")

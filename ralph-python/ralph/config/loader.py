@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from loguru import logger
 from pydantic import ValidationError
@@ -27,7 +27,7 @@ GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
 
 
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
     """Recursively merge override into base; override wins on conflict.
 
     Args:
@@ -37,16 +37,16 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     Returns:
         A new dictionary with the merged result.
     """
-    result = dict(base)
+    result: dict[str, object] = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
+            result[key] = _deep_merge(cast("dict[str, object]", result[key]), value)
         else:
             result[key] = value
     return result
 
 
-def load_toml(path: Path) -> dict[str, Any]:
+def load_toml(path: Path) -> dict[str, object]:
     """Read a TOML file; return empty dict if missing.
 
     Args:
@@ -60,7 +60,7 @@ def load_toml(path: Path) -> dict[str, Any]:
         return {}
     try:
         with path.open("rb") as fh:
-            data: dict[str, Any] = tomllib.load(fh)
+            data: dict[str, object] = tomllib.load(fh)
         logger.debug("Loaded config from {}", path)
         return data
     except Exception as exc:
@@ -68,7 +68,7 @@ def load_toml(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _convert_legacy_config(data: dict[str, Any]) -> dict[str, Any]:
+def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
     """Convert legacy UnifiedConfig format to current format.
 
     This handles the migration from the old flat structure to the new
@@ -83,7 +83,7 @@ def _convert_legacy_config(data: dict[str, Any]) -> dict[str, Any]:
     if "general" in data:
         return data
 
-    general: dict[str, Any] = {}
+    general: dict[str, object] = {}
     _migrate_verbosity(data, general)
     _migrate_behavior_flags(data, general)
     _migrate_workflow_flags(data, general)
@@ -96,15 +96,15 @@ def _convert_legacy_config(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _migrate_verbosity(data: dict[str, Any], general: dict[str, Any]) -> None:
+def _migrate_verbosity(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate verbosity field."""
     if "verbosity" in data:
         general["verbosity"] = data.pop("verbosity")
 
 
-def _migrate_behavior_flags(data: dict[str, Any], general: dict[str, Any]) -> None:
+def _migrate_behavior_flags(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate behavior flags."""
-    behavior: dict[str, Any] = {}
+    behavior: dict[str, object] = {}
     for field in ("interactive", "auto_detect_stack", "strict_validation"):
         if field in data:
             behavior[field] = data.pop(field)
@@ -112,18 +112,18 @@ def _migrate_behavior_flags(data: dict[str, Any], general: dict[str, Any]) -> No
         general["behavior"] = behavior
 
 
-def _migrate_workflow_flags(data: dict[str, Any], general: dict[str, Any]) -> None:
+def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate workflow flags."""
-    workflow: dict[str, Any] = {}
+    workflow: dict[str, object] = {}
     if "checkpoint_enabled" in data:
         workflow["checkpoint_enabled"] = data.pop("checkpoint_enabled")
     if workflow:
         general["workflow"] = workflow
 
 
-def _migrate_execution_flags(data: dict[str, Any], general: dict[str, Any]) -> None:
+def _migrate_execution_flags(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate execution flags."""
-    execution: dict[str, Any] = {}
+    execution: dict[str, object] = {}
     for field in ("force_universal_prompt", "isolation_mode"):
         if field in data:
             execution[field] = data.pop(field)
@@ -131,7 +131,7 @@ def _migrate_execution_flags(data: dict[str, Any], general: dict[str, Any]) -> N
         general["execution"] = execution
 
 
-def _migrate_simple_fields(data: dict[str, Any], general: dict[str, Any]) -> None:
+def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate simple configuration fields."""
     simple_fields = (
         "developer_iters",
@@ -161,7 +161,7 @@ def _migrate_simple_fields(data: dict[str, Any], general: dict[str, Any]) -> Non
 
 def load_config(
     config_path: Path | None = None,
-    cli_overrides: dict[str, Any] | None = None,
+    cli_overrides: dict[str, object] | None = None,
 ) -> UnifiedConfig:
     """Build merged UnifiedConfig from all layers.
 

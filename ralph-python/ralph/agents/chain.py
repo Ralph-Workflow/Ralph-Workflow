@@ -157,7 +157,7 @@ class AgentChain:
         Returns:
             Backoff delay in seconds.
         """
-        delay = self.retry_delay_ms * (self.backoff_multiplier ** self.retries)
+        delay = self.retry_delay_ms * (self.backoff_multiplier**self.retries)
         return min(delay, self.max_backoff_ms) / 1000.0
 
     def wait_backoff(self) -> None:
@@ -261,9 +261,7 @@ class ChainManager:
 
         for drain, binding in self._policy.agent_drains.items():
             if binding.chain not in self._policy.agent_chains:
-                errors.append(
-                    f"Drain '{drain}' references unknown chain '{binding.chain}'"
-                )
+                errors.append(f"Drain '{drain}' references unknown chain '{binding.chain}'")
 
         for name, chain in self._policy.agent_chains.items():
             if not chain.agents:

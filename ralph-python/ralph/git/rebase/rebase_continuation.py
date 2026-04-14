@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
@@ -59,9 +59,7 @@ def _open_repo(repo_root: Path | str) -> Repo:
     try:
         return Repo(repo_root)
     except InvalidGitRepositoryError as exc:
-        raise RebaseContinuationError(
-            "Repository root is invalid or not a git repository"
-        ) from exc
+        raise RebaseContinuationError("Repository root is invalid or not a git repository") from exc
 
 
 def _resolve_repo_root(repo_root: Path | str | None = None) -> Path:
@@ -145,6 +143,14 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
     return verify_rebase_completed_at(path, upstream_branch)
 
 
+def _process_output_text(value: str | bytes | None) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bytes):
+        return value.decode(errors="replace").strip()
+    return ""
+
+
 def continue_rebase_at(repo_root: Path | str) -> None:
     repo = _open_repo(repo_root)
 
@@ -164,12 +170,10 @@ def continue_rebase_at(repo_root: Path | str) -> None:
             env=_git_env(),
         )
     except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.strip() if exc.stderr else ""
-        stdout = exc.stdout.strip() if exc.stdout else ""
+        stderr = _process_output_text(cast("str | bytes | None", exc.stderr))
+        stdout = _process_output_text(cast("str | bytes | None", exc.stdout))
         detail = stderr or stdout or str(exc)
-        raise RebaseContinuationError(
-            f"Failed to continue rebase: {detail}"
-        ) from exc
+        raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
 
 
 def continue_rebase(repo_root: Path | str | None = None) -> None:

@@ -34,7 +34,10 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 
 if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
+    from collections.abc import Callable, Iterable
+
+    from ralph.agents.registry import AgentRegistry
+    from ralph.config.models import AgentConfig, UnifiedConfig
 
 console = Console()
 
@@ -89,7 +92,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
 
     except KeyboardInterrupt:
         logger.warning("Interrupted by user; saving checkpoint.")
-        interrupted_state = state.model_copy(update={"interrupted_by_user": True})
+        interrupted_state = state.copy_with(interrupted_by_user=True)
         ckpt.save(interrupted_state)
         return 130
 
@@ -137,7 +140,7 @@ def _determine_effect(state: PipelineState, config: UnifiedConfig) -> Effect:
         Next Effect to execute.
     """
     del config
-    phase_handlers: dict[str, callable] = {
+    phase_handlers: dict[str, Callable[[], Effect]] = {
         "planning": lambda: PreparePromptEffect(phase=state.phase, iteration=state.iteration),
         "development": lambda: _agent_or_advance(state, "review"),
         "review": lambda: _agent_or_next_phase(state, "development_commit"),
@@ -217,7 +220,9 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
     from ralph.git.operations import create_commit, stage_all  # noqa: PLC0415
 
     if isinstance(effect, InvokeAgentEffect):
-        return _execute_agent_effect(effect, config, invoke_agent, AgentInvocationError, AgentRegistry)
+        return _execute_agent_effect(
+            effect, config, invoke_agent, AgentInvocationError, AgentRegistry
+        )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(create_commit, stage_all)
     if isinstance(effect, SaveCheckpointEffect):
@@ -230,9 +235,9 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
 def _execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
-    invoke_agent: callable,
+    invoke_agent: Callable[[AgentConfig, str], Iterable[object]],
     agent_invocation_error: type[Exception],
-    agent_registry: type,
+    agent_registry: type[AgentRegistry],
 ) -> PipelineEvent:
     console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
     registry = agent_registry.from_config(config)
@@ -253,7 +258,10 @@ def _execute_agent_effect(
     return PipelineEvent.AGENT_SUCCESS
 
 
-def _execute_commit_effect(create_commit: callable, stage_all: callable) -> PipelineEvent:
+def _execute_commit_effect(
+    create_commit: Callable[[str, str], str],
+    stage_all: Callable[[str], None],
+) -> PipelineEvent:
     try:
         stage_all(".")
         sha = create_commit(".", "Pipeline-generated commit")

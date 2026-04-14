@@ -6,23 +6,23 @@ import signal
 import sys
 import types
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
+
+
+INTERRUPTED_EXIT_CODE = 130
 
 
 def _install_test_dependency_stubs() -> None:
     if "loguru" not in sys.modules:
         loguru_module = types.ModuleType("loguru")
-        setattr(
-            loguru_module,
-            "logger",
-            types.SimpleNamespace(
-                info=lambda *args, **kwargs: None,
-                warning=lambda *args, **kwargs: None,
-                error=lambda *args, **kwargs: None,
-                exception=lambda *args, **kwargs: None,
-            ),
+        cast("Any", loguru_module).logger = types.SimpleNamespace(
+            info=lambda *args, **kwargs: None,
+            warning=lambda *args, **kwargs: None,
+            error=lambda *args, **kwargs: None,
+            exception=lambda *args, **kwargs: None,
         )
         sys.modules["loguru"] = loguru_module
 
@@ -34,19 +34,24 @@ def _install_test_dependency_stubs() -> None:
             def print(self, *args: object, **kwargs: object) -> None:
                 return None
 
-        setattr(console_module, "Console", Console)
-        setattr(rich_module, "console", console_module)
+        cast("Any", console_module).Console = Console
+        cast("Any", rich_module).console = console_module
         sys.modules["rich.console"] = console_module
 
 
 _install_test_dependency_stubs()
 
-from ralph import interrupt as interrupt_module
-from ralph.config.models import GeneralConfig, UnifiedConfig
-from ralph.pipeline.runner import run as run_pipeline_runner
-import ralph.pipeline.runner as runner_module
-from ralph.pipeline.effects import PreparePromptEffect
-from ralph.pipeline.state import PipelineState
+runner_module = importlib.import_module("ralph.pipeline.runner")
+interrupt_module = importlib.import_module("ralph.interrupt")
+config_models = importlib.import_module("ralph.config.models")
+pipeline_effects = importlib.import_module("ralph.pipeline.effects")
+pipeline_state_module = importlib.import_module("ralph.pipeline.state")
+
+GeneralConfig = config_models.GeneralConfig
+UnifiedConfig = config_models.UnifiedConfig
+PreparePromptEffect = pipeline_effects.PreparePromptEffect
+run_pipeline_runner = runner_module.run
+PipelineState = pipeline_state_module.PipelineState
 
 GeneralConfig.model_rebuild(_types_namespace={"Path": Path})
 UnifiedConfig.model_rebuild(_types_namespace={"Path": Path})
@@ -76,7 +81,7 @@ def _load_run_command_module() -> RunCommandModule:
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return cast(RunCommandModule, module)
+    return cast("RunCommandModule", module)
 
 
 run_command_module = _load_run_command_module()
@@ -120,7 +125,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 
     exit_code = run_pipeline_runner(UnifiedConfig(), state)
 
-    assert exit_code == 130
+    assert exit_code == INTERRUPTED_EXIT_CODE
     assert len(saved_states) == 1
     assert saved_states[0].interrupted_by_user is True
 
@@ -131,7 +136,9 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     saved_states: list[PipelineState] = []
     resumed_state = PipelineState(phase="development", interrupted_by_user=False)
 
-    monkeypatch.setattr(run_command_module, "load_config", lambda *_args, **_kwargs: UnifiedConfig())
+    monkeypatch.setattr(
+        run_command_module, "load_config", lambda *_args, **_kwargs: UnifiedConfig()
+    )
     monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
     monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)
     monkeypatch.setattr(run_command_module.console, "print", lambda *args, **kwargs: None)
@@ -146,6 +153,6 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
 
     exit_code = run_command_module.run_pipeline(resume=True)
 
-    assert exit_code == 130
+    assert exit_code == INTERRUPTED_EXIT_CODE
     assert len(saved_states) == 1
     assert saved_states[0].interrupted_by_user is True

@@ -127,7 +127,9 @@ def test_capability_template_variables_include_enabled_tools_and_flags() -> None
     assert variables["HAS_GIT_WRITE"] == ""
     assert variables["POLICY_ALLOW_SHELL"] == "true"
     assert variables["POLICY_ALLOW_GIT_WRITE"] == ""
-    assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(visible_mcp_tool_names(capabilities))
+    assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(
+        visible_mcp_tool_names(capabilities)
+    )
     assert variables["HAS_MCP_WRITE"] == "true"
     assert variables["HAS_MCP_EXEC"] == "true"
     assert variables["HAS_MCP_GIT"] == "true"
@@ -174,9 +176,5 @@ def test_format_helpers_cover_empty_and_populated_sets() -> None:
         PolicyFlagSet([PolicyFlag.ALLOW_GIT_WRITE]),
     )
     assert populated_summary == (
-        "Capabilities:\n"
-        "  - git.write\n"
-        "  - workspace.read\n\n"
-        "Policy Flags:\n"
-        "  - allow_git_write"
+        "Capabilities:\n  - git.write\n  - workspace.read\n\nPolicy Flags:\n  - allow_git_write"
     )

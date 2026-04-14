@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from ralph.guidelines import stack
 from ralph.guidelines.go import GoGuidelines
 from ralph.guidelines.java import JavaGuidelines
 from ralph.guidelines.javascript import JavaScriptGuidelines
@@ -11,7 +12,6 @@ from ralph.guidelines.php import PHPGuidelines
 from ralph.guidelines.python import PythonGuidelines
 from ralph.guidelines.ruby import RubyGuidelines
 from ralph.guidelines.rust import RustGuidelines
-from ralph.guidelines import stack
 from ralph.guidelines.stack import DetectedStack, StackGuidelines
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -23,14 +23,10 @@ def _total_from_categories(guidelines: object, categories: tuple[str, ...]) -> i
 def test_rust_guidelines_summary_and_total_checks_cover_all_categories() -> None:
     guidelines = RustGuidelines()
 
-    assert any(
-        "No unwrap/expect in production paths" in item
-        for item in guidelines.quality_checks
-    )
+    assert any("No unwrap/expect in production paths" in item for item in guidelines.quality_checks)
     assert "Shared mutable state is properly synchronized" in guidelines.concurrency_checks
     assert (
-        guidelines.summary()
-        == f"{len(guidelines.quality_checks)} quality checks, "
+        guidelines.summary() == f"{len(guidelines.quality_checks)} quality checks, "
         f"{len(guidelines.security_checks)} security checks, "
         f"{len(guidelines.anti_patterns)} anti-patterns"
     )
@@ -57,9 +53,18 @@ def test_python_guidelines_apply_all_supported_framework_extensions() -> None:
     guidelines = PythonGuidelines(["Django", "FastAPI", "Flask"])
 
     assert guidelines.frameworks == ("Django", "FastAPI", "Flask")
-    assert "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits." in guidelines.quality_checks
-    assert "Implement OAuth2 or JWT handling with explicit validation and expiry checks." in guidelines.security_checks
-    assert "Use Blueprints to keep route registration and application structure modular." in guidelines.quality_checks
+    assert (
+        "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits."
+        in guidelines.quality_checks
+    )
+    assert (
+        "Implement OAuth2 or JWT handling with explicit validation and expiry checks."
+        in guidelines.security_checks
+    )
+    assert (
+        "Use Blueprints to keep route registration and application structure modular."
+        in guidelines.quality_checks
+    )
     assert guidelines.total_checks() == _total_from_categories(
         guidelines,
         (
@@ -131,11 +136,28 @@ def test_java_php_and_ruby_guidelines_apply_framework_extensions() -> None:
     ruby_guidelines = RubyGuidelines(["Rails", "Sinatra"])
 
     assert "Use constructor injection." in java_guidelines.quality_checks
-    assert "Verify controller validation, serialization, and security behavior." in java_guidelines.testing_checks
-    assert "Use Gates, Policies, and Form Requests for authorization and input sanitization." in php_guidelines.security_checks
-    assert "Document service wiring, bundles, and configuration conventions when defaults are overridden." in php_guidelines.documentation_checks
-    assert "Keep Rails CSRF protection enabled for state-changing requests." in ruby_guidelines.security_checks
-    assert "Document middleware, extensions, and route organization when structure is not obvious from the app file." in ruby_guidelines.documentation_checks
+    assert (
+        "Verify controller validation, serialization, and security behavior."
+        in java_guidelines.testing_checks
+    )
+    assert (
+        "Use Gates, Policies, and Form Requests for authorization and input sanitization."
+        in php_guidelines.security_checks
+    )
+    assert (
+        "Document service wiring, bundles, and configuration conventions "
+        "when defaults are overridden."
+        in php_guidelines.documentation_checks
+    )
+    assert (
+        "Keep Rails CSRF protection enabled for state-changing requests."
+        in ruby_guidelines.security_checks
+    )
+    assert (
+        "Document middleware, extensions, and route organization when "
+        "structure is not obvious from the app file."
+        in ruby_guidelines.documentation_checks
+    )
     assert ruby_guidelines.as_review_guidelines() is ruby_guidelines
 
 
@@ -191,7 +213,9 @@ def test_fallback_detect_stack_reads_signatures_and_frameworks() -> None:
     )
 
 
-def test_detect_stack_with_workspace_uses_fallback_when_language_detector_is_unavailable(monkeypatch) -> None:
+def test_detect_stack_with_workspace_uses_fallback_when_language_detector_is_unavailable(
+    monkeypatch,
+) -> None:
     workspace = MemoryWorkspace()
     workspace.write("Cargo.toml", "[package]\nname='demo'")
 
@@ -231,7 +255,9 @@ def test_detect_stack_with_workspace_uses_detector_result_when_available(monkeyp
     )
 
 
-def test_get_stack_guidelines_merges_detected_languages_once_and_enables_typescript(monkeypatch) -> None:
+def test_get_stack_guidelines_merges_detected_languages_once_and_enables_typescript(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         stack,
         "_detect_stack_with_workspace",
@@ -246,7 +272,10 @@ def test_get_stack_guidelines_merges_detected_languages_once_and_enables_typescr
 
     assert "Use strict TypeScript mode." in guidelines.quality_checks
     assert "Use hooks correctly (rules of hooks)." in guidelines.quality_checks
-    assert "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits." in guidelines.quality_checks
+    assert (
+        "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits."
+        in guidelines.quality_checks
+    )
     assert "Use constructor injection." in guidelines.quality_checks
     assert guidelines.quality_checks.count("Use hooks correctly (rules of hooks).") == 1
     assert guidelines.summary() == (

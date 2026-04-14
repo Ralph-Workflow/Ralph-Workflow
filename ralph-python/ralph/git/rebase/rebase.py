@@ -5,15 +5,17 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from git import Repo
-from git.exc import BadName, GitCommandError, InvalidGitRepositoryError
+from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from git.objects.commit import Commit
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
@@ -42,8 +44,7 @@ class ProcessExecutor(Protocol):
         args: Sequence[str],
         env: Mapping[str, str] | None = None,
         cwd: Path | None = None,
-    ) -> ProcessResult:
-        ...
+    ) -> ProcessResult: ...
 
 
 @dataclass(frozen=True)
@@ -195,7 +196,7 @@ def get_conflicted_files(
         if filename:
             conflicts.append(filename)
 
-    return sorted(dict.fromkeys(conflicts))
+    return sorted(set(conflicts))
 
 
 def rebase_onto(
@@ -230,7 +231,9 @@ def _validate_rebase_request(
 ) -> RebaseResult | None:
     try:
         repo.commit(upstream_branch)
-    except (BadName, GitCommandError):
+    except Exception as exc:
+        if exc.__class__.__name__ not in {"BadName", "GitCommandError"}:
+            raise
         return RebaseFailed(
             RebaseErrorKind(
                 kind=RebaseKind.INVALID_REVISION,
@@ -293,7 +296,7 @@ def _git_dir(repo_root: Path) -> Path:
     return Path(git_dir).resolve()
 
 
-def _safe_head_commit(repo: Repo) -> object | None:
+def _safe_head_commit(repo: Repo) -> Commit | None:
     try:
         return repo.head.commit
     except (ValueError, GitCommandError, AttributeError):

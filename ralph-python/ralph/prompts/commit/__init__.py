@@ -22,9 +22,7 @@ DEFAULT_COMMIT_MESSAGE_TEMPLATE = (
 )
 
 
-def prompt_commit_message(
-    diff: str, *, template_registry: TemplateRegistry | None = None
-) -> str:
+def prompt_commit_message(diff: str, *, template_registry: TemplateRegistry | None = None) -> str:
     """Return the commit message prompt for the provided diff."""
 
     diff_content = diff.strip()

@@ -7,15 +7,20 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp import session_bridge
 from ralph.workspace.memory import MemoryWorkspace
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-def _dummy_session(run_id: str = "run-a", drain: str = "development") -> session_bridge.AgentSession:
+NEXT_GENERATION = 6
+
+
+def _dummy_session(
+    run_id: str = "run-a", drain: str = "development"
+) -> session_bridge.AgentSession:
     return session_bridge.AgentSession(
         session_id="session-1",
         run_id=run_id,
@@ -44,7 +49,7 @@ def test_next_generation_for_run_behaves(tmp_path: Path) -> None:
         "ready_at": 123456,
     }
     lease_path.write_text(json.dumps(payload))
-    assert session_bridge.next_generation_for_run(tmp_path, run_id, drain) == 6
+    assert session_bridge.next_generation_for_run(tmp_path, run_id, drain) == NEXT_GENERATION
 
     assert session_bridge.next_generation_for_run(tmp_path, run_id, "analysis") == 1
     assert session_bridge.next_generation_for_run(tmp_path, "other-run", drain) == 1
@@ -81,7 +86,7 @@ def test_audit_trail_and_drains(tmp_path: Path) -> None:
         timestamp=time.time(),
         capability="workspace.read",
         outcome="approved",
-        message="test"
+        message="test",
     )
     bridge.audit_adapter.emit(record)
 
@@ -105,8 +110,9 @@ def test_handle_request_in_process_returns_state(tmp_path: Path) -> None:
         params=None,
         msg_id=1,
     )
+    initial_state = cast("session_bridge.ServerState", session_bridge.ServerState.UNINITIALIZED)
     response, state = bridge.handle_request_in_process(
-        request, session_bridge.ServerState.UNINITIALIZED
+        request, initial_state
     )
     assert isinstance(state, session_bridge.ServerState)
     assert response is None or isinstance(response, session_bridge.JsonRpcResponse)

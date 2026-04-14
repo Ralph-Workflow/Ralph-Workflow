@@ -132,8 +132,9 @@ def is_test_file_name(file_name: str, primary_language: str, path_components: li
         "Go": lambda: lower_name.endswith("_test.go"),
         "PHP": lambda: lower_name.endswith("test.php") or lower_name.endswith("spec.php"),
         "Python": lambda: (
-            lower_name.startswith("test_") and lower_name.endswith(".py")
-        ) or lower_name.endswith("_test.py"),
+            (lower_name.startswith("test_") and lower_name.endswith(".py"))
+            or lower_name.endswith("_test.py")
+        ),
         "Ruby": lambda: lower_name.endswith("_spec.rb") or lower_name.endswith("_test.rb"),
     }
     if primary_language == "Rust":
@@ -155,9 +156,9 @@ def is_test_file_name(file_name: str, primary_language: str, path_components: li
             )
         )
     if primary_language == "Java":
-        return (
-            "src" in path_components and "test" in path_components
-        ) or lower_name.endswith("test.java")
+        return ("src" in path_components and "test" in path_components) or lower_name.endswith(
+            "test.java"
+        )
     check = language_checks.get(primary_language)
     if check is not None:
         return check()

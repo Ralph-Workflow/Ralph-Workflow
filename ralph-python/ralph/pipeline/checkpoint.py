@@ -78,7 +78,7 @@ def inspect(path: Path = CHECKPOINT_PATH) -> str:
     state = load(path)
     if state is None:
         return "No checkpoint found."
-    return json.dumps(state.model_dump(mode="json"), indent=2)
+    return state.model_dump_json(indent=2)
 
 
 def exists(path: Path = CHECKPOINT_PATH) -> bool:

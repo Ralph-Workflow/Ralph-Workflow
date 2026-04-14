@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -52,6 +52,42 @@ def _backup_path() -> Path:
 
 def _lock_path() -> Path:
     return AGENT_DIR / LOCK_FILE
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("Checkpoint payload must be a JSON object")
+
+    payload: dict[str, object] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError("Checkpoint payload keys must be strings")
+        payload[key] = item
+    return payload
+
+
+def _load_checkpoint_payload(path: Path) -> dict[str, object]:
+    raw_payload: object = json.loads(path.read_text())
+    return _json_object(raw_payload)
+
+
+def _string_list(data: Mapping[str, object], key: str) -> list[str]:
+    value = data.get(key, [])
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
+def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
+    value = data.get(key, default)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (str, bytes, bytearray)):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
 
 
 class RebasePhase(StrEnum):
@@ -117,7 +153,7 @@ class RebaseCheckpoint:
     def unresolved_conflict_count(self) -> int:
         return sum(1 for file in self.conflicted_files if file not in self.resolved_files)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "phase": self.phase.value,
             "upstream_branch": self.upstream_branch,
@@ -130,22 +166,27 @@ class RebaseCheckpoint:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> RebaseCheckpoint:
+    def from_dict(cls, data: Mapping[str, object]) -> RebaseCheckpoint:
         phase_value = data.get("phase")
-        phase = (
-            RebasePhase(phase_value)
-            if isinstance(phase_value, str) and phase_value in RebasePhase._value2member_map_
-            else RebasePhase.NotStarted
-        )
+        phase = RebasePhase.NotStarted
+        if isinstance(phase_value, str):
+            try:
+                phase = RebasePhase(phase_value)
+            except ValueError:
+                phase = RebasePhase.NotStarted
+
+        last_error_value = data.get("last_error")
+        last_error = None if last_error_value is None else str(last_error_value)
+
         return cls(
             phase=phase,
             upstream_branch=str(data.get("upstream_branch", "")),
-            conflicted_files=list(data.get("conflicted_files", [])),
-            resolved_files=list(data.get("resolved_files", [])),
-            error_count=int(data.get("error_count", 0)),
-            last_error=data.get("last_error"),
+            conflicted_files=_string_list(data, "conflicted_files"),
+            resolved_files=_string_list(data, "resolved_files"),
+            error_count=_int_value(data, "error_count"),
+            last_error=last_error,
             timestamp=str(data.get("timestamp", _current_timestamp())),
-            phase_error_count=int(data.get("phase_error_count", 0)),
+            phase_error_count=_int_value(data, "phase_error_count"),
         )
 
 
@@ -179,7 +220,7 @@ def load_rebase_checkpoint() -> RebaseCheckpoint | None:
         return None
 
     try:
-        payload = json.loads(path.read_text())
+        payload = _load_checkpoint_payload(path)
         checkpoint = RebaseCheckpoint.from_dict(payload)
         validate_checkpoint(checkpoint)
         return checkpoint
@@ -219,7 +260,7 @@ def restore_from_backup() -> RebaseCheckpoint | None:
     if not backup.exists():
         return None
 
-    payload = json.loads(backup.read_text())
+    payload = _load_checkpoint_payload(backup)
     checkpoint = RebaseCheckpoint.from_dict(payload)
     validate_checkpoint(checkpoint)
     shutil.copy2(backup, _checkpoint_path())

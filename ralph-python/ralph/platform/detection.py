@@ -22,11 +22,12 @@ if TYPE_CHECKING:
 class DetectPlatformKwargs(TypedDict, total=False):
     system_name: str | None
     machine_name: str | None
-    env: "Mapping[str, str] | None"
+    env: Mapping[str, str] | None
     release: str | None
     cgroup_text: str | None
     search_path: str | None
-    command_lookup: "Callable[[str, str | None], bool] | None"
+    command_lookup: Callable[[str, str | None], bool] | None
+
 
 PACKAGE_MANAGER_CANDIDATES: dict[OperatingSystem, tuple[str, ...]] = {
     OperatingSystem.MACOS: ("brew",),

@@ -1,0 +1,440 @@
+"""Tests for ralph/pipeline/runner.py — pipeline runner."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import ralph.pipeline.runner as runner_module
+from ralph.pipeline.effects import (
+    CommitEffect,
+    ExitFailureEffect,
+    ExitSuccessEffect,
+    InvokeAgentEffect,
+    PreparePromptEffect,
+    SaveCheckpointEffect,
+)
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.runner import (
+    _agent_or_advance,
+    _agent_or_next_phase,
+    _commit_effect,
+    _create_initial_state,
+    _determine_effect,
+)
+
+DEVELOPER_ITERATIONS = 5
+REVIEWER_PASSES = 2
+SECOND_ITERATION = 2
+INTERRUPT_EXIT_CODE = 130
+
+
+def _registry_factory(return_value):
+    class Registry:
+        @classmethod
+        def from_config(cls, config):
+            instance = MagicMock()
+            instance.get.return_value = return_value
+            return instance
+
+    return Registry
+
+
+class TestCreateInitialState:
+    def test_creates_state_with_planning_phase(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+
+        state = _create_initial_state(config)
+        assert state.phase == "planning"
+        assert state.total_iterations == DEVELOPER_ITERATIONS
+        assert state.total_reviewer_passes == REVIEWER_PASSES
+        assert state.dev_chain.agents == ["claude"]
+        assert state.rev_chain.agents == ["claude"]
+
+    def test_empty_agent_chains(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = 1
+        config.general.reviewer_reviews = 1
+        config.agent_chains = {}
+
+        state = _create_initial_state(config)
+        assert state.dev_chain.agents == []
+        assert state.rev_chain.agents == []
+
+
+class TestDetermineEffect:
+    def _make_state(
+        self,
+        phase: str,
+        iteration: int = 0,
+        total_iterations: int = 3,
+        current_agent: str | None = None,
+    ) -> MagicMock:
+        state = MagicMock()
+        state.phase = phase
+        state.iteration = iteration
+        state.total_iterations = total_iterations
+        state.total_reviewer_passes = 1
+        state.current_agent.return_value = current_agent
+        return state
+
+    def test_planning_phase_returns_prepare_prompt(self) -> None:
+        config = MagicMock()
+        state = self._make_state(phase="planning")
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "planning"
+
+    def test_development_with_no_agent_returns_prepare_prompt(self) -> None:
+        config = MagicMock()
+        state = self._make_state(
+            phase="development",
+            iteration=0,
+            total_iterations=3,
+            current_agent=None,
+        )
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "development"
+
+    def test_development_with_iteration_exhausted_returns_review(self) -> None:
+        config = MagicMock()
+        state = self._make_state(
+            phase="development",
+            iteration=2,  # Last iteration (total=3)
+            total_iterations=3,
+            current_agent=None,
+        )
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "review"
+
+    def test_development_with_agent_returns_invoke(self) -> None:
+        config = MagicMock()
+        state = self._make_state(
+            phase="development",
+            current_agent="claude",
+        )
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.agent_name == "claude"
+
+    def test_review_with_agent_returns_invoke(self) -> None:
+        config = MagicMock()
+        state = self._make_state(
+            phase="review",
+            current_agent="claude",
+        )
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, InvokeAgentEffect)
+
+    def test_development_commit_returns_commit_effect(self) -> None:
+        config = MagicMock()
+        state = self._make_state(phase="development_commit")
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, CommitEffect)
+
+    def test_review_commit_returns_commit_effect(self) -> None:
+        config = MagicMock()
+        state = self._make_state(phase="review_commit")
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, CommitEffect)
+
+    def test_complete_phase_returns_exit_success(self) -> None:
+        config = MagicMock()
+        state = self._make_state(phase="complete")
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, ExitSuccessEffect)
+
+    def test_failed_phase_returns_exit_failure(self) -> None:
+        config = MagicMock()
+        state = self._make_state(phase="failed")
+        state.last_error = "Something went wrong"
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, ExitFailureEffect)
+        assert "Something went wrong" in effect.reason
+
+    def test_unknown_phase_returns_exit_failure(self) -> None:
+        config = MagicMock()
+        state = self._make_state(phase="unknown_phase")
+
+        effect = _determine_effect(state, config)
+        assert isinstance(effect, ExitFailureEffect)
+        assert "Unknown phase" in effect.reason
+
+
+class TestAgentOrAdvance:
+    def _make_state(
+        self, phase: str, iteration: int, total_iterations: int, current_agent: str | None
+    ) -> MagicMock:
+        state = MagicMock()
+        state.phase = phase
+        state.iteration = iteration
+        state.total_iterations = total_iterations
+        state.current_agent.return_value = current_agent
+        return state
+
+    def test_with_agent_returns_invoke_effect(self) -> None:
+        state = self._make_state("development", 0, 3, "claude")
+        effect = _agent_or_advance(state, "review")
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.agent_name == "claude"
+
+    def test_without_agent_increments_iteration(self) -> None:
+        state = self._make_state("development", 1, DEVELOPER_ITERATIONS, None)
+        effect = _agent_or_advance(state, "review")
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.iteration == SECOND_ITERATION
+
+    def test_without_agent_last_iteration_goes_to_fallback(self) -> None:
+        state = self._make_state("development", 4, 5, None)
+        effect = _agent_or_advance(state, "review")
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "review"
+        assert effect.iteration == 0
+
+
+class TestAgentOrNextPhase:
+    def _make_state(self, phase: str, current_agent: str | None) -> MagicMock:
+        state = MagicMock()
+        state.phase = phase
+        state.current_agent.return_value = current_agent
+        return state
+
+    def test_with_agent_returns_invoke_effect(self) -> None:
+        state = self._make_state("review", "claude")
+        effect = _agent_or_next_phase(state, "development_commit")
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.agent_name == "claude"
+
+    def test_without_agent_returns_fallback_phase(self) -> None:
+        state = self._make_state("review", None)
+        effect = _agent_or_next_phase(state, "development_commit")
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "development_commit"
+
+
+class TestCommitEffect:
+    def test_returns_commit_effect(self) -> None:
+        effect = _commit_effect()
+        assert isinstance(effect, CommitEffect)
+        assert ".agent/tmp/commit_message.xml" in effect.message_file
+
+
+class TestPipelineRunnerLoop:
+    def test_save_checkpoint_effect_triggers_checkpoint_and_returns_success(
+        self,
+        monkeypatch,
+    ) -> None:
+        state = MagicMock()
+        state.phase = "planning"
+        effects = [SaveCheckpointEffect(), ExitSuccessEffect()]
+
+        def stub_determine_effect(_state, _config):
+            return effects.pop(0)
+
+        ckpt_save = MagicMock()
+        reducer_events: list[object] = []
+
+        def stub_reducer(current_state, event):
+            reducer_events.append(event)
+            return current_state, None
+
+        console_mock = MagicMock()
+        monkeypatch.setattr(runner_module, "_determine_effect", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
+        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(runner_module, "console", console_mock)
+
+        result = runner_module.run(MagicMock(), initial_state=state)
+
+        assert result == 0
+        ckpt_save.assert_called_once_with(state)
+        assert reducer_events == [PipelineEvent.CHECKPOINT_SAVED]
+        console_mock.print.assert_called_once_with(
+            "[green]Pipeline completed successfully.[/green]"
+        )
+
+    def test_exit_failure_effect_returns_failure(self, monkeypatch) -> None:
+        state = MagicMock()
+        state.phase = "planning"
+        console_mock = MagicMock()
+
+        monkeypatch.setattr(
+            runner_module,
+            "_determine_effect",
+            lambda _state, _config: ExitFailureEffect(reason="bad"),
+        )
+        monkeypatch.setattr(runner_module, "console", console_mock)
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+
+        result = runner_module.run(MagicMock(), initial_state=state)
+
+        assert result == 1
+        console_mock.print.assert_called_once_with("[red]Pipeline failed:[/red] bad")
+
+    def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(self, monkeypatch) -> None:
+        state = MagicMock()
+        state.phase = "planning"
+        interrupted_state = MagicMock()
+        state.copy_with.return_value = interrupted_state
+
+        def raise_interrupt(*_args, **_kwargs):
+            raise KeyboardInterrupt
+
+        ckpt_save = MagicMock()
+        monkeypatch.setattr(runner_module, "_determine_effect", raise_interrupt)
+        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+
+        result = runner_module.run(MagicMock(), initial_state=state)
+
+        assert result == INTERRUPT_EXIT_CODE
+        state.copy_with.assert_called_once_with(interrupted_by_user=True)
+        ckpt_save.assert_called_once_with(interrupted_state)
+
+    def test_final_failed_state_prints_error_without_loop(self, monkeypatch) -> None:
+        state = MagicMock()
+        state.phase = "failed"
+        state.last_error = "bad error"
+        console_mock = MagicMock()
+
+        monkeypatch.setattr(
+            runner_module,
+            "_determine_effect",
+            lambda *_: (_ for _ in ()).throw(AssertionError("should not run")),
+        )
+        monkeypatch.setattr(runner_module, "console", console_mock)
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+
+        result = runner_module.run(MagicMock(), initial_state=state)
+
+        assert result == 1
+        console_mock.print.assert_called_once_with("[red]Pipeline failed:[/red] bad error")
+
+
+class TestExecuteAgentEffect:
+    class AgentError(Exception):
+        pass
+
+    def test_returns_success_when_invocation_succeeds(self) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            MagicMock(),
+            lambda *_: iter(["line"]),
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+
+    def test_returns_failure_when_agent_missing(self) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(None)
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            MagicMock(),
+            lambda *_: iter(["line"]),
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_handles_invocation_error_gracefully(self) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        def raising_invoke(*_):
+            raise self.AgentError("boom")
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            MagicMock(),
+            raising_invoke,
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_handles_unexpected_error_as_failure(self) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        def raising_value_error(*_):
+            raise ValueError("boom")
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            MagicMock(),
+            raising_value_error,
+            self.AgentError,
+            registry,
+        )
+
+        assert result == PipelineEvent.AGENT_FAILURE
+
+
+class TestExecuteCommitEffect:
+    def test_returns_success_when_commit_succeeds(self) -> None:
+        stage_all = MagicMock()
+        create_commit = MagicMock(return_value="sha")
+
+        result = runner_module._execute_commit_effect(create_commit, stage_all)
+
+        assert result == PipelineEvent.COMMIT_SUCCESS
+        stage_all.assert_called_once_with(".")
+        create_commit.assert_called_once_with(".", "Pipeline-generated commit")
+
+    def test_returns_failure_when_create_commit_raises(self) -> None:
+        stage_all = MagicMock()
+
+        def fail_create(*_):
+            raise RuntimeError("boom")
+
+        result = runner_module._execute_commit_effect(fail_create, stage_all)
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+
+
+class TestExecuteEffect:
+    def test_save_checkpoint_returns_checkpoint_event(self) -> None:
+        result = runner_module._execute_effect(SaveCheckpointEffect(), MagicMock())
+
+        assert result == PipelineEvent.CHECKPOINT_SAVED
+
+    def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
+        captured: dict[str, bool] = {}
+
+        def stub_commit(create_commit, stage_all):
+            captured["called"] = True
+            return PipelineEvent.COMMIT_SUCCESS
+
+        monkeypatch.setattr(runner_module, "_execute_commit_effect", stub_commit)
+        result = runner_module._execute_effect(CommitEffect(message_file="foo"), MagicMock())
+
+        assert result == PipelineEvent.COMMIT_SUCCESS
+        assert captured.get("called")
+
+    def test_unknown_effect_returns_failure(self) -> None:
+        result = runner_module._execute_effect(
+            PreparePromptEffect(phase="planning", iteration=0),
+            MagicMock(),
+        )
+
+        assert result == PipelineEvent.AGENT_FAILURE

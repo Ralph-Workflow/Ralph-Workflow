@@ -16,12 +16,9 @@ PYTHON = sys.executable
 EXIT_CODE = 3
 TIMEOUT_SECONDS = 0.2
 SYNC_FAILURE_SCRIPT = (
-    "import sys; print('hello'); print('oops', file=sys.stderr); "
-    f"raise SystemExit({EXIT_CODE})"
+    f"import sys; print('hello'); print('oops', file=sys.stderr); raise SystemExit({EXIT_CODE})"
 )
-SYNC_TIMEOUT_SCRIPT = (
-    "import sys, time; print('before-timeout'); sys.stdout.flush(); time.sleep(1)"
-)
+SYNC_TIMEOUT_SCRIPT = "import sys, time; print('before-timeout'); sys.stdout.flush(); time.sleep(1)"
 ASYNC_TIMEOUT_SCRIPT = (
     "import sys, time; print('before-async-timeout'); sys.stdout.flush(); time.sleep(1)"
 )

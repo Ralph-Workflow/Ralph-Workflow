@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from ralph.mcp import audit_adapter
 from ralph.mcp.capability_mapping import (
-    AccessDeniedCode,
     AccessDecision,
+    AccessDeniedCode,
     McpCapability,
     PolicyMode,
     PolicyOutcomeStatus,

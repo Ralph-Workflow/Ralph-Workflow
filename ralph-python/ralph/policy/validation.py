@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ralph.policy.models import PipelinePolicy, PolicyBundle
+    from ralph.policy.models import DrainName, PipelinePolicy, PolicyBundle
 
 
 class CheckpointPolicyMismatchError(Exception):
@@ -106,3 +106,84 @@ def validate_chain_exists(
             f"Chain '{chain}' is not defined in agents.toml. "
             f"Available chains: {sorted(bundle.agents.agent_chains.keys())}"
         )
+
+
+def validate_drain_contracts(bundle: PolicyBundle) -> None:
+    """Validate drain contracts and enforce strict binding rules.
+
+    This validates rule #10 from the orchestration spec: any config that relies
+    on implicit sibling-drain inference is rejected when forbid_sibling_drain_inference
+    is True.
+
+    Args:
+        bundle: Currently loaded policy bundle.
+
+    Raises:
+        PolicyValidationError: If sibling-drain inference is detected and forbidden.
+    """
+    if not bundle.agents.forbid_sibling_drain_inference:
+        return
+
+    # Built-in drains that should have explicit bindings
+    # Note: "complete" is a terminal marker phase, not an actual drain that invokes
+    # an agent, so it doesn't need a chain binding
+    built_in_drains: set[DrainName] = {
+        "planning",
+        "development",
+        "development_analysis",
+        "development_commit",
+        "review",
+        "review_analysis",
+        "review_commit",
+        "fix",
+    }
+
+    unbound_drains: list[str] = [
+        drain for drain in built_in_drains if drain not in bundle.agents.agent_drains
+    ]
+
+    if unbound_drains:
+        raise PolicyValidationError(
+            f"Implicit sibling-drain inference is forbidden, but the following "
+            f"drains lack explicit chain bindings: {sorted(unbound_drains)}. "
+            f"Each built-in drain must have an explicit 'chain' binding in "
+            f"agents.toml when forbid_sibling_drain_inference=true."
+        )
+
+
+class PolicyValidationError(Exception):
+    """Raised when a policy validation rule is violated.
+
+    Attributes:
+        message: Human-readable error message describing the validation failure.
+    """
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str]]:
+    """Generate a normalized drain resolution matrix.
+
+    For each drain, emits a normalized record showing which chain it resolves to,
+    enabling explainability and test snapshots.
+
+    Args:
+        bundle: Currently loaded policy bundle.
+
+    Returns:
+        Dictionary mapping drain names to their resolved chain information.
+    """
+    matrix: dict[str, dict[str, str]] = {}
+    for drain_name in bundle.agents.agent_drains:
+        drain_config = bundle.agents.agent_drains[drain_name]
+        chain_name = drain_config.chain
+        chain_config = bundle.agents.agent_chains.get(chain_name)
+
+        matrix[drain_name] = {
+            "chain": chain_name,
+            "agents": ",".join(chain_config.agents) if chain_config else "",
+            "max_retries": str(chain_config.max_retries) if chain_config else "",
+        }
+    return matrix

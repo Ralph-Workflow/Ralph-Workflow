@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
+# Minimum length for a metadata comment like "{# V #}"
+METADATA_COMMENT_MIN_LENGTH = 4
+
 
 @dataclass
 class TemplateNode:
@@ -155,14 +158,7 @@ def _build_ast(tokens: Sequence[_Token]) -> TemplateAST:
             continue
 
         if token.kind == "variable":
-            parsed = parse_variable_spec(token.value)
-            if parsed is None:
-                context["nodes"].append(TextNode(f"{{{{{token.value}}}}}"))
-            else:
-                name, default = parsed
-                context["nodes"].append(
-                    VariableNode(name=name, default=default, placeholder=token.value)
-                )
+            _handle_variable(token, context)
             continue
 
         if token.kind == "partial":
@@ -172,52 +168,66 @@ def _build_ast(tokens: Sequence[_Token]) -> TemplateAST:
             continue
 
         if token.kind == "tag":
-            parts = token.value.split(None, 1)
-            if not parts:
-                continue
-            keyword = parts[0].lower()
-            remainder = parts[1] if len(parts) > 1 else ""
-
-            if keyword == "for":
-                variable, iterable = _parse_for_header(remainder)
-                loop = LoopNode(variable=variable, iterable=iterable, body=[])
-                context["nodes"].append(loop)
-                stack.append({"type": "loop", "nodes": loop.body, "node": loop})
-                continue
-
-            if keyword == "endfor":
-                if len(stack) > 1 and stack[-1]["type"] == "loop":
-                    stack.pop()
-                continue
-
-            if keyword == "if":
-                condition = remainder.strip()
-                conditional = ConditionalNode(condition=condition, truthy=[], falsy=[])
-                context["nodes"].append(conditional)
-                stack.append(
-                    {"type": "if_truthy", "nodes": conditional.truthy, "node": conditional}
-                )
-                continue
-
-            if keyword == "else":
-                if len(stack) > 1 and stack[-1]["type"] == "if_truthy":
-                    frame = stack.pop()
-                    frame_node = frame["node"]
-                    if not isinstance(frame_node, ConditionalNode):
-                        continue
-                    stack.append(
-                        {"type": "if_falsy", "nodes": frame_node.falsy, "node": frame_node}
-                    )
-                continue
-
-            if keyword == "endif":
-                if len(stack) > 1 and stack[-1]["type"] in {"if_truthy", "if_falsy"}:
-                    stack.pop()
-                continue
-
-            context["nodes"].append(TextNode(f"{{% {token.value} %}}"))
+            _handle_tag(token, context, stack)
+            continue
 
     return root_nodes
+
+
+def _handle_variable(token: _Token, context: _AstFrame) -> None:
+    """Handle a variable token."""
+    parsed = parse_variable_spec(token.value)
+    if parsed is None:
+        context["nodes"].append(TextNode(f"{{{{{token.value}}}}}"))
+    else:
+        name, default = parsed
+        context["nodes"].append(VariableNode(name=name, default=default, placeholder=token.value))
+
+
+def _handle_tag(  # noqa: PLR0911 - Template tags need per-keyword handling
+    token: _Token, context: _AstFrame, stack: list[_AstFrame]
+) -> None:
+    """Handle a tag token."""
+    parts = token.value.split(None, 1)
+    if not parts:
+        return
+    keyword = parts[0].lower()
+    remainder = parts[1] if len(parts) > 1 else ""
+
+    if keyword == "for":
+        variable, iterable = _parse_for_header(remainder)
+        loop = LoopNode(variable=variable, iterable=iterable, body=[])
+        context["nodes"].append(loop)
+        stack.append({"type": "loop", "nodes": loop.body, "node": loop})
+        return
+
+    if keyword == "endfor":
+        if len(stack) > 1 and stack[-1]["type"] == "loop":
+            stack.pop()
+        return
+
+    if keyword == "if":
+        condition = remainder.strip()
+        conditional = ConditionalNode(condition=condition, truthy=[], falsy=[])
+        context["nodes"].append(conditional)
+        stack.append({"type": "if_truthy", "nodes": conditional.truthy, "node": conditional})
+        return
+
+    if keyword == "else":
+        if len(stack) > 1 and stack[-1]["type"] == "if_truthy":
+            frame = stack.pop()
+            frame_node = frame["node"]
+            if not isinstance(frame_node, ConditionalNode):
+                return
+            stack.append({"type": "if_falsy", "nodes": frame_node.falsy, "node": frame_node})
+        return
+
+    if keyword == "endif":
+        if len(stack) > 1 and stack[-1]["type"] in {"if_truthy", "if_falsy"}:
+            stack.pop()
+        return
+
+    context["nodes"].append(TextNode(f"{{% {token.value} %}}"))
 
 
 def _parse_for_header(header: str) -> tuple[str, str]:
@@ -244,7 +254,7 @@ def parse_variable_spec(var_spec: str) -> tuple[str, str | None] | None:
         key, _, raw = rest.partition("=")
         if key.strip() == "default":
             value = raw.strip()
-            if (value.startswith("\"") and value.endswith("\"")) or (
+            if (value.startswith('"') and value.endswith('"')) or (
                 value.startswith("'") and value.endswith("'")
             ):
                 value = value[1:-1]
@@ -254,7 +264,11 @@ def parse_variable_spec(var_spec: str) -> tuple[str, str | None] | None:
 
 def parse_metadata_line(line: str) -> tuple[str | None, str | None] | None:
     trimmed = line.strip()
-    if len(trimmed) < 4 or not trimmed.startswith("{#") or not trimmed.endswith("#}"):
+    if (
+        len(trimmed) < METADATA_COMMENT_MIN_LENGTH
+        or not trimmed.startswith("{#")
+        or not trimmed.endswith("#}")
+    ):
         return None
     inner = trimmed[2:-2].strip()
     version = None

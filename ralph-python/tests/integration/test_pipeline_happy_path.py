@@ -8,15 +8,18 @@ the pipeline to advance through all phases to completion.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from ralph.pipeline.effects import ExitSuccessEffect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.orchestrator import determine_next_effect
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.policy.loader import load_policy
 from ralph.workspace.memory import MemoryWorkspace
+
+CALL_HISTORY_ENTRY_COUNT = 2
 
 # ---------------------------------------------------------------------------
 # Mock Agent Invoker
@@ -59,17 +62,17 @@ class MockAgentInvoker:
 
         # For planning and development: return AGENT_SUCCESS
         if phase in ("planning", "development", "review", "fix"):
-            return self.AGENT_SUCCESS
+            return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
 
         # For analysis phases: return ANALYSIS_SUCCESS
         if "analysis" in phase:
-            return self.ANALYSIS_SUCCESS
+            return cast("PipelineEvent", PipelineEvent.ANALYSIS_SUCCESS)
 
         # For commit phases: return COMMIT_SUCCESS
         if "commit" in phase:
-            return self.COMMIT_SUCCESS
+            return cast("PipelineEvent", PipelineEvent.COMMIT_SUCCESS)
 
-        return self.AGENT_SUCCESS
+        return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +112,6 @@ def initial_state() -> PipelineState:
     Returns:
         PipelineState at the planning phase with default budgets.
     """
-    from ralph.pipeline.state import AgentChainState, CommitState, RebaseState
-
     return PipelineState(
         phase="planning",
         total_iterations=1,
@@ -144,6 +145,7 @@ class TestPipelineHappyPath:
 
         # Planning should return PreparePromptEffect (not InvokeAgentEffect)
         # since the orchestrator first prepares the prompt before invoking
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "planning"
 
     def test_development_budget_routing(
@@ -165,6 +167,7 @@ class TestPipelineHappyPath:
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
         # development_commit with budget=0 should route to review
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "review"
 
     def test_review_commit_to_complete(
@@ -185,8 +188,8 @@ class TestPipelineHappyPath:
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-        # review_commit on success routes to complete
-        assert effect.phase == "complete"
+        # review_commit on success routes to complete, which returns ExitSuccessEffect
+        assert isinstance(effect, ExitSuccessEffect)
 
     def test_memory_workspace_persistence(
         self,
@@ -212,7 +215,7 @@ class TestPipelineHappyPath:
         default_policy: tuple[Any, Any, Any],
     ) -> None:
         """Test that default policy loads without error."""
-        agents_policy, pipeline_policy, artifacts_policy = default_policy
+        agents_policy, pipeline_policy, _artifacts_policy = default_policy
 
         # Verify all expected drains are bound
         expected_drains = {
@@ -232,8 +235,10 @@ class TestPipelineHappyPath:
         assert pipeline_policy.entry_phase == "planning"
         assert pipeline_policy.terminal_phase == "complete"
 
-        # Verify phases reference bound drains
+        # Verify phases reference bound drains (skip terminal phase)
         for phase_name, phase_def in pipeline_policy.phases.items():
+            if phase_name == pipeline_policy.terminal_phase:
+                continue
             assert phase_def.drain in agents_policy.agent_drains
 
 
@@ -279,7 +284,7 @@ class TestMockAgentInvoker:
         invoker.invoke("claude", "planning")
         invoker.invoke("claude", "development")
 
-        assert len(invoker.call_history) == 2
+        assert len(invoker.call_history) == CALL_HISTORY_ENTRY_COUNT
         assert invoker.call_history[0]["phase"] == "planning"
         assert invoker.call_history[1]["phase"] == "development"
 
@@ -306,6 +311,7 @@ class TestPipelinePhaseTransitions:
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
         # Development should continue (prep prompt or invoke)
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "development"
 
     def test_review_with_issues_routes_to_fix(
@@ -327,6 +333,7 @@ class TestPipelinePhaseTransitions:
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
         # Review should route to review_commit or stay in review
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "review"
 
     def test_fix_routes_to_review(
@@ -347,4 +354,5 @@ class TestPipelinePhaseTransitions:
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
         # Fix should route back to review
+        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "review"

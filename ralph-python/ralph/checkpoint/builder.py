@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict, cast
 
-from .execution_history import ExecutionHistory
-from .run_context import RunContext
+from .execution_history import ExecutionHistory, ExecutionHistoryDict
+from .run_context import RunContext, RunContextDict
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
+
+
+class CheckpointPayloadDict(TypedDict):
+    state: dict[str, object]
+    run_context: RunContextDict
+    execution_history: ExecutionHistoryDict
+    working_dir: str
+    phase: str
+    iteration: int
 
 
 @dataclass(frozen=True)
@@ -31,16 +40,17 @@ class CheckpointPayload:
         """Expose the current iteration directly for checkpoint summaries."""
         return self.state.iteration
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> CheckpointPayloadDict:
         """Return a JSON-safe dictionary representation."""
-        return {
-            "state": self.state.model_dump(mode="json"),
+        payload: CheckpointPayloadDict = {
+            "state": cast("dict[str, object]", self.state.model_dump(mode="json")),
             "run_context": self.run_context.to_dict(),
             "execution_history": self.execution_history.to_dict(),
             "working_dir": self.working_dir,
             "phase": self.phase,
             "iteration": self.iteration,
         }
+        return payload
 
 
 @dataclass(frozen=True)

@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.session_bridge import AgentSession
-
 from ralph.prompts import template_variables
 
 
 def test_template_variables_apply_to_template() -> None:
-    caps, flags = template_variables.default_caps_and_flags_for_drain(
-        SessionDrain.DEVELOPMENT
-    )
+    caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.DEVELOPMENT)
     vars_map = template_variables.capability_template_variables(caps, flags)
 
     template = (

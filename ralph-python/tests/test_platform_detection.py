@@ -49,16 +49,22 @@ def test_detect_environment_tracks_ci_container_wsl_and_ssh() -> None:
 def test_detect_package_manager_uses_path_search_order() -> None:
     """Package manager detection should respect OS-specific preferences."""
     assert detect_package_manager(OperatingSystem.MACOS, search_path="/bin") is None
-    assert detect_package_manager(
-        OperatingSystem.LINUX,
-        search_path="/usr/bin",
-        command_lookup=lambda command, path: command in {"apt-get", "yum"},
-    ) == "apt-get"
-    assert detect_package_manager(
-        OperatingSystem.WINDOWS,
-        search_path="C:/bin",
-        command_lookup=lambda command, path: command == "winget",
-    ) == "winget"
+    assert (
+        detect_package_manager(
+            OperatingSystem.LINUX,
+            search_path="/usr/bin",
+            command_lookup=lambda command, path: command in {"apt-get", "yum"},
+        )
+        == "apt-get"
+    )
+    assert (
+        detect_package_manager(
+            OperatingSystem.WINDOWS,
+            search_path="C:/bin",
+            command_lookup=lambda command, path: command == "winget",
+        )
+        == "winget"
+    )
 
 
 def test_detect_platform_builds_complete_platform_profile() -> None:

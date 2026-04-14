@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError, Repo
@@ -74,16 +73,12 @@ def _validate_git_state(repo: Repo) -> None:
         commit = head.commit
         _ = commit.tree
     except (GitCommandError, ValueError, OSError) as exc:
-        raise RebasePreconditionError(
-            f"Object database corruption: {exc}"
-        ) from exc
+        raise RebasePreconditionError(f"Object database corruption: {exc}") from exc
 
     try:
         _ = repo.index
     except (GitCommandError, OSError) as exc:
-        raise RebasePreconditionError(
-            f"Repository index is corrupted: {exc}"
-        ) from exc
+        raise RebasePreconditionError(f"Repository index is corrupted: {exc}") from exc
 
 
 def _detect_concurrent_operation(repo: Repo) -> _ConcurrentOperation | None:
@@ -143,9 +138,7 @@ def _check_shallow_clone(repo: Repo) -> None:
         try:
             content = shallow.read_text()
         except OSError as exc:
-            raise RebasePreconditionError(
-                f"Failed to read shallow clone metadata: {exc}"
-            ) from exc
+            raise RebasePreconditionError(f"Failed to read shallow clone metadata: {exc}") from exc
 
         line_count = len(content.splitlines())
         raise RebasePreconditionError(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.protocol import Workspace
 
@@ -12,6 +13,10 @@ from .scanner import count_extensions, detect_tests
 from .signatures import detect_signature_files
 
 WorkspaceLike = Workspace | str | Path
+
+
+def _language_count_sort_key(item: tuple[str, int]) -> tuple[int, str]:
+    return (-item[1], item[0])
 
 
 def _coerce_workspace(workspace_or_root: WorkspaceLike) -> tuple[Workspace, str]:
@@ -29,7 +34,7 @@ def _sorted_language_counts(workspace: Workspace, root: str) -> list[tuple[str, 
         if language is not None:
             language_totals[language] = language_totals.get(language, 0) + count
 
-    return sorted(language_totals.items(), key=lambda item: (-item[1], item[0]))
+    return sorted(language_totals.items(), key=_language_count_sort_key)
 
 
 def _prioritize_languages(language_counts: list[tuple[str, int]]) -> list[str]:
@@ -59,9 +64,7 @@ def get_project_stack(workspace_or_root: WorkspaceLike, root: str = "") -> Proje
     primary = prioritized[0] if prioritized else "Unknown"
     secondary = prioritized[1 : MAX_SECONDARY_LANGUAGES + 1]
 
-    frameworks, test_framework, package_manager = detect_signature_files(
-        workspace, effective_root
-    )
+    frameworks, test_framework, package_manager = detect_signature_files(workspace, effective_root)
     has_tests = bool(test_framework) or detect_tests(workspace, effective_root, primary)
 
     return ProjectStack(

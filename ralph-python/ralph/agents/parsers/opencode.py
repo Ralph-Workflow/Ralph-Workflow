@@ -40,9 +40,7 @@ class OpenCodeParser:
 
             yield from self._parse_object(obj, stripped)
 
-    def _parse_object(
-        self, obj: dict[str, object], stripped: str
-    ) -> Iterator[AgentOutputLine]:
+    def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances.
 
         Args:

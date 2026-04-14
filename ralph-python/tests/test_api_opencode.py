@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-import httpx
 import pytest
 
 from ralph.api import opencode
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class _FakeResponse:
@@ -52,7 +54,11 @@ def test_fetch_catalog_validates_entries(monkeypatch: pytest.MonkeyPatch) -> Non
         lambda timeout: _FakeClient(
             lambda: _FakeResponse(
                 [
-                    {"id": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "provider": "anthropic"},
+                    {
+                        "id": "anthropic/claude-sonnet-4",
+                        "name": "Claude Sonnet 4",
+                        "provider": "anthropic",
+                    },
                     {"id": "openai/gpt-5", "provider": "openai"},
                 ]
             )
@@ -87,15 +93,17 @@ def test_fetch_catalog_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fetch_catalog_reraises_http_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    request = httpx.Request("GET", opencode.CATALOG_URL)
-    error = httpx.HTTPStatusError("boom", request=request, response=httpx.Response(503, request=request))
+    request = opencode.httpx.Request("GET", opencode.CATALOG_URL)
+    error = opencode.httpx.HTTPStatusError(
+        "boom", request=request, response=opencode.httpx.Response(503, request=request)
+    )
     monkeypatch.setattr(
         opencode.httpx,
         "Client",
         lambda timeout: _FakeClient(lambda: _FakeResponse([], status_error=error)),
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(opencode.httpx.HTTPStatusError):
         opencode.fetch_catalog()
 
 
@@ -115,7 +123,9 @@ def test_catalog_helpers_filter_and_sort(monkeypatch: pytest.MonkeyPatch) -> Non
         opencode,
         "fetch_catalog",
         lambda: [
-            opencode.ModelEntry(id="anthropic/claude-sonnet-4", name="Claude Sonnet 4", provider="Anthropic"),
+            opencode.ModelEntry(
+                id="anthropic/claude-sonnet-4", name="Claude Sonnet 4", provider="Anthropic"
+            ),
             opencode.ModelEntry(id="openai/gpt-5", name="GPT-5", provider="OpenAI"),
             opencode.ModelEntry(id="openai/o3", name="o3", provider="OpenAI"),
             opencode.ModelEntry(id="local/custom", name=None, provider=None),

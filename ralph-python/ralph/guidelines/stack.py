@@ -4,12 +4,53 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Sequence
+    from types import ModuleType
 
     from ralph.workspace.protocol import Workspace
+
+
+class _HandlerCallable(Protocol):
+    """Protocol for language handler callables."""
+
+    def __call__(self, *args: object, **kwargs: object) -> GuidelineSource: ...
+
+
+@runtime_checkable
+class GuidelineSource(Protocol):
+    """Structural protocol for guideline objects produced by handlers."""
+
+    quality_checks: Sequence[str]
+    security_checks: Sequence[str]
+    performance_checks: Sequence[str]
+    testing_checks: Sequence[str]
+    documentation_checks: Sequence[str]
+    idioms: Sequence[str]
+    anti_patterns: Sequence[str]
+    concurrency_checks: Sequence[str]
+    resource_checks: Sequence[str]
+    observability_checks: Sequence[str]
+    secrets_checks: Sequence[str]
+    api_design_checks: Sequence[str]
+
+
+@runtime_checkable
+class _DetectedStackLike(Protocol):
+    """Structural protocol for language detector results."""
+
+    primary_language: str
+    secondary_languages: Sequence[str]
+    frameworks: Sequence[str]
+
+
+class _StackDetector(Protocol):
+    """Protocol for detect_stack_with_workspace callables."""
+
+    def __call__(self, workspace: Workspace, root: str) -> object: ...
+
 
 CATEGORY_FIELDS = (
     "quality_checks",
@@ -116,76 +157,112 @@ class DetectedStack:
     frameworks: list[str] = field(default_factory=list)
 
 
-def _load_guideline_class(module_name: str, class_name: str) -> object:
+def _load_guideline_class(module_name: str, class_name: str) -> _HandlerCallable:
     module = import_module(module_name)
-    return getattr(module, class_name)
+    return cast("_HandlerCallable", _module_attr(module, class_name))
+
+
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
+
+
+def _dedupe_strings(values: Sequence[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def _guideline_categories(source: GuidelineSource) -> tuple[tuple[str, Sequence[str]], ...]:
+    def _category(name: str) -> Sequence[str]:
+        value: object = getattr(source, name, ())
+        if isinstance(value, list | tuple) and all(isinstance(item, str) for item in value):
+            return cast("Sequence[str]", value)
+        return ()
+
+    return (
+        ("quality_checks", _category("quality_checks")),
+        ("security_checks", _category("security_checks")),
+        ("performance_checks", _category("performance_checks")),
+        ("testing_checks", _category("testing_checks")),
+        ("documentation_checks", _category("documentation_checks")),
+        ("idioms", _category("idioms")),
+        ("anti_patterns", _category("anti_patterns")),
+        ("concurrency_checks", _category("concurrency_checks")),
+        ("resource_checks", _category("resource_checks")),
+        ("observability_checks", _category("observability_checks")),
+        ("secrets_checks", _category("secrets_checks")),
+        ("api_design_checks", _category("api_design_checks")),
+    )
+
+
+def _stack_from_detected(source: _DetectedStackLike) -> DetectedStack:
+    return DetectedStack(
+        primary_language=source.primary_language,
+        secondary_languages=list(source.secondary_languages),
+        frameworks=list(source.frameworks),
+    )
+
 
 def _frameworks_for_language(language: str, frameworks: Iterable[str]) -> list[str]:
     allowed = LANGUAGE_FRAMEWORK_MAP.get(language, ())
     allowed_lower = {fw.casefold() for fw in allowed}
     return [fw for fw in frameworks if fw.casefold() in allowed_lower]
 
+
 def _language_group(language: str) -> str:
     if language == "Kotlin":
         return "Java"
     return language
 
-def _rust_handler(frameworks: Iterable[str], _: bool) -> object:
-    rust_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class("ralph.guidelines.rust", "RustGuidelines"),
-    )
+
+def _rust_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+    rust_guidelines = _load_guideline_class("ralph.guidelines.rust", "RustGuidelines")
     return rust_guidelines()
 
-def _python_handler(frameworks: Iterable[str], _: bool) -> object:
-    python_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class("ralph.guidelines.python", "PythonGuidelines"),
-    )
+
+def _python_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+    python_guidelines = _load_guideline_class("ralph.guidelines.python", "PythonGuidelines")
     return python_guidelines(frameworks=_frameworks_for_language("Python", frameworks))
 
-def _javascript_handler(frameworks: Iterable[str], typescript: bool) -> object:
-    javascript_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class(
-            "ralph.guidelines.javascript",
-            "JavaScriptGuidelines",
-        ),
+
+def _javascript_handler(frameworks: Iterable[str], typescript: bool) -> GuidelineSource:
+    javascript_guidelines = _load_guideline_class(
+        "ralph.guidelines.javascript",
+        "JavaScriptGuidelines",
     )
     return javascript_guidelines(
         frameworks=_frameworks_for_language("JavaScript", frameworks),
         typescript=typescript,
     )
 
-def _go_handler(frameworks: Iterable[str], _: bool) -> object:
-    go_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class("ralph.guidelines.go", "GoGuidelines"),
-    )
+
+def _go_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+    go_guidelines = _load_guideline_class("ralph.guidelines.go", "GoGuidelines")
     return go_guidelines(frameworks=_frameworks_for_language("Go", frameworks))
 
-def _java_handler(frameworks: Iterable[str], _: bool) -> object:
-    java_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class("ralph.guidelines.java", "JavaGuidelines"),
-    )
+
+def _java_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+    java_guidelines = _load_guideline_class("ralph.guidelines.java", "JavaGuidelines")
     return java_guidelines(frameworks=_frameworks_for_language("Java", frameworks))
 
-def _php_handler(frameworks: Iterable[str], _: bool) -> object:
-    php_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class("ralph.guidelines.php", "PHPGuidelines"),
-    )
+
+def _php_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+    php_guidelines = _load_guideline_class("ralph.guidelines.php", "PHPGuidelines")
     return php_guidelines(frameworks=_frameworks_for_language("PHP", frameworks))
 
-def _ruby_handler(frameworks: Iterable[str], _: bool) -> object:
-    ruby_guidelines = cast(
-        "Callable[..., object]",
-        _load_guideline_class("ralph.guidelines.ruby", "RubyGuidelines"),
-    )
+
+def _ruby_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+    ruby_guidelines = _load_guideline_class("ralph.guidelines.ruby", "RubyGuidelines")
     return ruby_guidelines(frameworks=_frameworks_for_language("Ruby", frameworks))
 
-LANGUAGE_HANDLERS: dict[str, Callable[[Iterable[str], bool], object]] = {
+
+LANGUAGE_HANDLERS: dict[str, Callable[[Iterable[str], bool], GuidelineSource]] = {
     "Rust": _rust_handler,
     "Python": _python_handler,
     "JavaScript": _javascript_handler,
@@ -199,35 +276,40 @@ LANGUAGE_HANDLERS: dict[str, Callable[[Iterable[str], bool], object]] = {
 
 @dataclass
 class StackGuidelines:
-    quality_checks: list[str] = field(default_factory=lambda: list(BASE_QUALITY_CHECKS))
-    security_checks: list[str] = field(default_factory=lambda: list(BASE_SECURITY_CHECKS))
-    performance_checks: list[str] = field(default_factory=lambda: list(BASE_PERFORMANCE_CHECKS))
-    testing_checks: list[str] = field(default_factory=lambda: list(BASE_TESTING_CHECKS))
-    documentation_checks: list[str] = field(default_factory=lambda: list(BASE_DOCUMENTATION_CHECKS))
-    idioms: list[str] = field(default_factory=lambda: list(BASE_IDIOMS))
-    anti_patterns: list[str] = field(default_factory=lambda: list(BASE_ANTI_PATTERNS))
-    concurrency_checks: list[str] = field(default_factory=lambda: list(BASE_CONCURRENCY_CHECKS))
-    resource_checks: list[str] = field(default_factory=lambda: list(BASE_RESOURCE_CHECKS))
-    observability_checks: list[str] = field(default_factory=lambda: list(BASE_OBSERVABILITY_CHECKS))
-    secrets_checks: list[str] = field(default_factory=lambda: list(BASE_SECRETS_CHECKS))
-    api_design_checks: list[str] = field(default_factory=lambda: list(BASE_API_DESIGN_CHECKS))
+    quality_checks: Sequence[str] = field(default_factory=lambda: list(BASE_QUALITY_CHECKS))
+    security_checks: Sequence[str] = field(default_factory=lambda: list(BASE_SECURITY_CHECKS))
+    performance_checks: Sequence[str] = field(default_factory=lambda: list(BASE_PERFORMANCE_CHECKS))
+    testing_checks: Sequence[str] = field(default_factory=lambda: list(BASE_TESTING_CHECKS))
+    documentation_checks: Sequence[str] = field(
+        default_factory=lambda: list(BASE_DOCUMENTATION_CHECKS)
+    )
+    idioms: Sequence[str] = field(default_factory=lambda: list(BASE_IDIOMS))
+    anti_patterns: Sequence[str] = field(default_factory=lambda: list(BASE_ANTI_PATTERNS))
+    concurrency_checks: Sequence[str] = field(default_factory=lambda: list(BASE_CONCURRENCY_CHECKS))
+    resource_checks: Sequence[str] = field(default_factory=lambda: list(BASE_RESOURCE_CHECKS))
+    observability_checks: Sequence[str] = field(
+        default_factory=lambda: list(BASE_OBSERVABILITY_CHECKS)
+    )
+    secrets_checks: Sequence[str] = field(default_factory=lambda: list(BASE_SECRETS_CHECKS))
+    api_design_checks: Sequence[str] = field(default_factory=lambda: list(BASE_API_DESIGN_CHECKS))
 
     def __post_init__(self) -> None:
         self._seen: dict[str, set[str]] = {
-            category: set(getattr(self, category)) for category in CATEGORY_FIELDS
+            category: set(values) for category, values in _guideline_categories(self)
         }
 
-    def merge_from(self, other: object) -> None:
-        for category in CATEGORY_FIELDS:
-            items = getattr(other, category, None)
+    def merge_from(self, other: GuidelineSource) -> None:
+        source_items = dict(_guideline_categories(other))
+        for category, target in _guideline_categories(self):
+            items = source_items[category]
             if not items:
                 continue
-            target = getattr(self, category)
+            mutable_target = cast("list[str]", target)
             seen = self._seen[category]
             for item in items:
                 if item not in seen:
                     seen.add(item)
-                    target.append(item)
+                    mutable_target.append(item)
 
     def summary(self) -> str:
         return (
@@ -237,7 +319,7 @@ class StackGuidelines:
         )
 
     def total_checks(self) -> int:
-        return sum(len(getattr(self, category)) for category in CATEGORY_FIELDS)
+        return sum(len(items) for _, items in _guideline_categories(self))
 
 
 def get_stack_guidelines(workspace: Workspace, root: str = "") -> StackGuidelines:
@@ -270,16 +352,16 @@ def _detect_stack_with_workspace(workspace: Workspace, root: str) -> DetectedSta
     except ImportError:
         return _fallback_detect_stack(workspace)
 
-    detector = getattr(module, "detect_stack_with_workspace", None)
-    if detector is None:
+    module_dict: dict[str, object | None] = module.__dict__
+    detector_candidate = module_dict.get("detect_stack_with_workspace")
+    if detector_candidate is None or not callable(detector_candidate):
         return _fallback_detect_stack(workspace)
 
-    stack = detector(workspace, root)
-    return DetectedStack(
-        primary_language=getattr(stack, "primary_language", "Unknown"),
-        secondary_languages=list(getattr(stack, "secondary_languages", [])),
-        frameworks=list(getattr(stack, "frameworks", [])),
-    )
+    detector = cast("_StackDetector", detector_candidate)
+    stack_candidate = detector(workspace, root)
+    if not isinstance(stack_candidate, _DetectedStackLike):
+        return _fallback_detect_stack(workspace)
+    return _stack_from_detected(stack_candidate)
 
 
 def _fallback_detect_stack(workspace: Workspace) -> DetectedStack:
@@ -295,11 +377,11 @@ def _fallback_detect_stack(workspace: Workspace) -> DetectedStack:
     if not languages:
         return DetectedStack()
 
-    unique_languages = list(dict.fromkeys(languages))
+    unique_languages = _dedupe_strings(languages)
     return DetectedStack(
         primary_language=unique_languages[0],
         secondary_languages=unique_languages[1:],
-        frameworks=list(dict.fromkeys(frameworks)),
+        frameworks=_dedupe_strings(frameworks),
     )
 
 

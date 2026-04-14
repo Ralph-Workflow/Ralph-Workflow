@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import os
 from datetime import timedelta
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ralph.mcp import session_bridge, startup
 from ralph.workspace import Workspace
 from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+SECOND_GENERATION = 2
 
 
 class _WorkspaceRoot:
@@ -68,7 +72,9 @@ def _session(run_id: str = "run-1") -> session_bridge.AgentSession:
     )
 
 
-def _http_call(endpoint: str, method: str, params: dict[str, Any] | None = None, *, msg_id: int = 1) -> dict[str, Any]:
+def _http_call(
+    endpoint: str, method: str, params: dict[str, Any] | None = None, *, msg_id: int = 1
+) -> dict[str, Any]:
     target = startup.parse_http_endpoint(endpoint)
     return startup.post_http_jsonrpc(
         target,
@@ -178,7 +184,7 @@ def test_session_bridge_reuses_lease_file_to_increment_generation(tmp_path: Path
     try:
         second_lease = second_bridge.endpoint_lease()
         assert second_lease is not None
-        assert second_lease.generation == 2
+        assert second_lease.generation == SECOND_GENERATION
         assert os.environ.get(session_bridge.MCP_ENDPOINT_ENV) is None
     finally:
         second_bridge.shutdown()

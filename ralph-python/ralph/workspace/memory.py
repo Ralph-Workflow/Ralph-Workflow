@@ -132,7 +132,7 @@ class MemoryWorkspace:
             if key == normalized:
                 continue
             if normalized == "" or key.startswith(normalized):
-                remainder = key[len(normalized):]
+                remainder = key[len(normalized) :]
                 first_part = remainder.split("/")[0]
                 if first_part and first_part not in result:
                     result.append(first_part)
@@ -143,7 +143,7 @@ class MemoryWorkspace:
                 if d == normalized:
                     continue
                 if normalized == "" or d.startswith(normalized):
-                    remainder = d[len(normalized):].lstrip("/")
+                    remainder = d[len(normalized) :].lstrip("/")
                     first_part = remainder.split("/")[0]
                     if first_part and first_part not in result:
                         result.append(first_part)

@@ -46,9 +46,6 @@ def find_repo_root(start: Path | str = Path()) -> Path:
     """
     try:
         repo = Repo(start, search_parent_directories=True)
-        if repo.working_dir is None:
-            msg = "Unable to determine working directory"
-            raise GitOperationError("find_repo_root", msg)
         return Path(repo.working_dir)
     except InvalidGitRepositoryError as exc:
         raise GitOperationError("find_repo_root", "Not inside a git repository") from exc

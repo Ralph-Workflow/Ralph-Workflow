@@ -73,9 +73,7 @@ class ClaudeParser:
             elif event_type == "error":
                 error_obj: dict[str, object] = obj.get("error", {})  # type: ignore[assignment]
                 error_type = (
-                    error_obj.get("type", "unknown")
-                    if isinstance(error_obj, dict)
-                    else "unknown"
+                    error_obj.get("type", "unknown") if isinstance(error_obj, dict) else "unknown"
                 )
                 error_msg = str(error_type)
                 yield AgentOutputLine(

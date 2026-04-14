@@ -6,7 +6,7 @@ import asyncio
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -112,14 +112,14 @@ async def run_process_async(
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
-    communicate_task = asyncio.create_task(process.communicate())
+    communicate_task: asyncio.Task[tuple[bytes | None, bytes | None]]
+    communicate_task = cast(
+        "asyncio.Task[tuple[bytes | None, bytes | None]]",
+        asyncio.create_task(process.communicate()),
+    )
 
-    try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            asyncio.shield(communicate_task),
-            timeout=timeout,
-        )
-    except TimeoutError as exc:
+    done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
+    if communicate_task not in done:
         process.kill()
         stdout_bytes, stderr_bytes = await communicate_task
         raise ProcessExecutionError.from_timeout(
@@ -127,7 +127,9 @@ async def run_process_async(
             timeout=timeout,
             stdout=_decode_output(stdout_bytes),
             stderr=_decode_output(stderr_bytes),
-        ) from exc
+        )
+
+    stdout_bytes, stderr_bytes = communicate_task.result()
 
     return ProcessResult(
         command=cmd,

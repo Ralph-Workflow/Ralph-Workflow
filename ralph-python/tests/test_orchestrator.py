@@ -44,9 +44,7 @@ def _make_minimal_agents_policy() -> AgentsPolicy:
     return AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
-            "development": AgentChainConfig(
-                agents=["claude", "opencode"], max_retries=3
-            ),
+            "development": AgentChainConfig(agents=["claude", "opencode"], max_retries=3),
             "development_analysis": AgentChainConfig(agents=["claude"], max_retries=2),
             "development_commit": AgentChainConfig(agents=["claude"], max_retries=2),
             "review": AgentChainConfig(agents=["claude"], max_retries=3),
@@ -111,7 +109,10 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "complete": PhaseDefinition(
                 drain="development",
-                transitions=PhaseTransition(on_success="complete"),
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="complete",
+                ),
             ),
         },
         entry_phase="planning",
@@ -179,7 +180,7 @@ class TestAnalysisRouting:
         next_phase = resolve_next_phase(
             current_phase="development",
             signal="loopback",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "development"
 
@@ -188,7 +189,7 @@ class TestAnalysisRouting:
         next_phase = resolve_next_phase(
             current_phase="development",
             signal="success",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "development_commit"
 
@@ -197,7 +198,7 @@ class TestAnalysisRouting:
         next_phase = resolve_next_phase(
             current_phase="review",
             signal="loopback",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "fix"
 
@@ -206,7 +207,7 @@ class TestAnalysisRouting:
         next_phase = resolve_next_phase(
             current_phase="review",
             signal="success",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "review_commit"
 
@@ -215,7 +216,7 @@ class TestAnalysisRouting:
         next_phase = resolve_next_phase(
             current_phase="fix",
             signal="success",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "review"
 
@@ -228,7 +229,7 @@ class TestCommitBudgetRouting:
         next_phase = resolve_next_phase(
             current_phase="development_commit",
             signal="success",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "review"
 
@@ -237,7 +238,7 @@ class TestCommitBudgetRouting:
         next_phase = resolve_next_phase(
             current_phase="review_commit",
             signal="success",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "complete"
 
@@ -251,7 +252,7 @@ class TestResolveNextPhase:
             resolve_next_phase(
                 current_phase="nonexistent",
                 signal="success",
-                pipeline=_make_minimal_pipeline_policy(),
+                pipeline_policy=_make_minimal_pipeline_policy(),
             )
 
     def test_unknown_signal_raises_value_error(self) -> None:
@@ -260,7 +261,7 @@ class TestResolveNextPhase:
             resolve_next_phase(
                 current_phase="development",
                 signal="unknown_signal",
-                pipeline=_make_minimal_pipeline_policy(),
+                pipeline_policy=_make_minimal_pipeline_policy(),
             )
 
     def test_missing_transition_raises_value_error(self) -> None:
@@ -280,16 +281,30 @@ class TestResolveNextPhase:
                         # No on_failure defined
                     ),
                 ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+                "complete": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
             },
             entry_phase="planning",
             terminal_phase="complete",
         )
 
-        with pytest.raises(ValueError, match="on_failure.*not.*defined"):
+        with pytest.raises(ValueError, match="No 'failure' transition defined"):
             resolve_next_phase(
                 current_phase="development",
                 signal="failure",
-                pipeline=pipeline,
+                pipeline_policy=pipeline,
             )
 
     def test_terminal_transition_returns_terminal_state(self) -> None:
@@ -297,6 +312,6 @@ class TestResolveNextPhase:
         next_phase = resolve_next_phase(
             current_phase="review_commit",
             signal="success",
-            pipeline=_make_minimal_pipeline_policy(),
+            pipeline_policy=_make_minimal_pipeline_policy(),
         )
         assert next_phase == "complete"

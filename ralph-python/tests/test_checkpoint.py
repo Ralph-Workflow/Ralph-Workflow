@@ -4,17 +4,29 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_REVIEW
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import (
+    AgentChainState,
+    CommitState,
+    PipelineState,
+    RebaseState,
+    RunMetrics,
+)
+
+DEVELOPMENT_ITERATION = 2
+TOTAL_ITERATIONS = 5
+TOTAL_AGENT_CALLS = 10
 
 
 def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     """Test saving and loading a checkpoint."""
     state = PipelineState(
         phase=PHASE_DEVELOPMENT,
-        iteration=2,
-        total_iterations=5,
+        iteration=DEVELOPMENT_ITERATION,
+        total_iterations=TOTAL_ITERATIONS,
     )
     path = tmp_path / "checkpoint.json"
 
@@ -24,8 +36,8 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     loaded = ckpt.load(path)
     assert loaded is not None
     assert loaded.phase == PHASE_DEVELOPMENT
-    assert loaded.iteration == 2
-    assert loaded.total_iterations == 5
+    assert loaded.iteration == DEVELOPMENT_ITERATION
+    assert loaded.total_iterations == TOTAL_ITERATIONS
 
 
 def test_load_nonexistent_checkpoint(tmp_path: Path) -> None:
@@ -74,12 +86,10 @@ def test_checkpoint_remove(tmp_path: Path) -> None:
 
 def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     """Test saving and loading full state with all fields."""
-    from ralph.pipeline.state import AgentChainState, CommitState, RebaseState, RunMetrics
-
     state = PipelineState(
         phase=PHASE_DEVELOPMENT,
         iteration=3,
-        total_iterations=5,
+        total_iterations=TOTAL_ITERATIONS,
         reviewer_pass=1,
         total_reviewer_passes=2,
         review_issues_found=True,
@@ -87,8 +97,8 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
         rev_chain=AgentChainState(agents=["claude"], current_index=0),
         rebase=RebaseState(pending=True),
         commit=CommitState(message_prepared=True),
-        metrics=RunMetrics(total_agent_calls=10, total_continuations=2),
-        checkpoint_saved_count=5,
+        metrics=RunMetrics(total_agent_calls=TOTAL_AGENT_CALLS, total_continuations=2),
+        checkpoint_saved_count=TOTAL_ITERATIONS,
         recovery_epoch=1,
         git_auth_configured=True,
     )
@@ -101,7 +111,7 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     assert loaded.phase == state.phase
     assert loaded.iteration == state.iteration
     assert loaded.dev_chain.current_index == 1
-    assert loaded.metrics.total_agent_calls == 10
+    assert loaded.metrics.total_agent_calls == TOTAL_AGENT_CALLS
     assert loaded.git_auth_configured is True
 
 
@@ -112,3 +122,62 @@ def test_checkpoint_roundtrip_preserves_current_drain() -> None:
     restored = PipelineState.model_validate_json(state.model_dump_json())
 
     assert restored.current_drain == "development_analysis"
+
+
+def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Ensure failed saves clean up the temporary file."""
+
+    path = tmp_path / "checkpoint.json"
+    tmp = path.with_suffix(".tmp")
+    state = PipelineState()
+
+    original_replace = Path.replace
+
+    def raise_on_tmp(self: Path, target: Path) -> Path:
+        if self == tmp:
+            raise RuntimeError("disk busy")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", raise_on_tmp)
+
+    with pytest.raises(RuntimeError):
+        ckpt.save(state, path)
+
+    assert not tmp.exists()
+
+
+def test_load_corrupt_checkpoint_returns_none(tmp_path: Path) -> None:
+    """Loading invalid JSON should return None."""
+
+    path = tmp_path / "checkpoint.json"
+    path.write_text("not a json", encoding="utf-8")
+
+    assert ckpt.load(path) is None
+
+
+def test_load_invalid_model_returns_none(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Model validation errors should be treated as corrupt checkpoints."""
+
+    path = tmp_path / "checkpoint.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def fake_validate(*args: object, **kwargs: object) -> PipelineState:
+        raise ValueError("oops")
+
+    monkeypatch.setattr(ckpt.PipelineState, "model_validate_json", classmethod(fake_validate))
+
+    assert ckpt.load(path) is None
+
+
+def test_inspect_no_checkpoint_reports_missing(tmp_path: Path) -> None:
+    """Inspecting a missing checkpoint returns the friendly message."""
+
+    path = tmp_path / "checkpoint.json"
+    assert ckpt.inspect(path) == "No checkpoint found."
+
+
+def test_remove_nonexistent_checkpoint_idempotent(tmp_path: Path) -> None:
+    """Removing a missing checkpoint is a no-op."""
+
+    path = tmp_path / "checkpoint.json"
+    ckpt.remove(path)

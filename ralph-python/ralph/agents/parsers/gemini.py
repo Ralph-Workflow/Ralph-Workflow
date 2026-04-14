@@ -8,13 +8,15 @@ instances.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
+JsonValue = object
+JsonDict = dict[str, JsonValue]
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Any
 
 
 class GeminiParser:
@@ -47,14 +49,14 @@ class GeminiParser:
                 continue
 
             try:
-                obj: dict[str, Any] = json.loads(stripped)
+                obj = cast("JsonDict", json.loads(stripped))
             except json.JSONDecodeError:
                 yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
                 continue
 
             yield from self._parse_object(obj, stripped)
 
-    def _parse_object(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_object(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances.
 
         Args:
@@ -85,38 +87,41 @@ class GeminiParser:
         else:
             yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
-    def _parse_text_content(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_text_content(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse text/content event."""
-        content = str(
-            obj.get("content", "")
-            or obj.get("text", "")
-            or obj.get("parts", [{}])[0].get("text", "")
-            if isinstance(obj.get("parts"), list)
-            else ""
-        )
+        content = self._extract_first_part_text(obj)
+        if not content:
+            content = str(obj.get("content", "") or obj.get("text", ""))
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
 
-    def _parse_block(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_block(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse block/content_block event."""
-        parts = obj.get("parts", [])
-        content = obj.get("content", "") or (parts[0].get("text", "") if parts else "")
+        content = self._extract_first_part_text(obj)
+        if not content:
+            content = str(obj.get("content", ""))
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
 
-    def _parse_tool_call(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_tool_call(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse tool_call/tool_use event."""
-        func_call = obj.get("function_call", {})
+        function_call_obj: JsonValue | None = obj.get("function_call")
+        func_call: JsonDict | None = (
+            cast("JsonDict", function_call_obj) if isinstance(function_call_obj, dict) else None
+        )
         tool_name = str(
             obj.get("name", "")
             or obj.get("tool", "")
-            or (func_call.get("name", "") if isinstance(func_call, dict) else "")
+            or (func_call.get("name", "") if func_call is not None else "")
         )
-        args_str = str(
-            obj.get("args", "")
-            or obj.get("arguments", "")
-            or (json.dumps(func_call.get("args", {})) if isinstance(func_call, dict) else "")
-        )
+        args_source = obj.get("args") or obj.get("arguments")
+        args_str = ""
+        if args_source:
+            args_str = str(args_source)
+        elif func_call is not None:
+            func_args = func_call.get("args")
+            if isinstance(func_args, dict):
+                args_str = json.dumps(cast("JsonDict", func_args))
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -124,31 +129,37 @@ class GeminiParser:
             metadata={"tool": tool_name, "args": args_str},
         )
 
-    def _parse_tool_result(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_tool_result(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse tool_result/function_call event."""
         result = str(obj.get("response", "") or obj.get("result", "") or obj.get("content", ""))
         yield AgentOutputLine(type="tool_result", content=result, raw=stripped, metadata=obj)
 
-    def _parse_error(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_error(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse error/error_details event."""
-        error_msg = str(
-            obj.get("error", {}).get("message", "")
-            if isinstance(obj.get("error"), dict)
-            else obj.get("error", "unknown error")
-        )
+        error_val = obj.get("error")
+        if isinstance(error_val, dict):
+            error_msg = str(cast("JsonDict", error_val).get("message", ""))
+        else:
+            error_msg = str(error_val) if error_val else "unknown error"
         yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
 
-    def _parse_message(self, obj: dict[str, Any], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_message(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse message/server_message event."""
-        parts = obj.get("parts", [])
+        parts = obj.get("parts")
         if isinstance(parts, list):
             for part in parts:
                 if isinstance(part, dict):
-                    text = str(part.get("text", ""))
+                    part_dict = cast("JsonDict", part)
+                    text = str(part_dict.get("text", ""))
                     if text:
                         yield AgentOutputLine(type="text", content=text, raw=stripped)
-                    func = part.get("function_call", {})
-                    if isinstance(func, dict) and func:
+                    function_call_obj = part_dict.get("function_call")
+                    func: JsonDict | None = (
+                        cast("JsonDict", function_call_obj)
+                        if isinstance(function_call_obj, dict)
+                        else None
+                    )
+                    if func:
                         tool_name = str(func.get("name", ""))
                         args_str = str(func.get("args", ""))
                         yield AgentOutputLine(
@@ -160,3 +171,13 @@ class GeminiParser:
         content = str(obj.get("content", ""))
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
+
+    def _extract_first_part_text(self, obj: JsonDict) -> str:
+        """Return the text for the first part entry, if present."""
+        parts_val: JsonValue | None = obj.get("parts")
+        if isinstance(parts_val, list) and parts_val:
+            first_part = parts_val[0]
+            if isinstance(first_part, dict):
+                part_dict = cast("JsonDict", first_part)
+                return str(part_dict.get("text", ""))
+        return ""

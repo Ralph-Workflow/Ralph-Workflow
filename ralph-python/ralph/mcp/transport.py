@@ -12,7 +12,7 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -31,9 +31,9 @@ class MCPMessage:
     """Represents an MCP message."""
 
     method: str
-    params: dict[str, Any] | None = None
-    msg_id: str | None = None
-    error: dict[str, Any] | None = None
+    params: dict[str, object] | None = None
+    msg_id: str | int | None = None
+    error: dict[str, object] | None = None
 
 
 class MCPTransport(ABC):
@@ -72,7 +72,7 @@ class StdioTransport(MCPTransport):
         self._command = command
         self._cwd = cwd
         self._process: subprocess.Popen[bytes] | None = None
-        self._send_queue: Queue[str | dict[str, Any]] = Queue()
+        self._send_queue: Queue[str | dict[str, object]] = Queue()
         self._recv_queue: Queue[MCPMessage] = Queue()
         self._closed = False
         self._lock = threading.Lock()
@@ -103,12 +103,28 @@ class StdioTransport(MCPTransport):
             if not stripped:
                 continue
             try:
-                msg_dict = json.loads(stripped.decode("utf-8"))
+                msg_dict = cast("dict[str, object]", json.loads(stripped.decode("utf-8")))
+                method_value = msg_dict.get("method")
+                method = method_value if isinstance(method_value, str) else ""
+                params_value = msg_dict.get("params")
+                params = (
+                    cast("dict[str, object] | None", params_value)
+                    if isinstance(params_value, dict)
+                    else None
+                )
+                error_value = msg_dict.get("error")
+                error = (
+                    cast("dict[str, object] | None", error_value)
+                    if isinstance(error_value, dict)
+                    else None
+                )
+                msg_id_value = msg_dict.get("id")
+                msg_id = msg_id_value if isinstance(msg_id_value, (str, int)) else None
                 msg = MCPMessage(
-                    method=msg_dict.get("method", ""),
-                    params=msg_dict.get("params"),
-                    msg_id=msg_dict.get("id"),
-                    error=msg_dict.get("error"),
+                    method=method,
+                    params=params,
+                    msg_id=msg_id,
+                    error=error,
                 )
                 self._recv_queue.put(msg)
             except json.JSONDecodeError as exc:
@@ -133,7 +149,7 @@ class StdioTransport(MCPTransport):
         """Send a message to the MCP server."""
         if self._closed:
             raise TransportError("Transport is closed")
-        msg_dict: dict[str, Any] = {"method": message.method}
+        msg_dict: dict[str, object] = {"method": message.method}
         if message.params is not None:
             msg_dict["params"] = message.params
         if message.msg_id is not None:

@@ -38,7 +38,7 @@ DrainName = Literal[
 # ---------------------------------------------------------------------------
 
 
-class AgentDrainConfig(BaseModel):
+class AgentDrainConfig(BaseModel):  # type: ignore[explicit-any]
     """Binding from a named drain to an agent chain.
 
     Attributes:
@@ -50,7 +50,7 @@ class AgentDrainConfig(BaseModel):
     chain: str = Field(..., description="Agent chain name to bind to this drain")
 
 
-class AgentChainConfig(BaseModel):
+class AgentChainConfig(BaseModel):  # type: ignore[explicit-any]
     """Definition of a named agent fallback chain.
 
     Attributes:
@@ -63,17 +63,17 @@ class AgentChainConfig(BaseModel):
 
     agents: list[str] = Field(..., min_length=1, description="Agents in fallback order")
     max_retries: int = Field(default=3, ge=0, description="Max retries per agent")
-    retry_delay_ms: int = Field(
-        default=1000, ge=0, description="Base retry delay in milliseconds"
-    )
+    retry_delay_ms: int = Field(default=1000, ge=0, description="Base retry delay in milliseconds")
 
 
-class AgentsPolicy(BaseModel):
+class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]
     """Top-level agents.toml policy document.
 
     Attributes:
         agent_chains: Map of chain name -> chain definition.
         agent_drains: Map of drain name -> chain binding.
+        forbid_sibling_drain_inference: If True, rejects implicit sibling-drain
+            inheritance. Every built-in drain must have an explicit chain binding.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -86,15 +86,17 @@ class AgentsPolicy(BaseModel):
         default_factory=dict,
         description="Drain-to-chain bindings",
     )
+    forbid_sibling_drain_inference: bool = Field(
+        default=False,
+        description="If True, reject implicit sibling-drain inheritance at startup",
+    )
 
     @model_validator(mode="after")
     def drains_reference_known_chains(self) -> AgentsPolicy:
         """Ensure every drain binding references a chain that exists."""
         for drain, cfg in self.agent_drains.items():
             if cfg.chain not in self.agent_chains:
-                raise ValueError(
-                    f"Drain '{drain}' references unknown chain '{cfg.chain}'"
-                )
+                raise ValueError(f"Drain '{drain}' references unknown chain '{cfg.chain}'")
         return self
 
     @model_validator(mode="after")
@@ -111,7 +113,7 @@ class AgentsPolicy(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class PhaseTransition(BaseModel):
+class PhaseTransition(BaseModel):  # type: ignore[explicit-any]
     """Transition rules from a phase to other phases.
 
     Attributes:
@@ -132,7 +134,7 @@ class PhaseTransition(BaseModel):
     )
 
 
-class PhaseDefinition(BaseModel):
+class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]
     """Definition of a single phase in the pipeline graph.
 
     Attributes:
@@ -145,9 +147,7 @@ class PhaseDefinition(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     drain: DrainName = Field(..., description="Drain binding for this phase")
-    transitions: PhaseTransition = Field(
-        ..., description="Transition routing rules"
-    )
+    transitions: PhaseTransition = Field(..., description="Transition routing rules")
     requires_commit: bool = Field(
         default=False,
         description="Whether this phase must produce a commit artifact",
@@ -158,7 +158,7 @@ class PhaseDefinition(BaseModel):
     )
 
 
-class PipelinePolicy(BaseModel):
+class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]
     """Top-level pipeline.toml policy document.
 
     Attributes:
@@ -208,9 +208,7 @@ class PipelinePolicy(BaseModel):
     def entry_phase_exists(self) -> PipelinePolicy:
         """Ensure the entry phase is defined."""
         if self.entry_phase not in self.phases:
-            raise ValueError(
-                f"entry_phase '{self.entry_phase}' is not defined in phases"
-            )
+            raise ValueError(f"entry_phase '{self.entry_phase}' is not defined in phases")
         return self
 
     @model_validator(mode="after")
@@ -234,7 +232,7 @@ class PipelinePolicy(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class ArtifactContract(BaseModel):
+class ArtifactContract(BaseModel):  # type: ignore[explicit-any]
     """Contract for an artifact type submitted by an agent at a given drain.
 
     Attributes:
@@ -261,7 +259,7 @@ class ArtifactContract(BaseModel):
     )
 
 
-class ArtifactsPolicy(BaseModel):
+class ArtifactsPolicy(BaseModel):  # type: ignore[explicit-any]
     """Top-level artifacts.toml policy document.
 
     Attributes:
@@ -295,7 +293,7 @@ class ArtifactsPolicy(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class PolicyBundle(BaseModel):
+class PolicyBundle(BaseModel):  # type: ignore[explicit-any]
     """Aggregate of all three policy documents.
 
     This is what the loader returns after validating all three TOML files together.
@@ -332,15 +330,11 @@ class PolicyBundle(BaseModel):
     def analysis_decision_vocabulary_present(self) -> PolicyBundle:
         """Ensure analysis phases have decision_vocabulary defined."""
         analysis_phases = {
-            name: defn
-            for name, defn in self.pipeline.phases.items()
-            if defn.embeds_analysis
+            name: defn for name, defn in self.pipeline.phases.items() if defn.embeds_analysis
         }
         for phase_name, phase_def in analysis_phases.items():
             matching_artifacts = [
-                art
-                for art in self.artifacts.artifacts.values()
-                if art.drain == phase_def.drain
+                art for art in self.artifacts.artifacts.values() if art.drain == phase_def.drain
             ]
             if not any(a.decision_vocabulary for a in matching_artifacts):
                 raise ValueError(

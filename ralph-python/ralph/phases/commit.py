@@ -10,7 +10,7 @@ from __future__ import annotations
 from loguru import logger
 
 from ralph.phases import PhaseContext, register_handler
-from ralph.pipeline.effects import Effect, InvokeAgentEffect
+from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PipelineEvent
 
 
@@ -54,4 +54,17 @@ def handle_review_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
         # Final commit after review approval
         return [PipelineEvent.ANALYSIS_SUCCESS]
 
+    return []
+
+
+def handle_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
+    """Compatibility wrapper for commit handling.
+
+    Dispatches to the concrete commit handlers for development/review phases.
+    """
+    if isinstance(effect, (InvokeAgentEffect, PreparePromptEffect)):
+        if effect.phase == "development_commit":
+            return handle_development_commit(effect, ctx)
+        if effect.phase == "review_commit":
+            return handle_review_commit(effect, ctx)
     return []

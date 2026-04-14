@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -14,6 +14,9 @@ from ralph.git.hooks import (
     reinstall_hooks_if_tampered,
     uninstall_hooks,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_install_hooks_creates_hook_files(tmp_git_repo: Path) -> None:

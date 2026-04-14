@@ -12,7 +12,7 @@ from rich.console import Console
 
 console = Console()
 
-INIT_TEMPLATE = '''# Ralph Configuration
+INIT_TEMPLATE = """# Ralph Configuration
 
 [general]
 # Developer iterations (default: 5)
@@ -29,7 +29,7 @@ checkpoint_enabled = true
 
 # Isolation mode (prevent context contamination)
 isolation_mode = true
-'''
+"""
 
 
 def init_command(

@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.mcp.tool_coordination import (
     CapabilityDeniedError,
@@ -73,7 +73,7 @@ class WorkspaceWithRoot(Protocol):
         ...
 
 
-def parse_exec_params(params: Mapping[str, Any]) -> ExecParams:
+def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
     command_value = params.get("command")
     if not isinstance(command_value, str):
@@ -158,10 +158,7 @@ def check_destructive_system(command: str, args: list[str]) -> str | None:
     desc = _description("destructive_system")
 
     if _is_destructive_rm(key, args, args_lower):
-        return (
-            "Command 'rm' with recursive force flag targeting root/home is blacklisted: "
-            f"{desc}"
-        )
+        return f"Command 'rm' with recursive force flag targeting root/home is blacklisted: {desc}"
 
     if key in {"mkfs", "dd"} and any(
         arg.startswith("/dev/") or "of=/dev/" in arg for arg in args_lower
@@ -178,12 +175,16 @@ def check_destructive_system(command: str, args: list[str]) -> str | None:
 
 
 def _is_destructive_rm(key: str, args: list[str], args_lower: list[str]) -> bool:
-    return key == "rm" and _contains_any(args_lower, {"-rf", "-r", "-f"}) and any(
-        target == "/"
-        or target.startswith("/.")
-        or target.startswith("~")
-        or target.startswith("/home")
-        for target in args
+    return (
+        key == "rm"
+        and _contains_any(args_lower, {"-rf", "-r", "-f"})
+        and any(
+            target == "/"
+            or target.startswith("/.")
+            or target.startswith("~")
+            or target.startswith("/home")
+            for target in args
+        )
     )
 
 
@@ -237,16 +238,17 @@ def check_package_manager(command: str, args: list[str]) -> str | None:
     desc = _description("package_manager")
 
     if key in _PACKAGE_MANAGERS and any(
-        flag in args_lower
-        for flag in ("install", "update", "upgrade", "remove", "-s", "--sync")
+        flag in args_lower for flag in ("install", "update", "upgrade", "remove", "-s", "--sync")
     ):
         return (
             f"Command '{command}' with install/update is blacklisted: {desc} "
             "operations require Ralph's approval"
         )
 
-    if key in {"pip", "pip3"} and "install" in args_lower and any(
-        flag in args_lower for flag in ("--user", "-g", "--global")
+    if (
+        key in {"pip", "pip3"}
+        and "install" in args_lower
+        and any(flag in args_lower for flag in ("--user", "-g", "--global"))
     ):
         return (
             f"Command '{key} install --user/-g' is blacklisted: {desc} operations "
@@ -259,13 +261,12 @@ def check_package_manager(command: str, args: list[str]) -> str | None:
         )
 
     if key == "cargo" and args_lower and args_lower[0] == "install":
-        return (
-            f"Command 'cargo install' is blacklisted: {desc} operations require Ralph's approval"
-        )
+        return f"Command 'cargo install' is blacklisted: {desc} operations require Ralph's approval"
 
     if key == "gem" and "install" in args_lower and "--user-install" not in args_lower:
         return (
-            f"Command 'gem install' (global) is blacklisted: {desc} operations require Ralph's approval"
+            "Command 'gem install' (global) is blacklisted: "
+            f"{desc} operations require Ralph's approval"
         )
 
     return None
@@ -287,12 +288,14 @@ def check_multi_file_operation(command: str, args: list[str]) -> str | None:
     checks = (
         (
             key == "find" and any(flag in args_lower for flag in ("-exec", "-delete")),
-            f"Command 'find' with -exec/-delete is blacklisted: {desc} must go through Ralph's workspace write",
+            "Command 'find' with -exec/-delete is blacklisted: "
+            f"{desc} must go through Ralph's workspace write",
         ),
         (
             key == "xargs"
             and any(flag in args_lower for flag in ("rm", "mv", "cp", "chmod", "chown")),
-            f"Command 'xargs' with destructive commands is blacklisted: {desc} must go through Ralph's workspace write",
+            "Command 'xargs' with destructive commands is blacklisted: "
+            f"{desc} must go through Ralph's workspace write",
         ),
         (
             key == "sed" and "-i" in args_lower,
@@ -308,15 +311,20 @@ def check_multi_file_operation(command: str, args: list[str]) -> str | None:
         ),
         (
             key in {"chmod", "chown"} and any(flag in args_lower for flag in ("-r", "-R")),
-            f"Command '{command} -R' is blacklisted: {desc} must go through Ralph's workspace write",
+            "Command '"
+            f"{command} -R' is blacklisted: {desc} must go through Ralph's workspace write",
         ),
         (
             _has_recursive_glob_copy(key, args, args_lower),
-            f"Command '{command}' with recursive glob is blacklisted: {desc} must go through Ralph's workspace write",
+            "Command '"
+            f"{command}' with recursive glob is blacklisted: "
+            f"{desc} must go through Ralph's workspace write",
         ),
         (
             _extracts_archive_in_place(key, args_lower),
-            f"Command '{command}' extracting archives in-place is blacklisted: {desc} must go through Ralph's workspace write",
+            "Command '"
+            f"{command}' extracting archives in-place is blacklisted: "
+            f"{desc} must go through Ralph's workspace write",
         ),
     )
     for applies, message in checks:
@@ -337,14 +345,9 @@ def _extracts_archive_in_place(key: str, args_lower: list[str]) -> bool:
     if key not in {"tar", "zip", "unzip"}:
         return False
     has_extract_flag = any(
-        any(flag in arg for flag in _ARCHIVE_EXTRACT_FLAGS)
-        for arg in args_lower
+        any(flag in arg for flag in _ARCHIVE_EXTRACT_FLAGS) for arg in args_lower
     )
-    has_archive = any(
-        arg.endswith(ext)
-        for arg in args_lower
-        for ext in _ARCHIVE_EXTENSIONS
-    )
+    has_archive = any(arg.endswith(ext) for arg in args_lower for ext in _ARCHIVE_EXTENSIONS)
     return has_extract_flag and has_archive
 
 
@@ -359,7 +362,7 @@ def apply_exec_policy(command: str, args: list[str]) -> None:
 def _workspace_root(workspace: object) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
-    root_value = getattr(workspace, "root", None)
+    root_value = cast("Path | str | None", getattr(workspace, "root", None))
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -420,7 +423,7 @@ def format_exec_result(
 def handle_exec_command(
     session: SessionLike,
     workspace: object,
-    params: Mapping[str, Any],
+    params: Mapping[str, object],
 ) -> ToolResult:
     """Execute a bounded subprocess in the workspace root."""
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")

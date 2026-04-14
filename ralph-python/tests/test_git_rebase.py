@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from collections.abc import Sequence
-from typing import Mapping
+from typing import TYPE_CHECKING
 
 import pytest
 from git import GitCommandError, Repo
@@ -14,15 +13,16 @@ from ralph.git.rebase.rebase import (
     ProcessExecutor,
     ProcessResult,
     RebaseConflicts,
-    RebaseFailed,
     RebaseNoOp,
     RebaseOperationError,
-    RebaseSuccess,
     abort_rebase,
     continue_rebase,
     get_conflicted_files,
     rebase_onto,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
@@ -39,7 +39,6 @@ from ralph.git.rebase.rebase_preconditions import (
 from ralph.git.rebase.rebase_state_machine import (
     InvalidTransitionError,
     RebaseEvent,
-    RebasePhase,
     RebaseStateMachine,
     RecoveryAction,
 )
@@ -88,7 +87,9 @@ def test_abort_rebase_invokes_git_when_rebase_in_progress(tmp_git_repo: Path) ->
     assert executor.calls == [("git", ("rebase", "--abort"))]
 
 
-def test_continue_rebase_requires_conflicts_resolved(monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path) -> None:
+def test_continue_rebase_requires_conflicts_resolved(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
     _create_rebase_state(tmp_git_repo)
     monkeypatch.setattr(
         "ralph.git.rebase.rebase.get_conflicted_files",
@@ -101,7 +102,9 @@ def test_continue_rebase_requires_conflicts_resolved(monkeypatch: pytest.MonkeyP
         continue_rebase(repo_root=tmp_git_repo, executor=executor)
 
 
-def test_continue_rebase_executes_cli_when_ready(monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path) -> None:
+def test_continue_rebase_executes_cli_when_ready(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
     _create_rebase_state(tmp_git_repo)
     monkeypatch.setattr(
         "ralph.git.rebase.rebase.get_conflicted_files",
@@ -119,7 +122,6 @@ def test_continue_rebase_executes_cli_when_ready(monkeypatch: pytest.MonkeyPatch
 
 def test_rebase_onto_returns_noop_when_branch_up_to_date(tmp_git_repo: Path) -> None:
     repo = Repo(tmp_git_repo)
-    current = repo.active_branch.name
     branch_name = "feature-noop"
     repo.git.checkout("-b", branch_name)
     responses = {
@@ -197,7 +199,9 @@ def test_classify_rebase_error_detects_reference_update_failure() -> None:
     result = classify_rebase_error(stderr, "")
 
     assert result.kind == RebaseKind.REFERENCE_UPDATE_FAILED
-    assert "cannot lock ref" in result.metadata["details"]
+    details = result.metadata["details"]
+    assert isinstance(details, str)
+    assert "cannot lock ref" in details
 
 
 def test_check_rebase_preconditions_requires_both_identity_fields(tmp_git_repo: Path) -> None:
@@ -211,7 +215,9 @@ def test_check_rebase_preconditions_requires_both_identity_fields(tmp_git_repo: 
         check_rebase_preconditions(tmp_git_repo)
 
 
-def test_check_rebase_preconditions_detects_sparse_checkout_without_patterns(tmp_git_repo: Path) -> None:
+def test_check_rebase_preconditions_detects_sparse_checkout_without_patterns(
+    tmp_git_repo: Path,
+) -> None:
     repo = Repo(tmp_git_repo)
     writer = repo.config_writer()
     writer.set_value("core", "sparseCheckout", "true")
@@ -300,6 +306,7 @@ def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -
         cwd=str(repo_root),
         text=True,
         capture_output=True,
+        check=False,
     )
     assert result.returncode != 0, "Expected the rebase command to conflict"
 

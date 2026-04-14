@@ -7,7 +7,10 @@ Handles artifact submission, tool exposure, and communication with MCP clients.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 from ralph.mcp.artifacts import (
     ArtifactError,
@@ -18,12 +21,6 @@ from ralph.mcp.artifacts import (
     submit_artifact,
     update_artifact,
 )
-
-ToolBridge: Any
-ToolBridgeError: Any
-ToolDefinition: Any
-ToolMetadata: Any
-
 from ralph.mcp.bridge import (
     BridgeConfig,
     BridgeError,
@@ -40,6 +37,14 @@ from ralph.mcp.transport import (
     StdioTransport,
     TransportError,
 )
+
+if TYPE_CHECKING:
+    # Type aliases that are loaded lazily via __getattr__
+    ToolBridge: type
+    ToolBridgeError: type
+    ToolDefinition: type
+    ToolMetadata: type
+
 
 __all__ = [
     "ArtifactError",
@@ -76,8 +81,9 @@ _TOOL_BRIDGE_SYMBOLS = {
 
 def __getattr__(name: str) -> object:
     if name in _TOOL_BRIDGE_SYMBOLS:
-        module = import_module(".tool_bridge", __name__)
-        value = getattr(module, name)
-        globals()[name] = value
+        module: ModuleType = import_module(".tool_bridge", __name__)
+        value = cast("object", getattr(module, name))
+        module_globals = cast("dict[str, object]", globals())
+        module_globals[name] = value
         return value
     raise AttributeError(f"module {__name__} has no attribute {name}")

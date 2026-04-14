@@ -148,30 +148,28 @@ def _legacy_handle_agent_success(
     """Legacy hardcoded agent success routing."""
     if state.phase == PHASE_DEVELOPMENT:
         if state.iteration + 1 < state.total_iterations:
-            new_state = state.model_copy(update={
-                "iteration": state.iteration + 1,
-            })
+            new_state = state.copy_with(iteration=state.iteration + 1)
             return new_state, []
 
-        new_state = state.model_copy(update={
-            "phase": PHASE_REVIEW,
-            "previous_phase": PHASE_DEVELOPMENT,
-            "reviewer_pass": 0,
-        })
+        new_state = state.copy_with(
+            phase=PHASE_REVIEW,
+            previous_phase=PHASE_DEVELOPMENT,
+            reviewer_pass=0,
+        )
         return new_state, []
 
     if state.phase == PHASE_REVIEW:
-        new_state = state.model_copy(update={
-            "phase": PHASE_COMPLETE,
-            "previous_phase": PHASE_REVIEW,
-        })
+        new_state = state.copy_with(
+            phase=PHASE_COMPLETE,
+            previous_phase=PHASE_REVIEW,
+        )
         return new_state, []
 
     if state.phase == "planning":
-        new_state = state.model_copy(update={
-            "phase": PHASE_DEVELOPMENT,
-            "previous_phase": "planning",
-        })
+        new_state = state.copy_with(
+            phase=PHASE_DEVELOPMENT,
+            previous_phase="planning",
+        )
         return new_state, []
 
     return state, []
@@ -194,15 +192,9 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
             total_retries=state.metrics.total_retries + 1,
         )
         if state.phase == PHASE_DEVELOPMENT:
-            new_state = state.model_copy(update={
-                "dev_chain": new_chain,
-                "metrics": new_metrics,
-            })
+            new_state = state.copy_with(dev_chain=new_chain, metrics=new_metrics)
         else:
-            new_state = state.model_copy(update={
-                "rev_chain": new_chain,
-                "metrics": new_metrics,
-            })
+            new_state = state.copy_with(rev_chain=new_chain, metrics=new_metrics)
         return new_state, []
 
     if chain.current_index + 1 < len(chain.agents):
@@ -218,22 +210,16 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
             total_retries=state.metrics.total_retries,
         )
         if state.phase == PHASE_DEVELOPMENT:
-            new_state = state.model_copy(update={
-                "dev_chain": new_chain,
-                "metrics": new_metrics,
-            })
+            new_state = state.copy_with(dev_chain=new_chain, metrics=new_metrics)
         else:
-            new_state = state.model_copy(update={
-                "rev_chain": new_chain,
-                "metrics": new_metrics,
-            })
+            new_state = state.copy_with(rev_chain=new_chain, metrics=new_metrics)
         return new_state, []
 
-    new_state = state.model_copy(update={
-        "phase": PHASE_FAILED,
-        "previous_phase": state.phase,
-        "last_error": f"Agent chain exhausted in {state.phase}",
-    })
+    new_state = state.copy_with(
+        phase=PHASE_FAILED,
+        previous_phase=state.phase,
+        last_error=f"Agent chain exhausted in {state.phase}",
+    )
     return new_state, [ExitFailureEffect(reason="Agent chain exhausted")]
 
 
@@ -254,15 +240,9 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
     )
 
     if state.phase == PHASE_DEVELOPMENT:
-        new_state = state.model_copy(update={
-            "dev_chain": new_chain,
-            "metrics": new_metrics,
-        })
+        new_state = state.copy_with(dev_chain=new_chain, metrics=new_metrics)
     else:
-        new_state = state.model_copy(update={
-            "rev_chain": new_chain,
-            "metrics": new_metrics,
-        })
+        new_state = state.copy_with(rev_chain=new_chain, metrics=new_metrics)
     return new_state, []
 
 
@@ -286,17 +266,17 @@ def _legacy_handle_analysis_success(
 ) -> tuple[PipelineState, list[Effect]]:
     """Legacy analysis success routing."""
     if state.phase == "development_analysis":
-        new_state = state.model_copy(update={
-            "phase": "development_commit",
-            "previous_phase": state.phase,
-        })
+        new_state = state.copy_with(
+            phase="development_commit",
+            previous_phase=state.phase,
+        )
         return new_state, []
 
     if state.phase == "review_analysis":
-        new_state = state.model_copy(update={
-            "phase": "review_commit",
-            "previous_phase": state.phase,
-        })
+        new_state = state.copy_with(
+            phase="review_commit",
+            previous_phase=state.phase,
+        )
         return new_state, []
 
     return state, []
@@ -322,17 +302,17 @@ def _legacy_handle_analysis_loopback(
 ) -> tuple[PipelineState, list[Effect]]:
     """Legacy analysis loopback routing."""
     if state.phase == "development_analysis":
-        new_state = state.model_copy(update={
-            "phase": PHASE_DEVELOPMENT,
-            "previous_phase": state.phase,
-        })
+        new_state = state.copy_with(
+            phase=PHASE_DEVELOPMENT,
+            previous_phase=state.phase,
+        )
         return new_state, []
 
     if state.phase == "review_analysis":
-        new_state = state.model_copy(update={
-            "phase": "fix",
-            "previous_phase": state.phase,
-        })
+        new_state = state.copy_with(
+            phase="fix",
+            previous_phase=state.phase,
+        )
         return new_state, []
 
     return state, []
@@ -350,11 +330,11 @@ def _handle_review_clean(
         except ValueError:
             return state, []
 
-    new_state = state.model_copy(update={
-        "phase": "review_commit",
-        "previous_phase": PHASE_REVIEW,
-        "review_issues_found": False,
-    })
+    new_state = state.copy_with(
+        phase="review_commit",
+        previous_phase=PHASE_REVIEW,
+        review_issues_found=False,
+    )
     return new_state, []
 
 
@@ -371,18 +351,18 @@ def _handle_review_issues_found(
             return state, []
 
     if state.reviewer_pass + 1 < state.total_reviewer_passes:
-        new_state = state.model_copy(update={
-            "phase": "fix",
-            "previous_phase": PHASE_REVIEW,
-            "review_issues_found": True,
-            "reviewer_pass": state.reviewer_pass + 1,
-        })
+        new_state = state.copy_with(
+            phase="fix",
+            previous_phase=PHASE_REVIEW,
+            review_issues_found=True,
+            reviewer_pass=state.reviewer_pass + 1,
+        )
     else:
-        new_state = state.model_copy(update={
-            "phase": "review_commit",
-            "previous_phase": PHASE_REVIEW,
-            "review_issues_found": True,
-        })
+        new_state = state.copy_with(
+            phase="review_commit",
+            previous_phase=PHASE_REVIEW,
+            review_issues_found=True,
+        )
     return new_state, []
 
 
@@ -398,10 +378,10 @@ def _handle_fix_success(
         except ValueError:
             return state, []
 
-    new_state = state.model_copy(update={
-        "phase": PHASE_REVIEW,
-        "previous_phase": "fix",
-    })
+    new_state = state.copy_with(
+        phase=PHASE_REVIEW,
+        previous_phase="fix",
+    )
     return new_state, []
 
 
@@ -414,27 +394,27 @@ def _handle_fix_failure(
         try:
             next_phase = resolve_next_phase(state.phase, "failure", policy)
             if next_phase == PHASE_FAILED:
-                new_state = state.model_copy(update={
-                    "phase": PHASE_FAILED,
-                    "previous_phase": state.phase,
-                })
+                new_state = state.copy_with(
+                    phase=PHASE_FAILED,
+                    previous_phase=state.phase,
+                )
                 return new_state, [ExitFailureEffect(reason="Fix phase failed")]
             return _advance_phase(state, next_phase)
         except ValueError:
             return state, []
 
     if state.reviewer_pass + 1 < state.total_reviewer_passes:
-        new_state = state.model_copy(update={
-            "phase": "fix",
-            "previous_phase": PHASE_REVIEW,
-            "reviewer_pass": state.reviewer_pass + 1,
-        })
+        new_state = state.copy_with(
+            phase="fix",
+            previous_phase=PHASE_REVIEW,
+            reviewer_pass=state.reviewer_pass + 1,
+        )
         return new_state, []
 
-    new_state = state.model_copy(update={
-        "phase": "review_commit",
-        "previous_phase": PHASE_REVIEW,
-    })
+    new_state = state.copy_with(
+        phase="review_commit",
+        previous_phase=PHASE_REVIEW,
+    )
     return new_state, []
 
 
@@ -450,53 +430,47 @@ def _handle_commit_success(
         except ValueError:
             return state, []
 
-    new_state = state.model_copy(update={
-        "phase": PHASE_COMPLETE,
-        "previous_phase": "review_commit",
-    })
+    new_state = state.copy_with(
+        phase=PHASE_COMPLETE,
+        previous_phase="review_commit",
+    )
     return new_state, []
 
 
 def _handle_commit_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
-    new_state = state.model_copy(update={
-        "phase": PHASE_FAILED,
-        "previous_phase": state.phase,
-        "last_error": "Commit failed",
-    })
+    new_state = state.copy_with(
+        phase=PHASE_FAILED,
+        previous_phase=state.phase,
+        last_error="Commit failed",
+    )
     return new_state, [ExitFailureEffect(reason="Commit failed")]
 
 
 def _handle_checkpoint_saved(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle checkpoint saved event."""
-    new_state = state.model_copy(update={
-        "checkpoint_saved_count": state.checkpoint_saved_count + 1,
-    })
+    new_state = state.copy_with(checkpoint_saved_count=state.checkpoint_saved_count + 1)
     return new_state, []
 
 
 def _handle_interrupted(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle user interruption."""
-    new_state = state.model_copy(update={
-        "interrupted_by_user": True,
-    })
+    new_state = state.copy_with(interrupted_by_user=True)
     return new_state, [SaveCheckpointEffect()]
 
 
 def _handle_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline completion."""
-    new_state = state.model_copy(update={
-        "phase": PHASE_COMPLETE,
-    })
+    new_state = state.copy_with(phase=PHASE_COMPLETE)
     return new_state, []
 
 
 def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline failure."""
-    new_state = state.model_copy(update={
-        "phase": PHASE_FAILED,
-        "last_error": state.last_error or "Unknown failure",
-    })
+    new_state = state.copy_with(
+        phase=PHASE_FAILED,
+        last_error=state.last_error or "Unknown failure",
+    )
     return new_state, [ExitFailureEffect(reason=state.last_error or "Unknown failure")]
 
 
@@ -536,15 +510,11 @@ def _advance_phase(
         updates["commit"] = CommitState()
 
     if target_phase == PHASE_DEVELOPMENT:
-        updates["development_budget_remaining"] = max(
-            0, state.development_budget_remaining - 1
-        )
+        updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
     elif target_phase == PHASE_REVIEW:
-        updates["review_budget_remaining"] = max(
-            0, state.review_budget_remaining - 1
-        )
+        updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)
 
-    new_state = state.model_copy(update=updates)
+    new_state = state.copy_with(**updates)
     return new_state, []
 
 
@@ -570,7 +540,7 @@ def _advance_to_terminal(
     if terminal == PHASE_FAILED:
         updates["last_error"] = reason
 
-    new_state = state.model_copy(update=updates)
+    new_state = state.copy_with(**updates)
     effects: list[Effect] = []
     if terminal == PHASE_FAILED:
         effects.append(ExitFailureEffect(reason=reason))

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import cast
 
 
 class RebaseKind(Enum):
@@ -36,10 +33,16 @@ class RebaseErrorKind:
     """Payload for a classified rebase failure."""
 
     kind: RebaseKind
-    metadata: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
+
+
+def _freeze_metadata(metadata: Mapping[str, object]) -> Mapping[str, object]:
+    # Copy to prevent modification of the original dictionary before freezing.
+    metadata_dict: dict[str, object] = dict(metadata)
+    return cast("Mapping[str, object]", MappingProxyType(metadata_dict))
 
 
 def classify_rebase_error(stderr: str, stdout: str) -> RebaseErrorKind:

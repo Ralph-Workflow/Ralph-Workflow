@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 from tqdm import tqdm
@@ -38,25 +38,44 @@ class InvokeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
 
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ralph.agents.parsers.base import AgentOutputLine
     from ralph.config.models import AgentConfig
 
 # Runtime imports with graceful fallback when watchdog is not available
 try:
-    from watchdog.observers import Observer as WatchdogObserverClass
-except ImportError:
-    WatchdogObserverClass = None  # type: ignore[assignment]
+    from watchdog.events import FileSystemEventHandler as _WatchdogFileSystemEventHandlerClass
+    from watchdog.observers import Observer as _WatchdogObserverClass
 
-try:
-    from watchdog.events import FileSystemEventHandler as FileSystemEventHandlerClass
     _WATCHDOG_EVENTS_AVAILABLE = True
 except ImportError:
-    FileSystemEventHandlerClass = None  # type: ignore[assignment,misc]
+    _WatchdogObserverClass = None  # type: ignore[assignment]
+    _WatchdogFileSystemEventHandlerClass = None  # type: ignore[assignment,misc]
     _WATCHDOG_EVENTS_AVAILABLE = False
+
+
+class _HasStop(Protocol):
+    """Protocol for watchdog Observer-like objects that have a stop method."""
+
+    def stop(self) -> None: ...
+    def join(self, timeout: float | None = None) -> None: ...
+
+
+@runtime_checkable
+class _HasSrcPath(Protocol):
+    """Protocol for watchdog events that expose a source path."""
+
+    src_path: str
+
+
+class _ObserverProtocol(_HasStop, Protocol):
+    """Protocol for watchdog Observer-like objects used by this module."""
+
+    def schedule(self, event_handler: object, path: str, *, recursive: bool = False) -> None: ...
+    def start(self) -> None: ...
 
 
 class AgentInvocationError(Exception):
@@ -101,25 +120,29 @@ class WorkspaceMonitor:
             workspace_path: Path to the workspace directory to monitor.
         """
         self._workspace = workspace_path
-        self._observer: WatchdogObserverClass | None = None  # type: ignore[valid-type]
+        self._observer: _HasStop | None = None
         self._event_count = 0
         self._seen_files: set[str] = set()
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes."""
-        if WatchdogObserverClass is None or not _WATCHDOG_EVENTS_AVAILABLE:
+        if (
+            _WatchdogObserverClass is None
+            or _WatchdogFileSystemEventHandlerClass is None
+            or not _WATCHDOG_EVENTS_AVAILABLE
+        ):
             return
 
-        class ChangeTracker(FileSystemEventHandlerClass):
+        class ChangeTracker(_WatchdogFileSystemEventHandlerClass):
             def __init__(self, monitor: WorkspaceMonitor) -> None:
                 self._monitor = monitor
 
             def on_any_event(self, event: object) -> None:
-                if hasattr(event, "src_path"):
-                    self._monitor.record_event(str(event.src_path))
+                if isinstance(event, _HasSrcPath):
+                    self._monitor.record_event(event.src_path)
 
         handler = ChangeTracker(self)
-        self._observer = WatchdogObserverClass()
+        self._observer = cast("_ObserverProtocol", _WatchdogObserverClass())
         self._observer.schedule(handler, str(self._workspace), recursive=True)
         self._observer.start()
         logger.debug("Started workspace monitoring: {}", self._workspace)
@@ -161,7 +184,7 @@ def invoke_agent(
     prompt_file: str,
     *,
     options: InvokeOptions | None = None,
-) -> Iterator[AgentOutputLine]:
+) -> Iterator[str]:
     """Invoke agent, yield parsed output lines as they arrive.
 
     Args:
@@ -170,7 +193,7 @@ def invoke_agent(
         options: Optional invocation options.
 
     Yields:
-        Parsed agent output lines.
+        Raw agent output lines (before parsing).
 
     Raises:
         AgentInvocationError: If agent exits with non-zero code.
@@ -211,7 +234,7 @@ def _run_subprocess_and_read_lines(
     cmd: list[str],
     config: AgentConfig,
     show_progress: bool,
-) -> Iterator[AgentOutputLine]:
+) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
     Args:
@@ -236,19 +259,19 @@ def _run_subprocess_and_read_lines(
         lines_iter = _read_lines_from_process(proc)
         if show_progress:
             agent_name = config.cmd.split()[0]
-            bars = [
+            progress_iter = cast(
+                "Iterator[str]",
                 tqdm(
                     lines_iter,
                     desc=f"[{agent_name}]",
                     unit="line",
                     leave=False,
                     file=sys.stdout,
-                )
-            ]
-            for bar in bars:
-                yield from bar
+                ),
+            )
+            yield from progress_iter
         else:
-            yield from lines_iter  # type: ignore[misc]
+            yield from lines_iter
 
         proc.wait()
 

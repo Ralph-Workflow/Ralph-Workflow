@@ -7,13 +7,14 @@ structure from the Rust implementation.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from ralph.config.enums import JsonParserType, ReviewDepth
 
 
-class AgentConfig(BaseModel):
+class AgentConfig(BaseModel):  # type: ignore[explicit-any]
     """Configuration for a single AI agent.
 
     Attributes:
@@ -39,7 +40,7 @@ class AgentConfig(BaseModel):
     display_name: str | None = None
 
 
-class CloudConfig(BaseModel):
+class CloudConfig(BaseModel):  # type: ignore[explicit-any]
     """Optional cloud reporting configuration.
 
     Attributes:
@@ -57,7 +58,7 @@ class CloudConfig(BaseModel):
     timeout_secs: int = 30
 
 
-class GeneralBehaviorFlags(BaseModel):
+class GeneralBehaviorFlags(BaseModel):  # type: ignore[explicit-any]
     """General configuration behavioral flags.
 
     Attributes:
@@ -73,7 +74,7 @@ class GeneralBehaviorFlags(BaseModel):
     strict_validation: bool = False
 
 
-class GeneralWorkflowFlags(BaseModel):
+class GeneralWorkflowFlags(BaseModel):  # type: ignore[explicit-any]
     """General configuration workflow automation flags.
 
     Attributes:
@@ -85,7 +86,7 @@ class GeneralWorkflowFlags(BaseModel):
     checkpoint_enabled: bool = True
 
 
-class GeneralExecutionFlags(BaseModel):
+class GeneralExecutionFlags(BaseModel):  # type: ignore[explicit-any]
     """General configuration execution behavior flags.
 
     Attributes:
@@ -99,7 +100,7 @@ class GeneralExecutionFlags(BaseModel):
     isolation_mode: bool = True
 
 
-class GeneralConfig(BaseModel):
+class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
     """[general] section of ralph-workflow.toml.
 
     Attributes:
@@ -155,7 +156,7 @@ class GeneralConfig(BaseModel):
     execution_history_limit: int = Field(default=1000, ge=1)
 
 
-class CcsConfig(BaseModel):
+class CcsConfig(BaseModel):  # type: ignore[explicit-any]
     """CCS (Claude Code Switch) defaults configuration.
 
     Attributes:
@@ -181,7 +182,7 @@ class CcsConfig(BaseModel):
     can_commit: bool = True
 
 
-class CcsAliasConfig(BaseModel):
+class CcsAliasConfig(BaseModel):  # type: ignore[explicit-any]
     """Per-alias CCS configuration (table form).
 
     Attributes:
@@ -211,7 +212,7 @@ class CcsAliasConfig(BaseModel):
     session_flag: str | None = None
 
 
-class UnifiedConfig(BaseModel):
+class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]
     """Top-level merged configuration (global + local + CLI overrides).
 
     This is the sole source of truth for Ralph configuration,

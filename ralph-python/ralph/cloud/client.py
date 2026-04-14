@@ -51,7 +51,7 @@ class ProgressEventType(StrEnum):
     HEARTBEAT = "heartbeat"
 
 
-class ProgressUpdate(BaseModel):
+class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]
     """Progress update payload sent to the cloud API."""
 
     model_config = ConfigDict(frozen=True)
@@ -65,10 +65,10 @@ class ProgressUpdate(BaseModel):
     total_iterations: int | None = None
     review_pass: int | None = None
     total_review_passes: int | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]
 
 
-class PipelineResult(BaseModel):
+class PipelineResult(BaseModel):  # type: ignore[explicit-any]
     """Final workflow completion payload."""
 
     model_config = ConfigDict(frozen=True)
@@ -87,17 +87,17 @@ class PipelineResult(BaseModel):
     error_message: str | None = None
 
 
-class TelemetryEvent(BaseModel):
+class TelemetryEvent(BaseModel):  # type: ignore[explicit-any]
     """Structured telemetry event payload."""
 
     model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
     name: str
-    attributes: dict[str, Any] = Field(default_factory=dict)
+    attributes: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]
 
 
-class MetricSample(BaseModel):
+class MetricSample(BaseModel):  # type: ignore[explicit-any]
     """Single numeric metric sample."""
 
     model_config = ConfigDict(frozen=True)
@@ -107,7 +107,7 @@ class MetricSample(BaseModel):
     tags: dict[str, str] = Field(default_factory=dict)
 
 
-class MetricsReport(BaseModel):
+class MetricsReport(BaseModel):  # type: ignore[explicit-any]
     """Batch of numeric metrics for a workflow run."""
 
     model_config = ConfigDict(frozen=True)
@@ -115,7 +115,7 @@ class MetricsReport(BaseModel):
     samples: list[MetricSample] = Field(default_factory=list)
 
 
-class HeartbeatPayload(BaseModel):
+class HeartbeatPayload(BaseModel):  # type: ignore[explicit-any]
     """Heartbeat payload sent to the API."""
 
     model_config = ConfigDict(frozen=True)

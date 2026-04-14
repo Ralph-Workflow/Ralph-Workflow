@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,6 +13,11 @@ from ralph.agents.parsers import (
     OpenCodeParser,
     get_parser,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+EXPECTED_TEXT_RESULTS = 2
 
 
 def _make_lines(data: list[str]) -> Iterator[str]:
@@ -29,7 +34,7 @@ def test_claude_parser_content_block_delta() -> None:
     ]
     results = list(parser.parse(_make_lines(lines)))
 
-    assert len(results) == 2
+    assert len(results) == EXPECTED_TEXT_RESULTS
     assert results[0].type == "text"
     assert results[0].content == "Hello"
     assert results[1].type == "text"

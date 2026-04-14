@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.tool_bridge import ToolBridge, ToolDispatchError, build_ralph_tool_registry
 
@@ -20,6 +20,13 @@ if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _ToDict(Protocol):
+    """Callable protocol for MCP tool results that can serialize to a dict."""
+
+    def __call__(self) -> dict[str, object]: ...
+
 
 MCP_ENDPOINT_ENV = "RALPH_MCP_ENDPOINT"
 MCP_GENERATION_ENV = "RALPH_MCP_GENERATION"
@@ -110,8 +117,8 @@ class JsonRpcRequest:
 
     jsonrpc: str
     method: str
-    params: dict[str, Any] | None = None
-    msg_id: Any | None = None
+    params: dict[str, object] | None = None
+    msg_id: object = None
 
 
 @dataclass
@@ -119,16 +126,16 @@ class JsonRpcResponse:
     """Minimal JSON-RPC response model."""
 
     jsonrpc: str
-    result: Any | None = None
-    error: dict[str, Any] | None = None
-    msg_id: Any | None = None
+    result: object = None
+    error: dict[str, object] | None = None
+    msg_id: object = None
 
 
 def _allocate_endpoint_port() -> int:
     """Pick an ephemeral port bound to loopback."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
-        _, port = cast(tuple[str, int], sock.getsockname())
+        _, port = cast("tuple[str, int]", sock.getsockname())
         return port
 
 
@@ -143,17 +150,34 @@ def next_generation_for_run(workspace_root: Path, run_id: str, drain: str) -> in
     if not lease_path.exists():
         return 1
     try:
-        payload = json.loads(lease_path.read_text())
+        payload = cast("dict[str, object]", json.loads(lease_path.read_text()))
     except (json.JSONDecodeError, OSError):
         return 1
-    if payload.get("run_id") == run_id and payload.get("drain") == drain:
-        return int(payload.get("generation", 0)) + 1
+    run_id_value = payload.get("run_id")
+    drain_value = payload.get("drain")
+    if (
+        isinstance(run_id_value, str)
+        and isinstance(drain_value, str)
+        and run_id_value == run_id
+        and drain_value == drain
+    ):
+        generation_value = payload.get("generation")
+        if isinstance(generation_value, int):
+            generation = generation_value
+        elif isinstance(generation_value, str):
+            try:
+                generation = int(generation_value)
+            except ValueError:
+                generation = 0
+        else:
+            generation = 0
+        return generation + 1
     return 1
 
 
 def _workspace_root(workspace: Workspace) -> Path:
     """Determine a filesystem root for the workspace."""
-    root = getattr(workspace, "root", None)
+    root = cast("Path | str | None", getattr(workspace, "root", None))
     if isinstance(root, Path):
         return root
     if isinstance(root, str):
@@ -169,7 +193,7 @@ class McpServer:
         self._workspace = workspace
         self._registry = registry
 
-    def handle_request(
+    def handle_request(  # noqa: PLR0911 - JSON-RPC handlers need many method-specific returns
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         """Handle a JSON-RPC request in-process (minimal behavior)."""
@@ -220,8 +244,8 @@ class McpServer:
                 error = {"code": -32603, "message": str(exc)}
                 return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
-            to_dict = getattr(raw_result, "to_dict", None)
-            payload = cast(Any, to_dict)() if callable(to_dict) else raw_result
+            to_dict = cast("object", getattr(raw_result, "to_dict", None))
+            payload = cast("_ToDict", to_dict)() if callable(to_dict) else raw_result
             return (
                 JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
                 ServerState.RUNNING,
@@ -242,7 +266,7 @@ class AgentSession:
     policy_flags: set[str] | None = None
     created_at: float = field(default_factory=time.time)
     parallel_worker: bool = False
-    edit_area_result: Any | None = None
+    edit_area_result: object = None
 
     def check_capability(self, _: str) -> object:
         """Simplified capability gate that always approves."""
@@ -340,7 +364,7 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         payload = self.rfile.read(length)
         try:
-            data = json.loads(payload or b"{}")
+            data = cast("dict[str, object]", json.loads(payload or b"{}"))
         except json.JSONDecodeError:
             self._write_json(
                 {
@@ -351,22 +375,27 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
                 400,
             )
             return
+        jsonrpc_value = data.get("jsonrpc")
+        method_value = data.get("method")
+        params_value = data.get("params")
+        params = (
+            cast("dict[str, object] | None", params_value)
+            if isinstance(params_value, dict)
+            else None
+        )
         request = JsonRpcRequest(
-            jsonrpc=data.get("jsonrpc", "2.0"),
-            method=data.get("method", ""),
-            params=data.get("params"),
+            jsonrpc=jsonrpc_value if isinstance(jsonrpc_value, str) else "2.0",
+            method=method_value if isinstance(method_value, str) else "",
+            params=params,
             msg_id=data.get("id"),
         )
-        server_bridge = getattr(self.server, "bridge", None)
+        server_bridge = cast("SessionBridge | None", getattr(self.server, "bridge", None))
         if server_bridge is None:
             self.send_error(500, "Server bridge missing")
             return
         server = server_bridge.build_in_process_server()
-        gateway_server = cast("Any", self.server)
-        response, next_state = server.handle_request(
-            request,
-            getattr(gateway_server, "state", ServerState.UNINITIALIZED),
-        )
+        gateway_server = cast("_HttpGatewayServer", self.server)
+        response, next_state = server.handle_request(request, gateway_server.state)
         gateway_server.state = next_state
         if response is not None:
             body = {
@@ -382,7 +411,7 @@ class _HttpGatewayHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         del format, args
 
-    def _write_json(self, payload: dict[str, Any], status: int) -> None:
+    def _write_json(self, payload: dict[str, object], status: int) -> None:
         encoded = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -507,15 +536,14 @@ class SessionBridge:
             return
         path = endpoint_lease_path(_workspace_root(self.workspace))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(lease)))
+        lease_dict = cast("dict[str, object]", asdict(lease))
+        path.write_text(json.dumps(lease_dict))
 
     def _start_http_gateway(self) -> None:
         server = _HttpGatewayServer(("127.0.0.1", 0), _HttpGatewayHandler)
         server.bridge = self
         server.state = ServerState.UNINITIALIZED
-        thread = threading.Thread(
-            target=server.serve_forever, kwargs={"poll_interval": 0.5}, daemon=True
-        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         self._http_server = server
         self._http_thread = thread

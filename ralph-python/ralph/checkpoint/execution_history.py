@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TypedDict
 
 
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+class StepOutcomeDict(TypedDict, total=False):
+    kind: str
+    output: str | None
+    files_modified: list[str]
+    exit_code: int | None
+    recoverable: bool | None
+    error: str | None
+    completed: str | None
+    remaining: str | None
+    reason: str | None
 
 
 @dataclass(frozen=True)
@@ -54,9 +67,29 @@ class StepOutcome:
         """Create a skipped outcome."""
         return cls(kind="skipped", reason=reason)
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> StepOutcomeDict:
         """Return a JSON-safe dictionary representation."""
-        return asdict(self)
+        return {
+            "kind": self.kind,
+            "output": self.output,
+            "files_modified": list(self.files_modified),
+            "exit_code": self.exit_code,
+            "recoverable": self.recoverable,
+            "error": self.error,
+            "completed": self.completed,
+            "remaining": self.remaining,
+            "reason": self.reason,
+        }
+
+
+class ExecutionStepDict(TypedDict, total=False):
+    phase: str
+    iteration: int
+    step_type: str
+    timestamp: str
+    outcome: StepOutcomeDict
+    agent: str | None
+    duration_secs: int | None
 
 
 @dataclass(frozen=True)
@@ -87,7 +120,7 @@ class ExecutionStep:
             outcome=outcome,
         )
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> ExecutionStepDict:
         """Return a JSON-safe dictionary representation."""
         return {
             "phase": self.phase,
@@ -98,6 +131,11 @@ class ExecutionStep:
             "agent": self.agent,
             "duration_secs": self.duration_secs,
         }
+
+
+class ExecutionHistoryDict(TypedDict):
+    steps: list[ExecutionStepDict]
+    file_snapshots: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -136,7 +174,7 @@ class ExecutionHistory:
             file_snapshots=dict(self.file_snapshots),
         )
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> ExecutionHistoryDict:
         """Return a JSON-safe dictionary representation."""
         return {
             "steps": [step.to_dict() for step in self.steps],

@@ -7,8 +7,9 @@ name = "ralph-workflow"
 dynamic = ["version"]
 description = "Python CLI for unattended multi-agent AI development workflows"
 readme = "README.md"
-requires-python = ">=3.14"
-license = {text = "MIT"}
+requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
+license-files = ["LICENSE"]
 authors = [
     {name = "Ralph Workflow maintainers"}
 ]
@@ -16,7 +17,7 @@ keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",

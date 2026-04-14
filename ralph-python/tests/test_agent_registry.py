@@ -35,7 +35,9 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
 
 def test_agent_registry_validate_reports_missing_required_fields() -> None:
     registry = AgentRegistry()
-    registry.register("missing-cmd", AgentConfig.model_construct(cmd="", output_flag="--json-stream"))
+    registry.register(
+        "missing-cmd", AgentConfig.model_construct(cmd="", output_flag="--json-stream")
+    )
     registry.register("missing-output", AgentConfig.model_construct(cmd="claude", output_flag=""))
 
     assert registry.validate() == [

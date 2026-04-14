@@ -7,7 +7,6 @@ environment and configuration.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -20,7 +19,7 @@ console = Console()
 
 def diagnose_command(
     config_path: Path | None = None,
-    cli_overrides: dict[str, Any] | None = None,
+    cli_overrides: dict[str, object] | None = None,
 ) -> None:
     """Run diagnostics on the Ralph environment.
 
@@ -73,7 +72,7 @@ def _check_git_repo() -> None:
 
 def _check_configuration(
     config_path: Path | None,
-    cli_overrides: dict[str, Any] | None,
+    cli_overrides: dict[str, object] | None,
 ) -> None:
     """Check configuration validity."""
     table = Table(title="Configuration", show_header=False)
@@ -93,7 +92,7 @@ def _check_configuration(
     console.print(table)
 
 
-def _check_agents(cli_overrides: dict[str, Any] | None) -> None:
+def _check_agents(cli_overrides: dict[str, object] | None) -> None:
     """Check agent availability."""
     table = Table(title="Agents", show_header=False)
     table.add_column("Agent", style="cyan")

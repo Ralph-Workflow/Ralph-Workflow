@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ralph.mcp.capability_mapping import Capability, SessionDrain
-
 from ralph.prompts import template_variables
 
 
@@ -35,9 +34,7 @@ def test_session_capabilities_helpers_cover_session_and_drain_paths() -> None:
     )
 
     session_caps = template_variables.SessionCapabilities.from_session(callable_session)
-    drain_caps, drain_flags = template_variables.SessionCapabilities.from_drain(
-        SessionDrain.COMMIT
-    )
+    drain_caps, drain_flags = template_variables.SessionCapabilities.from_drain(SessionDrain.COMMIT)
 
     assert session_caps.capabilities.contains(Capability.WORKSPACE_READ)
     assert session_caps.capabilities.contains(Capability.PROCESS_EXEC_BOUNDED)
@@ -58,9 +55,7 @@ def test_capability_template_variables_helpers_cover_empty_paths() -> None:
     assert vars_map["HAS_MCP_WRITE"] == ""
     assert vars_map["HAS_MCP_EXEC"] == ""
     assert vars_map["HAS_MCP_GIT"] == ""
-    assert vars_map["CAPABILITY_SUMMARY"] == (
-        "Capabilities:\n  (none)\n\nPolicy Flags:\n  (none)"
-    )
+    assert vars_map["CAPABILITY_SUMMARY"] == ("Capabilities:\n  (none)\n\nPolicy Flags:\n  (none)")
     assert template_variables.bool_to_string(True) == "true"
     assert template_variables.bool_to_string(False) == ""
     assert template_variables.tool_name_var([], "EXEC_TOOL_NAME", "exec") == (

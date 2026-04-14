@@ -10,7 +10,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 
 from ralph.mcp.capability_mapping import AccessMode, SessionDrain, drain_to_access_mode
@@ -20,7 +20,7 @@ from ralph.workspace import Workspace
 if TYPE_CHECKING:
     import io
 
-JsonRpcResponse = dict[str, Any]
+JsonRpcResponse = dict[str, object]
 
 
 def initialize_request() -> JsonRpcResponse:
@@ -220,8 +220,7 @@ def run_preflight_loop(
         remaining = _remaining_budget(start, timeout)
         if remaining <= timedelta(0):
             raise PermanentPreflightError(
-                last_error
-                or f"MCP preflight timed out for endpoint {endpoint} after {timeout}"
+                last_error or f"MCP preflight timed out for endpoint {endpoint} after {timeout}"
             )
 
         try:
@@ -325,7 +324,7 @@ def send_stdio_request(
 
 
 def write_jsonrpc_request(sock: socket.socket, value: JsonRpcResponse) -> None:
-    body = json.dumps(value, separators=(',', ':')).encode("utf-8")
+    body = json.dumps(value, separators=(",", ":")).encode("utf-8")
     header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
     sock.sendall(header + body)
 
@@ -336,14 +335,12 @@ def read_jsonrpc_response(reader: io.BufferedReader) -> JsonRpcResponse:
     if len(body) != length:
         raise PermanentPreflightError("failed to read MCP response body")
     try:
-        payload = json.loads(body)
+        payload = cast("object", json.loads(body))
     except json.JSONDecodeError as exc:
-        raise PermanentPreflightError(
-            f"failed to parse MCP response JSON: {exc}"
-        ) from exc
+        raise PermanentPreflightError(f"failed to parse MCP response JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise PermanentPreflightError("failed to parse MCP response JSON: expected object")
-    return payload
+    return cast("JsonRpcResponse", payload)
 
 
 def _read_content_length(reader: io.BufferedReader) -> int:
@@ -365,7 +362,7 @@ def _read_content_length(reader: io.BufferedReader) -> int:
 
 
 def post_http_jsonrpc(target: HttpEndpointTarget, payload: JsonRpcResponse) -> JsonRpcResponse:
-    body = json.dumps(payload, separators=(',', ':')).encode("utf-8")
+    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     request = (
         f"POST {target.path} HTTP/1.1\r\n"
         f"Host: {target.host_header}\r\n"
@@ -390,7 +387,7 @@ def post_http_jsonrpc(target: HttpEndpointTarget, payload: JsonRpcResponse) -> J
     header_end = bytes(data).find(b"\r\n\r\n")
     if header_end == -1:
         raise PermanentPreflightError("invalid HTTP MCP response: missing header terminator")
-    header = bytes(data[: header_end]).decode("ascii", errors="ignore")
+    header = bytes(data[:header_end]).decode("ascii", errors="ignore")
     body_bytes = bytes(data[header_end + 4 :])
     status_line = header.splitlines()[0] if header else ""
     if " 200 " not in status_line:
@@ -399,14 +396,12 @@ def post_http_jsonrpc(target: HttpEndpointTarget, payload: JsonRpcResponse) -> J
             f"HTTP MCP request failed with status '{status_line}': {response_body}"
         )
     try:
-        payload = json.loads(body_bytes)
+        response_payload = cast("object", json.loads(body_bytes))
     except json.JSONDecodeError as exc:
-        raise PermanentPreflightError(
-            f"failed to parse HTTP MCP response JSON: {exc}"
-        ) from exc
-    if not isinstance(payload, dict):
+        raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}") from exc
+    if not isinstance(response_payload, dict):
         raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
-    return payload
+    return cast("JsonRpcResponse", response_payload)
 
 
 def ensure_http_initialize(target: HttpEndpointTarget) -> None:
@@ -426,7 +421,7 @@ def read_http_tools_list_response(sock: socket.socket, target: HttpEndpointTarge
     return extract_preflight_tool_names(response.get("result"), "HTTP MCP")
 
 
-def ensure_no_preflight_error(label: str, error: Mapping[str, Any] | None) -> None:
+def ensure_no_preflight_error(label: str, error: object) -> None:
     if error is not None:
         raise PermanentPreflightError(f"{label} failed: {error}")
 

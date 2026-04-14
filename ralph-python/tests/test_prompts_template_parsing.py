@@ -15,8 +15,8 @@ parse_template = template_parsing.parse_template
 def test_parse_template_returns_expected_ast() -> None:
     template = (
         'Hello {{NAME|default="Guest"}} '
-        '{% if FLAG %}Flagged{% else %}Clear{% endif %} '
-        '{% for item in items %}{{item}}{% endfor %}'
+        "{% if FLAG %}Flagged{% else %}Clear{% endif %} "
+        "{% for item in items %}{{item}}{% endfor %}"
     )
     expected = [
         TextNode("Hello "),

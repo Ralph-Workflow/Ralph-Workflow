@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import DrainName
 
 
-class AgentChainState(BaseModel):
+class AgentChainState(BaseModel):  # type: ignore[explicit-any]
     """State for agent fallback chain management.
 
     Attributes:
@@ -43,7 +43,7 @@ class AgentChainState(BaseModel):
     retries: int = 0
 
 
-class RebaseState(BaseModel):
+class RebaseState(BaseModel):  # type: ignore[explicit-any]
     """State for git rebase operations.
 
     Attributes:
@@ -59,7 +59,7 @@ class RebaseState(BaseModel):
     completed: bool = False
 
 
-class CommitState(BaseModel):
+class CommitState(BaseModel):  # type: ignore[explicit-any]
     """State for commit operations.
 
     Attributes:
@@ -75,7 +75,7 @@ class CommitState(BaseModel):
     agent_invoked: bool = False
 
 
-class RunMetrics(BaseModel):
+class RunMetrics(BaseModel):  # type: ignore[explicit-any]
     """Run-level execution metrics.
 
     Attributes:
@@ -93,7 +93,7 @@ class RunMetrics(BaseModel):
     total_retries: int = 0
 
 
-class ContinuationState(BaseModel):
+class ContinuationState(BaseModel):  # type: ignore[explicit-any]
     """Continuation state for development iterations.
 
     Attributes:
@@ -109,7 +109,7 @@ class ContinuationState(BaseModel):
     context_write_pending: bool = False
 
 
-class PipelineState(BaseModel):
+class PipelineState(BaseModel):  # type: ignore[explicit-any]
     """Immutable snapshot of pipeline execution state.
 
     This is the checkpoint payload - the single source of truth for pipeline progress.
@@ -227,8 +227,8 @@ class PipelineState(BaseModel):
         )
 
         if self.phase == PHASE_DEVELOPMENT:
-            return self.model_copy(update={"dev_chain": new_chain})
-        return self.model_copy(update={"rev_chain": new_chain})
+            return self.copy_with(dev_chain=new_chain)
+        return self.copy_with(rev_chain=new_chain)
 
     def with_drain(self, drain: DrainName | None) -> PipelineState:
         """Return a copy with the current_drain set.
@@ -239,4 +239,8 @@ class PipelineState(BaseModel):
         Returns:
             New PipelineState with current_drain updated.
         """
-        return self.model_copy(update={"current_drain": drain})
+        return self.copy_with(current_drain=drain)
+
+    def copy_with(self, **updates: object) -> PipelineState:
+        """Return a copy with updates applied in a typed-safe manner."""
+        return self.model_copy(update=updates)

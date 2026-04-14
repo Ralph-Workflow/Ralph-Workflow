@@ -16,13 +16,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from pydantic import BaseModel
 
+from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event
 
 if TYPE_CHECKING:
     from ralph.agents.chain import ChainManager
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.effects import Effect
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
-class PhaseContext(BaseModel):
+class PhaseContext(BaseModel):  # type: ignore[explicit-any]
     """Context passed to every phase handler.
 
     Attributes:
@@ -139,7 +139,10 @@ def handle_phase(
     """
     # The effect may be a PreparePromptEffect or InvokeAgentEffect
     # Extract the phase name from the effect
-    phase_name = effect.phase if hasattr(effect, "phase") else "unknown"
+    if isinstance(effect, (InvokeAgentEffect, PreparePromptEffect)):
+        phase_name = effect.phase
+    else:
+        phase_name = "unknown"
 
     handler = get_handler(phase_name)
     logger.debug("Dispatching to handler for phase: {}", phase_name)

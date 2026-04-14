@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -16,6 +16,10 @@ from ralph.policy.models import (
     PipelinePolicy,
 )
 from ralph.workspace.memory import MemoryWorkspace
+from tests.integration.test_pipeline_happy_path import MockAgentInvoker
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -106,9 +110,7 @@ def minimal_agents_policy() -> AgentsPolicy:
     return AgentsPolicy(
         agent_chains={
             "planning": AgentChainConfig(agents=["claude"], max_retries=2),
-            "development": AgentChainConfig(
-                agents=["claude", "opencode"], max_retries=3
-            ),
+            "development": AgentChainConfig(agents=["claude", "opencode"], max_retries=3),
             "development_analysis": AgentChainConfig(agents=["claude"], max_retries=2),
             "development_commit": AgentChainConfig(agents=["claude"], max_retries=2),
             "review": AgentChainConfig(agents=["claude"], max_retries=3),
@@ -180,7 +182,10 @@ def minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "complete": PhaseDefinition(
                 drain="development",
-                transitions=PhaseTransition(on_success="complete"),
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="complete",
+                ),
             ),
         },
         entry_phase="planning",
@@ -212,7 +217,4 @@ def mock_agent_invoker(
     Returns:
         MockAgentInvoker instance.
     """
-    from tests.integration.test_pipeline_happy_path import MockAgentInvoker
-
     return MockAgentInvoker(memory_workspace)
-

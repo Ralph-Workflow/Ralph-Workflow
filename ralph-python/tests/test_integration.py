@@ -37,11 +37,9 @@ def _make_initial_state() -> PipelineState:
     )
 
 
-def _apply(
-    state: PipelineState, event: str
-) -> PipelineState:
+def _apply(state: PipelineState, event: str) -> PipelineState:
     bundle = _load_default_bundle()
-    next_state, _ = reduce(state, cast(PipelineEvent, event), bundle.pipeline)
+    next_state, _ = reduce(state, cast("PipelineEvent", event), bundle.pipeline)
     return next_state
 
 
@@ -50,12 +48,16 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
     state = _make_initial_state()
     visited_phases = [state.phase]
 
-    assert isinstance(determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect)
+    assert isinstance(
+        determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect
+    )
 
     state = _apply(state, PipelineEvent.AGENT_SUCCESS)
     visited_phases.append(state.phase)
     assert state.phase == "development"
-    assert isinstance(determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect)
+    assert isinstance(
+        determine_next_effect(state, bundle.pipeline, bundle.agents), PreparePromptEffect
+    )
 
     state = _apply(state, PipelineEvent.AGENT_SUCCESS)
     visited_phases.append(state.phase)

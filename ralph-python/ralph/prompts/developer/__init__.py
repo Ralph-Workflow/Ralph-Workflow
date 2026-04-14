@@ -35,12 +35,8 @@ def prompt_developer_iteration_xml_with_context(
     base_vars: dict[str, str] = {
         "PROMPT": prompt_content or "No requirements provided",
         "PLAN": plan_content or "(no plan available)",
-        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
-            ".agent/tmp/development_result.xml"
-        ),
-        "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(
-            ".agent/tmp/development_result.xsd"
-        ),
+        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(".agent/tmp/development_result.xml"),
+        "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(".agent/tmp/development_result.xsd"),
     }
 
     capability_vars = capability_template_variables(

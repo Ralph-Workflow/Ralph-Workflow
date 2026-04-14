@@ -3,8 +3,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import pytest
-
 from ralph.git.rebase.rebase_checkpoint import (
     RebaseCheckpoint,
     RebasePhase,
