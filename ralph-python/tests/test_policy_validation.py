@@ -25,6 +25,7 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
+    ParallelExecutionPolicy,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
@@ -629,9 +630,13 @@ class TestCheckpointPolicyMismatchError:
 class TestValidateWorkUnitsAgainstPolicy:
     """Tests for planning work_units policy validation."""
 
-    def _minimal_pipeline(self, **kwargs: object) -> PipelinePolicy:
-        return PipelinePolicy(
-            phases={
+    def _minimal_pipeline(
+        self,
+        *,
+        parallel_execution: ParallelExecutionPolicy | None = None,
+    ) -> PipelinePolicy:
+        base_kwargs = {
+            "phases": {
                 "planning": PhaseDefinition(
                     drain="planning",
                     transitions=PhaseTransition(on_success="complete"),
@@ -641,9 +646,14 @@ class TestValidateWorkUnitsAgainstPolicy:
                     transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
                 ),
             },
-            entry_phase="planning",
-            terminal_phase="complete",
-            **kwargs,
+            "entry_phase": "planning",
+            "terminal_phase": "complete",
+        }
+        if parallel_execution is None:
+            return PipelinePolicy(**base_kwargs)
+        return PipelinePolicy(
+            **base_kwargs,
+            parallel_execution=parallel_execution,
         )
 
     def test_multi_work_units_requires_parallel_execution_policy(self) -> None:
@@ -662,7 +672,9 @@ class TestValidateWorkUnitsAgainstPolicy:
             validate_work_units_against_policy(work_units, pipeline)
 
     def test_multi_work_units_respects_max_parallel_workers(self) -> None:
-        pipeline = self._minimal_pipeline(parallel_execution={"max_parallel_workers": 1})
+        pipeline = self._minimal_pipeline(
+            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=1)
+        )
         work_units = parse_work_units_from_artifact(
             {
                 "work_units": [

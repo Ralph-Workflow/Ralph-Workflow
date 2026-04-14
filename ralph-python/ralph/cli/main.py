@@ -88,7 +88,6 @@ class CLIOptions:
         with_rebase: Rebase before commit.
         rebase_only: Only rebase, don't run pipeline.
         pause_on_exit: Pause before exit.
-        mcp_stdio: Run as MCP stdio server.
         generate_commit_msg: Generate commit message.
         apply_commit: Apply generated commit.
         generate_commit: Generate and apply commit.
@@ -131,7 +130,6 @@ class CLIOptions:
     with_rebase: bool = False
     rebase_only: bool = False
     pause_on_exit: PauseOnExit = PauseOnExit.AUTO
-    mcp_stdio: bool = False
     generate_commit_msg: bool = False
     apply_commit: bool = False
     generate_commit: bool = False
@@ -355,10 +353,6 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
         PauseOnExit,
         typer.Option("--pause-on-exit", help="Pause before exit"),
     ] = PauseOnExit.AUTO,
-    mcp_stdio: Annotated[
-        bool,
-        typer.Option("--mcp-stdio", help="Run as MCP stdio server"),
-    ] = False,
     generate_commit_msg: Annotated[
         bool,
         typer.Option("--generate-commit-msg", help="Generate commit message"),

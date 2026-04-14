@@ -76,6 +76,9 @@ class SessionLike(Protocol):
 class WorkspaceLike(Protocol):
     """Placeholder workspace protocol for handler parity."""
 
+    def absolute_path(self, path: str) -> str:
+        """Return an absolute workspace path for the provided relative path."""
+
 
 def _timestamp() -> int:
     """Return the current UNIX timestamp in seconds."""

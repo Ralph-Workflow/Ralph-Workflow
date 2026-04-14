@@ -1,3 +1,4 @@
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -124,8 +125,9 @@ def test_handle_planning_invokes_agent_successfully() -> None:
 
 def test_handle_planning_invalid_work_units_returns_failed() -> None:
     ctx = _stub_context()
-    ctx.workspace.exists.return_value = True
-    ctx.workspace.read.return_value = (
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.return_value = True
+    workspace.read.return_value = (
         '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
         '"dependencies":["missing"]}]}'
     )

@@ -123,7 +123,7 @@ class CodexParser:
         if isinstance(error_val, dict):
             error_msg = str(cast("dict[str, object]", error_val).get("message", ""))
         else:
-            error_msg = str(error_val) if error_val else "unknown error"
+            error_msg = str(obj.get("message") or error_val or "unknown error")
         yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
 
     def _parse_turn_failed(

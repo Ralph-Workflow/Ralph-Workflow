@@ -22,8 +22,9 @@ from ralph.config.enums import (
     PHASE_FAILED,
     PHASE_PLANNING,
 )
-from ralph.mcp.session_bridge import AgentSession, SessionBridge
-from ralph.mcp.startup import SessionBridgeLike, start_mcp_server_for_session
+from ralph.mcp.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_from_path
+from ralph.mcp.server.lifecycle import SessionBridgeLike, shutdown_mcp_server, start_mcp_server
+from ralph.mcp.session_bridge import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -216,7 +217,7 @@ def _planning_agent(config: UnifiedConfig) -> str | None:
 
 
 def _commit_effect() -> CommitEffect:
-    return CommitEffect(message_file=".agent/tmp/commit-message.txt")
+    return CommitEffect(message_file=COMMIT_MESSAGE_ARTIFACT)
 
 
 def _agent_or_advance(state: PipelineState, fallback_phase: str) -> Effect:
@@ -290,7 +291,7 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
             AgentRegistry,
         )
     if isinstance(effect, CommitEffect):
-        return _execute_commit_effect(create_commit, stage_all)
+        return _execute_commit_effect(effect, create_commit, stage_all)
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 
@@ -324,19 +325,19 @@ def _execute_agent_effect(
         )
         workspace = FsWorkspace(Path())
 
-        def _bridge_factory(session_like: object, workspace_like: object) -> SessionBridgeLike:
-            return SessionBridge(
-                cast("AgentSession", session_like),
-                cast("FsWorkspace", workspace_like),
-            )
-
-        bridge = start_mcp_server_for_session(
+        bridge = start_mcp_server(
             session,
             workspace,
-            bridge_factory=_bridge_factory,
         )
+        assert bridge is not None
 
-        options = InvokeOptions(verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL)
+        options = InvokeOptions(
+            verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+            extra_env={
+                MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
+                MCP_RUN_ID_ENV: session.run_id,
+            },
+        )
         output_lines = invoke_agent(agent_config, effect.prompt_file, options=options)
         if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:
             _stream_parsed_agent_activity(
@@ -354,24 +355,33 @@ def _execute_agent_effect(
     finally:
         if bridge is not None:
             try:
-                bridge.shutdown()
+                shutdown_mcp_server(bridge)
             except Exception:
                 logger.exception("Failed to shut down MCP bridge")
     return PipelineEvent.AGENT_SUCCESS
 
 
 def _execute_commit_effect(
+    effect: CommitEffect,
     create_commit: Callable[[str, str], str],
     stage_all: Callable[[str], None],
 ) -> PipelineEvent:
     try:
+        message = _read_commit_effect_message(effect)
+        if not message:
+            logger.error("Commit message file is empty: {}", effect.message_file)
+            return PipelineEvent.COMMIT_FAILURE
         stage_all(".")
-        sha = create_commit(".", "Pipeline-generated commit")
+        sha = create_commit(".", message)
         logger.info("Created commit: {}", sha[:8])
     except Exception as exc:
         logger.error("Commit failed: {}", exc)
         return PipelineEvent.COMMIT_FAILURE
     return PipelineEvent.COMMIT_SUCCESS
+
+
+def _read_commit_effect_message(effect: CommitEffect) -> str:
+    return read_commit_message_from_path(Path(effect.message_file)) or ""
 
 
 def _stream_parsed_agent_activity(

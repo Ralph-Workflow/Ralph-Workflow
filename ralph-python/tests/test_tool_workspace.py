@@ -38,6 +38,7 @@ class MockSession:
     def check_capability(self, capability: str) -> object:
         return capability == self.allowed_capability
 
+
 # =============================================================================
 # required_string_param tests
 # =============================================================================

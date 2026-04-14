@@ -68,7 +68,7 @@ def test_session_bridge_start_and_shutdown(tmp_path: Path) -> None:
 
     lease = bridge.endpoint_lease()
     assert lease is not None
-    assert lease.endpoint == bridge.endpoint_uri()
+    assert lease.endpoint == bridge.agent_endpoint_uri()
     assert lease.run_id == session.run_id
     assert lease.drain == session.drain
 
@@ -111,8 +111,30 @@ def test_handle_request_in_process_returns_state(tmp_path: Path) -> None:
         msg_id=1,
     )
     initial_state = cast("session_bridge.ServerState", session_bridge.ServerState.UNINITIALIZED)
-    response, state = bridge.handle_request_in_process(
-        request, initial_state
-    )
+    response, state = bridge.handle_request_in_process(request, initial_state)
     assert isinstance(state, session_bridge.ServerState)
     assert response is None or isinstance(response, session_bridge.JsonRpcResponse)
+
+
+def test_mcp_server_registers_tools_with_fastmcp(tmp_path: Path, monkeypatch) -> None:
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session = _dummy_session()
+
+    registered_tools: list[str] = []
+
+    class FakeFastMCP:
+        def __init__(self, _name: str) -> None:
+            return None
+
+        def add_tool(self, fn, name: str | None = None, **_kwargs) -> None:
+            del fn
+            if name is not None:
+                registered_tools.append(name)
+
+    monkeypatch.setattr(session_bridge, "FastMCP", FakeFastMCP)
+
+    registry = session_bridge.build_ralph_tool_registry(session, workspace)
+    session_bridge.McpServer(session, workspace, registry)
+
+    assert "report_progress" in registered_tools
+    assert "coordinate" in registered_tools

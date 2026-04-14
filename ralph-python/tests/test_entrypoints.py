@@ -39,6 +39,19 @@ def test_ralph_dunder_main_entrypoint_calls_app(monkeypatch: pytest.MonkeyPatch)
     assert called == ["called"]
 
 
+def test_ralph_mcp_server_entrypoint_calls_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    called = []
+
+    def fake_main() -> None:
+        called.append("called")
+
+    monkeypatch.setattr("ralph.mcp.server.runtime.main", fake_main)
+
+    _run_entrypoint("ralph.mcp.server.__main__")
+
+    assert called == ["called"]
+
+
 def test_mcp_tool_bridge_lazy_exports_and_error() -> None:
     module = importlib.reload(importlib.import_module("ralph.mcp"))
 

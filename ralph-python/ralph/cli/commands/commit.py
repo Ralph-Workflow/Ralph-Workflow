@@ -6,7 +6,9 @@ and applying commit messages.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import uuid
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 from git import Repo
@@ -14,7 +16,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ralph.agents.invoke import AgentInvocationError, InvokeOptions, invoke_agent
-from ralph.agents.parsers import get_parser
+from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.git.operations import (
@@ -24,10 +26,18 @@ from ralph.git.operations import (
     has_staged_changes,
     stage_all,
 )
-from ralph.prompts.commit import prompt_commit_message
+from ralph.mcp.commit_message import (
+    delete_commit_message_artifacts,
+    read_commit_message_artifact,
+)
+from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
+from ralph.mcp.session_bridge import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
+from ralph.prompts.commit import prompt_commit_message, prompt_commit_message_for_opencode
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -38,8 +48,9 @@ console = Console()
 _MAX_DISPLAY_FILES = 5
 _DEFAULT_COMMIT_AGENT = "claude"
 _VERBOSE_THRESHOLD = 2
-_COMMIT_MESSAGE_FILE = ".agent/tmp/commit-message.txt"
 _SKIP_PREFIX = "skip:"
+_MAX_METADATA_PARTS = 5
+_OPENCODE_SUBMIT_ARTIFACT_TOOL_NAME = "ralph_ralph_submit_artifact"
 
 
 @dataclass(frozen=True)
@@ -61,6 +72,13 @@ class CommitPlumbingOptions:
     show_commit_msg: bool = False
     config_path: Path | None = None
     cli_overrides: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
+class CommitAgentResult:
+    message: str = ""
+    skipped: bool = False
+    failure_details: list[str] = field(default_factory=list)
 
 
 def commit_plumbing(
@@ -129,7 +147,7 @@ def _handle_agent_commit_generation(
         console.print("[red]No commit-capable agents available in commit/review drains[/red]")
         return
 
-    message, skipped = _generate_commit_message_with_chain(
+    result = _generate_commit_message_with_chain(
         diff=diff,
         repo_root=repo_root,
         registry=registry,
@@ -137,26 +155,30 @@ def _handle_agent_commit_generation(
         verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
     )
 
-    if skipped:
-        _delete_commit_message_file(repo_root)
+    if result.skipped:
+        delete_commit_message_artifacts(repo_root)
         console.print("[yellow]Skipping commit: agent requested skip[/yellow]")
         return
 
-    if not message:
+    if not result.message:
         console.print("[red]Failed to generate commit message from commit drain agents[/red]")
+        _print_commit_failure_details(result.failure_details)
         return
 
-    _write_commit_message_file(repo_root, message)
+    persisted_message = read_commit_message_artifact(repo_root)
+    if persisted_message is None:
+        console.print("[red]Failed to persist generated commit message[/red]")
+        return
 
     console.print("\n[green]Generated commit message:[/green]")
-    console.print(Panel(message, border_style="green"))
+    console.print(Panel(persisted_message, border_style="green"))
 
     if apply:
         stage_all(repo_root)
         try:
             sha = create_commit(
                 repo_root,
-                message,
+                persisted_message,
                 author_name=git_user_name,
                 author_email=git_user_email,
             )
@@ -207,6 +229,33 @@ def _working_tree_diff(repo_root: Path) -> str:
     return f"{diff}{prefix}# Untracked files\n{untracked_block}\n"
 
 
+def _commit_submit_artifact_tool_names(
+    registry: AgentRegistry,
+    agents: list[str],
+) -> tuple[str, ...]:
+    if any(_is_opencode_agent(registry.get(agent_name)) for agent_name in agents):
+        return (_OPENCODE_SUBMIT_ARTIFACT_TOOL_NAME,)
+    return ("ralph_submit_artifact",)
+
+
+def _is_opencode_agent(agent: AgentConfig | None) -> bool:
+    return agent is not None and agent.cmd.split()[0] == "opencode"
+
+
+def _commit_prompt_for_agent(
+    agent: AgentConfig,
+    diff: str,
+    *,
+    template_registry: TemplateRegistry,
+) -> str:
+    if _is_opencode_agent(agent):
+        return prompt_commit_message_for_opencode(
+            diff,
+            submit_artifact_tool_name=_OPENCODE_SUBMIT_ARTIFACT_TOOL_NAME,
+        )
+    return prompt_commit_message(diff, template_registry=template_registry)
+
+
 def _generate_commit_message_with_chain(
     *,
     diff: str,
@@ -214,53 +263,110 @@ def _generate_commit_message_with_chain(
     registry: AgentRegistry,
     agents: list[str],
     verbose: bool,
-) -> tuple[str, bool]:
+) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    prompt = prompt_commit_message(diff, template_registry=template_registry)
-    prompt_file = _write_commit_prompt_file(repo_root, prompt)
+    bridge = _start_commit_bridge(repo_root)
+    extra_env = _commit_bridge_env(bridge)
+    failure_details: list[str] = []
 
-    for agent_name in agents:
-        cfg = registry.get(agent_name)
-        if cfg is None:
-            continue
-        try:
-            message, skipped = _generate_commit_message_with_agent(
+    try:
+        for agent_name in agents:
+            cfg = registry.get(agent_name)
+            if cfg is None:
+                continue
+            prompt = _commit_prompt_for_agent(cfg, diff, template_registry=template_registry)
+            prompt_file = _write_commit_prompt_file(repo_root, prompt)
+            result = _generate_commit_message_with_agent(
                 cfg,
+                repo_root=repo_root,
                 prompt_file=prompt_file,
                 verbose=verbose,
+                extra_env=extra_env,
             )
-        except AgentInvocationError:
-            continue
+            failure_details.extend(result.failure_details)
 
-        if skipped:
-            return "", True
-        if message:
-            return message, False
+            if result.skipped:
+                return CommitAgentResult(skipped=True, failure_details=failure_details)
+            if result.message:
+                return CommitAgentResult(message=result.message)
+    finally:
+        bridge.shutdown()
 
-    return "", False
+    return CommitAgentResult(failure_details=failure_details)
 
 
 def _generate_commit_message_with_agent(
     agent: AgentConfig,
     *,
+    repo_root: Path,
     prompt_file: str,
     verbose: bool,
-) -> tuple[str, bool]:
-    lines = invoke_agent(agent, prompt_file, options=InvokeOptions(verbose=verbose))
-    parser = get_parser(str(agent.json_parser))
-    text_parts = [
-        line.content for line in parser.parse(str(raw) for raw in lines) if line.type == "text"
-    ]
-    full_text = "\n".join(part for part in text_parts if part).strip()
-    if not full_text:
-        return "", False
+    extra_env: dict[str, str],
+) -> CommitAgentResult:
+    delete_commit_message_artifacts(repo_root)
+    try:
+        lines = invoke_agent(
+            agent,
+            prompt_file,
+            options=InvokeOptions(
+                verbose=verbose,
+                workspace_path=repo_root,
+                extra_env=extra_env,
+                pure=_is_opencode_agent(agent),
+            ),
+        )
+    except AgentInvocationError as exc:
+        return CommitAgentResult(
+            failure_details=[
+                _format_agent_invocation_failure(agent.cmd, prompt_file, exc, parsed_output=[])
+            ]
+        )
 
-    first_line = next((line.strip() for line in full_text.splitlines() if line.strip()), "")
-    if _is_skip_response(first_line):
-        return "", True
+    try:
+        parsed_output = _collect_commit_agent_output(
+            lines,
+            parser_type=str(agent.json_parser),
+            agent_name=agent.cmd.split()[0],
+            verbose=verbose,
+        )
+    except AgentInvocationError as exc:
+        return CommitAgentResult(
+            failure_details=[
+                _format_agent_invocation_failure(
+                    agent.cmd,
+                    prompt_file,
+                    exc,
+                    parsed_output=_parsed_output_from_invocation_error(exc),
+                )
+            ]
+        )
 
-    return first_line, False
+    try:
+        artifact_message = read_commit_message_artifact(repo_root)
+    except Exception as exc:
+        return CommitAgentResult(
+            failure_details=[
+                _format_commit_agent_failure(agent.cmd, prompt_file, parsed_output, str(exc))
+            ]
+        )
+
+    if not artifact_message:
+        return CommitAgentResult(
+            failure_details=[
+                _format_commit_agent_failure(
+                    agent.cmd,
+                    prompt_file,
+                    parsed_output,
+                    "agent completed without writing a commit_message artifact",
+                )
+            ]
+        )
+
+    if _is_skip_response(artifact_message):
+        return CommitAgentResult(skipped=True)
+
+    return CommitAgentResult(message=artifact_message)
 
 
 def _is_skip_response(text: str) -> bool:
@@ -274,40 +380,188 @@ def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
     return str(prompt_path)
 
 
-def _commit_message_path(repo_root: Path) -> Path:
-    return repo_root / _COMMIT_MESSAGE_FILE
-
-
-def _write_commit_message_file(repo_root: Path, message: str) -> None:
-    commit_message_file = _commit_message_path(repo_root)
-    commit_message_file.parent.mkdir(parents=True, exist_ok=True)
-    commit_message_file.write_text(message, encoding="utf-8")
-
-
-def _read_commit_message_file(repo_root: Path) -> str | None:
-    commit_message_file = _commit_message_path(repo_root)
-    if not commit_message_file.exists():
-        return None
-    contents = commit_message_file.read_text(encoding="utf-8").strip()
-    if not contents:
-        return None
-    return contents
-
-
-def _delete_commit_message_file(repo_root: Path) -> None:
-    commit_message_file = _commit_message_path(repo_root)
-    if commit_message_file.exists():
-        commit_message_file.unlink()
-
-
 def _show_commit_message(repo_root: Path) -> None:
-    commit_message = _read_commit_message_file(repo_root)
+    commit_message = read_commit_message_artifact(repo_root)
     if commit_message is None:
         console.print("[red]No commit message generated yet[/red]")
         return
 
     console.print("\n[green]Commit message:[/green]")
     console.print(Panel(commit_message, border_style="green"))
+
+
+def _print_commit_failure_details(failure_details: list[str]) -> None:
+    for detail in failure_details:
+        console.print(Panel(detail, border_style="red", title="Commit drain failure"))
+
+
+def _format_agent_invocation_failure(
+    agent_name: str,
+    prompt_file: str,
+    exc: AgentInvocationError,
+    *,
+    parsed_output: list[str] | None = None,
+) -> str:
+    stderr = exc.stderr.strip() or "(no stderr)"
+    lines = [
+        f"Agent: {agent_name}",
+        f"Prompt file: {prompt_file}",
+        f"Exit code: {exc.returncode}",
+    ]
+    if parsed_output:
+        lines.extend(["Agent output:", *parsed_output])
+    lines.extend(["Stderr:", stderr])
+    return "\n".join(lines)
+
+
+def _format_commit_agent_failure(
+    agent_name: str,
+    prompt_file: str,
+    parsed_output: list[str],
+    reason: str,
+) -> str:
+    lines = [
+        f"Agent: {agent_name}",
+        f"Prompt file: {prompt_file}",
+        f"Reason: {reason}",
+    ]
+    if parsed_output:
+        lines.extend(["Agent output:", *parsed_output])
+    else:
+        lines.append("Agent output: (no output captured)")
+    return "\n".join(lines)
+
+
+def _collect_commit_agent_output(
+    lines: Iterable[object],
+    *,
+    parser_type: str,
+    agent_name: str,
+    verbose: bool,
+) -> list[str]:
+    parser = _resolve_commit_parser(parser_type)
+    parsed_output: list[str] = []
+    try:
+        for parsed_line in parser.parse(str(line) for line in lines):
+            rendered = _render_commit_agent_activity_line(parsed_line, agent_name)
+            if rendered is None:
+                continue
+            parsed_output.append(rendered)
+            if verbose:
+                console.print(rendered)
+    except AgentInvocationError as exc:
+        raise _invocation_error_with_output(exc, parsed_output) from exc
+    return parsed_output
+
+
+def _resolve_commit_parser(parser_type: str) -> AgentParser:
+    try:
+        return get_parser(parser_type)
+    except ValueError:
+        return get_parser("generic")
+
+
+def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str) -> str | None:
+    if output.type == "text":
+        content = output.content.strip()
+        return f"[white]{agent_name}:[/white] {content}" if content else None
+    if output.type == "tool_use":
+        tool_name = output.content.strip() or "unknown-tool"
+        summary = _tool_input_summary(output.metadata)
+        return f"[magenta]{agent_name} tool:[/magenta] {tool_name}" + (
+            f" ({summary})" if summary else ""
+        )
+    if output.type == "tool_result":
+        result = output.content.strip()
+        if result:
+            return f"[dim]{agent_name} tool result:[/dim] {result}"
+        summary = _event_summary(output)
+        return f"[dim]{agent_name} tool result:[/dim] {summary}" if summary else None
+    if output.type == "error":
+        error = output.content.strip() or "unknown error"
+        return f"[red]{agent_name} error:[/red] {error}"
+    summary = _event_summary(output)
+    return f"[dim]{agent_name} {output.type}:[/dim] {summary}"
+
+
+def _event_summary(output: AgentOutputLine) -> str:
+    content = output.content.strip()
+    if content:
+        return content
+    if output.metadata:
+        summary = _metadata_summary(output.metadata)
+        if summary:
+            return summary
+    return "(no details)"
+
+
+def _tool_input_summary(metadata: dict[str, object]) -> str:
+    input_obj = metadata.get("input")
+    if isinstance(input_obj, dict):
+        return _metadata_summary(cast("dict[str, object]", input_obj))
+    return ""
+
+
+def _metadata_summary(metadata: dict[str, object]) -> str:
+    preferred_keys = (
+        "status",
+        "summary",
+        "phase",
+        "tool",
+        "name",
+        "command",
+        "workdir",
+        "path",
+        "result",
+        "output",
+        "error",
+        "message",
+    )
+    parts: list[str] = []
+    for key in preferred_keys:
+        if key not in metadata:
+            continue
+        value = _format_metadata_value(metadata[key])
+        if value:
+            parts.append(f"{key}={value}")
+    if parts:
+        return "; ".join(parts)
+    for key, value_obj in metadata.items():
+        value = _format_metadata_value(value_obj)
+        if value:
+            parts.append(f"{key}={value}")
+        if len(parts) >= _MAX_METADATA_PARTS:
+            break
+    return "; ".join(parts)
+
+
+def _format_metadata_value(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, default=str, sort_keys=True)
+    return ""
+
+
+def _invocation_error_with_output(
+    exc: AgentInvocationError,
+    parsed_output: list[str],
+) -> AgentInvocationError:
+    return AgentInvocationError(
+        exc.agent_name,
+        exc.returncode,
+        exc.stderr,
+        parsed_output=list(parsed_output),
+    )
+
+
+def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]:
+    parsed_output: list[str] = exc.parsed_output
+    return parsed_output
 
 
 def _handle_show_or_generate(
@@ -404,3 +658,26 @@ def _generate_commit_message(files: list[str], repo_root: Path) -> str:
         parts = ["Update files"]
 
     return ": ".join(parts)
+
+
+def _start_commit_bridge(repo_root: Path) -> SessionBridgeLike:
+    session = AgentSession(
+        session_id=f"commit-{uuid.uuid4().hex[:8]}",
+        run_id=str(uuid.uuid4()),
+        drain="commit",
+        capabilities={
+            "ArtifactSubmit",
+            "RunReportProgress",
+            "WorkspaceRead",
+            "WorkspaceWriteEphemeral",
+        },
+    )
+    workspace = FsWorkspace(repo_root)
+    return start_mcp_server(session, workspace)
+
+
+def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
+    return {
+        MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
+        MCP_RUN_ID_ENV: "commit-plumbing",
+    }

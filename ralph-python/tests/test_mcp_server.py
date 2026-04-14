@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ralph.mcp import session_bridge, startup
+from ralph.mcp.server import runtime as server_runtime
 from ralph.workspace import Workspace
 from ralph.workspace.fs import FsWorkspace
 
@@ -175,6 +177,7 @@ def test_session_bridge_reuses_lease_file_to_increment_generation(tmp_path: Path
         first_lease = first_bridge.endpoint_lease()
         assert first_lease is not None
         assert first_lease.generation == 1
+        assert first_lease.endpoint.startswith("http://127.0.0.1:")
     finally:
         first_bridge.shutdown()
 
@@ -185,6 +188,99 @@ def test_session_bridge_reuses_lease_file_to_increment_generation(tmp_path: Path
         second_lease = second_bridge.endpoint_lease()
         assert second_lease is not None
         assert second_lease.generation == SECOND_GENERATION
+        assert second_lease.endpoint.startswith("http://127.0.0.1:")
         assert os.environ.get(session_bridge.MCP_ENDPOINT_ENV) is None
     finally:
         second_bridge.shutdown()
+
+
+def test_tools_list_preserves_registry_input_schema(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        tools_response = _http_call(bridge.agent_endpoint_uri(), "tools/list", msg_id=20)
+        tools = {tool["name"]: tool for tool in tools_response["result"]["tools"]}
+        read_env_schema = tools["read_env"]["inputSchema"]
+        assert read_env_schema["required"] == ["name"]
+        assert "name" in read_env_schema["properties"]
+    finally:
+        bridge.shutdown()
+
+
+def test_tools_call_exec_failure_preserves_is_error_flag(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        exec_response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {
+                "name": "exec",
+                "arguments": {
+                    "command": "false",
+                },
+            },
+            msg_id=21,
+        )
+        assert exec_response["result"]["isError"] is True
+    finally:
+        bridge.shutdown()
+
+
+def test_build_fastmcp_server_preserves_registry_input_schema(tmp_path: Path) -> None:
+    server = server_runtime.build_fastmcp_server(tmp_path)
+
+    tool_manager = server._tool_manager
+    tools = {tool.name: tool for tool in tool_manager.list_tools()}
+
+    read_env_schema = cast("dict[str, object]", tools["read_env"].parameters)
+    properties = cast("dict[str, object]", read_env_schema["properties"])
+    assert read_env_schema["required"] == ["name"]
+    assert "name" in properties
+
+
+def test_runtime_main_launches_streamable_http_server(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    observed: dict[str, object] = {}
+
+    def fake_run_standalone_server(
+        workspace_root: Path,
+        *,
+        transport: str,
+        host: str,
+        port: int,
+    ) -> None:
+        observed.update(
+            {
+                "workspace_root": workspace_root,
+                "transport": transport,
+                "host": host,
+                "port": port,
+            }
+        )
+
+    monkeypatch.setattr(server_runtime, "run_standalone_server", fake_run_standalone_server)
+
+    server_runtime.main(["--host", "0.0.0.0", "--port", "8123"])
+
+    assert observed == {
+        "workspace_root": tmp_path,
+        "transport": "streamable-http",
+        "host": "0.0.0.0",
+        "port": 8123,
+    }
+
+
+def test_build_fastmcp_server_normalizes_tool_result_payload(tmp_path: Path) -> None:
+    server = server_runtime.build_fastmcp_server(tmp_path)
+
+    result = cast(
+        "dict[str, object]",
+        asyncio.run(server._tool_manager.call_tool("report_progress", {"status": "running"})),
+    )
+
+    assert isinstance(result, dict)
+    assert result["isError"] is False
+    assert isinstance(result["content"], list)

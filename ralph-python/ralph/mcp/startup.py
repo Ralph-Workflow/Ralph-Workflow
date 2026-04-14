@@ -13,6 +13,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 
+import httpx
+
 from ralph.mcp.capability_mapping import AccessMode, SessionDrain, drain_to_access_mode
 from ralph.mcp.tool_bridge import build_ralph_tool_registry
 from ralph.workspace import Workspace
@@ -254,13 +256,13 @@ def preflight_http_attempt(
     required_tools: Iterable[str],
     remaining: timedelta,
 ) -> None:
-    ensure_http_initialize(target)
-    sock = reconnect_http_tools_stream(target.address, _io_timeout_budget(remaining))
-    try:
-        tools = read_http_tools_list_response(sock, target)
-        ensure_required_tools(required_tools, tools)
-    finally:
-        sock.close()
+    _, session_id = post_http_jsonrpc_with_session(endpoint, target, initialize_request())
+    tools_response, _ = post_http_jsonrpc_with_session(
+        endpoint, target, tools_list_request(), session_id=session_id
+    )
+    ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
+    tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
+    ensure_required_tools(required_tools, tools)
 
 
 def connect_to_endpoint(
@@ -361,62 +363,95 @@ def _read_content_length(reader: io.BufferedReader) -> int:
                 raise PermanentPreflightError("invalid Content-Length header") from exc
 
 
-def post_http_jsonrpc(target: HttpEndpointTarget, payload: JsonRpcResponse) -> JsonRpcResponse:
-    body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    request = (
-        f"POST {target.path} HTTP/1.1\r\n"
-        f"Host: {target.host_header}\r\n"
-        "Content-Type: application/json\r\n"
-        f"Content-Length: {len(body)}\r\n"
-        "Connection: close\r\n\r\n"
-    ).encode("ascii")
+def post_http_jsonrpc(
+    endpoint_or_target: str | HttpEndpointTarget,
+    target_or_payload: HttpEndpointTarget | JsonRpcResponse,
+    payload: JsonRpcResponse | None = None,
+) -> JsonRpcResponse:
+    response_payload, _ = post_http_jsonrpc_with_session(
+        endpoint_or_target,
+        target_or_payload,
+        payload,
+    )
+    return response_payload
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+def post_http_jsonrpc_with_session(
+    endpoint_or_target: str | HttpEndpointTarget,
+    target_or_payload: HttpEndpointTarget | JsonRpcResponse,
+    payload: JsonRpcResponse | None = None,
+    *,
+    session_id: str | None = None,
+) -> tuple[JsonRpcResponse, str | None]:
+    if isinstance(endpoint_or_target, HttpEndpointTarget):
+        endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
+        target = endpoint_or_target
+        assert payload is None
+        payload_obj = cast("JsonRpcResponse", target_or_payload)
+    else:
+        endpoint = endpoint_or_target
+        target = cast("HttpEndpointTarget", target_or_payload)
+        assert payload is not None
+        payload_obj = payload
+
     try:
-        sock.settimeout(5.0)
-        sock.connect(target.address)
-        sock.sendall(request + body)
-        data = bytearray()
-        chunk = sock.recv(4096)
-        while chunk:
-            data.extend(chunk)
-            chunk = sock.recv(4096)
-    finally:
-        sock.close()
-
-    header_end = bytes(data).find(b"\r\n\r\n")
-    if header_end == -1:
-        raise PermanentPreflightError("invalid HTTP MCP response: missing header terminator")
-    header = bytes(data[:header_end]).decode("ascii", errors="ignore")
-    body_bytes = bytes(data[header_end + 4 :])
-    status_line = header.splitlines()[0] if header else ""
-    if " 200 " not in status_line:
-        response_body = body_bytes.decode("utf-8", errors="ignore")
-        raise PermanentPreflightError(
-            f"HTTP MCP request failed with status '{status_line}': {response_body}"
+        headers = {"Accept": "application/json, text/event-stream"}
+        if session_id:
+            headers["mcp-session-id"] = session_id
+        response = httpx.post(
+            endpoint,
+            json=payload_obj,
+            headers=headers,
+            timeout=5.0,
         )
+    except httpx.TransportError as exc:
+        raise RetryablePreflightError(
+            f"failed to connect to MCP endpoint {endpoint}: {exc}"
+        ) from exc
+
+    if response.status_code != 200:
+        raise PermanentPreflightError(
+            f"HTTP MCP request failed with status '{response.status_code}': {response.text}"
+        )
+    normalized_body = _normalize_http_jsonrpc_body(response.content)
     try:
-        response_payload = cast("object", json.loads(body_bytes))
+        response_payload = cast("object", json.loads(normalized_body))
     except json.JSONDecodeError as exc:
         raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}") from exc
     if not isinstance(response_payload, dict):
         raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
-    return cast("JsonRpcResponse", response_payload)
+    return cast("JsonRpcResponse", response_payload), response.headers.get("mcp-session-id")
 
 
-def ensure_http_initialize(target: HttpEndpointTarget) -> None:
-    response = post_http_jsonrpc(target, initialize_request())
+def _normalize_http_jsonrpc_body(body_bytes: bytes) -> bytes:
+    stripped = body_bytes.strip()
+    if stripped.startswith((b"event:", b"data:")):
+        for line in stripped.splitlines():
+            if line.startswith(b"data:"):
+                return line.removeprefix(b"data:").strip()
+    return stripped
+
+
+def ensure_http_initialize(endpoint: str, target: HttpEndpointTarget) -> None:
+    response = post_http_jsonrpc(endpoint, target, initialize_request())
     ensure_no_preflight_error("HTTP MCP initialize", response.get("error"))
 
 
-def reconnect_http_tools_stream(address: tuple[str, int], io_timeout: timedelta) -> socket.socket:
-    sock = socket.create_connection(address, timeout=io_timeout.total_seconds())
+def reconnect_http_tools_stream(
+    endpoint: str, address: tuple[str, int], io_timeout: timedelta
+) -> socket.socket:
+    try:
+        sock = socket.create_connection(address, timeout=io_timeout.total_seconds())
+    except OSError as exc:
+        raise classify_connect_error(endpoint, exc) from exc
     _configure_stream_timeouts(sock, io_timeout)
     return sock
 
 
-def read_http_tools_list_response(sock: socket.socket, target: HttpEndpointTarget) -> list[str]:
-    response = post_http_jsonrpc(target, tools_list_request())
+def read_http_tools_list_response(
+    endpoint: str, sock: socket.socket, target: HttpEndpointTarget
+) -> list[str]:
+    response = post_http_jsonrpc(endpoint, target, tools_list_request())
     ensure_no_preflight_error("HTTP MCP tools/list", response.get("error"))
     return extract_preflight_tool_names(response.get("result"), "HTTP MCP")
 

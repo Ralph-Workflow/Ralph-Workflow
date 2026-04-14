@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import ralph.pipeline.runner as runner_module
@@ -24,6 +26,9 @@ from ralph.pipeline.runner import (
     _create_initial_state,
     _determine_effect,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
@@ -244,7 +249,7 @@ class TestCommitEffect:
     def test_returns_commit_effect(self) -> None:
         effect = _commit_effect()
         assert isinstance(effect, CommitEffect)
-        assert ".agent/tmp/commit-message.txt" in effect.message_file
+        assert ".agent/tmp/commit_message.json" in effect.message_file
 
 
 class TestPipelineRunnerLoop:
@@ -385,9 +390,20 @@ class TestExecuteAgentEffect:
         config.general.verbosity = verbosity
         return config
 
-    def test_returns_success_when_invocation_succeeds(self) -> None:
+    def test_returns_success_when_invocation_succeeds(self, monkeypatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        monkeypatch.setattr(
+            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+        )
 
         result = runner_module._execute_agent_effect(
             effect,
@@ -467,15 +483,15 @@ class TestExecuteAgentEffect:
             def endpoint_uri(self) -> str:
                 return "tcp://127.0.0.1:12345"
 
-        def fake_start_mcp_server_for_session(session, workspace, *, bridge_factory=None):
+        def fake_start_mcp_server(session, workspace, *, bridge_factory=None):
             bridge = FakeBridge()
             bridge.start()
             return bridge
 
         monkeypatch.setattr(
             runner_module,
-            "start_mcp_server_for_session",
-            fake_start_mcp_server_for_session,
+            "start_mcp_server",
+            fake_start_mcp_server,
         )
 
         seen_options: list[object] = []
@@ -521,7 +537,7 @@ class TestExecuteAgentEffect:
 
         monkeypatch.setattr(
             runner_module,
-            "start_mcp_server_for_session",
+            "start_mcp_server",
             lambda *_args, **_kwargs: FakeBridge(),
         )
 
@@ -572,7 +588,7 @@ class TestExecuteAgentEffect:
 
         monkeypatch.setattr(
             runner_module,
-            "start_mcp_server_for_session",
+            "start_mcp_server",
             lambda *_args, **_kwargs: FakeBridge(),
         )
 
@@ -603,25 +619,75 @@ class TestExecuteAgentEffect:
 
 
 class TestExecuteCommitEffect:
-    def test_returns_success_when_commit_succeeds(self) -> None:
+    def test_returns_success_when_commit_succeeds(self, tmp_path: Path) -> None:
         stage_all = MagicMock()
         create_commit = MagicMock(return_value="sha")
+        message_file = tmp_path / "commit_message.json"
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {"message": "fix: pipeline artifact message"},
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
 
-        result = runner_module._execute_commit_effect(create_commit, stage_all)
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            create_commit,
+            stage_all,
+        )
 
         assert result == PipelineEvent.COMMIT_SUCCESS
         stage_all.assert_called_once_with(".")
-        create_commit.assert_called_once_with(".", "Pipeline-generated commit")
+        create_commit.assert_called_once_with(".", "fix: pipeline artifact message")
 
-    def test_returns_failure_when_create_commit_raises(self) -> None:
+    def test_returns_failure_when_create_commit_raises(self, tmp_path: Path) -> None:
         stage_all = MagicMock()
+        message_file = tmp_path / "commit_message.json"
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {"message": "fix: pipeline artifact message"},
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
 
         def fail_create(*_):
             raise RuntimeError("boom")
 
-        result = runner_module._execute_commit_effect(fail_create, stage_all)
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            fail_create,
+            stage_all,
+        )
 
         assert result == PipelineEvent.COMMIT_FAILURE
+
+    def test_returns_failure_when_message_file_missing(self, tmp_path: Path) -> None:
+        stage_all = MagicMock()
+        create_commit = MagicMock()
+
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(tmp_path / "missing.txt")),
+            create_commit,
+            stage_all,
+        )
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+        stage_all.assert_not_called()
+        create_commit.assert_not_called()
 
 
 class TestExecuteEffect:
@@ -633,8 +699,9 @@ class TestExecuteEffect:
     def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
         captured: dict[str, bool] = {}
 
-        def stub_commit(create_commit, stage_all):
+        def stub_commit(effect, create_commit, stage_all):
             captured["called"] = True
+            captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS
 
         monkeypatch.setattr(runner_module, "_execute_commit_effect", stub_commit)
@@ -642,6 +709,7 @@ class TestExecuteEffect:
 
         assert result == PipelineEvent.COMMIT_SUCCESS
         assert captured.get("called")
+        assert captured.get("message_file") == "foo"
 
     def test_unknown_effect_returns_failure(self) -> None:
         result = runner_module._execute_effect(

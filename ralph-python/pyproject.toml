@@ -27,6 +27,7 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.0",
     "rich-click>=1.8",
+    "mcp>=1.27.0",
     "pydantic>=2.7",
     "httpx>=0.27",
     "jinja2>=3.1",
@@ -54,6 +55,7 @@ bundle = [
 
 [project.scripts]
 ralph = "ralph.cli.main:app"
+ralph-mcp = "ralph.mcp.server.runtime:main"
 
 [project.urls]
 Homepage = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"

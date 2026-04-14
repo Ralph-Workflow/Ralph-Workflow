@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import socket
@@ -14,9 +15,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+
 from ralph.mcp.tool_bridge import ToolBridge, ToolDispatchError, build_ralph_tool_registry
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+
     from ralph.workspace import Workspace
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,9 +34,34 @@ class _ToDict(Protocol):
     def __call__(self) -> dict[str, object]: ...
 
 
+class _ModelDump(Protocol):
+    """Callable protocol for MCP SDK content blocks exposing model_dump."""
+
+    def __call__(self, *, exclude_none: bool, by_alias: bool) -> dict[str, object]: ...
+
+
+class _FastMcpLike(Protocol):
+    """Minimal FastMCP surface used by the in-process bridge."""
+
+    def add_tool(
+        self,
+        fn: Callable[[dict[str, object]], object],
+        *,
+        name: str,
+        description: str,
+    ) -> None: ...
+
+    def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, object],
+    ) -> Coroutine[object, object, object]: ...
+
+
 MCP_ENDPOINT_ENV = "RALPH_MCP_ENDPOINT"
 MCP_GENERATION_ENV = "RALPH_MCP_GENERATION"
 MCP_RUN_ID_ENV = "RALPH_MCP_RUN_ID"
+_STRUCTURED_RESULT_SIZE = 2
 
 
 @dataclass(frozen=True)
@@ -139,6 +170,49 @@ def _allocate_endpoint_port() -> int:
         return port
 
 
+def _run_async(awaitable: Coroutine[object, object, object]) -> object:
+    return asyncio.run(awaitable)
+
+
+def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
+    if not isinstance(content_blocks, list | tuple):
+        return [{"type": "text", "text": str(content_blocks)}]
+
+    serialized: list[dict[str, object]] = []
+    for block in content_blocks:
+        if isinstance(block, dict):
+            serialized.append(cast("dict[str, object]", block))
+            continue
+
+        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
+        if callable(model_dump):
+            serialized.append(model_dump(exclude_none=True, by_alias=True))
+            continue
+
+        serialized.append({"type": "text", "text": str(block)})
+
+    return serialized
+
+
+def _decode_json_payload_from_content(content_blocks: object) -> dict[str, object] | None:
+    serialized = _serialize_content_blocks(content_blocks)
+    if not serialized:
+        return None
+    first = serialized[0]
+    text = first.get("text")
+    if not isinstance(text, str):
+        return None
+    try:
+        decoded = cast("object", json.loads(text))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    if "content" not in decoded:
+        return None
+    return cast("dict[str, object]", decoded)
+
+
 def endpoint_lease_path(workspace_root: Path) -> Path:
     """Return the path for storing the endpoint lease."""
     return workspace_root.joinpath(".agent", "endpoint_lease.json")
@@ -192,67 +266,140 @@ class McpServer:
         self._session = session
         self._workspace = workspace
         self._registry = registry
+        self._fastmcp = cast("_FastMcpLike", FastMCP("ralph-mcp"))
+        self._register_tools_with_fastmcp()
 
-    def handle_request(  # noqa: PLR0911 - JSON-RPC handlers need many method-specific returns
+    def _register_tools_with_fastmcp(self) -> None:
+        for definition in self._registry.list_definitions():
+            tool_name = definition.name
+
+            def _make_handler(name: str) -> Callable[[dict[str, object]], object]:
+                def _handler(arguments: dict[str, object]) -> object:
+                    params = dict(arguments)
+                    raw_result = self._registry.dispatch(name, params)
+                    to_dict = cast("object", getattr(raw_result, "to_dict", None))
+                    return cast("_ToDict", to_dict)() if callable(to_dict) else raw_result
+
+                _handler.__name__ = f"ralph_tool_{name}"
+                return _handler
+
+            self._fastmcp.add_tool(
+                _make_handler(tool_name),
+                name=tool_name,
+                description=definition.description,
+            )
+
+    def handle_request(
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         """Handle a JSON-RPC request in-process (minimal behavior)."""
         if request.method == "initialize":
-            result = {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "ralph-mcp"},
-            }
-            return (
-                JsonRpcResponse(jsonrpc="2.0", result=result, msg_id=request.msg_id),
-                ServerState.RUNNING,
-            )
+            return self._handle_initialize(request)
         if request.method == "notifications/initialized":
             return (None, ServerState.RUNNING)
         if request.method == "tools/list":
-            tools = [
-                {
-                    "name": definition.name,
-                    "description": definition.description,
-                    "inputSchema": definition.input_schema,
-                }
-                for definition in self._registry.list_definitions()
-            ]
-            return (
-                JsonRpcResponse(
-                    jsonrpc="2.0",
-                    result={"tools": tools},
-                    msg_id=request.msg_id,
-                ),
-                ServerState.RUNNING,
-            )
+            return self._handle_tools_list(request)
         if request.method == "tools/call":
-            params = request.params or {}
-            tool_name = params.get("name")
-            if not isinstance(tool_name, str) or not tool_name:
-                error = {"code": -32602, "message": "tools/call requires a tool name"}
-                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-            arguments_value = params.get("arguments", {})
-            if not isinstance(arguments_value, dict):
-                error = {"code": -32602, "message": "tools/call arguments must be an object"}
-                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-            try:
-                raw_result = self._registry.dispatch(tool_name, arguments_value)
-            except ToolDispatchError as exc:
-                error = {"code": -32603, "message": str(exc)}
-                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-            to_dict = cast("object", getattr(raw_result, "to_dict", None))
-            payload = cast("_ToDict", to_dict)() if callable(to_dict) else raw_result
-            return (
-                JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
-                ServerState.RUNNING,
-            )
+            return self._handle_tools_call(request, state)
 
         error = {"code": -32601, "message": f"Method not found: {request.method}"}
         return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+    def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        result = {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "ralph-mcp"},
+        }
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result=result, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _handle_tools_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        tools = [
+            {
+                "name": definition.name,
+                "description": definition.description,
+                "inputSchema": definition.input_schema,
+            }
+            for definition in self._registry.list_definitions()
+        ]
+        return (
+            JsonRpcResponse(
+                jsonrpc="2.0",
+                result={"tools": tools},
+                msg_id=request.msg_id,
+            ),
+            ServerState.RUNNING,
+        )
+
+    def _handle_tools_call(
+        self,
+        request: JsonRpcRequest,
+        state: ServerState,
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        params = request.params or {}
+        tool_name = params.get("name")
+        if not isinstance(tool_name, str) or not tool_name:
+            error = {"code": -32602, "message": "tools/call requires a tool name"}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        arguments_value = params.get("arguments", {})
+        if not isinstance(arguments_value, dict):
+            error = {"code": -32602, "message": "tools/call arguments must be an object"}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        try:
+            call_result = _run_async(
+                self._fastmcp.call_tool(tool_name, {"arguments": arguments_value})
+            )
+        except (ToolDispatchError, ToolError, RuntimeError, ValueError) as exc:
+            error = {"code": -32603, "message": str(exc)}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        content_blocks: object
+        structured_content: object | None = None
+        if isinstance(call_result, tuple) and len(call_result) == _STRUCTURED_RESULT_SIZE:
+            content_blocks, structured_content = call_result
+        else:
+            content_blocks = call_result
+
+        payload = self._build_tools_call_payload(content_blocks, structured_content)
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _build_tools_call_payload(
+        self,
+        content_blocks: object,
+        structured_content: object | None,
+    ) -> dict[str, object]:
+        if isinstance(structured_content, dict):
+            normalized_structured = cast("dict[str, object]", dict(structured_content))
+            result_obj = normalized_structured.get("result")
+            if isinstance(result_obj, dict):
+                payload = cast("dict[str, object]", dict(result_obj))
+            else:
+                payload = normalized_structured
+            if "content" not in payload:
+                payload["content"] = _serialize_content_blocks(content_blocks)
+            return payload
+
+        decoded_payload = _decode_json_payload_from_content(content_blocks)
+        if decoded_payload is not None:
+            payload = decoded_payload
+        else:
+            payload = cast(
+                "dict[str, object]",
+                {
+                    "content": _serialize_content_blocks(content_blocks),
+                },
+            )
+        if structured_content is not None:
+            payload["structuredContent"] = structured_content
+        return payload
 
 
 @dataclass
@@ -469,7 +616,16 @@ class SessionBridge:
 
     def endpoint_lease(self) -> EndpointLease | None:
         """Return the latest endpoint lease published by the bridge."""
-        return self._inner.endpoint_lease()
+        lease = self._inner.endpoint_lease()
+        if lease is None or self._http_endpoint is None:
+            return lease
+        return EndpointLease(
+            endpoint=self._http_endpoint,
+            run_id=lease.run_id,
+            drain=lease.drain,
+            generation=lease.generation,
+            ready_at=lease.ready_at,
+        )
 
     def endpoint_env_var(self) -> str:
         """Return the environment variable name for the MCP endpoint."""
@@ -531,7 +687,7 @@ class SessionBridge:
         return clone
 
     def _write_endpoint_lease(self) -> None:
-        lease = self._inner.endpoint_lease()
+        lease = self.endpoint_lease()
         if lease is None:
             return
         path = endpoint_lease_path(_workspace_root(self.workspace))
