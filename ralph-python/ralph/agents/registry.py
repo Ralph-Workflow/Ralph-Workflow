@@ -25,7 +25,7 @@ def _builtin_agents() -> dict[str, AgentConfig]:
         "claude": AgentConfig(
             cmd="claude -p",
             output_flag="--output-format=stream-json",
-            yolo_flag="--dangerously-skip-permissions",
+            yolo_flag="--permission-mode auto",
             verbose_flag="--verbose",
             can_commit=True,
             json_parser=JsonParserType.CLAUDE,
@@ -45,7 +45,6 @@ def _builtin_agents() -> dict[str, AgentConfig]:
         "opencode": AgentConfig(
             cmd="opencode",
             output_flag="--json-stream",
-            yolo_flag="--dangerously-skip-permissions",
             can_commit=False,
             json_parser=JsonParserType.OPENCODE,
             transport=AgentTransport.OPENCODE,

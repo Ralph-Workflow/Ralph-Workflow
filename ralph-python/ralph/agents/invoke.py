@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -626,8 +627,7 @@ def _build_command(
     if config.session_flag and build_options.session_id:
         cmd.extend(config.session_flag.format(build_options.session_id).split())
 
-    if config.yolo_flag:
-        cmd.append(config.yolo_flag)
+    cmd.extend(_split_optional_flag(config.yolo_flag))
 
     if build_options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
@@ -667,8 +667,7 @@ def _build_opencode_command(
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
 
-    if config.yolo_flag:
-        cmd.append(config.yolo_flag)
+    cmd.extend(_split_optional_flag(config.yolo_flag))
 
     if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
@@ -691,8 +690,7 @@ def _build_codex_command(
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
 
-    if config.yolo_flag:
-        cmd.append(config.yolo_flag)
+    cmd.extend(_split_optional_flag(config.yolo_flag))
 
     effective_model = options.model_flag or config.model_flag
     if effective_model:
@@ -714,6 +712,12 @@ def _normalize_opencode_model_flag(model_flag: str) -> list[str]:
     if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
         return [parts[0], parts[1].removeprefix("opencode/")]
     return parts
+
+
+def _split_optional_flag(flag: str | None) -> list[str]:
+    if not flag:
+        return []
+    return shlex.split(flag)
 
 
 def check_agent_available(config: AgentConfig) -> bool:

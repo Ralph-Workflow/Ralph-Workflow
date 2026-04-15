@@ -62,12 +62,13 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert codex is not None
     assert opencode is not None
     assert claude.cmd == "claude -p"
+    assert claude.yolo_flag == "--permission-mode auto"
     assert claude.transport == AgentTransport.CLAUDE
     assert codex.cmd == "codex exec"
     assert codex.output_flag == "--json"
     assert codex.yolo_flag == "--dangerously-bypass-approvals-and-sandbox"
     assert codex.transport == AgentTransport.CODEX
-    assert opencode.yolo_flag == "--dangerously-skip-permissions"
+    assert opencode.yolo_flag is None
     assert opencode.transport == AgentTransport.OPENCODE
 
 
@@ -80,6 +81,7 @@ def test_agent_registry_resolves_string_ccs_alias_with_defaults() -> None:
     assert ccs_agent is not None
     assert ccs_agent.cmd == "ccs glm"
     assert ccs_agent.output_flag == config.ccs.output_flag
+    assert ccs_agent.yolo_flag == "--permission-mode auto"
     assert ccs_agent.print_flag == config.ccs.print_flag
     assert ccs_agent.streaming_flag == config.ccs.streaming_flag
     assert ccs_agent.transport == AgentTransport.CLAUDE

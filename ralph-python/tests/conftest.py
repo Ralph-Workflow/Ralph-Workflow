@@ -67,7 +67,7 @@ def sample_config_dict() -> dict[str, object]:
             "claude": {
                 "cmd": "claude",
                 "output_flag": "--output-format=stream-json",
-                "yolo_flag": "--dangerously-skip-permissions",
+                "yolo_flag": "--permission-mode auto",
                 "can_commit": True,
                 "json_parser": "claude",
             },

@@ -59,6 +59,36 @@ def test_build_command_includes_print_streaming_and_session_flags() -> None:
     ]
 
 
+def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        verbose_flag="--verbose",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(verbose=False),
+    )
+
+    assert cmd == [
+        "claude",
+        "-p",
+        "--output-format=stream-json",
+        "--print",
+        "--include-partial-messages",
+        "--permission-mode",
+        "auto",
+        "PROMPT.md",
+    ]
+
+
 def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("plain prompt", encoding="utf-8")
@@ -393,7 +423,7 @@ def test_claude_builtin_command_preserves_login_capable_mode() -> None:
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
-        yolo_flag="--dangerously-skip-permissions",
+        yolo_flag="--permission-mode auto",
         verbose_flag="--verbose",
         print_flag="--print",
         streaming_flag="--include-partial-messages",

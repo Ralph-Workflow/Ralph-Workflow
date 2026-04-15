@@ -21,7 +21,7 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
     Attributes:
         cmd: Base command to run the agent.
         output_flag: Output format flag for streaming JSON.
-        yolo_flag: Flag for autonomous mode (skip permission prompts).
+        yolo_flag: Optional autonomous/non-interactive flag string.
         verbose_flag: Flag for verbose output.
         can_commit: Whether the agent can run git commit.
         json_parser: Which JSON parser to use for agent output.
@@ -191,7 +191,7 @@ class CcsConfig(BaseModel):  # type: ignore[explicit-any]
 
     Attributes:
         output_flag: Output-format flag for CCS.
-        yolo_flag: Flag for autonomous mode.
+        yolo_flag: Default autonomous/non-interactive flag for CCS aliases.
         verbose_flag: Flag for verbose output.
         print_flag: Print flag for non-interactive mode.
         streaming_flag: Streaming flag for JSON output with -p.
@@ -203,7 +203,7 @@ class CcsConfig(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     output_flag: str = "--output-format=stream-json"
-    yolo_flag: str = "--dangerously-skip-permissions"
+    yolo_flag: str = "--permission-mode auto"
     verbose_flag: str = "--verbose"
     print_flag: str = "--print"
     streaming_flag: str = "--include-partial-messages"
