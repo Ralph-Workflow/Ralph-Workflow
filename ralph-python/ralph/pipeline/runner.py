@@ -10,8 +10,8 @@ the handlers (I/O execution), and the reducer (state transitions).
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger

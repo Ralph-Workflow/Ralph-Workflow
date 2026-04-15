@@ -311,16 +311,16 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 __all__ = [
-    "build_fastmcp_server",
     "DEFAULT_HOST",
     "DEFAULT_MOUNT_PATH",
     "DEFAULT_PORT",
     "DEFAULT_TRANSPORT",
+    "SESSION_ENV",
+    "SESSION_FILE_ENV",
     "FileBackedSession",
+    "build_fastmcp_server",
     "main",
     "parse_args",
     "run_standalone_server",
-    "SESSION_ENV",
-    "SESSION_FILE_ENV",
     "session_from_env",
 ]
