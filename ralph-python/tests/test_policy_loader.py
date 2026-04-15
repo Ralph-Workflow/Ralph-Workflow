@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from textwrap import dedent
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -70,6 +71,55 @@ def test_load_policy_reports_agent_validation_failure(tmp_path: Path) -> None:
         load_policy(tmp_path)
     assert "agents.toml validation failed" in excinfo.value.message
     assert excinfo.value.source == "agents"
+
+
+def test_load_policy_reports_unknown_transition_target(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    (tmp_path / "pipeline.toml").write_text(
+        dedent(
+            """
+            [phases.planning]
+            drain = "planning"
+            prompt_template = "planning.jinja"
+            [phases.planning.transitions]
+            on_success = "missing_phase"
+
+            [phases.complete]
+            drain = "complete"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        )
+    )
+
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy(tmp_path)
+    assert "unknown phase 'missing_phase'" in excinfo.value.message
+    assert excinfo.value.source == "pipeline"
+
+
+def test_load_policy_reports_missing_entry_phase(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    (tmp_path / "pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "planning"
+            terminal_phase = "complete"
+
+            [phases.complete]
+            drain = "complete"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        )
+    )
+
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy(tmp_path)
+    assert "entry_phase 'planning' is not defined" in excinfo.value.message
+    assert excinfo.value.source == "pipeline"
 
 
 def test_load_policy_wraps_validate_drain_contracts_error(

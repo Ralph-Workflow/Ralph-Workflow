@@ -123,8 +123,12 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         reviewer_pass: Current reviewer pass number.
         total_reviewer_passes: Total number of reviewer passes.
         review_issues_found: Whether review found issues requiring fix.
+        planning_chain: Planning agent chain state.
         dev_chain: Development agent chain state.
+        dev_analysis_chain: Development analysis agent chain state.
         rev_chain: Review agent chain state.
+        review_analysis_chain: Review analysis agent chain state.
+        fix_chain: Fix agent chain state.
         rebase: Git rebase state.
         commit: Commit state.
         continuation: Continuation state.
@@ -152,8 +156,12 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     reviewer_pass: int = 0
     total_reviewer_passes: int = 2
     review_issues_found: bool = False
+    planning_chain: AgentChainState = Field(default_factory=AgentChainState)
     dev_chain: AgentChainState = Field(default_factory=AgentChainState)
+    dev_analysis_chain: AgentChainState = Field(default_factory=AgentChainState)
     rev_chain: AgentChainState = Field(default_factory=AgentChainState)
+    review_analysis_chain: AgentChainState = Field(default_factory=AgentChainState)
+    fix_chain: AgentChainState = Field(default_factory=AgentChainState)
     rebase: RebaseState = Field(default_factory=RebaseState)
     commit: CommitState = Field(default_factory=CommitState)
     continuation: ContinuationState = Field(default_factory=ContinuationState)
@@ -187,11 +195,8 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         Returns:
             Agent name or None if no agents available.
         """
-        if self.phase == PHASE_DEVELOPMENT:
-            chain = self.dev_chain
-        elif self.phase == PHASE_REVIEW:
-            chain = self.rev_chain
-        else:
+        chain = self.chain_for_phase(self.phase)
+        if chain is None:
             return None
 
         if not chain.agents or chain.current_index >= len(chain.agents):
@@ -204,7 +209,9 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         Returns:
             Number of remaining retries.
         """
-        chain = self.dev_chain if self.phase == PHASE_DEVELOPMENT else self.rev_chain
+        chain = self.chain_for_phase(self.phase)
+        if chain is None:
+            return 0
         return max(0, 3 - chain.retries)
 
     def advance_agent(self) -> PipelineState:
@@ -213,11 +220,8 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         Returns:
             New state with advanced agent index.
         """
-        if self.phase == PHASE_DEVELOPMENT:
-            chain = self.dev_chain
-        elif self.phase == PHASE_REVIEW:
-            chain = self.rev_chain
-        else:
+        chain = self.chain_for_phase(self.phase)
+        if chain is None:
             return self
 
         new_chain = AgentChainState(
@@ -226,9 +230,38 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
             retries=0,
         )
 
-        if self.phase == PHASE_DEVELOPMENT:
-            return self.copy_with(dev_chain=new_chain)
-        return self.copy_with(rev_chain=new_chain)
+        return self.with_phase_chain(self.phase, new_chain)
+
+    def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
+        """Get the tracked agent chain state for a phase, if any."""
+        phase_to_chain = {
+            "planning": self.planning_chain,
+            PHASE_DEVELOPMENT: self.dev_chain,
+            "development_analysis": self.dev_analysis_chain,
+            PHASE_REVIEW: self.rev_chain,
+            "review_analysis": self.review_analysis_chain,
+            "fix": self.fix_chain,
+        }
+        return phase_to_chain.get(phase)
+
+    def with_phase_chain(
+        self,
+        phase: PipelinePhase | str,
+        chain: AgentChainState,
+    ) -> PipelineState:
+        """Return a copy with the chain state for the given phase updated."""
+        phase_to_field = {
+            "planning": "planning_chain",
+            PHASE_DEVELOPMENT: "dev_chain",
+            "development_analysis": "dev_analysis_chain",
+            PHASE_REVIEW: "rev_chain",
+            "review_analysis": "review_analysis_chain",
+            "fix": "fix_chain",
+        }
+        field_name = phase_to_field.get(phase)
+        if field_name is None:
+            return self
+        return self.copy_with(**{field_name: chain})
 
     def with_drain(self, drain: DrainName | None) -> PipelineState:
         """Return a copy with the current_drain set.

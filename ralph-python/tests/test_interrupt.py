@@ -107,11 +107,11 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 
     def raise_keyboard_interrupt(
         _state: PipelineState,
-        _config: UnifiedConfig,
+        _bundle: object,
     ) -> object:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(runner_module, "_determine_effect", raise_keyboard_interrupt)
+    monkeypatch.setattr(runner_module, "_determine_effect_from_policy", raise_keyboard_interrupt)
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
 
     state = PipelineState(phase="planning")

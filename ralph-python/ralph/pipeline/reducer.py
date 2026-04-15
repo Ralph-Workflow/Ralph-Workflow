@@ -177,7 +177,14 @@ def _legacy_handle_agent_success(
 
 def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle agent failure with retry/fallback logic."""
-    chain = state.dev_chain if state.phase == PHASE_DEVELOPMENT else state.rev_chain
+    chain = state.chain_for_phase(state.phase)
+    if chain is None:
+        new_state = state.copy_with(
+            phase=PHASE_FAILED,
+            previous_phase=state.phase,
+            last_error=f"No tracked agent chain for {state.phase}",
+        )
+        return new_state, [ExitFailureEffect(reason=f"No tracked agent chain for {state.phase}")]
 
     if chain.retries < _MAX_AGENT_RETRIES:
         new_chain = AgentChainState(
@@ -191,10 +198,7 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
             total_fallbacks=state.metrics.total_fallbacks,
             total_retries=state.metrics.total_retries + 1,
         )
-        if state.phase == PHASE_DEVELOPMENT:
-            new_state = state.copy_with(dev_chain=new_chain, metrics=new_metrics)
-        else:
-            new_state = state.copy_with(rev_chain=new_chain, metrics=new_metrics)
+        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
     if chain.current_index + 1 < len(chain.agents):
@@ -209,10 +213,7 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
             total_fallbacks=state.metrics.total_fallbacks + 1,
             total_retries=state.metrics.total_retries,
         )
-        if state.phase == PHASE_DEVELOPMENT:
-            new_state = state.copy_with(dev_chain=new_chain, metrics=new_metrics)
-        else:
-            new_state = state.copy_with(rev_chain=new_chain, metrics=new_metrics)
+        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
     new_state = state.copy_with(
@@ -225,7 +226,14 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
 
 def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle agent retry request."""
-    chain = state.dev_chain if state.phase == PHASE_DEVELOPMENT else state.rev_chain
+    chain = state.chain_for_phase(state.phase)
+    if chain is None:
+        new_state = state.copy_with(
+            phase=PHASE_FAILED,
+            previous_phase=state.phase,
+            last_error=f"No tracked agent chain for {state.phase}",
+        )
+        return new_state, [ExitFailureEffect(reason=f"No tracked agent chain for {state.phase}")]
 
     new_chain = AgentChainState(
         agents=chain.agents,
@@ -239,10 +247,7 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
         total_retries=state.metrics.total_retries,
     )
 
-    if state.phase == PHASE_DEVELOPMENT:
-        new_state = state.copy_with(dev_chain=new_chain, metrics=new_metrics)
-    else:
-        new_state = state.copy_with(rev_chain=new_chain, metrics=new_metrics)
+    new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
     return new_state, []
 
 

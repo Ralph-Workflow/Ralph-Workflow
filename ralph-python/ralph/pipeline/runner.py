@@ -14,17 +14,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from git import Repo
 from loguru import logger
 from rich.console import Console
 
+from ralph.agents.chain import ChainManager
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
+from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_FAILED,
     PHASE_PLANNING,
 )
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
-from ralph.mcp.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_from_path
+from ralph.mcp.commit_message import (
+    COMMIT_MESSAGE_ARTIFACT,
+    delete_commit_message_artifacts,
+    read_commit_message_from_path,
+)
 from ralph.mcp.server.lifecycle import (
     SessionBridgeLike,
     configure_mcp_server_session,
@@ -32,6 +39,7 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_bridge import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
+from ralph.phases import PhaseContext, handle_phase
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -55,6 +63,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
 
 
 class _InvokeAgentFn(Protocol):
@@ -99,8 +108,12 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
-    state = initial_state or _create_initial_state(config)
     policy_bundle = load_policy_or_die(Path(".agent"))
+    state = initial_state or _create_initial_state(
+        config,
+        agents_policy=policy_bundle.agents,
+        pipeline_policy=policy_bundle.pipeline,
+    )
 
     logger.info(
         "Starting pipeline: phase={}, iterations={}, reviews={}",
@@ -112,60 +125,31 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
     mcp_bridge: SessionBridgeLike | None = None
     try:
         while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-            # Determine next effect
-            effect = _determine_effect(state, config)
+            effect = _determine_effect_from_policy(state, policy_bundle)
+            inline_result = _handle_inline_effect(
+                effect=effect,
+                state=state,
+                pipeline_policy=policy_bundle.pipeline,
+            )
+            if inline_result is not None:
+                if isinstance(inline_result, int):
+                    return inline_result
+                state = inline_result
+                continue
+
             workspace = FsWorkspace(Path())
+            _materialize_agent_prompt_if_needed(effect, workspace, policy_bundle.pipeline)
 
-            # Handle special effects that don't produce events
-            if isinstance(effect, SaveCheckpointEffect):
-                ckpt.save(state)
-                new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED)
-                state = new_state
-                continue
-
-            if isinstance(effect, PreparePromptEffect):
-                materialize_prompt_for_phase(
-                    phase=effect.phase,
-                    workspace=workspace,
-                    pipeline_policy=policy_bundle.pipeline,
-                    session_caps=SessionCapabilities.defaults_for_drain(
-                        _prompt_session_drain_for_phase(effect.phase)
-                    ),
-                    workspace_root=Path(),
-                )
-                state = state.copy_with(
-                    phase=effect.phase,
-                    iteration=effect.iteration,
-                )
-                ckpt.save(state)
-                continue
-
-            if isinstance(effect, InvokeAgentEffect):
-                materialize_prompt_for_phase(
-                    phase=effect.phase,
-                    workspace=workspace,
-                    pipeline_policy=policy_bundle.pipeline,
-                    session_caps=SessionCapabilities.defaults_for_drain(
-                        _prompt_session_drain_for_phase(effect.phase)
-                    ),
-                    workspace_root=Path(),
-                )
-
-            if isinstance(effect, ExitSuccessEffect):
-                console.print("[green]Pipeline completed successfully.[/green]")
-                return 0
-
-            if isinstance(effect, ExitFailureEffect):
-                console.print(f"[red]Pipeline failed:[/red] {effect.reason}")
-                return 1
-
-            # Execute effect and get event
             event, mcp_bridge = _execute_effect(effect, config, mcp_bridge)
+            if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+                event = _phase_event_after_agent_run(
+                    effect=effect,
+                    config=config,
+                    policy_bundle=policy_bundle,
+                    workspace=workspace,
+                )
 
-            # Reduce state
-            state, _ = reducer_reduce(state, event)
-
-            # Checkpoint after each cycle
+            state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
             ckpt.save(state)
 
     except KeyboardInterrupt:
@@ -189,7 +173,78 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         return 1
 
 
-def _create_initial_state(config: UnifiedConfig) -> PipelineState:
+def _handle_inline_effect(
+    *,
+    effect: Effect,
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> PipelineState | int | None:
+    if isinstance(effect, SaveCheckpointEffect):
+        ckpt.save(state)
+        new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
+        return new_state
+
+    if isinstance(effect, PreparePromptEffect):
+        _materialize_prepared_prompt(effect, pipeline_policy)
+        updated_state = state.copy_with(
+            phase=effect.phase,
+            iteration=effect.iteration,
+        )
+        ckpt.save(updated_state)
+        return updated_state
+
+    if isinstance(effect, ExitSuccessEffect):
+        console.print("[green]Pipeline completed successfully.[/green]")
+        return 0
+
+    if isinstance(effect, ExitFailureEffect):
+        console.print(f"[red]Pipeline failed:[/red] {effect.reason}")
+        return 1
+
+    return None
+
+
+def _materialize_prepared_prompt(
+    effect: PreparePromptEffect,
+    pipeline_policy: PipelinePolicy,
+) -> None:
+    workspace = FsWorkspace(Path())
+    materialize_prompt_for_phase(
+        phase=effect.phase,
+        workspace=workspace,
+        pipeline_policy=pipeline_policy,
+        session_caps=SessionCapabilities.defaults_for_drain(
+            _prompt_session_drain_for_phase(effect.phase)
+        ),
+        workspace_root=Path(),
+    )
+
+
+def _materialize_agent_prompt_if_needed(
+    effect: Effect,
+    workspace: FsWorkspace,
+    pipeline_policy: PipelinePolicy,
+) -> None:
+    if not isinstance(effect, InvokeAgentEffect):
+        return
+
+    materialize_prompt_for_phase(
+        phase=effect.phase,
+        workspace=workspace,
+        pipeline_policy=pipeline_policy,
+        session_caps=SessionCapabilities.defaults_for_drain(
+            _prompt_session_drain_for_phase(effect.phase)
+        ),
+        workspace_root=Path(),
+    )
+
+
+def _create_initial_state(
+    config: UnifiedConfig,
+    *,
+    agents_policy: AgentsPolicy | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
+) -> PipelineState:
     """Create initial pipeline state from configuration.
 
     Args:
@@ -199,116 +254,153 @@ def _create_initial_state(config: UnifiedConfig) -> PipelineState:
         Initial PipelineState.
     """
     # Set up agent chains from config
-    dev_agents = config.agent_chains.get("development", [])
-    rev_agents = config.agent_chains.get("review", [])
+    planning_agents = _agents_for_phase(
+        config,
+        "planning",
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
+    dev_agents = _agents_for_phase(
+        config,
+        "development",
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
+    dev_analysis_agents = _agents_for_phase(
+        config,
+        "development_analysis",
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
+    rev_agents = _agents_for_phase(
+        config,
+        "review",
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
+    review_analysis_agents = _agents_for_phase(
+        config,
+        "review_analysis",
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
+    fix_agents = _agents_for_phase(
+        config,
+        "fix",
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
+    entry_phase = pipeline_policy.entry_phase if pipeline_policy is not None else PHASE_PLANNING
 
     return PipelineState(
-        phase=PHASE_PLANNING,
+        phase=entry_phase,
         total_iterations=config.general.developer_iters,
         total_reviewer_passes=config.general.reviewer_reviews,
+        planning_chain=AgentChainState(agents=planning_agents),
         dev_chain=AgentChainState(agents=dev_agents),
+        dev_analysis_chain=AgentChainState(agents=dev_analysis_agents),
         rev_chain=AgentChainState(agents=rev_agents),
+        review_analysis_chain=AgentChainState(agents=review_analysis_agents),
+        fix_chain=AgentChainState(agents=fix_agents),
         rebase=RebaseState(),
         commit=CommitState(),
+        policy_entry_phase=entry_phase,
     )
 
 
-def _determine_effect(state: PipelineState, config: UnifiedConfig) -> Effect:
-    """Determine the next effect based on current state.
+def _determine_effect_from_policy(state: PipelineState, policy_bundle: PolicyBundle) -> Effect:
+    if state.phase == PHASE_COMPLETE:
+        return ExitSuccessEffect()
 
-    Args:
-        state: Current pipeline state.
-        config: Unified configuration.
+    if state.phase == PHASE_FAILED:
+        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
 
-    Returns:
-        Next Effect to execute.
-    """
-    planner_agent = _planning_agent(config)
-    phase_handlers: dict[str, Callable[[], Effect]] = {
-        "planning": lambda: _planning_effect(state, planner_agent),
-        "development": lambda: _agent_or_advance(state, "review"),
-        "review": lambda: _agent_or_next_phase(state, "development_commit"),
-        "fix": lambda: _agent_or_next_phase(state, "review"),
-        "development_commit": _commit_effect,
-        "review_commit": _commit_effect,
-        "complete": ExitSuccessEffect,
-        "failed": lambda: ExitFailureEffect(reason=state.last_error or "Unknown failure"),
-    }
-    handler = phase_handlers.get(state.phase)
-    if handler is None:
+    phase_def = policy_bundle.pipeline.phases.get(state.phase)
+    if phase_def is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
-    return handler()
+
+    if phase_def.requires_commit:
+        return _commit_effect()
+
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
+    if agent_name is None:
+        return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
+
+    return InvokeAgentEffect(
+        agent_name=agent_name,
+        phase=state.phase,
+        prompt_file=prompt_file_for_phase(state.phase),
+    )
 
 
-def _planning_effect(state: PipelineState, planner_agent: str | None) -> Effect:
-    if planner_agent:
-        return InvokeAgentEffect(
-            agent_name=planner_agent,
-            phase=state.phase,
-            prompt_file=prompt_file_for_phase(state.phase),
-        )
-    return PreparePromptEffect(phase="development", iteration=0)
+def _agents_for_phase(
+    config: UnifiedConfig,
+    phase: str,
+    *,
+    agents_policy: AgentsPolicy | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
+) -> list[str]:
+    if agents_policy is not None and pipeline_policy is not None:
+        phase_def = pipeline_policy.phases.get(phase)
+        if phase_def is not None:
+            binding = agents_policy.agent_drains.get(phase_def.drain)
+            if binding is not None:
+                chain = agents_policy.agent_chains.get(binding.chain)
+                if chain is not None:
+                    return list(chain.agents)
+
+    drains = config.agent_drains if isinstance(config.agent_drains, dict) else {}
+    chains = config.agent_chains if isinstance(config.agent_chains, dict) else {}
+    chain_name = drains.get(phase) or phase
+    return list(chains.get(chain_name, []))
 
 
-def _planning_agent(config: UnifiedConfig) -> str | None:
-    planning_chain = config.agent_drains.get("planning")
-    if planning_chain is None:
+def _agent_name_for_phase_from_policy(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+) -> str | None:
+    current_agent = state.current_agent()
+    if current_agent is not None:
+        return current_agent
+
+    phase_def = policy_bundle.pipeline.phases.get(state.phase)
+    if phase_def is None:
         return None
 
-    planning_agents = config.agent_chains.get(planning_chain, [])
-    if not planning_agents:
+    binding = policy_bundle.agents.agent_drains.get(phase_def.drain)
+    if binding is None:
         return None
 
-    return planning_agents[0]
+    chain = policy_bundle.agents.agent_chains.get(binding.chain)
+    if chain is None or not chain.agents:
+        return None
+    return chain.agents[0]
+
+
+def _phase_event_after_agent_run(
+    *,
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    workspace: FsWorkspace,
+) -> PipelineEvent:
+    ctx = PhaseContext.model_construct(
+        workspace=workspace,
+        registry=AgentRegistry.from_config(config),
+        chain_manager=ChainManager(policy_bundle.agents),
+        pipeline_policy=policy_bundle.pipeline,
+        agents_policy=policy_bundle.agents,
+        artifacts_policy=policy_bundle.artifacts,
+        config=config,
+    )
+    events = handle_phase(effect, ctx)
+    if not events:
+        return PipelineEvent.AGENT_SUCCESS
+    return events[0]
 
 
 def _commit_effect() -> CommitEffect:
     return CommitEffect(message_file=COMMIT_MESSAGE_ARTIFACT)
-
-
-def _agent_or_advance(state: PipelineState, fallback_phase: str) -> Effect:
-    """Get agent effect or advance to next phase/iteration.
-
-    Args:
-        state: Current pipeline state.
-        fallback_phase: Phase to transition to if no agent or iteration exhausted.
-
-    Returns:
-        InvokeAgentEffect if agent available, otherwise PreparePromptEffect.
-    """
-    agent = state.current_agent()
-    if agent:
-        return InvokeAgentEffect(
-            agent_name=agent,
-            phase=state.phase,
-            prompt_file=prompt_file_for_phase(state.phase),
-        )
-    if state.iteration + 1 < state.total_iterations:
-        return PreparePromptEffect(
-            phase=state.phase,
-            iteration=state.iteration + 1,
-        )
-    return PreparePromptEffect(phase=fallback_phase, iteration=0)
-
-
-def _agent_or_next_phase(state: PipelineState, fallback_phase: str) -> Effect:
-    """Get agent effect or transition to fallback phase.
-
-    Args:
-        state: Current pipeline state.
-        fallback_phase: Phase to transition to if no agent.
-
-    Returns:
-        InvokeAgentEffect if agent available, otherwise PreparePromptEffect.
-    """
-    agent = state.current_agent()
-    if agent:
-        return InvokeAgentEffect(
-            agent_name=agent,
-            phase=state.phase,
-            prompt_file=prompt_file_for_phase(state.phase),
-        )
-    return PreparePromptEffect(phase=fallback_phase, iteration=0)
 
 
 def _execute_effect(
@@ -443,13 +535,20 @@ def _execute_commit_effect(
     stage_all: Callable[[str], None],
 ) -> PipelineEvent:
     try:
+        message_path = Path(effect.message_file)
+        repo_root = _repo_root_for_commit_message_file(message_path)
         message = _read_commit_effect_message(effect)
         if not message:
             logger.error("Commit message file is empty: {}", effect.message_file)
             return PipelineEvent.COMMIT_FAILURE
-        stage_all(".")
-        sha = create_commit(".", message)
+        if not _repo_has_commit_work(repo_root):
+            logger.info("Skipping commit because the worktree is empty")
+            _cleanup_commit_message_artifacts(message_path)
+            return PipelineEvent.COMMIT_SUCCESS
+        stage_all(str(repo_root))
+        sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
+        _cleanup_commit_message_artifacts(message_path)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)
         return PipelineEvent.COMMIT_FAILURE
@@ -458,6 +557,24 @@ def _execute_commit_effect(
 
 def _read_commit_effect_message(effect: CommitEffect) -> str:
     return read_commit_message_from_path(Path(effect.message_file)) or ""
+
+
+def _repo_has_commit_work(repo_root: Path) -> bool:
+    return Repo(repo_root).is_dirty(untracked_files=True)
+
+
+def _cleanup_commit_message_artifacts(message_file: Path) -> None:
+    delete_commit_message_artifacts(_repo_root_for_commit_message_file(message_file))
+
+
+def _repo_root_for_commit_message_file(message_file: Path) -> Path:
+    artifact_relative = Path(COMMIT_MESSAGE_ARTIFACT)
+    if (
+        len(message_file.parts) >= len(artifact_relative.parts)
+        and tuple(message_file.parts[-len(artifact_relative.parts) :]) == artifact_relative.parts
+    ):
+        return message_file.parents[len(artifact_relative.parts) - 1]
+    return message_file.parent
 
 
 def _stream_parsed_agent_activity(

@@ -21,4 +21,15 @@ You MUST submit your plan via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool.
 USER REQUIREMENTS:
 {{PROMPT}}
 
+Your plan must be executor-ready for unattended development. The submitted artifact must:
+- Capture the problem context and the concrete user-facing outcome
+- Break the work into ordered implementation steps with enough detail to execute without re-planning
+- Identify the critical files or subsystems to inspect or modify and why they matter
+- Call out major risks, edge cases, and the mitigation for each
+- Define verification that the development agent can run to prove completion
+- Include work_units when the work can be parallelized safely
+- Make the planning-to-development handoff explicit so the development agent can start immediately
+
+Prefer concrete actions and acceptance criteria over vague advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
+
 Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON string conforming to the plan schema.

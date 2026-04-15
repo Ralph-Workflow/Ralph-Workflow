@@ -611,11 +611,62 @@ def test_generate_commit_applies_message_from_persisted_artifact(
 
     commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
 
+    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
     commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
-    persisted = commit_file.read_text(encoding="utf-8")
-    assert persisted == "fix: persist then commit"
-    assert committed_messages == [persisted]
+    assert committed_messages == ["fix: persist then commit"]
+    assert not artifact_file.exists()
+    assert not commit_file.exists()
     assert "Created commit" in stream.getvalue()
+
+
+def test_generate_commit_preserves_artifacts_when_commit_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(
+        commit_module,
+        "_working_tree_diff",
+        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    monkeypatch.setattr(
+        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+    )
+    monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
+    _stub_commit_bridge(monkeypatch)
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config):
+            return cls()
+
+        def get(self, _name: str):
+            return AgentConfig(
+                cmd="codex",
+                output_flag="--json-stream",
+                can_commit=True,
+                json_parser=JsonParserType.CODEX,
+            )
+
+    def fail_commit(_root, _message, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
+    monkeypatch.setattr(
+        commit_module,
+        "invoke_agent",
+        _artifact_invoke(tmp_path, "fix: preserve artifacts on failure"),
+    )
+    monkeypatch.setattr(commit_module, "create_commit", fail_commit)
+
+    commit_module.commit_plumbing(options=commit_module.CommitPlumbingOptions(generate_commit=True))
+
+    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+    commit_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+    assert artifact_file.exists()
+    assert commit_file.exists()
+    assert "Commit failed" in stream.getvalue()
 
 
 def test_show_commit_msg_reads_artifact_without_staged_changes(
@@ -811,7 +862,7 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
     output = stream.getvalue()
     assert "Failed to generate commit message from commit drain agents" in output
     assert "stderr exploded" in output
-    assert ".agent/tmp/commit_prompt.md" in output
+    assert "Prompt file:" in output
 
 
 def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(

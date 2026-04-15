@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, cast
 
 from git import Repo
@@ -120,11 +121,161 @@ def _read_optional(workspace: Workspace, path: str) -> str | None:
 
 
 def _resolve_plan_content(workspace: Workspace) -> str | None:
-    for path in (".agent/PLAN.md", ".agent/artifacts/plan.json"):
-        content = _read_optional(workspace, path)
-        if content:
-            return content
+    wrapped_plan = _read_optional(workspace, ".agent/artifacts/plan.json")
+    if wrapped_plan:
+        return _format_plan_for_execution(wrapped_plan)
+
+    markdown_plan = _read_optional(workspace, ".agent/PLAN.md")
+    if markdown_plan:
+        return markdown_plan
     return None
+
+
+def _format_plan_for_execution(content: str) -> str:
+    plan = _parse_plan_content(content)
+    if plan is None:
+        return content
+
+    sections = [
+        _format_summary_section(plan),
+        _format_steps_section(plan),
+        _format_critical_files_section(plan),
+        _format_risks_section(plan),
+        _format_verification_section(plan),
+        _format_work_units_section(plan),
+    ]
+    return "\n\n".join(section for section in sections if section) or content
+
+
+def _parse_plan_content(content: str) -> dict[str, object] | None:
+    try:
+        parsed_obj: object = json.loads(content)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(parsed_obj, dict):
+        return None
+
+    parsed = cast("dict[str, object]", parsed_obj)
+    plan = parsed.get("content") if parsed.get("type") == "plan" else parsed_obj
+    return plan if isinstance(plan, dict) else None
+
+
+def _format_summary_section(plan: dict[str, object]) -> str:
+    summary = plan.get("summary")
+    if not isinstance(summary, dict):
+        return ""
+
+    sections: list[str] = []
+    context = summary.get("context")
+    if context:
+        sections.append(f"Summary:\n{context}")
+
+    scope_lines = _bullet_lines(summary.get("scope_items"), "text")
+    if scope_lines:
+        sections.append("\n".join(["Scope items:", *scope_lines]))
+
+    return "\n\n".join(sections)
+
+
+def _format_steps_section(plan: dict[str, object]) -> str:
+    steps = plan.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return ""
+
+    lines = ["Implementation steps:"]
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        number = step.get("number", "?")
+        title = step.get("title", "Untitled step")
+        content_text = step.get("content", "")
+        lines.append(f"{number}. {title}")
+        if content_text:
+            lines.append(f"   {content_text}")
+    return "\n".join(lines)
+
+
+def _format_critical_files_section(plan: dict[str, object]) -> str:
+    critical_files = plan.get("critical_files")
+    if not isinstance(critical_files, dict):
+        return ""
+
+    primary_files = critical_files.get("primary_files")
+    if not isinstance(primary_files, list) or not primary_files:
+        return ""
+
+    lines = ["Critical files:"]
+    for file_info in primary_files:
+        if not isinstance(file_info, dict):
+            continue
+        path = file_info.get("path")
+        action = file_info.get("action")
+        why = file_info.get("why")
+        if not (path and action):
+            continue
+        line = f"- {path} ({action})"
+        if why:
+            line = f"{line}: {why}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _format_risks_section(plan: dict[str, object]) -> str:
+    risks = plan.get("risks_mitigations")
+    if not isinstance(risks, list) or not risks:
+        return ""
+
+    lines = ["Risks and mitigations:"]
+    for risk in risks:
+        if not isinstance(risk, dict):
+            continue
+        risk_text = risk.get("risk")
+        mitigation = risk.get("mitigation")
+        if risk_text and mitigation:
+            lines.append(f"- {risk_text} -> {mitigation}")
+    return "\n".join(lines)
+
+
+def _format_verification_section(plan: dict[str, object]) -> str:
+    verification = plan.get("verification_strategy")
+    if not isinstance(verification, list) or not verification:
+        return ""
+
+    lines = ["Verification strategy:"]
+    for check in verification:
+        if not isinstance(check, dict):
+            continue
+        method = check.get("method")
+        outcome = check.get("expected_outcome")
+        if method and outcome:
+            lines.append(f"- {method}: {outcome}")
+    return "\n".join(lines)
+
+
+def _format_work_units_section(plan: dict[str, object]) -> str:
+    work_units = plan.get("work_units")
+    if not isinstance(work_units, list) or not work_units:
+        return ""
+
+    lines = ["Work units:"]
+    for unit in work_units:
+        if not isinstance(unit, dict):
+            continue
+        unit_id = unit.get("unit_id")
+        description = unit.get("description")
+        if unit_id and description:
+            lines.append(f"- {unit_id}: {description}")
+    return "\n".join(lines)
+
+
+def _bullet_lines(items: object, text_key: str) -> list[str]:
+    if not isinstance(items, list):
+        return []
+
+    return [
+        f"- {item[text_key]}" for item in items if isinstance(item, dict) and item.get(text_key)
+    ]
 
 
 def _resolve_issues_content(workspace: Workspace) -> str:

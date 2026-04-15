@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import cast
+from unittest.mock import MagicMock
 
+from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.orchestrator import determine_next_effect
@@ -100,3 +102,43 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
         "review_commit",
         "complete",
     ]
+
+
+def test_run_fails_when_planner_does_not_submit_plan_artifact(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "PROMPT.md").write_text("# Test Prompt\n\nUnattended planning recovery.")
+
+    state = PipelineState(
+        phase="planning",
+        planning_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+        total_iterations=1,
+        total_reviewer_passes=1,
+        rebase=RebaseState(),
+        commit=CommitState(),
+    )
+
+    config = MagicMock()
+    config.general.developer_iters = 1
+    config.general.reviewer_reviews = 1
+    config.general.verbosity = 0
+    config.agent_chains = {}
+    config.agent_drains = {}
+
+    monkeypatch.setattr(
+        runner_module,
+        "_execute_effect",
+        lambda _effect, _config, _bridge: (PipelineEvent.AGENT_SUCCESS, None),
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+    console_mock = MagicMock()
+    monkeypatch.setattr(runner_module, "console", console_mock)
+
+    result = runner_module.run(config, initial_state=state)
+
+    assert result == 1
+    console_mock.print.assert_called_with(
+        "[red]Pipeline failed:[/red] Agent chain exhausted in planning"
+    )

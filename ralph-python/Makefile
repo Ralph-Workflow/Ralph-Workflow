@@ -1,5 +1,7 @@
 .PHONY: help install dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify dist-binary dist-pypi dist-all formula-check
 
+PYTEST_WORKERS ?= 4
+
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""
@@ -38,10 +40,10 @@ dev:
 
 # Testing
 test:
-	pytest tests/ -v
+	pytest tests/ -v -n $(PYTEST_WORKERS)
 
 test-cov:
-	pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html
+	pytest tests/ -v -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-report=html
 
 # Linting
 lint:

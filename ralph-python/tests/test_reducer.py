@@ -359,6 +359,19 @@ def test_agent_failure_with_exhausted_chain_fails() -> None:
     assert new_state.phase == PHASE_FAILED
 
 
+def test_planning_agent_failure_uses_planning_chain_instead_of_review_chain() -> None:
+    state = PipelineState(
+        phase="planning",
+        planning_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+        rev_chain=AgentChainState(agents=["reviewer"], current_index=0, retries=0),
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
+
+    assert new_state.planning_chain.retries == 1
+    assert new_state.rev_chain.retries == 0
+
+
 def test_checkpoint_saved_increments_count() -> None:
     """Test that CHECKPOINT_SAVED increments the checkpoint counter."""
     state = PipelineState(checkpoint_saved_count=0)

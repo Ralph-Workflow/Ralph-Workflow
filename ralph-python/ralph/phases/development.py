@@ -47,29 +47,34 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
     if isinstance(effect, InvokeAgentEffect):
         logger.info("Development phase: invoking development agent")
         planning_artifact_path = PLAN_ARTIFACT_PATH
-        if ctx.workspace.exists(planning_artifact_path):
-            try:
-                artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
-                artifact_content = unwrap_phase_artifact_content(
-                    artifact_wrapper,
-                    expected_type="plan",
-                )
-                if _is_legacy_work_units_payload(artifact_content):
-                    artifact = artifact_content
-                else:
-                    artifact = normalize_plan_artifact_content(artifact_content)
-                parsed = parse_work_units_from_artifact(artifact)
-                if parsed is not None:
-                    validate_work_units_against_policy(parsed, ctx.pipeline_policy)
-            except (
-                json.JSONDecodeError,
-                PlanArtifactValidationError,
-                ValueError,
-                WorkUnitsValidationError,
-                PolicyValidationError,
-            ) as exc:
-                logger.warning("Invalid planning artifact: {}", exc)
-                return [PipelineEvent.FAILED]
+        if not ctx.workspace.exists(planning_artifact_path):
+            logger.warning(
+                "Development phase missing required planning artifact at {}", planning_artifact_path
+            )
+            return [PipelineEvent.FAILED]
+
+        try:
+            artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
+            artifact_content = unwrap_phase_artifact_content(
+                artifact_wrapper,
+                expected_type="plan",
+            )
+            if _is_legacy_work_units_payload(artifact_content):
+                artifact = artifact_content
+            else:
+                artifact = normalize_plan_artifact_content(artifact_content)
+            parsed = parse_work_units_from_artifact(artifact)
+            if parsed is not None:
+                validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+        except (
+            json.JSONDecodeError,
+            PlanArtifactValidationError,
+            ValueError,
+            WorkUnitsValidationError,
+            PolicyValidationError,
+        ) as exc:
+            logger.warning("Invalid planning artifact: {}", exc)
+            return [PipelineEvent.FAILED]
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

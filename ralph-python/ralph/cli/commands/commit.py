@@ -182,6 +182,7 @@ def _handle_agent_commit_generation(
                 author_name=git_user_name,
                 author_email=git_user_email,
             )
+            delete_commit_message_artifacts(repo_root)
             console.print(f"\n[green]Created commit:[/green] {sha[:8]}")
         except Exception as e:
             console.print(f"\n[red]Commit failed:[/red] {e}")
@@ -606,6 +607,7 @@ def _handle_show_or_generate(
                     author_name=git_user_name,
                     author_email=git_user_email,
                 )
+                delete_commit_message_artifacts(repo_root)
                 console.print(f"\n[green]Created commit:[/green] {sha[:8]}")
             except Exception as e:
                 console.print(f"\n[red]Commit failed:[/red] {e}")

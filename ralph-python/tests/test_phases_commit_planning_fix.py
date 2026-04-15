@@ -115,6 +115,17 @@ def test_handle_planning_prepares_prompt_and_advances() -> None:
 
 def test_handle_planning_invokes_agent_successfully() -> None:
     ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = (
+        '{"type":"plan","content":{"summary":{"context":"Plan handoff","scope_items":['
+        '{"text":"Retry invalid planning output"},{"text":"Hand off to development"},'
+        '{"text":"Verify policy-driven routing"}]},'
+        '"steps":[{"number":1,"title":"Implement","content":"Wire the pipeline"}],'
+        '"critical_files":{"primary_files":[{"path":"ralph/pipeline/runner.py","action":"modify"}]},'
+        '"risks_mitigations":[{"risk":"Regression","mitigation":"Add tests"}],'
+        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
+    )
     effect = InvokeAgentEffect(
         agent_name="planner",
         phase=PHASE_PLANNING,
@@ -124,7 +135,21 @@ def test_handle_planning_invokes_agent_successfully() -> None:
     assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_handle_planning_invalid_work_units_returns_failed() -> None:
+def test_handle_planning_missing_plan_artifact_returns_agent_failure() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.return_value = False
+
+    effect = InvokeAgentEffect(
+        agent_name="planner",
+        phase=PHASE_PLANNING,
+        prompt_file="planning.txt",
+    )
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
+
+
+def test_handle_planning_invalid_work_units_returns_agent_failure() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.return_value = True
@@ -139,7 +164,7 @@ def test_handle_planning_invalid_work_units_returns_failed() -> None:
         prompt_file="planning.txt",
     )
 
-    assert handle_planning(effect, ctx) == [PipelineEvent.FAILED]
+    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
 
 
 def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None:
@@ -163,7 +188,7 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
     workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
 
 
-def test_handle_planning_invalid_plan_schema_returns_failed() -> None:
+def test_handle_planning_invalid_plan_schema_returns_agent_failure() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
@@ -180,7 +205,7 @@ def test_handle_planning_invalid_plan_schema_returns_failed() -> None:
         agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
     )
 
-    assert handle_planning(effect, ctx) == [PipelineEvent.FAILED]
+    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
 
 
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:

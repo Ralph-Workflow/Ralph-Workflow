@@ -24,13 +24,13 @@ class TestHandleDevelopment:
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.PROMPT_PREPARED]
 
-    def test_invoke_agent_effect_returns_agent_success(self) -> None:
+    def test_invoke_agent_effect_without_plan_artifact_returns_failed(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
         result = handle_development(effect, ctx)
-        assert result == [PipelineEvent.AGENT_SUCCESS]
+        assert result == [PipelineEvent.FAILED]
 
     def test_invoke_agent_effect_with_invalid_work_units_returns_failed(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)

@@ -43,24 +43,27 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
     if isinstance(effect, InvokeAgentEffect):
         logger.info("Planning phase: invoking planning agent")
         planning_artifact_path = PLAN_ARTIFACT_PATH
-        if ctx.workspace.exists(planning_artifact_path):
-            try:
-                artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
-                artifact = normalize_plan_artifact_content(
-                    unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
-                )
-                parsed = parse_work_units_from_artifact(artifact)
-                if parsed is not None:
-                    validate_work_units_against_policy(parsed, ctx.pipeline_policy)
-            except (
-                json.JSONDecodeError,
-                PlanArtifactValidationError,
-                ValueError,
-                WorkUnitsValidationError,
-                PolicyValidationError,
-            ) as exc:
-                logger.warning("Invalid planning artifact: {}", exc)
-                return [PipelineEvent.FAILED]
+        if not ctx.workspace.exists(planning_artifact_path):
+            logger.warning("Planning agent completed without producing {}", planning_artifact_path)
+            return [PipelineEvent.AGENT_FAILURE]
+
+        try:
+            artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
+            artifact = normalize_plan_artifact_content(
+                unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+            )
+            parsed = parse_work_units_from_artifact(artifact)
+            if parsed is not None:
+                validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+        except (
+            json.JSONDecodeError,
+            PlanArtifactValidationError,
+            ValueError,
+            WorkUnitsValidationError,
+            PolicyValidationError,
+        ) as exc:
+            logger.warning("Invalid planning artifact: {}", exc)
+            return [PipelineEvent.AGENT_FAILURE]
         # After agent completes, the event handler will route to next phase
         return [PipelineEvent.AGENT_SUCCESS]
 
