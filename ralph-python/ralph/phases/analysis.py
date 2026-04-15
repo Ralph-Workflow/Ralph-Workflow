@@ -9,20 +9,18 @@ the reducer routing for development_analysis and review_analysis phases.
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.config.enums import AnalysisDecision
 from ralph.phases import get_handler
+from ralph.phases.artifacts import (
+    decision_vocabulary_for_drain,
+    load_phase_artifact,
+    unwrap_phase_artifact_content,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-
-
-class AnalysisArtifact(TypedDict, total=False):
-    status: str
-    decision: str
-
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -45,7 +43,8 @@ def parse_analysis_decision(
     Returns:
         AnalysisDecision enum value. Defaults to PROCEED if parsing fails.
     """
-    artifact_path = f".agent/artifacts/{drain_name}.json"
+    artifact_type = f"{drain_name}_decision"
+    artifact_path = f".agent/artifacts/{artifact_type}.json"
 
     if not ctx.workspace.exists(artifact_path):
         logger.warning(
@@ -55,16 +54,25 @@ def parse_analysis_decision(
         return AnalysisDecision.PROCEED
 
     try:
-        content = ctx.workspace.read(artifact_path)
-        artifact = cast("AnalysisArtifact", json.loads(content))
+        artifact = load_phase_artifact(ctx.workspace, artifact_path)
+        content = unwrap_phase_artifact_content(artifact, expected_type=artifact_type)
 
         # MCP artifact status field: completed, partial, failed
         # Also support legacy "decision" field for backward compatibility
-        status = artifact.get("status") or artifact.get("decision", "completed")
+        status = content.get("status") or content.get("decision", "completed")
         status_str = str(status).lower()
 
         # Map status to AnalysisDecision
         decision = _map_status_to_decision(status_str)
+        vocabulary = decision_vocabulary_for_drain(ctx.artifacts_policy, drain_name, artifact_type)
+        if vocabulary and status_str not in vocabulary:
+            logger.warning(
+                "Analysis artifact at {} used status '{}' outside allowed vocabulary {}.",
+                artifact_path,
+                status_str,
+                vocabulary,
+            )
+            return AnalysisDecision.FAILURE
 
         logger.debug(
             "Parsed analysis decision: {} (status={}) from {}",
@@ -79,7 +87,7 @@ def parse_analysis_decision(
             artifact_path,
             exc,
         )
-        return AnalysisDecision.PROCEED
+        return AnalysisDecision.FAILURE
 
 
 def _map_status_to_decision(status: str) -> AnalysisDecision:
@@ -92,11 +100,19 @@ def _map_status_to_decision(status: str) -> AnalysisDecision:
         Corresponding AnalysisDecision enum value.
     """
     # Map completed/proceed/success to PROCEED
-    if status in ("completed", "proceed", "success", "approve", "approved"):
+    if status in ("completed", "proceed", "success", "continue", "approve", "approved"):
         return AnalysisDecision.PROCEED
 
     # Map partial/revise/changes to REVISE
-    if status in ("partial", "revise", "changes", "request_changes", "needs_work"):
+    if status in (
+        "partial",
+        "revise",
+        "changes",
+        "request_changes",
+        "needs_work",
+        "loopback",
+        "retry",
+    ):
         return AnalysisDecision.REVISE
 
     # Map escalate to ESCALATE
@@ -104,11 +120,11 @@ def _map_status_to_decision(status: str) -> AnalysisDecision:
         return AnalysisDecision.ESCALATE
 
     # Map failed/failure to FAILURE
-    if status in ("failed", "failure", "error"):
+    if status in ("failed", "failure", "error", "fail", "reject"):
         return AnalysisDecision.FAILURE
 
-    # Default to COMPLETE for unknown statuses
-    return AnalysisDecision.COMPLETE
+    # Default to FAILURE for unknown statuses
+    return AnalysisDecision.FAILURE
 
 
 def validate_decision_vocabulary(

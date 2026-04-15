@@ -35,8 +35,12 @@ def prompt_developer_iteration_xml_with_context(
     base_vars: dict[str, str] = {
         "PROMPT": prompt_content or "No requirements provided",
         "PLAN": plan_content or "(no plan available)",
-        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(".agent/tmp/development_result.xml"),
-        "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(".agent/tmp/development_result.xsd"),
+        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
+            ".agent/artifacts/development_result.json"
+        ),
+        "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(
+            ".agent/artifacts/development_result.schema.json"
+        ),
     }
 
     capability_vars = capability_template_variables(
@@ -53,10 +57,10 @@ def prompt_developer_iteration_xml_with_context(
         return (
             f"IMPLEMENTATION MODE\n\nORIGINAL REQUEST:\n{prompt}\n\n"
             f"IMPLEMENTATION PLAN:\n{plan}\n\n"
-            "Output format: <ralph-development-result>"
-            "<ralph-status>completed|partial|failed</ralph-status>"
-            "<ralph-summary>Summary</ralph-summary>"
-            "</ralph-development-result>\n"
+            'When done, call `ralph_submit_artifact` with artifact_type="development_result" '
+            "and content as JSON.\n"
+            "Write the result artifact to .agent/artifacts/development_result.json.\n"
+            '{"status":"completed","summary":"Summary","files_changed":"- src/foo.rs"}\n'
         )
 
 
@@ -75,8 +79,8 @@ def prompt_planning_xml_with_context(
     prompt_md = prompt_content or "No requirements provided"
     base_vars: dict[str, str] = {
         "PROMPT": prompt_md,
-        "PLAN_XML_PATH": workspace.absolute_path(".agent/tmp/plan.xml"),
-        "PLAN_XSD_PATH": workspace.absolute_path(".agent/tmp/plan.xsd"),
+        "PLAN_XML_PATH": workspace.absolute_path(".agent/artifacts/plan.json"),
+        "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
     }
 
     capability_vars = capability_template_variables(
@@ -90,7 +94,9 @@ def prompt_planning_xml_with_context(
     except TemplateRenderingError:
         return (
             f"PLANNING MODE\n\nCreate an implementation plan for:\n\n{prompt_md}\n\n"
-            "Output format: <ralph-plan><ralph-summary>Summary</ralph-summary>"
-            "<ralph-implementation-steps>Steps</ralph-implementation-steps>"
-            "</ralph-plan>\n"
+            'Submit the plan via `ralph_submit_artifact` with artifact_type="plan".\n'
+            "Write the plan artifact to .agent/artifacts/plan.json.\n"
+            '{"summary":{"context":"What is being done and why","scope_items":[]},'
+            '"steps":[],"critical_files":{"primary_files":[]},'
+            '"risks_mitigations":[],"verification_strategy":[]}\n'
         )

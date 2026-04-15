@@ -14,35 +14,47 @@ DEFAULT_COMMIT_TEMPLATE_NAME = "commit_message"
 DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME = "ralph_submit_artifact"
 
 DEFAULT_COMMIT_MESSAGE_TEMPLATE = (
-    "Task: produce a single-line conventional commit subject for the diff below.\n"
+    "Task: produce a spec-compliant MCP commit_message artifact for the diff below.\n"
     "Read the diff silently. Do not write an analysis.\n\n"
     "---\n"
     "## COMMIT MESSAGE FORMAT\n"
-    "<type>[optional scope]: subject\n\n"
+    "<type>[optional scope][!]: subject\n\n"
     "Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. If the change\n"
     "does not fit, default to chore and describe the intent. Keep the subject <= 50 chars\n"
-    "and write it in lowercase imperative mood. Generate a single-line conventional\n"
-    "commit subject only.\n\n"
+    "and write it in lowercase imperative mood. Add a body only when the diff needs\n"
+    "extra context.\n\n"
     "STRICT OUTPUT RULES:\n"
     "Do not explain the diff. Do not output bullets, markdown, sections, rationale,\n"
     "or file lists.\n"
-    "Do not produce a commit body. Do not wrap the subject in code fences.\n"
-    "Your job is to decide on the single-line subject and submit it by calling the tool directly.\n"
+    "Do not wrap JSON or the subject in code fences.\n"
+    "Your job is to decide on the correct structured artifact and submit it by\n"
+    "calling the tool directly.\n"
     "Call the tool before emitting any final text. If you skip the tool call, the\n"
     "task has failed.\n\n"
     "MCP REQUIREMENT:\n"
     "You MUST submit the final result by calling {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} with\n"
-    'artifact_type="commit_message" and JSON content {"message": "<subject>"}.\n'
-    'If no commit should be created, submit {"message": "SKIP: <reason>"}.\n\n'
+    'artifact_type="commit_message" and content as a JSON string matching one of these shapes:\n'
+    '{"type": "commit", "subject": "type(scope): description"}\n'
+    '{"type": "commit", "subject": "type(scope): description", '
+    '"body": "Optional multi-line body"}\n'
+    '{"type": "commit", "subject": "type(scope): description", "body_summary": "Brief summary", '
+    '"body_details": "Detailed explanation", "body_footer": "Fixes #123"}\n'
+    '{"type": "commit", "subject": "type(scope): description", "files": ["src/auth/token.rs", '
+    '"tests/auth/token_expiry_test.rs"]}\n'
+    '{"type": "skip", "reason": "Reason why no commit is needed"}.\n\n'
+    "Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields,\n"
+    "never both, and only include files/excluded_files when you need selective commit scope.\n\n"
     "REQUIRED PROCEDURE:\n"
-    "1. Read the diff and decide on the best single-line conventional commit subject.\n"
-    '2. Immediately call the tool with JSON exactly like {"message": "feat(scope): subject"}.\n'
-    "3. After the MCP call succeeds, optionally echo that same single line once\n"
-    "   and nothing else.\n\n"
+    "1. Read the diff and decide whether the correct result is a commit artifact\n"
+    "   or a skip artifact.\n"
+    "2. Build the JSON content with the exact schema above.\n"
+    "3. Immediately call the tool with that JSON string as the content argument.\n"
+    "4. After the MCP call succeeds, optionally echo only the commit subject line once\n"
+    "   and nothing else. If you submitted a skip artifact, do not emit extra prose.\n\n"
     "DIFF:\n"
     "{{ DIFF }}\n\n"
-    "After the MCP submission, you may optionally echo the same single-line subject "
-    "as plain text,\n"
+    "After the MCP submission, you may optionally echo the same single-line\n"
+    "subject as plain text,\n"
     "but the MCP artifact is the authoritative output. Do not emit markdown, bullets, "
     "or explanations\n"
     "as the final answer."
@@ -84,8 +96,13 @@ def prompt_commit_message_for_opencode(diff: str, *, submit_artifact_tool_name: 
         f"The only tool you may call is `{submit_artifact_tool_name}`. "
         "Do not call bash or any other tool. "
         f'Immediately call `{submit_artifact_tool_name}` with artifact_type="commit_message" '
-        'and content {"message":"<subject>"}. '
-        'If no commit should be created, use content {"message":"SKIP: <reason>"}. '
+        'and content {"type":"commit","subject":"type(scope): description"}. '
+        'Optional commit fields are "body", or the detailed trio '
+        '"body_summary"/"body_details"/"body_footer", plus '
+        'optional "files" and "excluded_files". '
+        "If no commit should be created, use content "
+        '{"type":"skip","reason":"Reason why no commit is needed"}. '
+        'Do not use the legacy {"message": ...} format. '
         "After the tool call succeeds, output only the single line <subject> and nothing else.\n\n"
         "DIFF:\n"
         f"{diff_content}\n"

@@ -64,12 +64,15 @@ def _bridge_factory(
     return session_bridge.SessionBridge(session, current_workspace)
 
 
-def _session(run_id: str = "run-1") -> session_bridge.AgentSession:
+def _session(
+    run_id: str = "run-1", capabilities: set[str] | None = None
+) -> session_bridge.AgentSession:
     return session_bridge.AgentSession(
         session_id=f"session-{run_id}",
         run_id=run_id,
         drain="development",
-        capabilities={
+        capabilities=capabilities
+        or {
             "RunReportProgress",
             "ArtifactSubmit",
             "EnvRead",
@@ -113,6 +116,27 @@ def test_start_mcp_server_for_session_preflights_registered_tools(tmp_path: Path
         )
     finally:
         bridge.shutdown()
+
+
+def test_file_backed_session_allows_workspace_write_any_via_ephemeral_alias(
+    tmp_path: Path,
+) -> None:
+    session_file = tmp_path / "session.json"
+    session_file.write_text(
+        json.dumps(
+            {
+                "session_id": "commit-session",
+                "run_id": "run-commit",
+                "drain": "commit",
+                "capabilities": ["WorkspaceWriteEphemeral"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    session = server_runtime.FileBackedSession(session_file)
+
+    assert session.check_capability("WorkspaceWriteAny") == "approved"
 
 
 def test_session_bridge_http_gateway_lists_and_calls_coordination_tools(
@@ -173,6 +197,258 @@ def test_session_bridge_http_gateway_lists_and_calls_coordination_tools(
         bridge.shutdown()
 
 
+def test_session_bridge_http_gateway_hides_tools_without_capability(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        _http_call(bridge.agent_endpoint_uri(), "initialize")
+        tools_response = _http_call(bridge.agent_endpoint_uri(), "tools/list", msg_id=40)
+        tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
+
+        assert "read_file" in tool_names
+        assert "report_progress" in tool_names
+        assert "exec" not in tool_names
+        assert "write_file" not in tool_names
+        assert "git_diff" not in tool_names
+    finally:
+        bridge.shutdown()
+
+
+def test_session_bridge_http_gateway_rejects_tool_call_without_capability(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        _http_call(bridge.agent_endpoint_uri(), "initialize")
+        response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {"name": "exec", "arguments": {"command": "pwd"}},
+            msg_id=41,
+        )
+
+        assert response["result"] is None
+        assert "Unknown tool: exec" in response["error"]["message"]
+    finally:
+        bridge.shutdown()
+
+
+def test_build_fastmcp_server_filters_tools_by_session_capabilities(tmp_path: Path) -> None:
+    session = AgentSession(
+        session_id="session-filtered",
+        run_id="run-filtered",
+        drain="planning",
+        capabilities={"WorkspaceRead", "ArtifactSubmit"},
+    )
+
+    server = server_runtime.build_fastmcp_server(tmp_path, session=session)
+    tool_names = {tool.name for tool in server._tool_manager.list_tools()}
+
+    assert "read_file" in tool_names
+    assert "ralph_submit_artifact" in tool_names
+    assert "exec" not in tool_names
+    assert "write_file" not in tool_names
+
+
+def test_session_bridge_http_gateway_accepts_structured_commit_artifact(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        initialize_response = _http_call(bridge.agent_endpoint_uri(), "initialize")
+        assert initialize_response["result"]["serverInfo"]["name"] == "ralph-mcp"
+
+        tools_response = _http_call(bridge.agent_endpoint_uri(), "tools/list", msg_id=30)
+        tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
+        assert "ralph_submit_artifact" in tool_names
+
+        submit_response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {
+                "name": "ralph_submit_artifact",
+                "arguments": {
+                    "artifact_type": "commit_message",
+                    "content": json.dumps(
+                        {
+                            "type": "commit",
+                            "subject": "fix(api): normalize payload validation",
+                            "body": "Keep MCP artifacts aligned with the formal schema.",
+                        }
+                    ),
+                },
+            },
+            msg_id=31,
+        )
+        assert submit_response["result"]["isError"] is False
+        assert (
+            submit_response["result"]["content"][0]["text"] == "Artifact submitted: commit_message"
+        )
+
+        artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        stored = json.loads(artifact_file.read_text(encoding="utf-8"))
+        assert stored["content"] == {
+            "type": "commit",
+            "subject": "fix(api): normalize payload validation",
+            "body": "Keep MCP artifacts aligned with the formal schema.",
+        }
+    finally:
+        bridge.shutdown()
+
+
+def test_session_bridge_http_gateway_rejects_legacy_commit_artifact_payload(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        _http_call(bridge.agent_endpoint_uri(), "initialize")
+        legacy_response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {
+                "name": "ralph_submit_artifact",
+                "arguments": {
+                    "artifact_type": "commit_message",
+                    "content": json.dumps({"message": "fix: legacy format"}),
+                },
+            },
+            msg_id=32,
+        )
+        assert legacy_response["result"] is None
+        assert "structured commit_message schema" in legacy_response["error"]["message"]
+    finally:
+        bridge.shutdown()
+
+
+def test_session_bridge_http_gateway_accepts_structured_plan_artifact(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        _http_call(bridge.agent_endpoint_uri(), "initialize")
+        response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {
+                "name": "ralph_submit_artifact",
+                "arguments": {
+                    "artifact_type": "plan",
+                    "content": json.dumps(
+                        {
+                            "summary": {
+                                "context": "Plan MCP validation hardening.",
+                                "scope_items": [
+                                    {"text": "Update validator"},
+                                    {"text": "Add tests"},
+                                    {"text": "Adjust prompt"},
+                                ],
+                            },
+                            "steps": [
+                                {
+                                    "number": 1,
+                                    "step_type": "file_change",
+                                    "title": "Validate plans",
+                                    "content": "Enforce plan schema in the MCP server.",
+                                }
+                            ],
+                            "critical_files": {
+                                "primary_files": [
+                                    {"path": "ralph/mcp/tool_artifact.py", "action": "modify"}
+                                ]
+                            },
+                            "risks_mitigations": [
+                                {"risk": "Schema drift", "mitigation": "Add HTTP tests"}
+                            ],
+                            "verification_strategy": [
+                                {"method": "pytest", "expected_outcome": "green"}
+                            ],
+                        }
+                    ),
+                },
+            },
+            msg_id=33,
+        )
+        assert response["result"]["isError"] is False
+        stored = json.loads(
+            (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+        )
+        assert stored["content"]["summary"]["context"] == "Plan MCP validation hardening."
+    finally:
+        bridge.shutdown()
+
+
+def test_session_bridge_http_gateway_rejects_invalid_development_result(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        _http_call(bridge.agent_endpoint_uri(), "initialize")
+        response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {
+                "name": "ralph_submit_artifact",
+                "arguments": {
+                    "artifact_type": "development_result",
+                    "content": json.dumps(
+                        {
+                            "status": "partial",
+                            "summary": "Half complete.",
+                            "files_changed": "- src/example.py",
+                        }
+                    ),
+                },
+            },
+            msg_id=35,
+        )
+        assert response["result"] is None
+        assert "next_steps" in response["error"]["message"]
+    finally:
+        bridge.shutdown()
+
+
+def test_session_bridge_http_gateway_rejects_malformed_plan_artifact(tmp_path: Path) -> None:
+    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge.start()
+
+    try:
+        _http_call(bridge.agent_endpoint_uri(), "initialize")
+        response = _http_call(
+            bridge.agent_endpoint_uri(),
+            "tools/call",
+            {
+                "name": "ralph_submit_artifact",
+                "arguments": {
+                    "artifact_type": "plan",
+                    "content": json.dumps(
+                        {
+                            "summary": {
+                                "context": "Too small.",
+                                "scope_items": [{"text": "Only one"}],
+                            },
+                            "steps": [
+                                {
+                                    "number": 1,
+                                    "title": "Bad",
+                                    "content": "Missing required sections",
+                                }
+                            ],
+                        }
+                    ),
+                },
+            },
+            msg_id=34,
+        )
+        assert response["result"] is None
+        assert (
+            "verification_strategy" in response["error"]["message"]
+            or "scope_items" in response["error"]["message"]
+        )
+    finally:
+        bridge.shutdown()
+
+
 def test_session_bridge_reuses_lease_file_to_increment_generation(tmp_path: Path) -> None:
     first_bridge = session_bridge.SessionBridge(_session("shared-run"), _WorkspaceRoot(tmp_path))
     first_bridge.start()
@@ -213,7 +489,10 @@ def test_tools_list_preserves_registry_input_schema(tmp_path: Path) -> None:
 
 
 def test_tools_call_exec_failure_preserves_is_error_flag(tmp_path: Path) -> None:
-    bridge = session_bridge.SessionBridge(_session(), _WorkspaceRoot(tmp_path))
+    bridge = session_bridge.SessionBridge(
+        _session(capabilities={"ProcessExecBounded", "WorkspaceRead"}),
+        _WorkspaceRoot(tmp_path),
+    )
     bridge.start()
 
     try:
@@ -243,6 +522,10 @@ def test_build_fastmcp_server_preserves_registry_input_schema(tmp_path: Path) ->
     properties = cast("dict[str, object]", read_env_schema["properties"])
     assert read_env_schema["required"] == ["name"]
     assert "name" in properties
+
+    submit_artifact_schema = cast("dict[str, object]", tools["ralph_submit_artifact"].parameters)
+    submit_properties = cast("dict[str, object]", submit_artifact_schema["properties"])
+    assert "partial" not in submit_properties
 
 
 def test_runtime_main_launches_streamable_http_server(monkeypatch, tmp_path: Path) -> None:

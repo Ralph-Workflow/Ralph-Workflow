@@ -59,10 +59,10 @@ class TestMapStatusToDecision:
         assert _map_status_to_decision("error") == AnalysisDecision.FAILURE
 
     def test_unknown_status_defaults_to_complete(self) -> None:
-        assert _map_status_to_decision("unknown_status") == AnalysisDecision.COMPLETE
+        assert _map_status_to_decision("unknown_status") == AnalysisDecision.FAILURE
 
     def test_empty_string_defaults_to_complete(self) -> None:
-        assert _map_status_to_decision("") == AnalysisDecision.COMPLETE
+        assert _map_status_to_decision("") == AnalysisDecision.FAILURE
 
     def test_case_insensitive_is_handled_by_caller(self) -> None:
         # The parse_analysis_decision function lowercases the status before calling
@@ -93,6 +93,8 @@ class TestParseAnalysisDecision:
     def _make_context(self, workspace: MagicMock) -> MagicMock:
         ctx = MagicMock()
         ctx.workspace = workspace
+        ctx.artifacts_policy = MagicMock()
+        ctx.artifacts_policy.artifacts = {}
         return ctx
 
     def test_missing_artifact_defaults_to_proceed(self) -> None:
@@ -106,7 +108,9 @@ class TestParseAnalysisDecision:
     def test_valid_artifact_with_completed_status(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = '{"status": "completed"}'
+        workspace.read.return_value = (
+            '{"type":"development_analysis_decision","content":{"status":"completed"}}'
+        )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "development_analysis")
@@ -116,7 +120,9 @@ class TestParseAnalysisDecision:
         # Legacy "decision" field support
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = '{"decision": "revise"}'
+        workspace.read.return_value = (
+            '{"type":"review_analysis_decision","content":{"decision":"request_changes"}}'
+        )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "review_analysis")
@@ -125,7 +131,9 @@ class TestParseAnalysisDecision:
     def test_valid_artifact_with_failed_status(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = '{"status": "failed"}'
+        workspace.read.return_value = (
+            '{"type":"development_analysis_decision","content":{"status":"fail"}}'
+        )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "development_analysis")
@@ -134,7 +142,9 @@ class TestParseAnalysisDecision:
     def test_valid_artifact_with_partial_status(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = '{"status": "partial"}'
+        workspace.read.return_value = (
+            '{"type":"review_analysis_decision","content":{"status":"loopback"}}'
+        )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "review_analysis")
@@ -143,7 +153,9 @@ class TestParseAnalysisDecision:
     def test_valid_artifact_with_escalate_status(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
-        workspace.read.return_value = '{"status": "escalate"}'
+        workspace.read.return_value = (
+            '{"type":"development_analysis_decision","content":{"status":"escalate"}}'
+        )
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "development_analysis")
@@ -156,7 +168,7 @@ class TestParseAnalysisDecision:
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.PROCEED
+        assert result == AnalysisDecision.FAILURE
 
     def test_read_error_defaults_to_proceed(self) -> None:
         workspace = MagicMock()
@@ -165,4 +177,31 @@ class TestParseAnalysisDecision:
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.PROCEED
+        assert result == AnalysisDecision.FAILURE
+
+    def test_rejects_invalid_artifact_type_for_drain(self) -> None:
+        workspace = MagicMock()
+        workspace.exists.return_value = True
+        workspace.read.return_value = '{"type":"plan","content":{"status":"completed"}}'
+        ctx = self._make_context(workspace)
+
+        result = parse_analysis_decision(ctx, "development_analysis")
+
+        assert result == AnalysisDecision.FAILURE
+
+    def test_rejects_status_not_allowed_by_policy_vocabulary(self) -> None:
+        workspace = MagicMock()
+        workspace.exists.return_value = True
+        workspace.read.return_value = (
+            '{"type":"review_analysis_decision","content":{"status":"approve"}}'
+        )
+        ctx = self._make_context(workspace)
+        contract = MagicMock()
+        contract.drain = "review_analysis"
+        contract.artifact_type = "review_analysis_decision"
+        contract.decision_vocabulary = ["request_changes", "reject", "loopback"]
+        ctx.artifacts_policy.artifacts = {"review": contract}
+
+        result = parse_analysis_decision(ctx, "review_analysis")
+
+        assert result == AnalysisDecision.FAILURE

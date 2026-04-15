@@ -78,6 +78,7 @@ class WorkspaceLike(Protocol):
 
     def absolute_path(self, path: str) -> str:
         """Return an absolute workspace path for the provided relative path."""
+        ...
 
 
 def _timestamp() -> int:

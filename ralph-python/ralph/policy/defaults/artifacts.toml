@@ -16,7 +16,7 @@
 
 [artifacts.planning_output]
 drain = "planning"
-artifact_type = "planning_json"
+artifact_type = "plan"
 decision_vocabulary = []
 prompt_template = ""
 

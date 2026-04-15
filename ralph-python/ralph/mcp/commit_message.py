@@ -1,8 +1,9 @@
 """Commit-message artifact helpers.
 
 Canonical commit messages are stored as MCP-style JSON artifacts in
-`.agent/tmp/commit_message.json`. A plain-text mirror in
-`.agent/tmp/commit-message.txt` is maintained for CLI compatibility.
+`.agent/tmp/commit_message.json`. The commit artifact content follows a
+structured schema with either a `commit` or `skip` variant. A plain-text
+mirror in `.agent/tmp/commit-message.txt` is maintained for CLI compatibility.
 """
 
 from __future__ import annotations
@@ -19,6 +20,11 @@ COMMIT_MESSAGE_ARTIFACT = ".agent/tmp/commit_message.json"
 COMMIT_MESSAGE_TEXT = ".agent/tmp/commit-message.txt"
 COMMIT_MESSAGE_TYPE = "commit_message"
 COMMIT_MESSAGE_NAME = "commit_message"
+_COMMIT_KIND = "commit"
+_SKIP_KIND = "skip"
+_SKIP_PREFIX = "SKIP:"
+_DETAILED_BODY_KEYS = ("body_summary", "body_details", "body_footer")
+_EXCLUDED_FILE_REASONS = frozenset({"internal_ignore", "not_task_related", "sensitive", "deferred"})
 
 
 def commit_message_artifact_path(repo_root: Path) -> Path:
@@ -29,29 +35,29 @@ def commit_message_text_path(repo_root: Path) -> Path:
     return repo_root / COMMIT_MESSAGE_TEXT
 
 
-def write_commit_message_artifact(repo_root: Path, message: str) -> None:
+def write_commit_message_artifact(repo_root: Path, message: str | dict[str, object]) -> None:
     artifact_path = commit_message_artifact_path(repo_root)
     text_path = commit_message_text_path(repo_root)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     text_path.parent.mkdir(parents=True, exist_ok=True)
 
+    normalized = normalize_commit_message_content(message)
+
     artifact = Artifact(
         name=COMMIT_MESSAGE_NAME,
         artifact_type=COMMIT_MESSAGE_TYPE,
-        content={"message": message},
+        content=normalized,
     )
     artifact_path.write_text(json.dumps(artifact.to_dict(), indent=2), encoding="utf-8")
-    text_path.write_text(message, encoding="utf-8")
+    text_path.write_text(render_commit_message_content(normalized), encoding="utf-8")
 
 
 def read_commit_message_artifact(repo_root: Path) -> str | None:
     artifact_path = commit_message_artifact_path(repo_root)
     if artifact_path.exists():
-        payload = cast("dict[str, object]", json.loads(artifact_path.read_text(encoding="utf-8")))
-        artifact = Artifact.from_dict(payload)
-        message = artifact.content.get("message")
-        if isinstance(message, str) and message.strip():
-            return message.strip()
+        parsed = _read_commit_message_text_from_json_path(artifact_path)
+        if parsed is not None:
+            return parsed
 
     text_path = commit_message_text_path(repo_root)
     if not text_path.exists():
@@ -64,10 +70,7 @@ def read_commit_message_from_path(message_file: Path) -> str | None:
     if message_file.suffix == ".json":
         if not message_file.exists():
             return None
-        payload = cast("dict[str, object]", json.loads(message_file.read_text(encoding="utf-8")))
-        artifact = Artifact.from_dict(payload)
-        message = artifact.content.get("message")
-        return message.strip() if isinstance(message, str) and message.strip() else None
+        return _read_commit_message_text_from_json_path(message_file)
 
     if not message_file.exists():
         return None
@@ -79,3 +82,163 @@ def delete_commit_message_artifacts(repo_root: Path) -> None:
     for path in (commit_message_artifact_path(repo_root), commit_message_text_path(repo_root)):
         if path.exists():
             path.unlink()
+
+
+def normalize_commit_message_content(content: str | dict[str, object]) -> dict[str, object]:
+    if isinstance(content, str):
+        stripped = content.strip()
+        if not stripped:
+            raise ValueError("commit_message content cannot be empty")
+        if stripped.upper().startswith(_SKIP_PREFIX):
+            reason = stripped[len(_SKIP_PREFIX) :].strip()
+            if not reason:
+                raise ValueError("skip commit_message content requires a reason")
+            return {"type": _SKIP_KIND, "reason": reason}
+        return {"type": _COMMIT_KIND, "subject": stripped}
+
+    if not isinstance(content, dict):
+        raise ValueError("commit_message content must be a dictionary")
+
+    legacy_message = content.get("message")
+    if isinstance(legacy_message, str) and legacy_message.strip():
+        return normalize_commit_message_content(legacy_message)
+    if "message" in content:
+        raise ValueError("legacy commit_message payload must use a non-empty 'message' string")
+
+    kind = _required_string_field(content, "type")
+    if kind == _COMMIT_KIND:
+        return _normalize_commit_payload(content)
+    if kind == _SKIP_KIND:
+        reason = _required_string_field(content, "reason")
+        _reject_unknown_fields(content, {"type", "reason"})
+        return {"type": _SKIP_KIND, "reason": reason}
+    raise ValueError("commit_message content type must be 'commit' or 'skip'")
+
+
+def render_commit_message_content(content: dict[str, object]) -> str:
+    normalized = normalize_commit_message_content(content)
+    kind = cast("str", normalized["type"])
+    if kind == _SKIP_KIND:
+        return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"
+
+    subject = cast("str", normalized["subject"])
+    body = _render_commit_body(normalized)
+    return subject if not body else f"{subject}\n\n{body}"
+
+
+def _read_commit_message_text_from_json_path(message_file: Path) -> str | None:
+    payload = cast("dict[str, object]", json.loads(message_file.read_text(encoding="utf-8")))
+    artifact = Artifact.from_dict(payload)
+    if artifact.artifact_type != COMMIT_MESSAGE_TYPE:
+        return None
+    try:
+        return render_commit_message_content(artifact.content)
+    except ValueError:
+        return None
+
+
+def _normalize_commit_payload(content: dict[str, object]) -> dict[str, object]:
+    normalized: dict[str, object] = {
+        "type": _COMMIT_KIND,
+        "subject": _required_string_field(content, "subject"),
+    }
+
+    body = _optional_string_field(content, "body")
+    detailed_values = {
+        key: value
+        for key in _DETAILED_BODY_KEYS
+        if (value := _optional_string_field(content, key)) is not None
+    }
+    if body is not None and detailed_values:
+        raise ValueError("Use either 'body' or the detailed body fields, not both")
+    if body is not None:
+        normalized["body"] = body
+    normalized.update(detailed_values)
+
+    files = _optional_string_list(content, "files")
+    if files is not None:
+        if not files:
+            raise ValueError("commit_message 'files' must not be empty when provided")
+        normalized["files"] = files
+
+    excluded_files = _optional_excluded_files(content)
+    if excluded_files is not None:
+        normalized["excluded_files"] = excluded_files
+
+    allowed_fields = {"type", "subject", "body", *_DETAILED_BODY_KEYS, "files", "excluded_files"}
+    _reject_unknown_fields(content, allowed_fields)
+    return normalized
+
+
+def _render_commit_body(content: dict[str, object]) -> str:
+    body = _optional_string_field(content, "body")
+    if body is not None:
+        return body
+
+    sections = [
+        value
+        for key in _DETAILED_BODY_KEYS
+        if (value := _optional_string_field(content, key)) is not None
+    ]
+    return "\n\n".join(sections)
+
+
+def _required_string_field(content: dict[str, object], field: str) -> str:
+    value = content.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"commit_message payloads require a non-empty '{field}'")
+    return value.strip()
+
+
+def _optional_string_field(content: dict[str, object], field: str) -> str | None:
+    value = content.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"commit_message field '{field}' must be a non-empty string when provided")
+    return value.strip()
+
+
+def _optional_string_list(content: dict[str, object], field: str) -> list[str] | None:
+    value = content.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError(f"commit_message field '{field}' must be an array of strings")
+
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"commit_message field '{field}' must contain only non-empty strings")
+        normalized.append(item.strip())
+    return normalized
+
+
+def _optional_excluded_files(content: dict[str, object]) -> list[dict[str, object]] | None:
+    value = content.get("excluded_files")
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("commit_message field 'excluded_files' must be an array")
+
+    normalized: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("commit_message 'excluded_files' entries must be objects")
+        path = _required_string_field(item, "path")
+        reason = _required_string_field(item, "reason")
+        if reason not in _EXCLUDED_FILE_REASONS:
+            raise ValueError(
+                "commit_message excluded_files reason must be one of "
+                + ", ".join(sorted(_EXCLUDED_FILE_REASONS))
+            )
+        _reject_unknown_fields(item, {"path", "reason"})
+        normalized.append({"path": path, "reason": reason})
+    return normalized
+
+
+def _reject_unknown_fields(content: dict[str, object], allowed: set[str]) -> None:
+    unexpected = sorted(key for key in content if key not in allowed)
+    if unexpected:
+        formatted = ", ".join(unexpected)
+        raise ValueError(f"commit_message payload contains unsupported field(s): {formatted}")

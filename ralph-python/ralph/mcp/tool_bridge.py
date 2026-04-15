@@ -98,8 +98,9 @@ class LazyToolHandler:
 class ToolBridge:
     """Registry for MCP tools and dispatcher for tool invocations."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: object | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
+        self._session = session
 
     def register(self, metadata: ToolMetadata, handler: LazyToolHandler) -> None:
         """Register a tool definition and handler."""
@@ -133,11 +134,17 @@ class ToolBridge:
 
     def list_metadata(self) -> list[ToolMetadata]:
         """Return tool metadata in registration order."""
-        return [tool.metadata for tool in self._tools.values()]
+        return [
+            tool.metadata for tool in self._tools.values() if self._is_tool_allowed(tool.metadata)
+        ]
 
     def list_definitions(self) -> list[ToolDefinition]:
         """Return public tool definitions in registration order."""
-        return [tool.metadata.definition for tool in self._tools.values()]
+        return [
+            tool.metadata.definition
+            for tool in self._tools.values()
+            if self._is_tool_allowed(tool.metadata)
+        ]
 
     def dispatch(
         self,
@@ -149,6 +156,10 @@ class ToolBridge:
     ) -> object:
         """Dispatch a tool invocation to its registered handler."""
         tool = self.get(name)
+        session = host_session or self._session
+        if not self._is_tool_allowed(tool.metadata, session=session):
+            capability = tool.metadata.required_capability
+            raise ToolDispatchError(f"Tool '{name}' requires capability '{capability}'")
         tool_params = dict(params or {})
         try:
             return tool.handler(host_session, workspace, tool_params)
@@ -156,6 +167,35 @@ class ToolBridge:
             raise
         except Exception as exc:
             raise ToolDispatchError(f"Tool '{name}' failed: {exc}") from exc
+
+    def _is_tool_allowed(self, metadata: ToolMetadata, session: object | None = None) -> bool:
+        effective_session = session or self._session
+        if effective_session is None:
+            return True
+
+        checker = getattr(effective_session, "check_capability", None)
+        if not callable(checker):
+            return True
+
+        return _is_approved(checker(metadata.required_capability))
+
+
+def _is_approved(outcome: object) -> bool:
+    if outcome is True:
+        return True
+    if isinstance(outcome, str):
+        return outcome.strip().lower() in {"approved", "allow", "allowed"}
+    if isinstance(outcome, dict):
+        return any(
+            isinstance(outcome.get(field), str)
+            and outcome[field].strip().lower() in {"approved", "allow", "allowed"}
+            for field in ("name", "value", "status")
+        )
+    for field in ("name", "value", "status"):
+        value = getattr(outcome, field, None)
+        if isinstance(value, str) and value.strip().lower() in {"approved", "allow", "allowed"}:
+            return True
+    return False
 
 
 def _metadata(
@@ -359,13 +399,6 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
                             "type": "string",
                             "description": "JSON-serialized artifact payload",
                         },
-                        "partial": {
-                            "type": "boolean",
-                            "description": (
-                                "If true, accepts artifact even with validation errors "
-                                "(default: false)"
-                            ),
-                        },
                     },
                     "required": ["artifact_type", "content"],
                 },
@@ -491,7 +524,7 @@ def build_ralph_tool_registry(session: object, workspace: object) -> ToolBridge:
     expose Rust-compatible `handle_*` functions without extra adapter glue.
     """
 
-    bridge = ToolBridge()
+    bridge = ToolBridge(session=session)
     for spec in _tool_specs():
         bridge.register_spec(spec, session=session, workspace=workspace)
     return bridge

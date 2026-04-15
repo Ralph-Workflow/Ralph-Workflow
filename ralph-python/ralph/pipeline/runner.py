@@ -23,6 +23,7 @@ from ralph.config.enums import (
     PHASE_FAILED,
     PHASE_PLANNING,
 )
+from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_from_path
 from ralph.mcp.server.lifecycle import (
     SessionBridgeLike,
@@ -348,7 +349,7 @@ def _execute_agent_effect(
             session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
             run_id=str(uuid.uuid4()),
             drain=effect.phase,
-            capabilities=set(),
+            capabilities=_default_mcp_capabilities_for_phase(effect.phase),
         )
         workspace = FsWorkspace(Path())
 
@@ -385,6 +386,30 @@ def _execute_agent_effect(
             shutdown_mcp_server(bridge)
         return PipelineEvent.AGENT_FAILURE, bridge
     return PipelineEvent.AGENT_SUCCESS, bridge
+
+
+def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
+    drain_class = drain_class_for_session(phase)
+    base = {
+        "workspace.read",
+        "git.status_read",
+        "git.diff_read",
+        "artifact.submit",
+    }
+
+    if drain_class in {DrainClass.PLANNING, DrainClass.ANALYSIS, DrainClass.REVIEW}:
+        return base
+    if drain_class is DrainClass.COMMIT:
+        return base | {"workspace.write_ephemeral", "git.write", "run.report_progress"}
+    if drain_class in {DrainClass.DEVELOPMENT, DrainClass.FIX}:
+        return base | {
+            "workspace.write_ephemeral",
+            "workspace.write_tracked",
+            "process.exec_bounded",
+            "run.report_progress",
+            "env.read",
+        }
+    return base
 
 
 def _execute_commit_effect(

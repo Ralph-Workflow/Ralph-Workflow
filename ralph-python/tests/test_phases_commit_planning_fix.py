@@ -21,6 +21,7 @@ from ralph.phases.commit import (
     handle_development_commit,
     handle_review_commit,
 )
+from ralph.phases.development import handle_development
 from ralph.phases.fix import handle_fix
 from ralph.phases.planning import handle_planning
 from ralph.pipeline.effects import (
@@ -139,6 +140,68 @@ def test_handle_planning_invalid_work_units_returns_failed() -> None:
     )
 
     assert handle_planning(effect, ctx) == [PipelineEvent.FAILED]
+
+
+def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = (
+        '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
+        '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
+        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
+        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
+        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
+        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
+    )
+
+    effect = InvokeAgentEffect(
+        agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
+    )
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
+
+
+def test_handle_planning_invalid_plan_schema_returns_failed() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = (
+        '{"type":"plan","content":'
+        '{"summary":{"context":"Plan MCP rollout","scope_items":[{"text":"Only one"}]},'
+        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
+        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
+        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
+        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
+    )
+
+    effect = InvokeAgentEffect(
+        agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
+    )
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.FAILED]
+
+
+def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = (
+        '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
+        '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
+        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
+        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
+        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
+        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
+    )
+
+    effect = InvokeAgentEffect(
+        agent_name="developer", phase="development", prompt_file="development.txt"
+    )
+
+    assert handle_development(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
 
 
 def test_handle_planning_ignores_unrelated_effects() -> None:

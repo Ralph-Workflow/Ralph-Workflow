@@ -419,6 +419,48 @@ class TestExecuteAgentEffect:
         assert result[0] == PipelineEvent.AGENT_SUCCESS
         assert result[1] is not None
 
+    def test_development_session_gets_expected_mcp_capabilities(self, monkeypatch) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+        captured: dict[str, object] = {}
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        def fake_start_mcp_server(session, *_args, **_kwargs):
+            captured["capabilities"] = session.capabilities
+            return FakeBridge()
+
+        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            None,
+        )
+
+        assert result[0] == PipelineEvent.AGENT_SUCCESS
+        assert captured["capabilities"] == {
+            "workspace.read",
+            "git.status_read",
+            "git.diff_read",
+            "artifact.submit",
+            "workspace.write_ephemeral",
+            "workspace.write_tracked",
+            "process.exec_bounded",
+            "run.report_progress",
+            "env.read",
+        }
+
     def test_returns_failure_when_agent_missing(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(None)
@@ -695,7 +737,7 @@ class TestExecuteCommitEffect:
                 {
                     "name": "commit_message",
                     "type": "commit_message",
-                    "content": {"message": "fix: pipeline artifact message"},
+                    "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
                     "created_at": "STATIC",
                     "updated_at": "STATIC",
                     "metadata": {},
@@ -722,7 +764,7 @@ class TestExecuteCommitEffect:
                 {
                     "name": "commit_message",
                     "type": "commit_message",
-                    "content": {"message": "fix: pipeline artifact message"},
+                    "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
                     "created_at": "STATIC",
                     "updated_at": "STATIC",
                     "metadata": {},

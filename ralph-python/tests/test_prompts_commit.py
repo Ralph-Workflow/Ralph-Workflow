@@ -10,7 +10,7 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     diff = "diff --git a/app.py b/app.py\n@@ -1 +1 @@\n-foo\n+bar"
     prompt = prompt_commit_message(diff)
 
-    assert "single-line conventional commit subject" in prompt.lower()
+    assert "spec-compliant mcp commit_message artifact" in prompt.lower()
     assert diff in prompt
     assert "<ralph-commit>" not in prompt
     assert "<ralph-subject>" not in prompt
@@ -19,9 +19,14 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "## COMMIT MESSAGE FORMAT" in prompt
     assert "do not explain the diff" in prompt.lower()
     assert "call the tool before emitting any final text" in prompt.lower()
-    assert "single-line conventional" in prompt.lower()
-    assert "commit subject only" in prompt.lower()
-    assert '"message": "feat(scope): subject"' in prompt
+    assert "commit artifact" in prompt.lower()
+    assert "skip artifact" in prompt.lower()
+    assert "optionally echo only the commit subject line once" in prompt.lower()
+    assert '"type": "commit"' in prompt
+    assert '"subject": "type(scope): description"' in prompt
+    assert '"type": "skip"' in prompt
+    assert '"reason": "Reason why no commit is needed"' in prompt
+    assert '"files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]' in prompt
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
 
@@ -59,6 +64,7 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert prompt.startswith("Do not analyze anything.")
     assert "Immediately call `ralph_ralph_submit_artifact`" in prompt
     assert 'artifact_type="commit_message"' in prompt
-    assert '{"message":"<subject>"}' in prompt
+    assert '{"type":"commit","subject":"type(scope): description"}' in prompt
+    assert '{"type":"skip","reason":"Reason why no commit is needed"}' in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt

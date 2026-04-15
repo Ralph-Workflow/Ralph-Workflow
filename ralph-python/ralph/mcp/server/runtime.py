@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.tools.base import Tool
 
+from ralph.mcp.capability_mapping import Capability, McpCapability, lookup_ralph_capability
 from ralph.mcp.session_bridge import AgentSession
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
@@ -137,8 +138,25 @@ class FileBackedSession:
             return set()
         return set(cast("list[str]", capabilities_value))
 
-    def check_capability(self, _: str) -> object:
-        return "approved"
+    def check_capability(self, capability: str) -> object:
+        granted = self.capabilities
+        normalized_granted = set[str]()
+        for value in granted:
+            normalized_granted.add(_normalize_capability_token(value))
+            mapped_granted = lookup_ralph_capability(value)
+            if mapped_granted is not None:
+                normalized_granted.add(_normalize_capability_token(mapped_granted.value))
+        candidates = {_normalize_capability_token(capability)}
+        mapped = lookup_ralph_capability(capability)
+        if mapped is not None:
+            candidates.add(_normalize_capability_token(mapped.value))
+        if capability in {"WorkspaceWriteAny", "FileWrite"}:
+            candidates.update({"workspace_write_ephemeral", "workspace_write_tracked"})
+        return (
+            "approved"
+            if any(candidate in normalized_granted for candidate in candidates)
+            else "denied"
+        )
 
     def is_parallel_worker(self) -> bool:
         return False
@@ -172,6 +190,16 @@ def session_from_env() -> AgentSession | None:
         drain=cast("str", payload.get("drain", "standalone")),
         capabilities=capabilities,
     )
+
+
+def _normalize_capability_token(value: str) -> str:
+    return value.strip().replace("-", "_").replace(".", "_").lower()
+
+
+def _all_capability_values() -> set[str]:
+    values = {cap.value for cap in Capability}
+    values.update(cap.value for cap in McpCapability)
+    return values
 
 
 def _annotation_for_schema(schema: object) -> object:
@@ -249,7 +277,7 @@ def build_fastmcp_server(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
         drain="standalone",
-        capabilities=set(),
+        capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
     registry = build_ralph_tool_registry(effective_session, workspace)

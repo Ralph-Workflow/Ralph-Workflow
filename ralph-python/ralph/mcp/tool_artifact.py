@@ -7,7 +7,20 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.artifacts import ArtifactSubmitOptions, submit_artifact
-from ralph.mcp.commit_message import COMMIT_MESSAGE_TYPE, write_commit_message_artifact
+from ralph.mcp.commit_message import (
+    COMMIT_MESSAGE_TYPE,
+    normalize_commit_message_content,
+    write_commit_message_artifact,
+)
+from ralph.mcp.development_result_artifact import (
+    DevelopmentResultValidationError,
+    normalize_development_result_content,
+)
+from ralph.mcp.plan_artifact import (
+    PLAN_ARTIFACT_TYPE,
+    PlanArtifactValidationError,
+    normalize_plan_artifact_content,
+)
 from ralph.mcp.tool_coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
     InvalidParamsError,
@@ -25,15 +38,10 @@ def handle_submit_artifact(
     params: dict[str, object],
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
-    artifact_type = _required_string(params, "artifact_type")
-    raw_content = _required_string(params, "content")
-    parsed_content = _parse_content(raw_content)
+    artifact_type, parsed_content = _prepare_artifact_submission(params)
 
     if artifact_type == COMMIT_MESSAGE_TYPE:
-        message = parsed_content.get("message")
-        if not isinstance(message, str) or not message.strip():
-            raise InvalidParamsError("commit_message artifacts require non-empty 'message'")
-        write_commit_message_artifact(_workspace_root(workspace), message.strip())
+        write_commit_message_artifact(_workspace_root(workspace), parsed_content)
 
     artifact_dir = Path(workspace.absolute_path(".agent/artifacts"))
     submit_artifact(
@@ -70,4 +78,33 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
     return Path(workspace.absolute_path("."))
 
 
-__all__ = ["handle_submit_artifact"]
+def _prepare_artifact_submission(params: dict[str, object]) -> tuple[str, dict[str, object]]:
+    artifact_type = _required_string(params, "artifact_type")
+    raw_content = _required_string(params, "content")
+    parsed_content = _parse_content(raw_content)
+
+    if artifact_type == COMMIT_MESSAGE_TYPE:
+        if "message" in parsed_content:
+            raise InvalidParamsError(
+                "commit_message artifacts must use the structured commit_message schema; "
+                "legacy 'message' payloads are no longer accepted"
+            )
+        try:
+            parsed_content = normalize_commit_message_content(parsed_content)
+        except ValueError as exc:
+            raise InvalidParamsError(str(exc)) from exc
+    elif artifact_type == PLAN_ARTIFACT_TYPE:
+        try:
+            parsed_content = normalize_plan_artifact_content(parsed_content)
+        except PlanArtifactValidationError as exc:
+            raise InvalidParamsError(str(exc)) from exc
+    elif artifact_type == "development_result":
+        try:
+            parsed_content = normalize_development_result_content(parsed_content)
+        except DevelopmentResultValidationError as exc:
+            raise InvalidParamsError(str(exc)) from exc
+
+    return artifact_type, parsed_content
+
+
+__all__ = ["_prepare_artifact_submission", "handle_submit_artifact"]

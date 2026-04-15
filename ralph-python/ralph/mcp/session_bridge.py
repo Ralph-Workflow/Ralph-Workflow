@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
+from ralph.mcp.capability_mapping import lookup_ralph_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDispatchError, build_ralph_tool_registry
 
 if TYPE_CHECKING:
@@ -415,9 +416,9 @@ class AgentSession:
     parallel_worker: bool = False
     edit_area_result: object = None
 
-    def check_capability(self, _: str) -> object:
-        """Simplified capability gate that always approves."""
-        return "approved"
+    def check_capability(self, capability: str) -> object:
+        """Approve only explicitly granted capabilities or their Ralph aliases."""
+        return "approved" if _session_has_capability(self.capabilities, capability) else "denied"
 
     def is_parallel_worker(self) -> bool:
         """Indicate whether this is a parallel worker session."""
@@ -497,6 +498,27 @@ class McpSessionBridge:
         clone._lease = self._lease
         clone._audit_sink = self._audit_sink
         return clone
+
+
+def _normalize_capability_token(value: str) -> str:
+    return value.strip().replace("-", "_").replace(".", "_").lower()
+
+
+def _session_has_capability(granted: set[str], requested: str) -> bool:
+    normalized_granted = set[str]()
+    for value in granted:
+        normalized_granted.add(_normalize_capability_token(value))
+        mapped_granted = lookup_ralph_capability(value)
+        if mapped_granted is not None:
+            normalized_granted.add(_normalize_capability_token(mapped_granted.value))
+
+    candidates = {_normalize_capability_token(requested)}
+    mapped = lookup_ralph_capability(requested)
+    if mapped is not None:
+        candidates.add(_normalize_capability_token(mapped.value))
+    if requested in {"WorkspaceWriteAny", "FileWrite"}:
+        candidates.update({"workspace_write_ephemeral", "workspace_write_tracked"})
+    return any(candidate in normalized_granted for candidate in candidates)
 
 
 class _HttpGatewayHandler(BaseHTTPRequestHandler):

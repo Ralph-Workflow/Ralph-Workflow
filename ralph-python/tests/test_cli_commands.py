@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ from ralph.cli.commands import init as init_module
 from ralph.config.enums import JsonParserType, ReviewDepth, Verbosity
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.commit_message import write_commit_message_artifact
+from ralph.mcp.startup import preflight_http_mcp_server_tools
 
 if TYPE_CHECKING:
     import pytest
@@ -51,6 +53,19 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
     monkeypatch.setattr(commit_module, "_start_commit_bridge", lambda _repo_root: FakeBridge())
+
+
+def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Path) -> None:
+    bridge = commit_module._start_commit_bridge(tmp_path)
+
+    try:
+        preflight_http_mcp_server_tools(
+            bridge.agent_endpoint_uri(),
+            ["write_file", "read_file", "ralph_submit_artifact"],
+            timeout=timedelta(seconds=1),
+        )
+    finally:
+        bridge.shutdown()
 
 
 def _artifact_invoke(repo_root: Path, message: str):
@@ -443,7 +458,10 @@ def test_generate_commit_msg_writes_commit_message_artifact(
     assert artifact_file.exists()
     artifact = json.loads(artifact_file.read_text(encoding="utf-8"))
     assert artifact["type"] == "commit_message"
-    assert artifact["content"]["message"] == "feat: persist generated commit message"
+    assert artifact["content"] == {
+        "type": "commit",
+        "subject": "feat: persist generated commit message",
+    }
     assert commit_file.exists()
     assert commit_file.read_text(encoding="utf-8") == "feat: persist generated commit message"
     output = stream.getvalue()
