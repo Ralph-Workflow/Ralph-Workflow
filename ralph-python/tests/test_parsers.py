@@ -42,31 +42,31 @@ def test_claude_parser_content_block_delta() -> None:
 
 
 def test_claude_parser_message_stop() -> None:
-    """Test Claude parser handles message_stop events."""
+    """Claude parser should suppress lifecycle-only events in user-facing output."""
     parser = ClaudeParser()
     lines = [
         '{"type":"message_start","message":{"id":"123"}}',
         '{"type":"content_block_start","content_block":{"type":"text"}}',
         '{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}',
+        '{"type":"content_block_stop"}',
         '{"type":"message_stop"}',
     ]
     results = list(parser.parse(_make_lines(lines)))
 
-    types = [r.type for r in results]
-    assert "message_start" in types
-    assert "text" in types
-    assert "stop" in types
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "Hello"
 
 
 def test_claude_parser_error() -> None:
-    """Test Claude parser handles error events."""
+    """Claude parser should prefer the user-facing error message."""
     parser = ClaudeParser()
     lines = ['{"type":"error","error":{"type":"rate_limit_error","message":"Rate limited"}}']
     results = list(parser.parse(_make_lines(lines)))
 
     assert len(results) == 1
     assert results[0].type == "error"
-    assert "rate_limit" in results[0].content
+    assert results[0].content == "Rate limited"
 
 
 def test_claude_parser_invalid_json() -> None:
@@ -81,7 +81,7 @@ def test_claude_parser_invalid_json() -> None:
 
 
 def test_claude_parser_stream_event_wrapper_for_ccs() -> None:
-    """Claude/CCS stream_event wrapper should parse nested text deltas."""
+    """Claude/CCS stream_event wrapper should suppress wrapped lifecycle noise too."""
     parser = ClaudeParser()
     lines = [
         (
@@ -93,9 +93,9 @@ def test_claude_parser_stream_event_wrapper_for_ccs() -> None:
 
     results = list(parser.parse(_make_lines(lines)))
 
+    assert len(results) == 1
     assert results[0].type == "text"
     assert results[0].content == "Hello from stream"
-    assert results[1].type == "stop"
 
 
 def test_claude_parser_assistant_message_content_blocks() -> None:
@@ -107,16 +107,70 @@ def test_claude_parser_assistant_message_content_blocks() -> None:
 
     results = list(parser.parse(_make_lines(lines)))
 
+    assert len(results) == 1
     assert results[0].type == "text"
     assert results[0].content == "Final response"
 
 
+def test_claude_parser_result_event_does_not_emit_extra_stop_noise() -> None:
+    """Claude result events should surface text without an extra lifecycle line."""
+    parser = ClaudeParser()
+    lines = [
+        '{"type":"result","result":"Final answer"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "text"
+    assert results[0].content == "Final answer"
+
+
+def test_claude_parser_tool_result_keeps_structured_metadata_for_renderer_summary() -> None:
+    """Claude tool results should keep structured metadata while surfacing readable text."""
+    parser = ClaudeParser()
+    lines = [
+        (
+            '{"type":"assistant","message":{"content":[{"type":"tool_result",'
+            '"content":[{"type":"text","text":"file content"}],'
+            '"tool_use_id":"toolu_123","name":"read"}]}}'
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "tool_result"
+    assert results[0].content == "file content"
+    assert results[0].metadata["name"] == "read"
+
+
+def test_claude_parser_tool_use_block_is_emitted_as_user_visible_tool_activity() -> None:
+    """Claude parser should surface tool-use blocks instead of raw block lifecycle events."""
+    parser = ClaudeParser()
+    lines = [
+        (
+            '{"type":"content_block_start","content_block":{"type":"tool_use",'
+            '"name":"bash","input":{"command":"ls -la","workdir":"/tmp"}}}'
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "tool_use"
+    assert results[0].content == "bash"
+    assert results[0].metadata["input"] == {"command": "ls -la", "workdir": "/tmp"}
+
+
 def test_opencode_parser_stream() -> None:
-    """Test OpenCode parser handles stream events."""
+    """OpenCode parser should suppress lifecycle-only events in user-facing output."""
     parser = OpenCodeParser()
     lines = [
+        '{"type":"step_start","id":"step-1"}',
         '{"type":"stream","content":"Hello"}',
         '{"type":"stream","content":" World"}',
+        '{"type":"step_finish","id":"step-1"}',
         '{"type":"done"}',
     ]
     results = list(parser.parse(_make_lines(lines)))
@@ -125,17 +179,20 @@ def test_opencode_parser_stream() -> None:
     assert results[0].content == "Hello"
     assert results[1].type == "text"
     assert results[1].content == " World"
-    assert results[2].type == "stop"
+    assert len(results) == EXPECTED_TEXT_RESULTS
 
 
 def test_opencode_parser_tool_use() -> None:
-    """Test OpenCode parser handles tool_use events."""
+    """OpenCode parser should expose nested tool input for readable rendering."""
     parser = OpenCodeParser()
-    lines = ['{"type":"tool_use","tool":"bash","input":{"command":"ls"}}']
+    lines = [
+        '{"type":"tool_use","part":{"tool":"bash","input":{"command":"ls","workdir":"/repo"}}}',
+    ]
     results = list(parser.parse(_make_lines(lines)))
 
     assert results[0].type == "tool_use"
     assert results[0].content == "bash"
+    assert results[0].metadata["input"] == {"command": "ls", "workdir": "/repo"}
 
 
 def test_opencode_parser_text_event_with_part_payload() -> None:
@@ -167,6 +224,26 @@ def test_opencode_parser_tool_use_completed_state_emits_result() -> None:
     assert len(results) == 1
     assert results[0].type == "tool_result"
     assert results[0].content == "file content"
+    assert results[0].metadata["tool"] == "read"
+
+
+def test_opencode_parser_tool_result_preserves_tool_context_and_structured_metadata() -> None:
+    """OpenCode tool results should preserve structured metadata for renderer summaries."""
+    parser = OpenCodeParser()
+    lines = [
+        (
+            '{"type":"tool_result","tool":"grep","result":{"matches":3,"path":"src"},'
+            '"part":{"tool":"grep","input":{"pattern":"TODO"}}}'
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "tool_result"
+    assert results[0].content == "{'matches': 3, 'path': 'src'}"
+    assert results[0].metadata["tool"] == "grep"
+    assert results[0].metadata["input"] == {"pattern": "TODO"}
 
 
 def test_generic_parser_content_fields() -> None:

@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 class OpenCodeParser:
     """Parser for OpenCode's NDJSON streaming output."""
 
+    _LIFECYCLE_EVENT_TYPES = frozenset({"step_start", "step_finish", "done"})
+
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         """Parse OpenCode streaming NDJSON lines."""
         for line in lines:
@@ -37,6 +39,9 @@ class OpenCodeParser:
     def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances."""
         event_type = str(obj.get("type", "unknown"))
+        if event_type in self._LIFECYCLE_EVENT_TYPES:
+            return
+
         part_obj = obj.get("part")
         part: dict[str, object] = {}
         if isinstance(part_obj, dict):
@@ -45,9 +50,6 @@ class OpenCodeParser:
         handler_map = {
             "stream": self._parse_stream,
             "text": self._parse_text,
-            "step_start": self._parse_step_start,
-            "done": self._parse_done,
-            "step_finish": self._parse_done,
             "error": self._parse_error,
             "tool_use": self._parse_tool_use,
             "tool_result": self._parse_tool_result,
@@ -88,22 +90,6 @@ class OpenCodeParser:
 
         yield AgentOutputLine(type="text", raw=raw, metadata=obj)
 
-    def _parse_step_start(
-        self,
-        obj: dict[str, object],
-        _part: dict[str, object],
-        raw: str,
-    ) -> Iterator[AgentOutputLine]:
-        yield AgentOutputLine(type="message_start", raw=raw, metadata=obj)
-
-    def _parse_done(
-        self,
-        _obj: dict[str, object],
-        _part: dict[str, object],
-        raw: str,
-    ) -> Iterator[AgentOutputLine]:
-        yield AgentOutputLine(type="stop", raw=raw)
-
     def _parse_error(
         self,
         obj: dict[str, object],
@@ -125,23 +111,29 @@ class OpenCodeParser:
     ) -> Iterator[AgentOutputLine]:
         tool_name = str(part.get("tool", obj.get("tool", "unknown")))
         state_obj = part.get("state")
+        metadata = self._tool_metadata(obj, part)
 
         if not isinstance(state_obj, dict):
-            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=obj)
+            yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
             return
 
         status = str(state_obj.get("status", ""))
         if status == "completed":
             output = state_obj.get("output", "")
-            yield AgentOutputLine(type="tool_result", content=str(output), raw=raw, metadata=obj)
+            yield AgentOutputLine(
+                type="tool_result",
+                content=self._stringify_output(output),
+                raw=raw,
+                metadata=metadata,
+            )
             return
 
         if status == "error":
             err = str(state_obj.get("error", "tool error"))
-            yield AgentOutputLine(type="error", content=err, raw=raw, metadata=obj)
+            yield AgentOutputLine(type="error", content=err, raw=raw, metadata=metadata)
             return
 
-        yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=obj)
+        yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=metadata)
 
     def _parse_tool_result(
         self,
@@ -149,9 +141,50 @@ class OpenCodeParser:
         part: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        metadata = self._tool_metadata(obj, part)
         if "result" in obj:
-            result = str(obj.get("result", ""))
+            result = self._stringify_output(obj.get("result", ""))
         else:
             state_obj = part.get("state")
-            result = str(state_obj.get("output", "")) if isinstance(state_obj, dict) else ""
-        yield AgentOutputLine(type="tool_result", content=result, raw=raw, metadata=obj)
+            result = (
+                self._stringify_output(state_obj.get("output", ""))
+                if isinstance(state_obj, dict)
+                else ""
+            )
+        yield AgentOutputLine(type="tool_result", content=result, raw=raw, metadata=metadata)
+
+    def _tool_metadata(
+        self,
+        obj: dict[str, object],
+        part: dict[str, object],
+    ) -> dict[str, object]:
+        metadata = dict(obj)
+        tool_name = part.get("tool", obj.get("tool"))
+        if isinstance(tool_name, str) and tool_name:
+            metadata["tool"] = tool_name
+
+        input_obj = part.get("input")
+        if isinstance(input_obj, dict):
+            metadata["input"] = input_obj
+            return metadata
+
+        state_obj = part.get("state")
+        if isinstance(state_obj, dict):
+            nested_input = state_obj.get("input")
+            if isinstance(nested_input, dict):
+                metadata["input"] = nested_input
+
+        return metadata
+
+    def _stringify_output(self, output: object) -> str:
+        if isinstance(output, str):
+            return output
+        if isinstance(output, list):
+            text_parts = [
+                str(item.get("text", ""))
+                for item in output
+                if isinstance(item, dict) and "text" in item
+            ]
+            if text_parts:
+                return "\n".join(part for part in text_parts if part)
+        return str(output)

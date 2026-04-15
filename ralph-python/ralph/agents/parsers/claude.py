@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 class ClaudeParser:
     """Parser for Claude's NDJSON streaming output."""
 
+    _LIFECYCLE_EVENT_TYPES = frozenset({"message_start", "message_stop", "content_block_stop"})
+
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         """Parse Claude streaming NDJSON lines."""
         for line in lines:
@@ -41,6 +43,9 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
 
+        if event_type in self._LIFECYCLE_EVENT_TYPES:
+            return
+
         if event_type == "stream_event":
             event = obj.get("event")
             if isinstance(event, dict):
@@ -58,16 +63,7 @@ class ClaudeParser:
         elif event_type == "error":
             yield from self._parse_error_event(obj, raw)
         else:
-            direct_map = {
-                "message_start": "message_start",
-                "message_stop": "stop",
-                "content_block_stop": "block_stop",
-            }
-            mapped = direct_map.get(event_type)
-            if mapped:
-                yield AgentOutputLine(type=mapped, raw=raw, metadata=obj)
-            else:
-                yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+            yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
 
     def _parse_stream_inner(
         self,
@@ -88,14 +84,7 @@ class ClaudeParser:
             yield from self._parse_stream_error(event, raw)
             return
 
-        direct_map = {
-            "message_start": "message_start",
-            "message_stop": "stop",
-            "content_block_stop": "block_stop",
-        }
-        mapped = direct_map.get(event_type)
-        if mapped:
-            yield AgentOutputLine(type=mapped, raw=raw, metadata=event)
+        if event_type in self._LIFECYCLE_EVENT_TYPES:
             return
 
         yield AgentOutputLine(type=event_type, raw=raw, metadata=event)
@@ -127,7 +116,6 @@ class ClaudeParser:
         result = str(obj.get("result", ""))
         if result:
             yield AgentOutputLine(type="text", content=result, raw=raw, metadata=obj)
-        yield AgentOutputLine(type="stop", raw=raw, metadata=obj)
 
     def _parse_content_block_start(
         self,
@@ -135,12 +123,10 @@ class ClaudeParser:
         raw: str,
     ) -> Iterator[AgentOutputLine]:
         content_block = obj.get("content_block")
-        if isinstance(content_block, dict):
-            block_type = str(content_block.get("type", "unknown"))
-        else:
-            block_type = "unknown"
+        if not isinstance(content_block, dict):
+            return
 
-        yield AgentOutputLine(type=f"block_start_{block_type}", raw=raw, metadata=obj)
+        yield from self._parse_content_block(content_block, raw)
 
     def _parse_error_event(
         self,
@@ -149,7 +135,7 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         error_obj = obj.get("error")
         if isinstance(error_obj, dict):
-            error_msg = str(error_obj.get("type", "unknown"))
+            error_msg = str(error_obj.get("message", error_obj.get("type", "unknown error")))
         else:
             error_msg = "unknown"
         yield AgentOutputLine(type="error", content=error_msg, raw=raw, metadata=obj)
@@ -161,21 +147,9 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         content_block = event.get("content_block")
         if not isinstance(content_block, dict):
-            yield AgentOutputLine(type="block_start_unknown", raw=raw, metadata=event)
             return
 
-        block_type = str(content_block.get("type", "unknown"))
-        if block_type == "tool_use":
-            tool_name = str(content_block.get("name", "unknown"))
-            yield AgentOutputLine(
-                type="tool_use",
-                content=tool_name,
-                raw=raw,
-                metadata=content_block,
-            )
-            return
-
-        yield AgentOutputLine(type=f"block_start_{block_type}", raw=raw, metadata=event)
+        yield from self._parse_content_block(content_block, raw)
 
     def _parse_stream_error(
         self,
@@ -196,12 +170,10 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         message = obj.get("message")
         if not isinstance(message, dict):
-            yield AgentOutputLine(type="assistant", raw=raw, metadata=obj)
             return
 
         content = message.get("content")
         if not isinstance(content, list):
-            yield AgentOutputLine(type="assistant", raw=raw, metadata=obj)
             return
 
         for block in content:
@@ -221,12 +193,52 @@ class ClaudeParser:
                 continue
 
             if block_type == "tool_result":
-                tool_result = block.get("content", "")
+                tool_result = self._stringify_tool_content(block.get("content", ""))
                 yield AgentOutputLine(
                     type="tool_result",
-                    content=str(tool_result),
+                    content=tool_result,
                     raw=raw,
                     metadata=block,
                 )
 
-        yield AgentOutputLine(type="assistant", raw=raw, metadata=obj)
+    def _parse_content_block(
+        self,
+        content_block: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        block_type = str(content_block.get("type", "unknown"))
+
+        if block_type == "text":
+            text = str(content_block.get("text", ""))
+            if text:
+                yield AgentOutputLine(type="text", content=text, raw=raw, metadata=content_block)
+            return
+
+        if block_type == "tool_use":
+            tool_name = str(content_block.get("name", "unknown"))
+            yield AgentOutputLine(
+                type="tool_use", content=tool_name, raw=raw, metadata=content_block
+            )
+            return
+
+        if block_type == "tool_result":
+            tool_result = self._stringify_tool_content(content_block.get("content", ""))
+            yield AgentOutputLine(
+                type="tool_result",
+                content=tool_result,
+                raw=raw,
+                metadata=content_block,
+            )
+
+    def _stringify_tool_content(self, content: object) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = [
+                str(item.get("text", ""))
+                for item in content
+                if isinstance(item, dict) and str(item.get("type", "")) == "text"
+            ]
+            if text_parts:
+                return "\n".join(part for part in text_parts if part)
+        return str(content)

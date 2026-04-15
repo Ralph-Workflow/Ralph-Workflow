@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from ralph.agents.parsers import AgentOutputLine
+from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.pipeline import runner as runner_module
@@ -1046,3 +1046,43 @@ class TestRenderAgentActivityLine:
         assert "status=completed" in rendered
         assert "summary=Plan submitted" in rendered
         assert "{" not in rendered
+
+    def test_tool_result_uses_structured_metadata_summary_for_user_friendly_context(self) -> None:
+        output = AgentOutputLine(
+            type="tool_result",
+            content="{'matches': 3, 'path': 'src'}",
+            metadata={
+                "tool": "grep",
+                "input": {"pattern": "TODO", "path": "src"},
+                "result": {"matches": 3, "path": "src"},
+            },
+        )
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "tool result" in rendered
+        assert "{'matches': 3, 'path': 'src'}" in rendered
+
+    def test_claude_assistant_text_renders_without_extra_assistant_summary_line(self) -> None:
+        parser = ClaudeParser()
+        parsed = list(
+            parser.parse(
+                iter(
+                    [
+                        (
+                            '{"type":"assistant","message":{"content":['
+                            '{"type":"text","text":"Final response"}]}}'
+                        )
+                    ]
+                )
+            )
+        )
+
+        rendered = [
+            runner_module._render_agent_activity_line(output, "dev")
+            for output in parsed
+            if runner_module._render_agent_activity_line(output, "dev") is not None
+        ]
+
+        assert rendered == ["[white]dev:[/white] Final response"]
