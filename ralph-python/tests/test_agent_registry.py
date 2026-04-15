@@ -124,11 +124,27 @@ def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
     assert agent.can_commit is True
 
 
+def test_agent_registry_resolves_direct_claude_model_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("claude/opus")
+
+    assert agent is not None
+    assert agent.cmd == "claude -p"
+    assert agent.output_flag == "--output-format=stream-json"
+    assert agent.json_parser == "claude"
+    assert agent.transport == AgentTransport.CLAUDE
+    assert agent.model_flag == "--model opus"
+    assert agent.can_commit is True
+
+
 @pytest.mark.parametrize(
     "name",
     [
         "opencode/",
         "opencode//model",
+        "claude/",
+        "claude//model",
     ],
 )
 def test_agent_registry_rejects_malformed_direct_opencode_reference(name: str) -> None:

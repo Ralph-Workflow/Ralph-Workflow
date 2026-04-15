@@ -30,7 +30,7 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
 
     assert "IMPLEMENTATION MODE" in prompt
     assert "UNATTENDED MODE" in prompt
-    assert prompt_text in prompt
+    assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert plan_text in prompt
 
 
@@ -47,7 +47,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
     )
 
     assert "PLANNING MODE" in prompt
-    assert "No requirements provided" in prompt
+    assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert "ralph_submit_artifact" in prompt
 
 

@@ -54,6 +54,7 @@ from ralph.prompts.materialize import (
     prompt_file_for_phase,
     tool_name_prefix_for_transport,
 )
+from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace import FsWorkspace
 
@@ -467,6 +468,10 @@ def _execute_agent_effect(
                 MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
                 MCP_RUN_ID_ENV: session.run_id,
             },
+            system_prompt_file=materialize_system_prompt(
+                workspace_root=Path(),
+                name=str(effect.phase),
+            ),
         )
         output_lines = deps.invoke_agent(agent_config, effect.prompt_file, options=options)
         if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:

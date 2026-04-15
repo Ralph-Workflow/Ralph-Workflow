@@ -2,7 +2,11 @@
 
 import pytest
 
-from ralph.prompts.commit import prompt_commit_message, prompt_commit_message_for_opencode
+from ralph.prompts.commit import (
+    CommitPromptPayloadConfig,
+    prompt_commit_message,
+    prompt_commit_message_for_opencode,
+)
 from ralph.prompts.template_registry import TemplateRegistry
 
 
@@ -76,3 +80,45 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt
+
+
+def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
+    prompt = prompt_commit_message("diff --git a/app.py b/app.py\n+hello")
+
+    assert "do not ask the user for confirmation" in prompt.lower()
+    assert "do not write 'would you like me to'" in prompt.lower()
+
+
+def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path) -> None:
+    diff = "x" * (100 * 1024 + 1)
+
+    prompt = prompt_commit_message(
+        diff,
+        payload_config=CommitPromptPayloadConfig(
+            output_dir=tmp_path,
+            name_prefix="development_commit",
+        ),
+    )
+
+    assert "read the complete diff from file at" in prompt.lower()
+    assert diff not in prompt
+    payload_file = tmp_path / "development_commit_diff.txt"
+    assert payload_file.read_text(encoding="utf-8") == diff
+
+
+def test_opencode_commit_prompt_uses_file_reference_for_large_diff(tmp_path) -> None:
+    diff = "x" * (100 * 1024 + 1)
+
+    prompt = prompt_commit_message_for_opencode(
+        diff,
+        submit_artifact_tool_name="ralph_submit_artifact",
+        payload_config=CommitPromptPayloadConfig(
+            output_dir=tmp_path,
+            name_prefix="review_commit",
+        ),
+    )
+
+    assert "read the complete diff from file at" in prompt.lower()
+    assert diff not in prompt
+    payload_file = tmp_path / "review_commit_diff.txt"
+    assert payload_file.read_text(encoding="utf-8") == diff

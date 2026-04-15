@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from git import Repo
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix, prefix_tool_name
-from ralph.prompts.commit import prompt_commit_message
+from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
+from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
@@ -67,6 +69,7 @@ def _render_prompt_for_phase(
     context = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
+    current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
     plan_content = _resolve_plan_content(workspace)
     if phase == "planning":
         return prompt_planning_xml_with_context(
@@ -82,6 +85,7 @@ def _render_prompt_for_phase(
             inputs=DeveloperPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
+                prompt_name_prefix=phase,
             ),
             workspace=workspace,
             session_caps=session_caps,
@@ -89,13 +93,19 @@ def _render_prompt_for_phase(
         )
     if phase in {"review", "fix", "development_analysis", "review_analysis"}:
         template = context.registry.get_template(template_name)
-        variables = {
-            "PROMPT": prompt_content or "No requirements provided",
-            "PLAN": plan_content or "(no plan available)",
-            "DIFF": _git_diff(workspace_root),
-            "LATEST_ARTIFACT": _latest_artifact_content(workspace, phase),
-            "ISSUES": _resolve_issues_content(workspace),
-        }
+        diff_content = _git_diff(workspace_root)
+        variables = _phase_payload_variables(
+            phase=phase,
+            workspace_root=workspace_root,
+            values={
+                "PLAN": plan_content or "(no plan available)",
+                "DIFF": diff_content,
+                "CHANGES": diff_content,
+                "LATEST_ARTIFACT": _latest_artifact_content(workspace, phase),
+                "ISSUES": _resolve_issues_content(workspace),
+            },
+        )
+        variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
         return render_template(
             template,
             _merged_variables(variables, session_caps),
@@ -111,6 +121,10 @@ def _render_prompt_for_phase(
                     SUBMIT_ARTIFACT_TOOL,
                     tool_name_prefix=session_caps.tool_name_prefix,
                 ),
+            ),
+            payload_config=CommitPromptPayloadConfig(
+                output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
+                name_prefix=phase,
             ),
         )
     msg = f"Unsupported phase '{phase}' for prompt materialization"
@@ -141,6 +155,38 @@ def _read_optional(workspace: Workspace, path: str) -> str | None:
     if not workspace.exists(path):
         return None
     return workspace.read(path)
+
+
+def _phase_payload_variables(
+    *,
+    phase: str,
+    workspace_root: Path,
+    values: dict[str, str],
+) -> dict[str, str]:
+    output_dir = workspace_root / ".agent" / "tmp" / "prompt_payloads"
+    return build_prompt_payload_variables(
+        values,
+        prompt_name_prefix=phase,
+        write_payload=lambda relative_path, content: write_payload_to_directory(
+            output_dir,
+            relative_path,
+            content,
+        ),
+    )
+
+
+def _persist_current_prompt(workspace_root: Path, prompt_content: str | None) -> str:
+    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    current_prompt_path.write_text(prompt_content or "No requirements provided", encoding="utf-8")
+    return str(current_prompt_path)
+
+
+def _current_prompt_variables(
+    prompt_content: str | None, current_prompt_path: str
+) -> dict[str, str]:
+    del prompt_content
+    return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
 
 
 def _resolve_plan_content(workspace: Workspace) -> str | None:

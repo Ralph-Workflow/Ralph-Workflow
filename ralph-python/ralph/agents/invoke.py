@@ -42,8 +42,8 @@ class InvokeOptions:
         session_id: Optional session identifier for resume-capable agents.
         verbose: Whether to pass verbose flag to agent.
         show_progress: Whether to show tqdm progress bar.
-        workspace_path: Optional path to workspace for file-change monitoring.
-        extra_env: Optional environment overrides for the subprocess.
+    workspace_path: Optional path to workspace for file-change monitoring.
+    extra_env: Optional environment overrides for the subprocess.
     """
 
     model_flag: str | None = None
@@ -53,6 +53,7 @@ class InvokeOptions:
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
     pure: bool = False
+    system_prompt_file: str | None = None
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class _BuildCommandOptions:
     verbose: bool = False
     pure: bool = False
     mcp_endpoint: str | None = None
+    system_prompt_file: str | None = None
 
 
 if TYPE_CHECKING:
@@ -239,7 +241,12 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     opts = options or InvokeOptions()
-    runtime_env = _runtime_extra_env(config, opts.extra_env, opts.workspace_path)
+    runtime_env = _runtime_extra_env(
+        config,
+        opts.extra_env,
+        opts.workspace_path,
+        system_prompt_file=opts.system_prompt_file,
+    )
     cmd = _build_command(
         config,
         prompt_file,
@@ -249,6 +256,7 @@ def invoke_agent(
             verbose=opts.verbose,
             pure=opts.pure,
             mcp_endpoint=(runtime_env or {}).get("RALPH_MCP_ENDPOINT"),
+            system_prompt_file=opts.system_prompt_file,
         ),
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
@@ -350,28 +358,36 @@ def _runtime_extra_env(
     config: AgentConfig,
     extra_env: dict[str, str] | None,
     workspace_path: Path | None,
+    *,
+    system_prompt_file: str | None = None,
 ) -> dict[str, str] | None:
     runtime_env = dict(extra_env or {})
     endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
-    if not endpoint:
-        return runtime_env or None
 
     transport = _agent_transport(config)
     if transport == AgentTransport.OPENCODE:
+        if not endpoint:
+            return runtime_env or None
         runtime_env["OPENCODE_CONFIG_CONTENT"] = _merge_opencode_config_content(
             runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         return runtime_env
     if transport == AgentTransport.CODEX:
+        if not endpoint and system_prompt_file is None:
+            return runtime_env or None
         runtime_env["CODEX_HOME"] = _prepare_codex_home(
             endpoint,
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or os.environ.get("CODEX_HOME"),
+            system_prompt_file=system_prompt_file,
         )
         return runtime_env
     if transport == AgentTransport.CLAUDE:
         return runtime_env
+
+    if not endpoint:
+        return runtime_env or None
 
     raise UnsupportedMcpTransportError(
         f"Agent transport '{transport}' does not declare how to receive Ralph MCP wiring"
@@ -390,10 +406,11 @@ def _agent_command_name(config: AgentConfig) -> str:
 
 
 def _prepare_codex_home(
-    endpoint: str,
+    endpoint: str | None,
     *,
     workspace_path: Path | None,
     existing_home: str | None,
+    system_prompt_file: str | None,
 ) -> str:
     codex_root = _allocate_codex_home_dir(workspace_path)
     codex_root.mkdir(parents=True, exist_ok=True)
@@ -403,9 +420,16 @@ def _prepare_codex_home(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
-    injected_server = f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
+    appended_sections: list[str] = []
+    if endpoint:
+        appended_sections.append(
+            f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
+        )
+    if system_prompt_file:
+        appended_sections.append(f"model_instructions_file = {json.dumps(system_prompt_file)}\n")
+    config_suffix = "\n".join(section.rstrip() for section in appended_sections if section.strip())
     config_text = (
-        f"{base_config.rstrip()}\n\n{injected_server}" if base_config.strip() else injected_server
+        f"{base_config.rstrip()}\n\n{config_suffix}" if base_config.strip() else config_suffix
     )
     (codex_root / "config.toml").write_text(config_text, encoding="utf-8")
     return str(codex_root)
@@ -646,6 +670,9 @@ def _build_command(
                 _claude_allowed_tools(),
             ]
         )
+
+    if transport == AgentTransport.CLAUDE and build_options.system_prompt_file:
+        cmd.extend(["--append-system-prompt-file", build_options.system_prompt_file])
 
     effective_model = build_options.model_flag or config.model_flag
     if effective_model:

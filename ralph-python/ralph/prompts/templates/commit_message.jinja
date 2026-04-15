@@ -1,6 +1,8 @@
 Task: produce a spec-compliant MCP commit_message artifact for the diff below.
 Read the diff silently. Do not write an analysis.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 ---
@@ -12,6 +14,9 @@ Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. If the chan
 STRICT OUTPUT RULES:
 Do not explain the diff. Do not output bullets, markdown, sections, rationale, or file lists.
 Do not wrap JSON or the subject in code fences.
+Do not ask the user for confirmation.
+Do not write 'Would you like me to' or any equivalent question.
+The task is to submit the artifact now, not to propose a commit message for later approval.
 Your job is to decide on the correct structured artifact and submit it by calling the tool directly.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
 
@@ -32,8 +37,7 @@ REQUIRED PROCEDURE:
 3. Immediately call the tool with that JSON string as the content argument.
 4. After the MCP call succeeds, optionally echo only the commit subject line once and nothing else. If you submitted a skip artifact, do not emit extra prose.
 
-DIFF:
-{{ DIFF }}
+{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 After the MCP submission, you may optionally echo the same single-line subject as plain text,
 but the MCP artifact is the authoritative output. Do not emit markdown, bullets, or explanations

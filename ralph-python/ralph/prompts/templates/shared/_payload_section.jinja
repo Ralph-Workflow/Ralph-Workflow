@@ -1,0 +1,10 @@
+{% macro render_payload_section(label, content, path) -%}
+{{ label }}:
+{% if path %}
+Read the complete {{ label|lower }} from file at `{{ path }}` before continuing.
+This file exists because the inline payload exceeded 100 KB. The file is authoritative.
+Do not ask the user to paste it again, and do not claim the {{ label|lower }} is missing.
+{% else %}
+{{ content }}
+{% endif %}
+{%- endmacro %}

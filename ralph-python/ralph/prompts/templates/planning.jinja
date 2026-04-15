@@ -1,5 +1,7 @@
 You are in PLANNING MODE. Create a detailed, structured implementation plan.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 {% include 'shared/_session_capabilities.j2' %}
@@ -19,7 +21,7 @@ You MUST submit your plan via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool.
   (for example file reads/search/listing and image analysis)
 
 USER REQUIREMENTS:
-{{PROMPT}}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 Your plan must be executor-ready for unattended development. The submitted artifact must:
 - Capture the problem context and the concrete user-facing outcome

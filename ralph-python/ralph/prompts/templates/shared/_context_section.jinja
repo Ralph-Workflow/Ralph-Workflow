@@ -1,5 +1,5 @@
-PROMPT:
-{{ PROMPT }}
+{% from 'shared/_payload_section.j2' import render_payload_section %}
 
-PLAN:
-{{ PLAN|default('(no plan available)') }}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+
+{{ render_payload_section('PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}

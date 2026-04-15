@@ -1,10 +1,12 @@
 PLANNING MODE
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 Create an implementation plan for:
 
-{{ PROMPT }}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 Fallback still needs an executor-grade plan. Include:
 - summary context and scope items

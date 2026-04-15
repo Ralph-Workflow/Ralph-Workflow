@@ -1,8 +1,10 @@
 Task: produce a spec-compliant MCP commit_message artifact for the completed development iteration below.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
-DIFF:
-{{ DIFF }}
+{{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 Use the same commit_message artifact schema and submit it through MCP.
+Do not ask the user for confirmation. Do not write "Would you like me to..." or equivalent phrasing.

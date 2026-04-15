@@ -2,17 +2,16 @@ FIX MODE
 
 Apply the required fixes based on the review issues and current plan.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 {% include 'shared/_mcp_tools.j2' %}
 
-PROMPT:
-{{ PROMPT }}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
-PLAN:
-{{ PLAN }}
+{{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
-ISSUES:
-{{ ISSUES }}
+{{ render_payload_section('ISSUES', ISSUES, ISSUES_PATH) }}
 
 When done, submit a fix_result artifact describing the applied changes.

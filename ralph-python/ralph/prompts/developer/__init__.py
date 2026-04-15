@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
 from ralph.prompts.template_registry import packaged_template_root
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
 class DeveloperPromptInputs:
     prompt_content: str | None
     plan_content: str | None
+    prompt_name_prefix: str = "development"
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -33,8 +36,6 @@ def prompt_developer_iteration_xml_with_context(
     template_content = context.registry.get_template(template_name)
 
     base_vars: dict[str, str] = {
-        "PROMPT": inputs.prompt_content or "No requirements provided",
-        "PLAN": inputs.plan_content or "(no plan available)",
         "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
             ".agent/artifacts/development_result.json"
         ),
@@ -42,6 +43,21 @@ def prompt_developer_iteration_xml_with_context(
             ".agent/artifacts/development_result.schema.json"
         ),
     }
+    base_vars.update(
+        _current_prompt_variables(
+            inputs.prompt_content,
+            workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+        )
+    )
+    base_vars.update(
+        _prompt_payload_variables(
+            {
+                "PLAN": inputs.plan_content or "(no plan available)",
+            },
+            workspace=workspace,
+            prompt_name_prefix=inputs.prompt_name_prefix,
+        )
+    )
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -75,10 +91,15 @@ def prompt_planning_xml_with_context(
 
     prompt_md = prompt_content or "No requirements provided"
     base_vars: dict[str, str] = {
-        "PROMPT": prompt_md,
         "PLAN_XML_PATH": workspace.absolute_path(".agent/artifacts/plan.json"),
         "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
     }
+    base_vars.update(
+        _current_prompt_variables(
+            prompt_content,
+            workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+        )
+    )
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -107,3 +128,28 @@ def _render_static_fallback(template_name: str, variables: Mapping[str, str]) ->
         rendered = rendered.replace(f"{{{{ {key} }}}}", value)
         rendered = rendered.replace(f"{{{{{key}}}}}", value)
     return rendered
+
+
+def _prompt_payload_variables(
+    values: Mapping[str, str],
+    *,
+    workspace: Workspace,
+    prompt_name_prefix: str,
+) -> dict[str, str]:
+    output_dir = Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+    return build_prompt_payload_variables(
+        values,
+        prompt_name_prefix=prompt_name_prefix,
+        write_payload=lambda relative_path, content: write_payload_to_directory(
+            output_dir,
+            relative_path,
+            content,
+        ),
+    )
+
+
+def _current_prompt_variables(
+    prompt_content: str | None, current_prompt_path: str
+) -> dict[str, str]:
+    del prompt_content
+    return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}

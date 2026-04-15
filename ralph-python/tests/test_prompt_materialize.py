@@ -28,7 +28,9 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
     assert prompt_path == ".agent/tmp/planning_prompt.md"
     rendered = workspace.read(prompt_path)
     assert "PLANNING MODE" in rendered
-    assert "Plan the template migration" in rendered
+    current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
+    assert str(current_prompt_path) in rendered
+    assert current_prompt_path.read_text(encoding="utf-8") == "Plan the template migration"
 
 
 def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:
@@ -97,7 +99,11 @@ def test_materialize_development_prompt_formats_wrapped_plan_for_execution(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "Fix planner handoff" in rendered
+    current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
+    assert str(current_prompt_path) in rendered
+    assert (
+        current_prompt_path.read_text(encoding="utf-8") == "Implement unattended planning recovery"
+    )
     assert "Add regression tests" in rendered
     assert "ralph/pipeline/runner.py" in rendered
     assert '"type":"plan"' not in rendered
@@ -134,3 +140,57 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     rendered = workspace.read(prompt_path)
     assert "Fresh structured plan" in rendered
     assert "STALE PLAN" not in rendered
+    assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+        "Implement unattended planning recovery"
+    )
+
+
+def test_materialize_planning_prompt_uses_file_reference_for_large_prompt(tmp_path: Path) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    large_prompt = "P" * (100 * 1024 + 1)
+    workspace.write("PROMPT.md", large_prompt)
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    payload_path = tmp_path / ".agent" / "tmp" / "prompt_payloads" / "planning_prompt.txt"
+    assert str(tmp_path / ".agent" / "CURRENT_PROMPT.md") in rendered
+    assert large_prompt not in rendered
+    assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == large_prompt
+    assert not payload_path.exists()
+
+
+def test_materialize_review_prompt_uses_file_reference_for_large_diff(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Review the changes")
+    large_diff = "D" * (100 * 1024 + 1)
+
+    monkeypatch.setattr(materialize_module, "_git_diff", lambda _workspace_root: large_diff)
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="review",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    payload_path = tmp_path / ".agent" / "tmp" / "prompt_payloads" / "review_diff.txt"
+    assert "read the complete changes from file at" in rendered.lower()
+    assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+        "Review the changes"
+    )
+    assert large_diff not in rendered
+    assert payload_path.read_text(encoding="utf-8") == large_diff

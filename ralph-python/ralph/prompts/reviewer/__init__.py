@@ -56,7 +56,12 @@ def render_review_prompt(
     try:
         return render_template(
             template,
-            {"PLAN": plan_value, "CHANGES": changes_value},
+            {
+                "PLAN": plan_value,
+                "PLAN_PATH": "",
+                "CHANGES": changes_value,
+                "CHANGES_PATH": "",
+            },
             partials,
         )
     except TemplateRenderingError as err:

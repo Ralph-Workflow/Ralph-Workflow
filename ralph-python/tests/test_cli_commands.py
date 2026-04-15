@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     import pytest
 
 
+_SUMMARY_RETRY_FAILURES = 2
+
+
 def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None)
@@ -265,6 +268,122 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: commit drain message" in output
+
+
+def test_generate_commit_retries_missing_artifact_in_same_session_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(
+        commit_module,
+        "_working_tree_diff",
+        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    _stub_commit_bridge(monkeypatch)
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config):
+            return cls()
+
+        def get(self, _name: str):
+            return AgentConfig(
+                cmd="claude -p",
+                output_flag="--output-format=stream-json",
+                print_flag="--print",
+                streaming_flag="--include-partial-messages",
+                session_flag="--resume {}",
+                can_commit=True,
+                json_parser=JsonParserType.CLAUDE,
+                transport=AgentTransport.CLAUDE,
+            )
+
+    monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
+
+    seen_session_ids: list[str | None] = []
+
+    def fake_invoke_agent(_agent_config, *_args, **kwargs):
+        options = kwargs.get("options")
+        seen_session_ids.append(None if options is None else options.session_id)
+        if len(seen_session_ids) == 1:
+            return iter(['{"session_id":"claude-session-1"}'])
+        write_commit_message_artifact(tmp_path, "fix: retried in session")
+        return iter([])
+
+    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
+
+    commit_module.commit_plumbing(
+        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
+    )
+
+    assert seen_session_ids == [None, "claude-session-1"]
+    output = stream.getvalue()
+    assert "Generated commit message" in output
+    assert "fix: retried in session" in output
+
+
+def test_generate_commit_retries_with_summarized_failure_before_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        commit_module,
+        "load_config",
+        lambda *_: UnifiedConfig(
+            agent_chains={"commit_chain": ["claude", "opencode/minimax/MiniMax-M2.7-highspeed"]},
+            agent_drains={"commit": "commit_chain", "review": "commit_chain"},
+        ),
+    )
+    monkeypatch.setattr(
+        commit_module,
+        "_working_tree_diff",
+        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    _stub_commit_bridge(monkeypatch)
+
+    prompt_bodies: list[str] = []
+
+    def fake_write_commit_prompt_file(_root: Path, prompt: str) -> str:
+        prompt_bodies.append(prompt)
+        prompt_file = tmp_path / f"prompt-{len(prompt_bodies)}.md"
+        prompt_file.write_text(prompt, encoding="utf-8")
+        return str(prompt_file)
+
+    monkeypatch.setattr(commit_module, "_write_commit_prompt_file", fake_write_commit_prompt_file)
+
+    invoked_agents: list[tuple[str, str | None]] = []
+
+    def fake_invoke_agent(agent_config, prompt_file, *_args, **kwargs):
+        options = kwargs.get("options")
+        invoked_agents.append((agent_config.cmd, None if options is None else options.session_id))
+        if len(invoked_agents) <= _SUMMARY_RETRY_FAILURES:
+            return iter(["claude: This is a commit prompt file requesting a commit message"])
+        write_commit_message_artifact(tmp_path, "fix: fallback agent message")
+        return iter([])
+
+    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
+
+    commit_module.commit_plumbing(
+        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
+    )
+
+    assert invoked_agents == [
+        ("claude -p", None),
+        ("claude -p", None),
+        ("opencode", None),
+    ]
+    assert any(
+        "Previous attempt failed to submit the required commit_message artifact" in body
+        for body in prompt_bodies[1:]
+    )
+    output = stream.getvalue()
+    assert "Generated commit message" in output
+    assert "fix: fallback agent message" in output
 
 
 def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(

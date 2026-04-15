@@ -2,15 +2,14 @@ ANALYSIS MODE
 
 Review the latest implementation result and determine whether development should continue, loop back, or proceed to commit/review.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
-PROMPT:
-{{ PROMPT }}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
-PLAN:
-{{ PLAN }}
+{{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
-LATEST ARTIFACT:
-{{ LATEST_ARTIFACT }}
+{{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 
 Submit a structured analysis decision artifact.

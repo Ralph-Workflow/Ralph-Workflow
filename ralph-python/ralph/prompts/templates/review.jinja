@@ -1,14 +1,14 @@
 REVIEW MODE
 Your only job is to analyze the implementation, not to edit code or commit changes.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 Read the changed files and compare the implementation against the plan and requirements.
 
-PLAN:
-{{ PLAN }}
+{{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
-CHANGES:
-{{ CHANGES|default(DIFF|default('(no diff available)')) }}
+{{ render_payload_section('CHANGES', CHANGES, CHANGES_PATH) }}
 
 Deliver any findings using the configured review workflow.

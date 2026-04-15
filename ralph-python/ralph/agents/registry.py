@@ -15,6 +15,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, CcsAliasConfig, CcsConfig
 
 _MIN_OPENCODE_SEGMENTS = 3
+_CLAUDE_MODEL_SEGMENTS = 2
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -201,19 +202,28 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
 
 
 def _resolve_dynamic_agent(name: str) -> AgentConfig | None:
-    if not name.startswith("opencode/"):
+    if name.startswith("opencode/"):
+        segments = name.split("/")
+        if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
+            return None
+
+        base_config = deepcopy(_builtin_agents()["opencode"])
+        dynamic_overrides: dict[str, object] = {
+            "model_flag": f"-m {_normalize_opencode_model_id(name)}",
+            "can_commit": True,
+        }
+        return base_config.model_copy(update=dynamic_overrides)
+
+    if not name.startswith("claude/"):
         return None
 
     segments = name.split("/")
-    if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
+    if len(segments) != _CLAUDE_MODEL_SEGMENTS or not segments[1]:
         return None
 
-    base_config = deepcopy(_builtin_agents()["opencode"])
-    dynamic_overrides: dict[str, object] = {
-        "model_flag": f"-m {_normalize_opencode_model_id(name)}",
-        "can_commit": True,
-    }
-    return base_config.model_copy(update=dynamic_overrides)
+    base_config = deepcopy(_builtin_agents()["claude"])
+    claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
+    return base_config.model_copy(update=claude_overrides)
 
 
 def _normalize_opencode_model_id(name: str) -> str:

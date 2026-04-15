@@ -90,6 +90,37 @@ def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
     ]
 
 
+def test_build_command_injects_claude_append_system_prompt_file() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+    )
+
+    assert cmd == [
+        "claude",
+        "-p",
+        "--output-format=stream-json",
+        "--print",
+        "--include-partial-messages",
+        "--permission-mode",
+        "auto",
+        "--append-system-prompt-file",
+        "SYSTEM_PROMPT.md",
+        "PROMPT.md",
+    ]
+
+
 def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("plain prompt", encoding="utf-8")
@@ -691,11 +722,104 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     assert "CODEX_HOME" in seen_env[0]
     assert len(seen_config) == 1
     expected_server = (
-        f"[mcp_servers.{RALPH_MCP_SERVER_NAME}]\n"
-        'url = "http://127.0.0.1:9999/mcp"\n'
-        "enabled = true\n"
+        f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "http://127.0.0.1:9999/mcp"\nenabled = true'
     )
     assert expected_server in seen_config[0]
+
+
+def test_invoke_agent_injects_codex_system_prompt_file_via_config(
+    monkeypatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
+    system_prompt_file.write_text("unattended mode", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+    seen_config: list[str] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args, **kwargs):
+        env = kwargs.get("env")
+        assert isinstance(env, dict)
+        codex_home = Path(env["CODEX_HOME"])
+        seen_config.append((codex_home / "config.toml").read_text(encoding="utf-8"))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                system_prompt_file=str(system_prompt_file),
+            ),
+        )
+    )
+
+    assert len(seen_config) == 1
+    assert f'model_instructions_file = "{system_prompt_file}"' in seen_config[0]
+
+
+def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
+    monkeypatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
+    system_prompt_file.write_text("unattended mode", encoding="utf-8")
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args, **kwargs):
+        seen_cmds.append(args[0])
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                system_prompt_file=str(system_prompt_file),
+            ),
+        )
+    )
+
+    assert seen_cmds == [["opencode", "run", "--format", "json", "hello"]]
 
 
 def test_invoke_agent_preserves_existing_codex_home_state(monkeypatch, tmp_path: Path) -> None:

@@ -1,9 +1,11 @@
 You are continuing a DEVELOPMENT iteration. Resume from the prior work, follow the current plan, and finish the remaining implementation.
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 ORIGINAL REQUEST:
-{{PROMPT}}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 IMPLEMENTATION PLAN:
-{{ PLAN|default('(no plan available)') }}
+{{ render_payload_section('IMPLEMENTATION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}

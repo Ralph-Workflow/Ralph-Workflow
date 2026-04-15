@@ -1,12 +1,14 @@
 IMPLEMENTATION MODE
 
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 ORIGINAL REQUEST:
-{{ PROMPT }}
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 IMPLEMENTATION PLAN:
-{{ PLAN }}
+{{ render_payload_section('IMPLEMENTATION PLAN', PLAN, PLAN_PATH) }}
 
 When done, call `ralph_submit_artifact` with artifact_type="development_result" and content as JSON.
 Write the result artifact to .agent/artifacts/development_result.json.
