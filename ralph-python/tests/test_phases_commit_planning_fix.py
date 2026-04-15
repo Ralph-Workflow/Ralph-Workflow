@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -31,6 +33,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.workspace.fs import FsWorkspace
 
 
 def _stub_context() -> PhaseContext:
@@ -111,6 +114,116 @@ def test_handle_planning_prepares_prompt_and_advances() -> None:
     effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
 
     assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
+
+
+def test_handle_planning_prepare_prompt_preserves_resumable_plan_draft(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        agents_policy=object(),
+        artifacts_policy=object(),
+    )
+    draft_path = tmp_path / ".agent" / "artifacts" / ".plan_draft.json"
+    draft_path.parent.mkdir(parents=True, exist_ok=True)
+    draft_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Resume planning",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
+    assert draft_path.exists()
+
+
+def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        agents_policy=object(),
+        artifacts_policy=object(),
+    )
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    draft_path = artifact_dir / ".plan_draft.json"
+    plan_path = artifact_dir / "plan.json"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    draft_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Old planning run",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan_path.write_text(
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Completed planning run",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "x", "content": "y"}],
+                    "critical_files": {
+                        "primary_files": [
+                            {"path": "ralph/mcp/tool_artifact.py", "action": "modify"}
+                        ]
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "cleanup"}],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
+    assert not draft_path.exists()
 
 
 def test_handle_planning_invokes_agent_successfully() -> None:

@@ -8,7 +8,14 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.mcp.tool_artifact import _prepare_artifact_submission, handle_submit_artifact
+from ralph.mcp.tool_artifact import (
+    _prepare_artifact_submission,
+    handle_discard_plan_draft,
+    handle_finalize_plan,
+    handle_get_plan_draft,
+    handle_submit_artifact,
+    handle_submit_plan_section,
+)
 from ralph.mcp.tool_coordination import InvalidParamsError
 
 if TYPE_CHECKING:
@@ -314,6 +321,194 @@ def test_handle_submit_artifact_accepts_structured_development_result(tmp_path: 
     artifact_file = tmp_path / ".agent" / "artifacts" / "development_result.json"
     stored = json.loads(artifact_file.read_text(encoding="utf-8"))
     assert stored["content"]["status"] == "completed"
+
+
+def _full_plan_payload() -> dict[str, object]:
+    return {
+        "summary": {
+            "context": "Plan the MCP validation rollout.",
+            "scope_items": [
+                {"text": "Update MCP validation"},
+                {"text": "Add tests"},
+                {"text": "Update prompts"},
+            ],
+        },
+        "steps": [
+            {
+                "number": 1,
+                "title": "Validate incoming plan payloads",
+                "content": "Reject malformed plans before they are written.",
+            }
+        ],
+        "critical_files": {
+            "primary_files": [{"path": "ralph/mcp/tool_artifact.py", "action": "modify"}]
+        },
+        "risks_mitigations": [{"risk": "Schema drift", "mitigation": "Add tests"}],
+        "verification_strategy": [
+            {"method": "pytest", "expected_outcome": "Plan schema enforced."}
+        ],
+    }
+
+
+def _submit_section(
+    tmp_path: Path, section: str, payload: object, *, mode: str | None = None
+) -> None:
+    params: dict[str, object] = {
+        "section": section,
+        "content": _content(cast("dict[str, object]", payload))
+        if isinstance(payload, dict)
+        else json.dumps(payload),
+    }
+    if mode is not None:
+        params["mode"] = mode
+    handle_submit_plan_section(MockSession(), MockWorkspace(tmp_path), params)
+
+
+def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    atomic_path = tmp_path / "atomic"
+    piecewise_path = tmp_path / "piecewise"
+
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(atomic_path),
+        {"artifact_type": "plan", "content": _content(plan)},
+    )
+
+    _submit_section(piecewise_path, "summary", plan["summary"])
+    _submit_section(piecewise_path, "steps", plan["steps"])
+    _submit_section(piecewise_path, "critical_files", plan["critical_files"])
+    _submit_section(piecewise_path, "risks_mitigations", plan["risks_mitigations"])
+    _submit_section(piecewise_path, "verification_strategy", plan["verification_strategy"])
+    result = handle_finalize_plan(MockSession(), MockWorkspace(piecewise_path), {})
+
+    assert result.is_error is False
+    atomic_plan_file = atomic_path / ".agent" / "artifacts" / "plan.json"
+    plan_file = piecewise_path / ".agent" / "artifacts" / "plan.json"
+    atomic_stored = json.loads(atomic_plan_file.read_text(encoding="utf-8"))
+    stored = json.loads(plan_file.read_text(encoding="utf-8"))
+    for artifact in (atomic_stored, stored):
+        artifact.pop("created_at", None)
+        artifact.pop("updated_at", None)
+    assert stored == atomic_stored
+    assert stored["type"] == "plan"
+    summary = cast("dict[str, object]", stored["content"]["summary"])
+    assert summary["context"] == "Plan the MCP validation rollout."
+    # Draft must be gone after a successful finalize.
+    assert not (piecewise_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+
+
+def test_submit_plan_section_rejects_invalid_section_payload(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match=r"\[summary\]"):
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "summary",
+                "content": _content(
+                    {"context": "too short", "scope_items": [{"text": "only one"}]}
+                ),
+            },
+        )
+
+
+def test_submit_plan_section_rejects_unknown_section(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match="Unknown plan section"):
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {"section": "bogus", "content": _content({})},
+        )
+
+
+def test_finalize_plan_fails_when_required_section_missing(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    _submit_section(tmp_path, "summary", plan["summary"])
+    _submit_section(tmp_path, "steps", plan["steps"])
+    _submit_section(tmp_path, "critical_files", plan["critical_files"])
+    _submit_section(tmp_path, "risks_mitigations", plan["risks_mitigations"])
+
+    with pytest.raises(InvalidParamsError, match="verification_strategy"):
+        handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
+
+    # Draft survives so the agent can fix and retry.
+    assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+
+
+def test_finalize_plan_fails_when_no_draft(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match="No plan draft"):
+        handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
+
+
+def test_submit_plan_section_append_mode_extends_steps_list(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    _submit_section(tmp_path, "summary", plan["summary"])
+    _submit_section(
+        tmp_path,
+        "steps",
+        {"number": 1, "title": "one", "content": "first step"},
+        mode="append",
+    )
+    _submit_section(
+        tmp_path,
+        "steps",
+        {"number": 2, "title": "two", "content": "second step"},
+        mode="append",
+    )
+    _submit_section(tmp_path, "critical_files", plan["critical_files"])
+    _submit_section(tmp_path, "risks_mitigations", plan["risks_mitigations"])
+    _submit_section(tmp_path, "verification_strategy", plan["verification_strategy"])
+    handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
+
+    stored = json.loads(
+        (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+    )
+    steps = cast("list[dict[str, object]]", stored["content"]["steps"])
+    assert [step["number"] for step in steps] == [1, 2]
+
+
+def test_get_plan_draft_reports_staged_sections(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    _submit_section(tmp_path, "summary", plan["summary"])
+    _submit_section(tmp_path, "steps", plan["steps"])
+
+    result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
+
+    payload = json.loads(result.content[0].text)
+    assert sorted(payload["staged_sections"]) == ["steps", "summary"]
+
+
+def test_get_plan_draft_when_absent_returns_empty_list(tmp_path: Path) -> None:
+    result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
+    payload = json.loads(result.content[0].text)
+    assert payload == {"staged_sections": []}
+
+
+def test_discard_plan_draft_deletes_draft_file(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    _submit_section(tmp_path, "summary", plan["summary"])
+    draft_path = tmp_path / ".agent" / "artifacts" / ".plan_draft.json"
+    assert draft_path.exists()
+
+    handle_discard_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
+
+    assert not draft_path.exists()
+
+
+def test_full_plan_submission_clears_existing_draft(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    _submit_section(tmp_path, "summary", plan["summary"])
+    draft_path = tmp_path / ".agent" / "artifacts" / ".plan_draft.json"
+    assert draft_path.exists()
+
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"artifact_type": "plan", "content": _content(plan)},
+    )
+
+    assert not draft_path.exists()
+    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
 
 
 def test_handle_submit_artifact_rejects_partial_development_result_without_next_steps(
