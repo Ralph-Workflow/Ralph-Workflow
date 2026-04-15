@@ -1,7 +1,8 @@
-"""Dedicated MCP server lifecycle package.
+"""Standalone MCP server exports.
 
-This package isolates bridge lifecycle integration points and standalone
-HTTP server bootstrapping from CLI and pipeline modules.
+This package separates standalone server startup/shutdown helpers from the rest
+of the bridge implementation so callers can either launch an in-process session
+bridge or run the dedicated ``ralph-mcp`` HTTP runtime.
 """
 
 from __future__ import annotations

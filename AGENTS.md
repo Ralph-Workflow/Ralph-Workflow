@@ -1,5 +1,9 @@
 # AGENTS.md
 
+> **Repository status:** Ralph Workflow is now maintained as a Python project under `ralph-python/`.
+> Unless a section explicitly says it has been refreshed for Python, Rust-specific guidance below should be treated as legacy implementation history rather than the current source of truth.
+> Current verification lives in `docs/agents/verification.md` and `ralph-python/CONTRIBUTING.md`.
+
 ## Context
 - **Current plan:** `.agent/PLAN.md`
 - **Overall objective:** `PROMPT.md`

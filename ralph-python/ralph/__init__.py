@@ -1,8 +1,17 @@
-"""Ralph: Multi-agent AI orchestration CLI.
+"""Top-level package for Ralph Workflow.
 
-Ralph orchestrates AI coding agents to implement changes based on PROMPT.md.
-It runs a developer agent for code implementation, then a reviewer agent for
-review and fixes (default), automatically staging and committing the final result.
+The public Python package is intentionally small at the root: it exposes version
+metadata and points users toward the major subpackages that make up the system.
+
+Useful pydoc entry points:
+
+- ``ralph.cli`` for the Typer CLI application
+- ``ralph.config`` for configuration models and loading
+- ``ralph.pipeline`` for orchestration state and reducer/orchestrator logic
+- ``ralph.phases`` for phase dispatch
+- ``ralph.mcp`` for the MCP bridge and standalone server helpers
+- ``ralph.git`` for GitPython-backed repository operations
+- ``ralph.workspace`` for filesystem abstractions used by production code and tests
 """
 
 __version__ = "0.1.0"

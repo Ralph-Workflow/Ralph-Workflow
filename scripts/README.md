@@ -1,13 +1,14 @@
 # Scripts
 
-All verification is now performed by the unified Rust xtask runner.
+The maintained CLI and verification flow for this repository is the Python package in `ralph-python/`.
 
 ## Canonical verification command
 
 ```bash
-cargo xtask verify
+cd ../ralph-python
+make verify
 ```
 
-See [docs/agents/verification.md](../docs/agents/verification.md) for the full reference.
+See `../docs/agents/verification.md` for the authoritative Python verification checklist.
 
-The shell scripts previously in this directory have been migrated into `xtask/src/verify.rs` and `xtask/src/compliance.rs`.
+If you encounter older references to `cargo xtask` or Rust-only verification in archival docs, treat them as legacy notes from the retired implementation rather than current contributor instructions.

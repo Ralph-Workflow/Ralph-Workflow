@@ -1,4 +1,8 @@
-"""Ralph display utilities package."""
+"""Display helpers for CLI output.
+
+These exports cover progress rendering, phase/status display, and simple table
+views used by CLI diagnostics and listing commands.
+"""
 
 from ralph.display.progress import RalphProgress, get_progress
 from ralph.display.status import display_phase, display_progress

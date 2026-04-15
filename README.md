@@ -1,179 +1,79 @@
-<!-- AI AGENTS: DO NOT MODIFY. For crate docs, edit ralph-workflow/README.md. Ask a human before changing this file. -->
-
 # Ralph Workflow
 
-Ralph Workflow is a CLI orchestrator for AI coding agents that enables long-running, unattended development workflows—typically 30 minutes to several hours depending on task complexity.
+Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-python/`; this repository also keeps legacy design notes from the retired Rust implementation and a vendored Rust/Tauri GUI under `vendor/ralph-workflow-gui/`.
 
-You describe a feature in `PROMPT.md`, run `ralph`, and the system:
+## What is current
 
-1. **Plans** the implementation
-2. **Develops** the code
-3. **Verifies** against the plan
-4. **Inner loop**: Developer refines until the plan is satisfied
-5. Loops back to step 1 for next iteration
-6. **Commits** the results
+- **Current product**: `ralph-python/`
+- **Package name**: `ralph-workflow`
+- **CLI entry points**: `ralph`, `ralph-mcp`
+- **Primary toolchain**: Python 3.12+, `ruff`, `mypy`, `pytest`, `hatch`
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Development Iteration                        │
-│  ┌─────────┐     ┌──────────┐     ┌──────────┐              │
-│  │  Plan   │────▶│ Develop  │────▶│ Analyze  │──┐           │
-│  └─────────┘     └──────────┘     └──────────┘  │           │
-│       ▲                                 │         │           │
-│       └─────────────────────────────────┘           │
-│              (refine until satisfied)                │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼ (next iteration)
-                    ┌─────────┐
-                    │ Commit  │
-                    └─────────┘
-```
+## Install
 
-You can configure different agents for each phase, enabling cost-effective strategies like using a powerful model for planning, a fast cheap model for development, and a reasoning model for verification.
-
-**Ralph Workflow is a framework built around the original Ralph concept** by [Geoffrey Huntley](https://ghuntley.com/ralph/). While preserving the core philosophy of unattended loops, Ralph Workflow extends it with a structured **Plan → Develop → Verify** cycle that iterates until completion. This layered approach ensures high code quality through automated verification while maintaining the original goal of hands-off, long-running development workflows.
-
-## Is This For You?
-
-Ralph Workflow is **not meant to be babysat**. Unlike most active agent orchestrators, it won't ask you for clarification when there's ambiguity. You need to provide enough context in your `PROMPT.md` for Ralph to complete the work without additional input, or it will be forced to make assumptions you may not agree with.
-
-If you're looking for an interactive orchestrator, you're probably looking for something else.
-
-Ralph Workflow works best if you think like a Product Manager and can scope out every detail about the feature you need. The more details you add, the better it performs. It's meant for long-running, deterministic tasks that need many commits and a non-trivial amount of manual work.
-
-## Prerequisites
-
-Before installing Ralph Workflow, ensure you have:
-
-- **Rust** - Install via [rustup](https://rustup.rs/)
-- **Git** - For version control operations
-- **An AI coding agent** - One of:
-  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (recommended)
-  - [OpenAI Codex CLI](https://github.com/openai/codex)
-  - [OpenCode](https://github.com/opencode-ai/opencode)
-- **API keys** configured for your chosen AI agent
-
-## Quick Start
-
-To install:
+### From PyPI
 
 ```bash
-cargo install ralph-workflow
+pip install ralph-workflow
+ralph --help
 ```
 
-Then in your project, create a `PROMPT.md` file. Here's a simple example:
-
-```markdown
-== Goal
-
-Users should be able to personalize greetings. Add a greeting feature that takes a name and returns a friendly hello message.
-```
-
-**Important:** PROMPT.md should describe *what* you want, not *how* to implement it. Focus on product definition and desired outcomes—let the AI figure out the implementation details. The more you specify implementation, the more you constrain the AI's ability to find good solutions.
-
-For more complex tasks, provide detailed product specifications:
-
-```markdown
-== Goal
-
-The test suite has tests that are tightly coupled to implementation details. Refactor the test suite to focus on black-box behavior testing. If code is untestable from the outside, refactor it to be testable.
-```
-
-Then run:
+### With pipx
 
 ```bash
+python -m pip install pipx
+python -m pipx ensurepath
+pipx install ralph-workflow
+ralph --help
+```
+
+### From this repository
+
+```bash
+cd ralph-python
+python -m pip install -e ".[dev]"
+ralph --version
+```
+
+## Quick start
+
+```bash
+cd /path/to/your/project
+ralph --init feature-spec
+# edit PROMPT.md
 ralph
 ```
 
-and watch the AI agent plan out and work through the refactor.
+## Verification
 
-By default, ralph-workflow uses `claude` for all phases. To configure different agents for planning, development, and verification, see the Configuration section below.
-
-For detailed usage, see the [Product README](ralph-workflow/README.md).
-
-## Configuration
-
-Ralph Workflow looks for config files in these locations:
-
-| Scope | Location |
-|-------|----------|
-| Global (all projects) | `~/.config/ralph-workflow.toml` (Linux/macOS), `C:\Users\<username>\.config\ralph-workflow.toml` (Windows), or `$XDG_CONFIG_HOME/ralph-workflow.toml` if set |
-| Local (per-project) | `.agent/ralph-workflow.toml` in your project root |
-
-Local config overrides global config. Run `ralph --init-local-config` to create a project-local config.
-
-Here's a minimal config example using agent chains with fallback logic:
-
-```toml
-[agent_chains]
-# Planner chain: Claude for high-quality architectural decisions
-planner = [
-  "claude",      # Primary: Claude Code (best for planning/verification)
-  "codex",       # Fallback
-]
-
-# Developer chain: cheaper models for implementation (plan already exists)
-# Uses opencode/provider/model syntax for provider-specific agents
-developer = [
-  "opencode/minimax/m2-5",          # Primary: MiniMax M2.5 (cheap, capable)
-  "opencode/zai-coding-plan/glm-5", # Fallback: GLM-5
-]
-
-[agent_drains]
-planning = "planner"       # Uses planner chain (Claude)
-development = "developer"  # Uses developer chain (cheap models)
-analysis = "planner"       # Uses planner chain (Claude)
-review = "planner"         # Uses planner chain (Claude)
-fix = "developer"          # Uses developer chain
-commit = "planner"         # Uses planner chain (Claude)
+```bash
+cd ralph-python
+make verify
 ```
 
-For a complete config with all options, see [ralph-workflow/examples/ralph-workflow.toml](ralph-workflow/examples/ralph-workflow.toml).
+That runs the current Python verification path:
 
-## Supported Agents
+- `ruff check ralph/ tests/`
+- `mypy ralph/`
+- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html`
 
-Ralph Workflow works with these CLI-based coding agents:
+## Repository map
 
-* **Claude Code** (including [Claude Code Switch](https://github.com/smithjr/claude-code-switch) for profile management)
-* **OpenAI Codex CLI**
-* **OpenCode** — supports many providers (MiniMax, GLM, OpenAI, Anthropic, Google, open-source models, etc.)
+- `ralph-python/README.md` — package install, development, and API overview
+- `ralph-python/CONTRIBUTING.md` — Python contributor workflow
+- `docs/README.md` — current vs legacy documentation map
+- `vendor/ralph-workflow-gui/` — vendored Rust GUI work; not the canonical CLI implementation
 
-Since OpenCode is highly flexible, any model it supports is available through Ralph Workflow.
+## Legacy documentation status
 
-## Recommendations
+Large parts of `docs/`, `CODE_STYLE.md`, and older plans/RFCs were written for the retired Rust implementation. They are kept for migration history and background context, not as the source of truth for the Python package unless a document explicitly says it has been refreshed for Python.
 
-* **Development is your biggest cost—use cheaper models there.** The development phase runs repeatedly but needs the least reasoning since the plan is already worked out. Use cheaper models like GLM-4, MiniMax, or open-source alternatives for development, and reserve top-tier models like Claude for planning and verification where architectural judgment actually matters. The cost savings compound quickly.
-* **Make sure your PROMPT.md describes outcomes, not implementations—unless you're a software architect who understands the trade-offs.** Focus on product definition: what the feature should do, acceptance criteria, edge cases, and how it should behave. Generally, avoid prescribing specific algorithms, data structures, or code patterns—the AI will make better architectural decisions when given clear goals without implementation constraints. However, if you have strong architectural opinions and understand the trade-offs involved, it's perfectly valid to specify implementation details like "use event sourcing" or "prefer immutability." The key is knowing *why* you're constraining the solution space.
+For current behavior, prefer:
 
-## Design Philosophy
+1. `ralph-python/README.md`
+2. `docs/agents/verification.md`
+3. the Python source/docstrings under `ralph-python/ralph/`
 
-Ralph Workflow is designed to make as many deterministic decisions as possible. The system passes structured XML between phases, telling the next agent exactly what it needs. It deterministically parses outputs and executes actions accordingly through a defined pipeline. It only calls upon an AI agent when it needs to make decisions about code.
+## License
 
-## Questions
-
-**Do I need coding knowledge to use this?**
-
-Software engineering skills are more important than ever. AI can generate code, but it cannot replace the judgment of a skilled engineer. You need to recognize good code from bad, understand when technical debt is accumulating, evaluate architectural trade-offs, know when a feature needs foundational work first, and spot subtle bugs that tests won't catch. The AI handles the mechanics of coding—you provide the engineering judgment that determines whether the result is actually good. If you have those instincts, you can guide Ralph Workflow effectively even if you're not writing the code yourself.
-
-**Should I use this in production-level code?**
-
-Yes, with the same discipline you'd apply to any code review. Treat AI-generated code like code from a junior developer who works fast but needs supervision: review it thoroughly, run your test suite, check for edge cases, and verify it matches your architectural standards. The code isn't inherently worse than human-written code, but it requires the same scrutiny you'd give any pull request. If you wouldn't merge a human's PR without review, don't merge AI's either.
-
-**Should I use Claude models?**
-
-Yes—for planning and analysis. These phases need a model that can understand your entire codebase, reason through architectural trade-offs, and produce a solid plan. Claude's large context window and strong reasoning make it well-suited for this.
-
-Development is different. Once a plan exists, cheaper models can follow it with minimal supervision—as long as your codebase has strong test suites, clear separation of concerns, and side effects contained to specific modules. Use Claude where reasoning matters (planning, analysis), and save money by using cheaper alternatives for development.
-
-**What is the recommended workflow with this?**
-
-I recommend using Ralph Workflow on different Git worktrees so you can work on multiple features at the same time. Due to its unattended nature, Ralph Workflow naturally takes longer than interacting with an AI agent directly. While you can run it on the main branch, it reduces your ability to work on multiple features simultaneously.
-
-## History
-
-Ralph Workflow is inspired by the original [Ralph](https://ghuntley.com/ralph/) loop concept by Geoffrey Huntley. What started as a shell script prototype exploring that idea evolved into a full Rust implementation with structured phases, deterministic state management, and a layered Plan → Develop → Verify cycle. The project grew beyond its origins to support complex multi-iteration workflows across isolated Git worktrees.
-
-## LICENSE
-
-Licensed under AGPL-v3. No, this will not GPL or AGPL the code it generates. AGPL only applies to this codebase itself.
+Licensed under AGPL-3.0-or-later.

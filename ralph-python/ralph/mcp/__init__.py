@@ -1,7 +1,11 @@
-"""MCP bridge module.
+"""Public MCP bridge package.
 
-Provides the bridge between Ralph's phase system and MCP (Model Context Protocol).
-Handles artifact submission, tool exposure, and communication with MCP clients.
+This package groups together the Ralph-side MCP bridge, artifact helpers,
+transport abstractions, and access-mode helpers used by both the pipeline and
+standalone ``ralph-mcp`` runtime.
+
+If you are navigating with pydoc, common entry points are ``MCPBridge`` for the
+bridge layer and ``ralph.mcp.server`` for standalone server helpers.
 """
 
 from __future__ import annotations
@@ -38,7 +42,6 @@ from ralph.mcp.transport import (
 )
 
 if TYPE_CHECKING:
-    # Type aliases that are loaded lazily via __getattr__
     ToolBridge: type
     ToolBridgeError: type
     ToolDefinition: type

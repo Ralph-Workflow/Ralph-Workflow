@@ -1,4 +1,9 @@
-"""Git operations package for Ralph pipeline."""
+"""Public Git helpers for Ralph.
+
+This package exposes the repository operations used by the Python orchestrator,
+including staging/commit helpers, managed hook installation, and rebase support.
+Implementation uses GitPython rather than the retired Rust/libgit2 stack.
+"""
 
 # pyright: reportMissingImports=false
 

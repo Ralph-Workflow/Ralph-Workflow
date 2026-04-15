@@ -1,4 +1,8 @@
-"""Ralph agents package for AI agent management."""
+"""Public agent-management exports.
+
+This package exposes the small set of agent abstractions most callers need:
+registry lookup, chain composition, and process invocation.
+"""
 
 from ralph.agents.chain import AgentChain
 from ralph.agents.invoke import invoke_agent
