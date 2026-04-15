@@ -19,6 +19,7 @@ from ralph.agents.invoke import (
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.mcp.tool_names import RALPH_MCP_SERVER_NAME, claude_allowed_tool_names
 
 
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
@@ -125,8 +126,10 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
     assert "--strict-mcp-config" not in cmd
     mcp_index = cmd.index("--mcp-config")
     assert cmd[mcp_index + 1] == (
-        '{"mcpServers":{"ralph_runtime":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}'
+        '{"mcpServers":{"ralph":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}'
     )
+    allowed_index = cmd.index("--allowedTools")
+    assert cmd[allowed_index + 1] == claude_allowed_tool_names()
     assert cmd[-2:] == ["--", "PROMPT.md"]
 
 
@@ -410,7 +413,9 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
             "--dangerously-skip-permissions",
             "--verbose",
             "--mcp-config",
-            '{"mcpServers":{"ralph_runtime":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}',
+            '{"mcpServers":{"ralph":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}',
+            "--allowedTools",
+            claude_allowed_tool_names(),
             "--model",
             "claude-sonnet-4",
             "--",
@@ -685,10 +690,12 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     assert seen_env
     assert "CODEX_HOME" in seen_env[0]
     assert len(seen_config) == 1
-    assert (
-        '[mcp_servers.ralph_runtime]\nurl = "http://127.0.0.1:9999/mcp"\nenabled = true\n'
-        in seen_config[0]
+    expected_server = (
+        f"[mcp_servers.{RALPH_MCP_SERVER_NAME}]\n"
+        'url = "http://127.0.0.1:9999/mcp"\n'
+        "enabled = true\n"
     )
+    assert expected_server in seen_config[0]
 
 
 def test_invoke_agent_preserves_existing_codex_home_state(monkeypatch, tmp_path: Path) -> None:

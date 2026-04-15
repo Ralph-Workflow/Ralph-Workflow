@@ -14,6 +14,9 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 try:
     _fastmcp_module = import_module("mcp.server.fastmcp")
     _tool_module = import_module("mcp.server.fastmcp.tools.base")
@@ -24,6 +27,12 @@ except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback
     _Tool = cast("object | None", None)
 
 from ralph.mcp.capability_mapping import Capability, McpCapability
+from ralph.mcp.env import (
+    MCP_SESSION_ENV as SESSION_ENV,
+)
+from ralph.mcp.env import (
+    MCP_SESSION_FILE_ENV as SESSION_FILE_ENV,
+)
 from ralph.mcp.session import AgentSession, session_has_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
@@ -37,8 +46,6 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_TRANSPORT: Literal["streamable-http"] = "streamable-http"
 DEFAULT_MOUNT_PATH = "/mcp"
-SESSION_ENV = "RALPH_MCP_SESSION_JSON"
-SESSION_FILE_ENV = "RALPH_MCP_SESSION_FILE"
 _SCHEMA_ANNOTATIONS: dict[str, object] = {
     "string": str,
     "boolean": bool,
@@ -377,22 +384,31 @@ class _FallbackStandaloneServer:
 class FileBackedSession:
     """Session view backed by a JSON file updated by the parent Ralph process."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        loader: Callable[[Path], dict[str, object]] | None = None,
+        session_id_factory: Callable[[], str] | None = None,
+        run_id_factory: Callable[[], str] | None = None,
+    ) -> None:
         self._path = path
+        self._loader = loader or _load_session_payload
+        self._session_id_factory = session_id_factory or (
+            lambda: f"standalone-{uuid.uuid4().hex[:8]}"
+        )
+        self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
 
     def _load(self) -> dict[str, object]:
-        payload = cast("object", json.loads(self._path.read_text(encoding="utf-8")))
-        if not isinstance(payload, dict):
-            raise ValueError(f"{self._path} must encode an object")
-        return cast("dict[str, object]", payload)
+        return self._loader(self._path)
 
     @property
     def session_id(self) -> str:
-        return cast("str", self._load().get("session_id", "standalone-session"))
+        return cast("str", self._load().get("session_id", self._session_id_factory()))
 
     @property
     def run_id(self) -> str:
-        return cast("str", self._load().get("run_id", str(uuid.uuid4())))
+        return cast("str", self._load().get("run_id", self._run_id_factory()))
 
     @property
     def drain(self) -> str:
@@ -415,13 +431,33 @@ class FileBackedSession:
         return "approved"
 
 
-def session_from_env() -> AgentSession | None:
-    """Load optional session metadata from the environment."""
-    session_file = os.environ.get(SESSION_FILE_ENV)
-    if session_file:
-        return cast("AgentSession", FileBackedSession(Path(session_file)))
+def _load_session_payload(path: Path) -> dict[str, object]:
+    payload = cast("object", json.loads(path.read_text(encoding="utf-8")))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must encode an object")
+    return cast("dict[str, object]", payload)
 
-    raw = os.environ.get(SESSION_ENV)
+
+def session_from_env(
+    env: dict[str, str] | os._Environ[str] | None = None,
+    *,
+    session_id_factory: Callable[[], str] | None = None,
+    run_id_factory: Callable[[], str] | None = None,
+) -> AgentSession | None:
+    """Load optional session metadata from the environment."""
+    env_map = os.environ if env is None else env
+    session_file = env_map.get(SESSION_FILE_ENV)
+    if session_file:
+        return cast(
+            "AgentSession",
+            FileBackedSession(
+                Path(session_file),
+                session_id_factory=session_id_factory,
+                run_id_factory=run_id_factory,
+            ),
+        )
+
+    raw = env_map.get(SESSION_ENV)
     if not raw:
         return None
     payload = cast("object", json.loads(raw))
@@ -435,8 +471,22 @@ def session_from_env() -> AgentSession | None:
         else set()
     )
     return AgentSession(
-        session_id=cast("str", payload.get("session_id", f"standalone-{uuid.uuid4().hex[:8]}")),
-        run_id=cast("str", payload.get("run_id", str(uuid.uuid4()))),
+        session_id=cast(
+            "str",
+            payload.get(
+                "session_id",
+                session_id_factory()
+                if session_id_factory is not None
+                else f"standalone-{uuid.uuid4().hex[:8]}",
+            ),
+        ),
+        run_id=cast(
+            "str",
+            payload.get(
+                "run_id",
+                run_id_factory() if run_id_factory is not None else str(uuid.uuid4()),
+            ),
+        ),
         drain=cast("str", payload.get("drain", "standalone")),
         capabilities=capabilities,
     )

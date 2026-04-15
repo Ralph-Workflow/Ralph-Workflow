@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import cast
 
 import pytest
 
+from ralph.mcp.file_backend import FileBackend
 from ralph.mcp.tool_artifact import (
+    ArtifactHandlerDeps,
     _prepare_artifact_submission,
     handle_discard_plan_draft,
     handle_finalize_plan,
@@ -18,8 +21,66 @@ from ralph.mcp.tool_artifact import (
 )
 from ralph.mcp.tool_coordination import InvalidParamsError
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+class MemoryBackend(FileBackend):
+    def __init__(self) -> None:
+        self._files: dict[Path, str] = {}
+        self._directories: set[Path] = set()
+
+    def exists(self, path: Path) -> bool:
+        return path in self._files or path in self._directories
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del exist_ok
+        self._directories.add(path)
+        if parents:
+            self._directories.update(path.parents)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del encoding
+        return self._files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        del encoding
+        self._directories.add(path.parent)
+        self._directories.update(path.parent.parents)
+        self._files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._directories.add(destination.parent)
+        self._directories.update(destination.parent.parents)
+        self._files[destination] = self._files.pop(source)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        if missing_ok:
+            self._files.pop(path, None)
+            return
+        del self._files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        if pattern != "*.json":
+            return []
+        prefix = f"{path}/"
+        return [
+            candidate
+            for candidate in self._files
+            if str(candidate).startswith(prefix) and candidate.suffix == ".json"
+        ]
+
+
+class FailingArtifactBackend(MemoryBackend):
+    def __init__(self, failing_path: Path) -> None:
+        super().__init__()
+        self._failing_path = failing_path
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        if path == self._failing_path:
+            raise OSError("artifact store unavailable")
+        super().write_text(path, content, encoding=encoding)
+
+
+def _memory_handler_deps(backend: MemoryBackend) -> ArtifactHandlerDeps:
+    return ArtifactHandlerDeps(backend=backend, now_iso=lambda: "2026-04-15T12:00:00+00:00")
 
 
 @dataclass
@@ -132,6 +193,51 @@ def test_handle_submit_artifact_accepts_structured_skip_payload(tmp_path: Path) 
 
     text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
     assert text_file.read_text(encoding="utf-8") == "SKIP: No repo changes to commit"
+
+
+def test_handle_submit_artifact_supports_injected_persistence_without_real_filesystem() -> None:
+    backend = MemoryBackend()
+    workspace = MockWorkspace(Path("/virtual-workspace"))
+
+    result = handle_submit_artifact(
+        MockSession(),
+        workspace,
+        {
+            "artifact_type": "commit_message",
+            "content": _content({"type": "commit", "subject": "fix: use injected persistence"}),
+        },
+        deps=_memory_handler_deps(backend),
+    )
+
+    assert result.is_error is False
+    artifact_payload = json.loads(
+        backend.read_text(Path("/virtual-workspace/.agent/artifacts/commit_message.json"))
+    )
+    assert artifact_payload["content"]["subject"] == "fix: use injected persistence"
+    assert (
+        backend.read_text(Path("/virtual-workspace/.agent/tmp/commit-message.txt"))
+        == "fix: use injected persistence"
+    )
+
+
+def test_handle_submit_artifact_rolls_back_commit_side_effects_when_submit_fails() -> None:
+    workspace_root = Path("/virtual-failure")
+    backend = FailingArtifactBackend(workspace_root / ".agent/artifacts/commit_message.json")
+
+    with pytest.raises(OSError, match="artifact store unavailable"):
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(workspace_root),
+            {
+                "artifact_type": "commit_message",
+                "content": _content({"type": "commit", "subject": "fix: rollback commit mirror"}),
+            },
+            deps=_memory_handler_deps(backend),
+        )
+
+    assert backend.exists(workspace_root / ".agent/artifacts/commit_message.json") is False
+    assert backend.exists(workspace_root / ".agent/tmp/commit_message.json") is False
+    assert backend.exists(workspace_root / ".agent/tmp/commit-message.txt") is False
 
 
 def test_handle_submit_artifact_normalizes_commit_alias_type_to_commit_message(
@@ -493,6 +599,45 @@ def test_discard_plan_draft_deletes_draft_file(tmp_path: Path) -> None:
     handle_discard_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
 
     assert not draft_path.exists()
+
+
+def test_plan_draft_handlers_support_injected_persistence_without_real_filesystem() -> None:
+    backend = MemoryBackend()
+    workspace = MockWorkspace(Path("/virtual-plan"))
+    plan = _full_plan_payload()
+    deps = _memory_handler_deps(backend)
+
+    for section in [
+        "summary",
+        "steps",
+        "critical_files",
+        "risks_mitigations",
+        "verification_strategy",
+    ]:
+        section_payload = plan[section]
+        params: dict[str, object] = {
+            "section": section,
+            "content": _content(cast("dict[str, object]", section_payload))
+            if isinstance(section_payload, dict)
+            else json.dumps(section_payload),
+        }
+        handle_submit_plan_section(MockSession(), workspace, params, deps=deps)
+
+    draft_result = handle_get_plan_draft(MockSession(), workspace, {}, deps=deps)
+    draft_payload = json.loads(draft_result.content[0].text)
+    assert sorted(draft_payload["staged_sections"]) == [
+        "critical_files",
+        "risks_mitigations",
+        "steps",
+        "summary",
+        "verification_strategy",
+    ]
+
+    finalize_result = handle_finalize_plan(MockSession(), workspace, {}, deps=deps)
+    assert finalize_result.is_error is False
+    stored_plan = json.loads(backend.read_text(Path("/virtual-plan/.agent/artifacts/plan.json")))
+    assert stored_plan["type"] == "plan"
+    assert backend.exists(Path("/virtual-plan/.agent/artifacts/.plan_draft.json")) is False
 
 
 def test_full_plan_submission_clears_existing_draft(tmp_path: Path) -> None:

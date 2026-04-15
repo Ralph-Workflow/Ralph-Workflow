@@ -8,11 +8,29 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
+
+from ralph.mcp.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(tz=UTC).isoformat()
+
+
+@dataclass(frozen=True)
+class ArtifactPersistence:
+    backend: FileBackend = DEFAULT_FILE_BACKEND
+    now_iso: Callable[[], str] = _utc_now_iso
+
+
+DEFAULT_ARTIFACT_PERSISTENCE = ArtifactPersistence()
 
 
 @dataclass(frozen=True)
@@ -21,6 +39,14 @@ class ArtifactSubmitOptions:
 
     metadata: dict[str, object] | None = None
     overwrite: bool = False
+    persistence: ArtifactPersistence = DEFAULT_ARTIFACT_PERSISTENCE
+
+
+@dataclass(frozen=True)
+class ArtifactUpdateOptions:
+    content: dict[str, object] | None = None
+    metadata: dict[str, object] | None = None
+    persistence: ArtifactPersistence = DEFAULT_ARTIFACT_PERSISTENCE
 
 
 class ArtifactError(Exception):
@@ -57,8 +83,8 @@ class Artifact:
     name: str
     artifact_type: str
     content: dict[str, object]
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=_utc_now_iso)
+    updated_at: str = field(default_factory=_utc_now_iso)
     metadata: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
@@ -79,8 +105,8 @@ class Artifact:
             name=cast("str", data.get("name", "")),
             artifact_type=cast("str", data.get("type", "unknown")),
             content=cast("dict[str, object]", data.get("content", {})),
-            created_at=cast("str", data.get("created_at", datetime.utcnow().isoformat())),
-            updated_at=cast("str", data.get("updated_at", datetime.utcnow().isoformat())),
+            created_at=cast("str", data.get("created_at", _utc_now_iso())),
+            updated_at=cast("str", data.get("updated_at", _utc_now_iso())),
             metadata=cast("dict[str, object]", data.get("metadata", {})),
         )
 
@@ -108,25 +134,31 @@ def submit_artifact(
         ArtifactExistsError: If artifact exists and overwrite is False.
     """
     opts = options or ArtifactSubmitOptions()
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+    backend = opts.persistence.backend
+    backend.mkdir(artifact_dir, parents=True, exist_ok=True)
     artifact_path = artifact_dir / f"{name}.json"
 
-    if artifact_path.exists() and not opts.overwrite:
+    if backend.exists(artifact_path) and not opts.overwrite:
         raise ArtifactExistsError(f"Artifact '{name}' already exists")
 
+    timestamp = opts.persistence.now_iso()
     artifact = Artifact(
         name=name,
         artifact_type=artifact_type,
         content=content,
+        created_at=timestamp,
+        updated_at=timestamp,
         metadata=opts.metadata or {},
     )
 
-    artifact_path.write_text(json.dumps(artifact.to_dict(), indent=2))
+    backend.write_text(artifact_path, json.dumps(artifact.to_dict(), indent=2))
     logger.debug("Submitted artifact: {} at {}", name, artifact_path)
     return artifact
 
 
-def get_artifact(artifact_dir: Path, name: str) -> Artifact:
+def get_artifact(
+    artifact_dir: Path, name: str, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> Artifact:
     """Retrieve an artifact by name.
 
     Args:
@@ -140,14 +172,16 @@ def get_artifact(artifact_dir: Path, name: str) -> Artifact:
         ArtifactNotFoundError: If artifact does not exist.
     """
     artifact_path = artifact_dir / f"{name}.json"
-    if not artifact_path.exists():
+    if not backend.exists(artifact_path):
         raise ArtifactNotFoundError(f"Artifact '{name}' not found")
 
-    data = cast("dict[str, object]", json.loads(artifact_path.read_text()))
+    data = cast("dict[str, object]", json.loads(backend.read_text(artifact_path)))
     return Artifact.from_dict(data)
 
 
-def list_artifacts(artifact_dir: Path) -> list[Artifact]:
+def list_artifacts(
+    artifact_dir: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> list[Artifact]:
     """List all artifacts in the directory.
 
     Args:
@@ -157,13 +191,13 @@ def list_artifacts(artifact_dir: Path) -> list[Artifact]:
         List of artifacts.
     """
     artifacts_dir = Path(artifact_dir)
-    if not artifacts_dir.exists():
+    if not backend.exists(artifacts_dir):
         return []
 
     artifacts: list[Artifact] = []
-    for path in artifacts_dir.glob("*.json"):
+    for path in backend.glob(artifacts_dir, "*.json"):
         try:
-            data = cast("dict[str, object]", json.loads(path.read_text()))
+            data = cast("dict[str, object]", json.loads(backend.read_text(path)))
             artifacts.append(Artifact.from_dict(data))
         except (json.JSONDecodeError, KeyError) as exc:
             logger.warning("Failed to read artifact {}: {}", path, exc)
@@ -178,8 +212,7 @@ def _artifact_updated_at(artifact: Artifact) -> str:
 def update_artifact(
     artifact_dir: Path,
     name: str,
-    content: dict[str, object] | None = None,
-    metadata: dict[str, object] | None = None,
+    options: ArtifactUpdateOptions | None = None,
 ) -> Artifact:
     """Update an existing artifact.
 
@@ -195,22 +228,26 @@ def update_artifact(
     Raises:
         ArtifactNotFoundError: If artifact does not exist.
     """
-    artifact = get_artifact(artifact_dir, name)
+    opts = options or ArtifactUpdateOptions()
+    backend = opts.persistence.backend
+    artifact = get_artifact(artifact_dir, name, backend=backend)
 
-    if content is not None:
-        artifact.content.update(content)
-    if metadata is not None:
-        artifact.metadata.update(metadata)
+    if opts.content is not None:
+        artifact.content.update(opts.content)
+    if opts.metadata is not None:
+        artifact.metadata.update(opts.metadata)
 
-    artifact.updated_at = datetime.utcnow().isoformat()
+    artifact.updated_at = opts.persistence.now_iso()
 
     artifact_path = artifact_dir / f"{name}.json"
-    artifact_path.write_text(json.dumps(artifact.to_dict(), indent=2))
+    backend.write_text(artifact_path, json.dumps(artifact.to_dict(), indent=2))
     logger.debug("Updated artifact: {}", name)
     return artifact
 
 
-def delete_artifact(artifact_dir: Path, name: str) -> None:
+def delete_artifact(
+    artifact_dir: Path, name: str, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> None:
     """Delete an artifact.
 
     Args:
@@ -221,7 +258,7 @@ def delete_artifact(artifact_dir: Path, name: str) -> None:
         ArtifactNotFoundError: If artifact does not exist.
     """
     artifact_path = artifact_dir / f"{name}.json"
-    if not artifact_path.exists():
+    if not backend.exists(artifact_path):
         raise ArtifactNotFoundError(f"Artifact '{name}' not found")
-    artifact_path.unlink()
+    backend.unlink(artifact_path)
     logger.debug("Deleted artifact: {}", name)

@@ -13,6 +13,27 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.tool_names import (
+    COORDINATE_TOOL,
+    DECLARE_COMPLETE_TOOL,
+    DISCARD_PLAN_DRAFT_TOOL,
+    EXEC_TOOL,
+    FINALIZE_PLAN_TOOL,
+    GET_PLAN_DRAFT_TOOL,
+    GIT_DIFF_TOOL,
+    GIT_LOG_TOOL,
+    GIT_SHOW_TOOL,
+    GIT_STATUS_TOOL,
+    LIST_DIRECTORY_RECURSIVE_TOOL,
+    LIST_DIRECTORY_TOOL,
+    READ_ENV_TOOL,
+    READ_FILE_TOOL,
+    REPORT_PROGRESS_TOOL,
+    SUBMIT_ARTIFACT_TOOL,
+    SUBMIT_PLAN_SECTION_TOOL,
+    WRITE_FILE_TOOL,
+)
+
 if TYPE_CHECKING:
     from types import ModuleType
 
@@ -222,7 +243,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
     return (
         ToolSpec(
             metadata=_metadata(
-                name="read_file",
+                name=READ_FILE_TOOL,
                 description="Read a file from the workspace",
                 input_schema={
                     "type": "object",
@@ -238,7 +259,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="write_file",
+                name=WRITE_FILE_TOOL,
                 description="Write content to a file in the workspace",
                 input_schema={
                     "type": "object",
@@ -255,7 +276,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="list_directory",
+                name=LIST_DIRECTORY_TOOL,
                 description="List directory contents",
                 input_schema={
                     "type": "object",
@@ -296,7 +317,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="git_status",
+                name=GIT_STATUS_TOOL,
                 description="Get git status of the workspace",
                 input_schema={"type": "object", "properties": {}},
                 required_capability="GitStatusRead",
@@ -306,7 +327,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="git_diff",
+                name=GIT_DIFF_TOOL,
                 description="Get git diff of changes",
                 input_schema={
                     "type": "object",
@@ -325,7 +346,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="git_log",
+                name=GIT_LOG_TOOL,
                 description="Get git commit log",
                 input_schema={
                     "type": "object",
@@ -344,7 +365,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="git_show",
+                name=GIT_SHOW_TOOL,
                 description="Show a git object (commit, tag, etc.)",
                 input_schema={
                     "type": "object",
@@ -360,7 +381,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="exec",
+                name=EXEC_TOOL,
                 description="Execute a shell command",
                 input_schema={
                     "type": "object",
@@ -386,7 +407,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="ralph_submit_artifact",
+                name=SUBMIT_ARTIFACT_TOOL,
                 description="Submit a structured artifact",
                 input_schema={
                     "type": "object",
@@ -412,7 +433,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="ralph_submit_plan_section",
+                name=SUBMIT_PLAN_SECTION_TOOL,
                 description=(
                     "Submit a single section of the plan artifact for incremental "
                     "validation. The schema matches the PlanArtifact documented in "
@@ -464,7 +485,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="ralph_finalize_plan",
+                name=FINALIZE_PLAN_TOOL,
                 description=(
                     "Validate the staged plan draft as a complete PlanArtifact "
                     "and write .agent/artifacts/plan.json. Fails with a "
@@ -480,7 +501,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="ralph_get_plan_draft",
+                name=GET_PLAN_DRAFT_TOOL,
                 description=(
                     "Return the currently staged plan draft (which sections are "
                     "present and their contents). Useful for resuming after a "
@@ -494,10 +515,9 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="ralph_discard_plan_draft",
+                name=DISCARD_PLAN_DRAFT_TOOL,
                 description=(
-                    "Delete the staged plan draft so the next plan can start "
-                    "from scratch."
+                    "Delete the staged plan draft so the next plan can start from scratch."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability="ArtifactSubmit",
@@ -507,7 +527,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="report_progress",
+                name=REPORT_PROGRESS_TOOL,
                 description="Report progress status to the agent",
                 input_schema={
                     "type": "object",
@@ -530,7 +550,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="declare_complete",
+                name=DECLARE_COMPLETE_TOOL,
                 description="Declare that the agent has completed its task",
                 input_schema={
                     "type": "object",
@@ -548,7 +568,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="read_env",
+                name=READ_ENV_TOOL,
                 description="Read an environment variable",
                 input_schema={
                     "type": "object",
@@ -567,7 +587,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="list_directory_recursive",
+                name=LIST_DIRECTORY_RECURSIVE_TOOL,
                 description="List directory contents recursively",
                 input_schema={
                     "type": "object",
@@ -586,7 +606,7 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="coordinate",
+                name=COORDINATE_TOOL,
                 description="Coordinate parallel worker activities",
                 input_schema={
                     "type": "object",

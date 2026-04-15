@@ -49,7 +49,11 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.policy.loader import load_policy_or_die
-from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
+from ralph.prompts.materialize import (
+    materialize_prompt_for_phase,
+    prompt_file_for_phase,
+    tool_name_prefix_for_transport,
+)
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace import FsWorkspace
 
@@ -104,6 +108,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         Exit code (0 for success, non-zero for failure).
     """
     policy_bundle = load_policy_or_die(Path(".agent"))
+    registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
         config,
         agents_policy=policy_bundle.agents,
@@ -132,7 +137,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 continue
 
             workspace = FsWorkspace(Path())
-            _materialize_agent_prompt_if_needed(effect, workspace, policy_bundle.pipeline)
+            _materialize_agent_prompt_if_needed(effect, workspace, policy_bundle.pipeline, registry)
 
             event = _execute_effect(effect, config)
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
@@ -211,16 +216,23 @@ def _materialize_agent_prompt_if_needed(
     effect: Effect,
     workspace: FsWorkspace,
     pipeline_policy: PipelinePolicy,
+    registry: _RegistryLike,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
+
+    agent = registry.get(effect.agent_name)
+    tool_name_prefix = ""
+    if agent is not None:
+        tool_name_prefix = tool_name_prefix_for_transport(agent.transport)
 
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
         pipeline_policy=pipeline_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
-            _prompt_session_drain_for_phase(effect.phase)
+            _prompt_session_drain_for_phase(effect.phase),
+            tool_name_prefix=tool_name_prefix,
         ),
         workspace_root=Path(),
     )

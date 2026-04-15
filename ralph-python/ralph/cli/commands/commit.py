@@ -33,6 +33,7 @@ from ralph.mcp.commit_message import (
 )
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
 from ralph.mcp.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
+from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 from ralph.prompts.commit import prompt_commit_message, prompt_commit_message_for_opencode
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace
@@ -51,7 +52,6 @@ _DEFAULT_COMMIT_AGENT = "claude"
 _VERBOSE_THRESHOLD = 2
 _SKIP_PREFIX = "skip:"
 _MAX_METADATA_PARTS = 5
-_OPENCODE_SUBMIT_ARTIFACT_TOOL_NAME = "ralph_ralph_submit_artifact"
 
 
 @dataclass(frozen=True)
@@ -235,9 +235,23 @@ def _commit_submit_artifact_tool_names(
     registry: AgentRegistry,
     agents: list[str],
 ) -> tuple[str, ...]:
-    if any(_is_opencode_agent(registry.get(agent_name)) for agent_name in agents):
-        return (_OPENCODE_SUBMIT_ARTIFACT_TOOL_NAME,)
-    return ("ralph_submit_artifact",)
+    names: list[str] = []
+    for agent_name in agents:
+        agent = registry.get(agent_name)
+        if agent is None:
+            continue
+        tool_name = _submit_artifact_tool_name_for_transport(agent.transport)
+        if tool_name not in names:
+            names.append(tool_name)
+    return tuple(names) or (SUBMIT_ARTIFACT_TOOL,)
+
+
+def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
+    # Claude exposes MCP tools under a namespaced `mcp__server__tool` surface,
+    # while OpenCode and the in-process runtime still use Ralph's bare tool name.
+    if transport == AgentTransport.CLAUDE:
+        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    return SUBMIT_ARTIFACT_TOOL
 
 
 def _is_opencode_agent(agent: AgentConfig | None) -> bool:
@@ -253,9 +267,13 @@ def _commit_prompt_for_agent(
     if _is_opencode_agent(agent):
         return prompt_commit_message_for_opencode(
             diff,
-            submit_artifact_tool_name=_OPENCODE_SUBMIT_ARTIFACT_TOOL_NAME,
+            submit_artifact_tool_name=SUBMIT_ARTIFACT_TOOL,
         )
-    return prompt_commit_message(diff, template_registry=template_registry)
+    return prompt_commit_message(
+        diff,
+        template_registry=template_registry,
+        submit_artifact_tool_names=(_submit_artifact_tool_name_for_transport(agent.transport),),
+    )
 
 
 def _generate_commit_message_with_chain(
@@ -376,8 +394,11 @@ def _is_skip_response(text: str) -> bool:
 
 
 def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
-    prompt_path = repo_root / ".agent" / "tmp" / "commit_prompt.md"
-    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_dir = repo_root / ".agent" / "tmp"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    for stale_path in prompt_dir.glob("commit_prompt*.md"):
+        stale_path.unlink(missing_ok=True)
+    prompt_path = prompt_dir / f"commit_prompt_{uuid.uuid4().hex}.md"
     prompt_path.write_text(prompt, encoding="utf-8")
     return str(prompt_path)
 

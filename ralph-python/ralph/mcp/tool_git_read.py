@@ -7,6 +7,7 @@ through bounded read-only git commands from the workspace root.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -26,6 +27,8 @@ from ralph.mcp.tool_coordination import (
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
 _DEFAULT_LOG_COUNT = 10
+type GitRunner = Callable[[list[str], Path], subprocess.CompletedProcess[bytes]]
+type CwdProvider = Callable[[], Path]
 
 
 class ExecutionError(ToolError):
@@ -63,7 +66,7 @@ class WorkspaceWithRoot(Protocol):
         ...
 
 
-def _workspace_root(workspace: object) -> Path:
+def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
     root_value = cast("Path | str | None", getattr(workspace, "root", None))
@@ -71,7 +74,7 @@ def _workspace_root(workspace: object) -> Path:
         return root_value
     if isinstance(root_value, str):
         return Path(root_value)
-    return Path.cwd()
+    return cwd_provider()
 
 
 def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
@@ -104,15 +107,17 @@ def _decode_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def run_git_command(workspace: object, args: list[str]) -> str:
+def run_git_command(
+    workspace: object,
+    args: list[str],
+    *,
+    runner: GitRunner | None = None,
+    cwd_provider: CwdProvider = Path.cwd,
+) -> str:
     """Execute git and require a successful exit status."""
+    git_runner = runner or _run_git_subprocess
     try:
-        output = subprocess.run(
-            ["git", *args],
-            cwd=_workspace_root(workspace),
-            capture_output=True,
-            check=False,
-        )
+        output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
     except PermissionError as exc:
@@ -129,15 +134,17 @@ def run_git_command(workspace: object, args: list[str]) -> str:
     return stdout
 
 
-def run_git_command_lenient(workspace: object, args: list[str]) -> str:
+def run_git_command_lenient(
+    workspace: object,
+    args: list[str],
+    *,
+    runner: GitRunner | None = None,
+    cwd_provider: CwdProvider = Path.cwd,
+) -> str:
     """Execute git and return combined stdout/stderr regardless of exit code."""
+    git_runner = runner or _run_git_subprocess
     try:
-        output = subprocess.run(
-            ["git", *args],
-            cwd=_workspace_root(workspace),
-            capture_output=True,
-            check=False,
-        )
+        output = git_runner(["git", *args], _workspace_root(workspace, cwd_provider=cwd_provider))
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
     except PermissionError as exc:
@@ -146,6 +153,10 @@ def run_git_command_lenient(workspace: object, args: list[str]) -> str:
         raise ExecutionError(f"Failed to execute git: {exc}") from exc
 
     return f"{_decode_output(output.stdout)}{_decode_output(output.stderr)}"
+
+
+def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(command, cwd=cwd, capture_output=True, check=False)
 
 
 def handle_git_status(

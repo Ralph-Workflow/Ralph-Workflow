@@ -10,12 +10,16 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from ralph.mcp.policy_outcomes import is_policy_approved
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
 ENV_READ_CAPABILITY = "env.read"
-_APPROVED_POLICY_OUTCOMES = {"approved", "allow", "allowed"}
 
 
 class ToolError(Exception):
@@ -86,12 +90,6 @@ def _timestamp() -> int:
     return int(time.time())
 
 
-def _attribute_value(
-    obj: object, attribute_name: str, default: object | None = None
-) -> object | None:
-    return cast("object | None", getattr(obj, attribute_name, default))
-
-
 def _parameter_as_string(params: dict[str, object], name: str) -> str:
     value = params.get(name)
     if not isinstance(value, str):
@@ -100,27 +98,7 @@ def _parameter_as_string(params: dict[str, object], name: str) -> str:
 
 
 def _is_approved(outcome: object) -> bool:
-    if outcome is True:
-        return True
-    if isinstance(outcome, str):
-        return outcome.strip().lower() in _APPROVED_POLICY_OUTCOMES
-
-    if isinstance(outcome, dict):
-        for attribute_name in ("name", "value", "status"):
-            attribute = outcome.get(attribute_name)
-            if (
-                isinstance(attribute, str)
-                and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES
-            ):
-                return True
-        return False
-
-    for attribute_name in ("name", "value", "status"):
-        attribute = _attribute_value(outcome, attribute_name)
-        if isinstance(attribute, str) and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES:
-            return True
-
-    return False
+    return is_policy_approved(outcome)
 
 
 def _serialize_payload(payload: object) -> str:
@@ -154,6 +132,8 @@ def handle_report_progress(
     session: SessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
+    *,
+    now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
     """Report agent progress to the Ralph pipeline."""
     require_capability(session, RUN_REPORT_PROGRESS_CAPABILITY, "Progress reporting")
@@ -161,7 +141,7 @@ def handle_report_progress(
     note_value = params.get("note", "")
     note = note_value if isinstance(note_value, str) else ""
     return ToolResult(
-        content=[ToolContent.text_content(format_progress_text(status, note, _timestamp()))],
+        content=[ToolContent.text_content(format_progress_text(status, note, now_fn()))],
         is_error=False,
     )
 
@@ -170,13 +150,15 @@ def handle_declare_complete(
     session: SessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
+    *,
+    now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
     """Declare that the agent has completed its assigned task."""
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
     message = (
         "Task declared complete: "
-        f"session_id={session.session_id}, summary='{summary}', timestamp={_timestamp()}\n"
+        f"session_id={session.session_id}, summary='{summary}', timestamp={now_fn()}\n"
         "[Completion event emitted to pipeline]"
     )
     return ToolResult(content=[ToolContent.text_content(message)], is_error=False)
@@ -204,6 +186,8 @@ def handle_coordinate(
     session: SessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
+    *,
+    now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
     """Coordinate parallel worker activities."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Workspace coordination")
@@ -214,7 +198,7 @@ def handle_coordinate(
     message = format_coordination_text(
         action=action,
         session_id=session.session_id,
-        timestamp=_timestamp(),
+        timestamp=now_fn(),
         work_unit_id=work_unit_id,
         payload=payload,
     )
@@ -229,11 +213,15 @@ def handle_read_env(
     """Read an environment variable by name."""
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
-    value = os.environ.get(name, "[not found]")
+    value = _read_env_value(os.environ, name)
     return ToolResult(
         content=[ToolContent.text_content(f"{name}={value}")],
         is_error=False,
     )
+
+
+def _read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
+    return env.get(name, "[not found]")
 
 
 __all__ = [

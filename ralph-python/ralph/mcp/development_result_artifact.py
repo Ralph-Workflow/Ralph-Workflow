@@ -6,6 +6,8 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+DEVELOPMENT_RESULT_ARTIFACT_TYPE = "development_result"
+
 
 class DevelopmentResultValidationError(ValueError):
     """Raised when a development_result artifact is malformed."""
@@ -48,6 +50,7 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
 
 
 __all__ = [
+    "DEVELOPMENT_RESULT_ARTIFACT_TYPE",
     "DevelopmentResultValidationError",
     "normalize_development_result_content",
 ]

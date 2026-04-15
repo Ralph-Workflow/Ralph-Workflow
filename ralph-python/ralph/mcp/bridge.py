@@ -13,16 +13,20 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 
 from ralph.mcp.artifacts import (
+    DEFAULT_ARTIFACT_PERSISTENCE,
     ArtifactExistsError,
     ArtifactNotFoundError,
+    ArtifactPersistence,
     ArtifactSubmitOptions,
     get_artifact,
     list_artifacts,
     submit_artifact,
 )
+from ralph.mcp.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.transport import MCPMessage, MCPTransport, StdioTransport
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
 
     class _ToolHandler(Protocol):
         """Protocol for MCP tool handler callables."""
@@ -41,6 +45,19 @@ class BridgeError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class BridgeArtifactDeps:
+    backend: FileBackend = DEFAULT_FILE_BACKEND
+    now_iso: Callable[[], str] = DEFAULT_ARTIFACT_PERSISTENCE.now_iso
+
+    @property
+    def persistence(self) -> ArtifactPersistence:
+        return ArtifactPersistence(backend=self.backend, now_iso=self.now_iso)
+
+
+DEFAULT_BRIDGE_ARTIFACT_DEPS = BridgeArtifactDeps()
+
+
 @dataclass
 class BridgeConfig:
     """Configuration for MCP bridge.
@@ -54,6 +71,7 @@ class BridgeConfig:
     artifact_dir: Path = Path(".agent/artifacts")
     workspace_root: Path = Path()
     transport: MCPTransport | None = None
+    artifact_deps: BridgeArtifactDeps = DEFAULT_BRIDGE_ARTIFACT_DEPS
 
 
 @dataclass
@@ -164,7 +182,10 @@ class MCPBridge:
                 name,
                 artifact_type,
                 content,
-                ArtifactSubmitOptions(metadata=metadata),
+                ArtifactSubmitOptions(
+                    metadata=metadata,
+                    persistence=self._config.artifact_deps.persistence,
+                ),
             )
             return {"success": True, "artifact": artifact.to_dict()}
         except ArtifactExistsError as exc:
@@ -180,7 +201,11 @@ class MCPBridge:
             Artifact data.
         """
         try:
-            artifact = get_artifact(self._config.artifact_dir, name)
+            artifact = get_artifact(
+                self._config.artifact_dir,
+                name,
+                backend=self._config.artifact_deps.backend,
+            )
             return {"success": True, "artifact": artifact.to_dict()}
         except ArtifactNotFoundError as exc:
             return {"success": False, "error": str(exc)}
@@ -191,7 +216,10 @@ class MCPBridge:
         Returns:
             List of artifacts.
         """
-        artifacts = list_artifacts(self._config.artifact_dir)
+        artifacts = list_artifacts(
+            self._config.artifact_dir,
+            backend=self._config.artifact_deps.backend,
+        )
         return {
             "success": True,
             "artifacts": [a.to_dict() for a in artifacts],

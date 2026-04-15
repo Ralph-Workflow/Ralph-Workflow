@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -11,11 +12,13 @@ import pytest
 
 from ralph.mcp.artifacts import ArtifactExistsError, ArtifactNotFoundError
 from ralph.mcp.bridge import (
+    BridgeArtifactDeps,
     BridgeConfig,
     BridgeError,
     MCPBridge,
     MCPTool,
 )
+from ralph.mcp.file_backend import FileBackend
 
 METHOD_NOT_FOUND_CODE = -32601
 INVALID_REQUEST_CODE = -32600
@@ -29,6 +32,52 @@ def _object_dict(value: object) -> dict[str, object]:
 def _object_list(value: object) -> list[object]:
     assert isinstance(value, list)
     return value
+
+
+class MemoryBackend(FileBackend):
+    def __init__(self) -> None:
+        self._files: dict[Path, str] = {}
+        self._directories: set[Path] = set()
+
+    def exists(self, path: Path) -> bool:
+        return path in self._files or path in self._directories
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del exist_ok
+        self._directories.add(path)
+        if parents:
+            self._directories.update(path.parents)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del encoding
+        return self._files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        del encoding
+        self._directories.add(path.parent)
+        self._directories.update(path.parent.parents)
+        self._files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._directories.add(destination.parent)
+        self._directories.update(destination.parent.parents)
+        self._files[destination] = self._files.pop(source)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        if missing_ok:
+            self._files.pop(path, None)
+            return
+        del self._files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        if pattern != "*.json":
+            return []
+        prefix = f"{path}/"
+        return sorted(
+            candidate
+            for candidate in self._files
+            if str(candidate).startswith(prefix) and candidate.suffix == ".json"
+        )
 
 
 class TestBridgeConfig:
@@ -48,6 +97,13 @@ class TestBridgeConfig:
         assert config.artifact_dir == Path("/tmp/artifacts")
         assert config.workspace_root == Path("/workspace")
         assert config.transport is transport
+
+    def test_artifact_dependencies_can_be_injected(self) -> None:
+        backend = MemoryBackend()
+        deps = BridgeArtifactDeps(backend=backend, now_iso=lambda: "2026-04-15T12:00:00+00:00")
+        config = BridgeConfig(artifact_dir=Path("/virtual-artifacts"), artifact_deps=deps)
+
+        assert config.artifact_deps is deps
 
 
 class TestMCPTool:
@@ -180,6 +236,37 @@ class TestMCPBridge:
         assert len(artifacts) == 1
         first_artifact = _object_dict(artifacts[0])
         assert first_artifact["name"] == "artifact1"
+
+    def test_bridge_artifact_entrypoints_support_injected_backend_without_patching_globals(
+        self,
+    ) -> None:
+        backend = MemoryBackend()
+        bridge = MCPBridge(
+            BridgeConfig(
+                artifact_dir=Path("/virtual-artifacts"),
+                artifact_deps=BridgeArtifactDeps(
+                    backend=backend,
+                    now_iso=lambda: "2026-04-15T12:00:00+00:00",
+                ),
+            )
+        )
+
+        submit_result = bridge.submit_artifact_mcp(
+            name="test_artifact",
+            artifact_type="code",
+            content={"code": "print('hello')"},
+            metadata={"source": "test"},
+        )
+        get_result = bridge.get_artifact_mcp("test_artifact")
+        list_result = bridge.list_artifacts_mcp()
+
+        stored = json.loads(backend.read_text(Path("/virtual-artifacts/test_artifact.json")))
+        assert submit_result["success"] is True
+        assert stored["metadata"] == {"source": "test"}
+        assert get_result["success"] is True
+        assert _object_dict(get_result["artifact"])["name"] == "test_artifact"
+        listed = _object_list(list_result["artifacts"])
+        assert [_object_dict(item)["name"] for item in listed] == ["test_artifact"]
 
 
 class TestHandleMessage:

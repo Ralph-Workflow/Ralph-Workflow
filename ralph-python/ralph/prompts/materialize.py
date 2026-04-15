@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, cast
 
 from git import Repo
 
+from ralph.config.enums import AgentTransport
+from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix, prefix_tool_name
 from ralph.prompts.commit import prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
@@ -95,13 +97,21 @@ def _render_prompt_for_phase(
             "ISSUES": _resolve_issues_content(workspace),
         }
         return render_template(
-            template, _merged_variables(variables, session_caps), context.partials
+            template,
+            _merged_variables(variables, session_caps),
+            context.partials,
         )
     if phase in {"development_commit", "review_commit"}:
         return prompt_commit_message(
             _commit_phase_diff(workspace_root),
             template_registry=context.registry,
             partials=context.partials,
+            submit_artifact_tool_names=(
+                prefix_tool_name(
+                    SUBMIT_ARTIFACT_TOOL,
+                    tool_name_prefix=session_caps.tool_name_prefix,
+                ),
+            ),
         )
     msg = f"Unsupported phase '{phase}' for prompt materialization"
     raise ValueError(msg)
@@ -110,8 +120,21 @@ def _render_prompt_for_phase(
 def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
     return {
         **base,
-        **capability_template_variables(session_caps.capabilities, session_caps.policy_flags),
+        **capability_template_variables(
+            session_caps.capabilities,
+            session_caps.policy_flags,
+            tool_name_prefix=session_caps.tool_name_prefix,
+        ),
     }
+
+
+def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
+    # Prompt templates should talk about the same tool names the current agent
+    # transport will actually see. Claude gets namespaced MCP tools; other
+    # transports continue to see Ralph's bare tool names.
+    if transport == AgentTransport.CLAUDE:
+        return claude_tool_name_prefix()
+    return ""
 
 
 def _read_optional(workspace: Workspace, path: str) -> str | None:

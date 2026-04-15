@@ -12,13 +12,51 @@ from ralph.mcp.artifacts import (
     Artifact,
     ArtifactExistsError,
     ArtifactNotFoundError,
+    ArtifactPersistence,
     ArtifactSubmitOptions,
+    ArtifactUpdateOptions,
     delete_artifact,
     get_artifact,
     list_artifacts,
     submit_artifact,
     update_artifact,
 )
+
+
+class FakeFileBackend:
+    def __init__(self) -> None:
+        self.files: dict[Path, str] = {}
+        self.directories: set[Path] = set()
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files or path in self.directories
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        self.directories.add(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        return self.files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        self.files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self.files[destination] = self.files.pop(source)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        if missing_ok:
+            self.files.pop(path, None)
+            return
+        del self.files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        suffix = pattern.replace("*", "")
+        return [
+            candidate
+            for candidate in self.files
+            if candidate.parent == path and candidate.name.endswith(suffix)
+        ]
+
 
 MULTI_ARTIFACT_COUNT = 2
 
@@ -153,6 +191,24 @@ class TestSubmitArtifact:
                 )
             assert "already exists" in str(exc_info.value)
 
+    def test_submit_artifact_uses_injected_backend_and_clock(self) -> None:
+        backend = FakeFileBackend()
+        artifact_dir = Path("/virtual/artifacts")
+
+        artifact = submit_artifact(
+            artifact_dir,
+            name="virtual",
+            artifact_type="planning",
+            content={"ok": True},
+            options=ArtifactSubmitOptions(
+                persistence=ArtifactPersistence(backend=backend, now_iso=lambda: "STATIC-TIME")
+            ),
+        )
+
+        stored = json.loads(backend.read_text(artifact_dir / "virtual.json"))
+        assert artifact.created_at == "STATIC-TIME"
+        assert stored["created_at"] == "STATIC-TIME"
+
 
 class TestGetArtifact:
     def test_get_artifact_success(self) -> None:
@@ -231,7 +287,7 @@ class TestUpdateArtifact:
             artifact = update_artifact(
                 artifact_dir,
                 name="updatable",
-                content={"original": True, "updated": True},
+                options=ArtifactUpdateOptions(content={"original": True, "updated": True}),
             )
 
             assert artifact.content == {"original": True, "updated": True}
@@ -251,7 +307,7 @@ class TestUpdateArtifact:
             artifact = update_artifact(
                 artifact_dir,
                 name="meta_update",
-                metadata={"v": 2, "new": True},
+                options=ArtifactUpdateOptions(metadata={"v": 2, "new": True}),
             )
 
             assert artifact.metadata == {"v": 2, "new": True}
@@ -261,7 +317,11 @@ class TestUpdateArtifact:
             artifact_dir = Path(tmpdir) / "artifacts"
 
             with pytest.raises(ArtifactNotFoundError):
-                update_artifact(artifact_dir, name="nonexistent", content={"x": 1})
+                update_artifact(
+                    artifact_dir,
+                    name="nonexistent",
+                    options=ArtifactUpdateOptions(content={"x": 1}),
+                )
 
 
 class TestDeleteArtifact:

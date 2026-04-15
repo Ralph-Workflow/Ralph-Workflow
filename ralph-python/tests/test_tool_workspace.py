@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.tool_coordination import CapabilityDeniedError, InvalidParamsError, ToolError
+from ralph.mcp.tool_coordination import (
+    CapabilityDeniedError,
+    InvalidParamsError,
+    ToolError,
+    _read_env_value,
+)
 from ralph.mcp.tool_workspace import (
     WORKSPACE_READ_CAPABILITY,
     WORKSPACE_WRITE_EPHEMERAL_CAPABILITY,
@@ -479,3 +484,8 @@ class TestHandleWriteFile:
                 ws,
                 {"path": "file.txt"},
             )
+
+
+def test_read_env_value_uses_injected_mapping() -> None:
+    assert _read_env_value({"DEMO_KEY": "demo-value"}, "DEMO_KEY") == "demo-value"
+    assert _read_env_value({}, "MISSING_KEY") == "[not found]"

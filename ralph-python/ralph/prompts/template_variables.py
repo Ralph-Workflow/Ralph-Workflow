@@ -8,43 +8,36 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.capability_mapping import Capability, SessionDrain
+from ralph.mcp.tool_names import (
+    ARTIFACT_TOOLS,
+    COORDINATE_TOOL,
+    DECLARE_COMPLETE_TOOL,
+    ENV_READ_TOOLS,
+    EXEC_TOOL,
+    GIT_DIFF_READ_TOOLS,
+    GIT_DIFF_TOOL,
+    GIT_LOG_TOOL,
+    GIT_SHOW_TOOL,
+    GIT_STATUS_READ_TOOLS,
+    GIT_STATUS_TOOL,
+    LIST_DIRECTORY_RECURSIVE_TOOL,
+    LIST_DIRECTORY_TOOL,
+    PROCESS_EXEC_TOOLS,
+    PROGRESS_TOOLS,
+    REPORT_PROGRESS_TOOL,
+    SEARCH_FILES_TOOL,
+    SUBMIT_ARTIFACT_TOOL,
+    TRACKED_WRITE_TOOLS,
+    WORKSPACE_READ_TOOLS,
+    WRITE_FILE_TOOL,
+    prefix_tool_name,
+    prefix_tool_names,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ralph.mcp.session import AgentSession
-
-SUBMIT_ARTIFACT_TOOL = "ralph_submit_artifact"
-DECLARE_COMPLETE_TOOL = "declare_complete"
-COORDINATE_TOOL = "coordinate"
-REPORT_PROGRESS_TOOL = "report_progress"
-WRITE_FILE_TOOL = "write_file"
-LIST_DIRECTORY_TOOL = "list_directory"
-LIST_DIRECTORY_RECURSIVE_TOOL = "list_directory_recursive"
-SEARCH_FILES_TOOL = "search_files"
-EXEC_TOOL = "exec"
-GIT_STATUS_TOOL = "git_status"
-GIT_DIFF_TOOL = "git_diff"
-GIT_LOG_TOOL = "git_log"
-GIT_SHOW_TOOL = "git_show"
-
-WORKSPACE_READ_TOOLS: tuple[str, ...] = (
-    "read_file",
-    "list_directory",
-    "list_directory_recursive",
-    "search_files",
-)
-GIT_STATUS_READ_TOOLS: tuple[str, ...] = ("git_status", "git_log", "git_show")
-GIT_DIFF_READ_TOOLS: tuple[str, ...] = ("git_diff",)
-TRACKED_WRITE_TOOLS: tuple[str, ...] = ("write_file",)
-PROCESS_EXEC_TOOLS: tuple[str, ...] = ("exec",)
-ARTIFACT_TOOLS: tuple[str, ...] = (
-    "ralph_submit_artifact",
-    "declare_complete",
-    "coordinate",
-)
-PROGRESS_TOOLS: tuple[str, ...] = ("report_progress",)
-ENV_READ_TOOLS: tuple[str, ...] = ("read_env",)
 
 DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
     SessionDrain.PLANNING: (
@@ -132,6 +125,12 @@ class CapabilitySet:
     def contains(self, capability: Capability) -> bool:
         return capability in self._values
 
+    def insert(self, capability: Capability) -> None:
+        self._values = frozenset((*self._values, capability))
+
+    def __iter__(self) -> Iterable[Capability]:
+        return iter(self._values)
+
     def iter(self) -> Iterable[Capability]:
         return iter(self._values)
 
@@ -164,6 +163,12 @@ class PolicyFlagSet:
     def contains(self, flag: PolicyFlag) -> bool:
         return flag in self._values
 
+    def insert(self, flag: PolicyFlag) -> None:
+        self._values = frozenset((*self._values, flag))
+
+    def __iter__(self) -> Iterable[PolicyFlag]:
+        return iter(self._values)
+
     def iter(self) -> Iterable[PolicyFlag]:
         return iter(self._values)
 
@@ -193,10 +198,32 @@ class SessionCapabilities:
 
     capabilities: CapabilitySet
     policy_flags: PolicyFlagSet
+    tool_name_prefix: str = ""
 
     @classmethod
-    def new(cls, capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> SessionCapabilities:
-        return cls(capabilities=capabilities, policy_flags=policy_flags)
+    def new(
+        cls,
+        capabilities: CapabilitySet,
+        policy_flags: PolicyFlagSet,
+        *,
+        tool_name_prefix: str = "",
+    ) -> SessionCapabilities:
+        return cls(
+            capabilities=capabilities,
+            policy_flags=policy_flags,
+            tool_name_prefix=tool_name_prefix,
+        )
+
+    @classmethod
+    def defaults_for_drain(
+        cls, drain: SessionDrain, *, tool_name_prefix: str = ""
+    ) -> SessionCapabilities:
+        capabilities, policy_flags = default_caps_and_flags_for_drain(drain)
+        return cls.new(
+            capabilities,
+            policy_flags,
+            tool_name_prefix=tool_name_prefix,
+        )
 
     @classmethod
     def from_session(cls, session: AgentSession) -> SessionCapabilities:
@@ -219,7 +246,7 @@ def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet
 
 
 def capability_template_variables(
-    capabilities: CapabilitySet, policy_flags: PolicyFlagSet
+    capabilities: CapabilitySet, policy_flags: PolicyFlagSet, *, tool_name_prefix: str = ""
 ) -> dict[str, str]:
     capability_vars: Sequence[tuple[str, str]] = [
         (
@@ -254,29 +281,93 @@ def capability_template_variables(
     )
 
     visible_tools = visible_mcp_tool_names(capabilities)
+    visible_prompt_tool_names = prefix_tool_names(visible_tools, tool_name_prefix=tool_name_prefix)
     mcp_vars: Sequence[tuple[str, str]] = [
-        ("MCP_TOOLS_LIST", format_mcp_tools_list(visible_tools)),
+        ("MCP_TOOLS_LIST", format_mcp_tools_list(visible_prompt_tool_names)),
         ("HAS_MCP_WRITE", bool_to_string(has_mcp_write)),
         ("HAS_MCP_EXEC", bool_to_string(has_mcp_exec)),
         ("HAS_MCP_GIT", bool_to_string(has_mcp_git)),
     ]
 
     mcp_tool_name_vars: Sequence[tuple[str, str]] = [
-        tool_name_var(visible_tools, "SUBMIT_ARTIFACT_TOOL_NAME", SUBMIT_ARTIFACT_TOOL),
-        tool_name_var(visible_tools, "DECLARE_COMPLETE_TOOL_NAME", DECLARE_COMPLETE_TOOL),
-        tool_name_var(visible_tools, "COORDINATE_TOOL_NAME", COORDINATE_TOOL),
-        tool_name_var(visible_tools, "REPORT_PROGRESS_TOOL_NAME", REPORT_PROGRESS_TOOL),
-        tool_name_var(visible_tools, "WRITE_FILE_TOOL_NAME", WRITE_FILE_TOOL),
-        tool_name_var(visible_tools, "LIST_DIRECTORY_TOOL_NAME", LIST_DIRECTORY_TOOL),
         tool_name_var(
-            visible_tools, "LIST_DIRECTORY_RECURSIVE_TOOL_NAME", LIST_DIRECTORY_RECURSIVE_TOOL
+            visible_tools,
+            "SUBMIT_ARTIFACT_TOOL_NAME",
+            SUBMIT_ARTIFACT_TOOL,
+            tool_name_prefix=tool_name_prefix,
         ),
-        tool_name_var(visible_tools, "SEARCH_FILES_TOOL_NAME", SEARCH_FILES_TOOL),
-        tool_name_var(visible_tools, "EXEC_TOOL_NAME", EXEC_TOOL),
-        tool_name_var(visible_tools, "GIT_STATUS_TOOL_NAME", GIT_STATUS_TOOL),
-        tool_name_var(visible_tools, "GIT_DIFF_TOOL_NAME", GIT_DIFF_TOOL),
-        tool_name_var(visible_tools, "GIT_LOG_TOOL_NAME", GIT_LOG_TOOL),
-        tool_name_var(visible_tools, "GIT_SHOW_TOOL_NAME", GIT_SHOW_TOOL),
+        tool_name_var(
+            visible_tools,
+            "DECLARE_COMPLETE_TOOL_NAME",
+            DECLARE_COMPLETE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "COORDINATE_TOOL_NAME",
+            COORDINATE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "REPORT_PROGRESS_TOOL_NAME",
+            REPORT_PROGRESS_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "WRITE_FILE_TOOL_NAME",
+            WRITE_FILE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "LIST_DIRECTORY_TOOL_NAME",
+            LIST_DIRECTORY_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "LIST_DIRECTORY_RECURSIVE_TOOL_NAME",
+            LIST_DIRECTORY_RECURSIVE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "SEARCH_FILES_TOOL_NAME",
+            SEARCH_FILES_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "EXEC_TOOL_NAME",
+            EXEC_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "GIT_STATUS_TOOL_NAME",
+            GIT_STATUS_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "GIT_DIFF_TOOL_NAME",
+            GIT_DIFF_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "GIT_LOG_TOOL_NAME",
+            GIT_LOG_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "GIT_SHOW_TOOL_NAME",
+            GIT_SHOW_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
     ]
 
     summary_var = (
@@ -294,10 +385,12 @@ def capability_template_variables(
     return dict(all_items)
 
 
-def capability_template_variables_from_session(session: AgentSession) -> dict[str, str]:
+def capability_template_variables_from_session(
+    session: AgentSession, *, tool_name_prefix: str = ""
+) -> dict[str, str]:
     caps = CapabilitySet.from_identifiers(_resolve_session_iterable(session, "capabilities"))
     flags = PolicyFlagSet.from_identifiers(_resolve_session_iterable(session, "policy_flags"))
-    return capability_template_variables(caps, flags)
+    return capability_template_variables(caps, flags, tool_name_prefix=tool_name_prefix)
 
 
 def bool_to_string(value: bool) -> str:
@@ -330,8 +423,12 @@ def tool_name_var(
     visible_tools: Sequence[str],
     variable_name: str,
     tool_name: str,
+    *,
+    tool_name_prefix: str = "",
 ) -> tuple[str, str]:
-    return (variable_name, tool_name if tool_name in visible_tools else "")
+    if tool_name not in visible_tools:
+        return (variable_name, "")
+    return (variable_name, prefix_tool_name(tool_name, tool_name_prefix=tool_name_prefix))
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:

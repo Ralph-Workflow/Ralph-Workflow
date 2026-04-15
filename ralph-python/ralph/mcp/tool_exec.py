@@ -7,6 +7,7 @@ from the workspace root after capability checks and blacklist filtering.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -49,6 +50,9 @@ _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
 _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
 _PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 
+type CommandRunner = Callable[[list[str], Path, float | None], subprocess.CompletedProcess[bytes]]
+type CwdProvider = Callable[[], Path]
+
 
 class ExecutionError(ToolError):
     """Raised when the exec subprocess cannot be started or times out."""
@@ -61,6 +65,12 @@ class ExecParams:
     command: str
     args: list[str]
     timeout_ms: int
+
+
+@dataclass(frozen=True)
+class ExecRunDeps:
+    runner: CommandRunner | None = None
+    cwd_provider: CwdProvider | None = None
 
 
 @runtime_checkable
@@ -359,7 +369,7 @@ def apply_exec_policy(command: str, args: list[str]) -> None:
     raise CapabilityDeniedError(f"Command '{command}' denied by policy: {reason}")
 
 
-def _workspace_root(workspace: object) -> Path:
+def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
     root_value = cast("Path | str | None", getattr(workspace, "root", None))
@@ -367,7 +377,7 @@ def _workspace_root(workspace: object) -> Path:
         return root_value
     if isinstance(root_value, str):
         return Path(root_value)
-    return Path.cwd()
+    return cwd_provider()
 
 
 def run_command(
@@ -375,18 +385,16 @@ def run_command(
     args: list[str],
     workspace: object,
     timeout_ms: int,
+    deps: ExecRunDeps | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Execute a subprocess in the workspace root."""
-    cwd = _workspace_root(workspace)
+    resolved_deps = deps or ExecRunDeps()
+    cwd_provider = resolved_deps.cwd_provider or Path.cwd
+    command_runner = resolved_deps.runner or _run_subprocess
+    cwd = _workspace_root(workspace, cwd_provider=cwd_provider)
     timeout_seconds = timeout_ms / 1000 if timeout_ms > 0 else None
     try:
-        return subprocess.run(
-            [command, *args],
-            cwd=cwd,
-            capture_output=True,
-            check=False,
-            timeout=timeout_seconds,
-        )
+        return command_runner([command, *args], cwd, timeout_seconds)
     except FileNotFoundError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
     except PermissionError as exc:
@@ -397,6 +405,18 @@ def run_command(
         ) from exc
     except OSError as exc:
         raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
+
+
+def _run_subprocess(
+    command: list[str], cwd: Path, timeout_seconds: float | None
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        capture_output=True,
+        check=False,
+        timeout=timeout_seconds,
+    )
 
 
 def format_exec_result(

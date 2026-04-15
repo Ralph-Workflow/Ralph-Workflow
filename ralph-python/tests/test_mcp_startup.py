@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import datetime
 import errno
+from typing import TYPE_CHECKING, cast
 
+import httpx
 import pytest
 
 from ralph.mcp import startup
 from ralph.mcp.capability_mapping import AccessMode, SessionDrain
+
+if TYPE_CHECKING:
+    import socket
+
+EXPECTED_HEARTBEAT_MISSES = 4
+EXPECTED_PREFLIGHT_ATTEMPTS = 2
+
+
+def _append_sleep(target: list[float], seconds: float) -> None:
+    target.append(seconds)
 
 
 def test_access_mode_for_drain_planning_is_read_only() -> None:
@@ -87,3 +99,165 @@ def test_mcp_preflight_timeout_from_env_defaults_to_30_seconds(
     monkeypatch.delenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", raising=False)
     expected = datetime.timedelta(milliseconds=30_000)
     assert startup.mcp_preflight_timeout_from_env() == expected
+
+
+def test_mcp_preflight_timeout_from_mapping_is_injectable() -> None:
+    expected = datetime.timedelta(milliseconds=1234)
+    assert (
+        startup.mcp_preflight_timeout_from_env({"RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "1234"})
+        == expected
+    )
+
+
+def test_heartbeat_policy_from_mapping_is_injectable() -> None:
+    policy = startup.heartbeat_policy_from_env(
+        {
+            "RALPH_MCP_HEARTBEAT_INTERVAL_MS": "1500",
+            "RALPH_MCP_HEARTBEAT_MISSES": "4",
+            "RALPH_MCP_HEARTBEAT_RECONNECT_MS": "9000",
+        }
+    )
+
+    assert policy.interval == datetime.timedelta(milliseconds=1500)
+    assert policy.misses == EXPECTED_HEARTBEAT_MISSES
+    assert policy.reconnect_interval == datetime.timedelta(milliseconds=9000)
+
+
+def test_run_preflight_loop_accepts_injected_clock_and_sleep() -> None:
+    calls: list[datetime.timedelta] = []
+    sleeps: list[float] = []
+    now_values = iter([0.0, 0.0, 0.0, 0.05])
+
+    def fake_attempt(remaining: datetime.timedelta) -> None:
+        calls.append(remaining)
+        if len(calls) == 1:
+            raise startup.RetryablePreflightError("retry")
+
+    startup.run_preflight_loop(
+        "tcp://demo",
+        datetime.timedelta(seconds=1),
+        fake_attempt,
+        monotonic_fn=lambda: next(now_values),
+        sleep_fn=lambda seconds: _append_sleep(sleeps, seconds),
+    )
+
+    assert len(calls) == EXPECTED_PREFLIGHT_ATTEMPTS
+    assert sleeps == [0.1]
+
+
+def test_connect_to_endpoint_accepts_injected_connector() -> None:
+    seen: dict[str, object] = {}
+
+    class Socket:
+        pass
+
+    sock = cast("socket.socket", Socket())
+
+    def fake_connect(address: tuple[str, int], timeout: float) -> socket.socket:
+        seen["address"] = address
+        seen["timeout"] = timeout
+        return sock
+
+    result = startup.connect_to_endpoint(
+        "tcp://demo",
+        ("127.0.0.1", 9000),
+        datetime.timedelta(seconds=2),
+        connect_fn=fake_connect,
+    )
+
+    assert result is sock
+    assert seen["address"] == ("127.0.0.1", 9000)
+
+
+def test_post_http_jsonrpc_accepts_injected_http_post() -> None:
+    seen: dict[str, object] = {}
+
+    def fake_post(
+        url: str,
+        *,
+        json: startup.JsonRpcResponse,
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response:
+        seen["url"] = url
+        seen["json"] = json
+        seen["headers"] = headers
+        seen["timeout"] = timeout
+        return httpx.Response(
+            200,
+            content='{"jsonrpc":"2.0","result":{"ok":true}}',
+            headers={"mcp-session-id": "session-1"},
+        )
+
+    response = startup.post_http_jsonrpc_with_session(
+        "http://demo/mcp",
+        startup.parse_http_endpoint("http://demo/mcp"),
+        startup.initialize_request(),
+        post_fn=fake_post,
+    )
+
+    assert response[0]["result"] == {"ok": True}
+    assert seen["url"] == "http://demo/mcp"
+
+
+def test_preflight_tcp_attempt_accepts_injected_connector() -> None:
+    seen: dict[str, object] = {}
+
+    class Socket:
+        def close(self) -> None:
+            seen["closed"] = True
+
+        def makefile(self, _mode: str):
+            raise AssertionError("should not use real makefile")
+
+    def fake_connect(
+        endpoint: str, address: tuple[str, int], remaining: datetime.timedelta
+    ) -> socket.socket:
+        seen["endpoint"] = endpoint
+        seen["address"] = address
+        return cast("socket.socket", Socket())
+
+    startup.preflight_tcp_attempt(
+        "tcp://demo",
+        ("127.0.0.1", 9000),
+        ["read_file"],
+        datetime.timedelta(seconds=1),
+        deps=startup.PreflightTcpDeps(
+            connect_to_endpoint_fn=fake_connect,
+            list_tools_fn=lambda sock, io_timeout: ["read_file"],
+        ),
+    )
+
+    assert seen["endpoint"] == "tcp://demo"
+    assert seen["closed"] is True
+
+
+def test_preflight_http_attempt_accepts_injected_post() -> None:
+    expected_call_count = 2
+    calls: list[tuple[str, dict[str, object] | None, str | None]] = []
+
+    def fake_post(
+        endpoint_or_target: str | startup.HttpEndpointTarget,
+        target_or_payload: startup.HttpEndpointTarget | startup.JsonRpcResponse,
+        payload: startup.JsonRpcResponse | None = None,
+        *,
+        session_id: str | None = None,
+        post_fn: startup.HttpPostFn = httpx.post,
+    ) -> tuple[startup.JsonRpcResponse, str | None]:
+        del post_fn
+        endpoint = cast("str", endpoint_or_target)
+        assert isinstance(target_or_payload, startup.HttpEndpointTarget)
+        calls.append((endpoint, payload, session_id))
+        if payload and payload.get("method") == "initialize":
+            return {"jsonrpc": "2.0", "result": {"ok": True}}, "session-1"
+        return {"jsonrpc": "2.0", "result": {"tools": [{"name": "read_file"}]}}, session_id
+
+    startup.preflight_http_attempt(
+        "http://demo/mcp",
+        startup.parse_http_endpoint("http://demo/mcp"),
+        ["read_file"],
+        datetime.timedelta(seconds=1),
+        post_with_session_fn=fake_post,
+    )
+
+    assert len(calls) == expected_call_count

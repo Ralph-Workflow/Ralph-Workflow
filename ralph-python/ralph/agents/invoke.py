@@ -28,9 +28,9 @@ from loguru import logger
 from tqdm import tqdm
 
 from ralph.config.enums import AgentTransport
+from ralph.mcp.tool_names import RALPH_MCP_SERVER_NAME, claude_allowed_tool_names
 
 _MODELED_FLAG_PARTS = 2
-_RALPH_MCP_SERVER_NAME = "ralph_runtime"
 
 
 @dataclass(frozen=True)
@@ -403,9 +403,7 @@ def _prepare_codex_home(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
-    injected_server = (
-        f'[mcp_servers.{_RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
-    )
+    injected_server = f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
     config_text = (
         f"{base_config.rstrip()}\n\n{injected_server}" if base_config.strip() else injected_server
     )
@@ -439,7 +437,7 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
 def _claude_mcp_config(endpoint: str) -> str:
     config_payload: dict[str, dict[str, dict[str, str]]] = {
         "mcpServers": {
-            _RALPH_MCP_SERVER_NAME: {
+            RALPH_MCP_SERVER_NAME: {
                 "type": "http",
                 "url": endpoint,
             }
@@ -449,6 +447,13 @@ def _claude_mcp_config(endpoint: str) -> str:
         config_payload,
         separators=(",", ":"),
     )
+
+
+def _claude_allowed_tools() -> str:
+    # Claude's MCP permission layer has been brittle with wildcard entries.
+    # Keep this as an explicit list derived from Ralph's canonical bare tool names
+    # so the runtime registry, prompts, and allowlist stay in sync.
+    return claude_allowed_tool_names()
 
 
 def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
@@ -637,6 +642,8 @@ def _build_command(
             [
                 "--mcp-config",
                 _claude_mcp_config(build_options.mcp_endpoint),
+                "--allowedTools",
+                _claude_allowed_tools(),
             ]
         )
 

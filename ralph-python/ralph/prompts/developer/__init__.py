@@ -44,7 +44,9 @@ def prompt_developer_iteration_xml_with_context(
     }
 
     capability_vars = capability_template_variables(
-        session_caps.capabilities, session_caps.policy_flags
+        session_caps.capabilities,
+        session_caps.policy_flags,
+        tool_name_prefix=session_caps.tool_name_prefix,
     )
 
     variables: Mapping[str, str] = {**base_vars, **capability_vars}
@@ -79,7 +81,9 @@ def prompt_planning_xml_with_context(
     }
 
     capability_vars = capability_template_variables(
-        session_caps.capabilities, session_caps.policy_flags
+        session_caps.capabilities,
+        session_caps.policy_flags,
+        tool_name_prefix=session_caps.tool_name_prefix,
     )
 
     variables: Mapping[str, str] = {**base_vars, **capability_vars}

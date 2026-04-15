@@ -5,10 +5,35 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from ralph.mcp.commit_message import read_commit_message_artifact, read_commit_message_from_path
+from ralph.mcp.commit_message import (
+    read_commit_message_artifact,
+    read_commit_message_from_path,
+    write_commit_message_artifact,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class FakeFileBackend:
+    def __init__(self) -> None:
+        self.files: dict[Path, str] = {}
+        self.directories: set[Path] = set()
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files or path in self.directories
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        self.directories.add(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        return self.files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        self.files[path] = content
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        self.files.pop(path, None)
 
 
 def test_read_commit_message_artifact_formats_structured_commit_payload(tmp_path: Path) -> None:
@@ -59,3 +84,18 @@ def test_read_commit_message_from_path_formats_structured_skip_payload(tmp_path:
     )
 
     assert read_commit_message_from_path(message_file) == "SKIP: No relevant diff"
+
+
+def test_write_commit_message_artifact_uses_injected_backend(tmp_path: Path) -> None:
+    backend = FakeFileBackend()
+
+    write_commit_message_artifact(
+        tmp_path,
+        {"type": "commit", "subject": "feat(core): test"},
+        backend=backend,
+        now_iso=lambda: "STATIC-TIME",
+    )
+
+    artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
+    payload = json.loads(backend.read_text(artifact_path))
+    assert payload["created_at"] == "STATIC-TIME"

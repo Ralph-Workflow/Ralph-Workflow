@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
-from ralph.config.enums import JsonParserType
+from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.mcp.tool_names import claude_tool_name_prefix
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -257,6 +258,36 @@ class TestCommitEffect:
         effect = runner_module._commit_effect()
         assert isinstance(effect, CommitEffect)
         assert ".agent/tmp/commit_message.json" in effect.message_file
+
+
+def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_materialize_prompt_for_phase(**kwargs):
+        captured.update(kwargs)
+        return "PROMPT.md"
+
+    monkeypatch.setattr(
+        runner_module, "materialize_prompt_for_phase", fake_materialize_prompt_for_phase
+    )
+
+    class Registry:
+        def get(self, _name: str) -> AgentConfig:
+            return AgentConfig(
+                cmd="claude -p",
+                output_flag="--output-format=stream-json",
+                transport=AgentTransport.CLAUDE,
+            )
+
+    runner_module._materialize_agent_prompt_if_needed(
+        InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
+        MagicMock(),
+        _load_default_policy_bundle().pipeline,
+        Registry(),
+    )
+
+    session_caps = captured["session_caps"]
+    assert session_caps.tool_name_prefix == claude_tool_name_prefix()
 
 
 class TestPipelineRunnerLoop:

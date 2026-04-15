@@ -12,10 +12,10 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
 from loguru import logger
 
@@ -55,6 +55,20 @@ class MCPTransport(ABC):
         pass
 
 
+class ProcessLike(Protocol):
+    stdin: IO[bytes] | None
+    stdout: IO[bytes] | None
+    stderr: IO[bytes] | None
+
+    def terminate(self) -> None: ...
+    def wait(self, timeout: float | None = None) -> int | None: ...
+    def kill(self) -> None: ...
+
+
+class ThreadLike(Protocol):
+    def start(self) -> None: ...
+
+
 class StdioTransport(MCPTransport):
     """MCP transport over stdio.
 
@@ -62,7 +76,14 @@ class StdioTransport(MCPTransport):
     Each line is a JSON-RPC message.
     """
 
-    def __init__(self, command: list[str], cwd: str | None = None) -> None:
+    def __init__(
+        self,
+        command: list[str],
+        cwd: str | None = None,
+        *,
+        process_factory: Callable[[list[str], str | None], ProcessLike] | None = None,
+        thread_factory: Callable[[Callable[[], None], bool], ThreadLike] | None = None,
+    ) -> None:
         """Initialize stdio transport.
 
         Args:
@@ -71,7 +92,9 @@ class StdioTransport(MCPTransport):
         """
         self._command = command
         self._cwd = cwd
-        self._process: subprocess.Popen[bytes] | None = None
+        self._process_factory = process_factory or _default_process_factory
+        self._thread_factory = thread_factory or _default_thread_factory
+        self._process: ProcessLike | None = None
         self._send_queue: Queue[str | dict[str, object]] = Queue()
         self._recv_queue: Queue[MCPMessage] = Queue()
         self._closed = False
@@ -79,15 +102,9 @@ class StdioTransport(MCPTransport):
 
     def start(self) -> None:
         """Start the MCP server process."""
-        self._process = subprocess.Popen(
-            self._command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=self._cwd,
-        )
-        self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
-        self._writer_thread = threading.Thread(target=self._write_loop, daemon=True)
+        self._process = self._process_factory(self._command, self._cwd)
+        self._reader_thread = self._thread_factory(self._read_loop, True)
+        self._writer_thread = self._thread_factory(self._write_loop, True)
         self._reader_thread.start()
         self._writer_thread.start()
         logger.info("Started MCP server: {}", " ".join(self._command))
@@ -179,3 +196,17 @@ class StdioTransport(MCPTransport):
                 self._process.kill()
             self._process = None
         logger.info("Closed stdio transport")
+
+
+def _default_process_factory(command: list[str], cwd: str | None) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd,
+    )
+
+
+def _default_thread_factory(target: Callable[[], None], daemon: bool) -> threading.Thread:
+    return threading.Thread(target=target, daemon=daemon)

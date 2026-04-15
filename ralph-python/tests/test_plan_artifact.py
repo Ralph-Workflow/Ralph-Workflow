@@ -22,6 +22,30 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+class FakeFileBackend:
+    def __init__(self) -> None:
+        self.files: dict[Path, str] = {}
+        self.directories: set[Path] = set()
+
+    def exists(self, path: Path) -> bool:
+        return path in self.files or path in self.directories
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        self.directories.add(path)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        return self.files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        self.files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self.files[destination] = self.files.pop(source)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        self.files.pop(path, None)
+
+
 def _valid_plan() -> dict[str, object]:
     return {
         "summary": {
@@ -240,3 +264,15 @@ def test_delete_plan_draft_reports_whether_existed(tmp_path: Path) -> None:
     save_plan_draft(tmp_path, new_plan_draft())
     assert delete_plan_draft(tmp_path) is True
     assert delete_plan_draft(tmp_path) is False
+
+
+def test_plan_draft_io_uses_injected_backend_and_clock(tmp_path: Path) -> None:
+    backend = FakeFileBackend()
+    draft = new_plan_draft(now_iso=lambda: "START")
+    draft["sections"] = {"summary": _valid_plan()["summary"]}
+
+    save_plan_draft(tmp_path, draft, backend=backend, now_iso=lambda: "UPDATED")
+    loaded = load_plan_draft(tmp_path, backend=backend)
+
+    assert loaded is not None
+    assert loaded["updated_at"] == "UPDATED"

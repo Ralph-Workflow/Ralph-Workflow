@@ -50,21 +50,21 @@ def test_commit_prompt_uses_registry_templates() -> None:
 def test_commit_prompt_includes_prefixed_submit_artifact_aliases() -> None:
     prompt = prompt_commit_message(
         "diff --git a/app.py b/app.py\n+hello",
-        submit_artifact_tool_names=("ralph_submit_artifact", "ralph_ralph_submit_artifact"),
+        submit_artifact_tool_names=("ralph_submit_artifact", "mcp__ralph__ralph_submit_artifact"),
     )
 
     assert "ralph_submit_artifact" in prompt
-    assert "ralph_ralph_submit_artifact" in prompt
+    assert "mcp__ralph__ralph_submit_artifact" in prompt
 
 
 def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     prompt = prompt_commit_message_for_opencode(
         "diff --git a/app.py b/app.py\n+hello",
-        submit_artifact_tool_name="ralph_ralph_submit_artifact",
+        submit_artifact_tool_name="ralph_submit_artifact",
     )
 
     assert prompt.startswith("Do not analyze anything.")
-    assert "Immediately call `ralph_ralph_submit_artifact`" in prompt
+    assert "Immediately call `ralph_submit_artifact`" in prompt
     assert 'artifact_type="commit_message"' in prompt
     assert '{"type":"commit","subject":"type(scope): description"}' in prompt
     assert (

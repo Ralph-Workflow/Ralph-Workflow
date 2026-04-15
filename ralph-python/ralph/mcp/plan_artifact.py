@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING, Literal, cast
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ralph.mcp.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 PLAN_ARTIFACT_TYPE = "plan"
@@ -264,8 +267,8 @@ def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
-def new_plan_draft() -> dict[str, object]:
-    now = _now_iso()
+def new_plan_draft(*, now_iso: Callable[[], str] = _now_iso) -> dict[str, object]:
+    now = now_iso()
     return {
         "schema_version": PLAN_DRAFT_SCHEMA_VERSION,
         "started_at": now,
@@ -274,13 +277,15 @@ def new_plan_draft() -> dict[str, object]:
     }
 
 
-def load_plan_draft(artifact_dir: Path) -> dict[str, object] | None:
+def load_plan_draft(
+    artifact_dir: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> dict[str, object] | None:
     """Read the plan draft file if present and parseable. None otherwise."""
     draft_path = artifact_dir / ".plan_draft.json"
-    if not draft_path.exists():
+    if not backend.exists(draft_path):
         return None
     try:
-        raw = draft_path.read_text(encoding="utf-8")
+        raw = backend.read_text(draft_path, encoding="utf-8")
         parsed = cast("object", json.loads(raw))
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Failed to read plan draft at {}: {}", draft_path, exc)
@@ -295,24 +300,30 @@ def load_plan_draft(artifact_dir: Path) -> dict[str, object] | None:
     return parsed_dict
 
 
-def save_plan_draft(artifact_dir: Path, draft: dict[str, object]) -> None:
+def save_plan_draft(
+    artifact_dir: Path,
+    draft: dict[str, object],
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    now_iso: Callable[[], str] = _now_iso,
+) -> None:
     """Atomically write the plan draft file."""
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+    backend.mkdir(artifact_dir, parents=True, exist_ok=True)
     draft_path = artifact_dir / ".plan_draft.json"
     tmp_path = draft_path.with_suffix(".json.tmp")
     serialized_draft = dict(draft)
-    serialized_draft["updated_at"] = _now_iso()
+    serialized_draft["updated_at"] = now_iso()
     serialized = json.dumps(serialized_draft, indent=2, sort_keys=False)
-    tmp_path.write_text(serialized, encoding="utf-8")
-    tmp_path.replace(draft_path)
+    backend.write_text(tmp_path, serialized, encoding="utf-8")
+    backend.replace(tmp_path, draft_path)
 
 
-def delete_plan_draft(artifact_dir: Path) -> bool:
+def delete_plan_draft(artifact_dir: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND) -> bool:
     """Remove the plan draft file. Returns True if it existed."""
     draft_path = artifact_dir / ".plan_draft.json"
-    if not draft_path.exists():
+    if not backend.exists(draft_path):
         return False
-    draft_path.unlink()
+    backend.unlink(draft_path)
     return True
 
 

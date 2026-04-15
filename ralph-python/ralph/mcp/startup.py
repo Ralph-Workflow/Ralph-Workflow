@@ -16,6 +16,12 @@ from urllib.parse import urlparse
 import httpx
 
 from ralph.mcp.capability_mapping import AccessMode, SessionDrain, drain_to_access_mode
+from ralph.mcp.env import (
+    MCP_HEARTBEAT_INTERVAL_MS_ENV,
+    MCP_HEARTBEAT_MISSES_ENV,
+    MCP_HEARTBEAT_RECONNECT_MS_ENV,
+    MCP_PREFLIGHT_TIMEOUT_MS_ENV,
+)
 from ralph.mcp.tool_bridge import build_ralph_tool_registry
 from ralph.workspace import Workspace
 
@@ -25,6 +31,35 @@ if TYPE_CHECKING:
     import io
 
 JsonRpcResponse = dict[str, object]
+
+
+class HttpPostFn(Protocol):
+    def __call__(
+        self,
+        url: str,
+        *,
+        json: JsonRpcResponse,
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response: ...
+
+
+class HttpJsonRpcWithSessionFn(Protocol):
+    def __call__(
+        self,
+        endpoint_or_target: str | HttpEndpointTarget,
+        target_or_payload: HttpEndpointTarget | JsonRpcResponse,
+        payload: JsonRpcResponse | None = None,
+        *,
+        session_id: str | None = None,
+        post_fn: HttpPostFn = httpx.post,
+    ) -> tuple[JsonRpcResponse, str | None]: ...
+
+
+@dataclass(frozen=True)
+class PreflightTcpDeps:
+    connect_to_endpoint_fn: Callable[[str, tuple[str, int], timedelta], socket.socket] | None = None
+    list_tools_fn: Callable[[socket.socket, timedelta], list[str]] | None = None
 
 
 def initialize_request() -> JsonRpcResponse:
@@ -138,11 +173,12 @@ def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike
     return [definition.name for definition in bridge.list_definitions()]
 
 
-def mcp_preflight_timeout_from_env() -> timedelta:
+def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
     """Return the configured MCP preflight timeout duration."""
 
     default = timedelta(milliseconds=30_000)
-    raw = os.environ.get("RALPH_MCP_PREFLIGHT_TIMEOUT_MS")
+    env_map = os.environ if env is None else env
+    raw = env_map.get(MCP_PREFLIGHT_TIMEOUT_MS_ENV)
     if raw is None:
         return default
     try:
@@ -165,7 +201,12 @@ def preflight_mcp_server_tools(
     return run_preflight_loop(
         endpoint,
         timeout,
-        lambda remaining: preflight_tcp_attempt(endpoint, (host, port), required, remaining),
+        lambda remaining: preflight_tcp_attempt(
+            endpoint,
+            (host, port),
+            required,
+            remaining,
+        ),
     )
 
 
@@ -181,15 +222,20 @@ def preflight_http_mcp_server_tools(
 
 
 def run_preflight_loop(
-    endpoint: str, timeout: timedelta, attempt: Callable[[timedelta], None]
+    endpoint: str,
+    timeout: timedelta,
+    attempt: Callable[[timedelta], None],
+    *,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> None:
     """Repeat preflight attempts until success or timeout."""
 
-    start = time.monotonic()
+    start = monotonic_fn()
     last_error: str | None = None
 
     while True:
-        remaining = _remaining_budget(start, timeout)
+        remaining = _remaining_budget(start, timeout, monotonic_fn=monotonic_fn)
         if remaining <= timedelta(0):
             raise PermanentPreflightError(
                 last_error or f"MCP preflight timed out for endpoint {endpoint} after {timeout}"
@@ -202,8 +248,8 @@ def run_preflight_loop(
             raise
         except RetryablePreflightError as exc:
             last_error = str(exc)
-            delay = _retry_poll_delay(start, timeout)
-            time.sleep(delay.total_seconds())
+            delay = _retry_poll_delay(start, timeout, monotonic_fn=monotonic_fn)
+            sleep_fn(delay.total_seconds())
 
 
 def preflight_tcp_attempt(
@@ -211,10 +257,15 @@ def preflight_tcp_attempt(
     address: tuple[str, int],
     required_tools: Iterable[str],
     remaining: timedelta,
+    *,
+    deps: PreflightTcpDeps | None = None,
 ) -> None:
-    sock = connect_to_endpoint(endpoint, address, remaining)
+    resolved_deps = deps or PreflightTcpDeps()
+    connect_fn = resolved_deps.connect_to_endpoint_fn or connect_to_endpoint
+    list_fn = resolved_deps.list_tools_fn or list_tools_for_endpoint
+    sock = connect_fn(endpoint, address, remaining)
     try:
-        tools = list_tools_for_endpoint(sock, _io_timeout_budget(remaining))
+        tools = list_fn(sock, _io_timeout_budget(remaining))
         ensure_required_tools(required_tools, tools)
     finally:
         sock.close()
@@ -225,22 +276,27 @@ def preflight_http_attempt(
     target: HttpEndpointTarget,
     required_tools: Iterable[str],
     remaining: timedelta,
+    *,
+    post_with_session_fn: HttpJsonRpcWithSessionFn | None = None,
 ) -> None:
-    _, session_id = post_http_jsonrpc_with_session(endpoint, target, initialize_request())
-    tools_response, _ = post_http_jsonrpc_with_session(
-        endpoint, target, tools_list_request(), session_id=session_id
-    )
+    post_fn = post_with_session_fn or post_http_jsonrpc_with_session
+    _, session_id = post_fn(endpoint, target, initialize_request())
+    tools_response, _ = post_fn(endpoint, target, tools_list_request(), session_id=session_id)
     ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
     tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
     ensure_required_tools(required_tools, tools)
 
 
 def connect_to_endpoint(
-    endpoint: str, address: tuple[str, int], remaining: timedelta
+    endpoint: str,
+    address: tuple[str, int],
+    remaining: timedelta,
+    *,
+    connect_fn: Callable[[tuple[str, int], float], socket.socket] = socket.create_connection,
 ) -> socket.socket:
     timeout = max(0.001, _connect_timeout_budget(remaining).total_seconds())
     try:
-        return socket.create_connection(address, timeout=timeout)
+        return connect_fn(address, timeout)
     except TimeoutError as exc:
         raise RetryablePreflightError(
             f"failed to connect to MCP endpoint {endpoint}: {exc}"
@@ -352,6 +408,7 @@ def post_http_jsonrpc_with_session(
     payload: JsonRpcResponse | None = None,
     *,
     session_id: str | None = None,
+    post_fn: HttpPostFn = httpx.post,
 ) -> tuple[JsonRpcResponse, str | None]:
     if isinstance(endpoint_or_target, HttpEndpointTarget):
         endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
@@ -366,7 +423,7 @@ def post_http_jsonrpc_with_session(
         headers = {"Accept": "application/json, text/event-stream"}
         if session_id:
             headers["mcp-session-id"] = session_id
-        response = httpx.post(
+        response = post_fn(
             endpoint,
             json=payload_obj,
             headers=headers,
@@ -480,14 +537,27 @@ def _io_timeout_budget(remaining: timedelta) -> timedelta:
     return min(timedelta(seconds=2), remaining)
 
 
-def _remaining_budget(start: float, timeout: timedelta) -> timedelta:
-    elapsed = timedelta(seconds=max(0.0, time.monotonic() - start))
+def _remaining_budget(
+    start: float,
+    timeout: timedelta,
+    *,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+) -> timedelta:
+    elapsed = timedelta(seconds=max(0.0, monotonic_fn() - start))
     remainder = timeout - elapsed
     return remainder if remainder > timedelta(milliseconds=0) else timedelta(milliseconds=0)
 
 
-def _retry_poll_delay(start: float, timeout: timedelta) -> timedelta:
-    return min(timedelta(milliseconds=100), _remaining_budget(start, timeout))
+def _retry_poll_delay(
+    start: float,
+    timeout: timedelta,
+    *,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+) -> timedelta:
+    return min(
+        timedelta(milliseconds=100),
+        _remaining_budget(start, timeout, monotonic_fn=monotonic_fn),
+    )
 
 
 def _retryable_connect_error_kind(errno_value: int | None) -> bool:
@@ -510,10 +580,11 @@ def _configure_stream_timeouts(sock: socket.socket, io_timeout: timedelta) -> No
     sock.settimeout(io_timeout.total_seconds())
 
 
-def heartbeat_policy_from_env() -> HeartbeatPolicy:
-    interval = int(os.environ.get("RALPH_MCP_HEARTBEAT_INTERVAL_MS", "2000"))
-    misses = max(1, int(os.environ.get("RALPH_MCP_HEARTBEAT_MISSES", "3")))
-    reconnect = int(os.environ.get("RALPH_MCP_HEARTBEAT_RECONNECT_MS", "10000"))
+def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> HeartbeatPolicy:
+    env_map = os.environ if env is None else env
+    interval = int(env_map.get(MCP_HEARTBEAT_INTERVAL_MS_ENV, "2000"))
+    misses = max(1, int(env_map.get(MCP_HEARTBEAT_MISSES_ENV, "3")))
+    reconnect = int(env_map.get(MCP_HEARTBEAT_RECONNECT_MS_ENV, "10000"))
     return HeartbeatPolicy(
         interval=timedelta(milliseconds=interval),
         misses=misses,

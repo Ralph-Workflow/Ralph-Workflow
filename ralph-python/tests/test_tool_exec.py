@@ -12,6 +12,7 @@ from ralph.mcp.tool_exec import (
     _DEFAULT_TIMEOUT_MS as DEFAULT_TIMEOUT_MS,
 )
 from ralph.mcp.tool_exec import (
+    ExecRunDeps,
     ExecutionError,
     WorkspaceWithRoot,
     apply_exec_policy,
@@ -30,6 +31,7 @@ from ralph.mcp.tool_exec import (
 )
 
 CUSTOM_TIMEOUT_MS = 5000
+EXPECTED_TIMEOUT_SECONDS = 2.5
 
 
 class MockSession:
@@ -367,6 +369,47 @@ class TestRunCommand:
     def test_workspace_with_str_root(self, tmp_path: Path) -> None:
         result = run_command("echo", ["test"], str(tmp_path), 5000)
         assert result.returncode == 0
+
+    def test_uses_injected_cwd_provider_when_workspace_has_no_root(self) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None):
+            seen["cwd"] = cwd
+            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
+
+        fallback = Path("/virtual/fallback")
+        run_command(
+            "python",
+            ["--version"],
+            object(),
+            1000,
+            deps=ExecRunDeps(runner=fake_runner, cwd_provider=lambda: fallback),
+        )
+
+        assert seen["cwd"] == fallback
+
+    def test_uses_injected_runner(self, tmp_path: Path) -> None:
+        seen: dict[str, object] = {}
+        workspace = MockWorkspaceRoot(tmp_path)
+
+        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None):
+            seen["command"] = command
+            seen["cwd"] = cwd
+            seen["timeout"] = timeout_seconds
+            return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
+
+        result = run_command(
+            "python",
+            ["--version"],
+            workspace,
+            2500,
+            deps=ExecRunDeps(runner=fake_runner),
+        )
+
+        assert result.returncode == 0
+        assert seen["command"] == ["python", "--version"]
+        assert seen["cwd"] == tmp_path
+        assert seen["timeout"] == EXPECTED_TIMEOUT_SECONDS
 
 
 # =============================================================================

@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.policy_outcomes import is_policy_approved
 from ralph.mcp.tool_coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
 WORKSPACE_WRITE_TRACKED_CAPABILITY = "WorkspaceWriteTracked"
 WORKSPACE_WRITE_EPHEMERAL_CAPABILITY = "WorkspaceWriteEphemeral"
-_APPROVED_POLICY_OUTCOMES = {"approved", "allow", "allowed"}
 
 
 def _attribute_value(
@@ -67,26 +67,7 @@ def _list_dir_entries(workspace: Workspace, path: str) -> list[str]:
 
 
 def _is_policy_approved(outcome: object | None) -> bool:
-    if outcome is True:
-        return True
-    if isinstance(outcome, str):
-        return outcome.strip().lower() in _APPROVED_POLICY_OUTCOMES
-
-    if isinstance(outcome, dict):
-        for attribute_name in ("name", "value", "status"):
-            attribute = outcome.get(attribute_name)
-            if (
-                isinstance(attribute, str)
-                and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES
-            ):
-                return True
-        return False
-
-    for attribute_name in ("name", "value", "status"):
-        attribute = _attribute_value(outcome, attribute_name)
-        if isinstance(attribute, str) and attribute.strip().lower() in _APPROVED_POLICY_OUTCOMES:
-            return True
-    return False
+    return is_policy_approved(outcome)
 
 
 def _is_parallel_worker(session: object) -> bool:

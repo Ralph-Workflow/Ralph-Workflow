@@ -149,6 +149,21 @@ def test_capability_template_variables_include_enabled_tools_and_flags() -> None
     assert variables["CAPABILITY_SUMMARY"] == format_capability_summary(capabilities, policy_flags)
 
 
+def test_capability_template_variables_can_prefix_tool_names_for_claude_mcp() -> None:
+    capabilities = CapabilitySet.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    policy_flags = PolicyFlagSet.defaults_for_drain(SessionDrain.DEVELOPMENT)
+
+    variables = capability_template_variables(
+        capabilities,
+        policy_flags,
+        tool_name_prefix="mcp__ralph__",
+    )
+
+    assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == "mcp__ralph__ralph_submit_artifact"
+    assert variables["EXEC_TOOL_NAME"] == "mcp__ralph__exec"
+    assert variables["MCP_TOOLS_LIST"].startswith("mcp__ralph__read_file")
+
+
 def test_capability_template_variables_leave_disabled_tool_names_empty() -> None:
     capabilities = CapabilitySet([Capability.WORKSPACE_READ])
     policy_flags = PolicyFlagSet([PolicyFlag.NO_EDIT])

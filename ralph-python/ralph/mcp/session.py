@@ -6,9 +6,7 @@ import time
 from dataclasses import dataclass, field
 
 from ralph.mcp.capability_mapping import lookup_ralph_capability
-
-MCP_ENDPOINT_ENV = "RALPH_MCP_ENDPOINT"
-MCP_RUN_ID_ENV = "RALPH_MCP_RUN_ID"
+from ralph.mcp.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 
 
 def _normalize_capability_token(value: str) -> str:
