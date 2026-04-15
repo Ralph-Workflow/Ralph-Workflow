@@ -10,7 +10,7 @@ import pathlib
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-from ralph.config.enums import JsonParserType, ReviewDepth
+from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 
 PATH_RUNTIME_CLASS = pathlib.Path
 
@@ -30,6 +30,7 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
         streaming_flag: Optional streaming flag for partial JSON messages.
         session_flag: Optional session continuation flag template.
         display_name: Human-readable display name for UI/UX.
+        transport: Invocation/MCP transport type for the agent runtime.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -45,6 +46,28 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
     streaming_flag: str | None = None
     session_flag: str | None = None
     display_name: str | None = None
+    transport: AgentTransport | None = None
+
+    def model_post_init(self, __context: object) -> None:
+        if self.transport is not None:
+            return
+
+        parser_to_transport = {
+            JsonParserType.CLAUDE: AgentTransport.CLAUDE,
+            JsonParserType.CODEX: AgentTransport.CODEX,
+            JsonParserType.OPENCODE: AgentTransport.OPENCODE,
+        }
+        command_to_transport = {
+            "claude": AgentTransport.CLAUDE,
+            "codex": AgentTransport.CODEX,
+            "opencode": AgentTransport.OPENCODE,
+        }
+        command_name = self.cmd.split()[0] if self.cmd else ""
+        inferred_transport = parser_to_transport.get(
+            self.json_parser,
+            command_to_transport.get(command_name, AgentTransport.GENERIC),
+        )
+        object.__setattr__(self, "transport", inferred_transport)
 
 
 class CloudConfig(BaseModel):  # type: ignore[explicit-any]

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.config.enums import JsonParserType, ReviewDepth, Verbosity
+from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
@@ -223,3 +223,10 @@ def test_json_parser_type_enum() -> None:
     assert str(JsonParserType.GEMINI) == "gemini"
     assert str(JsonParserType.OPENCODE) == "opencode"
     assert str(JsonParserType.GENERIC) == "generic"
+
+
+def test_agent_transport_enum() -> None:
+    assert str(AgentTransport.CLAUDE) == "claude"
+    assert str(AgentTransport.CODEX) == "codex"
+    assert str(AgentTransport.OPENCODE) == "opencode"
+    assert str(AgentTransport.GENERIC) == "generic"

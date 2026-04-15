@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.agents.invoke import (
     InvokeOptions,
+    UnsupportedMcpTransportError,
     _build_command,
     _BuildCommandOptions,
     _command_for_log,
     invoke_agent,
 )
-from ralph.config.enums import JsonParserType
+from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
@@ -70,6 +70,54 @@ def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) 
     )
 
     assert cmd == ["opencode", "run", "--format", "json", "plain prompt"]
+
+
+def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+        ),
+    )
+
+    assert "--strict-mcp-config" not in cmd
+    mcp_index = cmd.index("--mcp-config")
+    assert cmd[mcp_index + 1] == (
+        '{"mcpServers":{"ralph_runtime":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}'
+    )
+    assert cmd[-1] == "PROMPT.md"
+
+
+def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp() -> None:
+    config = AgentConfig(
+        cmd="custom-claude-wrapper --json",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+    )
+
+    assert "--mcp-config" in cmd
+    assert cmd[-1] == "PROMPT.md"
 
 
 def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Path) -> None:
@@ -362,3 +410,133 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
 
     assert seen_env
     assert json.loads(seen_env[0]["OPENCODE_CONFIG_CONTENT"]) == {"model": "anthropic/test"}
+
+
+def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
+    monkeypatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+    seen_env: list[dict[str, str]] = []
+    seen_config: list[str] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args, **kwargs):
+        env = kwargs.get("env")
+        assert isinstance(env, dict)
+        seen_env.append(env)
+        codex_home = Path(env["CODEX_HOME"])
+        seen_config.append((codex_home / "config.toml").read_text(encoding="utf-8"))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_env
+    assert "CODEX_HOME" in seen_env[0]
+    assert len(seen_config) == 1
+    assert (
+        '[mcp_servers.ralph_runtime]\nurl = "http://127.0.0.1:9999/mcp"\nenabled = true\n'
+        in seen_config[0]
+    )
+
+
+def test_invoke_agent_preserves_existing_codex_home_state(monkeypatch, tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+    source_home = tmp_path / "source-codex-home"
+    source_home.mkdir()
+    (source_home / "config.toml").write_text('model = "gpt-5"\n', encoding="utf-8")
+    (source_home / "auth.json").write_text('{"token":"secret"}', encoding="utf-8")
+    copied_auth: list[str] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args, **kwargs):
+        env = kwargs.get("env")
+        assert isinstance(env, dict)
+        codex_home = Path(env["CODEX_HOME"])
+        copied_auth.append((codex_home / "auth.json").read_text(encoding="utf-8"))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("CODEX_HOME", str(source_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert copied_auth == ['{"token":"secret"}']
+
+
+def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="some-agent",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.GENERIC,
+    )
+
+    with pytest.raises(UnsupportedMcpTransportError):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                ),
+            )
+        )

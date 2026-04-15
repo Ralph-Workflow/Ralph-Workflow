@@ -62,6 +62,22 @@ class JsonParserType(StrEnum):
     GENERIC = "generic"
 
 
+class AgentTransport(StrEnum):
+    """Invocation/MCP transport type for an agent runtime.
+
+    Attributes:
+        CLAUDE: Claude Code compatible invocation/MCP transport.
+        CODEX: Codex CLI compatible invocation/MCP transport.
+        OPENCODE: OpenCode compatible invocation/MCP transport.
+        GENERIC: No special transport support.
+    """
+
+    CLAUDE = "claude"
+    CODEX = "codex"
+    OPENCODE = "opencode"
+    GENERIC = "generic"
+
+
 class RecoveryStrategy(StrEnum):
     """Recovery strategy when pipeline encounters failures.
 

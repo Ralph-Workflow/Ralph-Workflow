@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +26,10 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from loguru import logger
 from tqdm import tqdm
 
+from ralph.config.enums import AgentTransport
+
 _MODELED_FLAG_PARTS = 2
+_RALPH_MCP_SERVER_NAME = "ralph_runtime"
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,7 @@ class _BuildCommandOptions:
     session_id: str | None = None
     verbose: bool = False
     pure: bool = False
+    mcp_endpoint: str | None = None
 
 
 if TYPE_CHECKING:
@@ -123,6 +129,10 @@ class AgentInvocationError(Exception):
         self.stderr = stderr
         self.parsed_output = list(parsed_output) if parsed_output is not None else []
         super().__init__(f"Agent '{agent_name}' failed with code {returncode}")
+
+
+class UnsupportedMcpTransportError(RuntimeError):
+    """Raised when MCP-backed execution is requested for an unsupported transport."""
 
 
 class WorkspaceMonitor:
@@ -218,6 +228,7 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     opts = options or InvokeOptions()
+    runtime_env = _runtime_extra_env(config, opts.extra_env, opts.workspace_path)
     cmd = _build_command(
         config,
         prompt_file,
@@ -226,6 +237,7 @@ def invoke_agent(
             session_id=opts.session_id,
             verbose=opts.verbose,
             pure=opts.pure,
+            mcp_endpoint=(runtime_env or {}).get("RALPH_MCP_ENDPOINT"),
         ),
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
@@ -237,7 +249,7 @@ def invoke_agent(
             cmd,
             config,
             opts.show_progress,
-            _runtime_extra_env(config, opts.extra_env),
+            runtime_env,
         )
         yield from lines_iter
 
@@ -288,11 +300,11 @@ def _run_subprocess_and_read_lines(
     ) as proc:
         if proc.stdout is None:
             msg = "Failed to capture stdout"
-            raise AgentInvocationError(config.cmd.split()[0], -1, msg)
+            raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
         lines_iter = _read_lines_from_process(proc)
         if show_progress:
-            agent_name = config.cmd.split()[0]
+            agent_name = _agent_command_name(config)
             progress_iter = cast(
                 "Iterator[str]",
                 tqdm(
@@ -308,7 +320,7 @@ def _run_subprocess_and_read_lines(
             yield from lines_iter
 
         proc.wait()
-        _check_process_result(proc, config.cmd.split()[0])
+        _check_process_result(proc, _agent_command_name(config))
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -321,18 +333,106 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
 def _runtime_extra_env(
     config: AgentConfig,
     extra_env: dict[str, str] | None,
+    workspace_path: Path | None,
 ) -> dict[str, str] | None:
     runtime_env = dict(extra_env or {})
-    if config.cmd.split()[0] != "opencode":
+    endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
+    if not endpoint:
         return runtime_env or None
 
-    endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
-    if endpoint:
+    transport = _agent_transport(config)
+    if transport == AgentTransport.OPENCODE:
         runtime_env["OPENCODE_CONFIG_CONTENT"] = _merge_opencode_config_content(
             runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
-    return runtime_env or None
+        return runtime_env
+    if transport == AgentTransport.CODEX:
+        runtime_env["CODEX_HOME"] = _prepare_codex_home(
+            endpoint,
+            workspace_path=workspace_path,
+            existing_home=runtime_env.get("CODEX_HOME") or os.environ.get("CODEX_HOME"),
+        )
+        return runtime_env
+    if transport == AgentTransport.CLAUDE:
+        return runtime_env
+
+    raise UnsupportedMcpTransportError(
+        f"Agent transport '{transport}' does not declare how to receive Ralph MCP wiring"
+    )
+
+
+def _agent_transport(config: AgentConfig) -> AgentTransport:
+    transport = config.transport
+    if transport is None:
+        return AgentTransport.GENERIC
+    return transport
+
+
+def _agent_command_name(config: AgentConfig) -> str:
+    return config.cmd.split()[0]
+
+
+def _prepare_codex_home(
+    endpoint: str,
+    *,
+    workspace_path: Path | None,
+    existing_home: str | None,
+) -> str:
+    codex_root = _allocate_codex_home_dir(workspace_path)
+    codex_root.mkdir(parents=True, exist_ok=True)
+
+    source_home = Path(existing_home).expanduser() if existing_home else Path.home() / ".codex"
+    if source_home.exists():
+        _mirror_codex_home(source_home, codex_root)
+    source_config = source_home / "config.toml"
+    base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
+    injected_server = (
+        f'[mcp_servers.{_RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
+    )
+    config_text = (
+        f"{base_config.rstrip()}\n\n{injected_server}" if base_config.strip() else injected_server
+    )
+    (codex_root / "config.toml").write_text(config_text, encoding="utf-8")
+    return str(codex_root)
+
+
+def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
+    for entry in source_home.iterdir():
+        if entry.name == "config.toml":
+            continue
+        destination = codex_root / entry.name
+        try:
+            destination.symlink_to(entry, target_is_directory=entry.is_dir())
+        except OSError:
+            if entry.is_dir():
+                shutil.copytree(entry, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(entry, destination)
+
+
+def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
+    if workspace_path is None:
+        return Path(tempfile.mkdtemp(prefix="ralph-codex-home-"))
+
+    tmp_root = workspace_path / ".agent" / "tmp"
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(tmp_root)))
+
+
+def _claude_mcp_config(endpoint: str) -> str:
+    config_payload: dict[str, dict[str, dict[str, str]]] = {
+        "mcpServers": {
+            _RALPH_MCP_SERVER_NAME: {
+                "type": "http",
+                "url": endpoint,
+            }
+        }
+    }
+    return json.dumps(
+        config_payload,
+        separators=(",", ":"),
+    )
 
 
 def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
@@ -477,7 +577,13 @@ def _build_command(
         List of command arguments.
     """
     build_options = options or _BuildCommandOptions()
-    if config.cmd.split()[0] == "opencode":
+    transport = _agent_transport(config)
+    if build_options.mcp_endpoint and transport == AgentTransport.GENERIC:
+        raise UnsupportedMcpTransportError(
+            "Ralph MCP endpoint provided for agent without a supported transport adapter"
+        )
+
+    if transport == AgentTransport.OPENCODE:
         return _build_opencode_command(
             config,
             prompt_file,
@@ -502,6 +608,14 @@ def _build_command(
     if build_options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
 
+    if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
+        cmd.extend(
+            [
+                "--mcp-config",
+                _claude_mcp_config(build_options.mcp_endpoint),
+            ]
+        )
+
     effective_model = build_options.model_flag or config.model_flag
     if effective_model:
         cmd.extend(effective_model.split())
@@ -518,7 +632,7 @@ def _build_opencode_command(
     options: _BuildCommandOptions,
 ) -> list[str]:
     prompt_text = Path(prompt_file).read_text(encoding="utf-8")
-    cmd = [config.cmd.split()[0], "run"]
+    cmd = [_agent_command_name(config), "run"]
     if options.pure:
         cmd.append("--pure")
     cmd.extend(["--format", "json"])
@@ -542,7 +656,7 @@ def _build_opencode_command(
 
 def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> str:
     logged_cmd = list(cmd)
-    if config.cmd.split()[0] == "opencode" and logged_cmd:
+    if _agent_transport(config) == AgentTransport.OPENCODE and logged_cmd:
         logged_cmd[-1] = prompt_file
     return " ".join(logged_cmd)
 

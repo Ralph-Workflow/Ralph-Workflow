@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, CcsAliasConfig, UnifiedConfig
 
 
@@ -53,9 +54,16 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
 
     registry = AgentRegistry.from_config(config)
 
-    assert registry.get("claude") is not None
-    assert registry.get("codex") is not None
-    assert registry.get("opencode") is not None
+    claude = registry.get("claude")
+    codex = registry.get("codex")
+    opencode = registry.get("opencode")
+
+    assert claude is not None
+    assert codex is not None
+    assert opencode is not None
+    assert claude.transport == AgentTransport.CLAUDE
+    assert codex.transport == AgentTransport.CODEX
+    assert opencode.transport == AgentTransport.OPENCODE
 
 
 def test_agent_registry_resolves_string_ccs_alias_with_defaults() -> None:
@@ -69,6 +77,7 @@ def test_agent_registry_resolves_string_ccs_alias_with_defaults() -> None:
     assert ccs_agent.output_flag == config.ccs.output_flag
     assert ccs_agent.print_flag == config.ccs.print_flag
     assert ccs_agent.streaming_flag == config.ccs.streaming_flag
+    assert ccs_agent.transport == AgentTransport.CLAUDE
 
 
 def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:

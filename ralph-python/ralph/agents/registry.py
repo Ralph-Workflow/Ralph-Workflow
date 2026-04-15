@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.config.enums import JsonParserType
+from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, CcsAliasConfig, CcsConfig
 
 _MIN_OPENCODE_SEGMENTS = 3
@@ -32,18 +32,21 @@ def _builtin_agents() -> dict[str, AgentConfig]:
             print_flag="--print",
             streaming_flag="--include-partial-messages",
             session_flag="--resume {}",
+            transport=AgentTransport.CLAUDE,
         ),
         "codex": AgentConfig(
             cmd="codex",
             output_flag="--json-stream",
             can_commit=True,
             json_parser=JsonParserType.CODEX,
+            transport=AgentTransport.CODEX,
         ),
         "opencode": AgentConfig(
             cmd="opencode",
             output_flag="--json-stream",
             can_commit=False,
             json_parser=JsonParserType.OPENCODE,
+            transport=AgentTransport.OPENCODE,
         ),
     }
 

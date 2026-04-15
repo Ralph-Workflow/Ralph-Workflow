@@ -18,6 +18,7 @@ from rich.panel import Panel
 from ralph.agents.invoke import AgentInvocationError, InvokeOptions, invoke_agent
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.git.operations import (
     create_commit,
@@ -240,7 +241,7 @@ def _commit_submit_artifact_tool_names(
 
 
 def _is_opencode_agent(agent: AgentConfig | None) -> bool:
-    return agent is not None and agent.cmd.split()[0] == "opencode"
+    return agent is not None and agent.transport == AgentTransport.OPENCODE
 
 
 def _commit_prompt_for_agent(
