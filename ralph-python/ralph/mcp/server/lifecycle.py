@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.server.runtime import SESSION_FILE_ENV
 from ralph.mcp.startup import (
     SessionBridgeLike,
     mcp_preflight_timeout_from_env,
@@ -22,6 +21,9 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.mcp.startup import SessionBridgeFactory, SessionLike, WorkspaceLike
+
+
+SESSION_FILE_ENV = "RALPH_MCP_SESSION_FILE"
 
 
 @dataclass

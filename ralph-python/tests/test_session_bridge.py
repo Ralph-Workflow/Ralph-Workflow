@@ -25,7 +25,7 @@ def _dummy_session(
         session_id="session-1",
         run_id=run_id,
         drain=drain,
-        capabilities={"workspace.read"},
+        capabilities={"workspace.read", "artifact.submit", "run.report_progress"},
     )
 
 
@@ -131,7 +131,7 @@ def test_mcp_server_registers_tools_with_fastmcp(tmp_path: Path, monkeypatch) ->
             if name is not None:
                 registered_tools.append(name)
 
-    monkeypatch.setattr(session_bridge, "FastMCP", FakeFastMCP)
+    monkeypatch.setattr(session_bridge, "_FastMCP", FakeFastMCP)
 
     registry = session_bridge.build_ralph_tool_registry(session, workspace)
     session_bridge.McpServer(session, workspace, registry)

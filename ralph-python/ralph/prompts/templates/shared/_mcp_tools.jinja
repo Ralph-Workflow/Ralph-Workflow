@@ -1,0 +1,26 @@
+{% if MCP_TOOLS_LIST %}
+MCP TOOLS (Ralph Brokered)
+
+You MUST use Ralph's MCP tools for all operations. Native agent tools are DISABLED.
+
+AVAILABLE TOOLS:
+{{MCP_TOOLS_LIST}}
+
+{% if HAS_MCP_WRITE %}
+WRITE OPERATIONS:
+- Use `{{WRITE_FILE_TOOL_NAME}}` to create or modify files
+- Use `{{LIST_DIRECTORY_TOOL_NAME}}` to explore directories
+- Use `{{LIST_DIRECTORY_RECURSIVE_TOOL_NAME}}` to explore directories recursively
+- Use `{{SEARCH_FILES_TOOL_NAME}}` to search file contents
+{% endif %}
+
+{% if HAS_MCP_EXEC %}
+EXECUTION:
+- Use `{{EXEC_TOOL_NAME}}` to run shell commands
+- Use `{{REPORT_PROGRESS_TOOL_NAME}}` to report status
+{% endif %}
+
+ARTIFACT SUBMISSION:
+- Use `{{SUBMIT_ARTIFACT_TOOL_NAME}}` to submit structured results
+- Use `{{DECLARE_COMPLETE_TOOL_NAME}}` when finished
+{% endif %}

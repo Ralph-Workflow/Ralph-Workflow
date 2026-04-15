@@ -127,6 +127,24 @@ def test_handle_submit_artifact_accepts_structured_skip_payload(tmp_path: Path) 
     assert text_file.read_text(encoding="utf-8") == "SKIP: No repo changes to commit"
 
 
+def test_handle_submit_artifact_normalizes_commit_alias_type_to_commit_message(
+    tmp_path: Path,
+) -> None:
+    result = handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "commit",
+            "content": _content({"type": "commit", "subject": "fix: preserve commit alias"}),
+        },
+    )
+
+    assert result.is_error is False
+    assert result.content[0].text == "Artifact submitted: commit_message"
+    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+    assert artifact_file.exists()
+
+
 def test_handle_submit_artifact_rejects_legacy_message_only_payload(tmp_path: Path) -> None:
     with pytest.raises(InvalidParamsError, match="must use the structured commit_message schema"):
         handle_submit_artifact(

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
-from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegistry
-
-from .templates import DEFAULT_REVIEW_TEMPLATE
+from ralph.prompts.template_registry import (
+    TemplateNotFoundError,
+    TemplateRegistry,
+    packaged_template_root,
+)
 
 __all__ = [
     "CHANGES_PLACEHOLDER",
-    "DEFAULT_REVIEW_TEMPLATE",
     "PLAN_PLACEHOLDER",
     "prompt_review",
     "render_review_prompt",
@@ -43,18 +45,27 @@ def render_review_prompt(
     plan_value = _normalize_content(plan, PLAN_PLACEHOLDER)
     changes_value = _normalize_content(changes, CHANGES_PLACEHOLDER)
 
-    template = DEFAULT_REVIEW_TEMPLATE
+    template = _load_packaged_review_template()
+    partials = TemplateContext.default().partials
     if template_registry is not None:
         try:
             template = template_registry.get_template(template_name)
         except TemplateNotFoundError:
-            template = DEFAULT_REVIEW_TEMPLATE
+            template = _load_packaged_review_template()
 
     try:
-        return render_template(template, {"PLAN": plan_value, "CHANGES": changes_value}, {})
+        return render_template(
+            template,
+            {"PLAN": plan_value, "CHANGES": changes_value},
+            partials,
+        )
     except TemplateRenderingError as err:
         raise ValueError("Unable to render review prompt; invalid Jinja template") from err
 
 
 prompt_review = render_review_prompt
 """Backward-compatible alias matching the original reviewer prompt name."""
+
+
+def _load_packaged_review_template() -> str:
+    return (packaged_template_root() / "review.jinja").read_text(encoding="utf-8")

@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from ralph.prompts.developer import (
+    DeveloperPromptInputs,
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
@@ -22,8 +23,7 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
 
     prompt = prompt_developer_iteration_xml_with_context(
         context=context,
-        prompt_content=prompt_text,
-        plan_content=plan_text,
+        inputs=DeveloperPromptInputs(prompt_content=prompt_text, plan_content=plan_text),
         workspace=workspace,
         session_caps=session_caps,
     )
@@ -83,8 +83,10 @@ def test_developer_prompt_fallback_uses_json_result_artifact_contract(tmp_path):
     ):
         prompt = prompt_developer_iteration_xml_with_context(
             context=context,
-            prompt_content="Implement MCP hardening",
-            plan_content="1. Add tests\n2. Fix capability checks",
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement MCP hardening",
+                plan_content="1. Add tests\n2. Fix capability checks",
+            ),
             workspace=workspace,
             session_caps=session_caps,
         )

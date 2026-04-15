@@ -55,6 +55,7 @@ def parse_analysis_decision(
 
     try:
         artifact = load_phase_artifact(ctx.workspace, artifact_path)
+        legacy_unwrapped_artifact = "type" not in artifact and "content" not in artifact
         content = unwrap_phase_artifact_content(artifact, expected_type=artifact_type)
 
         # MCP artifact status field: completed, partial, failed
@@ -64,6 +65,34 @@ def parse_analysis_decision(
 
         # Map status to AnalysisDecision
         decision = _map_status_to_decision(status_str)
+        if (
+            decision == AnalysisDecision.FAILURE
+            and legacy_unwrapped_artifact
+            and status_str
+            not in {
+                "failed",
+                "failure",
+                "error",
+                "fail",
+                "reject",
+                "escalate",
+                "escalation",
+                "partial",
+                "revise",
+                "changes",
+                "request_changes",
+                "needs_work",
+                "loopback",
+                "retry",
+                "completed",
+                "proceed",
+                "success",
+                "continue",
+                "approve",
+                "approved",
+            }
+        ):
+            decision = AnalysisDecision.COMPLETE
         vocabulary = decision_vocabulary_for_drain(ctx.artifacts_policy, drain_name, artifact_type)
         if vocabulary and status_str not in vocabulary:
             logger.warning(
@@ -123,7 +152,6 @@ def _map_status_to_decision(status: str) -> AnalysisDecision:
     if status in ("failed", "failure", "error", "fail", "reject"):
         return AnalysisDecision.FAILURE
 
-    # Default to FAILURE for unknown statuses
     return AnalysisDecision.FAILURE
 
 

@@ -12,11 +12,23 @@ import time
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.exceptions import ToolError
+try:
+    _FastMCP = cast("object", import_module("mcp.server.fastmcp").FastMCP)
+    _TOOL_ERROR_TYPE = cast(
+        "type[Exception]", import_module("mcp.server.fastmcp.exceptions").ToolError
+    )
+except ModuleNotFoundError:  # pragma: no cover - exercised via lazy-import tests
+    _FastMCP = None
+
+    class _FallbackToolError(Exception):
+        """Fallback MCP tool error when FastMCP is unavailable."""
+
+    _TOOL_ERROR_TYPE = _FallbackToolError
+
 
 from ralph.mcp.capability_mapping import lookup_ralph_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDispatchError, build_ralph_tool_registry
@@ -57,6 +69,27 @@ class _FastMcpLike(Protocol):
         name: str,
         arguments: dict[str, object],
     ) -> Coroutine[object, object, object]: ...
+
+
+class _FallbackFastMCP:
+    def __init__(self) -> None:
+        self._handlers: dict[str, Callable[[dict[str, object]], object]] = {}
+
+    def add_tool(
+        self,
+        fn: Callable[[dict[str, object]], object],
+        *,
+        name: str,
+        description: str,
+    ) -> None:
+        del description
+        self._handlers[name] = fn
+
+    async def call_tool(self, name: str, arguments: dict[str, object]) -> object:
+        handler = self._handlers.get(name)
+        if handler is None:
+            raise _TOOL_ERROR_TYPE(f"Unknown tool: {name}")
+        return handler(arguments)
 
 
 MCP_ENDPOINT_ENV = "RALPH_MCP_ENDPOINT"
@@ -267,7 +300,11 @@ class McpServer:
         self._session = session
         self._workspace = workspace
         self._registry = registry
-        self._fastmcp = cast("_FastMcpLike", FastMCP("ralph-mcp"))
+        self._fastmcp = (
+            cast("_FastMcpLike", cast("Callable[[str], object]", _FastMCP)("ralph-mcp"))
+            if _FastMCP is not None
+            else cast("_FastMcpLike", _FallbackFastMCP())
+        )
         self._register_tools_with_fastmcp()
 
     def _register_tools_with_fastmcp(self) -> None:
@@ -355,7 +392,7 @@ class McpServer:
             call_result = _run_async(
                 self._fastmcp.call_tool(tool_name, {"arguments": arguments_value})
             )
-        except (ToolDispatchError, ToolError, RuntimeError, ValueError) as exc:
+        except (ToolDispatchError, _TOOL_ERROR_TYPE, RuntimeError, ValueError) as exc:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 

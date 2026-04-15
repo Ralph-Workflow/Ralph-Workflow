@@ -8,7 +8,7 @@ wrappers for the Ralph MCP tool modules.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
@@ -173,7 +173,9 @@ class ToolBridge:
         if effective_session is None:
             return True
 
-        checker = getattr(effective_session, "check_capability", None)
+        checker = cast(
+            "Callable[[str], object] | None", getattr(effective_session, "check_capability", None)
+        )
         if not callable(checker):
             return True
 
@@ -186,13 +188,14 @@ def _is_approved(outcome: object) -> bool:
     if isinstance(outcome, str):
         return outcome.strip().lower() in {"approved", "allow", "allowed"}
     if isinstance(outcome, dict):
+        mapping = cast("Mapping[str, object]", outcome)
         return any(
-            isinstance(outcome.get(field), str)
-            and outcome[field].strip().lower() in {"approved", "allow", "allowed"}
+            isinstance(mapping.get(field), str)
+            and cast("str", mapping[field]).strip().lower() in {"approved", "allow", "allowed"}
             for field in ("name", "value", "status")
         )
     for field in ("name", "value", "status"):
-        value = getattr(outcome, field, None)
+        value = cast("object", getattr(outcome, field, None))
         if isinstance(value, str) and value.strip().lower() in {"approved", "allow", "allowed"}:
             return True
     return False

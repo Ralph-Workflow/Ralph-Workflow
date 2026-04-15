@@ -45,6 +45,9 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
+from ralph.policy.loader import load_policy_or_die
+from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
+from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
@@ -97,6 +100,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         Exit code (0 for success, non-zero for failure).
     """
     state = initial_state or _create_initial_state(config)
+    policy_bundle = load_policy_or_die(Path(".agent"))
 
     logger.info(
         "Starting pipeline: phase={}, iterations={}, reviews={}",
@@ -119,6 +123,16 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 continue
 
             if isinstance(effect, PreparePromptEffect):
+                workspace = FsWorkspace(Path())
+                materialize_prompt_for_phase(
+                    phase=effect.phase,
+                    workspace=workspace,
+                    pipeline_policy=policy_bundle.pipeline,
+                    session_caps=SessionCapabilities.defaults_for_drain(
+                        _prompt_session_drain_for_phase(effect.phase)
+                    ),
+                    workspace_root=Path(),
+                )
                 state = state.copy_with(
                     phase=effect.phase,
                     iteration=effect.iteration,
@@ -220,7 +234,7 @@ def _planning_effect(state: PipelineState, planner_agent: str | None) -> Effect:
         return InvokeAgentEffect(
             agent_name=planner_agent,
             phase=state.phase,
-            prompt_file="PROMPT.md",
+            prompt_file=prompt_file_for_phase(state.phase),
         )
     return PreparePromptEffect(phase="development", iteration=0)
 
@@ -256,7 +270,7 @@ def _agent_or_advance(state: PipelineState, fallback_phase: str) -> Effect:
         return InvokeAgentEffect(
             agent_name=agent,
             phase=state.phase,
-            prompt_file="PROMPT.md",
+            prompt_file=prompt_file_for_phase(state.phase),
         )
     if state.iteration + 1 < state.total_iterations:
         return PreparePromptEffect(
@@ -281,7 +295,7 @@ def _agent_or_next_phase(state: PipelineState, fallback_phase: str) -> Effect:
         return InvokeAgentEffect(
             agent_name=agent,
             phase=state.phase,
-            prompt_file="PROMPT.md",
+            prompt_file=prompt_file_for_phase(state.phase),
         )
     return PreparePromptEffect(phase=fallback_phase, iteration=0)
 
@@ -481,6 +495,18 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> str
         rendered = f"[dim]{agent_name} {output.type}:[/dim] {summary}"
 
     return rendered
+
+
+def _prompt_session_drain_for_phase(phase: str) -> SessionDrain:
+    if phase == "planning":
+        return SessionDrain.PLANNING
+    if phase in {"development", "development_analysis"}:
+        return SessionDrain.DEVELOPMENT
+    if phase in {"review", "review_analysis"}:
+        return SessionDrain.REVIEW
+    if phase == "fix":
+        return SessionDrain.FIX
+    return SessionDrain.COMMIT
 
 
 def _event_summary(output: AgentOutputLine) -> str:

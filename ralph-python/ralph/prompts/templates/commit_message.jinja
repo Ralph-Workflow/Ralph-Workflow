@@ -1,0 +1,37 @@
+Task: produce a spec-compliant MCP commit_message artifact for the diff below.
+Read the diff silently. Do not write an analysis.
+
+---
+## COMMIT MESSAGE FORMAT
+<type>[optional scope][!]: subject
+
+Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. If the change does not fit, default to chore and describe the intent. Keep the subject <= 50 chars and write it in lowercase imperative mood. Add a body only when the diff needs extra context.
+
+STRICT OUTPUT RULES:
+Do not explain the diff. Do not output bullets, markdown, sections, rationale, or file lists.
+Do not wrap JSON or the subject in code fences.
+Your job is to decide on the correct structured artifact and submit it by calling the tool directly.
+Call the tool before emitting any final text. If you skip the tool call, the task has failed.
+
+MCP REQUIREMENT:
+You MUST submit the final result by calling {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} with artifact_type="commit_message" and content as a JSON string matching one of these shapes:
+{"type": "commit", "subject": "type(scope): description"}
+{"type": "commit", "subject": "type(scope): description", "body": "Optional multi-line body"}
+{"type": "commit", "subject": "type(scope): description", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
+{"type": "commit", "subject": "type(scope): description", "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]}
+{"type": "skip", "reason": "Reason why no commit is needed"}.
+
+Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope.
+
+REQUIRED PROCEDURE:
+1. Read the diff and decide whether the correct result is a commit artifact or a skip artifact.
+2. Build the JSON content with the exact schema above.
+3. Immediately call the tool with that JSON string as the content argument.
+4. After the MCP call succeeds, optionally echo only the commit subject line once and nothing else. If you submitted a skip artifact, do not emit extra prose.
+
+DIFF:
+{{ DIFF }}
+
+After the MCP submission, you may optionally echo the same single-line subject as plain text,
+but the MCP artifact is the authoritative output. Do not emit markdown, bullets, or explanations
+as the final answer.

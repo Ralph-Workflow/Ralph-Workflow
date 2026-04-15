@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
@@ -36,15 +38,13 @@ class DevelopmentResult(BaseModel):  # type: ignore[explicit-any]
 
 def normalize_development_result_content(content: dict[str, object]) -> dict[str, object]:
     try:
-        return DevelopmentResult.model_validate(content).model_dump(
-            mode="python", exclude_none=True
+        validated = DevelopmentResult.model_validate(content)
+        return cast(
+            "dict[str, object]",
+            validated.model_dump(mode="python", exclude_none=True),
         )
     except ValidationError as exc:
-        first = exc.errors()[0]
-        path = ".".join(str(part) for part in first.get("loc", ()) if part != "__root__")
-        message = first.get("msg", "invalid development_result artifact")
-        detail = f"{path}: {message}" if path else str(message)
-        raise DevelopmentResultValidationError(detail) from exc
+        raise DevelopmentResultValidationError(str(exc)) from exc
 
 
 __all__ = [

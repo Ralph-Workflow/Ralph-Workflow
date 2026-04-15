@@ -37,7 +37,7 @@ def _valid_plan() -> dict[str, object]:
         "critical_files": {
             "primary_files": [{"path": "ralph/mcp/tool_artifact.py", "action": "modify"}],
             "reference_files": [
-                {"path": "ralph/prompts/policy_templates.py", "purpose": "prompt source"}
+                {"path": "ralph/prompts/templates/planning.jinja", "purpose": "prompt source"}
             ],
         },
         "risks_mitigations": [

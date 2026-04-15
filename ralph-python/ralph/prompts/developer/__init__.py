@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.prompts.policy_templates import (
-    DEVELOPER_ITERATION_TEMPLATE,
-    PLANNING_TEMPLATE,
-    SHARED_PARTIALS,
-)
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
+from ralph.prompts.template_registry import packaged_template_root
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 if TYPE_CHECKING:
@@ -19,22 +16,25 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
+@dataclass(frozen=True)
+class DeveloperPromptInputs:
+    prompt_content: str | None
+    plan_content: str | None
+
+
 def prompt_developer_iteration_xml_with_context(
     context: TemplateContext,
-    prompt_content: str | None,
-    plan_content: str | None,
+    inputs: DeveloperPromptInputs,
     workspace: Workspace,
     session_caps: SessionCapabilities,
+    *,
+    template_name: str = "developer_iteration.jinja",
 ) -> str:
-    template_name = "developer_iteration"
-    try:
-        template_content = context.registry.get_template(template_name)
-    except KeyError:
-        template_content = DEVELOPER_ITERATION_TEMPLATE
+    template_content = context.registry.get_template(template_name)
 
     base_vars: dict[str, str] = {
-        "PROMPT": prompt_content or "No requirements provided",
-        "PLAN": plan_content or "(no plan available)",
+        "PROMPT": inputs.prompt_content or "No requirements provided",
+        "PLAN": inputs.plan_content or "(no plan available)",
         "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
             ".agent/artifacts/development_result.json"
         ),
@@ -50,17 +50,14 @@ def prompt_developer_iteration_xml_with_context(
     variables: Mapping[str, str] = {**base_vars, **capability_vars}
 
     try:
-        return render_template(template_content, variables, SHARED_PARTIALS)
+        return render_template(template_content, variables, context.partials)
     except TemplateRenderingError:
-        prompt = prompt_content or "No requirements provided"
-        plan = plan_content or "(no plan available)"
-        return (
-            f"IMPLEMENTATION MODE\n\nORIGINAL REQUEST:\n{prompt}\n\n"
-            f"IMPLEMENTATION PLAN:\n{plan}\n\n"
-            'When done, call `ralph_submit_artifact` with artifact_type="development_result" '
-            "and content as JSON.\n"
-            "Write the result artifact to .agent/artifacts/development_result.json.\n"
-            '{"status":"completed","summary":"Summary","files_changed":"- src/foo.rs"}\n'
+        return _render_static_fallback(
+            "developer_iteration_fallback.jinja",
+            {
+                "PROMPT": inputs.prompt_content or "No requirements provided",
+                "PLAN": inputs.plan_content or "(no plan available)",
+            },
         )
 
 
@@ -69,12 +66,10 @@ def prompt_planning_xml_with_context(
     prompt_content: str | None,
     workspace: Workspace,
     session_caps: SessionCapabilities,
+    *,
+    template_name: str = "planning.jinja",
 ) -> str:
-    template_name = "planning"
-    try:
-        template_content = context.registry.get_template(template_name)
-    except KeyError:
-        template_content = PLANNING_TEMPLATE
+    template_content = context.registry.get_template(template_name)
 
     prompt_md = prompt_content or "No requirements provided"
     base_vars: dict[str, str] = {
@@ -90,13 +85,21 @@ def prompt_planning_xml_with_context(
     variables: Mapping[str, str] = {**base_vars, **capability_vars}
 
     try:
-        return render_template(template_content, variables, SHARED_PARTIALS)
+        return render_template(template_content, variables, context.partials)
     except TemplateRenderingError:
-        return (
-            f"PLANNING MODE\n\nCreate an implementation plan for:\n\n{prompt_md}\n\n"
-            'Submit the plan via `ralph_submit_artifact` with artifact_type="plan".\n'
-            "Write the plan artifact to .agent/artifacts/plan.json.\n"
-            '{"summary":{"context":"What is being done and why","scope_items":[]},'
-            '"steps":[],"critical_files":{"primary_files":[]},'
-            '"risks_mitigations":[],"verification_strategy":[]}\n'
+        return _render_static_fallback(
+            "planning_fallback.jinja",
+            {
+                "PROMPT": prompt_md,
+            },
         )
+
+
+def _render_static_fallback(template_name: str, variables: Mapping[str, str]) -> str:
+    template_path = packaged_template_root() / template_name
+    template = template_path.read_text(encoding="utf-8")
+    rendered = template
+    for key, value in variables.items():
+        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
+        rendered = rendered.replace(f"{{{{{key}}}}}", value)
+    return rendered

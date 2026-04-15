@@ -1,0 +1,24 @@
+You are in PLANNING MODE. Create a detailed, structured implementation plan.
+
+{% include 'shared/_unattended_mode.j2' %}
+
+{% include 'shared/_session_capabilities.j2' %}
+
+{% include 'shared/_mcp_tools.j2' %}
+
+{% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
+
+CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
+- Creating, modifying, or deleting any files
+- Running any commands that modify system state
+- Installing dependencies or packages
+
+You MUST submit your plan via the `{{SUBMIT_ARTIFACT_TOOL_NAME}}` MCP tool.
+- Not submitting the plan is a FAILURE.
+- Allowed operations: any non-mutating tools
+  (for example file reads/search/listing and image analysis)
+
+USER REQUIREMENTS:
+{{PROMPT}}
+
+Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON string conforming to the plan schema.

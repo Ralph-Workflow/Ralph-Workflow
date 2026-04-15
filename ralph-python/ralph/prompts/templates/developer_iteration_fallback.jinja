@@ -1,0 +1,11 @@
+IMPLEMENTATION MODE
+
+ORIGINAL REQUEST:
+{{ PROMPT }}
+
+IMPLEMENTATION PLAN:
+{{ PLAN }}
+
+When done, call `ralph_submit_artifact` with artifact_type="development_result" and content as JSON.
+Write the result artifact to .agent/artifacts/development_result.json.
+{"status":"completed","summary":"Summary","files_changed":"- src/foo.rs"}

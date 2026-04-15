@@ -83,6 +83,9 @@ def _prepare_artifact_submission(params: dict[str, object]) -> tuple[str, dict[s
     raw_content = _required_string(params, "content")
     parsed_content = _parse_content(raw_content)
 
+    if artifact_type in {"commit", "skip"}:
+        artifact_type = COMMIT_MESSAGE_TYPE
+
     if artifact_type == COMMIT_MESSAGE_TYPE:
         if "message" in parsed_content:
             raise InvalidParamsError(

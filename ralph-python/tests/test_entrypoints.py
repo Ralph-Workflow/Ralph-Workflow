@@ -1,5 +1,6 @@
 """Tests for rare entrypoints and MCP lazy exports."""
 
+import builtins
 import importlib
 import runpy
 import sys
@@ -66,3 +67,26 @@ def test_mcp_tool_bridge_lazy_exports_and_error() -> None:
 
     with pytest.raises(AttributeError):
         _ = module.__not_a_symbol__
+
+
+def test_mcp_server_package_import_is_lazy_when_mcp_dependency_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+
+    def guarded_import(name: str, *args: object, **kwargs: object) -> object:
+        if name.startswith("mcp"):
+            raise ModuleNotFoundError("No module named 'mcp'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    for module_name in (
+        "ralph.mcp.server",
+        "ralph.mcp.server.runtime",
+        "ralph.mcp.server.lifecycle",
+    ):
+        sys.modules.pop(module_name, None)
+
+    module = importlib.import_module("ralph.mcp.server")
+
+    assert module.start_mcp_server is not None

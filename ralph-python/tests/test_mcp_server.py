@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
+import threading
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
@@ -137,6 +139,42 @@ def test_file_backed_session_allows_workspace_write_any_via_ephemeral_alias(
     session = server_runtime.FileBackedSession(session_file)
 
     assert session.check_capability("WorkspaceWriteAny") == "approved"
+
+
+def test_build_fastmcp_server_falls_back_without_mcp_dependency(
+    tmp_path: Path, monkeypatch
+) -> None:
+    session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
+
+    monkeypatch.setattr(server_runtime, "_FastMCP", None)
+    monkeypatch.setattr(server_runtime, "_Tool", None)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = cast("int", sock.getsockname()[1])
+
+    server = server_runtime.build_fastmcp_server(
+        tmp_path, host="127.0.0.1", port=port, session=session
+    )
+    thread = threading.Thread(
+        target=server.run,
+        kwargs={"transport": server_runtime.DEFAULT_TRANSPORT},
+        daemon=True,
+    )
+    thread.start()
+
+    endpoint = f"http://127.0.0.1:{port}/mcp"
+    try:
+        initialize_response = _http_call(endpoint, "initialize")
+        assert initialize_response["result"]["serverInfo"]["name"] == "ralph-mcp"
+
+        tools_response = _http_call(endpoint, "tools/list", msg_id=2)
+        tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
+        assert {"read_file", "report_progress", "coordinate"}.issubset(tool_names)
+    finally:
+        cast("server_runtime._FallbackStandaloneServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
+        cast("server_runtime._FallbackStandaloneServer", server)._httpd.server_close()  # type: ignore[attr-defined]
+        thread.join(timeout=1)
 
 
 def test_session_bridge_http_gateway_lists_and_calls_coordination_tools(

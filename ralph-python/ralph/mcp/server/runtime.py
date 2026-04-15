@@ -6,19 +6,29 @@ import argparse
 import json
 import os
 import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.tools.base import Tool
+try:
+    _fastmcp_module = import_module("mcp.server.fastmcp")
+    _tool_module = import_module("mcp.server.fastmcp.tools.base")
+    _FastMCP = cast("object", _fastmcp_module.FastMCP)
+    _Tool = cast("object", _tool_module.Tool)
+except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback tests
+    _FastMCP = cast("object | None", None)
+    _Tool = cast("object | None", None)
 
 from ralph.mcp.capability_mapping import Capability, McpCapability, lookup_ralph_capability
-from ralph.mcp.session_bridge import AgentSession
+from ralph.mcp.session_bridge import AgentSession, JsonRpcRequest, McpServer, ServerState
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Sequence
+
+    from mcp.server.fastmcp.tools.base import Tool as ToolClass
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -105,6 +115,99 @@ class FastMcpServerLike(Protocol):
     def run(self, transport: Literal["streamable-http"] = DEFAULT_TRANSPORT) -> None:
         """Run the standalone server."""
         ...
+
+
+class FastMcpConstructorLike(Protocol):
+    def __call__(
+        self,
+        name: str,
+        *,
+        host: str,
+        port: int,
+        streamable_http_path: str,
+        tools: list[ToolClass],
+    ) -> FastMcpServerLike:
+        """Construct a FastMCP server instance."""
+        ...
+
+
+class _FallbackHttpServer(HTTPServer):
+    mcp_server: McpServer
+    state: ServerState
+
+
+class _FallbackHttpHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_POST(self) -> None:
+        if self.path != DEFAULT_MOUNT_PATH:
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = self.rfile.read(length)
+        try:
+            data = cast("dict[str, object]", json.loads(payload or b"{}"))
+        except json.JSONDecodeError:
+            self._write_json(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": "Parse error"},
+                    "id": None,
+                },
+                400,
+            )
+            return
+        params_value = data.get("params")
+        request = JsonRpcRequest(
+            jsonrpc=cast("str", data.get("jsonrpc", "2.0")),
+            method=cast("str", data.get("method", "")),
+            params=cast("dict[str, object] | None", params_value)
+            if isinstance(params_value, dict)
+            else None,
+            msg_id=data.get("id"),
+        )
+        server = cast("_FallbackHttpServer", self.server)
+        response, next_state = server.mcp_server.handle_request(request, server.state)
+        server.state = next_state
+        body = (
+            {
+                "jsonrpc": response.jsonrpc,
+                "result": response.result,
+                "error": response.error,
+                "id": response.msg_id,
+            }
+            if response is not None
+            else {"jsonrpc": "2.0", "result": None, "id": request.msg_id}
+        )
+        self._write_json(body, 200)
+
+    def log_message(self, format: str, *args: object) -> None:
+        del format, args
+
+    def _write_json(self, payload: dict[str, object], status: int) -> None:
+        encoded = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+
+class _FallbackStandaloneServer:
+    def __init__(self, host: str, port: int, mcp_server: McpServer) -> None:
+        self._host = host
+        self._port = port
+        self._mcp_server = mcp_server
+        self._httpd: _FallbackHttpServer | None = None
+
+    def run(self, transport: Literal["streamable-http"] = DEFAULT_TRANSPORT) -> None:
+        if transport != DEFAULT_TRANSPORT:
+            raise ValueError(f"Unsupported transport: {transport}")
+        httpd = _FallbackHttpServer((self._host, self._port), _FallbackHttpHandler)
+        httpd.mcp_server = self._mcp_server
+        httpd.state = ServerState.UNINITIALIZED
+        self._httpd = httpd
+        httpd.serve_forever()
 
 
 class FileBackedSession:
@@ -254,7 +357,7 @@ def _build_tool_handler(registry: ToolBridge, definition: ToolDefinition) -> Too
 
 
 def _create_tool(registry: ToolBridge, definition: ToolDefinition) -> ToolBuilderLike:
-    tool_factory = cast("ToolFactoryLike", Tool)
+    tool_factory = cast("ToolFactoryLike", _Tool)
     tool = tool_factory.from_function(
         _build_tool_handler(registry, definition),
         name=definition.name,
@@ -281,19 +384,24 @@ def build_fastmcp_server(
     )
     workspace = FsWorkspace(workspace_root)
     registry = build_ralph_tool_registry(effective_session, workspace)
+    if _FastMCP is None or _Tool is None:
+        return cast(
+            "FastMcpServerLike",
+            _FallbackStandaloneServer(
+                host, port, McpServer(effective_session, workspace, registry)
+            ),
+        )
     tools = cast(
-        "list[Tool]",
+        "list[ToolClass]",
         [_create_tool(registry, definition) for definition in registry.list_definitions()],
     )
-    return cast(
-        "FastMcpServerLike",
-        FastMCP(
-            "ralph-mcp",
-            host=host,
-            port=port,
-            streamable_http_path=DEFAULT_MOUNT_PATH,
-            tools=tools,
-        ),
+    fastmcp_constructor = cast("FastMcpConstructorLike", _FastMCP)
+    return fastmcp_constructor(
+        "ralph-mcp",
+        host=host,
+        port=port,
+        streamable_http_path=DEFAULT_MOUNT_PATH,
+        tools=tools,
     )
 
 

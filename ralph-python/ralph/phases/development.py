@@ -50,9 +50,14 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
         if ctx.workspace.exists(planning_artifact_path):
             try:
                 artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
-                artifact = normalize_plan_artifact_content(
-                    unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+                artifact_content = unwrap_phase_artifact_content(
+                    artifact_wrapper,
+                    expected_type="plan",
                 )
+                if _is_legacy_work_units_payload(artifact_content):
+                    artifact = artifact_content
+                else:
+                    artifact = normalize_plan_artifact_content(artifact_content)
                 parsed = parse_work_units_from_artifact(artifact)
                 if parsed is not None:
                     validate_work_units_against_policy(parsed, ctx.pipeline_policy)
@@ -68,6 +73,10 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []
+
+
+def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:
+    return "work_units" in content and "summary" not in content
 
 
 @register_handler("development_analysis")

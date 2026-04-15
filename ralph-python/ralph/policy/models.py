@@ -156,6 +156,14 @@ class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]
         default=False,
         description="Whether this phase includes an embedded analysis decision",
     )
+    prompt_template: str | None = Field(
+        default=None,
+        description="File-backed .jinja prompt template for this phase",
+    )
+    continuation_template: str | None = Field(
+        default=None,
+        description="Optional continuation .jinja prompt template for this phase",
+    )
 
 
 class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]

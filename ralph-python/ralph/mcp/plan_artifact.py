@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -125,20 +125,21 @@ class PlanArtifact(BaseModel):  # type: ignore[explicit-any]
 
 def normalize_plan_artifact_content(content: dict[str, object]) -> dict[str, object]:
     try:
-        return PlanArtifact.model_validate(content).model_dump(
-            mode="python",
-            exclude_none=True,
-            exclude_defaults=True,
+        validated = PlanArtifact.model_validate(content)
+        return cast(
+            "dict[str, object]",
+            validated.model_dump(
+                mode="python",
+                exclude_none=True,
+                exclude_defaults=True,
+            ),
         )
     except ValidationError as exc:
         raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
 
 
 def _format_validation_error(exc: ValidationError) -> str:
-    first = exc.errors()[0]
-    path = ".".join(str(part) for part in first.get("loc", ()) if part != "__root__")
-    message = first.get("msg", "invalid plan artifact")
-    return f"{path}: {message}" if path else str(message)
+    return str(exc)
 
 
 __all__ = [

@@ -9,6 +9,7 @@
 drain = "planning"
 embeds_analysis = false
 requires_commit = false
+prompt_template = "planning.jinja"
 [phases.planning.transitions]
 on_success = "development"
 
@@ -16,6 +17,8 @@ on_success = "development"
 drain = "development"
 embeds_analysis = false
 requires_commit = false
+prompt_template = "developer_iteration.jinja"
+continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]
 on_success = "development_analysis"
 on_loopback = "development"
@@ -24,6 +27,7 @@ on_loopback = "development"
 drain = "development_analysis"
 embeds_analysis = false
 requires_commit = false
+prompt_template = "development_analysis.jinja"
 [phases.development_analysis.transitions]
 on_success = "development_commit"
 on_loopback = "development"
@@ -32,6 +36,7 @@ on_loopback = "development"
 drain = "development_commit"
 embeds_analysis = false
 requires_commit = true
+prompt_template = "development_commit_message.jinja"
 [phases.development_commit.transitions]
 on_success = "review"
 on_failure = "failed"
@@ -40,6 +45,7 @@ on_failure = "failed"
 drain = "review"
 embeds_analysis = false
 requires_commit = false
+prompt_template = "review.jinja"
 [phases.review.transitions]
 on_success = "review_analysis"
 on_loopback = "fix"
@@ -48,6 +54,7 @@ on_loopback = "fix"
 drain = "review_analysis"
 embeds_analysis = false
 requires_commit = false
+prompt_template = "review_analysis.jinja"
 [phases.review_analysis.transitions]
 on_success = "review_commit"
 on_loopback = "fix"
@@ -56,6 +63,7 @@ on_loopback = "fix"
 drain = "fix"
 embeds_analysis = false
 requires_commit = false
+prompt_template = "fix_mode.jinja"
 [phases.fix.transitions]
 on_success = "review"
 on_loopback = "review"
@@ -64,6 +72,7 @@ on_loopback = "review"
 drain = "review_commit"
 embeds_analysis = false
 requires_commit = true
+prompt_template = "commit_message.jinja"
 [phases.review_commit.transitions]
 on_success = "complete"
 on_failure = "failed"

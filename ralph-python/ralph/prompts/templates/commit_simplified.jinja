@@ -1,0 +1,4 @@
+Do not analyze anything. Read the diff silently. The only tool you may call is `{{ SUBMIT_ARTIFACT_TOOL_NAME }}`. Do not call bash or any other tool. Immediately call `{{ SUBMIT_ARTIFACT_TOOL_NAME }}` with artifact_type="commit_message" and content {"type":"commit","subject":"type(scope): description"}. Optional commit fields are "body", or the detailed trio "body_summary"/"body_details"/"body_footer", plus optional "files" and "excluded_files". If no commit should be created, use content {"type":"skip","reason":"Reason why no commit is needed"}. Do not use the legacy {"message": ...} format. After the tool call succeeds, output only the single line <subject> and nothing else.
+
+DIFF:
+{{ DIFF }}

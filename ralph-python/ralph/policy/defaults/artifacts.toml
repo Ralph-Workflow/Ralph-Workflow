@@ -18,7 +18,25 @@
 drain = "planning"
 artifact_type = "plan"
 decision_vocabulary = []
-prompt_template = ""
+prompt_template = "planning.jinja"
+
+[artifacts.development_output]
+drain = "development"
+artifact_type = "development_result"
+decision_vocabulary = []
+prompt_template = "developer_iteration.jinja"
+
+[artifacts.review_output]
+drain = "review"
+artifact_type = "issues"
+decision_vocabulary = []
+prompt_template = "review.jinja"
+
+[artifacts.fix_output]
+drain = "fix"
+artifact_type = "fix_result"
+decision_vocabulary = []
+prompt_template = "fix_mode.jinja"
 
 # ---------------------------------------------------------------------------
 # Development analysis decision
@@ -35,7 +53,7 @@ decision_vocabulary = [
     "request_changes",
     "fail",
 ]
-prompt_template = ""
+prompt_template = "development_analysis.jinja"
 
 # ---------------------------------------------------------------------------
 # Review analysis decision
@@ -50,7 +68,7 @@ decision_vocabulary = [
     "reject",
     "loopback",
 ]
-prompt_template = ""
+prompt_template = "review_analysis.jinja"
 
 # ---------------------------------------------------------------------------
 # Development commit artifact
@@ -60,7 +78,7 @@ prompt_template = ""
 drain = "development_commit"
 artifact_type = "commit_message"
 decision_vocabulary = []
-prompt_template = ""
+prompt_template = "development_commit_message.jinja"
 
 # ---------------------------------------------------------------------------
 # Review commit artifact
@@ -70,4 +88,4 @@ prompt_template = ""
 drain = "review_commit"
 artifact_type = "commit_message"
 decision_vocabulary = []
-prompt_template = ""
+prompt_template = "commit_message.jinja"
