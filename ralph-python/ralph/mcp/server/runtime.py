@@ -24,6 +24,7 @@ DEFAULT_PORT = 8000
 DEFAULT_TRANSPORT: Literal["streamable-http"] = "streamable-http"
 DEFAULT_MOUNT_PATH = "/mcp"
 SESSION_ENV = "RALPH_MCP_SESSION_JSON"
+SESSION_FILE_ENV = "RALPH_MCP_SESSION_FILE"
 _SCHEMA_ANNOTATIONS: dict[str, object] = {
     "string": str,
     "boolean": bool,
@@ -105,8 +106,53 @@ class FastMcpServerLike(Protocol):
         ...
 
 
+class FileBackedSession:
+    """Session view backed by a JSON file updated by the parent Ralph process."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    def _load(self) -> dict[str, object]:
+        payload = cast("object", json.loads(self._path.read_text(encoding="utf-8")))
+        if not isinstance(payload, dict):
+            raise ValueError(f"{self._path} must encode an object")
+        return cast("dict[str, object]", payload)
+
+    @property
+    def session_id(self) -> str:
+        return cast("str", self._load().get("session_id", "standalone-session"))
+
+    @property
+    def run_id(self) -> str:
+        return cast("str", self._load().get("run_id", str(uuid.uuid4())))
+
+    @property
+    def drain(self) -> str:
+        return cast("str", self._load().get("drain", "standalone"))
+
+    @property
+    def capabilities(self) -> set[str]:
+        capabilities_value: object = self._load().get("capabilities", [])
+        if not isinstance(capabilities_value, list):
+            return set()
+        return set(cast("list[str]", capabilities_value))
+
+    def check_capability(self, _: str) -> object:
+        return "approved"
+
+    def is_parallel_worker(self) -> bool:
+        return False
+
+    def check_edit_area(self, _: str) -> object:
+        return "approved"
+
+
 def session_from_env() -> AgentSession | None:
     """Load optional session metadata from the environment."""
+    session_file = os.environ.get(SESSION_FILE_ENV)
+    if session_file:
+        return cast("AgentSession", FileBackedSession(Path(session_file)))
+
     raw = os.environ.get(SESSION_ENV)
     if not raw:
         return None
@@ -265,14 +311,16 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 __all__ = [
+    "build_fastmcp_server",
     "DEFAULT_HOST",
     "DEFAULT_MOUNT_PATH",
     "DEFAULT_PORT",
     "DEFAULT_TRANSPORT",
-    "SESSION_ENV",
-    "build_fastmcp_server",
+    "FileBackedSession",
     "main",
     "parse_args",
     "run_standalone_server",
+    "SESSION_ENV",
+    "SESSION_FILE_ENV",
     "session_from_env",
 ]

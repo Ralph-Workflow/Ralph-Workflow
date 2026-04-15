@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
@@ -23,7 +24,12 @@ from ralph.config.enums import (
     PHASE_PLANNING,
 )
 from ralph.mcp.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_from_path
-from ralph.mcp.server.lifecycle import SessionBridgeLike, shutdown_mcp_server, start_mcp_server
+from ralph.mcp.server.lifecycle import (
+    SessionBridgeLike,
+    configure_mcp_server_session,
+    shutdown_mcp_server,
+    start_mcp_server,
+)
 from ralph.mcp.session_bridge import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.effects import (
@@ -72,6 +78,13 @@ _AGENT_ACTIVITY_LOG_LEVEL = 1
 _MAX_METADATA_PARTS = 3
 
 
+@dataclass(frozen=True)
+class _AgentExecutionDeps:
+    invoke_agent: _InvokeAgentFn
+    agent_invocation_error: type[Exception]
+    agent_registry: _AgentRegistryFactory
+
+
 def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
     """Execute the pipeline event loop.
 
@@ -91,6 +104,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         state.total_reviewer_passes,
     )
 
+    mcp_bridge: SessionBridgeLike | None = None
     try:
         while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
             # Determine next effect
@@ -120,7 +134,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 return 1
 
             # Execute effect and get event
-            event = _execute_effect(effect, config)
+            event, mcp_bridge = _execute_effect(effect, config, mcp_bridge)
 
             # Reduce state
             state, _ = reducer_reduce(state, event)
@@ -133,6 +147,12 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         interrupted_state = state.copy_with(interrupted_by_user=True)
         ckpt.save(interrupted_state)
         return 130
+    finally:
+        if mcp_bridge is not None:
+            try:
+                shutdown_mcp_server(mcp_bridge)
+            except Exception:
+                logger.exception("Failed to shut down run-scoped MCP server")
 
     # Final state
     if state.phase == PHASE_COMPLETE:
@@ -265,7 +285,9 @@ def _agent_or_next_phase(state: PipelineState, fallback_phase: str) -> Effect:
     return PreparePromptEffect(phase=fallback_phase, iteration=0)
 
 
-def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
+def _execute_effect(
+    effect: Effect, config: UnifiedConfig, run_bridge: SessionBridgeLike | None
+) -> tuple[PipelineEvent, SessionBridgeLike | None]:
     """Execute an effect and return the resulting event.
 
     Args:
@@ -282,38 +304,43 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
     from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
     from ralph.git.operations import create_commit, stage_all  # noqa: PLC0415
 
+    deps = _AgentExecutionDeps(
+        invoke_agent=invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+        agent_registry=AgentRegistry,
+    )
+
     if isinstance(effect, InvokeAgentEffect):
         return _execute_agent_effect(
             effect,
             config,
-            invoke_agent,
-            AgentInvocationError,
-            AgentRegistry,
+            deps,
+            run_bridge,
         )
     if isinstance(effect, CommitEffect):
-        return _execute_commit_effect(effect, create_commit, stage_all)
+        return _execute_commit_effect(effect, create_commit, stage_all), run_bridge
     if isinstance(effect, SaveCheckpointEffect):
-        return PipelineEvent.CHECKPOINT_SAVED
+        return PipelineEvent.CHECKPOINT_SAVED, run_bridge
 
     logger.warning("Unknown effect type: {}", type(effect))
-    return PipelineEvent.AGENT_FAILURE
+    return PipelineEvent.AGENT_FAILURE, run_bridge
 
 
 def _execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
-    invoke_agent: _InvokeAgentFn,
-    agent_invocation_error: type[Exception],
-    agent_registry: _AgentRegistryFactory,
-) -> PipelineEvent:
+    deps: _AgentExecutionDeps,
+    run_bridge: SessionBridgeLike | None = None,
+) -> tuple[PipelineEvent, SessionBridgeLike | None]:
     console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
-    registry = agent_registry.from_config(config)
+    registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
-        return PipelineEvent.AGENT_FAILURE
+        return PipelineEvent.AGENT_FAILURE, run_bridge
 
-    bridge: SessionBridgeLike | None = None
+    bridge = run_bridge
+    owns_bridge = False
     try:
         from ralph.agents.invoke import InvokeOptions  # noqa: PLC0415
 
@@ -325,10 +352,11 @@ def _execute_agent_effect(
         )
         workspace = FsWorkspace(Path())
 
-        bridge = start_mcp_server(
-            session,
-            workspace,
-        )
+        if bridge is None:
+            bridge = start_mcp_server(session, workspace)
+            owns_bridge = True
+        else:
+            configure_mcp_server_session(bridge, session)
         assert bridge is not None
 
         options = InvokeOptions(
@@ -338,7 +366,7 @@ def _execute_agent_effect(
                 MCP_RUN_ID_ENV: session.run_id,
             },
         )
-        output_lines = invoke_agent(agent_config, effect.prompt_file, options=options)
+        output_lines = deps.invoke_agent(agent_config, effect.prompt_file, options=options)
         if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:
             _stream_parsed_agent_activity(
                 output_lines, str(agent_config.json_parser), effect.agent_name
@@ -346,19 +374,17 @@ def _execute_agent_effect(
         else:
             for _ in output_lines:
                 pass
-    except agent_invocation_error as exc:
+    except deps.agent_invocation_error as exc:
         logger.error("Agent invocation failed: {}", exc)
-        return PipelineEvent.AGENT_FAILURE
+        if owns_bridge and bridge is not None:
+            shutdown_mcp_server(bridge)
+        return PipelineEvent.AGENT_FAILURE, bridge
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
-        return PipelineEvent.AGENT_FAILURE
-    finally:
-        if bridge is not None:
-            try:
-                shutdown_mcp_server(bridge)
-            except Exception:
-                logger.exception("Failed to shut down MCP bridge")
-    return PipelineEvent.AGENT_SUCCESS
+        if owns_bridge and bridge is not None:
+            shutdown_mcp_server(bridge)
+        return PipelineEvent.AGENT_FAILURE, bridge
+    return PipelineEvent.AGENT_SUCCESS, bridge
 
 
 def _execute_commit_effect(

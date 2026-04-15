@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock
 
 from ralph.mcp import session_bridge, startup
+from ralph.mcp.server import lifecycle
 from ralph.mcp.server import runtime as server_runtime
+from ralph.mcp.session_bridge import AgentSession
 from ralph.workspace import Workspace
 from ralph.workspace.fs import FsWorkspace
 
@@ -284,3 +288,37 @@ def test_build_fastmcp_server_normalizes_tool_result_payload(tmp_path: Path) -> 
     assert isinstance(result, dict)
     assert result["isError"] is False
     assert isinstance(result["content"], list)
+
+
+def test_configure_mcp_server_session_updates_session_file(tmp_path: Path) -> None:
+    session_file = tmp_path / "session.json"
+    session_file.write_text(
+        json.dumps(
+            {
+                "session_id": "old",
+                "run_id": "old-run",
+                "drain": "planning",
+                "capabilities": ["WorkspaceRead"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    bridge = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:8765/mcp",
+        process=MagicMock(),
+        session_file=session_file,
+    )
+    session = AgentSession(
+        session_id="new-session",
+        run_id="new-run",
+        drain="development",
+        capabilities={"ArtifactSubmit", "WorkspaceRead"},
+    )
+
+    lifecycle.configure_mcp_server_session(bridge, session)
+
+    payload = json.loads(session_file.read_text(encoding="utf-8"))
+    assert payload["session_id"] == "new-session"
+    assert payload["run_id"] == "new-run"
+    assert payload["drain"] == "development"
+    assert sorted(payload["capabilities"]) == ["ArtifactSubmit", "WorkspaceRead"]

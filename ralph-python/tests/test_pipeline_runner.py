@@ -408,12 +408,16 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            lambda *_args, **_kwargs: iter(["line"]),
-            self.AgentError,
-            registry,
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_SUCCESS
+        assert result[0] == PipelineEvent.AGENT_SUCCESS
+        assert result[1] is not None
 
     def test_returns_failure_when_agent_missing(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -422,12 +426,15 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            lambda *_args, **_kwargs: iter(["line"]),
-            self.AgentError,
-            registry,
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_FAILURE
+        assert result == (PipelineEvent.AGENT_FAILURE, None)
 
     def test_handles_invocation_error_gracefully(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -439,12 +446,15 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            raising_invoke,
-            self.AgentError,
-            registry,
+            runner_module._AgentExecutionDeps(
+                invoke_agent=raising_invoke,
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_FAILURE
+        assert result[0] == PipelineEvent.AGENT_FAILURE
 
     def test_handles_unexpected_error_as_failure(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -456,12 +466,15 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            raising_value_error,
-            self.AgentError,
-            registry,
+            runner_module._AgentExecutionDeps(
+                invoke_agent=raising_value_error,
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_FAILURE
+        assert result[0] == PipelineEvent.AGENT_FAILURE
 
     def test_starts_and_shuts_down_mcp_bridge_around_invocation(self, monkeypatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -503,15 +516,63 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            record_invoke,
-            self.AgentError,
-            registry,
+            runner_module._AgentExecutionDeps(
+                invoke_agent=record_invoke,
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_SUCCESS
+        assert result[0] == PipelineEvent.AGENT_SUCCESS
         assert started["value"] is True
-        assert shutdown["value"] is True
+        assert shutdown["value"] is False
         assert seen_options
+
+    def test_reuses_run_scoped_mcp_server_when_provided(self, monkeypatch) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def start(self) -> None:
+                return
+
+            def shutdown(self) -> None:
+                raise AssertionError("run-scoped bridge should not shut down here")
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+            def endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        bridge = FakeBridge()
+        configured_sessions: list[object] = []
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must reuse bridge")),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "configure_mcp_server_session",
+            lambda _bridge, session: configured_sessions.append(session),
+        )
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            bridge,
+        )
+
+        assert result == (PipelineEvent.AGENT_SUCCESS, bridge)
+        assert len(configured_sessions) == 1
 
     def test_streams_parsed_agent_activity_to_console_by_default(self, monkeypatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -547,17 +608,20 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            lambda *_args, **_kwargs: iter(
-                [
-                    '{"type":"text_delta","delta":"thinking"}',
-                    '{"type":"tool_use","name":"bash","input":{"command":"ls"}}',
-                ]
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(
+                    [
+                        '{"type":"text_delta","delta":"thinking"}',
+                        '{"type":"tool_use","name":"bash","input":{"command":"ls"}}',
+                    ]
+                ),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
             ),
-            self.AgentError,
-            registry,
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_SUCCESS
+        assert result[0] == PipelineEvent.AGENT_SUCCESS
         printed = "\n".join(
             " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
         )
@@ -598,18 +662,21 @@ class TestExecuteAgentEffect:
         result = runner_module._execute_agent_effect(
             effect,
             self._config(),
-            lambda *_args, **_kwargs: iter(
-                [
-                    '{"type":"thread.started"}',
-                    '{"type":"result","result":"plan complete"}',
-                    '{"type":"turn.completed"}',
-                ]
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(
+                    [
+                        '{"type":"thread.started"}',
+                        '{"type":"result","result":"plan complete"}',
+                        '{"type":"turn.completed"}',
+                    ]
+                ),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
             ),
-            self.AgentError,
-            registry,
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_SUCCESS
+        assert result[0] == PipelineEvent.AGENT_SUCCESS
         printed = "\n".join(
             " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
         )
@@ -692,9 +759,9 @@ class TestExecuteCommitEffect:
 
 class TestExecuteEffect:
     def test_save_checkpoint_returns_checkpoint_event(self) -> None:
-        result = runner_module._execute_effect(SaveCheckpointEffect(), MagicMock())
+        result = runner_module._execute_effect(SaveCheckpointEffect(), MagicMock(), None)
 
-        assert result == PipelineEvent.CHECKPOINT_SAVED
+        assert result == (PipelineEvent.CHECKPOINT_SAVED, None)
 
     def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
         captured: dict[str, bool] = {}
@@ -705,9 +772,9 @@ class TestExecuteEffect:
             return PipelineEvent.COMMIT_SUCCESS
 
         monkeypatch.setattr(runner_module, "_execute_commit_effect", stub_commit)
-        result = runner_module._execute_effect(CommitEffect(message_file="foo"), MagicMock())
+        result = runner_module._execute_effect(CommitEffect(message_file="foo"), MagicMock(), None)
 
-        assert result == PipelineEvent.COMMIT_SUCCESS
+        assert result == (PipelineEvent.COMMIT_SUCCESS, None)
         assert captured.get("called")
         assert captured.get("message_file") == "foo"
 
@@ -715,9 +782,10 @@ class TestExecuteEffect:
         result = runner_module._execute_effect(
             PreparePromptEffect(phase="planning", iteration=0),
             MagicMock(),
+            None,
         )
 
-        assert result == PipelineEvent.AGENT_FAILURE
+        assert result == (PipelineEvent.AGENT_FAILURE, None)
 
 
 class TestRenderAgentActivityLine:
