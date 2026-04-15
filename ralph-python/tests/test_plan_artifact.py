@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.mcp.plan_artifact import PlanArtifactValidationError, normalize_plan_artifact_content
+from ralph.mcp.plan_artifact import (
+    PlanArtifactValidationError,
+    delete_plan_draft,
+    finalize_plan_draft,
+    load_plan_draft,
+    merge_plan_section,
+    new_plan_draft,
+    normalize_plan_artifact_content,
+    save_plan_draft,
+    validate_plan_section,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _valid_plan() -> dict[str, object]:
@@ -99,3 +112,131 @@ def test_normalize_plan_artifact_content_rejects_too_few_scope_items() -> None:
 
     with pytest.raises(PlanArtifactValidationError, match="scope_items"):
         normalize_plan_artifact_content(invalid)
+
+
+def test_validate_plan_section_accepts_summary_object() -> None:
+    summary = _valid_plan()["summary"]
+
+    normalized = validate_plan_section("summary", summary)
+
+    assert isinstance(normalized, dict)
+    assert normalized["context"] == "Implement a robust MCP planning pipeline."
+
+
+def test_validate_plan_section_rejects_summary_with_too_few_scope_items() -> None:
+    with pytest.raises(PlanArtifactValidationError, match="scope_items"):
+        validate_plan_section(
+            "summary",
+            {"context": "short", "scope_items": [{"text": "only one"}]},
+        )
+
+
+def test_validate_plan_section_steps_replace_mode_accepts_list() -> None:
+    steps = _valid_plan()["steps"]
+
+    normalized = validate_plan_section("steps", steps, mode="replace")
+
+    assert isinstance(normalized, list)
+    assert normalized[0]["title"] == "Validate plan artifacts"
+
+
+def test_validate_plan_section_steps_replace_mode_rejects_single_object() -> None:
+    steps = cast("list[dict[str, object]]", _valid_plan()["steps"])
+    with pytest.raises(PlanArtifactValidationError, match="must be a JSON array"):
+        validate_plan_section("steps", steps[0], mode="replace")
+
+
+def test_validate_plan_section_steps_append_mode_accepts_single_item() -> None:
+    step = cast("list[dict[str, object]]", _valid_plan()["steps"])[0]
+
+    fragment = validate_plan_section("steps", step, mode="append")
+
+    assert isinstance(fragment, dict)
+    assert fragment["number"] == 1
+
+
+def test_validate_plan_section_rejects_unknown_section_name() -> None:
+    with pytest.raises(PlanArtifactValidationError, match="unknown plan section"):
+        validate_plan_section("bogus", {})
+
+
+def test_validate_plan_section_object_rejects_append_mode() -> None:
+    summary = _valid_plan()["summary"]
+    with pytest.raises(PlanArtifactValidationError, match="only supports"):
+        validate_plan_section("summary", summary, mode="append")
+
+
+def test_validate_plan_section_rejects_invalid_step_type() -> None:
+    with pytest.raises(PlanArtifactValidationError, match="step_type"):
+        validate_plan_section(
+            "steps",
+            {"number": 1, "title": "x", "content": "y", "step_type": "ship_it"},
+            mode="append",
+        )
+
+
+def test_merge_plan_section_replace_on_object_section() -> None:
+    sections: dict[str, object] = {}
+    fragment = {"context": "c", "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}
+
+    merged = merge_plan_section(sections, "summary", fragment, "replace")
+
+    assert merged == {"summary": fragment}
+
+
+def test_merge_plan_section_append_extends_existing_list() -> None:
+    first = {"number": 1, "title": "t1", "content": "c1"}
+    second = {"number": 2, "title": "t2", "content": "c2"}
+
+    merged = merge_plan_section({}, "steps", first, "append")
+    merged = merge_plan_section(merged, "steps", second, "append")
+
+    assert merged["steps"] == [first, second]
+
+
+def test_finalize_plan_draft_accepts_complete_sections() -> None:
+    draft = new_plan_draft()
+    draft["sections"] = _valid_plan()
+
+    normalized = finalize_plan_draft(draft)
+
+    assert "summary" in normalized
+    assert "steps" in normalized
+
+
+def test_finalize_plan_draft_rejects_missing_required_section() -> None:
+    draft = new_plan_draft()
+    sections = _valid_plan()
+    sections.pop("verification_strategy")
+    draft["sections"] = sections
+
+    with pytest.raises(PlanArtifactValidationError, match="verification_strategy"):
+        finalize_plan_draft(draft)
+
+
+def test_plan_draft_io_round_trip(tmp_path: Path) -> None:
+    draft = new_plan_draft()
+    draft["sections"] = {"summary": _valid_plan()["summary"]}
+
+    save_plan_draft(tmp_path, draft)
+    loaded = load_plan_draft(tmp_path)
+
+    assert loaded is not None
+    loaded_sections = cast("dict[str, object]", loaded["sections"])
+    assert "summary" in loaded_sections
+
+
+def test_load_plan_draft_returns_none_when_missing(tmp_path: Path) -> None:
+    assert load_plan_draft(tmp_path) is None
+
+
+def test_load_plan_draft_returns_none_on_corrupt_file(tmp_path: Path) -> None:
+    (tmp_path / ".plan_draft.json").write_text("{not json", encoding="utf-8")
+    assert load_plan_draft(tmp_path) is None
+
+
+def test_delete_plan_draft_reports_whether_existed(tmp_path: Path) -> None:
+    assert delete_plan_draft(tmp_path) is False
+    save_plan_draft(tmp_path, new_plan_draft())
+    assert delete_plan_draft(tmp_path) is True
+    assert delete_plan_draft(tmp_path) is False

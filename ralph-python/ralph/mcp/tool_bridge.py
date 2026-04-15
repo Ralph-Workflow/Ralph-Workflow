@@ -412,6 +412,101 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
+                name="ralph_submit_plan_section",
+                description=(
+                    "Submit a single section of the plan artifact for incremental "
+                    "validation. The schema matches the PlanArtifact documented in "
+                    "the planning prompt — this tool just lets you build it piece "
+                    "by piece on the server so errors can be fixed without "
+                    "resending the whole plan. Each call validates the section and "
+                    "merges it into a draft at .agent/artifacts/.plan_draft.json. "
+                    "Call ralph_finalize_plan when all required sections are "
+                    "staged, or fall back to ralph_submit_artifact with "
+                    "artifact_type='plan' to submit atomically."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "section": {
+                            "type": "string",
+                            "description": (
+                                "Plan section name: summary, skills_mcp, steps, "
+                                "critical_files, risks_mitigations, "
+                                "verification_strategy, or parallel_plan."
+                            ),
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": (
+                                "JSON-serialized section payload. Shape matches "
+                                "the corresponding field in PlanArtifact. For "
+                                "list sections (steps, risks_mitigations, "
+                                "verification_strategy, parallel_plan) pass the "
+                                "full list in replace mode or a single item in "
+                                "append mode."
+                            ),
+                        },
+                        "mode": {
+                            "type": "string",
+                            "enum": ["replace", "append"],
+                            "description": (
+                                "replace (default) overwrites the section; "
+                                "append adds a single item to a list section."
+                            ),
+                        },
+                    },
+                    "required": ["section", "content"],
+                },
+                required_capability="ArtifactSubmit",
+            ),
+            module_name="ralph.mcp.tool_artifact",
+            handler_name="handle_submit_plan_section",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name="ralph_finalize_plan",
+                description=(
+                    "Validate the staged plan draft as a complete PlanArtifact "
+                    "and write .agent/artifacts/plan.json. Fails with a "
+                    "cross-section validation error if required sections are "
+                    "missing or invariants are violated; the draft is preserved "
+                    "on failure so you can fix and retry."
+                ),
+                input_schema={"type": "object", "properties": {}},
+                required_capability="ArtifactSubmit",
+            ),
+            module_name="ralph.mcp.tool_artifact",
+            handler_name="handle_finalize_plan",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name="ralph_get_plan_draft",
+                description=(
+                    "Return the currently staged plan draft (which sections are "
+                    "present and their contents). Useful for resuming after a "
+                    "restart or confirming state before finalizing."
+                ),
+                input_schema={"type": "object", "properties": {}},
+                required_capability="ArtifactSubmit",
+            ),
+            module_name="ralph.mcp.tool_artifact",
+            handler_name="handle_get_plan_draft",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name="ralph_discard_plan_draft",
+                description=(
+                    "Delete the staged plan draft so the next plan can start "
+                    "from scratch."
+                ),
+                input_schema={"type": "object", "properties": {}},
+                required_capability="ArtifactSubmit",
+            ),
+            module_name="ralph.mcp.tool_artifact",
+            handler_name="handle_discard_plan_draft",
+        ),
+        ToolSpec(
+            metadata=_metadata(
                 name="report_progress",
                 description="Report progress status to the agent",
                 input_schema={

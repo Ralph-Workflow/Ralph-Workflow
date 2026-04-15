@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
 
 SESSION_FILE_ENV = "RALPH_MCP_SESSION_FILE"
+_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 
 @dataclass
@@ -64,7 +66,9 @@ def start_mcp_server(
     env = _subprocess_env(session_file)
     process = subprocess.Popen(
         [
-            "ralph-mcp",
+            sys.executable,
+            "-m",
+            "ralph.mcp.server",
             "--host",
             "127.0.0.1",
             "--port",
@@ -118,6 +122,11 @@ def _reserve_port() -> int:
 def _subprocess_env(session_file: Path) -> dict[str, str]:
     env = dict(os.environ)
     env[SESSION_FILE_ENV] = str(session_file)
+    pythonpath = env.get("PYTHONPATH")
+    package_root = str(_PACKAGE_ROOT)
+    env["PYTHONPATH"] = (
+        package_root if not pythonpath else os.pathsep.join([package_root, pythonpath])
+    )
     return env
 
 
