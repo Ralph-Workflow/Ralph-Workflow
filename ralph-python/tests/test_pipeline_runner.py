@@ -379,6 +379,40 @@ class TestPipelineRunnerLoop:
         reducer.assert_not_called()
         ckpt_save.assert_called_once_with(advanced_state)
 
+    def test_invoke_agent_effect_materializes_prompt_before_execution(self, monkeypatch) -> None:
+        state = MagicMock()
+        state.phase = "planning"
+
+        effects = [
+            InvokeAgentEffect(
+                agent_name="planner",
+                phase="planning",
+                prompt_file=".agent/tmp/planning_prompt.md",
+            ),
+            ExitSuccessEffect(),
+        ]
+
+        def stub_determine_effect(_state, _config):
+            return effects.pop(0)
+
+        execute_effect = MagicMock(return_value=(PipelineEvent.AGENT_SUCCESS, None))
+        ckpt_save = MagicMock()
+        console_mock = MagicMock()
+        materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
+
+        monkeypatch.setattr(runner_module, "_determine_effect", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
+        monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", materialize)
+        monkeypatch.setattr(runner_module, "reducer_reduce", MagicMock(return_value=(state, None)))
+        monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
+        monkeypatch.setattr(runner_module, "console", console_mock)
+
+        result = runner_module.run(MagicMock(), initial_state=state)
+
+        assert result == 0
+        materialize.assert_called_once()
+        execute_effect.assert_called_once()
+
 
 class TestExecuteAgentEffect:
     class AgentError(Exception):

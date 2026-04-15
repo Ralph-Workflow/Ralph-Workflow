@@ -5,10 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..template_engine import render_template
-from ..template_registry import TemplateNotFoundError, TemplateRegistry, packaged_template_root
+from ..template_registry import (
+    TemplateNotFoundError,
+    TemplateRegistry,
+    load_partial_templates,
+    packaged_template_root,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 DEFAULT_COMMIT_TEMPLATE_NAME = "commit_message"
 DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME = "ralph_submit_artifact"
@@ -18,6 +23,7 @@ def prompt_commit_message(
     diff: str,
     *,
     template_registry: TemplateRegistry | None = None,
+    partials: Mapping[str, str] | None = None,
     submit_artifact_tool_names: Sequence[str] = (DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME,),
 ) -> str:
     """Return the commit message prompt for the provided diff."""
@@ -35,7 +41,7 @@ def prompt_commit_message(
                 submit_artifact_tool_names
             ),
         },
-        {},
+        dict(partials or _default_commit_partials()),
     )
 
 
@@ -51,7 +57,7 @@ def prompt_commit_message_for_opencode(diff: str, *, submit_artifact_tool_name: 
             "DIFF": diff_content,
             "SUBMIT_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
         },
-        {},
+        _default_commit_partials(),
     )
 
 
@@ -79,3 +85,8 @@ def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
 
     formatted = ", ".join(f"`{name}`" for name in unique_names[:-1])
     return f"one of the following tool names: {formatted}, or `{unique_names[-1]}`"
+
+
+def _default_commit_partials() -> dict[str, str]:
+    root = packaged_template_root()
+    return load_partial_templates((root, root / "shared"))

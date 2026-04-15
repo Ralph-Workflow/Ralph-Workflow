@@ -98,8 +98,9 @@ def _render_prompt_for_phase(
         )
     if phase in {"development_commit", "review_commit"}:
         return prompt_commit_message(
-            _git_diff(workspace_root),
+            _commit_phase_diff(workspace_root),
             template_registry=context.registry,
+            partials=context.partials,
         )
     msg = f"Unsupported phase '{phase}' for prompt materialization"
     raise ValueError(msg)
@@ -152,3 +153,8 @@ def _git_diff(workspace_root: Path) -> str:
         return cast("str", Repo(workspace_root).git.diff("HEAD"))
     except Exception:
         return "(no diff available)"
+
+
+def _commit_phase_diff(workspace_root: Path) -> str:
+    diff = _git_diff(workspace_root).strip()
+    return diff or "(no diff available)"

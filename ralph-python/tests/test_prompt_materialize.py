@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import ralph.prompts.materialize as materialize_module
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -32,3 +33,25 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
 
 def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:
     assert prompt_file_for_phase("review_analysis") == ".agent/tmp/review_analysis_prompt.md"
+
+
+def test_materialize_commit_phase_tolerates_empty_diff(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+
+    monkeypatch.setattr(materialize_module, "_git_diff", lambda _workspace_root: "")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development_commit",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+        workspace_root=tmp_path,
+    )
+
+    assert prompt_path == ".agent/tmp/development_commit_prompt.md"
+    rendered = workspace.read(prompt_path)
+    assert "DIFF:" in rendered

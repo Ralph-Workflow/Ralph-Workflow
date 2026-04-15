@@ -114,6 +114,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
             # Determine next effect
             effect = _determine_effect(state, config)
+            workspace = FsWorkspace(Path())
 
             # Handle special effects that don't produce events
             if isinstance(effect, SaveCheckpointEffect):
@@ -123,7 +124,6 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 continue
 
             if isinstance(effect, PreparePromptEffect):
-                workspace = FsWorkspace(Path())
                 materialize_prompt_for_phase(
                     phase=effect.phase,
                     workspace=workspace,
@@ -139,6 +139,17 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 )
                 ckpt.save(state)
                 continue
+
+            if isinstance(effect, InvokeAgentEffect):
+                materialize_prompt_for_phase(
+                    phase=effect.phase,
+                    workspace=workspace,
+                    pipeline_policy=policy_bundle.pipeline,
+                    session_caps=SessionCapabilities.defaults_for_drain(
+                        _prompt_session_drain_for_phase(effect.phase)
+                    ),
+                    workspace_root=Path(),
+                )
 
             if isinstance(effect, ExitSuccessEffect):
                 console.print("[green]Pipeline completed successfully.[/green]")

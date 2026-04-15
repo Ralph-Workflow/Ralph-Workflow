@@ -72,3 +72,15 @@ def test_rendered_prompts_are_dumped_under_agent_tmp() -> None:
     prompt_debug_module = PROMPTS_ROOT / "debug_dump.py"
 
     assert prompt_debug_module.exists()
+
+
+def test_all_top_level_templates_include_unattended_partial() -> None:
+    template_files = [path for path in TEMPLATES_ROOT.glob("*.jinja") if path.is_file()]
+
+    missing = [
+        path.name
+        for path in template_files
+        if "_unattended_mode" not in path.read_text(encoding="utf-8")
+    ]
+
+    assert missing == []
