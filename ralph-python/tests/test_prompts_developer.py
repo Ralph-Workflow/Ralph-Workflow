@@ -51,6 +51,29 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
     assert "ralph_submit_artifact" in prompt
 
 
+def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+
+    prompt = prompt_planning_xml_with_context(
+        context=context,
+        prompt_content="Plan the unattended pipeline fix",
+        workspace=workspace,
+        session_caps=session_caps,
+    )
+
+    assert 'artifact_type="plan"' in prompt
+    assert "The `content` argument must be a JSON string whose decoded object" in prompt
+    assert "Do NOT wrap the payload in outer `type` or `content` fields" in prompt
+    assert '"summary": {' in prompt
+    assert '"steps": [' in prompt
+    assert '"critical_files": {' in prompt
+    assert '"risks_mitigations": [' in prompt
+    assert '"verification_strategy": [' in prompt
+    assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
+
+
 def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))

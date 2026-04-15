@@ -35,8 +35,9 @@ def _builtin_agents() -> dict[str, AgentConfig]:
             transport=AgentTransport.CLAUDE,
         ),
         "codex": AgentConfig(
-            cmd="codex",
-            output_flag="--json-stream",
+            cmd="codex exec",
+            output_flag="--json",
+            yolo_flag="--dangerously-bypass-approvals-and-sandbox",
             can_commit=True,
             json_parser=JsonParserType.CODEX,
             transport=AgentTransport.CODEX,
@@ -44,6 +45,7 @@ def _builtin_agents() -> dict[str, AgentConfig]:
         "opencode": AgentConfig(
             cmd="opencode",
             output_flag="--json-stream",
+            yolo_flag="--dangerously-skip-permissions",
             can_commit=False,
             json_parser=JsonParserType.OPENCODE,
             transport=AgentTransport.OPENCODE,

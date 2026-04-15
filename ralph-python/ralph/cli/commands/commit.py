@@ -32,7 +32,7 @@ from ralph.mcp.commit_message import (
     read_commit_message_artifact,
 )
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
-from ralph.mcp.session_bridge import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
+from ralph.mcp.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.prompts.commit import prompt_commit_message, prompt_commit_message_for_opencode
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace

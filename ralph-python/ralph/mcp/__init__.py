@@ -30,7 +30,6 @@ from ralph.mcp.startup import (
     HeartbeatPolicy,
     SessionBridgeError,
     access_mode_for_drain,
-    start_mcp_server_for_session,
 )
 from ralph.mcp.transport import (
     MCPTransport,
@@ -65,7 +64,6 @@ __all__ = [
     "access_mode_for_drain",
     "get_artifact",
     "list_artifacts",
-    "start_mcp_server_for_session",
     "submit_artifact",
     "update_artifact",
 ]

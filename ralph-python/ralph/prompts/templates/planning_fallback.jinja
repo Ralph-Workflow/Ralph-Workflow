@@ -15,5 +15,8 @@ Fallback still needs an executor-grade plan. Include:
 - work_units if parallel work is safe
 
 Submit the plan via `ralph_submit_artifact` with artifact_type="plan".
-Write the plan artifact to .agent/artifacts/plan.json.
-{"summary":{"context":"What is being done and why","scope_items":[]},"steps":[],"critical_files":{"primary_files":[]},"risks_mitigations":[],"verification_strategy":[]}
+Ralph will persist the submitted artifact at `.agent/artifacts/plan.json` for the next phase.
+The `content` argument must be a JSON string whose decoded object is the RAW plan payload, not an outer artifact wrapper.
+Do NOT send `{ "type": "plan", "content": ... }`.
+Use this exact top-level shape and fill it with concrete executor-ready detail:
+{"summary":{"context":"What is being done and why","scope_items":[{"text":"Concrete outcome 1"},{"text":"Concrete outcome 2"},{"text":"Concrete outcome 3"}]},"steps":[{"number":1,"title":"Concrete step title","content":"Detailed executor instructions for a weaker agent","step_type":"file_change","priority":"high","targets":[{"path":"path/to/file.py","action":"modify"}],"depends_on":[]}],"critical_files":{"primary_files":[{"path":"path/to/file.py","action":"modify"}],"reference_files":[{"path":"path/to/reference.py","purpose":"pattern to follow"}]},"risks_mitigations":[{"risk":"Specific failure mode","mitigation":"How to avoid it","severity":"medium"}],"verification_strategy":[{"method":"Exact command or check","expected_outcome":"What success looks like"}],"work_units":[]}

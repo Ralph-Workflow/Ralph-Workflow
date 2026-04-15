@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from ralph.agents.invoke import (
+    AgentInvocationError,
     InvokeOptions,
     UnsupportedMcpTransportError,
     _build_command,
@@ -96,7 +97,7 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
     assert cmd[mcp_index + 1] == (
         '{"mcpServers":{"ralph_runtime":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}'
     )
-    assert cmd[-1] == "PROMPT.md"
+    assert cmd[-2:] == ["--", "PROMPT.md"]
 
 
 def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp() -> None:
@@ -117,7 +118,7 @@ def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp()
     )
 
     assert "--mcp-config" in cmd
-    assert cmd[-1] == "PROMPT.md"
+    assert cmd[-2:] == ["--", "PROMPT.md"]
 
 
 def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Path) -> None:
@@ -168,6 +169,32 @@ def test_build_command_uses_opencode_pure_mode_when_requested(tmp_path: Path) ->
     ]
 
 
+def test_build_command_uses_codex_exec_json_with_prompt_contents(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("fix the planner", encoding="utf-8")
+    config = AgentConfig(
+        cmd="codex exec",
+        output_flag="--json",
+        yolo_flag="--dangerously-bypass-approvals-and-sandbox",
+        json_parser=JsonParserType.CODEX,
+        transport=AgentTransport.CODEX,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(verbose=False),
+    )
+
+    assert cmd == [
+        "codex",
+        "exec",
+        "--json",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "fix the planner",
+    ]
+
+
 def test_command_for_log_redacts_opencode_inline_prompt_and_shows_prompt_file(
     tmp_path: Path,
 ) -> None:
@@ -184,6 +211,23 @@ def test_command_for_log_redacts_opencode_inline_prompt_and_shows_prompt_file(
     logged = _command_for_log(config, cmd, str(prompt_file))
 
     assert "super secret prompt body" not in logged
+    assert str(prompt_file) in logged
+
+
+def test_command_for_log_redacts_codex_inline_prompt_and_shows_prompt_file(tmp_path: Path) -> None:
+    prompt_file = tmp_path / ".agent" / "tmp" / "planning_prompt.md"
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_text("top secret planning prompt", encoding="utf-8")
+    config = AgentConfig(cmd="codex exec", output_flag="--json", transport=AgentTransport.CODEX)
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(verbose=False),
+    )
+    logged = _command_for_log(config, cmd, str(prompt_file))
+
+    assert "top secret planning prompt" not in logged
     assert str(prompt_file) in logged
 
 
@@ -269,6 +313,156 @@ def test_invoke_agent_passes_extra_env_to_subprocess(monkeypatch, tmp_path: Path
 
     assert seen_env
     assert seen_env[0]["RALPH_MCP_ENDPOINT"] == "http://127.0.0.1:9999/mcp"
+
+
+def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
+    monkeypatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        verbose_flag="--verbose",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args, **kwargs):
+        seen_cmds.append(args[0])
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                session_id="abc123",
+                verbose=True,
+                model_flag="--model claude-sonnet-4",
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_cmds == [
+        [
+            "claude",
+            "-p",
+            "--output-format=stream-json",
+            "--print",
+            "--include-partial-messages",
+            "--resume",
+            "abc123",
+            "--dangerously-skip-permissions",
+            "--verbose",
+            "--mcp-config",
+            '{"mcpServers":{"ralph_runtime":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}',
+            "--model",
+            "claude-sonnet-4",
+            "--",
+            str(prompt_file),
+        ]
+    ]
+
+
+def test_claude_builtin_command_preserves_login_capable_mode() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        verbose_flag="--verbose",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+    )
+
+    assert "--bare" not in cmd
+    assert "--strict-mcp-config" not in cmd
+    assert "--mcp-config" in cmd
+
+
+def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
+    monkeypatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            api_error = (
+                '{"type":"error","error":{"type":"api_error","message":"Internal server error"}}'
+            )
+            self.stdout = iter(
+                [
+                    f"claude: API Error: 500 {api_error}\n",
+                    f"claude stop: result=API Error: 500 {api_error}\n",
+                ]
+            )
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: FakeProcess(),
+    )
+
+    with pytest.raises(AgentInvocationError) as exc_info:
+        list(invoke_agent(config, str(prompt_file), options=InvokeOptions(show_progress=False)))
+
+    api_error = '{"type":"error","error":{"type":"api_error","message":"Internal server error"}}'
+    assert "Internal server error" in str(exc_info.value)
+    assert exc_info.value.parsed_output == [
+        f"claude: API Error: 500 {api_error}",
+        f"claude stop: result=API Error: 500 {api_error}",
+    ]
 
 
 def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(

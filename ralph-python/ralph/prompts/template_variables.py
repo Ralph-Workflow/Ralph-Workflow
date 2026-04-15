@@ -12,7 +12,7 @@ from ralph.mcp.capability_mapping import Capability, SessionDrain
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ralph.mcp.session_bridge import AgentSession
+    from ralph.mcp.session import AgentSession
 
 SUBMIT_ARTIFACT_TOOL = "ralph_submit_artifact"
 DECLARE_COMPLETE_TOOL = "declare_complete"

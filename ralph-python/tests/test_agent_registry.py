@@ -61,8 +61,13 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert claude is not None
     assert codex is not None
     assert opencode is not None
+    assert claude.cmd == "claude -p"
     assert claude.transport == AgentTransport.CLAUDE
+    assert codex.cmd == "codex exec"
+    assert codex.output_flag == "--json"
+    assert codex.yolo_flag == "--dangerously-bypass-approvals-and-sandbox"
     assert codex.transport == AgentTransport.CODEX
+    assert opencode.yolo_flag == "--dangerously-skip-permissions"
     assert opencode.transport == AgentTransport.OPENCODE
 
 

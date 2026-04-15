@@ -407,7 +407,7 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
         options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
     )
 
-    assert invoked_commands == ["codex"]
+    assert invoked_commands == ["codex exec"]
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: review fallback message" in output

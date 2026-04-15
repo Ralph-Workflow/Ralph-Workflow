@@ -20,7 +20,7 @@ from ralph.mcp.tool_bridge import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from ralph.mcp.startup import SessionBridgeFactory, SessionLike, WorkspaceLike
+    from ralph.mcp.startup import SessionLike, WorkspaceLike
 
 
 SESSION_FILE_ENV = "RALPH_MCP_SESSION_FILE"
@@ -41,9 +41,6 @@ class StandaloneMcpProcess:
     def endpoint_uri(self) -> str:
         return self.endpoint
 
-    def update_session(self, session: SessionLike) -> None:
-        self.session_file.write_text(_session_payload_json(session), encoding="utf-8")
-
     def shutdown(self) -> None:
         if self.process.poll() is not None:
             return
@@ -58,11 +55,8 @@ class StandaloneMcpProcess:
 def start_mcp_server(
     session: SessionLike,
     workspace: WorkspaceLike,
-    *,
-    bridge_factory: SessionBridgeFactory | None = None,
 ) -> SessionBridgeLike:
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability."""
-    _ = bridge_factory
     root = _workspace_root(workspace)
     port = _reserve_port()
     endpoint = f"http://127.0.0.1:{port}/mcp"
@@ -102,12 +96,6 @@ def start_mcp_server(
 def shutdown_mcp_server(bridge: SessionBridgeLike) -> None:
     """Shutdown MCP server process."""
     bridge.shutdown()
-
-
-def configure_mcp_server_session(bridge: SessionBridgeLike, session: SessionLike) -> None:
-    """Update the active session metadata for a run-scoped MCP server."""
-    if isinstance(bridge, StandaloneMcpProcess):
-        bridge.update_session(session)
 
 
 def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike) -> list[str]:
@@ -155,7 +143,6 @@ def _session_payload_json(session: SessionLike) -> str:
 
 __all__ = [
     "SessionBridgeLike",
-    "configure_mcp_server_session",
     "shutdown_mcp_server",
     "start_mcp_server",
 ]

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import uuid
+from dataclasses import dataclass
+from enum import StrEnum
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from importlib import import_module
 from pathlib import Path
@@ -20,8 +23,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback
     _FastMCP = cast("object | None", None)
     _Tool = cast("object | None", None)
 
-from ralph.mcp.capability_mapping import Capability, McpCapability, lookup_ralph_capability
-from ralph.mcp.session_bridge import AgentSession, JsonRpcRequest, McpServer, ServerState
+from ralph.mcp.capability_mapping import Capability, McpCapability
+from ralph.mcp.session import AgentSession, session_has_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
@@ -107,6 +110,12 @@ class _ToDict(Protocol):
         ...
 
 
+class _ModelDump(Protocol):
+    def __call__(self, *, exclude_none: bool, by_alias: bool) -> dict[str, object]:
+        """Serialize a content block model into a dictionary."""
+        ...
+
+
 class FastMcpServerLike(Protocol):
     """Minimal standalone FastMCP server surface used by Ralph."""
 
@@ -129,6 +138,161 @@ class FastMcpConstructorLike(Protocol):
     ) -> FastMcpServerLike:
         """Construct a FastMCP server instance."""
         ...
+
+
+class ServerState(StrEnum):
+    UNINITIALIZED = "uninitialized"
+    RUNNING = "running"
+    SHUTDOWN = "shutdown"
+
+
+@dataclass
+class JsonRpcRequest:
+    jsonrpc: str
+    method: str
+    params: dict[str, object] | None = None
+    msg_id: object = None
+
+
+@dataclass
+class JsonRpcResponse:
+    jsonrpc: str
+    result: object = None
+    error: dict[str, object] | None = None
+    msg_id: object = None
+
+
+def _run_async(awaitable: Coroutine[object, object, object]) -> object:
+    return asyncio.run(awaitable)
+
+
+def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
+    if not isinstance(content_blocks, list | tuple):
+        return [{"type": "text", "text": str(content_blocks)}]
+
+    serialized: list[dict[str, object]] = []
+    for block in content_blocks:
+        if isinstance(block, dict):
+            serialized.append(cast("dict[str, object]", block))
+            continue
+
+        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
+        if callable(model_dump):
+            serialized.append(model_dump(exclude_none=True, by_alias=True))
+            continue
+
+        serialized.append({"type": "text", "text": str(block)})
+
+    return serialized
+
+
+def _decode_json_payload_from_content(content_blocks: object) -> dict[str, object] | None:
+    serialized = _serialize_content_blocks(content_blocks)
+    if not serialized:
+        return None
+    first = serialized[0]
+    text = first.get("text")
+    if not isinstance(text, str):
+        return None
+    try:
+        decoded = cast("object", json.loads(text))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    if "content" not in decoded:
+        return None
+    return cast("dict[str, object]", decoded)
+
+
+class McpServer:
+    def __init__(self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge) -> None:
+        self._session = session
+        self._workspace = workspace
+        self._registry = registry
+
+    def handle_request(
+        self, request: JsonRpcRequest, state: ServerState
+    ) -> tuple[JsonRpcResponse | None, ServerState]:
+        if request.method == "initialize":
+            return self._handle_initialize(request)
+        if request.method == "notifications/initialized":
+            return (None, ServerState.RUNNING)
+        if request.method == "tools/list":
+            return self._handle_tools_list(request)
+        if request.method == "tools/call":
+            return self._handle_tools_call(request, state)
+
+        error = {"code": -32601, "message": f"Method not found: {request.method}"}
+        return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+    def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        result = {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "ralph-mcp"},
+        }
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result=result, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _handle_tools_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        tools = [
+            {
+                "name": definition.name,
+                "description": definition.description,
+                "inputSchema": definition.input_schema,
+            }
+            for definition in self._registry.list_definitions()
+        ]
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result={"tools": tools}, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _handle_tools_call(
+        self, request: JsonRpcRequest, state: ServerState
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        params = request.params or {}
+        tool_name = params.get("name")
+        if not isinstance(tool_name, str) or not tool_name:
+            error = {"code": -32602, "message": "tools/call requires a tool name"}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        arguments_value = params.get("arguments", {})
+        if not isinstance(arguments_value, dict):
+            error = {"code": -32602, "message": "tools/call arguments must be an object"}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        try:
+            raw_result = self._registry.dispatch(tool_name, dict(arguments_value))
+        except Exception as exc:
+            error = {"code": -32603, "message": str(exc)}
+            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
+
+        to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
+        payload_source = to_dict() if callable(to_dict) else raw_result
+        payload = self._build_tools_call_payload(payload_source)
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _build_tools_call_payload(self, payload_source: object) -> dict[str, object]:
+        if isinstance(payload_source, dict):
+            payload = cast("dict[str, object]", dict(payload_source))
+            result_obj = payload.get("result")
+            if isinstance(result_obj, dict):
+                payload = cast("dict[str, object]", dict(result_obj))
+            if "content" not in payload:
+                payload["content"] = _serialize_content_blocks(payload_source)
+            return payload
+
+        decoded_payload = _decode_json_payload_from_content(payload_source)
+        if decoded_payload is not None:
+            return decoded_payload
+        return {"content": _serialize_content_blocks(payload_source)}
 
 
 class _FallbackHttpServer(HTTPServer):
@@ -242,24 +406,7 @@ class FileBackedSession:
         return set(cast("list[str]", capabilities_value))
 
     def check_capability(self, capability: str) -> object:
-        granted = self.capabilities
-        normalized_granted = set[str]()
-        for value in granted:
-            normalized_granted.add(_normalize_capability_token(value))
-            mapped_granted = lookup_ralph_capability(value)
-            if mapped_granted is not None:
-                normalized_granted.add(_normalize_capability_token(mapped_granted.value))
-        candidates = {_normalize_capability_token(capability)}
-        mapped = lookup_ralph_capability(capability)
-        if mapped is not None:
-            candidates.add(_normalize_capability_token(mapped.value))
-        if capability in {"WorkspaceWriteAny", "FileWrite"}:
-            candidates.update({"workspace_write_ephemeral", "workspace_write_tracked"})
-        return (
-            "approved"
-            if any(candidate in normalized_granted for candidate in candidates)
-            else "denied"
-        )
+        return "approved" if session_has_capability(self.capabilities, capability) else "denied"
 
     def is_parallel_worker(self) -> bool:
         return False
@@ -293,10 +440,6 @@ def session_from_env() -> AgentSession | None:
         drain=cast("str", payload.get("drain", "standalone")),
         capabilities=capabilities,
     )
-
-
-def _normalize_capability_token(value: str) -> str:
-    return value.strip().replace("-", "_").replace(".", "_").lower()
 
 
 def _all_capability_values() -> set[str]:

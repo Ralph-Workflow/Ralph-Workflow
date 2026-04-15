@@ -130,7 +130,7 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
     monkeypatch.setattr(
         runner_module,
         "_execute_effect",
-        lambda _effect, _config, _bridge: (PipelineEvent.AGENT_SUCCESS, None),
+        lambda _effect, _config: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
     console_mock = MagicMock()

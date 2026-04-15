@@ -99,9 +99,6 @@ class SessionBridgeLike(Protocol):
         ...
 
 
-SessionBridgeFactory = Callable[[SessionLike, WorkspaceLike], SessionBridgeLike]
-
-
 class SessionBridgeError(Exception):
     """Raised when the session bridge fails to start or preflight fails."""
 
@@ -134,38 +131,6 @@ class HttpEndpointTarget:
     address: tuple[str, int]
     host_header: str
     path: str
-
-
-def start_mcp_server_for_session(
-    session: SessionLike,
-    workspace: WorkspaceLike,
-    *,
-    bridge_factory: SessionBridgeFactory | None = None,
-) -> SessionBridgeLike:
-    """Start the session bridge and verify that every tool is reachable."""
-
-    if bridge_factory is None:
-        raise SessionBridgeError("No session bridge factory provided")
-
-    required_tools = _visible_mcp_tool_names_owned(session, workspace)
-    bridge = bridge_factory(session, workspace)
-    _ = heartbeat_policy_from_env()
-
-    try:
-        bridge.start()
-    except Exception as exc:
-        raise SessionBridgeError("Session bridge failed to start") from exc
-
-    try:
-        preflight_mcp_server_tools(
-            bridge.agent_endpoint_uri(),
-            required_tools,
-            mcp_preflight_timeout_from_env(),
-        )
-    except PermanentPreflightError as exc:
-        raise SessionBridgeError("MCP server preflight failed") from exc
-
-    return bridge
 
 
 def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike) -> list[str]:

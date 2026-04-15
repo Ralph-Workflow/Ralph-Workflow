@@ -128,7 +128,17 @@ class AgentInvocationError(Exception):
         self.returncode = returncode
         self.stderr = stderr
         self.parsed_output = list(parsed_output) if parsed_output is not None else []
-        super().__init__(f"Agent '{agent_name}' failed with code {returncode}")
+        detail = self._detail_message()
+        suffix = f": {detail}" if detail else ""
+        super().__init__(f"Agent '{agent_name}' failed with code {returncode}{suffix}")
+
+    def _detail_message(self) -> str:
+        stderr = self.stderr.strip()
+        if stderr:
+            return stderr
+        if self.parsed_output:
+            return " | ".join(self.parsed_output)
+        return ""
 
 
 class UnsupportedMcpTransportError(RuntimeError):
@@ -303,6 +313,7 @@ def _run_subprocess_and_read_lines(
             raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
         lines_iter = _read_lines_from_process(proc)
+        parsed_output: list[str] = []
         if show_progress:
             agent_name = _agent_command_name(config)
             progress_iter = cast(
@@ -315,12 +326,16 @@ def _run_subprocess_and_read_lines(
                     file=sys.stdout,
                 ),
             )
-            yield from progress_iter
+            for line in progress_iter:
+                parsed_output.append(line.rstrip())
+                yield line
         else:
-            yield from lines_iter
+            for line in lines_iter:
+                parsed_output.append(line.rstrip())
+                yield line
 
         proc.wait()
-        _check_process_result(proc, _agent_command_name(config))
+        _check_process_result(proc, _agent_command_name(config), parsed_output)
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -528,7 +543,9 @@ def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
     )
 
 
-def _check_process_result(proc: subprocess.Popen[str], agent_name: str) -> None:
+def _check_process_result(
+    proc: subprocess.Popen[str], agent_name: str, parsed_output: list[str] | None = None
+) -> None:
     """Check subprocess return code and raise error if non-zero.
 
     Args:
@@ -545,7 +562,7 @@ def _check_process_result(proc: subprocess.Popen[str], agent_name: str) -> None:
     stderr_pipe = proc.stderr
     stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
     logger.error("Agent exited with code {}: {}", returncode, stderr)
-    raise AgentInvocationError(agent_name, returncode, stderr)
+    raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
 
 
 def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
@@ -590,6 +607,13 @@ def _build_command(
             options=build_options,
         )
 
+    if transport == AgentTransport.CODEX:
+        return _build_codex_command(
+            config,
+            prompt_file,
+            options=build_options,
+        )
+
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
 
@@ -619,6 +643,9 @@ def _build_command(
     effective_model = build_options.model_flag or config.model_flag
     if effective_model:
         cmd.extend(effective_model.split())
+
+    if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
+        cmd.append("--")
 
     cmd.append(prompt_file)
 
@@ -654,9 +681,30 @@ def _build_opencode_command(
     return cmd
 
 
+def _build_codex_command(
+    config: AgentConfig,
+    prompt_file: str,
+    *,
+    options: _BuildCommandOptions,
+) -> list[str]:
+    prompt_text = Path(prompt_file).read_text(encoding="utf-8")
+    cmd = config.cmd.split()
+    cmd.append(config.output_flag)
+
+    if config.yolo_flag:
+        cmd.append(config.yolo_flag)
+
+    effective_model = options.model_flag or config.model_flag
+    if effective_model:
+        cmd.extend(effective_model.split())
+
+    cmd.append(prompt_text)
+    return cmd
+
+
 def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> str:
     logged_cmd = list(cmd)
-    if _agent_transport(config) == AgentTransport.OPENCODE and logged_cmd:
+    if _agent_transport(config) in {AgentTransport.OPENCODE, AgentTransport.CODEX} and logged_cmd:
         logged_cmd[-1] = prompt_file
     return " ".join(logged_cmd)
 

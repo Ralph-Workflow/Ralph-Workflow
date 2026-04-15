@@ -33,3 +33,72 @@ Your plan must be executor-ready for unattended development. The submitted artif
 Prefer concrete actions and acceptance criteria over vague advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
 
 Call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON string conforming to the plan schema.
+
+The `content` argument must be a JSON string whose decoded object is the RAW plan payload.
+Do NOT wrap the payload in outer `type` or `content` fields. Ralph adds artifact metadata itself.
+
+Your payload must decode to an object shaped like this:
+
+```json
+{
+  "summary": {
+    "context": "What is being changed, why it matters, and what the executor should accomplish.",
+    "scope_items": [
+      {"text": "Concrete outcome 1", "count": "optional quantity", "category": "optional category"},
+      {"text": "Concrete outcome 2", "count": "optional quantity", "category": "optional category"},
+      {"text": "Concrete outcome 3", "count": "optional quantity", "category": "optional category"}
+    ]
+  },
+  "skills_mcp": {
+    "skills": ["optional skill names"],
+    "mcps": ["optional MCP server names"]
+  },
+  "steps": [
+    {
+      "number": 1,
+      "title": "Imperative step title",
+      "content": "Detailed executor-ready instructions. Assume a weaker model will follow this literally.",
+      "step_type": "file_change",
+      "priority": "high",
+      "targets": [
+        {"path": "path/to/file.py", "action": "modify"}
+      ],
+      "location": "optional module or function",
+      "rationale": "optional reason this step exists",
+      "depends_on": []
+    }
+  ],
+  "critical_files": {
+    "primary_files": [
+      {"path": "path/to/file.py", "action": "modify", "estimated_changes": "optional scope estimate"}
+    ],
+    "reference_files": [
+      {"path": "path/to/example.py", "purpose": "optional reference or pattern to follow"}
+    ]
+  },
+  "risks_mitigations": [
+    {"risk": "Specific failure mode", "mitigation": "How to avoid or detect it", "severity": "medium"}
+  ],
+  "verification_strategy": [
+    {"method": "Exact command or check", "expected_outcome": "What success looks like"}
+  ],
+  "parallel_plan": [
+    {
+      "id": "optional-parallel-unit",
+      "description": "Optional safe-to-parallelize work chunk",
+      "edit_area": {"paths": ["path/to/file.py"], "directories": ["optional/dir"]},
+      "depends_on": []
+    }
+  ],
+  "work_units": []
+}
+```
+
+Hard requirements for the payload:
+- `summary.scope_items` must contain at least 3 concrete items.
+- `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
+- `critical_files.primary_files` must contain at least 1 file.
+- `targets[*].action` and `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.
+- `risks_mitigations` must contain at least 1 real risk with a mitigation.
+- `verification_strategy` must contain exact commands/checks, not vague statements.
+- Include `work_units` only when parallel work is genuinely safe; otherwise omit it or use an empty array.
