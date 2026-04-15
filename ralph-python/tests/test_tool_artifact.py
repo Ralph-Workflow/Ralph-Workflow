@@ -188,6 +188,24 @@ def test_handle_submit_artifact_rejects_body_and_detailed_fields_together(tmp_pa
         )
 
 
+def test_handle_submit_artifact_rejects_non_object_excluded_files_entries(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match="excluded_files' entries must be objects"):
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "commit_message",
+                "content": _content(
+                    {
+                        "type": "commit",
+                        "subject": "fix: validate excluded files",
+                        "excluded_files": ["notes/todo.md"],
+                    }
+                ),
+            },
+        )
+
+
 def test_handle_submit_artifact_accepts_structured_plan_payload(tmp_path: Path) -> None:
     result = handle_submit_artifact(
         MockSession(),

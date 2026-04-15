@@ -21,9 +21,10 @@ You MUST submit the final result by calling {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS
 {"type": "commit", "subject": "type(scope): description", "body": "Optional multi-line body"}
 {"type": "commit", "subject": "type(scope): description", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
 {"type": "commit", "subject": "type(scope): description", "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]}
+{"type": "commit", "subject": "type(scope): description", "excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]}
 {"type": "skip", "reason": "Reason why no commit is needed"}.
 
-Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope.
+Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope. `files` must be an array of strings. `excluded_files` must be an array of objects with exactly `path` and `reason` fields. Valid `excluded_files.reason` values: internal_ignore, not_task_related, sensitive, deferred.
 
 REQUIRED PROCEDURE:
 1. Read the diff and decide whether the correct result is a commit artifact or a skip artifact.
