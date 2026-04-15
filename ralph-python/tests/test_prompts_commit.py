@@ -27,6 +27,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert '"type": "skip"' in prompt
     assert '"reason": "Reason why no commit is needed"' in prompt
     assert '"files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]' in prompt
+    assert '"excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]' in prompt
+    assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
 
@@ -65,6 +67,12 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "Immediately call `ralph_ralph_submit_artifact`" in prompt
     assert 'artifact_type="commit_message"' in prompt
     assert '{"type":"commit","subject":"type(scope): description"}' in prompt
+    assert (
+        '{"type":"commit","subject":"type(scope): description",'
+        '"excluded_files":[{"path":"notes/todo.md","reason":"not_task_related"}]}' in prompt
+    )
+    assert "json string" in prompt.lower()
     assert '{"type":"skip","reason":"Reason why no commit is needed"}' in prompt
+    assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt
