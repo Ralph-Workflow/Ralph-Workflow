@@ -7,13 +7,18 @@ fanout remains orchestrator-owned.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping  # noqa: TC003
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WorkUnitsValidationError(ValueError):
     """Raised when a planning artifact contains invalid work_units."""
+
+
+_UNIT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_UNIT_ID_MAX_LEN = 64
 
 
 class WorkUnit(BaseModel):  # type: ignore[explicit-any]
@@ -25,6 +30,24 @@ class WorkUnit(BaseModel):  # type: ignore[explicit-any]
     description: str = Field(..., min_length=1)
     allowed_directories: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
+
+    @field_validator("unit_id")
+    @classmethod
+    def _validate_unit_id(cls, v: str) -> str:
+        if _UNIT_ID_RE.fullmatch(v):
+            return v
+        if not v:
+            raise ValueError("unit_id must be 1-64 chars from [a-zA-Z0-9_-] (got empty string)")
+        if len(v) > _UNIT_ID_MAX_LEN:
+            raise ValueError(
+                f"unit_id must be at most {_UNIT_ID_MAX_LEN} chars (got length {len(v)}: {v!r})"
+            )
+        invalid_char = next((ch for ch in v if not re.fullmatch(r"[a-zA-Z0-9_-]", ch)), None)
+        if invalid_char is not None:
+            raise ValueError(
+                f"unit_id contains invalid character {invalid_char!r}; allowed: [a-zA-Z0-9_-]"
+            )
+        raise ValueError(f"unit_id must match ^[a-zA-Z0-9_-]{{1,64}}$ (got: {v!r})")
 
 
 class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]
