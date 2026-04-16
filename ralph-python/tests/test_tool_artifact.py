@@ -135,6 +135,74 @@ def test_prepare_artifact_submission_normalizes_plan_without_workspace_io() -> N
     assert summary["context"] == "Plan MCP rollout."
 
 
+def test_prepare_artifact_submission_reads_content_from_file_path(tmp_path: Path) -> None:
+    payload_path = tmp_path / "plan-resubmit.json"
+    payload_path.write_text(
+        _content(
+            {
+                "summary": {
+                    "context": "Plan MCP rollout from file.",
+                    "scope_items": [
+                        {"text": "Update validation"},
+                        {"text": "Add tests"},
+                        {"text": "Update prompts"},
+                    ],
+                },
+                "steps": [{"number": 1, "title": "Validate", "content": "Do the work"}],
+                "critical_files": {
+                    "primary_files": [{"path": "ralph/mcp/tool_artifact.py", "action": "modify"}]
+                },
+                "risks_mitigations": [{"risk": "Schema drift", "mitigation": "Add tests"}],
+                "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    artifact_type, parsed_content = _prepare_artifact_submission(
+        {
+            "artifact_type": "plan",
+            "content_path": str(payload_path),
+        },
+        base_path=tmp_path,
+    )
+
+    assert artifact_type == "plan"
+    summary = cast("dict[str, object]", parsed_content["summary"])
+    assert summary["context"] == "Plan MCP rollout from file."
+
+
+def test_prepare_artifact_submission_rejects_when_content_and_content_path_are_both_set(
+    tmp_path: Path,
+) -> None:
+    payload_path = tmp_path / "artifact.json"
+    payload_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(
+        InvalidParamsError, match="Provide exactly one of 'content' or 'content_path'"
+    ):
+        _prepare_artifact_submission(
+            {
+                "artifact_type": "plan",
+                "content": _content(_full_plan_payload()),
+                "content_path": str(payload_path),
+            },
+            base_path=tmp_path,
+        )
+
+
+def test_prepare_artifact_submission_rejects_missing_content_source(tmp_path: Path) -> None:
+    with pytest.raises(
+        InvalidParamsError, match="Provide exactly one of 'content' or 'content_path'"
+    ):
+        _prepare_artifact_submission(
+            {
+                "artifact_type": "plan",
+            },
+            base_path=tmp_path,
+        )
+
+
 def test_prepare_artifact_submission_rejects_legacy_commit_format_without_workspace_io() -> None:
     with pytest.raises(InvalidParamsError, match="structured commit_message schema"):
         _prepare_artifact_submission(
@@ -377,6 +445,57 @@ def test_handle_submit_artifact_accepts_structured_plan_payload(tmp_path: Path) 
     stored = json.loads(artifact_file.read_text(encoding="utf-8"))
     assert stored["type"] == "plan"
     assert stored["content"]["summary"]["context"] == "Plan the MCP validation rollout."
+
+
+def test_handle_submit_artifact_accepts_content_path_for_plan_resubmission(tmp_path: Path) -> None:
+    payload_path = tmp_path / "edited-plan.json"
+    payload_path.write_text(_content(_full_plan_payload()), encoding="utf-8")
+
+    result = handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "plan",
+            "content_path": str(payload_path),
+        },
+    )
+
+    assert result.is_error is False
+    stored = json.loads(
+        (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+    )
+    assert stored["content"]["summary"]["context"] == "Plan the MCP validation rollout."
+
+
+def test_handle_submit_artifact_accepts_existing_artifact_file_for_plan_resubmission(
+    tmp_path: Path,
+) -> None:
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "plan",
+            "content": _content(_full_plan_payload()),
+        },
+    )
+
+    artifact_path = tmp_path / ".agent" / "artifacts" / "plan.json"
+    persisted = json.loads(artifact_path.read_text(encoding="utf-8"))
+    persisted["content"]["summary"]["context"] = "Edited persisted plan payload."
+    artifact_path.write_text(json.dumps(persisted), encoding="utf-8")
+
+    result = handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "plan",
+            "content_path": str(artifact_path),
+        },
+    )
+
+    assert result.is_error is False
+    stored = json.loads(artifact_path.read_text(encoding="utf-8"))
+    assert stored["content"]["summary"]["context"] == "Edited persisted plan payload."
 
 
 def test_handle_submit_artifact_rejects_plan_without_required_sections(tmp_path: Path) -> None:

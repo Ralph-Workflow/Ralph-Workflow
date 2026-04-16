@@ -35,6 +35,9 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
+    assert "content_path" in prompt
+    assert "edit the json file on disk" in prompt.lower()
+    assert ".agent/tmp/commit_message.json" in prompt
 
 
 def test_commit_prompt_rejects_empty_diff() -> None:
@@ -80,6 +83,8 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt
+    assert "content_path" in prompt
+    assert ".agent/tmp/commit_message.json" in prompt
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:

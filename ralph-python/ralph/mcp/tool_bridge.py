@@ -423,8 +423,16 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
                             "type": "string",
                             "description": "JSON-serialized artifact payload",
                         },
+                        "content_path": {
+                            "type": "string",
+                            "description": (
+                                "Path to a JSON file containing the raw artifact payload. "
+                                "Use this to resubmit an edited artifact from disk instead "
+                                "of inlining the JSON in the tool call."
+                            ),
+                        },
                     },
-                    "required": ["artifact_type", "content"],
+                    "required": ["artifact_type"],
                 },
                 required_capability="ArtifactSubmit",
             ),

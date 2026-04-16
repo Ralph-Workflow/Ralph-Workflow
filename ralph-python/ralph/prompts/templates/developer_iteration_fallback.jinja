@@ -12,4 +12,6 @@ IMPLEMENTATION PLAN:
 
 When done, call `ralph_submit_artifact` with artifact_type="development_result" and content as JSON.
 Write the result artifact to .agent/artifacts/development_result.json.
+If you need to revise the saved result artifact, edit `.agent/artifacts/development_result.json` and resubmit with `content_path` using this exact call:
+`ralph_submit_artifact({"artifact_type":"development_result","content_path":".agent/artifacts/development_result.json"})`
 {"status":"completed","summary":"Summary","files_changed":"- src/foo.rs"}

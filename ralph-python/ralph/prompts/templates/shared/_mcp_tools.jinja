@@ -22,5 +22,10 @@ EXECUTION:
 
 ARTIFACT SUBMISSION:
 - Use `{{SUBMIT_ARTIFACT_TOOL_NAME}}` to submit structured results
+- If you are retrying a saved artifact, edit its `.agent/artifacts/*.json` file and resubmit with `content_path` instead of retyping the whole JSON payload
+{% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage plan sections incrementally{% endif %}
+{% if FINALIZE_PLAN_TOOL_NAME %}- Use `{{FINALIZE_PLAN_TOOL_NAME}}` to finalize a staged plan draft{% endif %}
+{% if GET_PLAN_DRAFT_TOOL_NAME %}- Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect a staged plan draft{% endif %}
+{% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` to discard a staged plan draft and restart{% endif %}
 - Use `{{DECLARE_COMPLETE_TOOL_NAME}}` when finished
 {% endif %}

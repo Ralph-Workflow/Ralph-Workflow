@@ -37,6 +37,9 @@ REQUIRED PROCEDURE:
 3. Immediately call the tool with that JSON string as the content argument.
 4. After the MCP call succeeds, optionally echo only the commit subject line once and nothing else. If you submitted a skip artifact, do not emit extra prose.
 
+If you need to revise a saved commit_message artifact, edit the JSON file on disk at `.agent/tmp/commit_message.json` and resubmit with `content_path` using this exact call:
+`ralph_submit_artifact({"artifact_type":"commit_message","content_path":".agent/tmp/commit_message.json"})`
+
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 
 After the MCP submission, you may optionally echo the same single-line subject as plain text,

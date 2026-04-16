@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
@@ -12,21 +12,26 @@ from ralph.mcp.tool_names import (
     ARTIFACT_TOOLS,
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
+    DISCARD_PLAN_DRAFT_TOOL,
     ENV_READ_TOOLS,
     EXEC_TOOL,
+    FINALIZE_PLAN_TOOL,
     GIT_DIFF_READ_TOOLS,
     GIT_DIFF_TOOL,
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
     GIT_STATUS_READ_TOOLS,
     GIT_STATUS_TOOL,
+    GET_PLAN_DRAFT_TOOL,
     LIST_DIRECTORY_RECURSIVE_TOOL,
     LIST_DIRECTORY_TOOL,
+    PLANNING_DRAFT_TOOLS,
     PROCESS_EXEC_TOOLS,
     PROGRESS_TOOLS,
     REPORT_PROGRESS_TOOL,
     SEARCH_FILES_TOOL,
     SUBMIT_ARTIFACT_TOOL,
+    SUBMIT_PLAN_SECTION_TOOL,
     TRACKED_WRITE_TOOLS,
     WORKSPACE_READ_TOOLS,
     WRITE_FILE_TOOL,
@@ -128,7 +133,7 @@ class CapabilitySet:
     def insert(self, capability: Capability) -> None:
         self._values = frozenset((*self._values, capability))
 
-    def __iter__(self) -> Iterable[Capability]:
+    def __iter__(self) -> Iterator[Capability]:
         return iter(self._values)
 
     def iter(self) -> Iterable[Capability]:
@@ -166,7 +171,7 @@ class PolicyFlagSet:
     def insert(self, flag: PolicyFlag) -> None:
         self._values = frozenset((*self._values, flag))
 
-    def __iter__(self) -> Iterable[PolicyFlag]:
+    def __iter__(self) -> Iterator[PolicyFlag]:
         return iter(self._values)
 
     def iter(self) -> Iterable[PolicyFlag]:
@@ -298,6 +303,30 @@ def capability_template_variables(
         ),
         tool_name_var(
             visible_tools,
+            "SUBMIT_PLAN_SECTION_TOOL_NAME",
+            SUBMIT_PLAN_SECTION_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "FINALIZE_PLAN_TOOL_NAME",
+            FINALIZE_PLAN_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "GET_PLAN_DRAFT_TOOL_NAME",
+            GET_PLAN_DRAFT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
+            "DISCARD_PLAN_DRAFT_TOOL_NAME",
+            DISCARD_PLAN_DRAFT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
             "DECLARE_COMPLETE_TOOL_NAME",
             DECLARE_COMPLETE_TOOL,
             tool_name_prefix=tool_name_prefix,
@@ -405,7 +434,7 @@ def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
         (Capability.GIT_DIFF_READ, GIT_DIFF_READ_TOOLS),
         (Capability.WORKSPACE_WRITE_TRACKED, TRACKED_WRITE_TOOLS),
         (Capability.PROCESS_EXEC_BOUNDED, PROCESS_EXEC_TOOLS),
-        (Capability.ARTIFACT_SUBMIT, ARTIFACT_TOOLS),
+        (Capability.ARTIFACT_SUBMIT, (*ARTIFACT_TOOLS, *PLANNING_DRAFT_TOOLS)),
         (Capability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
         (Capability.ENV_READ, ENV_READ_TOOLS),
     )

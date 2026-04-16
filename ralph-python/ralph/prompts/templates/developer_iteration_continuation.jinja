@@ -9,3 +9,6 @@ ORIGINAL REQUEST:
 
 IMPLEMENTATION PLAN:
 {{ render_payload_section('IMPLEMENTATION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
+
+If you need to revise a saved result artifact during this continuation, edit `.agent/artifacts/development_result.json` and resubmit with `content_path` using this exact call:
+`ralph_submit_artifact({"artifact_type":"development_result","content_path":".agent/artifacts/development_result.json"})`

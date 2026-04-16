@@ -19,3 +19,5 @@ IMPLEMENTATION PLAN:
 {% include 'shared/_developer_iteration_guidance.j2' %}
 
 When done, call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="development_result" and content as a JSON string.
+If you need to revise a saved result artifact, edit `.agent/artifacts/development_result.json` and resubmit with `content_path` using this exact call:
+`{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"development_result","content_path":".agent/artifacts/development_result.json"})`

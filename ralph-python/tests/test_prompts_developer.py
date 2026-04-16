@@ -32,6 +32,29 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
     assert "UNATTENDED MODE" in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert plan_text in prompt
+    assert "content_path" in prompt
+    assert "edit `.agent/artifacts/development_result.json`" in prompt
+
+
+def test_developer_iteration_continuation_prompt_includes_exact_resubmit_call(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+
+    prompt = prompt_developer_iteration_xml_with_context(
+        context=context,
+        inputs=DeveloperPromptInputs(
+            prompt_content="Continue implementing the widget feature",
+            plan_content="1. Finish backend\n2. Finish UI",
+        ),
+        workspace=workspace,
+        session_caps=session_caps,
+        template_name="developer_iteration_continuation.jinja",
+    )
+
+    assert "continuing a DEVELOPMENT iteration" in prompt
+    assert "content_path" in prompt
+    assert ".agent/artifacts/development_result.json" in prompt
 
 
 def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
@@ -49,6 +72,8 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
     assert "PLANNING MODE" in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert "ralph_submit_artifact" in prompt
+    assert "ralph_submit_plan_section" in prompt
+    assert "ralph_finalize_plan" in prompt
 
 
 def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
@@ -64,6 +89,14 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
     )
 
     assert 'artifact_type="plan"' in prompt
+    assert "Unless the plan is genuinely short" in prompt
+    assert "submit each required section separately" in prompt
+    assert "Use `ralph_submit_plan_section`" in prompt
+    assert "Use `ralph_get_plan_draft`" in prompt
+    assert "Use `ralph_discard_plan_draft`" in prompt
+    assert "Use `ralph_finalize_plan`" in prompt
+    assert "edit `.agent/artifacts/plan.json`" in prompt
+    assert "resubmit with `content_path`" in prompt
     assert "The `content` argument must be a JSON string whose decoded object" in prompt
     assert "Do NOT wrap the payload in outer `type` or `content` fields" in prompt
     assert '"summary": {' in prompt
@@ -91,7 +124,11 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):
         )
 
     assert 'artifact_type="plan"' in prompt
+    assert "Unless the plan is genuinely short" in prompt
+    assert "ralph_submit_plan_section" in prompt
+    assert "ralph_finalize_plan" in prompt
     assert "plan.json" in prompt
+    assert "content_path" in prompt
     assert "<ralph-plan>" not in prompt
 
 
@@ -116,6 +153,7 @@ def test_developer_prompt_fallback_uses_json_result_artifact_contract(tmp_path):
 
     assert 'artifact_type="development_result"' in prompt
     assert "development_result.json" in prompt
+    assert "content_path" in prompt
     assert "<ralph-development-result>" not in prompt
 
 

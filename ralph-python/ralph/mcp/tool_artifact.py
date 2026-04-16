@@ -80,8 +80,12 @@ def handle_submit_artifact(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
-    artifact_type, parsed_content = _prepare_artifact_submission(params)
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    artifact_type, parsed_content = _prepare_artifact_submission(
+        params,
+        base_path=_workspace_root(workspace),
+        backend=resolved_deps.backend,
+    )
 
     artifact_dir = _artifact_dir(workspace)
     try:
@@ -291,12 +295,57 @@ def _artifact_dir(workspace: WorkspaceLike) -> Path:
 CanonicalArtifactType = Literal["commit_message", "plan", "development_result"]
 
 
-def _prepare_artifact_submission(params: dict[str, object]) -> tuple[str, dict[str, object]]:
+def _prepare_artifact_submission(
+    params: dict[str, object],
+    *,
+    base_path: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> tuple[str, dict[str, object]]:
     artifact_type = _canonical_artifact_type(_required_string(params, "artifact_type"))
-    raw_content = _required_string(params, "content")
-    parsed_content = _parse_content(raw_content)
+    raw_content = _resolve_artifact_content_source(params, base_path=base_path, backend=backend)
+    parsed_content = _unwrap_persisted_artifact_payload(artifact_type, _parse_content(raw_content))
 
     return artifact_type, _normalize_artifact_payload(artifact_type, parsed_content)
+
+
+def _resolve_artifact_content_source(
+    params: dict[str, object], *, base_path: Path | None, backend: FileBackend
+) -> str:
+    raw_content = params.get("content")
+    raw_content_path = params.get("content_path")
+    has_content = isinstance(raw_content, str)
+    has_content_path = isinstance(raw_content_path, str)
+
+    if has_content == has_content_path:
+        raise InvalidParamsError("Provide exactly one of 'content' or 'content_path'")
+
+    if has_content:
+        return cast("str", raw_content)
+
+    content_path = _resolve_content_path(cast("str", raw_content_path), base_path=base_path)
+    try:
+        return backend.read_text(content_path)
+    except FileNotFoundError as exc:
+        raise InvalidParamsError(f"Content file does not exist: {content_path}") from exc
+    except OSError as exc:
+        raise InvalidParamsError(f"Failed to read content file '{content_path}': {exc}") from exc
+
+
+def _resolve_content_path(raw_path: str, *, base_path: Path | None) -> Path:
+    candidate = Path(raw_path).expanduser()
+    if candidate.is_absolute() or base_path is None:
+        return candidate
+    return (base_path / candidate).resolve()
+
+
+def _unwrap_persisted_artifact_payload(
+    artifact_type: str, parsed_content: dict[str, object]
+) -> dict[str, object]:
+    persisted_type = parsed_content.get("type")
+    persisted_content = parsed_content.get("content")
+    if persisted_type == artifact_type and isinstance(persisted_content, dict):
+        return cast("dict[str, object]", persisted_content)
+    return parsed_content
 
 
 def _canonical_artifact_type(artifact_type: str) -> str:
