@@ -47,6 +47,7 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.policy.loader import load_policy_or_die
@@ -196,6 +197,7 @@ def _handle_inline_effect(
         updated_state = state.copy_with(
             phase=effect.phase,
             iteration=effect.iteration,
+            current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
         return updated_state
@@ -225,7 +227,9 @@ def _materialize_prepared_prompt(
         workspace=workspace,
         pipeline_policy=pipeline_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
-            _prompt_session_drain_for_phase(effect.phase)
+            _prompt_session_drain_for_phase(
+                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
+            )
         ),
         workspace_root=workspace_scope.root,
     )
@@ -251,7 +255,9 @@ def _materialize_agent_prompt_if_needed(
         workspace=workspace,
         pipeline_policy=pipeline_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
-            _prompt_session_drain_for_phase(effect.phase),
+            _prompt_session_drain_for_phase(
+                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
+            ),
             tool_name_prefix=tool_name_prefix,
         ),
         workspace_root=workspace_scope.root,
@@ -324,6 +330,11 @@ def _create_initial_state(
         rebase=RebaseState(),
         commit=CommitState(),
         policy_entry_phase=entry_phase,
+        current_drain=(
+            resolve_phase_drain(entry_phase, pipeline_policy)
+            if pipeline_policy is not None
+            else None
+        ),
     )
 
 
@@ -349,6 +360,7 @@ def _determine_effect_from_policy(state: PipelineState, policy_bundle: PolicyBun
         agent_name=agent_name,
         phase=state.phase,
         prompt_file=prompt_file_for_phase(state.phase),
+        drain=phase_def.drain,
     )
 
 
@@ -480,8 +492,8 @@ def _execute_agent_effect(
         session = AgentSession(
             session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
             run_id=str(uuid.uuid4()),
-            drain=effect.phase,
-            capabilities=_default_mcp_capabilities_for_phase(effect.phase),
+            drain=effect.drain or effect.phase,
+            capabilities=_default_mcp_capabilities_for_phase(effect.drain or effect.phase),
         )
         workspace = FsWorkspace(
             workspace_scope.root,

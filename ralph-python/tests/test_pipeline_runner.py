@@ -268,6 +268,22 @@ class TestDetermineEffect:
 
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
+        assert effect.drain == "development"
+
+    def test_handle_inline_prepare_prompt_updates_current_drain_from_policy(self) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="planning", current_drain="planning")
+
+        updated = runner_module._handle_inline_effect(
+            effect=PreparePromptEffect(phase="development", iteration=0, drain="development"),
+            state=state,
+            pipeline_policy=bundle.pipeline,
+            workspace_scope=WorkspaceScope("/tmp/worktree"),
+        )
+
+        assert isinstance(updated, PipelineState)
+        assert updated.phase == "development"
+        assert updated.current_drain == "development"
 
 
 class TestCommitEffect:
@@ -504,7 +520,11 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state)
 
         assert result == 0
-        state.copy_with.assert_called_once_with(phase="development", iteration=0)
+        state.copy_with.assert_called_once_with(
+            phase="development",
+            iteration=0,
+            current_drain="development",
+        )
         execute_effect.assert_not_called()
         reducer.assert_not_called()
         ckpt_save.assert_called_once_with(advanced_state)
@@ -703,6 +723,55 @@ class TestExecuteAgentEffect:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
+        assert captured["capabilities"] == {
+            "workspace.read",
+            "git.status_read",
+            "git.diff_read",
+            "artifact.submit",
+            "workspace.write_ephemeral",
+            "workspace.write_tracked",
+            "process.exec_bounded",
+            "run.report_progress",
+            "env.read",
+        }
+
+    def test_custom_phase_uses_bound_drain_capabilities(self, monkeypatch) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="dev",
+            phase="custom_phase",
+            prompt_file="PROMPT.md",
+            drain="development",
+        )
+        registry = _registry_factory(MagicMock())
+        captured: dict[str, object] = {}
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        def fake_start_mcp_server(session, *_args, **_kwargs):
+            captured["drain"] = session.drain
+            captured["capabilities"] = session.capabilities
+            return FakeBridge()
+
+        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope("/tmp/worktree"),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert captured["drain"] == "development"
         assert captured["capabilities"] == {
             "workspace.read",
             "git.status_read",

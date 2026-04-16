@@ -30,6 +30,7 @@ class InvokeAgentEffect:
     agent_name: str
     phase: PipelinePhase
     prompt_file: str
+    drain: str | None = None
     chain_name: str = ""
 
 
@@ -44,6 +45,7 @@ class PreparePromptEffect:
 
     phase: PipelinePhase
     iteration: int
+    drain: str | None = None
 
 
 @dataclass(frozen=True)

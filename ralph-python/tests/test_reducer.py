@@ -273,6 +273,17 @@ def test_phase_advance_decreases_development_budget() -> None:
     assert new_state.development_budget_remaining == 1
 
 
+def test_phase_advance_updates_current_drain_from_target_phase_policy() -> None:
+    """Advancing phases should update the authoritative current drain from policy."""
+    policy = _policy_with_transition(PHASE_DEVELOPMENT)
+    state = PipelineState(phase="budget_transition", current_drain="planning")
+
+    new_state, _ = _reduce(state, PipelineEvent.PHASE_ADVANCE, policy)
+
+    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.current_drain == "development"
+
+
 def test_phase_advance_clamps_review_budget_at_zero() -> None:
     """Review budget should never go negative when advancing to review."""
     policy = _policy_with_transition(PHASE_REVIEW)
@@ -293,6 +304,7 @@ def test_commit_success_routes_development_commit_to_planning_when_budget_remain
 
     assert new_state.phase == "planning"
     assert new_state.previous_phase == "development_commit"
+    assert new_state.current_drain == "planning"
 
 
 def test_commit_success_routes_development_commit_to_review_when_budget_exhausted() -> None:

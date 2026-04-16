@@ -32,7 +32,7 @@ def handle_fix(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Fix phase: invoking fix agent")
+        logger.info("Fix phase: processing fix result after agent run")
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

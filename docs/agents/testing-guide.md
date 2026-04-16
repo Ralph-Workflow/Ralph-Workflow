@@ -5,6 +5,42 @@ Read before writing or modifying any test.
 
 ---
 
+## ⚡ Test Performance Policy — MANDATORY FOR ALL AGENTS
+
+> **This policy is non-negotiable. AI agents must comply before marking any test task complete.**
+
+### The Rule
+
+**YOU MUST ensure every test finishes within 10 seconds.** If a test exceeds this limit, stop and fix it — do not defer, do not skip, do not mark work done.
+
+### What "fix it" means
+
+1. **Refactor code to be testable.** If a test is slow because production code does real I/O, sleeps, or calls real processes, that is a design defect. Extract the I/O into an injectable boundary (`Workspace`, `ProcessExecutor`) and test the pure logic with fakes.
+2. **Replace blocking calls with fakes.** Use `MemoryWorkspace` instead of real filesystem, `MockProcessExecutor` instead of real processes. Never let real I/O or real network into unit or integration tests.
+3. **Eliminate real `sleep` / wall-clock waits.** Inject a clock abstraction and advance it in tests — never call `std::thread::sleep`, `tokio::time::sleep`, or `time.sleep` inside test code.
+4. **Never use `#[ignore]` to hide a slow test.** A timeout problem is a design problem. Fix the design.
+
+### Tests must test behavior, not implementation
+
+| ✅ Test the behavior (observable contract) | ❌ Do not test the implementation (internals) |
+|---|---|
+| Phase transitions, effect variants emitted | Private field mutations, internal buffer sizes |
+| Checkpoint round-trips through the public seam | Which internal function was called |
+| Observable output through `TestPrinter` / `VirtualTerminal` | Cache hit counters, task handle lifetimes |
+| Drain-addressed runtime effects | Which branch of a `match` was taken |
+
+If changing the implementation (without changing behavior) would break a test, **the test is wrong — rewrite it.**
+
+### Agent checklist (complete before marking any test work done)
+
+- [ ] All tests in the affected tier pass in < 10 s total wall-clock
+- [ ] No test calls `sleep` or polls real wall-clock time
+- [ ] No test reaches through a boundary into real I/O (filesystem, process, network)
+- [ ] Every test asserts on observable behavior, not internal state
+- [ ] Any refactor needed to make code testable within time is done — not deferred
+
+---
+
 ## Test Pyramid
 
 ```

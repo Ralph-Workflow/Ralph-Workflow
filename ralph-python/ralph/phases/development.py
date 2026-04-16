@@ -45,7 +45,7 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Development phase: invoking development agent")
+        logger.info("Development phase: validating planning artifact after agent run")
         planning_artifact_path = PLAN_ARTIFACT_PATH
         if not ctx.workspace.exists(planning_artifact_path):
             logger.warning(

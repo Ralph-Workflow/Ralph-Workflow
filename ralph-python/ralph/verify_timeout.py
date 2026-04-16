@@ -1,3 +1,49 @@
+"""Test timeout enforcement wrapper.
+
+==============================================================================
+POLICY FOR AI AGENTS — READ BEFORE TOUCHING ANY TEST
+==============================================================================
+
+YOU **MUST** fix any test that cannot finish within the time limits below.
+Do not raise the limits. Do not skip or quarantine a slow test to hide it.
+A test that exceeds these limits is a **design defect** — fix the design.
+
+  Per-test limit  : 1 second   (DEFAULT_TEST_TIMEOUT_SECONDS)
+  Full-suite limit: 10 seconds (DEFAULT_SUITE_TIMEOUT_SECONDS)
+
+HOW TO FIX A SLOW TEST
+-----------------------
+1. Replace real I/O with fakes.
+   - Filesystem  → MemoryWorkspace / tmp_path fixture (never real fs in unit tests)
+   - Subprocesses → MockProcessExecutor / monkeypatch (never real processes)
+   - Network     → patch/mock at the boundary (never real HTTP/socket)
+
+2. Eliminate sleep() and real wall-clock waits.
+   - Inject a clock abstraction; advance it in the test.
+   - Never call time.sleep(), asyncio.sleep(), or threading.Event.wait() with
+     a real timeout inside test code.
+
+3. Refactor production code to be testable.
+   - If a test is slow because the production path forces real I/O, that is a
+     coupling problem. Extract I/O behind an interface so the test can inject
+     a fast fake. Do this refactor; do not work around it.
+
+4. Tests must assert on observable behavior, not implementation internals.
+   - If changing the implementation (without changing behavior) would break a
+     test, the test is wrong. Rewrite it to test through the public contract.
+
+WHAT "DONE" MEANS FOR TESTS
+----------------------------
+A test change is complete only when ALL of the following hold:
+  [ ] Every individual test finishes in < 1 s
+  [ ] The full suite finishes in < 10 s wall-clock
+  [ ] No test calls sleep() or polls real wall-clock time
+  [ ] No test crosses a real I/O boundary (filesystem, process, network)
+  [ ] Every assertion targets observable behavior, not internal state
+
+==============================================================================
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -16,9 +62,56 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
+_POLICY_FIX_MESSAGE = (
+    "\n"
+    "╔══════════════════════════════════════════════════════════════════════╗\n"
+    "║         POLICY VIOLATION — ACTION REQUIRED FOR AI AGENTS            ║\n"
+    "╚══════════════════════════════════════════════════════════════════════╝\n"
+    "\n"
+    "YOU MUST fix the slow test(s). Do NOT raise the limit. Do NOT skip or\n"
+    "quarantine to hide the problem. A slow test is a design defect.\n"
+    "\n"
+    "Limits:\n"
+    "  Per-test  : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
+    "  Full suite: 10 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "\n"
+    "HOW TO FIX\n"
+    "----------\n"
+    "1. Replace real I/O with fakes.\n"
+    "   Filesystem   → MemoryWorkspace or tmp_path fixture\n"
+    "   Subprocesses → MockProcessExecutor or monkeypatch\n"
+    "   Network/HTTP → patch at the boundary; never real sockets\n"
+    "\n"
+    "2. Eliminate sleep() and real wall-clock waits.\n"
+    "   Inject a clock abstraction and advance it in the test.\n"
+    "   Never call time.sleep(), asyncio.sleep(), or Event.wait() in tests.\n"
+    "\n"
+    "3. Refactor production code for testability.\n"
+    "   If the production path forces real I/O, that is a coupling problem.\n"
+    "   Extract I/O behind an interface; inject a fast fake in the test.\n"
+    "   Do the refactor — do not work around it.\n"
+    "\n"
+    "4. Assert on observable behavior, not implementation internals.\n"
+    "   If changing the implementation (without changing behavior) breaks a\n"
+    "   test, the test is wrong. Rewrite it to test the public contract.\n"
+    "\n"
+    "DONE when ALL hold:\n"
+    "  [ ] Every test finishes in < 1 s\n"
+    "  [ ] Full suite finishes in < 10 s wall-clock\n"
+    "  [ ] No test calls sleep() or polls real wall-clock time\n"
+    "  [ ] No test crosses a real I/O boundary\n"
+    "  [ ] Every assertion targets observable behavior\n"
+    "\n"
+    "Full policy: ralph/verify_timeout.py module docstring\n"
+    "         or: docs/agents/testing-guide.md  §'Test Performance Policy'\n"
+)
+
+
 class SuiteTimeoutError(RuntimeError):
     def __init__(self, timeout_seconds: float) -> None:
-        super().__init__(f"pytest suite exceeded {timeout_seconds} seconds")
+        super().__init__(
+            f"Test suite exceeded the {timeout_seconds}s wall-clock limit.\n{_POLICY_FIX_MESSAGE}"
+        )
         self.timeout_seconds = timeout_seconds
 
 

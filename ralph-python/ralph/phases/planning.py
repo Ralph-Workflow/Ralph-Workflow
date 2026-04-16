@@ -48,7 +48,7 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Planning phase: invoking planning agent")
+        logger.info("Planning phase: validating planning artifact after agent run")
         planning_artifact_path = PLAN_ARTIFACT_PATH
         if not ctx.workspace.exists(planning_artifact_path):
             logger.warning("Planning agent completed without producing {}", planning_artifact_path)

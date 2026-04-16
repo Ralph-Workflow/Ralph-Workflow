@@ -28,7 +28,11 @@ from ralph.config.enums import (
 )
 from ralph.pipeline.effects import Effect, ExitFailureEffect, SaveCheckpointEffect
 from ralph.pipeline.events import Event, PipelineEvent
-from ralph.pipeline.orchestrator import resolve_next_phase, resolve_post_commit_phase
+from ralph.pipeline.handoffs import (
+    resolve_next_phase,
+    resolve_phase_drain,
+    resolve_post_commit_phase,
+)
 from ralph.pipeline.state import (
     AgentChainState,
     CommitState,
@@ -137,7 +141,7 @@ def _policy_handle_agent_success(
 
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
-        return _advance_phase(state, next_phase)
+        return _advance_phase(state, next_phase, policy)
     except ValueError:
         return state, []
 
@@ -259,7 +263,7 @@ def _handle_analysis_success(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -295,7 +299,7 @@ def _handle_analysis_loopback(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "loopback", policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -331,7 +335,7 @@ def _handle_review_clean(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -351,7 +355,7 @@ def _handle_review_issues_found(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "loopback", policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -379,7 +383,7 @@ def _handle_fix_success(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -404,7 +408,7 @@ def _handle_fix_failure(
                     previous_phase=state.phase,
                 )
                 return new_state, [ExitFailureEffect(reason="Fix phase failed")]
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -431,7 +435,7 @@ def _handle_commit_success(
     if policy is not None:
         try:
             next_phase = resolve_post_commit_phase(state, policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
 
@@ -487,7 +491,7 @@ def _handle_phase_advance(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase)
+            return _advance_phase(state, next_phase, policy)
         except ValueError:
             return state, []
     return state, []
@@ -496,6 +500,7 @@ def _handle_phase_advance(
 def _advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,
+    policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Advance to a new phase with proper state resets.
 
@@ -518,6 +523,9 @@ def _advance_phase(
         updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
     elif target_phase == PHASE_REVIEW:
         updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)
+
+    if policy is not None:
+        updates["current_drain"] = resolve_phase_drain(target_phase, policy)
 
     new_state = state.copy_with(**updates)
     return new_state, []

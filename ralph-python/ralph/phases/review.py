@@ -35,7 +35,7 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Review phase: invoking review agent")
+        logger.info("Review phase: processing review result after agent run")
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

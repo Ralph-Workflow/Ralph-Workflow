@@ -20,6 +20,7 @@ from ralph.config.enums import (
     PHASE_REVIEW,
     PipelinePhase,
 )
+from ralph.pipeline import handoffs as phase_handoffs
 from ralph.pipeline.effects import (
     Effect,
     ExitFailureEffect,
@@ -126,7 +127,7 @@ def _derive_effect_for_phase(
     # Check if we need to invoke the agent or prepare the prompt first
     if not _is_agent_invoked_for_phase(state, phase):
         # First time in this phase — prepare prompt then invoke agent
-        return PreparePromptEffect(phase=phase, iteration=state.iteration)
+        return PreparePromptEffect(phase=phase, iteration=state.iteration, drain=phase_def.drain)
 
     # Agent was already invoked for this phase — check for analysis routing
     if phase_def.embeds_analysis:
@@ -138,6 +139,7 @@ def _derive_effect_for_phase(
         agent_name=_current_agent_name(state, chain),
         phase=phase,
         prompt_file="PROMPT.md",
+        drain=phase_def.drain,
         chain_name=chain_name,
     )
 
@@ -279,8 +281,7 @@ def get_phase_drain(
     Returns:
         Drain name or None if phase is not found.
     """
-    phase_def = pipeline_policy.phases.get(phase)
-    return phase_def.drain if phase_def else None
+    return phase_handoffs.resolve_phase_drain(phase, pipeline_policy)
 
 
 def resolve_next_phase(
@@ -288,81 +289,13 @@ def resolve_next_phase(
     signal: str,
     pipeline_policy: PipelinePolicy,
 ) -> PipelinePhase:
-    """Resolve the next phase based on a signal and the pipeline policy.
-
-    This is the core routing function used by the event handlers.
-    Given a signal (success, failure, loopback), find the target phase
-    from the current phase's transition table.
-
-    Args:
-        current_phase: Current phase name.
-        signal: Signal type (success, failure, loopback).
-        pipeline_policy: Loaded pipeline policy.
-
-    Returns:
-        Next phase name.
-
-    Raises:
-        ValueError: If the transition target is invalid.
-    """
-    phase_def = pipeline_policy.phases.get(current_phase)
-    if phase_def is None:
-        msg = f"Cannot resolve transition: phase '{current_phase}' not found"
-        raise ValueError(msg)
-
-    transitions = phase_def.transitions
-
-    target: str | None
-    if signal == "success":
-        target = transitions.on_success
-    elif signal == "failure":
-        target = transitions.on_failure
-    elif signal == "loopback":
-        target = transitions.on_loopback
-    else:
-        msg = f"Unknown signal: {signal}"
-        raise ValueError(msg)
-
-    if target is None:
-        msg = (
-            f"No '{signal}' transition defined for phase '{current_phase}'. "
-            f"Define on_{signal} in pipeline.toml or set the phase to terminal."
-        )
-        raise ValueError(msg)
-
-    if target in ("failed", "complete"):
-        # Terminal pseudo-phases are returned as-is; the runner handles them
-        return target
-
-    if target not in pipeline_policy.phases:
-        msg = (
-            f"Transition from '{current_phase}' on signal '{signal}' "
-            f"references unknown phase '{target}'"
-        )
-        raise ValueError(msg)
-
-    return target
+    """Backward-compatible wrapper for centralized handoff resolution."""
+    return phase_handoffs.resolve_next_phase(current_phase, signal, pipeline_policy)
 
 
 def resolve_post_commit_phase(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> PipelinePhase:
-    """Resolve next phase for a successful commit with optional budget guards.
-
-    If pipeline_policy.post_commit_routes has a matching route for the current
-    commit phase and budget state, that target is used. Otherwise fallback to
-    regular on_success transition from resolve_next_phase().
-    """
-    if state.phase == "development_commit":
-        budget_state = "remaining" if state.development_budget_remaining > 0 else "exhausted"
-    elif state.phase == "review_commit":
-        budget_state = "remaining" if state.review_budget_remaining > 0 else "exhausted"
-    else:
-        return resolve_next_phase(state.phase, "success", pipeline_policy)
-
-    for route in pipeline_policy.post_commit_routes:
-        if route.when.phase == state.phase and route.when.budget_state == budget_state:
-            return route.target
-
-    return resolve_next_phase(state.phase, "success", pipeline_policy)
+    """Backward-compatible wrapper for centralized post-commit routing."""
+    return phase_handoffs.resolve_post_commit_phase(state, pipeline_policy)
