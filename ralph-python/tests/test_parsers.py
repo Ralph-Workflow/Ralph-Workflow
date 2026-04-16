@@ -163,6 +163,40 @@ def test_claude_parser_tool_use_block_is_emitted_as_user_visible_tool_activity()
     assert results[0].metadata["input"] == {"command": "ls -la", "workdir": "/tmp"}
 
 
+def test_claude_parser_prefixed_transcript_user_message_extracts_tool_result() -> None:
+    """Claude transcript lines with a message= payload should extract embedded tool results."""
+    parser = ClaudeParser()
+    lines = [
+        (
+            'claude user: message={"content":[{"content":"Task: produce a spec-compliant '
+            'MCP commit_message artifact","tool_use_id":"toolu_123","type":"tool_result"}],'
+            '"role":"user"}'
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert len(results) == 1
+    assert results[0].type == "tool_result"
+    assert results[0].content == "Task: produce a spec-compliant MCP commit_message artifact"
+    assert results[0].metadata["tool_use_id"] == "toolu_123"
+
+
+def test_claude_parser_prefixed_transcript_message_delta_is_suppressed() -> None:
+    """Claude transcript message_delta lines should be treated as transport noise."""
+    parser = ClaudeParser()
+    lines = [
+        (
+            'claude message_delta: type=message_delta; delta={"stop_reason":"tool_use"}; '
+            'usage={"output_tokens":170}; context_management={"applied_edits":[]}'
+        ),
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    assert results == []
+
+
 def test_opencode_parser_stream() -> None:
     """OpenCode parser should suppress lifecycle-only events in user-facing output."""
     parser = OpenCodeParser()

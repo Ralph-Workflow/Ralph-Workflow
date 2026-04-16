@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
+
+import pytest
 
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -33,9 +35,12 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+    from ralph.prompts.types import SessionCapabilities
 
 DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
@@ -57,6 +62,14 @@ def _registry_factory(return_value):
             return instance
 
     return Registry
+
+
+@pytest.fixture(autouse=True)
+def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(
+        runner_module, "load_policy_or_die", lambda _path: _load_default_policy_bundle()
+    )
 
 
 class TestCreateInitialState:
@@ -272,7 +285,8 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
     )
 
     class Registry:
-        def get(self, _name: str) -> AgentConfig:
+        def get(self, name: str) -> AgentConfig | None:
+            del name
             return AgentConfig(
                 cmd="claude -p",
                 output_flag="--output-format=stream-json",
@@ -284,10 +298,79 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
         MagicMock(),
         _load_default_policy_bundle().pipeline,
         Registry(),
+        WorkspaceScope("/tmp/worktree"),
     )
 
-    session_caps = captured["session_caps"]
+    session_caps = cast("SessionCapabilities", captured["session_caps"])
     assert session_caps.tool_name_prefix == claude_tool_name_prefix()
+
+
+def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: Path) -> None:
+    config = MagicMock()
+    config.general.verbosity = 0
+    effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.md")
+    agent_config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    class RegistryInstance:
+        def get(self, name: str) -> AgentConfig | None:
+            del name
+            return agent_config
+
+    class Registry:
+        @classmethod
+        def from_config(cls, config):
+            del cls, config
+            return RegistryInstance()
+
+    seen: dict[str, object] = {}
+
+    def fake_start_mcp_server(session, workspace):
+        seen["workspace_root"] = workspace.root
+
+        class Bridge:
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:9999/mcp"
+
+        return Bridge()
+
+    def fake_shutdown_mcp_server(_bridge) -> None:
+        return None
+
+    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
+        seen["system_prompt_root"] = workspace_root
+        seen["system_prompt_name"] = name
+        return str(tmp_path / "SYSTEM_PROMPT.md")
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options=None,
+    ):
+        del config
+        seen["prompt_file"] = prompt_file
+        seen["workspace_path"] = options.workspace_path if options is not None else None
+        return iter(())
+
+    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
+    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+    monkeypatch.setattr(
+        runner_module, "resolve_workspace_scope", lambda: runner_module.WorkspaceScope(tmp_path)
+    )
+
+    deps = runner_module._AgentExecutionDeps(
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=RuntimeError,
+        agent_registry=Registry,
+    )
+
+    result = runner_module._execute_agent_effect(effect, config, deps, WorkspaceScope(tmp_path))
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert seen["workspace_root"] == tmp_path
+    assert seen["system_prompt_root"] == tmp_path
+    assert seen["workspace_path"] == tmp_path
 
 
 class TestPipelineRunnerLoop:
@@ -579,6 +662,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -609,6 +693,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -636,6 +721,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -655,6 +741,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -674,6 +761,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -723,6 +811,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -761,6 +850,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
         second = runner_module._execute_agent_effect(
             effect,
@@ -770,6 +860,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert first == PipelineEvent.AGENT_SUCCESS
@@ -820,6 +911,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -874,6 +966,7 @@ class TestExecuteAgentEffect:
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
             ),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1011,7 +1104,9 @@ class TestExecuteCommitEffect:
 
 class TestExecuteEffect:
     def test_save_checkpoint_returns_checkpoint_event(self) -> None:
-        result = runner_module._execute_effect(SaveCheckpointEffect(), MagicMock())
+        result = runner_module._execute_effect(
+            SaveCheckpointEffect(), MagicMock(), WorkspaceScope("/tmp/worktree")
+        )
 
         assert result == PipelineEvent.CHECKPOINT_SAVED
 
@@ -1024,7 +1119,9 @@ class TestExecuteEffect:
             return PipelineEvent.COMMIT_SUCCESS
 
         monkeypatch.setattr(runner_module, "_execute_commit_effect", stub_commit)
-        result = runner_module._execute_effect(CommitEffect(message_file="foo"), MagicMock())
+        result = runner_module._execute_effect(
+            CommitEffect(message_file="foo"), MagicMock(), WorkspaceScope("/tmp/worktree")
+        )
 
         assert result == PipelineEvent.COMMIT_SUCCESS
         assert captured.get("called")
@@ -1034,6 +1131,7 @@ class TestExecuteEffect:
         result = runner_module._execute_effect(
             PreparePromptEffect(phase="planning", iteration=0),
             MagicMock(),
+            WorkspaceScope("/tmp/worktree"),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE

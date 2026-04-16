@@ -46,9 +46,27 @@ def find_repo_root(start: Path | str = Path()) -> Path:
     """
     try:
         repo = Repo(start, search_parent_directories=True)
-        return Path(repo.working_dir)
+        if repo.working_tree_dir:
+            return Path(repo.working_tree_dir).resolve()
+        return Path(repo.working_dir).resolve()
     except InvalidGitRepositoryError as exc:
         raise GitOperationError("find_repo_root", "Not inside a git repository") from exc
+
+
+def find_main_worktree_root(start: Path | str = Path()) -> Path:
+    """Find the primary worktree root for the current repository.
+
+    For linked worktrees, this resolves to the main checkout that owns the
+    shared git common directory. For ordinary repositories, it matches the
+    active repository root.
+    """
+
+    try:
+        repo = Repo(start, search_parent_directories=True)
+        common_dir = Path(repo.common_dir).resolve()
+        return common_dir.parent.resolve()
+    except InvalidGitRepositoryError as exc:
+        raise GitOperationError("find_main_worktree_root", "Not inside a git repository") from exc
 
 
 def is_repo_clean(repo_root: Path | str) -> bool:

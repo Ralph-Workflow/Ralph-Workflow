@@ -7,6 +7,10 @@ wraps pathlib.Path operations for real filesystem access.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 class FsWorkspace:
@@ -19,13 +23,30 @@ class FsWorkspace:
         root: Root directory for all file operations.
     """
 
-    def __init__(self, root: Path | str) -> None:
+    def __init__(
+        self, root: Path | str, *, allowed_roots: Sequence[Path | str] | None = None
+    ) -> None:
         """Initialize filesystem workspace.
 
         Args:
             root: Root directory path.
         """
-        self._root = Path(root)
+        self._root = Path(root).expanduser().resolve()
+        requested_allowed = allowed_roots or (self._root,)
+        self._allowed_roots = tuple(Path(path).expanduser().resolve() for path in requested_allowed)
+
+    def _resolve_candidate(self, path: str) -> Path:
+        candidate_path = Path(path)
+        base = self._root if not candidate_path.is_absolute() else Path("/")
+        candidate = (base / candidate_path).expanduser().resolve(strict=False)
+        for allowed_root in self._allowed_roots:
+            try:
+                candidate.relative_to(allowed_root)
+                return candidate
+            except ValueError:
+                continue
+        msg = f"Path '{path}' resolves outside workspace root"
+        raise ValueError(msg)
 
     def _abs(self, path: str) -> Path:
         """Convert relative path to absolute path.
@@ -36,7 +57,7 @@ class FsWorkspace:
         Returns:
             Absolute path.
         """
-        return self._root / path
+        return self._resolve_candidate(path)
 
     def read(self, path: str) -> str:
         """Read file contents.

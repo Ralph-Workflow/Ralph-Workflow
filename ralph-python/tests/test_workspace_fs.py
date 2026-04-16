@@ -14,12 +14,12 @@ class TestFsWorkspaceInit:
     def test_accepts_path_object(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             ws = FsWorkspace(Path(tmpdir))
-            assert ws.root == Path(tmpdir)
+            assert ws.root == Path(tmpdir).resolve()
 
     def test_accepts_string_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             ws = FsWorkspace(tmpdir)
-            assert ws.root == Path(tmpdir)
+            assert ws.root == Path(tmpdir).resolve()
 
 
 class TestFsWorkspaceRead:
@@ -76,6 +76,20 @@ class TestFsWorkspaceWrite:
             ws.write("existing.txt", "updated")
 
             assert (Path(tmpdir) / "existing.txt").read_text(encoding="utf-8") == "updated"
+
+    def test_write_rejects_parent_traversal_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+
+            with pytest.raises(ValueError, match="outside workspace"):
+                ws.write("../escape.txt", "blocked")
+
+    def test_write_rejects_absolute_path_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+
+            with pytest.raises(ValueError, match="outside workspace"):
+                ws.write("/tmp/escape.txt", "blocked")
 
 
 class TestFsWorkspaceAppend:
@@ -200,10 +214,17 @@ class TestFsWorkspaceAbsolutePath:
             assert abs_path.startswith(str(Path(tmpdir).resolve()))
             assert "some/file.txt" in abs_path
 
+    def test_absolute_path_rejects_parent_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+
+            with pytest.raises(ValueError, match="outside workspace"):
+                ws.absolute_path("../escape.txt")
+
 
 class TestFsWorkspaceRoot:
     def test_returns_root_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             ws = FsWorkspace(tmpdir)
 
-            assert ws.root == Path(tmpdir)
+            assert ws.root == Path(tmpdir).resolve()

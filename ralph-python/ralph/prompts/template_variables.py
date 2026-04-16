@@ -16,13 +16,13 @@ from ralph.mcp.tool_names import (
     ENV_READ_TOOLS,
     EXEC_TOOL,
     FINALIZE_PLAN_TOOL,
+    GET_PLAN_DRAFT_TOOL,
     GIT_DIFF_READ_TOOLS,
     GIT_DIFF_TOOL,
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
     GIT_STATUS_READ_TOOLS,
     GIT_STATUS_TOOL,
-    GET_PLAN_DRAFT_TOOL,
     LIST_DIRECTORY_RECURSIVE_TOOL,
     LIST_DIRECTORY_TOOL,
     PLANNING_DRAFT_TOOLS,
@@ -40,8 +40,6 @@ from ralph.mcp.tool_names import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ralph.mcp.session import AgentSession
 
 DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {

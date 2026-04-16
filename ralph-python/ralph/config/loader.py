@@ -23,6 +23,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from ralph.config.models import UnifiedConfig
+from ralph.workspace.scope import WorkspaceScope
 
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
@@ -197,6 +198,7 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
 def load_config(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
+    workspace_scope: WorkspaceScope | None = None,
 ) -> UnifiedConfig:
     """Build merged UnifiedConfig from all layers.
 
@@ -217,15 +219,28 @@ def load_config(
         SystemExit: If configuration validation fails.
     """
     global_data = load_toml(_global_config_path())
+    propagated_data: dict[str, object] = {}
     local_path = config_path or LOCAL_CONFIG_PATH
+    if config_path is None:
+        if workspace_scope is None:
+            msg = "workspace_scope is required when config_path is not provided"
+            raise ValueError(msg)
+        if LOCAL_CONFIG_PATH.is_absolute():
+            local_path = LOCAL_CONFIG_PATH
+        else:
+            local_path = workspace_scope.local_config_path
+            for propagated_path in workspace_scope.propagated_config_paths:
+                propagated_data = _deep_merge(propagated_data, load_toml(propagated_path))
     local_data = load_toml(local_path)
 
     # Convert legacy config format if needed
     global_data = _convert_legacy_config(global_data)
+    propagated_data = _convert_legacy_config(propagated_data)
     local_data = _convert_legacy_config(local_data)
 
-    # Merge: global -> local
-    merged = _deep_merge(global_data, local_data)
+    # Merge: global -> propagated -> local
+    merged = _deep_merge(global_data, propagated_data)
+    merged = _deep_merge(merged, local_data)
     _migrate_agent_policy_tables(merged)
 
     # Apply CLI overrides last

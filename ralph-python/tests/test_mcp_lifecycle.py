@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from ralph.mcp.server import lifecycle
@@ -10,6 +10,20 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 PREFLIGHT_TIMEOUT = 123
+
+
+class FakeProcess:
+    def poll(self) -> int | None:
+        return None
+
+    def terminate(self) -> None:
+        return None
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        return 0
+
+    def kill(self) -> None:
+        return None
 
 
 def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
@@ -34,13 +48,9 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
         seen["command"] = command
         seen["cwd"] = cwd
         seen["env"] = env
-        return SimpleNamespace(
-            poll=lambda: None,
-            terminate=lambda: None,
-            wait=lambda timeout=None: 0,
-        )
+        return FakeProcess()
 
-    def fake_preflight(endpoint: str, required_tools: tuple[str, ...], timeout):
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
         seen["endpoint"] = endpoint
         seen["required_tools"] = required_tools
         seen["timeout"] = timeout
@@ -51,7 +61,7 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
         subprocess_env=fake_subprocess_env,
         spawn_process=fake_spawn,
         preflight=fake_preflight,
-        preflight_timeout=lambda: PREFLIGHT_TIMEOUT,
+        preflight_timeout=lambda: timedelta(seconds=PREFLIGHT_TIMEOUT),
     )
 
     session = AgentSession(
@@ -67,5 +77,5 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     assert bridge.agent_endpoint_uri() == "http://127.0.0.1:43123/mcp"
     assert seen["session_root"] == tmp_path
     assert seen["endpoint"] == "http://127.0.0.1:43123/mcp"
-    assert seen["timeout"] == PREFLIGHT_TIMEOUT
+    assert seen["timeout"] == timedelta(seconds=PREFLIGHT_TIMEOUT)
     assert seen["cwd"] == tmp_path

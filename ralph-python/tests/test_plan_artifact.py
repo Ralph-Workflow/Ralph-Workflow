@@ -45,6 +45,9 @@ class FakeFileBackend:
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         self.files.pop(path, None)
 
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        return []
+
 
 def _valid_plan() -> dict[str, object]:
     return {

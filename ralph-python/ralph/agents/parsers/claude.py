@@ -23,6 +23,11 @@ class ClaudeParser:
             if not stripped:
                 continue
 
+            prefixed_lines = self._parse_prefixed_transcript_line(stripped)
+            if prefixed_lines is not None:
+                yield from prefixed_lines
+                continue
+
             try:
                 parsed: object = json.loads(stripped)
             except json.JSONDecodeError:
@@ -176,30 +181,92 @@ class ClaudeParser:
         if not isinstance(content, list):
             return
 
+        yield from self._parse_message_content(content, raw)
+
+    def _parse_message_content(
+        self,
+        content: list[object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
         for block in content:
             if not isinstance(block, dict):
                 continue
 
-            block_type = str(block.get("type", ""))
+            block_obj = cast("dict[str, object]", block)
+            block_type = str(block_obj.get("type", ""))
             if block_type == "text":
-                text = str(block.get("text", ""))
+                text = str(block_obj.get("text", ""))
                 if text:
-                    yield AgentOutputLine(type="text", content=text, raw=raw, metadata=block)
+                    yield AgentOutputLine(type="text", content=text, raw=raw, metadata=block_obj)
                 continue
 
             if block_type == "tool_use":
-                tool_name = str(block.get("name", "unknown"))
-                yield AgentOutputLine(type="tool_use", content=tool_name, raw=raw, metadata=block)
+                tool_name = str(block_obj.get("name", "unknown"))
+                yield AgentOutputLine(
+                    type="tool_use", content=tool_name, raw=raw, metadata=block_obj
+                )
                 continue
 
             if block_type == "tool_result":
-                tool_result = self._stringify_tool_content(block.get("content", ""))
+                tool_result = self._stringify_tool_content(block_obj.get("content", ""))
                 yield AgentOutputLine(
                     type="tool_result",
                     content=tool_result,
                     raw=raw,
-                    metadata=block,
+                    metadata=block_obj,
                 )
+
+    def _parse_prefixed_transcript_line(self, raw: str) -> list[AgentOutputLine] | None:
+        if raw.startswith("[claude]:"):
+            return []
+
+        if raw.startswith("claude: "):
+            return [AgentOutputLine(type="text", content=raw.removeprefix("claude: "), raw=raw)]
+
+        if raw.startswith("claude tool: "):
+            return self._parse_prefixed_tool_line(raw)
+
+        if raw.startswith("claude message_delta:") or raw.startswith("claude system: status="):
+            return []
+
+        return self._parse_prefixed_message_line(raw)
+
+    def _parse_prefixed_tool_line(self, raw: str) -> list[AgentOutputLine]:
+        payload = raw.removeprefix("claude tool: ").strip()
+        tool_name, has_details, detail_suffix = payload.partition(" (")
+        metadata: dict[str, object] = {}
+        if has_details and detail_suffix.endswith(")"):
+            metadata["input"] = {"args": detail_suffix[:-1]}
+        return [
+            AgentOutputLine(
+                type="tool_use",
+                content=tool_name.strip() or "unknown",
+                raw=raw,
+                metadata=metadata,
+            )
+        ]
+
+    def _parse_prefixed_message_line(self, raw: str) -> list[AgentOutputLine] | None:
+        for role in ("user", "assistant"):
+            prefix = f"claude {role}: message="
+            if not raw.startswith(prefix):
+                continue
+
+            try:
+                parsed: object = json.loads(raw.removeprefix(prefix))
+            except json.JSONDecodeError:
+                return None
+
+            if not isinstance(parsed, dict):
+                return None
+
+            content = parsed.get("content")
+            if not isinstance(content, list):
+                return []
+
+            return list(self._parse_message_content(content, raw))
+
+        return None
 
     def _parse_content_block(
         self,

@@ -9,6 +9,7 @@ mirror in `.agent/tmp/commit-message.txt` is maintained for CLI compatibility.
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -28,6 +29,9 @@ _SKIP_KIND = "skip"
 _SKIP_PREFIX = "SKIP:"
 _DETAILED_BODY_KEYS = ("body_summary", "body_details", "body_footer")
 _EXCLUDED_FILE_REASONS = frozenset({"internal_ignore", "not_task_related", "sensitive", "deferred"})
+_COMMIT_SUBJECT_PATTERN = re.compile(
+    r"^(feat|fix|docs|refactor|test|style|perf|build|ci|chore)(\([a-z0-9/_-]+\))?(!)?: [a-z0-9].+"
+)
 
 
 def _now_iso() -> str:
@@ -116,6 +120,7 @@ def normalize_commit_message_content(content: str | dict[str, object]) -> dict[s
             if not reason:
                 raise ValueError("skip commit_message content requires a reason")
             return {"type": _SKIP_KIND, "reason": reason}
+        _validate_commit_subject(stripped)
         return {"type": _COMMIT_KIND, "subject": stripped}
 
     if not isinstance(content, dict):
@@ -213,7 +218,18 @@ def _required_string_field(content: dict[str, object], field: str) -> str:
     value = content.get(field)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"commit_message payloads require a non-empty '{field}'")
-    return value.strip()
+    normalized = value.strip()
+    if field == "subject":
+        _validate_commit_subject(normalized)
+    return normalized
+
+
+def _validate_commit_subject(subject: str) -> None:
+    if not _COMMIT_SUBJECT_PATTERN.fullmatch(subject):
+        raise ValueError(
+            "commit_message subjects must use conventional commit format "
+            "like 'fix(parser): preserve prefixed transcript lines'"
+        )
 
 
 def _optional_string_field(content: dict[str, object], field: str) -> str | None:

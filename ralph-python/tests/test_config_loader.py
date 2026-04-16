@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,16 +15,20 @@ from ralph.config.loader import (
     load_config,
 )
 from ralph.config.models import AgentConfig, GeneralConfig
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 DEFAULT_DEVELOPER_ITERS = 5
 DEFAULT_REVIEWER_REVIEWS = 2
 DEFAULT_VERBOSITY = 2
 XDG_DEVELOPER_ITERS = 8
 LOCAL_DEVELOPER_ITERS = 3
+
+
+def _scope_for(path: Path) -> WorkspaceScope:
+    return WorkspaceScope(path)
 
 
 def _assert_validation_error(action: Callable[[], object]) -> None:
@@ -76,7 +81,7 @@ def test_load_config_with_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     )
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name)
 
-    config = load_config()
+    config = load_config(workspace_scope=_scope_for(tmp_path))
     assert config.general.developer_iters == DEFAULT_DEVELOPER_ITERS
     assert config.general.reviewer_reviews == DEFAULT_REVIEWER_REVIEWS
     assert config.general.workflow.checkpoint_enabled is True
@@ -85,7 +90,10 @@ def test_load_config_with_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 def test_load_config_validation_error() -> None:
     """Test that invalid config raises ValidationError."""
     _assert_validation_error_or_system_exit(
-        lambda: load_config(cli_overrides={"general": {"developer_iters": -1}})
+        lambda: load_config(
+            cli_overrides={"general": {"developer_iters": -1}},
+            workspace_scope=_scope_for(Path.cwd()),
+        )
     )
 
 
@@ -103,7 +111,7 @@ def test_load_config_supports_xdg_config_home(
         "ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / ".agent" / "ralph-workflow.toml"
     )
 
-    config = load_config()
+    config = load_config(workspace_scope=_scope_for(tmp_path))
 
     assert config.general.developer_iters == XDG_DEVELOPER_ITERS
 
@@ -131,7 +139,7 @@ def test_load_config_converts_nested_chain_and_drain_tables(
     )
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
 
-    config = load_config()
+    config = load_config(workspace_scope=_scope_for(tmp_path))
 
     assert config.agent_chains == {"commit_chain": ["claude"]}
     assert config.agent_drains == {"commit": "commit_chain", "review": "commit_chain"}
@@ -170,7 +178,7 @@ def test_load_config_local_normalized_tables_override_xdg_global(
     )
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
 
-    config = load_config()
+    config = load_config(workspace_scope=_scope_for(tmp_path))
 
     assert config.general.developer_iters == LOCAL_DEVELOPER_ITERS
     assert config.agent_chains["commit_chain"] == ["codex"]
@@ -179,7 +187,7 @@ def test_load_config_local_normalized_tables_override_xdg_global(
 
 def test_unified_config_frozen() -> None:
     """Test that UnifiedConfig is immutable (frozen)."""
-    config = load_config()
+    config = load_config(workspace_scope=_scope_for(Path.cwd()))
     _assert_validation_error(lambda: setattr(config.general, "developer_iters", 10))
 
 

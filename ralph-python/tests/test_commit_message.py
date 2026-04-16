@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.mcp.commit_message import (
     read_commit_message_artifact,
     read_commit_message_from_path,
@@ -32,8 +34,14 @@ class FakeFileBackend:
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         self.files[path] = content
 
+    def replace(self, source: Path, destination: Path) -> None:
+        self.files[destination] = self.files.pop(source)
+
     def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
         self.files.pop(path, None)
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        return []
 
 
 def test_read_commit_message_artifact_formats_structured_commit_payload(tmp_path: Path) -> None:
@@ -99,3 +107,14 @@ def test_write_commit_message_artifact_uses_injected_backend(tmp_path: Path) -> 
     artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
     payload = json.loads(backend.read_text(artifact_path))
     assert payload["created_at"] == "STATIC-TIME"
+
+
+def test_write_commit_message_artifact_rejects_non_conventional_subject(tmp_path: Path) -> None:
+    backend = FakeFileBackend()
+
+    with pytest.raises(ValueError, match="conventional commit format"):
+        write_commit_message_artifact(
+            tmp_path,
+            {"type": "commit", "subject": "update files"},
+            backend=backend,
+        )

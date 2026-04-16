@@ -30,6 +30,7 @@ from ralph.cli.options import (
 from ralph.config.enums import PauseOnExit, RecoveryStrategy, ReviewDepth, Verbosity
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
+from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -497,7 +498,9 @@ def _handle_list_agents(
     if not list_agents:
         return None
     try:
-        cfg = load_config(_config_path(config), cli_overrides)
+        config_path = _config_path(config)
+        workspace_scope = None if config_path is not None else resolve_workspace_scope()
+        cfg = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         agents: Mapping[str, AgentConfig] = cfg.agents
         display_agents_table(agents)
         return 0
@@ -544,7 +547,9 @@ def _handle_check_config(
     if not check_config:
         return None
     try:
-        load_config(_config_path(config), cli_overrides)
+        config_path = _config_path(config)
+        workspace_scope = None if config_path is not None else resolve_workspace_scope()
+        load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         console.print("[green]Configuration is valid[/green]")
         return 0
     except Exception as e:

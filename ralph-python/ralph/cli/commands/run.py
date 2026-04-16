@@ -12,6 +12,7 @@ from loguru import logger
 
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
+from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,7 +77,8 @@ def run_pipeline(
     """
     # Load configuration
     try:
-        config = load_config(config_path, cli_overrides)
+        workspace_scope = None if config_path is not None else resolve_workspace_scope()
+        config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
         logger.error("Failed to load configuration: {}", e)
         return 1

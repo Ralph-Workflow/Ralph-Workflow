@@ -35,9 +35,22 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
-    assert "content_path" in prompt
-    assert "edit the json file on disk" in prompt.lower()
-    assert ".agent/tmp/commit_message.json" in prompt
+    assert "do not call bash" in prompt.lower()
+    assert "do not call write_file" in prompt.lower()
+    assert "do not create, edit, or read `.agent/tmp/commit_message.json`" in prompt.lower()
+    assert '"artifact_type":"commit_message"' in prompt
+    assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
+    assert "do not use `content_path` for this task" in prompt.lower()
+    assert "edit the json file on disk" not in prompt.lower()
+    assert "use `chore` only for repo maintenance" in prompt.lower()
+    assert "omit the scope when the change spans multiple subsystems" in prompt.lower()
+    assert "include a body when the why is not obvious from the subject alone" in prompt.lower()
+    assert "common mistakes to avoid" in prompt.lower()
+    assert "bad: chore: update files" in prompt.lower()
+    assert "good: feat(mcp): add structured commit retries" in prompt.lower()
+    assert "bad: fix: stuff" in prompt.lower()
+    assert "good: fix(parser): preserve prefixed transcript lines" in prompt.lower()
+    assert "counterexample" in prompt.lower()
 
 
 def test_commit_prompt_rejects_empty_diff() -> None:
@@ -73,7 +86,7 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert prompt.startswith("Do not analyze anything.")
     assert "Immediately call `ralph_submit_artifact`" in prompt
     assert 'artifact_type="commit_message"' in prompt
-    assert '{"type":"commit","subject":"type(scope): description"}' in prompt
+    assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
     assert (
         '{"type":"commit","subject":"type(scope): description",'
         '"excluded_files":[{"path":"notes/todo.md","reason":"not_task_related"}]}' in prompt
@@ -83,8 +96,18 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt
-    assert "content_path" in prompt
-    assert ".agent/tmp/commit_message.json" in prompt
+    assert "Do not call write_file" in prompt
+    assert "Do not create, edit, or read `.agent/tmp/commit_message.json`" in prompt
+    assert '"artifact_type":"commit_message"' in prompt
+    assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
+    assert "Do not use `content_path` for this task" in prompt
+    assert "Use `chore` only for repo maintenance" in prompt
+    assert "Omit the scope when the change spans multiple subsystems" in prompt
+    assert "Include a body when the why is not obvious from the subject alone" in prompt
+    assert "Bad: chore: update files" in prompt
+    assert "Good: feat(mcp): add structured commit retries" in prompt
+    assert "Bad: fix: stuff" in prompt
+    assert "Good: fix(parser): preserve prefixed transcript lines" in prompt
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,32 @@ def test_find_repo_root(tmp_git_repo: Path) -> None:
     """Test finding repository root."""
     root = find_repo_root(tmp_git_repo)
     assert root == tmp_git_repo
+
+
+def test_find_repo_root_prefers_active_worktree_root(tmp_path: Path) -> None:
+    """Worktree paths should resolve to the active worktree, not the main checkout."""
+    main_repo = tmp_path / "main"
+    main_repo.mkdir()
+    repo = Repo.init(main_repo)
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    readme = main_repo / "README.md"
+    readme.write_text("main", encoding="utf-8")
+    repo.index.add(["README.md"])
+    repo.index.commit("initial commit")
+
+    worktree = tmp_path / "feature-worktree"
+    subprocess.run(
+        ["git", "worktree", "add", str(worktree)],
+        cwd=main_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    nested = worktree / "src"
+    nested.mkdir()
+
+    assert find_repo_root(nested) == worktree.resolve()
 
 
 def test_find_repo_root_not_git() -> None:

@@ -379,6 +379,44 @@ def test_invoke_agent_passes_extra_env_to_subprocess(monkeypatch, tmp_path: Path
     assert seen_env[0]["RALPH_MCP_ENDPOINT"] == "http://127.0.0.1:9999/mcp"
 
 
+def test_invoke_agent_runs_subprocess_in_workspace_path(monkeypatch, tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+    seen_cwds: list[str | None] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args, **kwargs):
+        seen_cwds.append(kwargs.get("cwd"))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+        )
+    )
+
+    assert seen_cwds == [str(tmp_path)]
+
+
 def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     monkeypatch, tmp_path: Path
 ) -> None:

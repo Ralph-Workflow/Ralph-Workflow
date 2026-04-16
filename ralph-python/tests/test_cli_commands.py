@@ -20,6 +20,7 @@ from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verb
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.commit_message import write_commit_message_artifact
 from ralph.mcp.startup import preflight_http_mcp_server_tools
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     import pytest
@@ -105,11 +106,34 @@ def test_commit_plumbing_reports_config_errors(monkeypatch: pytest.MonkeyPatch) 
 def test_commit_plumbing_prints_no_staged_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: Path("/tmp"))
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(commit_module, "has_staged_changes", lambda root: False)
 
     commit_module.commit_plumbing()
     assert "No staged changes to commit" in stream.getvalue()
+
+
+def test_commit_plumbing_injects_workspace_scope_for_implicit_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    scope = WorkspaceScope("/tmp/worktree")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: Path("/tmp/worktree"))
+    monkeypatch.setattr(commit_module, "resolve_workspace_scope", lambda _start: scope)
+
+    def fake_load_config(*args: object, **kwargs: object) -> SimpleNamespace:
+        captured["kwargs"] = kwargs
+        return _simple_config()
+
+    monkeypatch.setattr(commit_module, "load_config", fake_load_config)
+    monkeypatch.setattr(commit_module, "has_staged_changes", lambda _root: False)
+
+    commit_module.commit_plumbing()
+
+    assert "No staged changes to commit" in stream.getvalue()
+    assert captured["kwargs"] == {"workspace_scope": scope}
 
 
 def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
@@ -117,7 +141,7 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     _stub_commit_bridge(monkeypatch)
 
     staged_all_calls: list[Path] = []
@@ -180,7 +204,7 @@ def test_generate_commit_uses_commit_drain_agent_chain(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     _stub_commit_bridge(monkeypatch)
     monkeypatch.setattr(
         commit_module,
@@ -234,7 +258,7 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
     monkeypatch.setattr(
         commit_module,
         "load_config",
-        lambda *_: UnifiedConfig(
+        lambda *args, **kwargs: UnifiedConfig(
             agent_chains={
                 "commit_chain": ["opencode/minimax/MiniMax-M2.7-highspeed"],
             },
@@ -276,11 +300,16 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    monkeypatch.setattr(
+        commit_module,
+        "resolve_workspace_scope",
+        lambda _start: WorkspaceScope(tmp_path),
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -334,7 +363,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     monkeypatch.setattr(
         commit_module,
         "load_config",
-        lambda *_: UnifiedConfig(
+        lambda *args, **kwargs: UnifiedConfig(
             agent_chains={"commit_chain": ["claude", "opencode/minimax/MiniMax-M2.7-highspeed"]},
             agent_drains={"commit": "commit_chain", "review": "commit_chain"},
         ),
@@ -381,6 +410,28 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         "Previous attempt failed to submit the required commit_message artifact" in body
         for body in prompt_bodies[1:]
     )
+    assert any(
+        'Call the submit-artifact MCP tool with artifact_type="commit_message"' in body
+        for body in prompt_bodies[1:]
+    )
+    assert any(
+        "Do not create, edit, or read .agent/tmp/commit_message.json" in body
+        for body in prompt_bodies[1:]
+    )
+    assert any(
+        "Do not call Bash, python, tee, printf, redirection, or any file-writing tool" in body
+        for body in prompt_bodies[1:]
+    )
+    assert any("Message quality mistakes to avoid" in body for body in prompt_bodies[1:])
+    assert any("Bad: chore: update files" in body for body in prompt_bodies[1:])
+    assert any(
+        "Good: feat(mcp): add structured commit retries" in body for body in prompt_bodies[1:]
+    )
+    assert any("Bad: fix: stuff" in body for body in prompt_bodies[1:])
+    assert any(
+        "Good: fix(parser): preserve prefixed transcript lines" in body
+        for body in prompt_bodies[1:]
+    )
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix: fallback agent message" in output
@@ -391,7 +442,7 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -444,7 +495,7 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -490,7 +541,7 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -541,7 +592,7 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
     monkeypatch.setattr(
         commit_module,
         "load_config",
-        lambda *_: UnifiedConfig(
+        lambda *args, **kwargs: UnifiedConfig(
             agent_chains={
                 "commit_chain": ["ghost-agent"],
                 "review_chain": ["codex"],
@@ -583,7 +634,7 @@ def test_generate_commit_msg_writes_commit_message_artifact(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -638,7 +689,7 @@ def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -685,7 +736,7 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -735,7 +786,7 @@ def test_generate_commit_applies_message_from_persisted_artifact(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -789,7 +840,7 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -855,7 +906,7 @@ def test_show_commit_msg_reads_artifact_without_staged_changes(
     )
 
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "has_staged_changes",
@@ -874,7 +925,7 @@ def test_show_commit_msg_reports_missing_artifact(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "has_staged_changes",
@@ -895,7 +946,7 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
     commit_file.write_text("feat: old message", encoding="utf-8")
 
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -939,7 +990,7 @@ def test_generate_commit_msg_surfaces_parsed_agent_output_when_artifact_missing(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -989,7 +1040,7 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -1058,7 +1109,7 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -1108,7 +1159,7 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *_: _simple_config())
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
         "_working_tree_diff",
@@ -1269,7 +1320,7 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
             workflow=SimpleNamespace(checkpoint_enabled=False),
         )
     )
-    monkeypatch.setattr(diagnose_module, "load_config", lambda *_: config)
+    monkeypatch.setattr(diagnose_module, "load_config", lambda *args, **kwargs: config)
     diagnose_module._check_configuration(None, {})
     output = stream.getvalue()
     assert "Config loaded" in output
@@ -1289,7 +1340,9 @@ def test_check_configuration_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_check_agents_no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, diagnose_module)
-    monkeypatch.setattr(diagnose_module, "load_config", lambda *_: SimpleNamespace(agents={}))
+    monkeypatch.setattr(
+        diagnose_module, "load_config", lambda *args, **kwargs: SimpleNamespace(agents={})
+    )
     diagnose_module._check_agents({})
     assert "No agents configured" in stream.getvalue()
 
@@ -1298,7 +1351,9 @@ def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> 
     stream = _attach_console(monkeypatch, diagnose_module)
     agent = AgentConfig(cmd="agent", can_commit=True)
     monkeypatch.setattr(
-        diagnose_module, "load_config", lambda *_: SimpleNamespace(agents={"alpha": agent})
+        diagnose_module,
+        "load_config",
+        lambda *args, **kwargs: SimpleNamespace(agents={"alpha": agent}),
     )
     diagnose_module._check_agents({})
     output = stream.getvalue()

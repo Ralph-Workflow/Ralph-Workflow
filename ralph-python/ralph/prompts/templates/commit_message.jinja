@@ -9,7 +9,24 @@ Read the diff silently. Do not write an analysis.
 ## COMMIT MESSAGE FORMAT
 <type>[optional scope][!]: subject
 
-Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. If the change does not fit, default to chore and describe the intent. Keep the subject <= 50 chars and write it in lowercase imperative mood. Add a body only when the diff needs extra context.
+Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. Use `chore` only for repo maintenance, tooling, or admin-only changes; do not default to `chore` for meaningful product or code changes. Keep the subject <= 50 chars and write it in lowercase imperative mood.
+
+QUALITY RULES:
+- Match the repo's conventional-commit style. Prefer the narrowest stable scope when one subsystem clearly owns most of the diff.
+- Omit the scope when the change spans multiple subsystems or no single scope would be honest.
+- The subject must say what changed, not that files changed. Avoid filler like "update", "misc", "stuff", or file-count summaries.
+- Include a body when the why is not obvious from the subject alone, when behavior changes, when a refactor is non-obvious, when compatibility/migration notes matter, or when reviewers need context that is not obvious from the diff.
+- Body text should explain impact or rationale, not restate the file list.
+
+COMMON MISTAKES TO AVOID:
+- Bad: chore: update files
+  Counterexample: Good: feat(mcp): add structured commit retries
+- Bad: fix: stuff
+  Counterexample: Good: fix(parser): preserve prefixed transcript lines
+- Bad: chore(prompts): tweak message
+  Counterexample: Good: docs(prompts): document excluded_files schema
+- Bad: feat(tmp): add retry handling
+  Counterexample: Good: feat(prompts): clarify commit artifact retry instructions
 
 STRICT OUTPUT RULES:
 Do not explain the diff. Do not output bullets, markdown, sections, rationale, or file lists.
@@ -19,9 +36,14 @@ Do not write 'Would you like me to' or any equivalent question.
 The task is to submit the artifact now, not to propose a commit message for later approval.
 Your job is to decide on the correct structured artifact and submit it by calling the tool directly.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
+Do not call Bash.
+Do not call write_file.
+Do not create, edit, or read `.agent/tmp/commit_message.json`.
+Do not use `content_path` for this task.
 
 MCP REQUIREMENT:
-You MUST submit the final result by calling {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} with artifact_type="commit_message" and content as a JSON string matching one of these shapes:
+The only tool you may call for this task is {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }}.
+You MUST submit the final result by calling it with `artifact_type="commit_message"` and `content` set to a JSON string matching one of these shapes:
 {"type": "commit", "subject": "type(scope): description"}
 {"type": "commit", "subject": "type(scope): description", "body": "Optional multi-line body"}
 {"type": "commit", "subject": "type(scope): description", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
@@ -29,16 +51,16 @@ You MUST submit the final result by calling {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS
 {"type": "commit", "subject": "type(scope): description", "excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]}
 {"type": "skip", "reason": "Reason why no commit is needed"}.
 
+Submit the MCP arguments in this shape:
+{"artifact_type":"commit_message","content":"{\"type\":\"commit\",\"subject\":\"type(scope): description\"}"}
+
 Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope. `files` must be an array of strings. `excluded_files` must be an array of objects with exactly `path` and `reason` fields. Valid `excluded_files.reason` values: internal_ignore, not_task_related, sensitive, deferred.
 
 REQUIRED PROCEDURE:
 1. Read the diff and decide whether the correct result is a commit artifact or a skip artifact.
 2. Build the JSON content with the exact schema above.
-3. Immediately call the tool with that JSON string as the content argument.
+3. Immediately call the tool with `artifact_type="commit_message"` and that JSON string as the `content` argument.
 4. After the MCP call succeeds, optionally echo only the commit subject line once and nothing else. If you submitted a skip artifact, do not emit extra prose.
-
-If you need to revise a saved commit_message artifact, edit the JSON file on disk at `.agent/tmp/commit_message.json` and resubmit with `content_path` using this exact call:
-`ralph_submit_artifact({"artifact_type":"commit_message","content_path":".agent/tmp/commit_message.json"})`
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 

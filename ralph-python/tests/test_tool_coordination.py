@@ -10,7 +10,7 @@ from ralph.mcp.tool_coordination import (
 class MockSession:
     session_id = "session-1"
 
-    def check_capability(self, _capability: str) -> object:
+    def check_capability(self, capability: str) -> object:
         return True
 
 

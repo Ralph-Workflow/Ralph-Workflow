@@ -57,6 +57,7 @@ from ralph.prompts.materialize import (
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace import FsWorkspace
+from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -108,7 +109,8 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
-    policy_bundle = load_policy_or_die(Path(".agent"))
+    workspace_scope = resolve_workspace_scope()
+    policy_bundle = load_policy_or_die(workspace_scope.root / ".agent")
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
         config,
@@ -130,6 +132,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 effect=effect,
                 state=state,
                 pipeline_policy=policy_bundle.pipeline,
+                workspace_scope=workspace_scope,
             )
             if inline_result is not None:
                 if isinstance(inline_result, int):
@@ -137,10 +140,19 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 state = inline_result
                 continue
 
-            workspace = FsWorkspace(Path())
-            _materialize_agent_prompt_if_needed(effect, workspace, policy_bundle.pipeline, registry)
+            workspace = FsWorkspace(
+                workspace_scope.root,
+                allowed_roots=workspace_scope.allowed_roots,
+            )
+            _materialize_agent_prompt_if_needed(
+                effect,
+                workspace,
+                policy_bundle.pipeline,
+                registry,
+                workspace_scope,
+            )
 
-            event = _execute_effect(effect, config)
+            event = _execute_effect(effect, config, workspace_scope)
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
                 event = _phase_event_after_agent_run(
                     effect=effect,
@@ -171,6 +183,7 @@ def _handle_inline_effect(
     effect: Effect,
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
+    workspace_scope: WorkspaceScope,
 ) -> PipelineState | int | None:
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
@@ -178,7 +191,7 @@ def _handle_inline_effect(
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
-        _materialize_prepared_prompt(effect, pipeline_policy)
+        _materialize_prepared_prompt(effect, pipeline_policy, workspace_scope)
         updated_state = state.copy_with(
             phase=effect.phase,
             iteration=effect.iteration,
@@ -200,8 +213,12 @@ def _handle_inline_effect(
 def _materialize_prepared_prompt(
     effect: PreparePromptEffect,
     pipeline_policy: PipelinePolicy,
+    workspace_scope: WorkspaceScope,
 ) -> None:
-    workspace = FsWorkspace(Path())
+    workspace = FsWorkspace(
+        workspace_scope.root,
+        allowed_roots=workspace_scope.allowed_roots,
+    )
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
@@ -209,7 +226,7 @@ def _materialize_prepared_prompt(
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(effect.phase)
         ),
-        workspace_root=Path(),
+        workspace_root=workspace_scope.root,
     )
 
 
@@ -218,6 +235,7 @@ def _materialize_agent_prompt_if_needed(
     workspace: FsWorkspace,
     pipeline_policy: PipelinePolicy,
     registry: _RegistryLike,
+    workspace_scope: WorkspaceScope,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
@@ -235,7 +253,7 @@ def _materialize_agent_prompt_if_needed(
             _prompt_session_drain_for_phase(effect.phase),
             tool_name_prefix=tool_name_prefix,
         ),
-        workspace_root=Path(),
+        workspace_root=workspace_scope.root,
     )
 
 
@@ -403,7 +421,11 @@ def _commit_effect() -> CommitEffect:
     return CommitEffect(message_file=COMMIT_MESSAGE_ARTIFACT)
 
 
-def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
+def _execute_effect(
+    effect: Effect,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+) -> PipelineEvent:
     """Execute an effect and return the resulting event.
 
     Args:
@@ -427,7 +449,7 @@ def _execute_effect(effect: Effect, config: UnifiedConfig) -> PipelineEvent:
     )
 
     if isinstance(effect, InvokeAgentEffect):
-        return _execute_agent_effect(effect, config, deps)
+        return _execute_agent_effect(effect, config, deps, workspace_scope)
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(effect, create_commit, stage_all)
     if isinstance(effect, SaveCheckpointEffect):
@@ -441,6 +463,7 @@ def _execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
+    workspace_scope: WorkspaceScope,
 ) -> PipelineEvent:
     console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
     registry = deps.agent_registry.from_config(config)
@@ -459,17 +482,21 @@ def _execute_agent_effect(
             drain=effect.phase,
             capabilities=_default_mcp_capabilities_for_phase(effect.phase),
         )
-        workspace = FsWorkspace(Path())
+        workspace = FsWorkspace(
+            workspace_scope.root,
+            allowed_roots=workspace_scope.allowed_roots,
+        )
         bridge = start_mcp_server(session, workspace)
 
         options = InvokeOptions(
             verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+            workspace_path=workspace_scope.root,
             extra_env={
                 MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
                 MCP_RUN_ID_ENV: session.run_id,
             },
             system_prompt_file=materialize_system_prompt(
-                workspace_root=Path(),
+                workspace_root=workspace_scope.root,
                 name=str(effect.phase),
             ),
         )

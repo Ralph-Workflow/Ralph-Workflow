@@ -43,6 +43,7 @@ from ralph.prompts.commit import (
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -124,7 +125,10 @@ def commit_plumbing(
 
     # Load configuration
     try:
-        config = load_config(opts.config_path, opts.cli_overrides)
+        workspace_scope = (
+            None if opts.config_path is not None else resolve_workspace_scope(repo_root)
+        )
+        config = load_config(opts.config_path, opts.cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
         console.print(f"[red]Error loading config:[/red] {e}")
         return
@@ -517,6 +521,15 @@ def _is_missing_commit_artifact_failure(detail: str) -> bool:
 
 def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str]) -> str:
     output_lines = "\n".join(parsed_output[-12:]) if parsed_output else "(no output captured)"
+    example_content: dict[str, str] = {
+        "type": "commit",
+        "subject": "type(scope): description",
+    }
+    example_arguments: dict[str, str] = {
+        "artifact_type": "commit_message",
+        "content": json.dumps(example_content),
+    }
+    example_payload = json.dumps(example_arguments)
     return (
         f"{base_prompt}\n\n"
         "RETRY CONTEXT:\n"
@@ -524,6 +537,19 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str]) -> str:
         "Treat the prior conversational output as a failure, not as permission "
         "to ask the user a question.\n"
         "Do not repeat the mistake. Submit the artifact now.\n"
+        'Call the submit-artifact MCP tool with artifact_type="commit_message" '
+        "and put the commit payload in the content field as a JSON string.\n"
+        "Example MCP arguments:\n"
+        f"{example_payload}\n"
+        "Do not create, edit, or read .agent/tmp/commit_message.json.\n"
+        "Do not use content_path for this retry.\n"
+        "Do not call Bash, python, tee, printf, redirection, or any file-writing tool.\n"
+        "Message quality mistakes to avoid:\n"
+        "- Bad: chore: update files -> Good: feat(mcp): add structured commit retries\n"
+        "- Bad: fix: stuff -> Good: fix(parser): preserve prefixed transcript lines\n"
+        "- Use chore only for repo maintenance, not meaningful code changes.\n"
+        "- Omit the scope when the change spans multiple subsystems.\n"
+        "- Include a body when the why is not obvious from the subject alone.\n"
         "Previous output summary:\n"
         f"{output_lines}\n"
     )

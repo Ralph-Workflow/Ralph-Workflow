@@ -13,6 +13,7 @@ from rich.table import Table
 
 from ralph.config.loader import load_config
 from ralph.git.operations import find_repo_root, is_repo_clean
+from ralph.workspace.scope import resolve_workspace_scope
 
 console = Console()
 
@@ -80,7 +81,8 @@ def _check_configuration(
     table.add_column("Status")
 
     try:
-        config = load_config(config_path, cli_overrides)
+        workspace_scope = None if config_path is not None else resolve_workspace_scope()
+        config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         table.add_row("Config loaded", "[green]Success[/green]")
         table.add_row("Developer iters", str(config.general.developer_iters))
         table.add_row("Reviewer reviews", str(config.general.reviewer_reviews))
@@ -99,7 +101,7 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> None:
     table.add_column("Status")
 
     try:
-        config = load_config(None, cli_overrides)
+        config = load_config(None, cli_overrides, workspace_scope=resolve_workspace_scope())
         if not config.agents:
             table.add_row("No agents", "[yellow]No agents configured[/yellow]")
         else:

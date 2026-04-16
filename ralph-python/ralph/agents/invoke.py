@@ -269,6 +269,7 @@ def invoke_agent(
             config,
             opts.show_progress,
             runtime_env,
+            opts.workspace_path,
         )
         yield from lines_iter
 
@@ -298,6 +299,7 @@ def _run_subprocess_and_read_lines(
     config: AgentConfig,
     show_progress: bool,
     extra_env: dict[str, str] | None,
+    workspace_path: Path | None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
@@ -316,6 +318,7 @@ def _run_subprocess_and_read_lines(
         text=True,
         bufsize=1,
         env=_subprocess_env(extra_env),
+        cwd=str(workspace_path) if workspace_path is not None else None,
     ) as proc:
         if proc.stdout is None:
             msg = "Failed to capture stdout"

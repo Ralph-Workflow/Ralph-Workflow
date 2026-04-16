@@ -25,6 +25,7 @@ from ralph.cli.main import (
     app,
 )
 from ralph.config.enums import ReviewDepth, Verbosity
+from ralph.workspace.scope import WorkspaceScope
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUN_PIPELINE_SUCCESS = 42
@@ -150,9 +151,14 @@ def test_handle_list_agents_success(monkeypatch: pytest.MonkeyPatch) -> None:
     sentinel = {"bot": "alpha"}
     called: dict[str, object] = {}
 
-    def fake_load_config(path: Path | None, overrides: dict[str, object]) -> SimpleNamespace:
+    def fake_load_config(
+        path: Path | None,
+        overrides: dict[str, object],
+        **kwargs: object,
+    ) -> SimpleNamespace:
         called["config_path"] = path
         called["overrides"] = overrides
+        called["kwargs"] = kwargs
         return SimpleNamespace(agents=sentinel)
 
     def fake_display_agents_table(agents: dict[str, object]) -> None:
@@ -181,7 +187,7 @@ def test_handle_list_agents_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_handle_check_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Check config returns 0 and prints a success banner."""
 
-    monkeypatch.setattr("ralph.cli.main.load_config", lambda *_: object())
+    monkeypatch.setattr("ralph.cli.main.load_config", lambda *args, **kwargs: object())
     printed: list[str] = []
 
     def fake_console_print(message: object) -> None:
@@ -204,6 +210,24 @@ def test_handle_check_config_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
     exit_code = _handle_check_config(None, {}, True)
     assert exit_code == 1
+
+
+def test_handle_list_agents_injects_workspace_scope_for_implicit_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, object] = {}
+    scope = WorkspaceScope("/tmp/worktree")
+
+    def fake_load_config(*args: object, **kwargs: object) -> SimpleNamespace:
+        called["kwargs"] = kwargs
+        return SimpleNamespace(agents={})
+
+    monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr("ralph.cli.main.load_config", fake_load_config)
+    monkeypatch.setattr("ralph.cli.main.display_agents_table", lambda _agents: None)
+
+    assert _handle_list_agents(None, {}, True) == 0
+    assert called["kwargs"] == {"workspace_scope": scope}
 
 
 def test_handle_list_providers_success(monkeypatch: pytest.MonkeyPatch) -> None:

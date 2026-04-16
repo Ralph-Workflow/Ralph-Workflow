@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from ralph.cli.commands import run as run_module
 from ralph.pipeline.state import PipelineState
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     import pytest
@@ -109,3 +110,21 @@ def test_run_pipeline_runner_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     assert run_module.run_pipeline() == 1
     assert exceptions == ["Pipeline execution failed: {}"]
     assert any("Pipeline failed" in line for line in console.lines)
+
+
+def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    scope = WorkspaceScope("/tmp/worktree")
+
+    def fake_load_config(*args: object, **kwargs: object) -> SimpleNamespace:
+        captured["kwargs"] = kwargs
+        return _fake_config()
+
+    monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(run_module, "load_config", fake_load_config)
+    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+
+    assert run_module.run_pipeline() == 0
+    assert captured["kwargs"] == {"workspace_scope": scope}

@@ -132,8 +132,14 @@ def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike
 
 def _workspace_root(workspace: WorkspaceLike) -> Path:
     if isinstance(workspace, FsWorkspace):
-        return workspace._root
-    return Path.cwd()
+        return workspace.root
+    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    if isinstance(root_value, Path):
+        return root_value.resolve()
+    if isinstance(root_value, str):
+        return Path(root_value).expanduser().resolve()
+    msg = "Workspace root must be explicit when starting the MCP server"
+    raise ValueError(msg)
 
 
 def _reserve_port() -> int:

@@ -46,11 +46,13 @@ interrupt_module = importlib.import_module("ralph.interrupt")
 config_models = importlib.import_module("ralph.config.models")
 pipeline_effects = importlib.import_module("ralph.pipeline.effects")
 pipeline_state_module = importlib.import_module("ralph.pipeline.state")
+policy_loader_module = importlib.import_module("ralph.policy.loader")
 
 GeneralConfig = config_models.GeneralConfig
 UnifiedConfig = config_models.UnifiedConfig
 run_pipeline_runner = runner_module.run
 PipelineState = pipeline_state_module.PipelineState
+load_policy = policy_loader_module.load_policy
 
 GeneralConfig.model_rebuild(_types_namespace={"Path": Path})
 UnifiedConfig.model_rebuild(_types_namespace={"Path": Path})
@@ -113,6 +115,10 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 
     monkeypatch.setattr(runner_module, "_determine_effect_from_policy", raise_keyboard_interrupt)
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    monkeypatch.setattr(
+        runner_module, "load_policy_or_die", lambda _path: load_policy(defaults_dir)
+    )
 
     state = PipelineState(phase="planning")
 
