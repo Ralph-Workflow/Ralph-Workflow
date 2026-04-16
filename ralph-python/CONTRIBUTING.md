@@ -7,7 +7,13 @@ This directory contains the maintained Python package.
 ```bash
 git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-python
-python -m pip install -e ".[dev]"
+make dev
+```
+
+To refresh the runnable `ralph` executable from the current checkout, run:
+
+```bash
+make install
 ```
 
 ## Required verification

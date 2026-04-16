@@ -1,12 +1,13 @@
-.PHONY: help install dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify dist-binary dist-pypi dist-all formula-check
+.PHONY: help install dev install-dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify dist-binary dist-pypi dist-all formula-check
 
 PYTEST_WORKERS ?= 4
 
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""
-	@echo "  install         Install package in editable mode with dev dependencies"
-	@echo "  dev            Install package in editable mode with all dev dependencies"
+	@echo "  install         Install package and refresh pipx executable"
+	@echo "  dev             Install package in editable mode with dev dependencies"
+	@echo "  install-dev     Alias for dev"
 	@echo "  test           Run pytest"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
@@ -33,10 +34,12 @@ help:
 
 # Installation
 install:
-	pip install -e ".[dev]"
+	python -m ralph.install
 
 dev:
-	pip install -e ".[dev]"
+	python -m pip install -e ".[dev]"
+
+install-dev: dev
 
 # Testing
 test:

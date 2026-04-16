@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-python
 
-.PHONY: all build verify lint format format-check typecheck test test-cov clean install install-dev help
+.PHONY: all build verify lint format format-check typecheck test test-cov clean install dev install-dev help
 
 all: verify
 
@@ -37,6 +37,9 @@ clean:
 install:
 	$(MAKE) -C $(PY_DIR) install
 
+dev:
+	$(MAKE) -C $(PY_DIR) dev
+
 install-dev:
 	$(MAKE) -C $(PY_DIR) install-dev
 
@@ -48,5 +51,6 @@ help:
 	@echo "  make test        - run pytest"
 	@echo "  make test-cov    - run pytest with coverage threshold"
 	@echo "  make build       - build Python distribution"
-	@echo "  make install     - install package"
-	@echo "  make install-dev - editable install with dev deps"
+	@echo "  make install     - install package and refresh pipx executable"
+	@echo "  make dev         - editable install with dev deps"
+	@echo "  make install-dev - alias for make dev"

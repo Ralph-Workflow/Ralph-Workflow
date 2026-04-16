@@ -26,9 +26,20 @@ ralph --help
 ### Development install
 
 ```bash
-python -m pip install -e ".[dev]"
+make dev
 ralph --version
 ```
+
+### Refresh the runnable executable from this checkout
+
+```bash
+make install
+ralph --version
+```
+
+`make install` updates the current Python environment and, when `pipx` is
+available, force-refreshes the pipx-managed `ralph` executable so it points at
+the current checkout instead of a stale deleted worktree.
 
 ## Quick start
 
