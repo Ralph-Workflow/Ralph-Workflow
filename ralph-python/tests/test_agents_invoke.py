@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal, cast
 
 import pytest
 
@@ -15,11 +16,30 @@ from ralph.agents.invoke import (
     _build_command,
     _BuildCommandOptions,
     _command_for_log,
+    _merge_opencode_config_content,
     invoke_agent,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
-from ralph.mcp.tool_names import RALPH_MCP_SERVER_NAME, claude_allowed_tool_names
+from ralph.mcp.tool_names import (
+    OPENCODE_NATIVE_TOOLS_TO_DISABLE,
+    RALPH_MCP_SERVER_NAME,
+    claude_allowed_tool_names,
+)
+
+
+def _json_object(raw: str) -> dict[str, object]:
+    return cast("dict[str, object]", json.loads(raw))
+
+
+def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
+    env_obj = kwargs.get("env")
+    assert isinstance(env_obj, dict)
+    return cast("dict[str, str]", env_obj)
+
+
+def _argv(args: tuple[object, ...]) -> list[str]:
+    return cast("list[str]", args[0])
 
 
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
@@ -154,7 +174,7 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
         ),
     )
 
-    assert "--strict-mcp-config" not in cmd
+    assert "--mcp-config" in cmd
     mcp_index = cmd.index("--mcp-config")
     assert cmd[mcp_index + 1] == (
         '{"mcpServers":{"ralph":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}'
@@ -296,7 +316,7 @@ def test_command_for_log_redacts_codex_inline_prompt_and_shows_prompt_file(tmp_p
 
 
 def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -311,23 +331,25 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
             self.returncode = 0
             popen_calls.append(cmd)
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    monkeypatch.setattr(
-        "ralph.agents.invoke.subprocess.Popen",
-        lambda *args, **kwargs: FakeProcess(args[0]),
-    )
-    monkeypatch.setattr(
-        "ralph.agents.invoke.subprocess.run",
-        lambda cmd, **kwargs: run_calls.append(cmd),
-    )
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        return FakeProcess(_argv(args))
+
+    def fake_run(cmd: list[str], **kwargs: object) -> None:
+        del kwargs
+        run_calls.append(cmd)
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.run", fake_run)
 
     lines = list(invoke_agent(config, str(prompt_file), options=InvokeOptions(show_progress=False)))
 
@@ -336,7 +358,9 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
     assert run_calls == []
 
 
-def test_invoke_agent_passes_extra_env_to_subprocess(monkeypatch, tmp_path: Path) -> None:
+def test_invoke_agent_passes_extra_env_to_subprocess(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream")
@@ -348,18 +372,18 @@ def test_invoke_agent_passes_extra_env_to_subprocess(monkeypatch, tmp_path: Path
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         seen_env.append(env)
         return FakeProcess()
 
@@ -379,7 +403,9 @@ def test_invoke_agent_passes_extra_env_to_subprocess(monkeypatch, tmp_path: Path
     assert seen_env[0]["RALPH_MCP_ENDPOINT"] == "http://127.0.0.1:9999/mcp"
 
 
-def test_invoke_agent_runs_subprocess_in_workspace_path(monkeypatch, tmp_path: Path) -> None:
+def test_invoke_agent_runs_subprocess_in_workspace_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream")
@@ -391,17 +417,18 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(monkeypatch, tmp_path: P
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        seen_cwds.append(kwargs.get("cwd"))
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        seen_cwds.append(cast("str | None", kwargs.get("cwd")))
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
@@ -418,7 +445,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(monkeypatch, tmp_path: P
 
 
 def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -441,17 +468,18 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        seen_cmds.append(args[0])
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
@@ -512,12 +540,68 @@ def test_claude_builtin_command_preserves_login_capable_mode() -> None:
     )
 
     assert "--bare" not in cmd
-    assert "--strict-mcp-config" not in cmd
+    assert "--mcp-config" in cmd
+    assert "--allowedTools" in cmd
+
+
+def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+    )
+    tools_idx = cmd.index("--allowedTools")
+    assert cmd[tools_idx + 1] == claude_allowed_tool_names()
+
+
+def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+    )
     assert "--mcp-config" in cmd
 
 
+def test_build_command_claude_omits_tools_flag_when_no_mcp_endpoint() -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(),
+    )
+    assert "--tools" not in cmd
+    assert "--strict-mcp-config" not in cmd
+
+
 def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -544,19 +628,20 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 1
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    monkeypatch.setattr(
-        "ralph.agents.invoke.subprocess.Popen",
-        lambda *args, **kwargs: FakeProcess(),
-    )
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args, kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
 
     with pytest.raises(AgentInvocationError) as exc_info:
         list(invoke_agent(config, str(prompt_file), options=InvokeOptions(show_progress=False)))
@@ -570,7 +655,7 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
 
 
 def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -584,18 +669,18 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         seen_env.append(env)
         return FakeProcess()
 
@@ -615,15 +700,20 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     )
 
     assert seen_env
-    config_content = json.loads(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
+    config_content = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
+    mcp_config = cast("dict[str, object]", config_content["mcp"])
+    ralph_config = cast("dict[str, object]", mcp_config["ralph"])
+    permission_config = cast("dict[str, object]", config_content["permission"])
     assert config_content["$schema"] == "https://opencode.ai/config.json"
-    assert config_content["mcp"]["ralph"]["type"] == "remote"
-    assert config_content["mcp"]["ralph"]["url"] == "http://127.0.0.1:9999/mcp"
-    assert config_content["mcp"]["ralph"]["enabled"] is True
-    assert config_content["permission"]["ralph_*"] == "allow"
+    assert ralph_config["type"] == "remote"
+    assert ralph_config["url"] == "http://127.0.0.1:9999/mcp"
+    assert ralph_config["enabled"] is True
+    assert permission_config["ralph_*"] == "allow"
 
 
-def test_invoke_agent_merges_existing_opencode_config_content(monkeypatch, tmp_path: Path) -> None:
+def test_invoke_agent_merges_existing_opencode_config_content(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
@@ -635,23 +725,23 @@ def test_invoke_agent_merges_existing_opencode_config_content(monkeypatch, tmp_p
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         seen_env.append(env)
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", json.dumps({"model": "anthropic/test"}))
+    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"model": "anthropic/test"}')
 
     list(
         invoke_agent(
@@ -666,13 +756,15 @@ def test_invoke_agent_merges_existing_opencode_config_content(monkeypatch, tmp_p
     )
 
     assert seen_env
-    config_content = json.loads(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
+    config_content = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
+    mcp_config = cast("dict[str, object]", config_content["mcp"])
+    ralph_config = cast("dict[str, object]", mcp_config["ralph"])
     assert config_content["model"] == "anthropic/test"
-    assert config_content["mcp"]["ralph"]["url"] == "http://127.0.0.1:9999/mcp"
+    assert ralph_config["url"] == "http://127.0.0.1:9999/mcp"
 
 
 def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpoint(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -685,33 +777,101 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         seen_env.append(env)
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
-    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", json.dumps({"model": "anthropic/test"}))
+    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"model": "anthropic/test"}')
 
     list(invoke_agent(config, str(prompt_file), options=InvokeOptions(show_progress=False)))
 
     assert seen_env
-    assert json.loads(seen_env[0]["OPENCODE_CONFIG_CONTENT"]) == {"model": "anthropic/test"}
+    assert _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"]) == {"model": "anthropic/test"}
+
+
+def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
+    result = _merge_opencode_config_content(None, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    tools = cast("dict[str, object]", parsed["tools"])
+    for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
+        assert tools[name] is False, f"Expected {name} to be False"
+
+
+def test_opencode_config_tools_disable_overrides_user_enables() -> None:
+    existing = '{"tools": {"bash": true}}'
+    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    tools = cast("dict[str, object]", parsed["tools"])
+    assert tools["bash"] is False, "MCP policy must override user enable"
+
+
+def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
+    existing = '{"tools": {"custom_plugin_tool": true}, "ui": {"theme": "dark"}}'
+    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    tools = cast("dict[str, object]", parsed["tools"])
+    ui = cast("dict[str, object]", parsed["ui"])
+    assert tools["custom_plugin_tool"] is True
+    for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
+        assert tools[name] is False
+    assert ui["theme"] == "dark"
+
+
+def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    seen_env: list[dict[str, str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
+        seen_env.append(env)
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
+    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"model": "anthropic/test"}')
+
+    list(invoke_agent(config, str(prompt_file), options=InvokeOptions(show_progress=False)))
+
+    assert seen_env
+    config_content = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
+    assert "tools" not in config_content, "No tools block should be added without MCP endpoint"
 
 
 def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -725,18 +885,18 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         seen_env.append(env)
         codex_home = Path(env["CODEX_HOME"])
         seen_config.append((codex_home / "config.toml").read_text(encoding="utf-8"))
@@ -766,7 +926,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
 
 
 def test_invoke_agent_injects_codex_system_prompt_file_via_config(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -781,18 +941,18 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         codex_home = Path(env["CODEX_HOME"])
         seen_config.append((codex_home / "config.toml").read_text(encoding="utf-8"))
         return FakeProcess()
@@ -816,7 +976,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
 
 
 def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
-    monkeypatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -831,17 +991,18 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        seen_cmds.append(args[0])
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
@@ -860,7 +1021,9 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
     assert seen_cmds == [["opencode", "run", "--format", "json", "hello"]]
 
 
-def test_invoke_agent_preserves_existing_codex_home_state(monkeypatch, tmp_path: Path) -> None:
+def test_invoke_agent_preserves_existing_codex_home_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
@@ -876,18 +1039,18 @@ def test_invoke_agent_preserves_existing_codex_home_state(monkeypatch, tmp_path:
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
-        def __enter__(self):
+        def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
             return False
 
         def wait(self) -> int:
             return self.returncode
 
-    def fake_popen(*args, **kwargs):
-        env = kwargs.get("env")
-        assert isinstance(env, dict)
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
         codex_home = Path(env["CODEX_HOME"])
         copied_auth.append((codex_home / "auth.json").read_text(encoding="utf-8"))
         return FakeProcess()
