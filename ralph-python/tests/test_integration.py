@@ -139,6 +139,5 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
     result = runner_module.run(config, initial_state=state)
 
     assert result == 1
-    console_mock.print.assert_called_with(
-        "[red]Pipeline failed:[/red] Agent chain exhausted in planning"
-    )
+    rendered = console_mock.print.call_args.args[0]
+    assert rendered.plain == "Pipeline failed: Agent chain exhausted in planning"

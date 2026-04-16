@@ -12,4 +12,41 @@ Decide whether the review results should approve the work, request changes, or r
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 
-Submit a structured review analysis decision artifact.
+Submit a structured review analysis decision artifact using `artifact_type="review_analysis_decision"`.
+
+Return a JSON object.
+
+- If the review is clean, use `{"status":"approved","summary":"..."}` or `{"status":"completed","summary":"..."}`.
+- If changes are required, use `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
+- If the work must be rejected, use `{"status":"reject","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
+
+For any non-passing review analysis, the following two fields are mandatory and must be as detailed as possible:
+
+1. `what_came_up_short`
+   - Enumerate every defect, regression, missing requirement, unsafe change, or verification gap.
+   - Cite concrete evidence: file paths, failing tests, missing checks, or behavior mismatches.
+   - Do not use vague summaries without specifics.
+
+2. `how_to_fix`
+   - Provide detailed, ordered remediation steps that would allow the implementation to pass review on the next attempt.
+   - Include exact files to change, what to update in each file, which tests/checks to run, and what outcomes must be observed.
+   - Make the instructions comprehensive enough that the developer can execute them directly.
+
+Example failing review analysis artifact:
+
+```json
+{
+  "status": "request_changes",
+  "summary": "The happy path works, but error handling and regression coverage are still incomplete.",
+  "what_came_up_short": [
+    "`ralph/pipeline/runner.py` still has one failure output path that renders runtime text unsafely.",
+    "There is no regression test proving malformed tool payloads cannot crash the remaining CLI error output path.",
+    "Verification evidence is missing for the review-phase artifact handoff after a failed analysis."
+  ],
+  "how_to_fix": [
+    "Convert the remaining CLI failure output path to a Rich `Text`-based render so runtime strings are always treated as literal text.",
+    "Add a regression test that feeds bracket-heavy runtime text through the affected CLI path and confirms rendering does not raise `MarkupError`.",
+    "Run the targeted review-analysis and full verification suites again, and confirm the handoff artifact is written and read using the same artifact type and path."
+  ]
+}
+```

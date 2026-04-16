@@ -48,10 +48,10 @@ def parse_analysis_decision(
 
     if not ctx.workspace.exists(artifact_path):
         logger.warning(
-            "No analysis artifact found at {}. Defaulting to PROCEED.",
+            "No analysis artifact found at {}. Defaulting to FAILURE.",
             artifact_path,
         )
-        return AnalysisDecision.PROCEED
+        return AnalysisDecision.FAILURE
 
     try:
         artifact = load_phase_artifact(ctx.workspace, artifact_path)
@@ -112,7 +112,7 @@ def parse_analysis_decision(
         return decision
     except Exception as exc:
         logger.warning(
-            "Failed to parse analysis artifact at {}: {}. Defaulting to PROCEED.",
+            "Failed to parse analysis artifact at {}: {}. Defaulting to FAILURE.",
             artifact_path,
             exc,
         )

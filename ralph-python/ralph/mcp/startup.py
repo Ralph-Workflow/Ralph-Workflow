@@ -26,6 +26,7 @@ from ralph.mcp.tool_bridge import build_ralph_tool_registry
 from ralph.workspace import Workspace
 
 _HTTP_OK = 200
+_HTTP_ACCEPTED = 202
 
 if TYPE_CHECKING:
     import io
@@ -280,7 +281,19 @@ def preflight_http_attempt(
     post_with_session_fn: HttpJsonRpcWithSessionFn | None = None,
 ) -> None:
     post_fn = post_with_session_fn or post_http_jsonrpc_with_session
-    _, session_id = post_fn(endpoint, target, initialize_request())
+    initialize_response, session_id = post_fn(endpoint, target, initialize_request())
+    ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
+    if not session_id:
+        raise PermanentPreflightError("HTTP MCP initialize missing mcp-session-id header")
+    notification_response, session_id = post_fn(
+        endpoint,
+        target,
+        initialized_notification(),
+        session_id=session_id,
+    )
+    ensure_no_preflight_error(
+        "HTTP MCP notifications/initialized", notification_response.get("error")
+    )
     tools_response, _ = post_fn(endpoint, target, tools_list_request(), session_id=session_id)
     ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
     tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
@@ -433,6 +446,10 @@ def post_http_jsonrpc_with_session(
         raise RetryablePreflightError(
             f"failed to connect to MCP endpoint {endpoint}: {exc}"
         ) from exc
+
+    if response.status_code == _HTTP_ACCEPTED and not response.content.strip():
+        next_session_id = cast("str | None", response.headers.get("mcp-session-id"))
+        return {}, next_session_id or session_id
 
     if response.status_code != _HTTP_OK:
         raise PermanentPreflightError(

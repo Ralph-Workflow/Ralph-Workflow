@@ -92,13 +92,13 @@ class TestHandleReviewAnalysis:
         result = handle_review_analysis(effect, ctx)
         assert result == [PipelineEvent.FAILED]
 
-    def test_missing_artifact_defaults_to_proceed(self) -> None:
+    def test_missing_artifact_fails_closed(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_SUCCESS]
+        assert result == [PipelineEvent.FAILED]
 
     def test_non_invoke_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=PreparePromptEffect)

@@ -415,13 +415,11 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         for body in prompt_bodies[1:]
     )
     assert any(
-        "Do not create, edit, or read .agent/tmp/commit_message.json" in body
+        "If the submit-artifact MCP tool is still unavailable, write the raw commit payload JSON "
+        "to .agent/tmp/commit_message.json" in body
         for body in prompt_bodies[1:]
     )
-    assert any(
-        "Do not call Bash, python, tee, printf, redirection, or any file-writing tool" in body
-        for body in prompt_bodies[1:]
-    )
+    assert any("Do not use content_path for this retry" in body for body in prompt_bodies[1:])
     assert any("Message quality mistakes to avoid" in body for body in prompt_bodies[1:])
     assert any("Bad: chore: update files" in body for body in prompt_bodies[1:])
     assert any(
@@ -580,7 +578,12 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     )
 
     assert captured_prompt
+    assert "ralph_submit_artifact" in captured_prompt[0]
     assert "mcp__ralph__ralph_submit_artifact" in captured_prompt[0]
+    assert (
+        "write the raw commit payload json to `.agent/tmp/commit_message.json`"
+        in captured_prompt[0].lower()
+    )
 
 
 def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
@@ -1203,6 +1206,68 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     assert "ralph_submit_artifact" in output
     assert 'result={"reason": "invalid' in output
     assert 'payload", "status": "failed"}' in output
+
+
+def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stream = _attach_console(monkeypatch, commit_module)
+    monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
+    monkeypatch.setattr(
+        commit_module,
+        "_working_tree_diff",
+        lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
+    )
+    monkeypatch.setattr(
+        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+    )
+    _stub_commit_bridge(monkeypatch)
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config):
+            return cls()
+
+        def get(self, _name: str):
+            return AgentConfig(
+                cmd="claude -p",
+                output_flag="--output-format=stream-json",
+                can_commit=True,
+                json_parser=JsonParserType.CLAUDE,
+                transport=AgentTransport.CLAUDE,
+            )
+
+    def fake_invoke_agent(*_args, **_kwargs):
+        artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "type": "commit",
+                    "subject": "fix(cli): salvage commit fallback",
+                }
+            ),
+            encoding="utf-8",
+        )
+        line = json.dumps(
+            {
+                "type": "response.output_text.delta",
+                "delta": "tool unavailable; wrote raw payload",
+            }
+        )
+        return iter([f"{line}\n"])
+
+    monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
+    monkeypatch.setattr(commit_module, "invoke_agent", fake_invoke_agent)
+
+    commit_module.commit_plumbing(
+        options=commit_module.CommitPlumbingOptions(generate_commit_msg=True)
+    )
+
+    output = stream.getvalue()
+    assert "Generated commit message" in output
+    assert "fix(cli): salvage commit fallback" in output
 
 
 def test_handle_show_or_generate_displays_staged_files(monkeypatch: pytest.MonkeyPatch) -> None:

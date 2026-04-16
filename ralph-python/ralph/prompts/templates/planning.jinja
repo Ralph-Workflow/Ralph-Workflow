@@ -22,11 +22,11 @@ You MUST submit your plan via Ralph's planning MCP tools.
 
 Submission protocol:
 - Unless the plan is genuinely short, submit each required section separately.
-- Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage sections one by one and validate each section as you go.
-- Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the staged draft if you need to confirm current state after an error or resume.
-- Use `{{FINALIZE_PLAN_TOOL_NAME}}` only after every required section is staged and valid.
-- If the staged draft becomes unusable and you need to restart from step 1, use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}`.
-- Only use `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" when the plan is genuinely short and can be safely submitted in one atomic payload.
+- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage sections one by one and validate each section as you go.
+- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if you need to confirm current state after an error or resume.
+- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} only after every required section is staged and valid.
+- If the staged draft becomes unusable and you need to restart from step 1, use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}.
+- Only use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" when the plan is genuinely short and can be safely submitted in one atomic payload.
 
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
@@ -43,18 +43,19 @@ Your plan must be executor-ready for unattended development. The submitted artif
 Prefer concrete actions and acceptance criteria over vague advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
 
 Default submission flow:
-1. Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage `summary`.
-2. Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage `steps`.
-3. Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage `critical_files`.
-4. Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage `risks_mitigations`.
-5. Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage `verification_strategy`.
+1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.
+2. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `steps`.
+3. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
+4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
+5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
 6. Stage optional sections like `skills_mcp` or `parallel_plan` only when they add real value.
-7. Call `{{FINALIZE_PLAN_TOOL_NAME}}` to validate the full assembled plan and write `.agent/artifacts/plan.json`.
+7. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
 Atomic fallback for short plans:
-- If the plan is genuinely short, you may call `{{SUBMIT_ARTIFACT_TOOL_NAME}}` with artifact_type="plan" and content as a JSON string conforming to the plan schema.
+- If the plan is genuinely short, you may call {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" and content as a JSON string conforming to the plan schema.
 - If a fully submitted plan must be corrected end-to-end, edit `.agent/artifacts/plan.json` and resubmit with `content_path` using this exact call:
   `{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"plan","content_path":".agent/artifacts/plan.json"})`
+{{SUBMIT_ARTIFACT_BARE_HINT}}
 
 The `content` argument must be a JSON string whose decoded object is the RAW plan payload.
 Do NOT wrap the payload in outer `type` or `content` fields. Ralph adds artifact metadata itself.

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 from rich.console import Console
 from rich.panel import Panel
+from rich.text import Text
 
 from ralph.agents.invoke import AgentInvocationError, InvokeOptions, invoke_agent
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
@@ -34,7 +35,7 @@ from ralph.mcp.commit_message import (
 )
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
 from ralph.mcp.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -120,7 +121,7 @@ def commit_plumbing(
     try:
         repo_root = find_repo_root()
     except Exception as e:
-        console.print(f"[red]Error:[/red] Not in a git repository: {e}")
+        console.print(_styled_commit_status("Error", f"Not in a git repository: {e}", "red"))
         return
 
     # Load configuration
@@ -130,7 +131,7 @@ def commit_plumbing(
         )
         config = load_config(opts.config_path, opts.cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
-        console.print(f"[red]Error loading config:[/red] {e}")
+        console.print(_styled_commit_status("Error loading config", str(e), "red"))
         return
 
     if opts.show_commit_msg:
@@ -211,9 +212,13 @@ def _handle_agent_commit_generation(
                 author_email=git_user_email,
             )
             delete_commit_message_artifacts(repo_root)
-            console.print(f"\n[green]Created commit:[/green] {sha[:8]}")
+            console.print(
+                _styled_commit_status("Created commit", sha[:8], "green", leading_newline=True)
+            )
         except Exception as e:
-            console.print(f"\n[red]Commit failed:[/red] {e}")
+            console.print(
+                _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
+            )
 
 
 def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
@@ -305,12 +310,22 @@ def _commit_prompt_for_agent(
     return prompt_commit_message(
         diff,
         template_registry=template_registry,
-        submit_artifact_tool_names=(_submit_artifact_tool_name_for_transport(agent.transport),),
+        submit_artifact_tool_names=_submit_artifact_tool_names_for_transport(agent.transport),
         payload_config=CommitPromptPayloadConfig(
             output_dir=payload_output_dir,
             name_prefix="commit_plumbing",
         ),
     )
+
+
+def _submit_artifact_tool_names_for_transport(
+    transport: AgentTransport | None,
+) -> tuple[str, ...]:
+    if transport == AgentTransport.CLAUDE:
+        return SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+            tool_name_prefix=claude_tool_name_prefix(),
+        )
+    return (SUBMIT_ARTIFACT_TOOL,)
 
 
 def _generate_commit_message_with_chain(
@@ -541,9 +556,13 @@ def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str]) -> str:
         "and put the commit payload in the content field as a JSON string.\n"
         "Example MCP arguments:\n"
         f"{example_payload}\n"
-        "Do not create, edit, or read .agent/tmp/commit_message.json.\n"
+        "If the submit-artifact MCP tool is still unavailable, write the raw commit payload JSON "
+        "to .agent/tmp/commit_message.json instead.\n"
+        "Write only the inner payload object, such as "
+        '{"type":"commit","subject":"fix(scope): message"}, without artifact metadata.\n'
         "Do not use content_path for this retry.\n"
-        "Do not call Bash, python, tee, printf, redirection, or any file-writing tool.\n"
+        "Do not use Bash, python, tee, printf, shell redirection, or any file-writing path "
+        "other than writing .agent/tmp/commit_message.json directly.\n"
         "Message quality mistakes to avoid:\n"
         "- Bad: chore: update files -> Good: feat(mcp): add structured commit retries\n"
         "- Bad: fix: stuff -> Good: fix(parser): preserve prefixed transcript lines\n"
@@ -676,7 +695,7 @@ def _collect_commit_agent_output(
             rendered = _render_commit_agent_activity_line(parsed_line, agent_name)
             if rendered is None:
                 continue
-            parsed_output.append(rendered)
+            parsed_output.append(rendered.plain)
             if verbose:
                 console.print(rendered)
     except AgentInvocationError as exc:
@@ -691,27 +710,58 @@ def _resolve_commit_parser(parser_type: str) -> AgentParser:
         return get_parser("generic")
 
 
-def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str) -> str | None:
+def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
+    rendered: Text | None = None
+
     if output.type == "text":
         content = output.content.strip()
-        return f"[white]{agent_name}:[/white] {content}" if content else None
-    if output.type == "tool_use":
+        if content:
+            rendered = _styled_commit_prefix(agent_name, "white")
+            rendered.append(content)
+    elif output.type == "tool_use":
         tool_name = output.content.strip() or "unknown-tool"
         summary = _tool_input_summary(output.metadata)
-        return f"[magenta]{agent_name} tool:[/magenta] {tool_name}" + (
-            f" ({summary})" if summary else ""
-        )
-    if output.type == "tool_result":
-        result = output.content.strip()
+        rendered = _styled_commit_prefix(f"{agent_name} tool", "magenta")
+        rendered.append(tool_name)
+        if summary:
+            rendered.append(f" ({summary})")
+    elif output.type == "tool_result":
+        result = output.content.strip() or _event_summary(output)
         if result:
-            return f"[dim]{agent_name} tool result:[/dim] {result}"
-        summary = _event_summary(output)
-        return f"[dim]{agent_name} tool result:[/dim] {summary}" if summary else None
-    if output.type == "error":
+            rendered = _styled_commit_prefix(f"{agent_name} tool result", "dim")
+            rendered.append(result)
+    elif output.type == "error":
         error = output.content.strip() or "unknown error"
-        return f"[red]{agent_name} error:[/red] {error}"
-    summary = _event_summary(output)
-    return f"[dim]{agent_name} {output.type}:[/dim] {summary}"
+        rendered = _styled_commit_prefix(f"{agent_name} error", "red")
+        rendered.append(error)
+    else:
+        rendered = _styled_commit_prefix(f"{agent_name} {output.type}", "dim")
+        rendered.append(_event_summary(output))
+
+    return rendered
+
+
+def _styled_commit_prefix(label: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    return text
+
+
+def _styled_commit_status(
+    label: str,
+    detail: str,
+    style: str,
+    *,
+    leading_newline: bool = False,
+) -> Text:
+    text = Text()
+    if leading_newline:
+        text.append("\n")
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    text.append(detail)
+    return text
 
 
 def _event_summary(output: AgentOutputLine) -> str:
@@ -816,9 +866,12 @@ def _handle_show_or_generate(
         console.print("[yellow]No staged files[/yellow]")
         return
 
-    console.print(f"[cyan]Staged files:[/cyan] {len(staged_files)}")
+    console.print(_styled_commit_status("Staged files", str(len(staged_files)), "cyan"))
     for f in staged_files[:_MAX_DISPLAY_FILES]:
-        console.print(f"  - {f}")
+        staged_file_text = Text()
+        staged_file_text.append("  - ")
+        staged_file_text.append(f)
+        console.print(staged_file_text)
     if len(staged_files) > _MAX_DISPLAY_FILES:
         console.print(f"  ... and {len(staged_files) - _MAX_DISPLAY_FILES} more")
 
@@ -837,9 +890,13 @@ def _handle_show_or_generate(
                     author_email=git_user_email,
                 )
                 delete_commit_message_artifacts(repo_root)
-                console.print(f"\n[green]Created commit:[/green] {sha[:8]}")
+                console.print(
+                    _styled_commit_status("Created commit", sha[:8], "green", leading_newline=True)
+                )
             except Exception as e:
-                console.print(f"\n[red]Commit failed:[/red] {e}")
+                console.print(
+                    _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
+                )
 
 
 def _generate_commit_message(files: list[str], repo_root: Path) -> str:

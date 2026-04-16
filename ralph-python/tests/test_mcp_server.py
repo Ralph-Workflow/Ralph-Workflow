@@ -6,8 +6,11 @@ import asyncio
 import json
 import socket
 import threading
+import time
 from pathlib import Path
 from typing import Any, cast
+
+import httpx
 
 from ralph.mcp import startup
 from ralph.mcp.server import lifecycle
@@ -19,6 +22,9 @@ from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
+
+HTTP_OK = 200
+HTTP_ACCEPTED = 202
 
 
 def _session(run_id: str = "run-1", capabilities: set[str] | None = None) -> AgentSession:
@@ -155,13 +161,193 @@ def test_build_fastmcp_server_falls_back_without_mcp_dependency(
     try:
         initialize_response = _http_call(endpoint, "initialize")
         assert initialize_response["result"]["serverInfo"]["name"] == "ralph-mcp"
+        assert initialize_response["result"]["serverInfo"]["version"]
+        assert initialize_response["result"]["capabilities"]["prompts"] == {"listChanged": False}
+        assert initialize_response["result"]["capabilities"]["resources"] == {
+            "subscribe": False,
+            "listChanged": False,
+        }
 
-        tools_response = _http_call(endpoint, "tools/list", msg_id=2)
+        prompts_response = _http_call(endpoint, "prompts/list", msg_id=2)
+        resources_response = _http_call(endpoint, "resources/list", msg_id=3)
+        templates_response = _http_call(endpoint, "resources/templates/list", msg_id=4)
+        assert prompts_response["result"] == {"prompts": []}
+        assert resources_response["result"] == {"resources": []}
+        assert templates_response["result"] == {"resourceTemplates": []}
+
+        tools_response = _http_call(endpoint, "tools/list", msg_id=5)
         tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
         assert {"read_file", "report_progress", "coordinate"}.issubset(tool_names)
     finally:
         cast("server_runtime._FallbackStandaloneServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
         cast("server_runtime._FallbackStandaloneServer", server)._httpd.server_close()  # type: ignore[attr-defined]
+        thread.join(timeout=1)
+
+
+def test_build_standalone_http_server_get_probe_avoids_missing_session_id_error(
+    tmp_path: Path,
+) -> None:
+    session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = cast("int", sock.getsockname()[1])
+
+    server = server_runtime.build_standalone_http_server(
+        tmp_path, host="127.0.0.1", port=port, session=session
+    )
+    thread = threading.Thread(
+        target=server.run,
+        kwargs={"transport": server_runtime.DEFAULT_TRANSPORT},
+        daemon=True,
+    )
+    thread.start()
+
+    endpoint = f"http://127.0.0.1:{port}/mcp"
+    try:
+        response = httpx.get(
+            endpoint,
+            headers={"Accept": "application/json, text/event-stream"},
+            timeout=5.0,
+        )
+
+        assert response.status_code == HTTP_OK
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert "Missing session ID" not in response.text
+    finally:
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.server_close()  # type: ignore[attr-defined]
+        thread.join(timeout=1)
+
+
+def test_build_standalone_http_server_initialized_notification_returns_202(
+    tmp_path: Path,
+) -> None:
+    session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = cast("int", sock.getsockname()[1])
+
+    server = server_runtime.build_standalone_http_server(
+        tmp_path, host="127.0.0.1", port=port, session=session
+    )
+    thread = threading.Thread(
+        target=server.run,
+        kwargs={"transport": server_runtime.DEFAULT_TRANSPORT},
+        daemon=True,
+    )
+    thread.start()
+
+    endpoint = f"http://127.0.0.1:{port}/mcp"
+    headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    try:
+        initialize = httpx.post(
+            endpoint,
+            headers=headers,
+            json=startup.initialize_request(),
+            timeout=5.0,
+        )
+        session_id = initialize.headers["mcp-session-id"]
+        initialized = httpx.post(
+            endpoint,
+            headers={**headers, "mcp-session-id": session_id},
+            json=startup.initialized_notification(),
+            timeout=5.0,
+        )
+
+        assert initialized.status_code == HTTP_ACCEPTED
+        assert initialized.text == ""
+    finally:
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.server_close()  # type: ignore[attr-defined]
+        thread.join(timeout=1)
+
+
+def test_build_standalone_http_server_initialize_sse_omits_null_error_field(
+    tmp_path: Path,
+) -> None:
+    session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = cast("int", sock.getsockname()[1])
+
+    server = server_runtime.build_standalone_http_server(
+        tmp_path, host="127.0.0.1", port=port, session=session
+    )
+    thread = threading.Thread(
+        target=server.run,
+        kwargs={"transport": server_runtime.DEFAULT_TRANSPORT},
+        daemon=True,
+    )
+    thread.start()
+
+    endpoint = f"http://127.0.0.1:{port}/mcp"
+    headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    try:
+        response = httpx.post(
+            endpoint,
+            headers=headers,
+            json=startup.initialize_request(),
+            timeout=5.0,
+        )
+
+        assert response.headers.get("connection") == "keep-alive"
+        assert '"error": null' not in response.text
+    finally:
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.server_close()  # type: ignore[attr-defined]
+        thread.join(timeout=1)
+
+
+def test_build_standalone_http_server_allows_post_while_get_stream_is_open(
+    tmp_path: Path,
+) -> None:
+    session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = cast("int", sock.getsockname()[1])
+
+    server = server_runtime.build_standalone_http_server(
+        tmp_path, host="127.0.0.1", port=port, session=session
+    )
+    thread = threading.Thread(
+        target=server.run,
+        kwargs={"transport": server_runtime.DEFAULT_TRANSPORT},
+        daemon=True,
+    )
+    thread.start()
+
+    endpoint = f"http://127.0.0.1:{port}/mcp"
+    stream_socket = socket.create_connection(("127.0.0.1", port), timeout=5.0)
+    get_request = (
+        "GET /mcp HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        "Accept: text/event-stream\r\n"
+        f"mcp-session-id: {session.session_id}\r\n"
+        "\r\n"
+    )
+    stream_socket.sendall(get_request.encode())
+    try:
+        time.sleep(0.1)
+        initialize = httpx.post(
+            endpoint,
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json",
+            },
+            json=startup.initialize_request(),
+            timeout=5.0,
+        )
+
+        assert initialize.status_code == HTTP_OK
+        assert initialize.headers["mcp-session-id"] == session.session_id
+    finally:
+        stream_socket.close()
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
+        cast("server_runtime._StandaloneHttpServer", server)._httpd.server_close()  # type: ignore[attr-defined]
         thread.join(timeout=1)
 
 
@@ -284,6 +470,12 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
             target,
             startup.initialize_request(),
         )
+        initialized_response, session_id = startup.post_http_jsonrpc_with_session(
+            endpoint,
+            target,
+            startup.initialized_notification(),
+            session_id=session_id,
+        )
         tools_response, session_id = startup.post_http_jsonrpc_with_session(
             endpoint,
             target,
@@ -326,6 +518,7 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         )
 
         assert "ralph_submit_artifact" in tool_names
+        assert initialized_response == {}
         submit_result = cast("dict[str, object]", submit_response["result"])
         assert submit_result["isError"] is False
         assert planning_result == [PipelineEvent.AGENT_SUCCESS]

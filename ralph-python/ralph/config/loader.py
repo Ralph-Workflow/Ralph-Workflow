@@ -17,13 +17,15 @@ from __future__ import annotations
 import tomllib
 from os import getenv
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from pydantic import ValidationError
 
 from ralph.config.models import UnifiedConfig
-from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.workspace.scope import WorkspaceScope
 
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"

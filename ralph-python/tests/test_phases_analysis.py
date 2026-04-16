@@ -103,7 +103,7 @@ class TestParseAnalysisDecision:
         ctx = self._make_context(workspace)
 
         result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.PROCEED
+        assert result == AnalysisDecision.FAILURE
 
     def test_valid_artifact_with_completed_status(self) -> None:
         workspace = MagicMock()

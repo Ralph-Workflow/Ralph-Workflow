@@ -10,6 +10,7 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from ralph.config.loader import load_config
 from ralph.git.operations import find_repo_root, is_repo_clean
@@ -55,7 +56,7 @@ def _check_git_repo() -> None:
         repo_root = find_repo_root()
         table.add_row("Repository root", str(repo_root))
     except Exception as e:
-        table.add_row("Repository", f"[red]Error: {e}[/red]")
+        table.add_row("Repository", _status_text("Error", str(e), "red"))
         console.print(table)
         return
 
@@ -66,7 +67,7 @@ def _check_git_repo() -> None:
         else:
             table.add_row("Working tree", "[yellow]Has uncommitted changes[/yellow]")
     except Exception as e:
-        table.add_row("Working tree", f"[red]Error: {e}[/red]")
+        table.add_row("Working tree", _status_text("Error", str(e), "red"))
 
     console.print(table)
 
@@ -89,7 +90,7 @@ def _check_configuration(
         table.add_row("Review depth", config.general.review_depth.value)
         table.add_row("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled))
     except Exception as e:
-        table.add_row("Config loaded", f"[red]Error: {e}[/red]")
+        table.add_row("Config loaded", _status_text("Error", str(e), "red"))
 
     console.print(table)
 
@@ -106,9 +107,9 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> None:
             table.add_row("No agents", "[yellow]No agents configured[/yellow]")
         else:
             for name, agent_config in config.agents.items():
-                table.add_row(name, f"[green]Configured: {agent_config.cmd}[/green]")
+                table.add_row(name, _status_text("Configured", agent_config.cmd, "green"))
     except Exception as e:
-        table.add_row("Agents", f"[red]Error: {e}[/red]")
+        table.add_row("Agents", _status_text("Error", str(e), "red"))
 
     console.print(table)
 
@@ -127,10 +128,20 @@ def _check_workspace_files() -> None:
 
     for file_path, description in workspace_files:
         path = Path(file_path)
+        file_label = Text()
+        file_label.append(f"{file_path} ({description})")
         if path.exists():
             size = path.stat().st_size
-            table.add_row(f"{file_path} ({description})", f"[green]Exists ({size} bytes)[/green]")
+            table.add_row(file_label, _status_text("Exists", f"{size} bytes", "green"))
         else:
-            table.add_row(f"{file_path} ({description})", "[yellow]Not found[/yellow]")
+            table.add_row(file_label, Text("Not found", style="yellow"))
 
     console.print(table)
+
+
+def _status_text(label: str, detail: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    text.append(detail)
+    return text

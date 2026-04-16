@@ -6,9 +6,9 @@
 # typed JSON artifacts submitted via the MCP bridge.
 #
 # decision_vocabulary defines valid values for analysis decision routing:
-# - "continue" / "success" / "approve" → on_success transition
+# - "continue" / "success" / "completed" / "approve" / "approved" → on_success transition
 # - "loopback" / "retry" / "request_changes" → on_loopback transition
-# - "fail" / "reject" → on_failure transition
+# - "fail" / "failed" / "reject" → on_failure transition
 
 # ---------------------------------------------------------------------------
 # Planning artifact
@@ -48,10 +48,12 @@ artifact_type = "development_analysis_decision"
 decision_vocabulary = [
     "continue",
     "success",
+    "completed",
     "loopback",
     "retry",
     "request_changes",
     "fail",
+    "failed",
 ]
 prompt_template = "development_analysis.jinja"
 
@@ -64,6 +66,8 @@ drain = "review_analysis"
 artifact_type = "review_analysis_decision"
 decision_vocabulary = [
     "approve",
+    "approved",
+    "completed",
     "request_changes",
     "reject",
     "loopback",

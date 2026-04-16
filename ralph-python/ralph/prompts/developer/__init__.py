@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.prompts import template_engine
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
-from ralph.prompts.template_registry import packaged_template_root
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 if TYPE_CHECKING:
@@ -71,10 +71,17 @@ def prompt_developer_iteration_xml_with_context(
         return render_template(template_content, variables, context.partials)
     except TemplateRenderingError:
         return _render_static_fallback(
+            context,
             "developer_iteration_fallback.jinja",
             {
+                **capability_vars,
                 "PROMPT": inputs.prompt_content or "No requirements provided",
                 "PLAN": inputs.plan_content or "(no plan available)",
+                "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+                "PLAN_PATH": str(
+                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                    / f"{inputs.prompt_name_prefix}_plan.txt"
+                ),
             },
         )
 
@@ -113,21 +120,23 @@ def prompt_planning_xml_with_context(
         return render_template(template_content, variables, context.partials)
     except TemplateRenderingError:
         return _render_static_fallback(
+            context,
             "planning_fallback.jinja",
             {
+                **capability_vars,
                 "PROMPT": prompt_md,
+                "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
             },
         )
 
 
-def _render_static_fallback(template_name: str, variables: Mapping[str, str]) -> str:
-    template_path = packaged_template_root() / template_name
-    template = template_path.read_text(encoding="utf-8")
-    rendered = template
-    for key, value in variables.items():
-        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
-        rendered = rendered.replace(f"{{{{{key}}}}}", value)
-    return rendered
+def _render_static_fallback(
+    context: TemplateContext,
+    template_name: str,
+    variables: Mapping[str, str],
+) -> str:
+    template = context.registry.get_template(template_name)
+    return template_engine.render_template(template, variables, context.partials)
 
 
 def _prompt_payload_variables(

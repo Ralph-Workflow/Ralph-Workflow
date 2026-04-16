@@ -83,6 +83,7 @@ def handle_submit_artifact(
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     artifact_type, parsed_content = _prepare_artifact_submission(
         params,
+        session_drain=_session_drain(session),
         base_path=_workspace_root(workspace),
         backend=resolved_deps.backend,
     )
@@ -298,10 +299,14 @@ CanonicalArtifactType = Literal["commit_message", "plan", "development_result"]
 def _prepare_artifact_submission(
     params: dict[str, object],
     *,
+    session_drain: str | None = None,
     base_path: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[str, dict[str, object]]:
-    artifact_type = _canonical_artifact_type(_required_string(params, "artifact_type"))
+    artifact_type = _canonical_artifact_type(
+        _required_string(params, "artifact_type"),
+        session_drain=session_drain,
+    )
     raw_content = _resolve_artifact_content_source(params, base_path=base_path, backend=backend)
     parsed_content = _unwrap_persisted_artifact_payload(artifact_type, _parse_content(raw_content))
 
@@ -343,15 +348,45 @@ def _unwrap_persisted_artifact_payload(
 ) -> dict[str, object]:
     persisted_type = parsed_content.get("type")
     persisted_content = parsed_content.get("content")
-    if persisted_type == artifact_type and isinstance(persisted_content, dict):
+    if persisted_type in _accepted_persisted_types(artifact_type) and isinstance(
+        persisted_content, dict
+    ):
         return cast("dict[str, object]", persisted_content)
     return parsed_content
 
 
-def _canonical_artifact_type(artifact_type: str) -> str:
+def _canonical_artifact_type(artifact_type: str, *, session_drain: str | None = None) -> str:
     if artifact_type in {"commit", "skip"}:
         return COMMIT_MESSAGE_TYPE
+    if artifact_type == "analysis_decision":
+        return _analysis_decision_artifact_type(session_drain)
     return artifact_type
+
+
+def _analysis_decision_artifact_type(session_drain: str | None) -> str:
+    mapping = {
+        "development_analysis": "development_analysis_decision",
+        "review_analysis": "review_analysis_decision",
+    }
+    if session_drain in mapping:
+        return mapping[session_drain]
+    raise InvalidParamsError("analysis_decision requires an analysis drain session")
+
+
+def _accepted_persisted_types(artifact_type: str) -> set[str]:
+    accepted = {artifact_type}
+    if artifact_type in {"development_analysis_decision", "review_analysis_decision"}:
+        accepted.add("analysis_decision")
+    return accepted
+
+
+def _session_drain(session: SessionLike) -> str | None:
+    try:
+        attributes = cast("dict[str, object]", vars(session))
+    except TypeError:
+        return None
+    drain = attributes.get("drain")
+    return drain if isinstance(drain, str) else None
 
 
 def _normalize_artifact_payload(

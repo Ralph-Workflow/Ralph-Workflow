@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import ralph.prompts.materialize as materialize_module
@@ -57,6 +58,86 @@ def test_materialize_commit_phase_tolerates_empty_diff(
     assert prompt_path == ".agent/tmp/development_commit_prompt.md"
     rendered = workspace.read(prompt_path)
     assert "DIFF:" in rendered
+
+
+def test_materialize_commit_phase_with_claude_prefix_includes_both_tool_aliases(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+
+    monkeypatch.setattr(
+        materialize_module,
+        "_git_diff",
+        lambda _workspace_root: "diff --git a/app.py b/app.py\n+hello",
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development_commit",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(
+            SessionDrain.COMMIT,
+            tool_name_prefix="mcp__ralph__",
+        ),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "mcp__ralph__ralph_submit_artifact" in rendered
+    assert "or `ralph_submit_artifact`" in rendered
+
+
+def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_tools(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Implement the feature")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {"context": "ctx", "scope_items": [{"text": "a"}]},
+                    "steps": [
+                        {
+                            "number": 1,
+                            "title": "step",
+                            "content": "do it",
+                            "step_type": "file_change",
+                            "priority": "high",
+                            "targets": [],
+                            "depends_on": [],
+                        }
+                    ],
+                    "critical_files": {"primary_files": [], "reference_files": []},
+                    "risks_mitigations": [],
+                    "verification_strategy": [],
+                    "work_units": [],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(
+            SessionDrain.DEVELOPMENT,
+            tool_name_prefix="mcp__ralph__",
+        ),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "`mcp__ralph__write_file` or bare `write_file`" in rendered
+    assert "`mcp__ralph__exec` or bare `exec`" in rendered
+    assert "`mcp__ralph__report_progress` or bare `report_progress`" in rendered
+    assert "`mcp__ralph__declare_complete` or bare `declare_complete`" in rendered
 
 
 def test_materialize_development_prompt_formats_wrapped_plan_for_execution(

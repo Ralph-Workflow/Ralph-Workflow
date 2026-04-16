@@ -36,8 +36,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
     assert "do not call bash" in prompt.lower()
-    assert "do not call write_file" in prompt.lower()
-    assert "do not create, edit, or read `.agent/tmp/commit_message.json`" in prompt.lower()
+    assert "if the submit-artifact mcp tool is unavailable in this turn" in prompt.lower()
+    assert "write the raw commit payload json to `.agent/tmp/commit_message.json`" in prompt.lower()
     assert '"artifact_type":"commit_message"' in prompt
     assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
     assert "do not use `content_path` for this task" in prompt.lower()
@@ -96,8 +96,8 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt
-    assert "Do not call write_file" in prompt
-    assert "Do not create, edit, or read `.agent/tmp/commit_message.json`" in prompt
+    assert "If the submit-artifact MCP tool is unavailable in this turn" in prompt
+    assert "write the raw commit payload JSON to `.agent/tmp/commit_message.json`" in prompt
     assert '"artifact_type":"commit_message"' in prompt
     assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
     assert "Do not use `content_path` for this task" in prompt

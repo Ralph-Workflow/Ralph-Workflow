@@ -233,7 +233,7 @@ def test_preflight_tcp_attempt_accepts_injected_connector() -> None:
 
 
 def test_preflight_http_attempt_accepts_injected_post() -> None:
-    expected_call_count = 2
+    expected_call_count = 3
     calls: list[tuple[str, dict[str, object] | None, str | None]] = []
 
     def fake_post(
@@ -250,6 +250,8 @@ def test_preflight_http_attempt_accepts_injected_post() -> None:
         calls.append((endpoint, payload, session_id))
         if payload and payload.get("method") == "initialize":
             return {"jsonrpc": "2.0", "result": {"ok": True}}, "session-1"
+        if payload and payload.get("method") == "notifications/initialized":
+            return {}, session_id
         return {"jsonrpc": "2.0", "result": {"tools": [{"name": "read_file"}]}}, session_id
 
     startup.preflight_http_attempt(
@@ -261,3 +263,76 @@ def test_preflight_http_attempt_accepts_injected_post() -> None:
     )
 
     assert len(calls) == expected_call_count
+
+
+def test_preflight_http_attempt_fails_when_initialize_returns_jsonrpc_error() -> None:
+    def fake_post(
+        endpoint_or_target: str | startup.HttpEndpointTarget,
+        target_or_payload: startup.HttpEndpointTarget | startup.JsonRpcResponse,
+        payload: startup.JsonRpcResponse | None = None,
+        *,
+        session_id: str | None = None,
+        post_fn: startup.HttpPostFn = httpx.post,
+    ) -> tuple[startup.JsonRpcResponse, str | None]:
+        del endpoint_or_target, target_or_payload, session_id, post_fn
+        assert payload is not None
+        if payload.get("method") == "initialize":
+            return {"jsonrpc": "2.0", "error": {"code": -32000, "message": "boom"}}, "session-1"
+        return {"jsonrpc": "2.0", "result": {"tools": [{"name": "read_file"}]}}, "session-1"
+
+    with pytest.raises(startup.PermanentPreflightError, match="HTTP MCP initialize failed"):
+        startup.preflight_http_attempt(
+            "http://demo/mcp",
+            startup.parse_http_endpoint("http://demo/mcp"),
+            ["read_file"],
+            datetime.timedelta(seconds=1),
+            post_with_session_fn=fake_post,
+        )
+
+
+def test_preflight_http_attempt_fails_when_initialize_omits_session_id() -> None:
+    def fake_post(
+        endpoint_or_target: str | startup.HttpEndpointTarget,
+        target_or_payload: startup.HttpEndpointTarget | startup.JsonRpcResponse,
+        payload: startup.JsonRpcResponse | None = None,
+        *,
+        session_id: str | None = None,
+        post_fn: startup.HttpPostFn = httpx.post,
+    ) -> tuple[startup.JsonRpcResponse, str | None]:
+        del endpoint_or_target, target_or_payload, session_id, post_fn
+        assert payload is not None
+        if payload.get("method") == "initialize":
+            return {"jsonrpc": "2.0", "result": {"ok": True}}, None
+        return {"jsonrpc": "2.0", "result": {"tools": [{"name": "read_file"}]}}, "session-1"
+
+    with pytest.raises(startup.PermanentPreflightError, match="missing mcp-session-id"):
+        startup.preflight_http_attempt(
+            "http://demo/mcp",
+            startup.parse_http_endpoint("http://demo/mcp"),
+            ["read_file"],
+            datetime.timedelta(seconds=1),
+            post_with_session_fn=fake_post,
+        )
+
+
+def test_post_http_jsonrpc_with_session_accepts_202_empty_notification_response() -> None:
+    def fake_post(
+        url: str,
+        *,
+        json: startup.JsonRpcResponse,
+        headers: dict[str, str],
+        timeout: float,
+    ) -> httpx.Response:
+        del url, json, headers, timeout
+        return httpx.Response(202, content=b"", headers={"mcp-session-id": "session-1"})
+
+    response, session_id = startup.post_http_jsonrpc_with_session(
+        "http://demo/mcp",
+        startup.parse_http_endpoint("http://demo/mcp"),
+        startup.initialized_notification(),
+        session_id="session-1",
+        post_fn=fake_post,
+    )
+
+    assert response == {}
+    assert session_id == "session-1"

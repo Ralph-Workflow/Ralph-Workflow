@@ -9,6 +9,7 @@ import importlib
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
+from rich.text import Text
 
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
@@ -94,9 +95,9 @@ def run_pipeline(
     # In dry-run mode, just initialize and exit
     if dry_run:
         console.print("[cyan]Dry run mode[/cyan]")
-        console.print(f"  Phase: {initial_state.phase if initial_state else 'planning'}")
-        console.print(f"  Iterations: {config.general.developer_iters}")
-        console.print(f"  Review passes: {config.general.reviewer_reviews}")
+        console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
+        console.print(_detail_text("Iterations", str(config.general.developer_iters)))
+        console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
         return 0
 
     # Run the actual pipeline
@@ -118,5 +119,20 @@ def run_pipeline(
         return 130
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")
-        console.print(f"[red]Pipeline failed:[/red] {e}")
+        console.print(_status_text("Pipeline failed", str(e), "red"))
         return 1
+
+
+def _status_text(label: str, detail: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    text.append(detail)
+    return text
+
+
+def _detail_text(label: str, detail: str) -> Text:
+    text = Text()
+    text.append(f"  {label}: ")
+    text.append(detail)
+    return text

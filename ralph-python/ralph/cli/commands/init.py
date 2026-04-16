@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from rich.console import Console
+from rich.text import Text
 
 console = Console()
 
@@ -65,16 +66,24 @@ def init_command(
             "- Criterion 2\n",
             encoding="utf-8",
         )
-        console.print(f"[green]Created[/green] {prompt_path}")
+        console.print(_status_text("Created", str(prompt_path), "green"))
 
     # Create local config if requested or if no global config exists
     config_file = config_path or (agent_dir / "ralph-workflow.toml")
     if not config_file.exists():
         config_file.write_text(INIT_TEMPLATE, encoding="utf-8")
-        console.print(f"[green]Created[/green] {config_file}")
+        console.print(_status_text("Created", str(config_file), "green"))
 
-    console.print(f"[cyan]Ralph[/cyan] initialized in {target}")
+    console.print(_status_text("Ralph initialized in", str(target), "cyan"))
     console.print("\n[dim]Next steps:[/dim]")
     console.print("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task")
     console.print("  2. Configure agents in [cyan].agent/ralph-workflow.toml[/cyan]")
     console.print("  3. Run [cyan]ralph[/cyan] to start the pipeline")
+
+
+def _status_text(label: str, detail: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    text.append(detail)
+    return text

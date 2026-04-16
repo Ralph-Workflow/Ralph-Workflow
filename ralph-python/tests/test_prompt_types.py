@@ -168,6 +168,12 @@ def test_capability_template_variables_can_prefix_tool_names_for_claude_mcp() ->
     assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == "mcp__ralph__ralph_submit_artifact"
     assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == "mcp__ralph__ralph_submit_plan_section"
     assert variables["EXEC_TOOL_NAME"] == "mcp__ralph__exec"
+    assert variables["WRITE_FILE_TOOL_REFERENCE"] == "`mcp__ralph__write_file` or bare `write_file`"
+    assert variables["EXEC_TOOL_REFERENCE"] == "`mcp__ralph__exec` or bare `exec`"
+    assert (
+        variables["DECLARE_COMPLETE_TOOL_REFERENCE"]
+        == "`mcp__ralph__declare_complete` or bare `declare_complete`"
+    )
     assert variables["MCP_TOOLS_LIST"].startswith("mcp__ralph__read_file")
 
 

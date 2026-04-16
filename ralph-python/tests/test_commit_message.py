@@ -94,6 +94,26 @@ def test_read_commit_message_from_path_formats_structured_skip_payload(tmp_path:
     assert read_commit_message_from_path(message_file) == "SKIP: No relevant diff"
 
 
+def test_read_commit_message_artifact_accepts_raw_commit_payload_json(tmp_path: Path) -> None:
+    artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+    artifact_file.parent.mkdir(parents=True, exist_ok=True)
+    artifact_file.write_text(
+        json.dumps(
+            {
+                "type": "commit",
+                "subject": "fix(cli): recover commit fallback payload",
+                "body": "Accept raw commit payloads when MCP submission falls back to disk.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert read_commit_message_artifact(tmp_path) == (
+        "fix(cli): recover commit fallback payload\n\n"
+        "Accept raw commit payloads when MCP submission falls back to disk."
+    )
+
+
 def test_write_commit_message_artifact_uses_injected_backend(tmp_path: Path) -> None:
     backend = FakeFileBackend()
 

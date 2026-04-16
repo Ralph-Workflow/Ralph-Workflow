@@ -15,6 +15,7 @@ import rich_click as click
 import typer
 from loguru import logger
 from rich.console import Console
+from rich.text import Text
 
 # Late imports to avoid circular dependencies
 from ralph import __version__
@@ -182,7 +183,11 @@ console = Console()
 def version_callback(version: bool) -> None:
     """Print version information."""
     if version:
-        console.print(f"[cyan]Ralph[/cyan] version [green]{__version__}[/green]")
+        version_text = Text()
+        version_text.append("Ralph", style="cyan")
+        version_text.append(" version ")
+        version_text.append(__version__, style="green")
+        console.print(version_text)
         raise typer.Exit()
 
 
@@ -612,8 +617,16 @@ def _run_pipeline(
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
-        console.print(f"[red]Error:[/red] {e}")
+        console.print(_status_text("Error", str(e), "red"))
         return 1
+
+
+def _status_text(label: str, detail: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    text.append(detail)
+    return text
 
 
 def _configure_logging(verbosity: Verbosity) -> None:

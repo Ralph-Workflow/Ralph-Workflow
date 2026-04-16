@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.capability_mapping import Capability, SessionDrain
+from ralph.mcp.capability_mapping import Capability, SessionDrain, drain_class_for_session
 from ralph.mcp.tool_names import (
     ARTIFACT_TOOLS,
     COORDINATE_TOOL,
@@ -35,6 +35,7 @@ from ralph.mcp.tool_names import (
     TRACKED_WRITE_TOOLS,
     WORKSPACE_READ_TOOLS,
     WRITE_FILE_TOOL,
+    RalphToolName,
     prefix_tool_name,
     prefix_tool_names,
 )
@@ -142,7 +143,7 @@ class CapabilitySet:
 
     @classmethod
     def defaults_for_drain(cls, drain: SessionDrain) -> CapabilitySet:
-        return cls(DEFAULT_CAPABILITIES.get(drain, ()))
+        return cls(DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ()))
 
     @classmethod
     def from_identifiers(cls, identifiers: Iterable[str] | None) -> CapabilitySet:
@@ -180,7 +181,7 @@ class PolicyFlagSet:
 
     @classmethod
     def defaults_for_drain(cls, drain: SessionDrain) -> PolicyFlagSet:
-        return cls(DEFAULT_POLICY_FLAGS.get(drain, ()))
+        return cls(DEFAULT_POLICY_FLAGS.get(_default_drain_key(drain), ()))
 
     @classmethod
     def from_identifiers(cls, identifiers: Iterable[str] | None) -> PolicyFlagSet:
@@ -246,6 +247,12 @@ class SessionCapabilities:
 
 def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
+
+
+def _default_drain_key(drain: SessionDrain) -> SessionDrain:
+    if drain in DEFAULT_CAPABILITIES or drain in DEFAULT_POLICY_FLAGS:
+        return drain
+    return SessionDrain(drain_class_for_session(drain).value)
 
 
 def capability_template_variables(
@@ -395,6 +402,90 @@ def capability_template_variables(
             GIT_SHOW_TOOL,
             tool_name_prefix=tool_name_prefix,
         ),
+        tool_name_reference_var(
+            visible_tools,
+            "SUBMIT_ARTIFACT_TOOL_REFERENCE",
+            SUBMIT_ARTIFACT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "SUBMIT_PLAN_SECTION_TOOL_REFERENCE",
+            SUBMIT_PLAN_SECTION_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "FINALIZE_PLAN_TOOL_REFERENCE",
+            FINALIZE_PLAN_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "GET_PLAN_DRAFT_TOOL_REFERENCE",
+            GET_PLAN_DRAFT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "DISCARD_PLAN_DRAFT_TOOL_REFERENCE",
+            DISCARD_PLAN_DRAFT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "DECLARE_COMPLETE_TOOL_REFERENCE",
+            DECLARE_COMPLETE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "COORDINATE_TOOL_REFERENCE",
+            COORDINATE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "REPORT_PROGRESS_TOOL_REFERENCE",
+            REPORT_PROGRESS_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "WRITE_FILE_TOOL_REFERENCE",
+            WRITE_FILE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "LIST_DIRECTORY_TOOL_REFERENCE",
+            LIST_DIRECTORY_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE",
+            LIST_DIRECTORY_RECURSIVE_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "SEARCH_FILES_TOOL_REFERENCE",
+            SEARCH_FILES_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "EXEC_TOOL_REFERENCE",
+            EXEC_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        bare_tool_hint_var(
+            visible_tools,
+            "SUBMIT_ARTIFACT_BARE_HINT",
+            SUBMIT_ARTIFACT_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
     ]
 
     summary_var = (
@@ -449,13 +540,41 @@ def format_mcp_tools_list(tool_names: Sequence[str]) -> str:
 def tool_name_var(
     visible_tools: Sequence[str],
     variable_name: str,
-    tool_name: str,
+    tool_name: str | RalphToolName,
     *,
     tool_name_prefix: str = "",
 ) -> tuple[str, str]:
-    if tool_name not in visible_tools:
+    canonical_name = tool_name.value if isinstance(tool_name, RalphToolName) else tool_name
+    if canonical_name not in visible_tools:
         return (variable_name, "")
     return (variable_name, prefix_tool_name(tool_name, tool_name_prefix=tool_name_prefix))
+
+
+def tool_name_reference_var(
+    visible_tools: Sequence[str],
+    variable_name: str,
+    tool_name: RalphToolName,
+    *,
+    tool_name_prefix: str = "",
+) -> tuple[str, str]:
+    if tool_name.value not in visible_tools:
+        return (variable_name, "")
+    return (variable_name, tool_name.prompt_reference(tool_name_prefix=tool_name_prefix))
+
+
+def bare_tool_hint_var(
+    visible_tools: Sequence[str],
+    variable_name: str,
+    tool_name: RalphToolName,
+    *,
+    tool_name_prefix: str = "",
+) -> tuple[str, str]:
+    if tool_name.value not in visible_tools or not tool_name_prefix:
+        return (variable_name, "")
+    return (
+        variable_name,
+        f"If your client exposes bare MCP names, use `{tool_name.value}` for the same call.",
+    )
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:

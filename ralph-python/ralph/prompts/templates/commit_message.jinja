@@ -37,8 +37,6 @@ The task is to submit the artifact now, not to propose a commit message for late
 Your job is to decide on the correct structured artifact and submit it by calling the tool directly.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
 Do not call Bash.
-Do not call write_file.
-Do not create, edit, or read `.agent/tmp/commit_message.json`.
 Do not use `content_path` for this task.
 
 MCP REQUIREMENT:
@@ -61,6 +59,7 @@ REQUIRED PROCEDURE:
 2. Build the JSON content with the exact schema above.
 3. Immediately call the tool with `artifact_type="commit_message"` and that JSON string as the `content` argument.
 4. After the MCP call succeeds, optionally echo only the commit subject line once and nothing else. If you submitted a skip artifact, do not emit extra prose.
+5. If the submit-artifact MCP tool is unavailable in this turn, use `write_file` to write the raw commit payload JSON to `.agent/tmp/commit_message.json` instead. Write ONLY the inner payload object such as `{"type":"commit","subject":"fix(scope): message"}` or `{"type":"skip","reason":"..."}`. Do not wrap it in artifact metadata.
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 

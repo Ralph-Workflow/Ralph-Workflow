@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix, prefix_tool_name
+from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
@@ -103,6 +103,7 @@ def _render_prompt_for_phase(
                 "CHANGES": diff_content,
                 "LATEST_ARTIFACT": _latest_artifact_content(workspace, phase),
                 "ISSUES": _resolve_issues_content(workspace),
+                "FIX_RESULT": _resolve_fix_result_content(workspace),
             },
         )
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
@@ -116,11 +117,8 @@ def _render_prompt_for_phase(
             _commit_phase_diff(workspace_root),
             template_registry=context.registry,
             partials=context.partials,
-            submit_artifact_tool_names=(
-                prefix_tool_name(
-                    SUBMIT_ARTIFACT_TOOL,
-                    tool_name_prefix=session_caps.tool_name_prefix,
-                ),
+            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+                tool_name_prefix=session_caps.tool_name_prefix,
             ),
             payload_config=CommitPromptPayloadConfig(
                 output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
@@ -353,6 +351,13 @@ def _resolve_issues_content(workspace: Workspace) -> str:
         if content:
             return content
     return "(no review issues available)"
+
+
+def _resolve_fix_result_content(workspace: Workspace) -> str:
+    content = _read_optional(workspace, ".agent/artifacts/fix_result.json")
+    if content:
+        return content
+    return "(no fix result available)"
 
 
 def _latest_artifact_content(workspace: Workspace, phase: str) -> str:

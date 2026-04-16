@@ -84,3 +84,28 @@ def test_all_top_level_templates_include_unattended_partial() -> None:
     ]
 
     assert missing == []
+
+
+def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sections() -> None:
+    development_analysis = (TEMPLATES_ROOT / "development_analysis.jinja").read_text(
+        encoding="utf-8"
+    )
+    review_analysis = (TEMPLATES_ROOT / "review_analysis.jinja").read_text(encoding="utf-8")
+
+    assert 'artifact_type="development_analysis_decision"' in development_analysis
+    assert 'artifact_type="review_analysis_decision"' in review_analysis
+    assert "what_came_up_short" in development_analysis
+    assert "how_to_fix" in development_analysis
+    assert "what_came_up_short" in review_analysis
+    assert "how_to_fix" in review_analysis
+
+
+def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> None:
+    review_template = (TEMPLATES_ROOT / "review.jinja").read_text(encoding="utf-8")
+    fix_template = (TEMPLATES_ROOT / "fix_mode.jinja").read_text(encoding="utf-8")
+
+    assert 'artifact_type="issues"' in review_template
+    assert "what_came_up_short" in review_template
+    assert "how_to_fix" in review_template
+    assert "FIX_RESULT" in review_template
+    assert "fix_result" in fix_template

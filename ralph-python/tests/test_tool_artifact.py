@@ -86,6 +86,7 @@ def _memory_handler_deps(backend: MemoryBackend) -> ArtifactHandlerDeps:
 @dataclass
 class MockSession:
     session_id: str = "test-session"
+    drain: str = "development"
 
     def check_capability(self, capability: str) -> object:
         return capability == "artifact.submit"
@@ -170,6 +171,45 @@ def test_prepare_artifact_submission_reads_content_from_file_path(tmp_path: Path
     assert artifact_type == "plan"
     summary = cast("dict[str, object]", parsed_content["summary"])
     assert summary["context"] == "Plan MCP rollout from file."
+
+
+def test_prepare_artifact_submission_maps_generic_analysis_decision_to_development_drain() -> None:
+    artifact_type, parsed_content = _prepare_artifact_submission(
+        {
+            "artifact_type": "analysis_decision",
+            "content": _content({"status": "completed"}),
+        },
+        session_drain="development_analysis",
+    )
+
+    assert artifact_type == "development_analysis_decision"
+    assert parsed_content == {"status": "completed"}
+
+
+def test_prepare_artifact_submission_maps_generic_analysis_decision_to_review_drain() -> None:
+    artifact_type, parsed_content = _prepare_artifact_submission(
+        {
+            "artifact_type": "analysis_decision",
+            "content": _content({"status": "request_changes"}),
+        },
+        session_drain="review_analysis",
+    )
+
+    assert artifact_type == "review_analysis_decision"
+    assert parsed_content == {"status": "request_changes"}
+
+
+def test_prepare_artifact_submission_rejects_generic_analysis_decision_outside_analysis_drain() -> (
+    None
+):
+    with pytest.raises(InvalidParamsError, match="analysis_decision requires an analysis drain"):
+        _prepare_artifact_submission(
+            {
+                "artifact_type": "analysis_decision",
+                "content": _content({"status": "completed"}),
+            },
+            session_drain="development",
+        )
 
 
 def test_prepare_artifact_submission_rejects_when_content_and_content_path_are_both_set(

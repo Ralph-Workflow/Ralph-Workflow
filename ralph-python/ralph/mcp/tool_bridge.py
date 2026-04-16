@@ -416,7 +416,9 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
                             "type": "string",
                             "description": (
                                 "Type of artifact (plan, development_result, issues, "
-                                "fix_result, commit_message)"
+                                "fix_result, commit_message, development_analysis_decision, "
+                                "review_analysis_decision; generic analysis_decision is only "
+                                "valid inside an analysis drain)"
                             ),
                         },
                         "content": {

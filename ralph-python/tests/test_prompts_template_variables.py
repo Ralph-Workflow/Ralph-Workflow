@@ -41,3 +41,15 @@ def test_template_variables_from_session_respects_session_data() -> None:
     assert vars_map["POLICY_ALLOW_SHELL"] == "true"
     assert "write_file" in vars_map["MCP_TOOLS_LIST"]
     assert "exec" not in vars_map["MCP_TOOLS_LIST"]
+
+
+def test_specialized_analysis_drain_uses_read_only_defaults() -> None:
+    caps, flags = template_variables.default_caps_and_flags_for_drain(
+        SessionDrain.DEVELOPMENT_ANALYSIS
+    )
+    vars_map = template_variables.capability_template_variables(caps, flags)
+
+    assert vars_map["HAS_WORKSPACE_WRITE"] == ""
+    assert vars_map["HAS_PROCESS_EXEC"] == ""
+    assert vars_map["POLICY_NO_EDIT"] == "true"
+    assert vars_map["POLICY_ALLOW_SHELL"] == ""

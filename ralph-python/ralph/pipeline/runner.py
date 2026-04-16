@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from git import Repo
 from loguru import logger
 from rich.console import Console
+from rich.text import Text
 
 from ralph.agents.chain import ChainManager
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
@@ -174,7 +175,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         console.print("[green]Pipeline completed successfully.[/green]")
         return 0
     else:
-        console.print(f"[red]Pipeline failed:[/red] {state.last_error or 'Unknown error'}")
+        console.print(_status_text("Pipeline failed", state.last_error or "Unknown error", "red"))
         return 1
 
 
@@ -204,7 +205,7 @@ def _handle_inline_effect(
         return 0
 
     if isinstance(effect, ExitFailureEffect):
-        console.print(f"[red]Pipeline failed:[/red] {effect.reason}")
+        console.print(_status_text("Pipeline failed", effect.reason, "red"))
         return 1
 
     return None
@@ -465,7 +466,7 @@ def _execute_agent_effect(
     deps: _AgentExecutionDeps,
     workspace_scope: WorkspaceScope,
 ) -> PipelineEvent:
-    console.print(f"[cyan]Invoking agent:[/cyan] {effect.agent_name}")
+    console.print(_status_text("Invoking agent", effect.agent_name, "cyan"))
     registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
@@ -613,43 +614,65 @@ def _resolve_parser(parser_type: str) -> AgentParser:
         return get_parser("generic")
 
 
-def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> str | None:
-    rendered: str | None = None
+def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
+    rendered: Text | None = None
 
     if output.type == "text":
         content = output.content.strip()
         if content:
-            rendered = f"[white]{agent_name}:[/white] {content}"
+            rendered = _styled_prefix(agent_name, "white")
+            rendered.append(content)
     elif output.type == "tool_use":
         tool_name = output.content.strip() or "unknown-tool"
-        rendered = f"[magenta]{agent_name} tool:[/magenta] {tool_name}"
+        rendered = _styled_prefix(f"{agent_name} tool", "magenta")
+        rendered.append(tool_name)
         input_summary = _tool_input_summary(output.metadata)
         if input_summary:
-            rendered = f"{rendered} ({input_summary})"
+            rendered.append(f" ({input_summary})")
     elif output.type == "tool_result":
         result = output.content.strip()
         if result:
-            rendered = f"[dim]{agent_name} tool result:[/dim] {result}"
+            rendered = _styled_prefix(f"{agent_name} tool result", "dim")
+            rendered.append(result)
     elif output.type == "error":
         error = output.content.strip() or "unknown error"
-        rendered = f"[red]{agent_name} error:[/red] {error}"
+        rendered = _styled_prefix(f"{agent_name} error", "red")
+        rendered.append(error)
     else:
         summary = _event_summary(output)
-        rendered = f"[dim]{agent_name} {output.type}:[/dim] {summary}"
+        rendered = _styled_prefix(f"{agent_name} {output.type}", "dim")
+        rendered.append(summary)
 
     return rendered
 
 
+def _styled_prefix(label: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    return text
+
+
+def _status_text(label: str, detail: str, style: str) -> Text:
+    text = Text()
+    text.append(f"{label}:", style=style)
+    text.append(" ")
+    text.append(detail)
+    return text
+
+
 def _prompt_session_drain_for_phase(phase: str) -> SessionDrain:
-    if phase == "planning":
-        return SessionDrain.PLANNING
-    if phase in {"development", "development_analysis"}:
-        return SessionDrain.DEVELOPMENT
-    if phase in {"review", "review_analysis"}:
-        return SessionDrain.REVIEW
-    if phase == "fix":
-        return SessionDrain.FIX
-    return SessionDrain.COMMIT
+    drain_map = {
+        "planning": SessionDrain.PLANNING,
+        "development": SessionDrain.DEVELOPMENT,
+        "development_analysis": SessionDrain.DEVELOPMENT_ANALYSIS,
+        "development_commit": SessionDrain.DEVELOPMENT_COMMIT,
+        "review": SessionDrain.REVIEW,
+        "review_analysis": SessionDrain.REVIEW_ANALYSIS,
+        "review_commit": SessionDrain.REVIEW_COMMIT,
+        "fix": SessionDrain.FIX,
+    }
+    return drain_map.get(phase, SessionDrain.COMMIT)
 
 
 def _event_summary(output: AgentOutputLine) -> str:

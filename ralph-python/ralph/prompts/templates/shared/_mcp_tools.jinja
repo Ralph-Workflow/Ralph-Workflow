@@ -8,24 +8,24 @@ AVAILABLE TOOLS:
 
 {% if HAS_MCP_WRITE %}
 WRITE OPERATIONS:
-- Use `{{WRITE_FILE_TOOL_NAME}}` to create or modify files
-- Use `{{LIST_DIRECTORY_TOOL_NAME}}` to explore directories
-- Use `{{LIST_DIRECTORY_RECURSIVE_TOOL_NAME}}` to explore directories recursively
-- Use `{{SEARCH_FILES_TOOL_NAME}}` to search file contents
+- Use {{WRITE_FILE_TOOL_REFERENCE}} to create or modify files
+- Use {{LIST_DIRECTORY_TOOL_REFERENCE}} to explore directories
+- Use {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}} to explore directories recursively
+- Use {{SEARCH_FILES_TOOL_REFERENCE}} to search file contents
 {% endif %}
 
 {% if HAS_MCP_EXEC %}
 EXECUTION:
-- Use `{{EXEC_TOOL_NAME}}` to run shell commands
-- Use `{{REPORT_PROGRESS_TOOL_NAME}}` to report status
+- Use {{EXEC_TOOL_REFERENCE}} to run shell commands
+- Use {{REPORT_PROGRESS_TOOL_REFERENCE}} to report status
 {% endif %}
 
 ARTIFACT SUBMISSION:
-- Use `{{SUBMIT_ARTIFACT_TOOL_NAME}}` to submit structured results
+- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results
 - If you are retrying a saved artifact, edit its `.agent/artifacts/*.json` file and resubmit with `content_path` instead of retyping the whole JSON payload
-{% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to stage plan sections incrementally{% endif %}
-{% if FINALIZE_PLAN_TOOL_NAME %}- Use `{{FINALIZE_PLAN_TOOL_NAME}}` to finalize a staged plan draft{% endif %}
-{% if GET_PLAN_DRAFT_TOOL_NAME %}- Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect a staged plan draft{% endif %}
-{% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` to discard a staged plan draft and restart{% endif %}
-- Use `{{DECLARE_COMPLETE_TOOL_NAME}}` when finished
+{% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage plan sections incrementally{% endif %}
+{% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
+{% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}
+{% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}
+- Use {{DECLARE_COMPLETE_TOOL_REFERENCE}} when finished
 {% endif %}

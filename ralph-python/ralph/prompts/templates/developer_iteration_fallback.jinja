@@ -1,17 +1,22 @@
 IMPLEMENTATION MODE
 
-{% from 'shared/_payload_section.j2' import render_payload_section %}
-
 {% include 'shared/_unattended_mode.j2' %}
 
 ORIGINAL REQUEST:
-{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+Canonical request file: `{{PROMPT_PATH}}`
+
+{{PROMPT}}
 
 IMPLEMENTATION PLAN:
-{{ render_payload_section('IMPLEMENTATION PLAN', PLAN, PLAN_PATH) }}
+Plan payload file: `{{PLAN_PATH}}`
 
-When done, call `ralph_submit_artifact` with artifact_type="development_result" and content as JSON.
+{{PLAN}}
+
+Native agent tools are disabled in this brokered fallback. Use `{{EXEC_TOOL_NAME}}` for shell commands and `{{REPORT_PROGRESS_TOOL_NAME}}` to report status instead of native tools like `bash`.
+
+When done, call {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="development_result" and content as JSON.
 Write the result artifact to .agent/artifacts/development_result.json.
 If you need to revise the saved result artifact, edit `.agent/artifacts/development_result.json` and resubmit with `content_path` using this exact call:
-`ralph_submit_artifact({"artifact_type":"development_result","content_path":".agent/artifacts/development_result.json"})`
+`{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"development_result","content_path":".agent/artifacts/development_result.json"})`
+{{SUBMIT_ARTIFACT_BARE_HINT}}
 {"status":"completed","summary":"Summary","files_changed":"- src/foo.rs"}

@@ -159,11 +159,23 @@ def _read_commit_message_text_from_json_path(
     payload = cast(
         "dict[str, object]", json.loads(backend.read_text(message_file, encoding="utf-8"))
     )
-    artifact = Artifact.from_dict(payload)
+    try:
+        artifact = Artifact.from_dict(payload)
+    except (KeyError, TypeError, ValueError):
+        return _render_raw_commit_message_payload(payload)
+
     if artifact.artifact_type != COMMIT_MESSAGE_TYPE:
-        return None
+        return _render_raw_commit_message_payload(payload)
+
     try:
         return render_commit_message_content(artifact.content)
+    except ValueError:
+        return _render_raw_commit_message_payload(payload)
+
+
+def _render_raw_commit_message_payload(payload: dict[str, object]) -> str | None:
+    try:
+        return render_commit_message_content(payload)
     except ValueError:
         return None
 

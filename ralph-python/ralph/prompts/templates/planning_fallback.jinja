@@ -1,12 +1,12 @@
 PLANNING MODE
 
-{% from 'shared/_payload_section.j2' import render_payload_section %}
-
 {% include 'shared/_unattended_mode.j2' %}
 
 Create an implementation plan for:
 
-{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+Canonical request file: `{{PROMPT_PATH}}`
+
+{{PROMPT}}
 
 Fallback still needs an executor-grade plan. Include:
 - summary context and scope items
@@ -16,16 +16,19 @@ Fallback still needs an executor-grade plan. Include:
 - verification strategy with expected outcomes
 - work_units if parallel work is safe
 
-Unless the plan is genuinely short, submit each required section separately.
-- Use `ralph_submit_plan_section` to stage `summary`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`.
-- Use `ralph_get_plan_draft` to inspect the staged draft if validation fails or you need to resume.
-- Use `ralph_finalize_plan` once all required sections are staged.
-- Use `ralph_discard_plan_draft` only if you need to throw away the draft and restart from section 1.
+Native agent tools are disabled in this brokered fallback. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}, {{GET_PLAN_DRAFT_TOOL_REFERENCE}}, {{FINALIZE_PLAN_TOOL_REFERENCE}}, {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}, and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below.
 
-For genuinely short plans, you may submit atomically via `ralph_submit_artifact` with artifact_type="plan".
+Unless the plan is genuinely short, submit each required section separately.
+- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`.
+- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if validation fails or you need to resume.
+- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} once all required sections are staged.
+- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} only if you need to throw away the draft and restart from section 1.
+
+For genuinely short plans, you may submit atomically via {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan".
 Ralph will persist the submitted artifact at `.agent/artifacts/plan.json` for the next phase.
 If a submitted plan must be corrected end-to-end, edit `.agent/artifacts/plan.json` and resubmit with `content_path` using this exact call:
-`ralph_submit_artifact({"artifact_type":"plan","content_path":".agent/artifacts/plan.json"})`
+`{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"plan","content_path":".agent/artifacts/plan.json"})`
+{{SUBMIT_ARTIFACT_BARE_HINT}}
 The `content` argument must be a JSON string whose decoded object is the RAW plan payload, not an outer artifact wrapper.
 Do NOT send `{ "type": "plan", "content": ... }`.
 Use this exact top-level shape and fill it with concrete executor-ready detail:

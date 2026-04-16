@@ -9,9 +9,11 @@ import os
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from importlib import import_module
 from pathlib import Path
+from threading import Event
+from time import sleep
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 if TYPE_CHECKING:
@@ -36,6 +38,7 @@ from ralph.mcp.env import (
 from ralph.mcp.session import AgentSession, session_has_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
+from ralph import __version__
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Sequence
@@ -225,6 +228,12 @@ class McpServer:
             return self._handle_initialize(request)
         if request.method == "notifications/initialized":
             return (None, ServerState.RUNNING)
+        if request.method == "prompts/list":
+            return self._handle_prompts_list(request)
+        if request.method == "resources/list":
+            return self._handle_resources_list(request)
+        if request.method == "resources/templates/list":
+            return self._handle_resource_templates_list(request)
         if request.method == "tools/list":
             return self._handle_tools_list(request)
         if request.method == "tools/call":
@@ -236,8 +245,12 @@ class McpServer:
     def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         result = {
             "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "ralph-mcp"},
+            "capabilities": {
+                "tools": {"listChanged": False},
+                "prompts": {"listChanged": False},
+                "resources": {"subscribe": False, "listChanged": False},
+            },
+            "serverInfo": {"name": "ralph-mcp", "version": __version__},
         }
         return (
             JsonRpcResponse(jsonrpc="2.0", result=result, msg_id=request.msg_id),
@@ -255,6 +268,32 @@ class McpServer:
         ]
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"tools": tools}, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _handle_prompts_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result={"prompts": []}, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _handle_resources_list(
+        self, request: JsonRpcRequest
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        return (
+            JsonRpcResponse(jsonrpc="2.0", result={"resources": []}, msg_id=request.msg_id),
+            ServerState.RUNNING,
+        )
+
+    def _handle_resource_templates_list(
+        self, request: JsonRpcRequest
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        return (
+            JsonRpcResponse(
+                jsonrpc="2.0",
+                result={"resourceTemplates": []},
+                msg_id=request.msg_id,
+            ),
             ServerState.RUNNING,
         )
 
@@ -302,13 +341,43 @@ class McpServer:
         return {"content": _serialize_content_blocks(payload_source)}
 
 
-class _FallbackHttpServer(HTTPServer):
+class _FallbackHttpServer(ThreadingHTTPServer):
+    daemon_threads = True
     mcp_server: McpServer
     state: ServerState
+    shutdown_event: Event
+
+    def shutdown(self) -> None:
+        self.shutdown_event.set()
+        super().shutdown()
+
+    def server_close(self) -> None:
+        self.shutdown_event.set()
+        super().server_close()
 
 
 class _FallbackHttpHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    def do_GET(self) -> None:
+        if self.path != DEFAULT_MOUNT_PATH:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        self.wfile.write(b"event: open\r\ndata: {}\r\n\r\n")
+        self.wfile.flush()
+        server = cast("_FallbackHttpServer", self.server)
+        while not server.shutdown_event.is_set():
+            try:
+                self.wfile.write(b": keepalive\r\n\r\n")
+                self.wfile.flush()
+            except BrokenPipeError:
+                break
+            sleep(0.25)
 
     def do_POST(self) -> None:
         if self.path != DEFAULT_MOUNT_PATH:
@@ -340,17 +409,21 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         server = cast("_FallbackHttpServer", self.server)
         response, next_state = server.mcp_server.handle_request(request, server.state)
         server.state = next_state
-        body = (
-            {
-                "jsonrpc": response.jsonrpc,
-                "result": response.result,
-                "error": response.error,
-                "id": response.msg_id,
-            }
-            if response is not None
-            else {"jsonrpc": "2.0", "result": None, "id": request.msg_id}
-        )
-        self._write_json(body, 200)
+        if response is None:
+            self.send_response(202)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body = {"jsonrpc": response.jsonrpc, "id": response.msg_id}
+        if response.result is not None:
+            body["result"] = response.result
+        if response.error is not None:
+            body["error"] = response.error
+        encoded = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
+        session_id = None
+        if request.method == "initialize":
+            session_id = cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
+        self._write_sse(encoded, 200, session_id=session_id)
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args
@@ -362,6 +435,17 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _write_sse(self, payload: bytes, status: int, *, session_id: str | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        if session_id:
+            self.send_header("mcp-session-id", session_id)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
 
 class _FallbackStandaloneServer:
@@ -377,8 +461,31 @@ class _FallbackStandaloneServer:
         httpd = _FallbackHttpServer((self._host, self._port), _FallbackHttpHandler)
         httpd.mcp_server = self._mcp_server
         httpd.state = ServerState.UNINITIALIZED
+        httpd.shutdown_event = Event()
         self._httpd = httpd
         httpd.serve_forever()
+
+
+class _StandaloneHttpServer(_FallbackStandaloneServer):
+    pass
+
+
+def build_standalone_http_server(
+    workspace_root: Path,
+    *,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    session: AgentSession | None = None,
+) -> _StandaloneHttpServer:
+    effective_session = session or AgentSession(
+        session_id=f"standalone-{uuid.uuid4().hex[:8]}",
+        run_id=str(uuid.uuid4()),
+        drain="standalone",
+        capabilities=_all_capability_values(),
+    )
+    workspace = FsWorkspace(workspace_root)
+    registry = build_ralph_tool_registry(effective_session, workspace)
+    return _StandaloneHttpServer(host, port, McpServer(effective_session, workspace, registry))
 
 
 class FileBackedSession:
@@ -609,7 +716,9 @@ def run_standalone_server(
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
-    server = build_fastmcp_server(workspace_root, host=host, port=port, session=session_from_env())
+    server = build_standalone_http_server(
+        workspace_root, host=host, port=port, session=session_from_env()
+    )
     print(f"Ralph MCP server listening on http://{host}:{port}{DEFAULT_MOUNT_PATH}")
     server.run(transport=DEFAULT_TRANSPORT)
 
@@ -648,6 +757,7 @@ __all__ = [
     "SESSION_FILE_ENV",
     "FileBackedSession",
     "build_fastmcp_server",
+    "build_standalone_http_server",
     "main",
     "parse_args",
     "run_standalone_server",

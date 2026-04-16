@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
+from rich.console import Console
+from rich.text import Text
 
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.tool_names import claude_tool_name_prefix
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -426,7 +430,8 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state)
 
         assert result == 1
-        console_mock.print.assert_called_once_with("[red]Pipeline failed:[/red] bad")
+        rendered = console_mock.print.call_args.args[0]
+        assert rendered.plain == "Pipeline failed: bad"
 
     def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(self, monkeypatch) -> None:
         state = MagicMock()
@@ -464,7 +469,8 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state)
 
         assert result == 1
-        console_mock.print.assert_called_once_with("[red]Pipeline failed:[/red] bad error")
+        rendered = console_mock.print.call_args.args[0]
+        assert rendered.plain == "Pipeline failed: bad error"
 
     def test_prepare_prompt_effect_advances_state_without_execute_effect(
         self,
@@ -1154,10 +1160,11 @@ class TestRenderAgentActivityLine:
         rendered = runner_module._render_agent_activity_line(output, "dev")
 
         assert rendered is not None
-        assert "bash" in rendered
-        assert "command=pytest -q" in rendered
-        assert "workdir=/tmp/project" in rendered
-        assert "{" not in rendered
+        assert isinstance(rendered, Text)
+        assert "bash" in rendered.plain
+        assert "command=pytest -q" in rendered.plain
+        assert "workdir=/tmp/project" in rendered.plain
+        assert "{" not in rendered.plain
 
     def test_non_text_event_summary_avoids_raw_json_dump(self) -> None:
         output = AgentOutputLine(
@@ -1172,9 +1179,10 @@ class TestRenderAgentActivityLine:
         rendered = runner_module._render_agent_activity_line(output, "dev")
 
         assert rendered is not None
-        assert "status=completed" in rendered
-        assert "summary=Plan submitted" in rendered
-        assert "{" not in rendered
+        assert isinstance(rendered, Text)
+        assert "status=completed" in rendered.plain
+        assert "summary=Plan submitted" in rendered.plain
+        assert "{" not in rendered.plain
 
     def test_tool_result_uses_structured_metadata_summary_for_user_friendly_context(self) -> None:
         output = AgentOutputLine(
@@ -1190,8 +1198,9 @@ class TestRenderAgentActivityLine:
         rendered = runner_module._render_agent_activity_line(output, "dev")
 
         assert rendered is not None
-        assert "tool result" in rendered
-        assert "{'matches': 3, 'path': 'src'}" in rendered
+        assert isinstance(rendered, Text)
+        assert "tool result" in rendered.plain
+        assert "{'matches': 3, 'path': 'src'}" in rendered.plain
 
     def test_claude_assistant_text_renders_without_extra_assistant_summary_line(self) -> None:
         parser = ClaudeParser()
@@ -1208,10 +1217,39 @@ class TestRenderAgentActivityLine:
             )
         )
 
-        rendered = [
-            runner_module._render_agent_activity_line(output, "dev")
-            for output in parsed
-            if runner_module._render_agent_activity_line(output, "dev") is not None
-        ]
+        rendered = []
+        for output in parsed:
+            rendered_line = runner_module._render_agent_activity_line(output, "dev")
+            if rendered_line is not None:
+                rendered.append(rendered_line)
 
-        assert rendered == ["[white]dev:[/white] Final response"]
+        assert [item.plain for item in rendered] == ["dev: Final response"]
+
+    def test_tool_use_output_escapes_markup_like_input_before_console_render(self) -> None:
+        output = AgentOutputLine(
+            type="tool_use",
+            content="Write",
+            metadata={
+                "input": {
+                    "file_path": "/tmp/[unsafe].py",
+                    "newText": "[/{color}]",
+                }
+            },
+        )
+
+        rendered = runner_module._render_agent_activity_line(output, "claude")
+
+        assert rendered is not None
+
+        console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+        console.print(rendered)
+
+    def test_analysis_prompt_session_drain_preserves_analysis_identity(self) -> None:
+        assert (
+            runner_module._prompt_session_drain_for_phase("development_analysis")
+            is SessionDrain.DEVELOPMENT_ANALYSIS
+        )
+        assert (
+            runner_module._prompt_session_drain_for_phase("review_analysis")
+            is SessionDrain.REVIEW_ANALYSIS
+        )

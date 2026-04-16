@@ -13,11 +13,15 @@ PREFLIGHT_TIMEOUT = 123
 
 
 class FakeProcess:
+    def __init__(self, poll_result: int | None = None) -> None:
+        self._poll_result = poll_result
+        self.terminated = False
+
     def poll(self) -> int | None:
-        return None
+        return self._poll_result
 
     def terminate(self) -> None:
-        return None
+        self.terminated = True
 
     def wait(self, timeout: float | None = None) -> int | None:
         return 0
@@ -79,3 +83,19 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     assert seen["endpoint"] == "http://127.0.0.1:43123/mcp"
     assert seen["timeout"] == timedelta(seconds=PREFLIGHT_TIMEOUT)
     assert seen["cwd"] == tmp_path
+
+
+def test_standalone_mcp_process_shutdown_removes_session_file_even_if_process_exited(
+    tmp_path: Path,
+) -> None:
+    session_file = tmp_path / "session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    bridge = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:43123/mcp",
+        process=FakeProcess(poll_result=0),
+        session_file=session_file,
+    )
+
+    bridge.shutdown()
+
+    assert session_file.exists() is False

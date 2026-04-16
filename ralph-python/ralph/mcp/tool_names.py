@@ -32,6 +32,24 @@ class RalphToolName(StrEnum):
     COORDINATE = "coordinate"
     READ_ENV = "read_env"
 
+    def with_prefix(self, *, tool_name_prefix: str = "") -> str:
+        return f"{tool_name_prefix}{self}" if tool_name_prefix else self.value
+
+    def as_claude_alias(self, *, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
+        return f"mcp__{server_name}__{self}"
+
+    def prompt_aliases(self, *, tool_name_prefix: str = "") -> tuple[str, ...]:
+        primary = self.with_prefix(tool_name_prefix=tool_name_prefix)
+        if primary == self.value:
+            return (self.value,)
+        return (primary, self.value)
+
+    def prompt_reference(self, *, tool_name_prefix: str = "") -> str:
+        aliases = self.prompt_aliases(tool_name_prefix=tool_name_prefix)
+        if len(aliases) == 1:
+            return f"`{aliases[0]}`"
+        return f"`{aliases[0]}` or bare `{aliases[1]}`"
+
 
 READ_FILE_TOOL = RalphToolName.READ_FILE
 WRITE_FILE_TOOL = RalphToolName.WRITE_FILE
@@ -90,7 +108,19 @@ ALL_RALPH_TOOLS: tuple[str, ...] = (
 )
 
 
+def _coerce_tool_name(tool_name: str | RalphToolName) -> RalphToolName | None:
+    if isinstance(tool_name, RalphToolName):
+        return tool_name
+    try:
+        return RalphToolName(tool_name)
+    except ValueError:
+        return None
+
+
 def prefix_tool_name(tool_name: str | RalphToolName, *, tool_name_prefix: str = "") -> str:
+    coerced = _coerce_tool_name(tool_name)
+    if coerced is not None:
+        return coerced.with_prefix(tool_name_prefix=tool_name_prefix)
     return f"{tool_name_prefix}{tool_name}" if tool_name_prefix else tool_name
 
 
@@ -107,6 +137,9 @@ def prefix_tool_names(
 def claude_tool_name(
     tool_name: str | RalphToolName, *, server_name: str = RALPH_MCP_SERVER_NAME
 ) -> str:
+    coerced = _coerce_tool_name(tool_name)
+    if coerced is not None:
+        return coerced.as_claude_alias(server_name=server_name)
     return f"mcp__{server_name}__{tool_name}"
 
 

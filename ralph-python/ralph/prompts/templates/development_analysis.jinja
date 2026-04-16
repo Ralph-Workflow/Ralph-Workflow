@@ -12,4 +12,41 @@ Review the latest implementation result and determine whether development should
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 
-Submit a structured analysis decision artifact.
+Submit a structured analysis decision artifact using `artifact_type="development_analysis_decision"`.
+
+Return a JSON object.
+
+- If the implementation is acceptable, use `{"status":"completed","summary":"..."}`.
+- If the implementation is not acceptable, use `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
+- If the implementation must be rejected outright, use `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
+
+For any non-passing analysis, the following two fields are mandatory and must be as detailed as possible:
+
+1. `what_came_up_short`
+   - List every missing requirement, broken verification step, incorrect file, incomplete behavior, or policy violation.
+   - Cite concrete evidence: file paths, commands, tests, observed behavior, and exact mismatches.
+   - Do not use vague summaries like "needs work" without specifics.
+
+2. `how_to_fix`
+   - Give detailed, step-by-step remediation instructions that would allow the next implementation attempt to pass analysis.
+   - Include exact files to edit, behaviors to change, tests/checks to run, and what passing evidence should look like.
+   - Be comprehensive enough that the next developer does not need to guess.
+
+Example failing analysis artifact:
+
+```json
+{
+  "status": "request_changes",
+  "summary": "The release workflow is partially implemented, but the Windows path and verification evidence are incomplete.",
+  "what_came_up_short": [
+    "`.github/workflows/release-binaries.yml` does not build or upload the Windows artifact.",
+    "`ralph-python/scripts/install.ps1` exists but is not referenced from the workflow or release documentation.",
+    "Verification did not prove the expected archive names and checksum files are produced for every platform."
+  ],
+  "how_to_fix": [
+    "Update `.github/workflows/release-binaries.yml` to add the Windows matrix leg and upload the Windows artifact using the same naming convention as the macOS/Linux jobs.",
+    "Wire `ralph-python/scripts/install.ps1` into the release/docs flow so Windows users have a documented install path.",
+    "Run the release verification commands again and record evidence that each platform archive and checksum is created with the expected filenames."
+  ]
+}
+```

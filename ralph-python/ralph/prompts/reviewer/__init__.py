@@ -61,6 +61,8 @@ def render_review_prompt(
                 "PLAN_PATH": "",
                 "CHANGES": changes_value,
                 "CHANGES_PATH": "",
+                "FIX_RESULT": "(no fix result available)",
+                "FIX_RESULT_PATH": "",
             },
             partials,
         )
