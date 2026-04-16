@@ -107,6 +107,37 @@ ALL_RALPH_TOOLS: tuple[str, ...] = (
     *ENV_READ_TOOLS,
 )
 
+# Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys
+# Setting each to false physically removes the tool (unlike permission which is allow-by-default).
+OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = (
+    "bash",
+    "codesearch",
+    "edit",
+    "glob",
+    "grep",
+    "list",
+    "lsp",
+    "patch",
+    "question",
+    "read",
+    "skill",
+    "task",
+    "todowrite",
+    "webfetch",
+    "websearch",
+    "write",
+)
+
+# Authoritative source: https://developers.openai.com/codex/config-reference
+# apply_patch and core editing primitives are NOT disableable — documented limitation.
+CODEX_NATIVE_FEATURES_TO_DISABLE: tuple[tuple[str, str], ...] = (
+    ("features.shell_tool", "false"),
+    ("features.multi_agent", "false"),
+    ("features.undo", "false"),
+    ("features.apps", "false"),
+    ("web_search", '"disabled"'),
+)
+
 
 def _coerce_tool_name(tool_name: str | RalphToolName) -> RalphToolName | None:
     if isinstance(tool_name, RalphToolName):
