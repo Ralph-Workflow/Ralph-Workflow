@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import tomllib
 from pathlib import Path
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 from typing import Literal, cast
 
 import pytest
+from loguru import logger
 
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -1151,3 +1153,37 @@ def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
                 ),
             )
         )
+
+
+def test_codex_logs_best_effort_warning_when_mcp_endpoint_wired(tmp_path: Path) -> None:
+    buf = io.StringIO()
+    logger.remove()
+    handler_id = logger.add(buf, level="WARNING")
+    try:
+        _prepare_codex_home(
+            "http://localhost:0/mcp",
+            workspace_path=tmp_path,
+            existing_home=None,
+            system_prompt_file=None,
+        )
+        output = buf.getvalue()
+        assert "best-effort" in output, f"Expected 'best-effort' in warning, got: {output!r}"
+        assert "Codex" in output, f"Expected 'Codex' in warning, got: {output!r}"
+    finally:
+        logger.remove(handler_id)
+
+
+def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
+    buf = io.StringIO()
+    logger.remove()
+    handler_id = logger.add(buf, level="WARNING")
+    try:
+        _prepare_codex_home(
+            None,
+            workspace_path=tmp_path,
+            existing_home=None,
+            system_prompt_file="/tmp/sp.md",
+        )
+        assert "best-effort" not in buf.getvalue(), "No warning when endpoint is None"
+    finally:
+        logger.remove(handler_id)
