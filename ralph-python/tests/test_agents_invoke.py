@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal, cast
@@ -17,11 +18,13 @@ from ralph.agents.invoke import (
     _BuildCommandOptions,
     _command_for_log,
     _merge_opencode_config_content,
+    _prepare_codex_home,
     invoke_agent,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.mcp.tool_names import (
+    CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
     claude_allowed_tool_names,
@@ -30,6 +33,10 @@ from ralph.mcp.tool_names import (
 
 def _json_object(raw: str) -> dict[str, object]:
     return cast("dict[str, object]", json.loads(raw))
+
+
+def _toml_object(raw: str) -> dict[str, object]:
+    return cast("dict[str, object]", tomllib.loads(raw))
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
@@ -1071,6 +1078,54 @@ def test_invoke_agent_preserves_existing_codex_home_state(
     )
 
     assert copied_auth == ['{"token":"secret"}']
+
+
+def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) -> None:
+    home = _prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=None,
+        system_prompt_file=None,
+    )
+    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
+    parsed = _toml_object(config_text)
+    for key, _value in CODEX_NATIVE_FEATURES_TO_DISABLE:
+        if "." in key:
+            section, subkey = key.split(".", 1)
+            nested = cast("dict[str, object]", parsed[section])
+            assert nested[subkey] is False, f"Expected {key} = false"
+        else:
+            assert parsed[key] == "disabled", f"Expected {key} = disabled"
+
+
+def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -> None:
+    fake_home = tmp_path / "fake_codex"
+    fake_home.mkdir()
+    (fake_home / "config.toml").write_text("[features]\nfoo = true\n", encoding="utf-8")
+    home = _prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=str(fake_home),
+        system_prompt_file=None,
+    )
+    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
+    parsed = _toml_object(config_text)
+    features = cast("dict[str, object]", parsed["features"])
+    assert features["foo"] is True, "Existing feature should be preserved"
+    assert features["shell_tool"] is False
+
+
+def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> None:
+    home = _prepare_codex_home(
+        None,
+        workspace_path=tmp_path,
+        existing_home=None,
+        system_prompt_file="/tmp/sp.md",
+    )
+    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
+    parsed = _toml_object(config_text)
+    features = cast("dict[str, object]", parsed["features"]) if "features" in parsed else {}
+    assert "shell_tool" not in features, "No features disable without endpoint"
 
 
 def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
