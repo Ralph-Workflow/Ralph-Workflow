@@ -109,6 +109,7 @@ def test_agent_registry_resolves_table_ccs_alias_with_overrides() -> None:
     assert ccs_agent.verbose_flag == "--vv"
     assert ccs_agent.model_flag == "--model custom"
     assert ccs_agent.can_commit is False
+    assert ccs_agent.transport == AgentTransport.CLAUDE
 
 
 def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
