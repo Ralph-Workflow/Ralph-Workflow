@@ -205,15 +205,17 @@ def test_build_standalone_http_server_get_probe_avoids_missing_session_id_error(
 
     endpoint = f"http://127.0.0.1:{port}/mcp"
     try:
-        response = httpx.get(
+        with httpx.stream(
+            "GET",
             endpoint,
             headers={"Accept": "application/json, text/event-stream"},
             timeout=5.0,
-        )
+        ) as response:
+            first_chunk = next(response.iter_text())
 
-        assert response.status_code == HTTP_OK
-        assert response.headers["content-type"].startswith("text/event-stream")
-        assert "Missing session ID" not in response.text
+            assert response.status_code == HTTP_OK
+            assert response.headers["content-type"].startswith("text/event-stream")
+            assert "Missing session ID" not in first_chunk
     finally:
         cast("server_runtime._StandaloneHttpServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
         cast("server_runtime._StandaloneHttpServer", server)._httpd.server_close()  # type: ignore[attr-defined]

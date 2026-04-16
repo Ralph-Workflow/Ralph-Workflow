@@ -40,10 +40,10 @@ dev:
 
 # Testing
 test:
-	pytest tests/ -v -n $(PYTEST_WORKERS)
+	python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -v -n $(PYTEST_WORKERS)
 
 test-cov:
-	pytest tests/ -v -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-report=html
+	python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -v -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-report=html
 
 # Linting
 lint:

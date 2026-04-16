@@ -9,7 +9,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import import_module
 from pathlib import Path
 from threading import Event
@@ -28,6 +28,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback
     _FastMCP = cast("object | None", None)
     _Tool = cast("object | None", None)
 
+from ralph import __version__
 from ralph.mcp.capability_mapping import Capability, McpCapability
 from ralph.mcp.env import (
     MCP_SESSION_ENV as SESSION_ENV,
@@ -38,7 +39,6 @@ from ralph.mcp.env import (
 from ralph.mcp.session import AgentSession, session_has_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
-from ralph import __version__
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Sequence
@@ -224,20 +224,21 @@ class McpServer:
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse | None, ServerState]:
-        if request.method == "initialize":
-            return self._handle_initialize(request)
         if request.method == "notifications/initialized":
             return (None, ServerState.RUNNING)
-        if request.method == "prompts/list":
-            return self._handle_prompts_list(request)
-        if request.method == "resources/list":
-            return self._handle_resources_list(request)
-        if request.method == "resources/templates/list":
-            return self._handle_resource_templates_list(request)
-        if request.method == "tools/list":
-            return self._handle_tools_list(request)
         if request.method == "tools/call":
             return self._handle_tools_call(request, state)
+
+        handlers = {
+            "initialize": self._handle_initialize,
+            "prompts/list": self._handle_prompts_list,
+            "resources/list": self._handle_resources_list,
+            "resources/templates/list": self._handle_resource_templates_list,
+            "tools/list": self._handle_tools_list,
+        }
+        handler = handlers.get(request.method)
+        if handler is not None:
+            return handler(request)
 
         error = {"code": -32601, "message": f"Method not found: {request.method}"}
         return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)

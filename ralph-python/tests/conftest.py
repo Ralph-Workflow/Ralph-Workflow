@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import signal
+import threading
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,11 +17,42 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
+from ralph.runtime import (
+    DEFAULT_TEST_TIMEOUT_SECONDS,
+    TEST_TIMEOUT_ENV,
+    timeout_seconds_from_env,
+)
 from ralph.workspace.memory import MemoryWorkspace
 from tests.integration.test_pipeline_happy_path import MockAgentInvoker
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class TestExecutionTimeoutError(TimeoutError):
+    pass
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item: pytest.Item):
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
+
+    def _handle_timeout(signum: int, frame) -> None:
+        del signum, frame
+        raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 @pytest.fixture
