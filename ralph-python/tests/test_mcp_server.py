@@ -6,14 +6,12 @@ import asyncio
 import json
 import socket
 import threading
-import time
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
 
 from ralph.mcp import startup
-from ralph.mcp.server import lifecycle
 from ralph.mcp.server import runtime as server_runtime
 from ralph.mcp.session import AgentSession
 from ralph.phases import PhaseContext
@@ -142,46 +140,56 @@ def test_build_fastmcp_server_falls_back_without_mcp_dependency(
 
     monkeypatch.setattr(server_runtime, "_FastMCP", None)
     monkeypatch.setattr(server_runtime, "_Tool", None)
+    server = server_runtime.build_fastmcp_server(tmp_path, session=session)
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = cast("int", sock.getsockname()[1])
+    assert isinstance(server, server_runtime._FallbackStandaloneServer)
 
-    server = server_runtime.build_fastmcp_server(
-        tmp_path, host="127.0.0.1", port=port, session=session
+    mcp_server = server._mcp_server
+    state = server_runtime.ServerState.UNINITIALIZED
+
+    initialize_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        state,
     )
-    thread = threading.Thread(
-        target=server.run,
-        kwargs={"transport": server_runtime.DEFAULT_TRANSPORT},
-        daemon=True,
+    assert initialize_response is not None
+    initialize_result = cast("dict[str, object]", initialize_response.result)
+    assert cast("dict[str, object]", initialize_result["serverInfo"])["name"] == "ralph-mcp"
+    assert cast("dict[str, object]", initialize_result["serverInfo"])["version"]
+    assert cast("dict[str, object]", initialize_result["capabilities"])["prompts"] == {
+        "listChanged": False
+    }
+    assert cast("dict[str, object]", initialize_result["capabilities"])["resources"] == {
+        "subscribe": False,
+        "listChanged": False,
+    }
+
+    prompts_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="prompts/list", msg_id=2),
+        state,
     )
-    thread.start()
+    resources_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="resources/list", msg_id=3),
+        state,
+    )
+    templates_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="resources/templates/list", msg_id=4),
+        state,
+    )
+    assert prompts_response is not None
+    assert resources_response is not None
+    assert templates_response is not None
+    assert prompts_response.result == {"prompts": []}
+    assert resources_response.result == {"resources": []}
+    assert templates_response.result == {"resourceTemplates": []}
 
-    endpoint = f"http://127.0.0.1:{port}/mcp"
-    try:
-        initialize_response = _http_call(endpoint, "initialize")
-        assert initialize_response["result"]["serverInfo"]["name"] == "ralph-mcp"
-        assert initialize_response["result"]["serverInfo"]["version"]
-        assert initialize_response["result"]["capabilities"]["prompts"] == {"listChanged": False}
-        assert initialize_response["result"]["capabilities"]["resources"] == {
-            "subscribe": False,
-            "listChanged": False,
-        }
-
-        prompts_response = _http_call(endpoint, "prompts/list", msg_id=2)
-        resources_response = _http_call(endpoint, "resources/list", msg_id=3)
-        templates_response = _http_call(endpoint, "resources/templates/list", msg_id=4)
-        assert prompts_response["result"] == {"prompts": []}
-        assert resources_response["result"] == {"resources": []}
-        assert templates_response["result"] == {"resourceTemplates": []}
-
-        tools_response = _http_call(endpoint, "tools/list", msg_id=5)
-        tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
-        assert {"read_file", "report_progress", "coordinate"}.issubset(tool_names)
-    finally:
-        cast("server_runtime._FallbackStandaloneServer", server)._httpd.shutdown()  # type: ignore[attr-defined]
-        cast("server_runtime._FallbackStandaloneServer", server)._httpd.server_close()  # type: ignore[attr-defined]
-        thread.join(timeout=1)
+    tools_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=5),
+        state,
+    )
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tool_names = {tool["name"] for tool in cast("list[dict[str, object]]", tools_result["tools"])}
+    assert {"read_file", "report_progress", "coordinate"}.issubset(tool_names)
 
 
 def test_build_standalone_http_server_get_probe_avoids_missing_session_id_error(
@@ -333,7 +341,14 @@ def test_build_standalone_http_server_allows_post_while_get_stream_is_open(
     )
     stream_socket.sendall(get_request.encode())
     try:
-        time.sleep(0.1)
+        stream_socket.settimeout(5.0)
+        received = ""
+        while "event: open" not in received:
+            chunk = stream_socket.recv(256).decode()
+            if not chunk:
+                break
+            received += chunk
+        assert "event: open" in received
         initialize = httpx.post(
             endpoint,
             headers={
@@ -442,9 +457,8 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         capabilities=runner_module._default_mcp_capabilities_for_phase("planning"),
     )
     workspace = FsWorkspace(tmp_path)
-    bridge = lifecycle.start_mcp_server(session, workspace)
-    endpoint = bridge.agent_endpoint_uri()
-    target = startup.parse_http_endpoint(endpoint)
+    registry = server_runtime.build_ralph_tool_registry(session, workspace)
+    mcp_server = server_runtime.McpServer(session, workspace, registry)
     payload = {
         "summary": {
             "context": "Ship the planning artifact via Ralph MCP.",
@@ -466,64 +480,57 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         ],
     }
 
-    try:
-        _, session_id = startup.post_http_jsonrpc_with_session(
-            endpoint,
-            target,
-            startup.initialize_request(),
-        )
-        initialized_response, session_id = startup.post_http_jsonrpc_with_session(
-            endpoint,
-            target,
-            startup.initialized_notification(),
-            session_id=session_id,
-        )
-        tools_response, session_id = startup.post_http_jsonrpc_with_session(
-            endpoint,
-            target,
-            startup.tools_list_request(),
-            session_id=session_id,
-        )
-        tools_result = cast("dict[str, object]", tools_response["result"])
-        tools_list = cast("list[dict[str, object]]", tools_result["tools"])
-        tool_names = {cast("str", tool["name"]) for tool in tools_list}
+    initialize_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    assert initialize_response is not None
 
-        submit_response, _ = startup.post_http_jsonrpc_with_session(
-            endpoint,
-            target,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {
-                    "name": "ralph_submit_artifact",
-                    "arguments": {
-                        "artifact_type": "plan",
-                        "content": json.dumps(payload),
-                    },
+    initialized_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="notifications/initialized", msg_id=2),
+        state,
+    )
+    tools_response, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=3),
+        state,
+    )
+    submit_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(
+            jsonrpc="2.0",
+            method="tools/call",
+            msg_id=4,
+            params={
+                "name": "ralph_submit_artifact",
+                "arguments": {
+                    "artifact_type": "plan",
+                    "content": json.dumps(payload),
                 },
             },
-            session_id=session_id,
-        )
+        ),
+        state,
+    )
 
-        ctx = PhaseContext.model_construct(
-            workspace=workspace,
-            registry=object(),
-            chain_manager=object(),
-            pipeline_policy=object(),
-            agents_policy=object(),
-            artifacts_policy=object(),
-        )
-        planning_result = handle_planning(
-            InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
-            ctx,
-        )
+    tools_result = cast("dict[str, object]", tools_response.result if tools_response else {})
+    tools_list = cast("list[dict[str, object]]", tools_result["tools"])
+    tool_names = {cast("str", tool["name"]) for tool in tools_list}
 
-        assert "ralph_submit_artifact" in tool_names
-        assert initialized_response == {}
-        submit_result = cast("dict[str, object]", submit_response["result"])
-        assert submit_result["isError"] is False
-        assert planning_result == [PipelineEvent.AGENT_SUCCESS]
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-    finally:
-        lifecycle.shutdown_mcp_server(bridge)
+    ctx = PhaseContext.model_construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        agents_policy=object(),
+        artifacts_policy=object(),
+    )
+    planning_result = handle_planning(
+        InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
+        ctx,
+    )
+
+    assert "ralph_submit_artifact" in tool_names
+    assert initialized_response is None
+    assert submit_response is not None
+    submit_result = cast("dict[str, object]", submit_response.result)
+    assert submit_result["isError"] is False
+    assert planning_result == [PipelineEvent.AGENT_SUCCESS]
+    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()

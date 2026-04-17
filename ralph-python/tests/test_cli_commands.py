@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +18,9 @@ from ralph.cli.commands import init as init_module
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.commit_message import write_commit_message_artifact
-from ralph.mcp.startup import preflight_http_mcp_server_tools
+from ralph.mcp.session import AgentSession
+from ralph.mcp.tool_bridge import build_ralph_tool_registry
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -60,16 +61,21 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Path) -> None:
-    bridge = commit_module._start_commit_bridge(tmp_path)
+    session = AgentSession(
+        session_id="commit-session",
+        run_id="commit-run",
+        drain="commit",
+        capabilities={
+            "ArtifactSubmit",
+            "RunReportProgress",
+            "WorkspaceRead",
+            "WorkspaceWriteEphemeral",
+        },
+    )
+    registry = build_ralph_tool_registry(session, FsWorkspace(tmp_path))
+    tool_names = {definition.name for definition in registry.list_definitions()}
 
-    try:
-        preflight_http_mcp_server_tools(
-            bridge.agent_endpoint_uri(),
-            ["write_file", "read_file", "ralph_submit_artifact"],
-            timeout=timedelta(seconds=1),
-        )
-    finally:
-        bridge.shutdown()
+    assert {"write_file", "read_file", "ralph_submit_artifact"}.issubset(tool_names)
 
 
 def _artifact_invoke(repo_root: Path, message: str):

@@ -1,6 +1,7 @@
-.PHONY: help install dev install-dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify dist-binary dist-pypi dist-all formula-check
+.PHONY: help install dev install-dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check
 
-PYTEST_WORKERS ?= 4
+PYTEST_WORKERS ?= 8
+COVERAGE_WORKERS ?= 16
 
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -43,10 +44,10 @@ install-dev: dev
 
 # Testing
 test:
-	python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -v -n $(PYTEST_WORKERS)
+	python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -q -n $(PYTEST_WORKERS) --override-ini addopts=''
 
-test-cov:
-	python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -v -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-report=html
+coverage:
+	pytest tests/ -q -n $(COVERAGE_WORKERS) --override-ini addopts='--cov=ralph' --cov-report=html
 
 # Linting
 lint:
@@ -118,7 +119,8 @@ verify:
 	@echo "Running full verification..."
 	@$(MAKE) lint
 	@$(MAKE) typecheck
-	@$(MAKE) test-cov
+	@$(MAKE) test
+	@$(MAKE) coverage
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

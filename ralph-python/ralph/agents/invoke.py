@@ -669,6 +669,9 @@ def _build_command(
             [
                 "--mcp-config",
                 _claude_mcp_config(build_options.mcp_endpoint),
+                "--strict-mcp-config",
+                "--tools",
+                "",
                 "--allowedTools",
                 _claude_allowed_tools(),
             ]

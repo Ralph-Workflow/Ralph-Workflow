@@ -49,6 +49,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_TRANSPORT: Literal["streamable-http"] = "streamable-http"
 DEFAULT_MOUNT_PATH = "/mcp"
+SERVER_POLL_INTERVAL_SECONDS = 0.01
 _SCHEMA_ANNOTATIONS: dict[str, object] = {
     "string": str,
     "boolean": bool,
@@ -464,7 +465,7 @@ class _FallbackStandaloneServer:
         httpd.state = ServerState.UNINITIALIZED
         httpd.shutdown_event = Event()
         self._httpd = httpd
-        httpd.serve_forever()
+        httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
 
 
 class _StandaloneHttpServer(_FallbackStandaloneServer):

@@ -248,11 +248,8 @@ def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(tm
 
 
 def test_default_artifacts_policy_uses_plan_artifact_type() -> None:
-    policy_path = (
-        "/Users/mistlight/Projects/RalphWithReviewer/wt-72-ts-conversion/ralph-python/"
-        "ralph/policy/defaults/artifacts.toml"
-    )
-    with Path(policy_path).open(encoding="utf-8") as handle:
+    policy_path = Path(__file__).parents[1] / "ralph" / "policy" / "defaults" / "artifacts.toml"
+    with policy_path.open(encoding="utf-8") as handle:
         content = handle.read()
 
     assert 'artifact_type = "plan"' in content

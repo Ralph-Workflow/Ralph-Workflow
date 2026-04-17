@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
@@ -52,6 +53,7 @@ SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
 
 
+@lru_cache(maxsize=1)
 def _load_default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
@@ -801,9 +803,20 @@ class TestExecuteAgentEffect:
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-    def test_handles_invocation_error_gracefully(self) -> None:
+    def test_handles_invocation_error_gracefully(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return None
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:9999/mcp"
+
+        monkeypatch.setattr(
+            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+        )
 
         def raising_invoke(*_args, **_kwargs):
             raise self.AgentError("boom")
@@ -821,9 +834,20 @@ class TestExecuteAgentEffect:
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-    def test_handles_unexpected_error_as_failure(self) -> None:
+    def test_handles_unexpected_error_as_failure(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return None
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:9999/mcp"
+
+        monkeypatch.setattr(
+            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+        )
 
         def raising_value_error(*_args, **_kwargs):
             raise ValueError("boom")

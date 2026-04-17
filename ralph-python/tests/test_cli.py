@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from typer.testing import CliRunner as TyperCliRunner
 
 from ralph.cli.commands.commit import CommitPlumbingOptions
 from ralph.cli.main import (
@@ -43,24 +42,22 @@ class CliResult:
 class CliRunner:
     def __init__(self) -> None:
         self._cwd = PROJECT_ROOT
+        self._runner = TyperCliRunner()
 
     def invoke(self, _app: object, args: list[str]) -> CliResult:
-        env = os.environ.copy()
-        existing_pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = (
-            f"{PROJECT_ROOT}{os.pathsep}{existing_pythonpath}"
-            if existing_pythonpath
-            else str(PROJECT_ROOT)
-        )
-        result = subprocess.run(
-            [sys.executable, "-m", "ralph.cli.main", *args],
-            cwd=self._cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-            env=env,
-        )
-        return CliResult(result.returncode, result.stdout, result.stderr)
+        with self._pushd(self._cwd):
+            result = self._runner.invoke(app, args, catch_exceptions=False)
+        stderr = getattr(result, "stderr", "")
+        return CliResult(result.exit_code, result.stdout, stderr)
+
+    @contextmanager
+    def _pushd(self, path: Path):
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(path)
+            yield
+        finally:
+            os.chdir(original_cwd)
 
     @contextmanager
     def isolated_filesystem(self, temp_dir: Path):
