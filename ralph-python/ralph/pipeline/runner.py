@@ -56,6 +56,7 @@ from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
+from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy_or_die
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
@@ -311,14 +312,35 @@ def _execute_fan_out_sync(
     checkpoint_path = workspace_scope.root / ".agent" / "checkpoint.json"
 
     async def _run() -> PipelineState:
+        completed_ids = {
+            uid for uid, ws in state.worker_states.items() if ws.status == WorkerStatus.SUCCEEDED
+        }
+        resume_units = tuple(u for u in effect.work_units if u.unit_id not in completed_ids)
+        resumed_worker_states = {
+            uid: (
+                ws.copy_with(status=WorkerStatus.PENDING)
+                if ws.status == WorkerStatus.RUNNING
+                else ws
+            )
+            for uid, ws in state.worker_states.items()
+        }
+        resumed_state = state.copy_with(worker_states=resumed_worker_states)
+
+        if not resume_units:
+            return resumed_state
+
+        resume_effect = FanOutDevelopmentEffect(
+            work_units=resume_units,
+            max_workers=effect.max_workers,
+        )
         fan_out_events = await coordinator.run_fan_out(
-            effect=effect,
+            effect=resume_effect,
             executor=executor,
             display=pd,
             checkpoint_path=checkpoint_path,
-            state=state,
+            state=resumed_state,
         )
-        current = state
+        current = resumed_state
         for ev in fan_out_events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
         ckpt.save(current)
