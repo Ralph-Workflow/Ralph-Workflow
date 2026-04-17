@@ -1,44 +1,12 @@
-"""Pipeline events representing all state transitions.
-
-Events are organized into logical categories for type-safe routing
-to category-specific reducers. Each category has a dedicated enum.
-
-This module mirrors the PipelineEvent enum from the Rust reducer/event
-module.
-"""
+"""Pipeline events representing all state transitions."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 
 class PipelineEvent(StrEnum):
-    """Top-level pipeline events.
-
-    These events represent discrete state transitions that drive the pipeline.
-    Events are processed by the reducer to compute new state.
-
-    Attributes:
-        AGENT_SUCCESS: Agent completed successfully.
-        AGENT_FAILURE: Agent failed.
-        AGENT_RETRY: Agent should be retried.
-        ANALYSIS_SUCCESS: Analysis phase decided to advance (continue/success/approve).
-        ANALYSIS_LOOPBACK: Analysis phase decided to loop (retry/request_changes).
-        REVIEW_CLEAN: Review found no issues.
-        REVIEW_ISSUES_FOUND: Review found issues requiring fix.
-        FIX_SUCCESS: Fix agent completed successfully.
-        FIX_FAILURE: Fix agent failed.
-        COMMIT_SUCCESS: Commit completed successfully.
-        COMMIT_FAILURE: Commit failed.
-        CHECKPOINT_SAVED: Checkpoint was saved.
-        CONTEXT_CLEANED: Context cleanup completed.
-        INTERRUPTED: Pipeline was interrupted by user.
-        COMPLETE: Pipeline completed successfully.
-        FAILED: Pipeline failed.
-        PROMPT_PREPARED: Prompt was prepared for the next agent invocation.
-        PHASE_ADVANCE: Request to advance to the next phase.
-    """
-
     AGENT_SUCCESS = "agent_success"
     AGENT_FAILURE = "agent_failure"
     AGENT_RETRY = "agent_retry"
@@ -57,7 +25,38 @@ class PipelineEvent(StrEnum):
     FAILED = "failed"
     PROMPT_PREPARED = "prompt_prepared"
     PHASE_ADVANCE = "phase_advance"
+    FAN_OUT_STARTED = "fan_out_started"
+    ALL_WORKERS_COMPLETE = "all_workers_complete"
 
 
-# Type alias for all events
-Event = PipelineEvent
+@dataclass(frozen=True)
+class WorkerStartedEvent:
+    unit_id: str
+
+
+@dataclass(frozen=True)
+class WorkerCompletedEvent:
+    unit_id: str
+    exit_code: int
+    commit_sha: str
+
+
+@dataclass(frozen=True)
+class WorkerFailedEvent:
+    unit_id: str
+    exit_code: int
+    error: str
+
+
+@dataclass(frozen=True)
+class WorkersMergeConflictEvent:
+    conflicting_unit_ids: list[str]
+
+
+Event = (
+    PipelineEvent
+    | WorkerStartedEvent
+    | WorkerCompletedEvent
+    | WorkerFailedEvent
+    | WorkersMergeConflictEvent
+)

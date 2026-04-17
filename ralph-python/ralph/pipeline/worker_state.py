@@ -44,3 +44,7 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]
     commit_sha: str | None = None
     worktree_path: str | None = None
     log_file: str | None = None
+
+    def copy_with(self, **updates: object) -> WorkerState:
+        """Return a copy with the given fields replaced."""
+        return self.model_copy(update=updates)
