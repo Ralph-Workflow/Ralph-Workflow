@@ -11,10 +11,13 @@ import signal
 import threading
 from typing import TYPE_CHECKING
 
+from ralph.interrupt.asyncio_bridge import install_signal_handlers as install_signal_handlers
+
 if TYPE_CHECKING:
     from types import FrameType
 
 __all__ = [
+    "install_signal_handlers",
     "request_user_interrupt",
     "setup_interrupt_handler",
     "user_interrupted_occurred",
