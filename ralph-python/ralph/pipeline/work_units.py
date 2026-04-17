@@ -20,6 +20,8 @@ class WorkUnitsValidationError(ValueError):
 
 _UNIT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 _UNIT_ID_MAX_LEN = 64
+# Token budget guard for planning artifact descriptions.
+MAX_DESCRIPTION_CHARS = 4096
 
 
 class WorkUnit(BaseModel):  # type: ignore[explicit-any]
@@ -28,7 +30,7 @@ class WorkUnit(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     unit_id: str = Field(..., min_length=1)
-    description: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_CHARS)
     allowed_directories: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
 

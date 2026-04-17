@@ -62,3 +62,21 @@ def test_allowed_directories_validator(allowed_directories: list[str], expected:
                 description="desc",
                 allowed_directories=allowed_directories,
             )
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("", False),
+        ("valid desc", True),
+        ("x" * 4096, True),
+        ("x" * 4097, False),
+    ],
+)
+def test_description_length_validator(description: str, expected: bool) -> None:
+    if expected:
+        unit = WorkUnit(unit_id="u1", description=description)
+        assert unit.description == description
+    else:
+        with pytest.raises(ValidationError, match="description"):
+            WorkUnit(unit_id="u1", description=description)
