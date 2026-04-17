@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -32,7 +33,6 @@ from ralph.mcp.tool_names import (
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
-    claude_allowed_tool_names,
 )
 
 _MODELED_FLAG_PARTS = 2
@@ -69,6 +69,7 @@ class _BuildCommandOptions:
     pure: bool = False
     mcp_endpoint: str | None = None
     system_prompt_file: str | None = None
+    workspace_path: Path | None = None
 
 
 if TYPE_CHECKING:
@@ -262,6 +263,7 @@ def invoke_agent(
             pure=opts.pure,
             mcp_endpoint=(runtime_env or {}).get("RALPH_MCP_ENDPOINT"),
             system_prompt_file=opts.system_prompt_file,
+            workspace_path=opts.workspace_path,
         ),
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
@@ -436,6 +438,10 @@ def _prepare_codex_home(
             "editing primitives cannot be disabled. See "
             "ralph-python/docs/mcp-tool-restriction.md."
         )
+        # Codex has no strict MCP-only mode. Ralph preserves the user's existing
+        # config.toml where possible, but replaces any stale Ralph section so the
+        # generated config always points at the live run-scoped endpoint.
+        base_config = _remove_toml_table(base_config, f"mcp_servers.{RALPH_MCP_SERVER_NAME}")
         features_in_base = "[features]" in base_config
         # Only features.* keys belong inside [features]; web_search is a top-level Codex config key.
         feature_lines = [
@@ -463,6 +469,13 @@ def _prepare_codex_home(
     return str(codex_root)
 
 
+def _remove_toml_table(config_text: str, table_name: str) -> str:
+    pattern = re.compile(
+        rf"(?ms)^\[{re.escape(table_name)}\]\n.*?(?=^\[|\Z)",
+    )
+    return pattern.sub("", config_text).strip()
+
+
 def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
     for entry in source_home.iterdir():
         if entry.name == "config.toml":
@@ -486,14 +499,19 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
     return Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(tmp_root)))
 
 
-def _claude_mcp_config(endpoint: str) -> str:
-    config_payload: dict[str, dict[str, dict[str, str]]] = {
-        "mcpServers": {
-            RALPH_MCP_SERVER_NAME: {
-                "type": "http",
-                "url": endpoint,
-            }
-        }
+def _claude_mcp_config(endpoint: str, *, workspace_path: Path | None = None) -> str:
+    # Claude strict mode ignores its normal MCP discovery chain, so Ralph rebuilds the
+    # effective MCP server set explicitly. Only mcpServers are preserved here; importing
+    # unrelated Claude preferences would make this transport policy unpredictable.
+    config_payload = _load_existing_claude_mcp_config(workspace_path)
+    mcp_servers_obj = config_payload.setdefault("mcpServers", {})
+    if not isinstance(mcp_servers_obj, dict):
+        mcp_servers_obj = {}
+        config_payload["mcpServers"] = mcp_servers_obj
+    mcp_servers = cast("dict[str, object]", mcp_servers_obj)
+    mcp_servers[RALPH_MCP_SERVER_NAME] = {
+        "type": "http",
+        "url": endpoint,
     }
     return json.dumps(
         config_payload,
@@ -501,14 +519,64 @@ def _claude_mcp_config(endpoint: str) -> str:
     )
 
 
-def _claude_allowed_tools() -> str:
-    # Claude's MCP permission layer has been brittle with wildcard entries.
-    # Keep this as an explicit list derived from Ralph's canonical bare tool names
-    # so the runtime registry, prompts, and allowlist stay in sync.
-    return claude_allowed_tool_names()
+def _load_existing_claude_mcp_config(workspace_path: Path | None = None) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    for path in _claude_mcp_config_paths(workspace_path):
+        config_obj = _parse_json_config_file(path)
+        if config_obj:
+            merged = _merge_claude_config_objects(merged, config_obj)
+    return merged
+
+
+def _claude_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
+    # Ralph only preserves the documented user/project MCP config files here.
+    # Importing broader Claude settings would widen the transport policy surface.
+    workspace_paths: tuple[Path, ...] = ()
+    if workspace_path is not None:
+        workspace_paths = (
+            workspace_path / ".mcp.json",
+            workspace_path / ".claude.json",
+        )
+    return (
+        Path.home() / ".claude.json",
+        *workspace_paths,
+    )
+
+
+def _parse_json_config_file(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        raw_payload: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_payload, dict):
+        return {}
+    return cast("dict[str, object]", raw_payload)
+
+
+def _merge_claude_config_objects(
+    base: dict[str, object], incoming: dict[str, object]
+) -> dict[str, object]:
+    # Workspace/home MCP servers are preserved, but Ralph-owned wiring must still win for
+    # the `ralph` server entry so runs always target the live run-scoped endpoint.
+    merged = dict(base)
+    value = incoming.get("mcpServers")
+    if isinstance(value, dict):
+        current_servers = merged.get("mcpServers")
+        current = (
+            cast("dict[str, object]", current_servers)
+            if isinstance(current_servers, dict)
+            else {}
+        )
+        merged["mcpServers"] = {**current, **cast("dict[str, object]", value)}
+    return merged
 
 
 def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
+    # OpenCode lets us inject a full config object, so this path preserves the user's
+    # existing MCP/permission structure and then applies Ralph's native-tool shutdown as
+    # the final override. Preservation and enforcement both happen in one JSON payload.
     config_obj = _parse_opencode_config_content(existing)
 
     mcp_section_obj = config_obj.setdefault("mcp", {})
@@ -696,15 +764,19 @@ def _build_command(
         cmd.append(config.verbose_flag)
 
     if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
+        # `--tools ""` disables Claude's built-in tools. We intentionally do not pass
+        # `--allowedTools`: with strict MCP config in place, omitting the allowlist keeps
+        # preserved user MCP servers usable instead of leaving them configured-but-denied.
         cmd.extend(
             [
                 "--mcp-config",
-                _claude_mcp_config(build_options.mcp_endpoint),
+                _claude_mcp_config(
+                    build_options.mcp_endpoint,
+                    workspace_path=build_options.workspace_path,
+                ),
                 "--strict-mcp-config",
                 "--tools",
                 "",
-                "--allowedTools",
-                _claude_allowed_tools(),
             ]
         )
 

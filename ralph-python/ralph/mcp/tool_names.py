@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Sequence
 
 RALPH_MCP_SERVER_NAME = "ralph"
 
@@ -168,6 +168,9 @@ def prefix_tool_names(
 def claude_tool_name(
     tool_name: str | RalphToolName, *, server_name: str = RALPH_MCP_SERVER_NAME
 ) -> str:
+    # Claude exposes every MCP tool as `mcp__<server>__<tool>`. This helper is the
+    # canonical alias builder used by prompts/tests so transport-specific naming does
+    # not drift from the runtime CLI wiring.
     coerced = _coerce_tool_name(tool_name)
     if coerced is not None:
         return coerced.as_claude_alias(server_name=server_name)
@@ -175,14 +178,6 @@ def claude_tool_name(
 
 
 def claude_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
+    # Non-Ralph server names are first-class here because Claude can surface any merged
+    # MCP server under the same `mcp__server__tool` namespace.
     return f"mcp__{server_name}__"
-
-
-def claude_allowed_tool_names(
-    tool_names: Iterable[str | RalphToolName] = ALL_RALPH_TOOLS,
-    *,
-    server_name: str = RALPH_MCP_SERVER_NAME,
-) -> str:
-    return ",".join(
-        claude_tool_name(tool_name, server_name=server_name) for tool_name in tool_names
-    )

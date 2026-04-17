@@ -15,6 +15,8 @@ The previous post-mortem claimed the incident was resolved by unifying prompt to
 
 Those changes fixed a real consistency problem, but they did **not** fix the production failure. The deeper root cause is architectural: Ralph ties MCP transport lifetime to **individual agent attempts** instead of to the **overall run**. That makes provider startup, MCP connection, retry/fallback behavior, and artifact submission depend on fragile per-attempt socket churn.
 
+Later hardening work also exposed a second policy lesson at the provider boundary: preserving MCP server config is not enough if the provider-side permission model still leaves those servers configured-but-denied. Claude transport policy now treats built-in tool restriction and MCP config preservation as separate concerns.
+
 The correct target architecture is a **stable run-scoped MCP server** with **per-session/per-agent capability enforcement inside the server**, not a new server/socket for every retry or fallback attempt. That target must be transport-abstract rather than Unix-only: stable endpoint first, platform-specific transport second.
 
 ---
@@ -262,7 +264,7 @@ Without that seam, future “fixes” will keep validating the wrong layer.
 
 ### 1. Internal consistency is not runtime correctness
 
-A correct manifest, prompt, and allowlist still do not prove provider-visible tools are correct.
+A correct manifest, prompt, and config merge still do not prove provider-visible tools are correct.
 
 ### 2. Transport lifetime should be longer than provider startup lifetime
 
@@ -303,3 +305,5 @@ The implemented architecture follows the corrected target with one clarification
 **Commit boundary is orchestrator-owned.** The MCP server `submit_artifact` tool is the only commit-relevant operation exposed at the MCP boundary. The orchestrator reads the submitted artifact and performs the actual `git commit` via `Effect::CreateCommit`. MCP-side git write operations are denied by the policy gate in commit mode.
 
 **Policy matrix enforced server-side.** The `commit` drain maps to a read-only + artifact-submission-only policy. Dev and fixer drains remain read-write capable. All enforcement happens inside `mcp-server` via the pre-dispatch capability check, not via provider-side prompt conventions.
+
+**Provider config policy must stay transport-specific.** In `ralph-python/ralph/agents/invoke.py`, Claude now uses `--tools ""` to disable built-in tools, synthesizes a strict `--mcp-config` payload from supported user MCP config sources plus the live Ralph endpoint, and intentionally omits `--allowedTools` because current Claude MCP wildcard/allowlist behavior can leave custom servers configured but denied. OpenCode and Codex keep their own transport-specific config merge paths. The regression seam for this policy lives in `ralph-python/tests/test_agents_invoke.py`.
