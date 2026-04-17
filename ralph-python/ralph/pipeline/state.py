@@ -23,6 +23,7 @@ from ralph.config.enums import (
     PipelinePhase,
 )
 from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
+from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName
@@ -183,6 +184,7 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     current_drain: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
+    worker_states: dict[str, WorkerState] = Field(default_factory=dict)
 
     @field_validator("work_units", mode="before")
     @classmethod
@@ -191,6 +193,13 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
             return ()
         if isinstance(v, list):
             return tuple(v)
+        return v  # type: ignore[return-value]
+
+    @field_validator("worker_states", mode="before")
+    @classmethod
+    def _coerce_worker_states(cls, v: object) -> dict[str, WorkerState]:
+        if v is None:
+            return {}
         return v  # type: ignore[return-value]
 
     def is_complete(self) -> bool:

@@ -8,6 +8,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
+from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 
 def _wu(unit_id: str = "u1", description: str = "A task") -> WorkUnit:
@@ -113,3 +114,54 @@ def test_work_units_empty_allows_set_via_copy_with() -> None:
     new_state = state.copy_with(work_units=(wu,))
 
     assert new_state.work_units == (wu,)
+
+
+def _ws(unit_id: str = "u1", status: WorkerStatus = WorkerStatus.PENDING) -> WorkerState:
+    return WorkerState(unit_id=unit_id, status=status)
+
+
+def test_worker_states_default_empty() -> None:
+    """PipelineState.worker_states defaults to an empty dict."""
+    state = PipelineState()
+
+    assert state.worker_states == {}
+
+
+def test_worker_states_round_trip_with_three_entries() -> None:
+    """worker_states with 3 entries round-trips through model_dump_json."""
+    states = {
+        "u1": _ws("u1", WorkerStatus.PENDING),
+        "u2": _ws("u2", WorkerStatus.RUNNING),
+        "u3": _ws("u3", WorkerStatus.SUCCEEDED),
+    }
+    state = PipelineState(worker_states=states)
+
+    loaded = PipelineState.model_validate_json(state.model_dump_json())
+
+    assert loaded.worker_states == states
+
+
+def test_old_checkpoint_without_worker_states_loads_as_empty() -> None:
+    """Old checkpoint JSON (without worker_states key) loads with worker_states == {}."""
+    old_json = json.dumps({"phase": "development", "iteration": 2})
+
+    state = PipelineState.model_validate_json(old_json)
+
+    assert state.worker_states == {}
+
+
+def test_worker_states_none_coerces_to_empty_dict() -> None:
+    """field_validator coerces None → {} for backward compat."""
+    state = PipelineState.model_validate({"worker_states": None})
+
+    assert state.worker_states == {}
+
+
+def test_worker_states_preserved_across_copy_with() -> None:
+    """copy_with preserves worker_states when not in the update dict."""
+    ws = _ws("u1", WorkerStatus.RUNNING)
+    state = PipelineState(worker_states={"u1": ws})
+
+    new_state = state.copy_with(phase="development")
+
+    assert new_state.worker_states == {"u1": ws}
