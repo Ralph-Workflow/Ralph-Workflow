@@ -5,6 +5,7 @@ from __future__ import annotations
 from rich.console import Console
 
 from ralph.display.parallel_display import NARROW_THRESHOLD, ParallelDisplay, detect_mode
+from ralph.pipeline.worker_state import WorkerStatus
 
 
 def test_ci_env_forces_lines() -> None:
@@ -115,8 +116,6 @@ def test_parallel_display_emit_none_unit_id_does_not_raise() -> None:
 
 
 def test_parallel_display_set_status_stub_does_not_raise() -> None:
-    from ralph.pipeline.worker_state import WorkerStatus
-
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     pd.set_status("unit-1", WorkerStatus.RUNNING)

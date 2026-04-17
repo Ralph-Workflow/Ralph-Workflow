@@ -9,7 +9,12 @@ set_status).
 from __future__ import annotations
 
 import os
+import queue
 from typing import TYPE_CHECKING, Literal
+
+from rich.live import Live
+
+from ralph.display.render_thread import RenderThread, UpdateEvent
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -63,7 +68,7 @@ class ParallelDisplay:
             os.environ when None.
     """
 
-    __slots__ = ("_console", "_mode")
+    __slots__ = ("_console", "_mode", "_queue", "_render_thread")
 
     def __init__(
         self,
@@ -73,6 +78,8 @@ class ParallelDisplay:
         resolved_env: Mapping[str, str] = os.environ if env is None else env
         self._console = console
         self._mode: Literal["dashboard", "lines"] = detect_mode(console, resolved_env)
+        self._queue: queue.Queue[UpdateEvent] = queue.Queue()
+        self._render_thread: RenderThread | None = None
 
     @property
     def mode(self) -> Literal["dashboard", "lines"]:
@@ -80,27 +87,33 @@ class ParallelDisplay:
         return self._mode
 
     def start(self) -> None:
-        """Start the display (stub — rendering wired in T24)."""
+        if self._mode == "dashboard":
+            live = Live(console=self._console, auto_refresh=False)
+            live.start()
+            self._render_thread = RenderThread(
+                q=self._queue,
+                renderable_fn=lambda state: "",
+                live=live,
+            )
+            self._render_thread.start()
 
     def stop(self) -> None:
-        """Stop the display (stub — rendering wired in T24)."""
+        if self._render_thread is not None:
+            self._render_thread.stop()
+            self._render_thread = None
 
     def emit(self, unit_id: str | None, line: str) -> None:
-        """Emit an output line from a worker (stub — wired in T24).
-
-        Args:
-            unit_id: Identifier of the originating work unit, or None for
-                unattributed output.
-            line: The sanitized text line to display.
-        """
+        if self._mode == "dashboard":
+            self._queue.put(UpdateEvent(unit_id=unit_id, kind="output", payload=line))
+        else:
+            prefix = f"[{unit_id}] " if unit_id else ""
+            self._console.print(f"{prefix}{line}")
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
-        """Update the status of a worker (stub — wired in T25).
-
-        Args:
-            unit_id: Identifier of the work unit.
-            status: New WorkerStatus value.
-        """
+        if self._mode == "dashboard":
+            self._queue.put(UpdateEvent(unit_id=unit_id, kind="status", payload=str(status)))
+        else:
+            self._console.print(f"[{unit_id}] status={status}")
 
     def __enter__(self) -> ParallelDisplay:
         self.start()
