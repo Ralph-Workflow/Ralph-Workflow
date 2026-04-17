@@ -6,18 +6,20 @@ so they do not block the event loop.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import asyncio
-
-import pytest
+from typing import TYPE_CHECKING
 
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import PipelineState
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 DEVELOPMENT_ITERATION = 2
 TOTAL_ITERATIONS = 5
+TICKER_ITERATIONS = 20
+MIN_NONBLOCKING_TICKS = 10
 
 
 def _build_state() -> PipelineState:
@@ -97,7 +99,7 @@ async def test_save_async_nonblocking(tmp_path: Path) -> None:
 
     async def ticker() -> None:
         nonlocal tick_count
-        for _ in range(20):
+        for _ in range(TICKER_ITERATIONS):
             await asyncio.sleep(0.01)
             tick_count += 1
 
@@ -109,7 +111,9 @@ async def test_save_async_nonblocking(tmp_path: Path) -> None:
         ticker(),
     )
 
-    assert tick_count >= 10, f"Event loop was blocked — only {tick_count}/20 ticks fired"
+    assert (
+        tick_count >= MIN_NONBLOCKING_TICKS
+    ), f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
 
 
 async def test_load_async_nonblocking(tmp_path: Path) -> None:
@@ -118,7 +122,7 @@ async def test_load_async_nonblocking(tmp_path: Path) -> None:
 
     async def ticker() -> None:
         nonlocal tick_count
-        for _ in range(20):
+        for _ in range(TICKER_ITERATIONS):
             await asyncio.sleep(0.01)
             tick_count += 1
 
@@ -131,4 +135,6 @@ async def test_load_async_nonblocking(tmp_path: Path) -> None:
         ticker(),
     )
 
-    assert tick_count >= 10, f"Event loop was blocked — only {tick_count}/20 ticks fired"
+    assert (
+        tick_count >= MIN_NONBLOCKING_TICKS
+    ), f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
