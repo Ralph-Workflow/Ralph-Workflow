@@ -1101,12 +1101,17 @@ def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) 
             assert nested[subkey] is False, f"Expected {key} = false"
         else:
             assert parsed[key] == "disabled", f"Expected {key} = disabled"
+    features = cast("dict[str, object]", parsed["features"])
+    assert "web_search" not in features
 
 
 def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -> None:
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
-    (fake_home / "config.toml").write_text("[features]\nfoo = true\n", encoding="utf-8")
+    (fake_home / "config.toml").write_text(
+        '[features]\nfoo = true\n\n[profiles.default]\nmodel = "gpt-5"\n',
+        encoding="utf-8",
+    )
     home = _prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
@@ -1118,6 +1123,9 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
     features = cast("dict[str, object]", parsed["features"])
     assert features["foo"] is True, "Existing feature should be preserved"
     assert features["shell_tool"] is False
+    assert features["multi_agent"] is False
+    assert features["undo"] is False
+    assert features["apps"] is False
 
 
 def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> None:

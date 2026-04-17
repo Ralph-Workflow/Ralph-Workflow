@@ -83,8 +83,8 @@ try:
 
     _WATCHDOG_EVENTS_AVAILABLE = True
 except ImportError:
-    _WatchdogObserverClass = None  # type: ignore[assignment]
-    _WatchdogFileSystemEventHandlerClass = None  # type: ignore[assignment,misc]
+    _WatchdogObserverClass = None  # type: ignore[assignment]  # watchdog is optional; None when not installed
+    _WatchdogFileSystemEventHandlerClass = None  # type: ignore[assignment,misc]  # watchdog is optional; None when not installed
     _WATCHDOG_EVENTS_AVAILABLE = False
 
 
@@ -437,14 +437,16 @@ def _prepare_codex_home(
             "ralph-python/docs/mcp-tool-restriction.md."
         )
         features_in_base = "[features]" in base_config
+        # Only features.* keys belong inside [features]; web_search is a top-level Codex config key.
         feature_lines = [
-            f"{key.split('.', 1)[1]} = {value}" if "." in key else f"{key} = {value}"
+            f"{key.split('.', 1)[1]} = {value}"
             for key, value in CODEX_NATIVE_FEATURES_TO_DISABLE
+            if "." in key
         ]
         feature_block = "\n".join(feature_lines) + "\n"
         prefix_sections.append('web_search = "disabled"\n')
         if features_in_base:
-            appended_sections.append(feature_block)
+            base_config = base_config.replace("[features]\n", "[features]\n" + feature_block, 1)
         appended_sections.append(
             f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
         )
