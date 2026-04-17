@@ -60,6 +60,86 @@ def _nonzero_exit_error(result: WorkerResult) -> str:
     return f"Worker {result.unit_id} exited with code {result.exit_code}"
 
 
+def _blocked_dependency_error(unit: WorkUnit, failed_unit_ids: set[str]) -> str | None:
+    blocked_by = sorted(dep for dep in unit.dependencies if dep in failed_unit_ids)
+    if not blocked_by:
+        return None
+    return f"Blocked by failed dependencies: {', '.join(blocked_by)}"
+
+
+def _blocked_pending_failures(
+    work_units: tuple[WorkUnit, ...],
+    pending_unit_ids: set[str],
+    failed_unit_ids: set[str],
+) -> list[WorkerFailedEvent]:
+    pending_units = {unit.unit_id: unit for unit in work_units if unit.unit_id in pending_unit_ids}
+    blocked_events: list[WorkerFailedEvent] = []
+    expanded_failures = set(failed_unit_ids)
+
+    while True:
+        progress_made = False
+        for unit_id, unit in list(pending_units.items()):
+            blocked_error = _blocked_dependency_error(unit, expanded_failures)
+            if blocked_error is None:
+                continue
+            blocked_events.append(
+                WorkerFailedEvent(unit_id=unit_id, exit_code=1, error=blocked_error)
+            )
+            expanded_failures.add(unit_id)
+            del pending_units[unit_id]
+            progress_made = True
+        if not progress_made:
+            return blocked_events
+
+
+def _append_terminal_failure_events(
+    *,
+    events: list[Event],
+    work_units: tuple[WorkUnit, ...],
+    pending: set[str],
+    running: dict[str, WorkUnit],
+    failures: list[_WorkerFailureError],
+) -> None:
+    seen_failures = {event.unit_id for event in events if isinstance(event, WorkerFailedEvent)}
+    failed_unit_ids = {failure.unit_id for failure in failures}
+
+    for failure in failures:
+        if failure.unit_id in seen_failures:
+            continue
+        running.pop(failure.unit_id, None)
+        events.append(
+            WorkerFailedEvent(
+                unit_id=failure.unit_id,
+                exit_code=failure.exit_code,
+                error=failure.error,
+            )
+        )
+        seen_failures.add(failure.unit_id)
+
+    for unit_id in list(running):
+        if unit_id in seen_failures:
+            continue
+        events.append(
+            WorkerFailedEvent(
+                unit_id=unit_id,
+                exit_code=1,
+                error="Cancelled because another worker failed",
+            )
+        )
+        seen_failures.add(unit_id)
+
+    blocked_events = _blocked_pending_failures(
+        work_units,
+        pending,
+        failed_unit_ids | seen_failures,
+    )
+    for blocked_event in blocked_events:
+        if blocked_event.unit_id in seen_failures:
+            continue
+        events.append(blocked_event)
+        seen_failures.add(blocked_event.unit_id)
+
+
 async def _run_worker(
     unit: WorkUnit,
     executor: AgentExecutor,
@@ -150,19 +230,13 @@ async def run_fan_out(
                     break
     except* Exception as group:
         failures, unexpected = _flatten_worker_failures(group.exceptions)
-        seen_failures = {event.unit_id for event in events if isinstance(event, WorkerFailedEvent)}
-        for failure in failures:
-            if failure.unit_id in seen_failures:
-                continue
-            running.pop(failure.unit_id, None)
-            events.append(
-                WorkerFailedEvent(
-                    unit_id=failure.unit_id,
-                    exit_code=failure.exit_code,
-                    error=failure.error,
-                )
-            )
-            seen_failures.add(failure.unit_id)
+        _append_terminal_failure_events(
+            events=events,
+            work_units=effect.work_units,
+            pending=pending,
+            running=running,
+            failures=failures,
+        )
         if unexpected:
             raise ExceptionGroup("Unexpected fan-out coordinator failure", unexpected) from None
     else:

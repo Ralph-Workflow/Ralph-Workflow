@@ -123,13 +123,13 @@ class ParallelDisplay:
             self._queue.put(UpdateEvent(unit_id=unit_id, kind="output", payload=line))
         else:
             prefix = f"[{unit_id}] " if unit_id else ""
-            self._console.print(f"{prefix}{line}")
+            self._console.out(f"{prefix}{line}")
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         if self._mode == "dashboard":
             self._queue.put(UpdateEvent(unit_id=unit_id, kind="status", payload=str(status)))
         else:
-            self._console.print(f"[{unit_id}] status={status}")
+            self._console.out(f"[{unit_id}] status={status}")
 
     def __enter__(self) -> ParallelDisplay:
         self.start()

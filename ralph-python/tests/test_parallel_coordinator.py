@@ -237,3 +237,34 @@ async def test_nonzero_exit_emits_worker_failed_event(tmp_path: Path) -> None:
         for event in events
     )
     assert display.statuses["unit-a"][-1] is WorkerStatus.FAILED
+
+
+async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> None:
+    run_fan_out = _load_run_fan_out()
+    effect = FanOutDevelopmentEffect(
+        work_units=(make_unit("unit-a"), make_unit("unit-b", ["unit-a"])),
+        max_workers=2,
+    )
+    display = RecordingDisplay()
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor(
+            {
+                "unit-a": FakeRun(outputs=["boom"], exit_code=1, duration_ms=10),
+                "unit-b": FakeRun(outputs=["never runs"], exit_code=0, duration_ms=10),
+            }
+        ),
+        display=display,
+        checkpoint_path=tmp_path / "checkpoint.json",
+        state=PipelineState(),
+    )
+
+    failed_events = [event for event in events if isinstance(event, WorkerFailedEvent)]
+
+    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
+    assert {event.unit_id for event in failed_events} == {"unit-a", "unit-b"}
+    assert any(
+        event.unit_id == "unit-b" and event.error == "Blocked by failed dependencies: unit-a"
+        for event in failed_events
+    )
