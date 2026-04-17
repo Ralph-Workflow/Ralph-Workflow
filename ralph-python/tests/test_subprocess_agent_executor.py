@@ -71,25 +71,31 @@ async def test_cancel_kills_process_group() -> None:
     """Cancellation kills the entire process group."""
     executor = SubprocessAgentExecutor()
     unit = make_unit("test-C")
+    started = asyncio.Event()
 
     cmd = [
         sys.executable,
         "-c",
-        "import time, os; pid = os.fork() if hasattr(os, 'fork') else -1; time.sleep(30)",
+        (
+            "import os, sys, time; "
+            "pid = os.fork() if hasattr(os, 'fork') else -1; "
+            "print('ready'); sys.stdout.flush(); time.sleep(30)"
+        ),
     ]
 
+    def on_output(line: str) -> None:
+        if "ready" in line:
+            started.set()
+
     task = asyncio.create_task(
-        executor.run(unit, on_output=ignore_output, on_status=ignore_status, command=cmd)
+        executor.run(unit, on_output=on_output, on_status=ignore_status, command=cmd)
     )
 
-    await asyncio.sleep(0.2)
+    await asyncio.wait_for(started.wait(), timeout=1.0)
     task.cancel()
 
     with suppress(asyncio.CancelledError):
         await task
-
-    await asyncio.sleep(0.1)
-    # Just verifying it doesn't hang here is sufficient
 
 
 @pytest.mark.asyncio

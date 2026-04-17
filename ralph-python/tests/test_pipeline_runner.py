@@ -719,6 +719,13 @@ class TestExecuteAgentEffect:
     class AgentError(Exception):
         pass
 
+    class _FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:12345/mcp"
+
     @staticmethod
     def _config(verbosity: int = 2) -> MagicMock:
         config = MagicMock()
@@ -865,15 +872,14 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        class FakeBridge:
-            def shutdown(self) -> None:
-                return None
-
-            def agent_endpoint_uri(self) -> str:
-                return "http://127.0.0.1:9999/mcp"
-
         monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def raising_invoke(*_args, **_kwargs):
@@ -896,15 +902,14 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        class FakeBridge:
-            def shutdown(self) -> None:
-                return None
-
-            def agent_endpoint_uri(self) -> str:
-                return "http://127.0.0.1:9999/mcp"
-
         monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def raising_value_error(*_args, **_kwargs):

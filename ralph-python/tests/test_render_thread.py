@@ -13,6 +13,8 @@ from rich.live import Live
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.render_thread import RenderThread, UpdateEvent
 
+STOP_DEADLINE_SECONDS = 0.2
+
 
 def make_live() -> Live:
     console = Console(force_terminal=True, record=True)
@@ -63,10 +65,23 @@ def test_render_thread_stop_joins_cleanly() -> None:
 
     with live:
         thread.start()
-        time.sleep(0.05)
         thread.stop()
 
     assert not thread.is_alive()
+
+
+def test_render_thread_stop_interrupts_sleep() -> None:
+    q: queue.Queue[UpdateEvent] = queue.Queue()
+    live = make_live()
+    thread = RenderThread(q=q, renderable_fn=lambda state: "", live=live, refresh_hz=1)
+
+    with live:
+        thread.start()
+        started_at = time.perf_counter()
+        thread.stop()
+        elapsed = time.perf_counter() - started_at
+
+    assert elapsed < STOP_DEADLINE_SECONDS
 
 
 def test_render_thread_drains_queue() -> None:
@@ -80,7 +95,7 @@ def test_render_thread_drains_queue() -> None:
 
     with live:
         thread.start()
-        time.sleep(0.3)
+        q.join()
         thread.stop()
 
     assert q.qsize() == 0
@@ -105,7 +120,7 @@ async def test_concurrent_emitters_drain_queue() -> None:
             worker("u3", ["g", "h", "i"]),
             worker("u4", ["j", "k", "l"]),
         )
-        await asyncio.sleep(0.4)
+        await asyncio.to_thread(q.join)
         thread.stop()
 
     assert q.qsize() == 0
@@ -141,7 +156,7 @@ def test_render_thread_calls_renderable_fn() -> None:
 
     with live:
         thread.start()
-        time.sleep(0.3)
+        q.join()
         thread.stop()
 
     assert len(received_states) > 0

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, fields
 from collections.abc import Mapping
+from dataclasses import FrozenInstanceError, fields
 from typing import get_type_hints
 
 import pytest
@@ -33,7 +33,7 @@ def test_fan_out_effect_fields() -> None:
 
     assert [field.name for field in effect_fields] == ["work_units", "max_workers"]
     assert hints["work_units"] == tuple[WorkUnit, ...]
-    assert hints["max_workers"] == int
+    assert hints["max_workers"] is int
 
 
 def test_merge_effect_fields() -> None:
@@ -42,4 +42,4 @@ def test_merge_effect_fields() -> None:
 
     assert [field.name for field in effect_fields] == ["worker_states", "base_branch"]
     assert hints["worker_states"] == Mapping[str, WorkerState]
-    assert hints["base_branch"] == str
+    assert hints["base_branch"] is str

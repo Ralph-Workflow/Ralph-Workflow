@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from rich.console import Console
 
+from ralph.display.renderers.dashboard import render_dashboard
+
 if TYPE_CHECKING:
     from ralph.display.renderers.dashboard import DashboardState
 
@@ -14,8 +16,6 @@ from ralph.pipeline.worker_state import WorkerStatus
 
 def test_all_status_labels() -> None:
     """Test all four status labels appear in dashboard output."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     state: dict[str, DashboardState] = {
         "u1": {
             "unit_id": "u1",
@@ -60,8 +60,6 @@ def test_all_status_labels() -> None:
 
 def test_status_cancelled_shows_wait() -> None:
     """Test CANCELLED status displays as WAIT label."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     state: dict[str, DashboardState] = {
         "u1": {
             "unit_id": "u1",
@@ -83,8 +81,6 @@ def test_status_cancelled_shows_wait() -> None:
 
 def test_dropped_footer_appears_when_non_zero() -> None:
     """Test dropped counter appears in footer when any unit has dropped > 0."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     state: dict[str, DashboardState] = {
         "u1": {
             "unit_id": "u1",
@@ -105,8 +101,6 @@ def test_dropped_footer_appears_when_non_zero() -> None:
 
 def test_dropped_footer_hidden_when_zero() -> None:
     """Test dropped counter does not appear when all units have dropped == 0."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     state: dict[str, DashboardState] = {
         "u1": {
             "unit_id": "u1",
@@ -127,8 +121,6 @@ def test_dropped_footer_hidden_when_zero() -> None:
 
 def test_last_output_truncated_to_80_chars() -> None:
     """Test last output is truncated to 80 characters."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     long_output = "x" * 200
     state: dict[str, DashboardState] = {
         "u1": {
@@ -151,8 +143,6 @@ def test_last_output_truncated_to_80_chars() -> None:
 
 def test_elapsed_time_displayed() -> None:
     """Test elapsed time is displayed in output."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     state: dict[str, DashboardState] = {
         "u1": {
             "unit_id": "u1",
@@ -173,8 +163,6 @@ def test_elapsed_time_displayed() -> None:
 
 def test_unit_id_column_displayed() -> None:
     """Test unit ID is shown in first column."""
-    from ralph.display.renderers.dashboard import render_dashboard
-
     state: dict[str, DashboardState] = {
         "my-unit-42": {
             "unit_id": "my-unit-42",

@@ -17,6 +17,9 @@ from ralph.runtime import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+TIMEOUT_EXCEEDED_SECONDS = 0.05
+SLOW_COMMAND_SECONDS = 0.2
+
 
 def test_timeout_seconds_from_env_uses_default_when_missing(
     monkeypatch: pytest.MonkeyPatch,
@@ -48,11 +51,14 @@ def test_run_command_with_timeout_returns_completed_process(tmp_path: Path) -> N
 
 
 def test_run_command_with_timeout_raises_on_suite_timeout(tmp_path: Path) -> None:
-    with pytest.raises(SuiteTimeoutError, match=r"exceeded the 0\.05s wall-clock limit"):
+    with pytest.raises(
+        SuiteTimeoutError,
+        match=rf"exceeded the {TIMEOUT_EXCEEDED_SECONDS}s wall-clock limit",
+    ):
         run_command_with_timeout(
-            [sys.executable, "-c", "import time; time.sleep(1)"],
+            [sys.executable, "-c", f"import time; time.sleep({SLOW_COMMAND_SECONDS})"],
             cwd=tmp_path,
-            suite_timeout_seconds=0.05,
+            suite_timeout_seconds=TIMEOUT_EXCEEDED_SECONDS,
         )
 
 

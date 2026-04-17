@@ -3,36 +3,48 @@
 import subprocess
 from pathlib import Path
 
-import pytest
-
-from ralph.git.executor import GitExecutor
 from ralph.git.worktree_preflight import check_worktree_supported
 
 
-@pytest.fixture
-def git_repo(tmp_path: Path) -> Path:
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "branch", "-m", "main"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "--allow-empty", "-m", "init"], cwd=tmp_path, check=True)
-    return tmp_path
+class FakeGitExecutor:
+    def __init__(self, result: subprocess.CompletedProcess[str]) -> None:
+        self.result = result
+
+    def run(self, _action):
+        return self.result
 
 
-def test_check_worktree_supported_returns_true_for_normal_repo(git_repo: Path) -> None:
-    result = check_worktree_supported(repo_root=git_repo, git=GitExecutor())
+def test_check_worktree_supported_returns_true_for_normal_repo(tmp_path: Path) -> None:
+    result = check_worktree_supported(
+        repo_root=tmp_path,
+        git=FakeGitExecutor(
+            subprocess.CompletedProcess(
+                args=["git", "worktree", "list", "--porcelain"],
+                returncode=0,
+                stdout=f"worktree {tmp_path}\n",
+                stderr="",
+            )
+        ),
+    )
 
     assert result.supported is True
     assert result.reason == ""
 
 
 def test_check_worktree_supported_returns_actionable_message_for_shallow_repo(
-    git_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    shallow_file = git_repo / ".git" / "shallow"
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    shallow_file = git_dir / "shallow"
     shallow_file.write_text("fake-shallow\n")
 
-    result = check_worktree_supported(repo_root=git_repo, git=GitExecutor())
+    result = check_worktree_supported(
+        repo_root=tmp_path,
+        git=FakeGitExecutor(
+            subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+        ),
+    )
 
     assert result.supported is False
     assert "unshallow" in result.reason

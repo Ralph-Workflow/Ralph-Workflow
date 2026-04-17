@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import queue
 import threading
-import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -51,10 +50,11 @@ class RenderThread(threading.Thread):
                 try:
                     event = self._queue.get_nowait()
                     self._apply(event)
+                    self._queue.task_done()
                 except queue.Empty:
                     break
             self._live.update(self._renderable_fn(self._state))
-            time.sleep(1 / self._refresh_hz)
+            self._stop_event.wait(1 / self._refresh_hz)
 
     def stop(self) -> None:
         self._stop_event.set()

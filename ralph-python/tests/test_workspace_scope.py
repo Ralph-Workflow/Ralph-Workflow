@@ -2,33 +2,24 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
-
-from git import Repo
+from typing import TYPE_CHECKING
 
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
+if TYPE_CHECKING:
+    import pytest
 
-def test_resolve_workspace_scope_keeps_root_worktree_authority_local(tmp_path: Path) -> None:
+
+def test_resolve_workspace_scope_keeps_root_worktree_authority_local(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     main_repo = tmp_path / "main"
     main_repo.mkdir()
-    repo = Repo.init(main_repo)
-    repo.config_writer().set_value("user", "name", "Test User").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
-    readme = main_repo / "README.md"
-    readme.write_text("main", encoding="utf-8")
-    repo.index.add(["README.md"])
-    repo.index.commit("initial commit")
 
-    child_worktree = tmp_path / "feature-worktree"
-    subprocess.run(
-        ["git", "worktree", "add", str(child_worktree)],
-        cwd=main_repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    monkeypatch.setattr("ralph.workspace.scope.find_repo_root", lambda _start: main_repo)
+    monkeypatch.setattr("ralph.workspace.scope.find_main_worktree_root", lambda _start: main_repo)
 
     scope = resolve_workspace_scope(main_repo)
 

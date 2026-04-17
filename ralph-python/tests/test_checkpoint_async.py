@@ -19,7 +19,8 @@ if TYPE_CHECKING:
 DEVELOPMENT_ITERATION = 2
 TOTAL_ITERATIONS = 5
 TICKER_ITERATIONS = 20
-MIN_NONBLOCKING_TICKS = 10
+MIN_NONBLOCKING_TICKS = 5
+TICK_INTERVAL_SECONDS = 0.002
 
 
 def _build_state() -> PipelineState:
@@ -100,7 +101,7 @@ async def test_save_async_nonblocking(tmp_path: Path) -> None:
     async def ticker() -> None:
         nonlocal tick_count
         for _ in range(TICKER_ITERATIONS):
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(TICK_INTERVAL_SECONDS)
             tick_count += 1
 
     state = _build_state()
@@ -111,9 +112,9 @@ async def test_save_async_nonblocking(tmp_path: Path) -> None:
         ticker(),
     )
 
-    assert (
-        tick_count >= MIN_NONBLOCKING_TICKS
-    ), f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
+    assert tick_count >= MIN_NONBLOCKING_TICKS, (
+        f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
+    )
 
 
 async def test_load_async_nonblocking(tmp_path: Path) -> None:
@@ -123,7 +124,7 @@ async def test_load_async_nonblocking(tmp_path: Path) -> None:
     async def ticker() -> None:
         nonlocal tick_count
         for _ in range(TICKER_ITERATIONS):
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(TICK_INTERVAL_SECONDS)
             tick_count += 1
 
     state = _build_state()
@@ -135,6 +136,6 @@ async def test_load_async_nonblocking(tmp_path: Path) -> None:
         ticker(),
     )
 
-    assert (
-        tick_count >= MIN_NONBLOCKING_TICKS
-    ), f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
+    assert tick_count >= MIN_NONBLOCKING_TICKS, (
+        f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
+    )

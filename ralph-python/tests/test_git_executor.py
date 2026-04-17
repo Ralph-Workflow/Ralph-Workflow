@@ -13,6 +13,7 @@ _THREAD_COUNT = 8
 _OPS_PER_THREAD = 100
 _TOTAL_OPS = _THREAD_COUNT * _OPS_PER_THREAD
 _GATHER_COUNT = 3
+_SERIALIZATION_HOLD_SECONDS = 0.005
 
 
 def test_run_executes_callable() -> None:
@@ -74,7 +75,7 @@ async def test_arun_concurrent_serializes() -> None:
         with lock:
             running_count += 1
             max_concurrent = max(max_concurrent, running_count)
-        time.sleep(0.05)
+        time.sleep(_SERIALIZATION_HOLD_SECONDS)
         with lock:
             running_count -= 1
         return 1

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import signal
 import threading
 from typing import TYPE_CHECKING
@@ -55,8 +56,26 @@ def pytest_runtest_call(item: pytest.Item):
         signal.signal(signal.SIGALRM, previous_handler)
 
 
+@pytest.fixture(scope="session")
+def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a reusable template git repository for fast per-test copies."""
+    template_root = tmp_path_factory.mktemp("git-template")
+    repo = Repo.init(template_root)
+    writer = repo.config_writer()
+    writer.set_value("user", "name", "Test User")
+    writer.set_value("user", "email", "test@example.com")
+    writer.release()
+
+    readme = template_root / "README.md"
+    readme.write_text("test")
+    repo.index.add(["README.md"])
+    repo.index.commit("initial commit")
+
+    return template_root
+
+
 @pytest.fixture
-def tmp_git_repo(tmp_path: Path) -> Path:
+def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     """Create a temporary git repository for testing.
 
     Args:
@@ -65,16 +84,7 @@ def tmp_git_repo(tmp_path: Path) -> Path:
     Returns:
         Path to the temporary git repository.
     """
-    repo = Repo.init(tmp_path)
-    repo.config_writer().set_value("user", "name", "Test User").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
-
-    # Create initial commit
-    readme = tmp_path / "README.md"
-    readme.write_text("test")
-    repo.index.add(["README.md"])
-    repo.index.commit("initial commit")
-
+    shutil.copytree(_git_repo_template, tmp_path, dirs_exist_ok=True)
     return tmp_path
 
 

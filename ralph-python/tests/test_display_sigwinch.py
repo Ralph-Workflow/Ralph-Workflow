@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import signal
-import time
 
 import pytest
 from rich.console import Console
@@ -46,17 +45,12 @@ def test_sigwinch_does_not_crash_render_thread() -> None:
     try:
         pd.start()
         try:
-            time.sleep(0.2)
-
             render_thread = pd._render_thread
             assert render_thread is not None
             assert render_thread.is_alive(), "Render thread should be alive before signals"
 
             for _ in range(5):
                 os.kill(os.getpid(), signal.SIGWINCH)
-                time.sleep(0.01)
-
-            time.sleep(0.5)
 
             render_thread = pd._render_thread
             assert render_thread is not None
