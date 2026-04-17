@@ -1,6 +1,13 @@
+import importlib
+
 import pytest
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
+
+_hypothesis = importlib.import_module("hypothesis")
+given = _hypothesis.given
+settings = _hypothesis.settings
+st = importlib.import_module("hypothesis.strategies")
 
 
 def make_unit(unit_id: str, deps: list[str] | None = None) -> WorkUnit:
@@ -88,3 +95,73 @@ def test_no_slots_available() -> None:
     units = (make_unit("A"), make_unit("B"))
     result = schedule_next_wave(set(), units, {"X", "Y"}, max_workers=2)
     assert result == []
+
+
+def build_dag_units(
+    num_units: int,
+    dep_pairs: list[tuple[int, int]],
+) -> tuple[WorkUnit, ...]:
+    """Build a valid DAG from indices and dependency pairs, filtering cycles."""
+    valid_deps: dict[int, list[str]] = {index: [] for index in range(num_units)}
+    for src, dst in dep_pairs:
+        if src < num_units and dst < num_units and src < dst:
+            valid_deps[dst].append(f"unit-{src:02d}")
+
+    return tuple(make_unit(f"unit-{index:02d}", valid_deps[index]) for index in range(num_units))
+
+
+@settings(max_examples=100)
+@given(
+    num_units=st.integers(min_value=1, max_value=20),
+    dep_pairs=st.lists(
+        st.tuples(
+            st.integers(min_value=0, max_value=19),
+            st.integers(min_value=0, max_value=19),
+        ),
+        max_size=40,
+    ),
+    max_workers=st.integers(min_value=1, max_value=10),
+)
+def test_dag_property_no_deadlock_no_duplicate(
+    num_units: int,
+    dep_pairs: list[tuple[int, int]],
+    max_workers: int,
+) -> None:
+    """Property: scheduler terminates, respects deps, and schedules each unit once."""
+    units = build_dag_units(num_units, dep_pairs)
+    actual_unit_ids = {unit.unit_id for unit in units}
+
+    completed: set[str] = set()
+    running: set[str] = set()
+    all_scheduled: list[str] = []
+
+    for _iteration in range(num_units + 1):
+        ready = schedule_next_wave(completed, units, running, max_workers)
+
+        for unit in ready:
+            for dependency in unit.dependencies:
+                if dependency in actual_unit_ids:
+                    assert dependency in completed, (
+                        f"Unit {unit.unit_id} returned but dep {dependency} not completed"
+                    )
+
+        for unit in ready:
+            assert unit.unit_id not in all_scheduled, f"Unit {unit.unit_id} scheduled twice"
+            assert unit.unit_id not in completed
+            assert unit.unit_id not in running
+
+        if not ready and not running:
+            break
+
+        for unit in ready:
+            running.add(unit.unit_id)
+            all_scheduled.append(unit.unit_id)
+
+        for unit_id in list(running):
+            completed.add(unit_id)
+        running.clear()
+
+    assert len(all_scheduled) == num_units, (
+        f"Expected {num_units} scheduled, got {len(all_scheduled)}: {all_scheduled}"
+    )
+    assert set(all_scheduled) == actual_unit_ids

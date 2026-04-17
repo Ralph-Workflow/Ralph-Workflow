@@ -12,10 +12,7 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 def sanitize_display_line(raw: bytes | str, max_chars: int = 200) -> str:
     """Sanitize a raw agent output line for safe terminal display."""
-    if isinstance(raw, bytes):
-        text = raw.decode("utf-8", errors="replace")
-    else:
-        text = raw
+    text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
 
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = _CONTROL_CHARS_RE.sub("", text)

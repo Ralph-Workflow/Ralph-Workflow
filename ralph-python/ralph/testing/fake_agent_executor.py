@@ -1,8 +1,8 @@
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from ralph.agents.executor import AgentExecutor, ExecutorError, WorkerResult
+from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 

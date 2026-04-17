@@ -59,7 +59,7 @@ class WorkspaceScope:
         cls,
         worktree_path: Path,
         allowed_directories: tuple[str, ...],
-    ) -> "WorkspaceScope":
+    ) -> WorkspaceScope:
         allowed_roots = tuple(worktree_path / ad for ad in allowed_directories)
         return cls(root=worktree_path, allowed_roots=allowed_roots)
 

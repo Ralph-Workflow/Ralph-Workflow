@@ -16,9 +16,8 @@ not hardcoded match arms.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from ralph.config.enums import (
     PHASE_COMPLETE,

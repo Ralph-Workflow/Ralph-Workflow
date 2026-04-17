@@ -48,7 +48,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
@@ -173,7 +173,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 workspace_scope,
             )
 
-            event = _execute_effect(effect, config, workspace_scope)
+            event: Event = _execute_effect(effect, config, workspace_scope)
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
                 event = _phase_event_after_agent_run(
                     effect=effect,
@@ -481,7 +481,7 @@ def _phase_event_after_agent_run(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
     workspace: FsWorkspace,
-) -> PipelineEvent:
+) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
         registry=AgentRegistry.from_config(config),
