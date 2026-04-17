@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
-
-import pytest
 
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import FanOutDevelopmentEffect
@@ -12,6 +10,12 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+
+if TYPE_CHECKING:
+    import pytest
+
+
+RESUMED_WORKER_COUNT = 3
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
@@ -34,7 +38,7 @@ class _FakeDisplay:
     def set_status(self, unit_id: str, status: object) -> None:
         pass
 
-    def __enter__(self) -> "_FakeDisplay":
+    def __enter__(self) -> _FakeDisplay:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -155,7 +159,7 @@ class TestParallelResume:
 
         launched_ids = {u.unit_id for u in fake_executor.calls}
         assert "unit-0" in launched_ids, "RUNNING unit must be re-launched after reset to PENDING"
-        assert len(launched_ids) == 3
+        assert len(launched_ids) == RESUMED_WORKER_COUNT
 
     def test_resume_completes_all_units(
         self,
@@ -190,7 +194,7 @@ class TestParallelResume:
             workspace_scope=scope,
         )
 
-        assert len(fake_executor.calls) == 3
+        assert len(fake_executor.calls) == RESUMED_WORKER_COUNT
         launched_ids = {u.unit_id for u in fake_executor.calls}
         assert launched_ids == {"unit-2", "unit-3", "unit-4"}
 

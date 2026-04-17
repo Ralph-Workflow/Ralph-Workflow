@@ -11,7 +11,11 @@ from ralph.pipeline.worker_state import WorkerStatus
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[")
 
 
-def _make_display(*, force_terminal: bool, columns: int | None = None) -> tuple[ParallelDisplay, StringIO]:
+def _make_display(
+    *,
+    force_terminal: bool,
+    columns: int | None = None,
+) -> tuple[ParallelDisplay, StringIO]:
     buffer = StringIO()
     if columns is None:
         console = Console(file=buffer, force_terminal=force_terminal, highlight=False)

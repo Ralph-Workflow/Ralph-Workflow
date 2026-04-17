@@ -9,6 +9,8 @@ Generates random DAGs and asserts invariants after each run:
 from __future__ import annotations
 
 import asyncio
+import random
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -18,15 +20,21 @@ from hypothesis import strategies as st  # pyright: ignore[reportMissingImports]
 
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.parallel import coordinator
+from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.policy.models import PipelinePolicy
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+
+WORKER_FAILURE_THRESHOLD = 0.2
 
 
 def _build_acyclic_dag(n: int, edge_seed: int) -> list[WorkUnit]:
-    """Build N work units with a random acyclic DAG (lower-index units depend on higher-index units)."""
-    import random
+    """Build N work units with a random acyclic DAG.
+
+    Lower-index units may depend only on higher-index units.
+    """
 
     rng = random.Random(edge_seed)
     units = []
@@ -61,7 +69,6 @@ def test_coordinator_all_units_reach_terminal_state(
     exit_seed: int,
 ) -> None:
     """Every unit must end in SUCCEEDED, FAILED, or CANCELLED — never PENDING or RUNNING."""
-    import random
 
     rng = random.Random(exit_seed)
 
@@ -69,7 +76,7 @@ def test_coordinator_all_units_reach_terminal_state(
     runs = {
         unit.unit_id: FakeRun(
             outputs=["ok"],
-            exit_code=0 if rng.random() > 0.2 else 1,  # 80% success rate
+            exit_code=0 if rng.random() > WORKER_FAILURE_THRESHOLD else 1,
             duration_ms=1,
         )
         for unit in units
@@ -87,10 +94,6 @@ def test_coordinator_all_units_reach_terminal_state(
         )
     )
 
-    # Apply events to state to get final worker_states
-    from ralph.pipeline.reducer import reduce as reducer_reduce
-    from ralph.policy.models import PipelinePolicy
-
     dummy_policy = MagicMock(spec=PipelinePolicy)
     dummy_policy.phases = {}
     dummy_policy.max_iterations = 10
@@ -98,10 +101,8 @@ def test_coordinator_all_units_reach_terminal_state(
 
     current = state
     for ev in events:
-        try:
+        with suppress(Exception):
             current, _ = reducer_reduce(current, ev, dummy_policy)
-        except Exception:
-            pass  # Some events may be ignored by reducer in test context
 
     terminal = {WorkerStatus.SUCCEEDED, WorkerStatus.FAILED, WorkerStatus.CANCELLED}
     for uid, ws in current.worker_states.items():
@@ -131,9 +132,6 @@ def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
         )
     )
 
-    from ralph.pipeline.reducer import reduce as reducer_reduce
-    from ralph.policy.models import PipelinePolicy
-
     dummy_policy = MagicMock(spec=PipelinePolicy)
     dummy_policy.phases = {}
     dummy_policy.max_iterations = 10
@@ -141,10 +139,8 @@ def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
 
     current = state
     for ev in events:
-        try:
+        with suppress(Exception):
             current, _ = reducer_reduce(current, ev, dummy_policy)
-        except Exception:
-            pass
 
     unit_map = {u.unit_id: u for u in units}
     for uid, ws in current.worker_states.items():
@@ -155,5 +151,7 @@ def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
                     dep_ws = current.worker_states.get(dep_id)
                     if dep_ws:
                         assert dep_ws.status == WorkerStatus.SUCCEEDED, (
-                            f"Unit {uid!r} SUCCEEDED but dep {dep_id!r} has status {dep_ws.status!r}"
+                            "Unit "
+                            f"{uid!r} SUCCEEDED but dep {dep_id!r} "
+                            f"has status {dep_ws.status!r}"
                         )
