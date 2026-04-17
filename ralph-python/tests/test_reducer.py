@@ -314,7 +314,11 @@ def test_commit_success_routes_development_commit_to_planning_when_budget_remain
 def test_commit_success_routes_development_commit_to_review_when_budget_exhausted() -> None:
     """COMMIT_SUCCESS should route development_commit to review when budget exhausted."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="development_commit", development_budget_remaining=0)
+    state = PipelineState(
+        phase="development_commit",
+        development_budget_remaining=0,
+        review_budget_remaining=1,
+    )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 

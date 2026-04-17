@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.config.enums import PHASE_COMPLETE
+
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline.state import PipelineState
@@ -75,7 +77,12 @@ def resolve_post_commit_phase(
 ) -> PipelinePhase:
     """Resolve next phase for a successful commit with optional budget guards."""
     if state.phase == "development_commit":
-        budget_state = "remaining" if state.development_budget_remaining > 0 else "exhausted"
+        if state.development_budget_remaining > 0:
+            budget_state = "remaining"
+        elif state.review_budget_remaining == 0:
+            return PHASE_COMPLETE
+        else:
+            budget_state = "exhausted"
     elif state.phase == "review_commit":
         budget_state = "remaining" if state.review_budget_remaining > 0 else "exhausted"
     else:
