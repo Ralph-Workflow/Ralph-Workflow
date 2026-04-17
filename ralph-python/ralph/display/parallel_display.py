@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import os
 import queue
-from typing import TYPE_CHECKING, Literal
+import signal
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Literal, cast
 
+from loguru import logger
 from rich.live import Live
 
 from ralph.display.render_thread import RenderThread, UpdateEvent
@@ -25,6 +28,12 @@ if TYPE_CHECKING:
     from ralph.pipeline.worker_state import WorkerStatus
 
 NARROW_THRESHOLD: int = 60
+
+type SignalHandler = Callable[[int, object], None] | int | None
+
+
+def _noop_sigwinch(signum: int, frame: object) -> None:
+    logger.debug("SIGWINCH received, letting rich handle resize on next refresh")
 
 
 def detect_mode(
@@ -68,7 +77,7 @@ class ParallelDisplay:
             os.environ when None.
     """
 
-    __slots__ = ("_console", "_mode", "_queue", "_render_thread")
+    __slots__ = ("_console", "_mode", "_prev_sigwinch", "_queue", "_render_thread")
 
     def __init__(
         self,
@@ -80,6 +89,7 @@ class ParallelDisplay:
         self._mode: Literal["dashboard", "lines"] = detect_mode(console, resolved_env)
         self._queue: queue.Queue[UpdateEvent] = queue.Queue()
         self._render_thread: RenderThread | None = None
+        self._prev_sigwinch: SignalHandler = None
 
     @property
     def mode(self) -> Literal["dashboard", "lines"]:
@@ -96,11 +106,17 @@ class ParallelDisplay:
                 live=live,
             )
             self._render_thread.start()
+            if hasattr(signal, "SIGWINCH"):
+                self._prev_sigwinch = cast(
+                    "SignalHandler", signal.signal(signal.SIGWINCH, _noop_sigwinch)
+                )
 
     def stop(self) -> None:
         if self._render_thread is not None:
             self._render_thread.stop()
             self._render_thread = None
+        if hasattr(signal, "SIGWINCH") and self._prev_sigwinch is not None:
+            signal.signal(signal.SIGWINCH, cast("SignalHandler", self._prev_sigwinch))
 
     def emit(self, unit_id: str | None, line: str) -> None:
         if self._mode == "dashboard":
