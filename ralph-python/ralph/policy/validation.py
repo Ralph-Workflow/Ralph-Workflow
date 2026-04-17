@@ -164,6 +164,9 @@ class PolicyValidationError(Exception):
         super().__init__(message)
 
 
+PolicyViolation = PolicyValidationError
+
+
 def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str]]:
     """Generate a normalized drain resolution matrix.
 
@@ -205,10 +208,17 @@ def validate_work_units_against_policy(
             "pipeline.parallel_execution is not configured"
         )
 
-    if len(work_units.work_units) > parallel_policy.max_parallel_workers:
+    work_units_count = len(work_units.work_units)
+
+    if work_units_count > parallel_policy.max_work_units:
+        raise PolicyViolation(
+            f"work_units count {work_units_count} exceeds cap {parallel_policy.max_work_units}"
+        )
+
+    if work_units_count > parallel_policy.max_parallel_workers:
         raise PolicyValidationError(
             "Planning artifact declares "
-            f"{len(work_units.work_units)} work_units, exceeding "
+            f"{work_units_count} work_units, exceeding "
             f"max_parallel_workers={parallel_policy.max_parallel_workers}"
         )
 
