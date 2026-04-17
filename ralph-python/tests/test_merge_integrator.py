@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.git.executor import GitExecutor
 from ralph.pipeline.events import PipelineEvent, WorkersMergeConflictEvent
-from ralph.pipeline.parallel.merge_integrator import MergeResult, integrate
+from ralph.pipeline.parallel.merge_integrator import integrate
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_test_repo(tmp_path: Path) -> tuple[Path, GitExecutor]:

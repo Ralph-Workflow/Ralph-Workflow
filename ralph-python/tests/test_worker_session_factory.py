@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.mcp.server.factory import McpServerHandle
+from ralph.pipeline.parallel.worker_session import build_worker_session
 from ralph.pipeline.work_units import WorkUnit
 from ralph.workspace.scope import WorkspaceScope
-from ralph.pipeline.parallel.worker_session import WorkerSessionBundle, build_worker_session
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_unit(unit_id: str = "task-alpha") -> WorkUnit:

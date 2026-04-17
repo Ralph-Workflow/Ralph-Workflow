@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import typer
@@ -10,9 +10,13 @@ from typer.testing import CliRunner
 
 from ralph.cli.commands.cleanup import cleanup
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 _app = typer.Typer()
 _app.command()(cleanup)
 runner = CliRunner()
+EXPECTED_GIT_CALLS = 2
 
 
 def test_cleanup_removes_worktrees(tmp_path: Path) -> None:
@@ -43,7 +47,7 @@ def test_cleanup_removes_worktrees(tmp_path: Path) -> None:
     assert not (worktrees / "unit-B").exists()
     mock_manager.destroy.assert_any_call("unit-A")
     mock_manager.destroy.assert_any_call("unit-B")
-    assert mock_git.run.call_count == 2
+    assert mock_git.run.call_count == EXPECTED_GIT_CALLS
 
 
 def test_cleanup_dry_run_no_removal(tmp_path: Path) -> None:

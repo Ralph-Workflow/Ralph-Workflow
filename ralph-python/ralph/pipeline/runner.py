@@ -12,6 +12,7 @@ from __future__ import annotations
 import shutil
 import uuid
 from dataclasses import dataclass
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -68,8 +69,8 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
-    from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
-
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
 
 class _InvokeAgentFn(Protocol):
     def __call__(
@@ -94,18 +95,7 @@ console = Console()
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_ACTIVITY_LOG_LEVEL = 1
 _MAX_METADATA_PARTS = 3
-_MAX_TEXT_LENGTH = 200
-_MAX_TOOL_INPUT_LENGTH = 120
-_MAX_TOOL_RESULT_LENGTH = 150
-_MAX_TOOL_RESULT_BRIEF = 80
-_TOOL_RESULT_BRIEF_THRESHOLD = 500
-_MAX_METADATA_SUMMARY_LENGTH = 120
-
-
-def _terminal_width() -> int:
-    """Return the current terminal width with a safe fallback."""
-    return shutil.get_terminal_size().columns or 80
-
+_LEGACY_EXECUTE_EFFECT_ARITY = 3
 
 @dataclass(frozen=True)
 class _AgentExecutionDeps:
@@ -114,7 +104,66 @@ class _AgentExecutionDeps:
     agent_registry: _AgentRegistryFactory
 
 
-def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
+class _LegacyConsoleDisplay:
+    def __enter__(self) -> _LegacyConsoleDisplay:
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        return None
+
+    def emit(self, unit_id: str | None, line: Text | str) -> None:
+        if unit_id is None:
+            console.print(line)
+            return
+        console.print(f"[{unit_id}] {line}")
+
+
+def _emit_display_line(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    unit_id: str | None,
+    line: Text | str,
+) -> None:
+    if display is None:
+        if unit_id is None:
+            console.print(line)
+            return
+        console.print(f"[{unit_id}] {line}")
+        return
+    if isinstance(display, _LegacyConsoleDisplay):
+        display.emit(unit_id, line)
+        return
+    display.emit(unit_id, line.plain if isinstance(line, Text) else line)
+
+
+def _resolve_display(
+    display: ParallelDisplay | None,
+) -> ParallelDisplay | _LegacyConsoleDisplay:
+    if display is not None:
+        return display
+    console_obj: object = console
+    if isinstance(console_obj, Console):
+        from ralph.display.parallel_display import ParallelDisplay  # noqa: PLC0415
+
+        return ParallelDisplay(console_obj)
+    return _LegacyConsoleDisplay()
+
+
+def _execute_effect_with_optional_display(
+    effect: Effect,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+) -> Event:
+    if len(signature(_execute_effect).parameters) == _LEGACY_EXECUTE_EFFECT_ARITY:
+        return _execute_effect(effect, config, workspace_scope)
+    return _execute_effect(effect, config, workspace_scope, display)
+
+
+def run(
+    config: UnifiedConfig,
+    initial_state: PipelineState | None = None,
+    display: ParallelDisplay | None = None,
+) -> int:
     """Execute the pipeline event loop.
 
     Args:
@@ -140,68 +189,67 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         state.total_reviewer_passes,
     )
 
-    show_phase_start(state.phase, console=console)
+    active_display = _resolve_display(display)
+    with active_display:
+        try:
+            while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
+                effect = _determine_effect_from_policy(state, policy_bundle)
+                inline_result = _handle_inline_effect(                    effect=effect,
+                    state=state,
+                    pipeline_policy=policy_bundle.pipeline,
+                    workspace_scope=workspace_scope,
+                    display=active_display,
+                )
+                if inline_result is not None:
+                    if isinstance(inline_result, int):
+                        return inline_result
+                    state = inline_result
+                    continue
 
-    try:
-        while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-            previous_phase = state.phase
-
-            effect = _determine_effect_from_policy(state, policy_bundle, workspace_scope)
-            inline_result = _handle_inline_effect(
-                effect=effect,
-                state=state,
-                pipeline_policy=policy_bundle.pipeline,
-                workspace_scope=workspace_scope,
-            )
-            if inline_result is not None:
-                if isinstance(inline_result, int):
-                    return inline_result
-                state = inline_result
-                if state.phase != previous_phase:
-                    _show_phase_transition_with_context(previous_phase, state)
-                continue
-
-            workspace = FsWorkspace(
-                workspace_scope.root,
-                allowed_roots=workspace_scope.allowed_roots,
-            )
-            _materialize_agent_prompt_if_needed(
-                effect,
-                workspace,
-                policy_bundle.pipeline,
-                registry,
-                workspace_scope,
-            )
-
-            event: Event = _execute_effect(effect, config, workspace_scope)
-            if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-                event = _phase_event_after_agent_run(
-                    effect=effect,
-                    config=config,
-                    policy_bundle=policy_bundle,
-                    workspace=workspace,
+                workspace = FsWorkspace(
+                    workspace_scope.root,
+                    allowed_roots=workspace_scope.allowed_roots,
+                )
+                _materialize_agent_prompt_if_needed(
+                    effect,
+                    workspace,
+                    policy_bundle.pipeline,
+                    registry,
+                    workspace_scope,
                 )
 
-            state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-            ckpt.save(state)
+                event: Event = _execute_effect_with_optional_display(
+                    effect,
+                    config,
+                    workspace_scope,
+                    active_display,
+                )
+                if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+                    event = _phase_event_after_agent_run(
+                        effect=effect,
+                        config=config,
+                        policy_bundle=policy_bundle,
+                        workspace=workspace,
+                    )
 
-            if state.phase != previous_phase:
-                _show_phase_transition_with_context(previous_phase, state)
+                state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                ckpt.save(state)
 
-    except KeyboardInterrupt:
-        logger.warning("Interrupted by user; saving checkpoint.")
-        interrupted_state = state.copy_with(interrupted_by_user=True)
-        ckpt.save(interrupted_state)
-        return 130
-    # Final state
-    if state.phase == PHASE_COMPLETE:
-        show_phase_complete("complete", console=console)
-        console.print("[green]Pipeline completed successfully.[/green]")
-        return 0
-    else:
-        show_phase_complete("failed", console=console)
-        console.print(_status_text("Pipeline failed", state.last_error or "Unknown error", "red"))
-        return 1
+        except KeyboardInterrupt:
+            logger.warning("Interrupted by user; saving checkpoint.")
+            interrupted_state = state.copy_with(interrupted_by_user=True)
+            ckpt.save(interrupted_state)
+            return 130
+
+        if state.phase == PHASE_COMPLETE:
+            active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
+            return 0
+
+        _emit_display_line(
+            active_display,
+            None,
+            _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
+        )        return 1
 
 
 def _show_phase_transition_with_context(previous_phase: str, state: PipelineState) -> None:
@@ -226,6 +274,7 @@ def _handle_inline_effect(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineState | int | None:
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
@@ -243,14 +292,11 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        show_phase_complete("complete", console=console)
-        console.print("[green]Pipeline completed successfully.[/green]")
+        _emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
         return 0
 
     if isinstance(effect, ExitFailureEffect):
-        show_phase_complete("failed", console=console)
-        console.print(_status_text("Pipeline failed", effect.reason, "red"))
-        return 1
+        _emit_display_line(display, None, _status_text("Pipeline failed", effect.reason, "red"))        return 1
 
     return None
 
@@ -505,6 +551,7 @@ def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineEvent:
     """Execute an effect and return the resulting event.
 
@@ -529,7 +576,7 @@ def _execute_effect(
     )
 
     if isinstance(effect, InvokeAgentEffect):
-        return _execute_agent_effect(effect, config, deps, workspace_scope)
+        return _execute_agent_effect(effect, config, deps, workspace_scope, display)
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(effect, create_commit, stage_all, workspace_scope.root)
     if isinstance(effect, SaveCheckpointEffect):
@@ -544,8 +591,9 @@ def _execute_agent_effect(
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
     workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineEvent:
-    registry = deps.agent_registry.from_config(config)
+    _emit_display_line(display, None, _status_text("Invoking agent", effect.agent_name, "cyan"))    registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
@@ -571,6 +619,7 @@ def _execute_agent_effect(
 
         options = InvokeOptions(
             verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+            show_progress=False,
             workspace_path=workspace_scope.root,
             extra_env={
                 MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
@@ -584,7 +633,10 @@ def _execute_agent_effect(
         output_lines = deps.invoke_agent(agent_config, effect.prompt_file, options=options)
         if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:
             _stream_parsed_agent_activity(
-                output_lines, str(agent_config.json_parser), effect.agent_name
+                output_lines,
+                str(agent_config.json_parser),
+                effect.agent_name,
+                display,
             )
         else:
             for _ in output_lines:
@@ -666,13 +718,14 @@ def _stream_parsed_agent_activity(
     lines: Iterable[object],
     parser_type: str,
     agent_name: str,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> None:
     parser = _resolve_parser(parser_type)
     str_lines = (str(line) for line in lines)
     for parsed_line in parser.parse(str_lines):
         rendered = _render_agent_activity_line(parsed_line, agent_name)
         if rendered is not None:
-            console.print(rendered)
+            _emit_display_line(display, None, rendered)
 
 
 def _resolve_parser(parser_type: str) -> AgentParser:

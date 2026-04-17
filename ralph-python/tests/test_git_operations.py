@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -117,6 +116,9 @@ def test_create_commit() -> None:
                 return "test@example.com"
             return default
 
+    def fake_config_reader() -> FakeConfig:
+        return FakeConfig()
+
     class FakeIndex:
         def commit(self, message: str, author, committer) -> FakeCommit:
             captured["message"] = message
@@ -124,7 +126,7 @@ def test_create_commit() -> None:
             captured["committer"] = committer
             return FakeCommit()
 
-    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=lambda: FakeConfig())
+    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=fake_config_reader)
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
 
