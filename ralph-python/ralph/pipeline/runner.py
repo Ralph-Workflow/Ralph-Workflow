@@ -70,6 +70,7 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
@@ -196,8 +197,9 @@ def run(
     with active_display:
         try:
             while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-                effect = _determine_effect_from_policy(state, policy_bundle)
-                inline_result = _handle_inline_effect(                    effect=effect,
+                effect = _determine_effect_from_policy(state, policy_bundle, workspace_scope)
+                inline_result = _handle_inline_effect(
+                    effect=effect,
                     state=state,
                     pipeline_policy=policy_bundle.pipeline,
                     workspace_scope=workspace_scope,
@@ -262,7 +264,8 @@ def run(
             active_display,
             None,
             _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
-        )        return 1
+        )
+        return 1
 
 
 def _show_phase_transition_with_context(previous_phase: str, state: PipelineState) -> None:
@@ -292,24 +295,18 @@ def _execute_fan_out_sync(
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
 
-    from ralph.agents.executor import AgentExecutor  # noqa: PLC0415
     from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
-    from ralph.display.parallel_display import ParallelDisplay as PD  # noqa: PLC0415
+    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
     from ralph.git.executor import GitExecutor  # noqa: PLC0415
-    from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
-    from ralph.pipeline.parallel import merge_integrator  # noqa: PLC0415
+    from ralph.pipeline.parallel import coordinator, merge_integrator  # noqa: PLC0415
 
-    executor = cast(AgentExecutor, SubprocessAgentExecutor())
+    executor = cast("AgentExecutor", SubprocessAgentExecutor())
     git_exec = GitExecutor()
     repo_root = workspace_scope.root
 
-    pd: PD
-    if isinstance(display, PD):
-        pd = display
-    else:
-        from ralph.display.parallel_display import ParallelDisplay as PD2  # noqa: PLC0415
-
-        pd = PD2(Console())
+    pd: _ParallelDisplay = (
+        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(Console())
+    )
 
     checkpoint_path = workspace_scope.root / ".agent" / "checkpoint.json"
 
@@ -372,7 +369,8 @@ def _handle_inline_effect(
         return 0
 
     if isinstance(effect, ExitFailureEffect):
-        _emit_display_line(display, None, _status_text("Pipeline failed", effect.reason, "red"))        return 1
+        _emit_display_line(display, None, _status_text("Pipeline failed", effect.reason, "red"))
+        return 1
 
     return None
 
@@ -504,16 +502,22 @@ def _create_initial_state(
     )
 
 
+def _terminal_phase_effect(state: PipelineState) -> Effect | None:
+    if state.phase == PHASE_COMPLETE:
+        return ExitSuccessEffect()
+    if state.phase == PHASE_FAILED:
+        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+    return None
+
+
 def _determine_effect_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
 ) -> Effect:
-    if state.phase == PHASE_COMPLETE:
-        return ExitSuccessEffect()
-
-    if state.phase == PHASE_FAILED:
-        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+    terminal = _terminal_phase_effect(state)
+    if terminal is not None:
+        return terminal
 
     phase_def = policy_bundle.pipeline.phases.get(state.phase)
     if phase_def is None:
@@ -527,9 +531,10 @@ def _determine_effect_from_policy(
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
 
     if state.phase == PHASE_DEVELOPMENT and state.work_units:
+        parallel_policy = policy_bundle.pipeline.parallel_execution
         return FanOutDevelopmentEffect(
             work_units=state.work_units,
-            max_workers=getattr(policy_bundle.pipeline, "max_parallel_workers", 8),
+            max_workers=parallel_policy.max_parallel_workers if parallel_policy is not None else 8,
         )
 
     return InvokeAgentEffect(

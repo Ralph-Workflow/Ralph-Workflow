@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import json
+from unittest.mock import MagicMock
+
+from ralph.config.enums import PHASE_DEVELOPMENT
+from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
+from ralph.pipeline.runner import _determine_effect_from_policy
+from ralph.pipeline.state import PipelineState
+
+
+def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
+    bundle = MagicMock()
+    bundle.pipeline.phases = {
+        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
+    }
+    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
+    bundle.agents.agent_drains = {
+        "development": MagicMock(chain="developer"),
+    }
+    bundle.agents.agent_chains = {
+        "developer": MagicMock(agents=["developer"]),
+    }
+    return bundle
+
+
+class TestOldCheckpointLoads:
+    def test_old_checkpoint_missing_work_units_gets_empty_default(self) -> None:
+        sample = PipelineState(phase=PHASE_DEVELOPMENT).model_dump(mode="json")
+        sample.pop("work_units", None)
+        sample.pop("worker_states", None)
+
+        loaded = PipelineState.model_validate_json(json.dumps(sample))
+        assert loaded.work_units == ()
+        assert loaded.worker_states == {}
+
+    def test_old_checkpoint_takes_serial_path(self) -> None:
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
+        policy_bundle = _make_policy_bundle()
+
+        effect = _determine_effect_from_policy(state, policy_bundle)
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert not isinstance(effect, FanOutDevelopmentEffect)
+
+    def test_fan_out_not_emitted_for_empty_work_units(self) -> None:
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
+        policy_bundle = _make_policy_bundle()
+
+        effect = _determine_effect_from_policy(state, policy_bundle)
+
+        assert not isinstance(effect, FanOutDevelopmentEffect)
