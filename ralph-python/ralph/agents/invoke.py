@@ -29,6 +29,7 @@ from tqdm import tqdm
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.tool_names import (
+    CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
     claude_allowed_tool_names,
@@ -427,16 +428,33 @@ def _prepare_codex_home(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
+    prefix_sections: list[str] = []
     appended_sections: list[str] = []
     if endpoint:
+        features_in_base = "[features]" in base_config
+        feature_lines = [
+            f"{key.split('.', 1)[1]} = {value}" if "." in key else f"{key} = {value}"
+            for key, value in CODEX_NATIVE_FEATURES_TO_DISABLE
+        ]
+        feature_block = "\n".join(feature_lines) + "\n"
+        prefix_sections.append('web_search = "disabled"\n')
+        if features_in_base:
+            appended_sections.append(feature_block)
+        logger.warning(
+            "Codex MCP wiring is best-effort; disabling built-in features for {}",
+            endpoint,
+        )
         appended_sections.append(
             f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
         )
+        if not features_in_base:
+            appended_sections.append("[features]\n" + feature_block)
     if system_prompt_file:
         appended_sections.append(f"model_instructions_file = {json.dumps(system_prompt_file)}\n")
     config_suffix = "\n".join(section.rstrip() for section in appended_sections if section.strip())
-    config_text = (
-        f"{base_config.rstrip()}\n\n{config_suffix}" if base_config.strip() else config_suffix
+    prefix_text = "\n".join(section.rstrip() for section in prefix_sections if section.strip())
+    config_text = "\n\n".join(
+        part for part in [prefix_text, base_config.rstrip(), config_suffix] if part
     )
     (codex_root / "config.toml").write_text(config_text, encoding="utf-8")
     return str(codex_root)
@@ -512,7 +530,7 @@ def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
     existing_tools = config_obj.get("tools", {})
     if not isinstance(existing_tools, dict):
         existing_tools = {}
-    disable_overrides = {name: False for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE}
+    disable_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_DISABLE, False)
     config_obj["tools"] = {**cast("dict[str, object]", existing_tools), **disable_overrides}
 
     config_obj.setdefault("$schema", "https://opencode.ai/config.json")
