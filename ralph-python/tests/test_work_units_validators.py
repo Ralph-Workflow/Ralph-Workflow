@@ -32,3 +32,33 @@ def test_unit_id_validator(unit_id: str, expected: bool) -> None:
     else:
         with pytest.raises(ValidationError, match="unit_id"):
             WorkUnit(unit_id=unit_id, description="desc")
+
+
+@pytest.mark.parametrize(
+    ("allowed_directories", "expected"),
+    [
+        ([], True),
+        (["src"], True),
+        (["src/lib", "tests/unit"], True),
+        (["/etc"], False),
+        (["../x"], False),
+        (["a/../b"], False),
+        ([""], False),
+        (["\\"], False),
+    ],
+)
+def test_allowed_directories_validator(allowed_directories: list[str], expected: bool) -> None:
+    if expected:
+        unit = WorkUnit(
+            unit_id="u1",
+            description="desc",
+            allowed_directories=allowed_directories,
+        )
+        assert unit.allowed_directories == allowed_directories
+    else:
+        with pytest.raises(ValidationError, match="allowed_directories"):
+            WorkUnit(
+                unit_id="u1",
+                description="desc",
+                allowed_directories=allowed_directories,
+            )

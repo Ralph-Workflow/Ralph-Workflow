@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping  # noqa: TC003
+from pathlib import PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -49,6 +50,11 @@ class WorkUnit(BaseModel):  # type: ignore[explicit-any]
             )
         raise ValueError(f"unit_id must match ^[a-zA-Z0-9_-]{{1,64}}$ (got: {v!r})")
 
+    @field_validator("allowed_directories")
+    @classmethod
+    def _validate_allowed_directories(cls, v: list[str]) -> list[str]:
+        return [_validate_relative_subpath(path) for path in v]
+
 
 class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]
     """Typed representation of work_units[] in planning artifacts."""
@@ -80,6 +86,20 @@ class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]
 
         _validate_acyclic(dependency_map)
         return self
+
+
+def _validate_relative_subpath(path: str) -> str:
+    if not path:
+        raise ValueError("allowed_directories entries must be non-empty")
+    if "\\" in path:
+        raise ValueError("allowed_directories entries must use '/' separators")
+
+    parsed = PurePosixPath(path)
+    if parsed.is_absolute():
+        raise ValueError("allowed_directories entries must be relative paths")
+    if ".." in parsed.parts:
+        raise ValueError("allowed_directories entries must not contain '..'")
+    return path
 
 
 def _validate_acyclic(dependency_map: dict[str, list[str]]) -> None:
