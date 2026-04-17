@@ -451,6 +451,18 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == PHASE_DEVELOPMENT
         assert new_state.previous_phase == "development_analysis"
 
+    def test_analysis_loopback_does_not_decrement_budget(self) -> None:
+        """Analysis loopback re-enters development WITHOUT consuming a budget slot."""
+        initial_budget = 2
+        state = PipelineState(
+            phase="development_analysis",
+            development_budget_remaining=initial_budget,
+        )
+        policy = _policy_with_post_commit_routes()
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+        assert new_state.phase == "development"
+        assert new_state.development_budget_remaining == initial_budget
+
     def test_analysis_success_routes_review_analysis_to_commit(self) -> None:
         """Test that ANALYSIS_SUCCESS in review_analysis routes to review_commit."""
         state = PipelineState(

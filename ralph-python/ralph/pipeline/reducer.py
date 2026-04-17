@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
+    PHASE_DEVELOPMENT_ANALYSIS,
     PHASE_FAILED,
     PHASE_REVIEW,
     PipelinePhase,
@@ -551,7 +552,7 @@ def _advance_phase(
     if target_phase in ("development_commit", "review_commit"):
         updates["commit"] = CommitState()
 
-    if target_phase == PHASE_DEVELOPMENT:
+    if target_phase == PHASE_DEVELOPMENT and state.phase != PHASE_DEVELOPMENT_ANALYSIS:
         updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
     elif target_phase == PHASE_REVIEW:
         updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)

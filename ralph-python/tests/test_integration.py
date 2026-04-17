@@ -127,6 +127,25 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
     config.agent_chains = {}
     config.agent_drains = {}
 
+    mock_scope = MagicMock()
+    mock_scope.root = tmp_path
+    mock_scope.allowed_roots = [tmp_path]
+    mock_bundle = MagicMock()
+    mock_phase_def = MagicMock()
+    mock_phase_def.requires_commit = False
+    mock_phase_def.drain = "planning"
+    mock_bundle.pipeline.phases.get.return_value = mock_phase_def
+
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: mock_scope)
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: mock_bundle)
+    monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
+    monkeypatch.setattr(runner_module, "FsWorkspace", MagicMock())
+    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        runner_module,
+        "_phase_event_after_agent_run",
+        lambda **kwargs: PipelineEvent.AGENT_FAILURE,
+    )
     monkeypatch.setattr(
         runner_module,
         "_execute_effect",
