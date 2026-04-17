@@ -148,7 +148,6 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
         git_user_name: Git user name for commits.
         git_user_email: Git user email for commits.
         provider_fallback: Provider/model fallbacks keyed by agent name.
-        max_dev_continuations: Maximum continuation attempts per development iteration.
         max_same_agent_retries: Maximum same-agent retry attempts.
         max_commit_residual_retries: Maximum additional residual commit retries.
         max_retries: Maximum retries per agent.
@@ -175,7 +174,6 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
     git_user_name: str | None = None
     git_user_email: str | None = None
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
-    max_dev_continuations: int = Field(default=2, ge=0)
     max_same_agent_retries: int = Field(default=2, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)
     max_retries: int = Field(default=3, ge=0)

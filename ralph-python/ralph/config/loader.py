@@ -182,7 +182,6 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
         "git_user_name",
         "git_user_email",
         "provider_fallback",
-        "max_dev_continuations",
         "max_same_agent_retries",
         "max_commit_residual_retries",
         "max_retries",
