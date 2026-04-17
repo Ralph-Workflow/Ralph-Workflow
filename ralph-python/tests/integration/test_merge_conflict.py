@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeVar
 from unittest.mock import MagicMock
 
@@ -15,6 +14,7 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     import pytest

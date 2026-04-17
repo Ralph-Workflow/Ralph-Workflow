@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import pytest
@@ -14,6 +13,7 @@ from ralph.pipeline.parallel.merge_integrator import integrate
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
