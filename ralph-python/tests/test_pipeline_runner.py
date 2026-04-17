@@ -28,7 +28,7 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     AgentChainConfig,
@@ -51,6 +51,9 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
+_TRUNCATED_TEXT_MAX = runner_module._MAX_TEXT_LENGTH + 1  # content + ellipsis
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module._MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
+_TRUNCATED_METADATA_MAX = runner_module._MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
 
 
 @lru_cache(maxsize=1)
@@ -156,7 +159,9 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = self._make_state(phase="complete")
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, ExitSuccessEffect)
 
     def test_failed_phase_returns_exit_failure(self) -> None:
@@ -164,7 +169,9 @@ class TestDetermineEffect:
         state = self._make_state(phase="failed")
         state.last_error = "Something went wrong"
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, ExitFailureEffect)
         assert "Something went wrong" in effect.reason
 
@@ -172,7 +179,9 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = self._make_state(phase="unknown_phase")
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, ExitFailureEffect)
         assert "Unknown phase" in effect.reason
 
@@ -180,7 +189,9 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="planning")
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
 
         assert isinstance(effect, InvokeAgentEffect)
         assert (
@@ -188,18 +199,22 @@ class TestDetermineEffect:
             == bundle.agents.agent_chains[bundle.agents.agent_drains["planning"].chain].agents[0]
         )
 
-    def test_commit_phase_with_requires_commit_uses_commit_effect(self) -> None:
+    def test_commit_phase_with_requires_commit_uses_commit_effect(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()
-        state = PipelineState(phase="development_commit")
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+        )
         assert isinstance(effect, CommitEffect)
 
     def test_review_phase_uses_bound_review_agent(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="review")
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, InvokeAgentEffect)
         assert (
             effect.agent_name
@@ -210,14 +225,18 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="review_analysis")
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, InvokeAgentEffect)
 
     def test_fix_phase_uses_policy_binding(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="fix")
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, InvokeAgentEffect)
 
     def test_missing_bound_agent_returns_exit_failure(self) -> None:
@@ -236,7 +255,9 @@ class TestDetermineEffect:
         )
         state = PipelineState(phase="review")
 
-        effect = runner_module._determine_effect_from_policy(state, broken_bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, broken_bundle, WorkspaceScope("/tmp/worktree")
+        )
         assert isinstance(effect, ExitFailureEffect)
 
     def test_policy_driven_custom_phase_uses_policy_drain_agent(self) -> None:
@@ -266,7 +287,9 @@ class TestDetermineEffect:
             artifacts=ArtifactsPolicy(artifacts={}),
         )
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
 
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
@@ -289,8 +312,8 @@ class TestDetermineEffect:
 
 
 class TestCommitEffect:
-    def test_returns_commit_effect(self) -> None:
-        effect = runner_module._commit_effect()
+    def test_returns_commit_effect(self, tmp_path: Path) -> None:
+        effect = runner_module._commit_effect(tmp_path)
         assert isinstance(effect, CommitEffect)
         assert ".agent/tmp/commit_message.json" in effect.message_file
 
@@ -404,7 +427,7 @@ class TestPipelineRunnerLoop:
         state.phase = "planning"
         effects = [SaveCheckpointEffect(), ExitSuccessEffect()]
 
-        def stub_determine_effect(_state, _bundle):
+        def stub_determine_effect(_state, _bundle, _workspace_scope):
             return effects.pop(0)
 
         ckpt_save = MagicMock()
@@ -428,9 +451,11 @@ class TestPipelineRunnerLoop:
         assert result == 0
         ckpt_save.assert_called_once_with(state)
         assert reducer_events == [PipelineEvent.CHECKPOINT_SAVED]
-        console_mock.print.assert_called_once_with(
-            "[green]Pipeline completed successfully.[/green]"
-        )
+        # Verify success message was printed (among other display calls)
+        printed_args = [
+            str(call.args[0]) if call.args else "" for call in console_mock.print.call_args_list
+        ]
+        assert any("Pipeline completed successfully" in arg for arg in printed_args)
 
     def test_exit_failure_effect_returns_failure(self, monkeypatch) -> None:
         state = MagicMock()
@@ -440,7 +465,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "_determine_effect_from_policy",
-            lambda _state, _bundle: ExitFailureEffect(reason="bad"),
+            lambda _state, _bundle, _workspace_scope: ExitFailureEffect(reason="bad"),
         )
         monkeypatch.setattr(runner_module, "console", console_mock)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -448,8 +473,13 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state)
 
         assert result == 1
-        rendered = console_mock.print.call_args.args[0]
-        assert rendered.plain == "Pipeline failed: bad"
+        # Find the Text object with the failure message among all print calls
+        rendered_texts = [
+            call.args[0]
+            for call in console_mock.print.call_args_list
+            if call.args and isinstance(call.args[0], Text)
+        ]
+        assert any(r.plain == "Pipeline failed: bad" for r in rendered_texts)
 
     def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(self, monkeypatch) -> None:
         state = MagicMock()
@@ -487,8 +517,12 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state)
 
         assert result == 1
-        rendered = console_mock.print.call_args.args[0]
-        assert rendered.plain == "Pipeline failed: bad error"
+        rendered_texts = [
+            call.args[0]
+            for call in console_mock.print.call_args_list
+            if call.args and isinstance(call.args[0], Text)
+        ]
+        assert any(r.plain == "Pipeline failed: bad error" for r in rendered_texts)
 
     def test_prepare_prompt_effect_advances_state_without_execute_effect(
         self,
@@ -505,7 +539,7 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle):
+        def stub_determine_effect(_state, _bundle, _workspace_scope):
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_FAILURE)
@@ -544,7 +578,7 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle):
+        def stub_determine_effect(_state, _bundle, _workspace_scope):
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
@@ -580,7 +614,7 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle):
+        def stub_determine_effect(_state, _bundle, _workspace_scope):
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
@@ -627,7 +661,7 @@ class TestPipelineRunnerLoop:
             ExitFailureEffect(reason="Agent chain exhausted in planning"),
         ]
 
-        def stub_determine_effect(_state, _bundle):
+        def stub_determine_effect(_state, _bundle, _workspace_scope):
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
@@ -1077,6 +1111,45 @@ class TestExecuteAgentEffect:
         assert "stop" in printed
 
 
+def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(
+    tmp_path: Path,
+) -> None:
+    policy_bundle = MagicMock()
+    phase_def = MagicMock()
+    phase_def.requires_commit = True
+    phase_def.drain = "development_commit"
+    policy_bundle.pipeline.phases.get.return_value = phase_def
+    policy_bundle.agents.agent_drains.get.return_value = MagicMock(chain="commit_chain")
+    policy_bundle.agents.agent_chains.get.return_value = MagicMock(agents=["commit-agent"])
+
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+    workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+
+    effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
+
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.agent_name == "commit-agent"
+    assert effect.phase == "development_commit"
+
+
+def test_determine_effect_commits_after_agent_invoked(
+    tmp_path: Path,
+) -> None:
+    policy_bundle = MagicMock()
+    phase_def = MagicMock()
+    phase_def.requires_commit = True
+    policy_bundle.pipeline.phases.get.return_value = phase_def
+
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+    workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+
+    effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
+
+    assert isinstance(effect, CommitEffect)
+    assert str(tmp_path) in effect.message_file
+    assert "commit_message.json" in effect.message_file
+
+
 class TestExecuteCommitEffect:
     def test_returns_success_when_commit_succeeds(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -1106,6 +1179,7 @@ class TestExecuteCommitEffect:
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
+            tmp_path,
         )
 
         assert result == PipelineEvent.COMMIT_SUCCESS
@@ -1144,6 +1218,7 @@ class TestExecuteCommitEffect:
             CommitEffect(message_file=str(message_file)),
             fail_create,
             stage_all,
+            tmp_path,
         )
 
         assert result == PipelineEvent.COMMIT_FAILURE
@@ -1158,6 +1233,7 @@ class TestExecuteCommitEffect:
             CommitEffect(message_file=str(tmp_path / "missing.txt")),
             create_commit,
             stage_all,
+            tmp_path,
         )
 
         assert result == PipelineEvent.COMMIT_FAILURE
@@ -1192,6 +1268,7 @@ class TestExecuteCommitEffect:
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
+            tmp_path,
         )
 
         assert result == PipelineEvent.COMMIT_SUCCESS
@@ -1212,7 +1289,7 @@ class TestExecuteEffect:
     def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
         captured: dict[str, bool] = {}
 
-        def stub_commit(effect, create_commit, stage_all):
+        def stub_commit(effect, create_commit, stage_all, repo_root):
             captured["called"] = True
             captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS
@@ -1277,7 +1354,7 @@ class TestRenderAgentActivityLine:
         assert "summary=Plan submitted" in rendered.plain
         assert "{" not in rendered.plain
 
-    def test_tool_result_uses_structured_metadata_summary_for_user_friendly_context(self) -> None:
+    def test_tool_result_renders_content(self) -> None:
         output = AgentOutputLine(
             type="tool_result",
             content="{'matches': 3, 'path': 'src'}",
@@ -1292,7 +1369,7 @@ class TestRenderAgentActivityLine:
 
         assert rendered is not None
         assert isinstance(rendered, Text)
-        assert "tool result" in rendered.plain
+        assert "result" in rendered.plain
         assert "{'matches': 3, 'path': 'src'}" in rendered.plain
 
     def test_claude_assistant_text_renders_without_extra_assistant_summary_line(self) -> None:
@@ -1346,3 +1423,56 @@ class TestRenderAgentActivityLine:
             runner_module._prompt_session_drain_for_phase("review_analysis")
             is SessionDrain.REVIEW_ANALYSIS
         )
+
+    def test_text_truncation_for_long_content(self) -> None:
+        long_content = "a" * 300
+        output = AgentOutputLine(type="text", content=long_content)
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "…" in rendered.plain
+        content_part = rendered.plain.split(": ", 1)[1]
+        assert len(content_part) <= _TRUNCATED_TEXT_MAX
+
+    def test_tool_input_truncation(self) -> None:
+        long_value = "x" * 200
+        output = AgentOutputLine(
+            type="tool_use",
+            content="read_file",
+            metadata={"input": {"path": long_value}},
+        )
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "…" in rendered.plain
+
+    def test_error_format_with_symbol(self) -> None:
+        output = AgentOutputLine(type="error", content="something broke")
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "✗" in rendered.plain
+        assert "something broke" in rendered.plain
+
+    def test_tool_result_brief_for_very_long_content(self) -> None:
+        long_result = "z" * 600
+        output = AgentOutputLine(type="tool_result", content=long_result)
+
+        rendered = runner_module._render_agent_activity_line(output, "dev")
+
+        assert rendered is not None
+        assert "…" in rendered.plain
+        content_part = rendered.plain.split(": ", 1)[1]
+        assert len(content_part) <= _TRUNCATED_RESULT_BRIEF_MAX
+
+    def test_metadata_summary_caps_total_length(self) -> None:
+        metadata: dict[str, object] = {
+            "status": "a" * 50,
+            "summary": "b" * 50,
+            "phase": "c" * 50,
+        }
+        result = runner_module._metadata_summary(metadata)
+        assert len(result) <= _TRUNCATED_METADATA_MAX

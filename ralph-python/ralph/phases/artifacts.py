@@ -18,7 +18,12 @@ class PhaseArtifactError(ValueError):
 
 def load_phase_artifact(workspace: Workspace, path: str) -> dict[str, object]:
     """Load a persisted MCP artifact wrapper from the workspace."""
-    raw_obj: object = json.loads(workspace.read(path))
+    try:
+        content = workspace.read(path)
+    except (FileNotFoundError, OSError) as exc:
+        raise PhaseArtifactError(f"Artifact not found at {path}") from exc
+
+    raw_obj: object = json.loads(content)
     if not isinstance(raw_obj, dict):
         raise PhaseArtifactError(f"Artifact at {path} must be a JSON object")
     return cast("dict[str, object]", raw_obj)

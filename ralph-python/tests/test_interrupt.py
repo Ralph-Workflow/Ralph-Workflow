@@ -110,6 +110,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
     def raise_keyboard_interrupt(
         _state: PipelineState,
         _bundle: object,
+        _workspace_scope: object,
     ) -> object:
         raise KeyboardInterrupt
 

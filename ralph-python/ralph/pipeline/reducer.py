@@ -136,14 +136,24 @@ def _policy_handle_agent_success(
     if phase_def is None:
         return _advance_to_terminal(state, PHASE_FAILED, f"Unknown phase: {state.phase}")
 
+    if phase_def.requires_commit and not state.commit.agent_invoked:
+        updated_commit = CommitState(
+            message_prepared=state.commit.message_prepared,
+            diff_prepared=state.commit.diff_prepared,
+            agent_invoked=True,
+        )
+        return state.copy_with(commit=updated_commit), []
+
     if phase_def.embeds_analysis:
         return _handle_analysis_success(state, policy)
 
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
         return _advance_phase(state, next_phase, policy)
-    except ValueError:
-        return state, []
+    except ValueError as exc:
+        return _advance_to_terminal(
+            state, PHASE_FAILED, f"Routing error after agent success in '{state.phase}': {exc}"
+        )
 
 
 def _legacy_handle_agent_success(
@@ -264,8 +274,12 @@ def _handle_analysis_success(
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state,
+                PHASE_FAILED,
+                f"Routing error after analysis success in '{state.phase}': {exc}",
+            )
 
     return _legacy_handle_analysis_success(state)
 
@@ -300,8 +314,12 @@ def _handle_analysis_loopback(
         try:
             next_phase = resolve_next_phase(state.phase, "loopback", policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state,
+                PHASE_FAILED,
+                f"Routing error after analysis loopback in '{state.phase}': {exc}",
+            )
 
     return _legacy_handle_analysis_loopback(state)
 
@@ -336,8 +354,10 @@ def _handle_review_clean(
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state, PHASE_FAILED, f"Routing error after review clean in '{state.phase}': {exc}"
+            )
 
     new_state = state.copy_with(
         phase="review_commit",
@@ -356,8 +376,12 @@ def _handle_review_issues_found(
         try:
             next_phase = resolve_next_phase(state.phase, "loopback", policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state,
+                PHASE_FAILED,
+                f"Routing error after review issues found in '{state.phase}': {exc}",
+            )
 
     if state.reviewer_pass + 1 < state.total_reviewer_passes:
         new_state = state.copy_with(
@@ -384,8 +408,10 @@ def _handle_fix_success(
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state, PHASE_FAILED, f"Routing error after fix success in '{state.phase}': {exc}"
+            )
 
     new_state = state.copy_with(
         phase=PHASE_REVIEW,
@@ -409,8 +435,10 @@ def _handle_fix_failure(
                 )
                 return new_state, [ExitFailureEffect(reason="Fix phase failed")]
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state, PHASE_FAILED, f"Routing error after fix failure in '{state.phase}': {exc}"
+            )
 
     if state.reviewer_pass + 1 < state.total_reviewer_passes:
         new_state = state.copy_with(
@@ -436,8 +464,10 @@ def _handle_commit_success(
         try:
             next_phase = resolve_post_commit_phase(state, policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state, PHASE_FAILED, f"Routing error after commit success in '{state.phase}': {exc}"
+            )
 
     new_state = state.copy_with(
         phase=PHASE_COMPLETE,
@@ -492,8 +522,10 @@ def _handle_phase_advance(
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
             return _advance_phase(state, next_phase, policy)
-        except ValueError:
-            return state, []
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state, PHASE_FAILED, f"Routing error after phase advance in '{state.phase}': {exc}"
+            )
     return state, []
 
 

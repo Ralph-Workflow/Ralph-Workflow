@@ -9,6 +9,7 @@ the handlers (I/O execution), and the reducer (state transitions).
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,7 @@ from ralph.config.enums import (
     PHASE_FAILED,
     PHASE_PLANNING,
 )
+from ralph.display.phase_banner import show_phase_complete, show_phase_start, show_phase_transition
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -66,7 +68,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
-    from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
+    from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
 
 class _InvokeAgentFn(Protocol):
@@ -92,6 +94,17 @@ console = Console()
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_ACTIVITY_LOG_LEVEL = 1
 _MAX_METADATA_PARTS = 3
+_MAX_TEXT_LENGTH = 200
+_MAX_TOOL_INPUT_LENGTH = 120
+_MAX_TOOL_RESULT_LENGTH = 150
+_MAX_TOOL_RESULT_BRIEF = 80
+_TOOL_RESULT_BRIEF_THRESHOLD = 500
+_MAX_METADATA_SUMMARY_LENGTH = 120
+
+
+def _terminal_width() -> int:
+    """Return the current terminal width with a safe fallback."""
+    return shutil.get_terminal_size().columns or 80
 
 
 @dataclass(frozen=True)
@@ -127,9 +140,13 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         state.total_reviewer_passes,
     )
 
+    show_phase_start(state.phase, console=console)
+
     try:
         while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-            effect = _determine_effect_from_policy(state, policy_bundle)
+            previous_phase = state.phase
+
+            effect = _determine_effect_from_policy(state, policy_bundle, workspace_scope)
             inline_result = _handle_inline_effect(
                 effect=effect,
                 state=state,
@@ -140,6 +157,8 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                 if isinstance(inline_result, int):
                     return inline_result
                 state = inline_result
+                if state.phase != previous_phase:
+                    _show_phase_transition_with_context(previous_phase, state)
                 continue
 
             workspace = FsWorkspace(
@@ -166,6 +185,9 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
             state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
             ckpt.save(state)
 
+            if state.phase != previous_phase:
+                _show_phase_transition_with_context(previous_phase, state)
+
     except KeyboardInterrupt:
         logger.warning("Interrupted by user; saving checkpoint.")
         interrupted_state = state.copy_with(interrupted_by_user=True)
@@ -173,11 +195,29 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         return 130
     # Final state
     if state.phase == PHASE_COMPLETE:
+        show_phase_complete("complete", console=console)
         console.print("[green]Pipeline completed successfully.[/green]")
         return 0
     else:
+        show_phase_complete("failed", console=console)
         console.print(_status_text("Pipeline failed", state.last_error or "Unknown error", "red"))
         return 1
+
+
+def _show_phase_transition_with_context(previous_phase: str, state: PipelineState) -> None:
+    """Display a phase transition banner with iteration/review context."""
+    context: dict[str, object] = {}
+    if state.phase in {"development", "fix"}:
+        context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
+    if state.phase == "review":
+        context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
+
+    show_phase_transition(
+        previous_phase,
+        state.phase,
+        context=context if context else None,
+        console=console,
+    )
 
 
 def _handle_inline_effect(
@@ -203,10 +243,12 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
+        show_phase_complete("complete", console=console)
         console.print("[green]Pipeline completed successfully.[/green]")
         return 0
 
     if isinstance(effect, ExitFailureEffect):
+        show_phase_complete("failed", console=console)
         console.print(_status_text("Pipeline failed", effect.reason, "red"))
         return 1
 
@@ -338,7 +380,11 @@ def _create_initial_state(
     )
 
 
-def _determine_effect_from_policy(state: PipelineState, policy_bundle: PolicyBundle) -> Effect:
+def _determine_effect_from_policy(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+) -> Effect:
     if state.phase == PHASE_COMPLETE:
         return ExitSuccessEffect()
 
@@ -350,12 +396,31 @@ def _determine_effect_from_policy(state: PipelineState, policy_bundle: PolicyBun
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
 
     if phase_def.requires_commit:
-        return _commit_effect()
+        return _commit_phase_effect(state, policy_bundle, phase_def, workspace_scope)
 
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
 
+    return InvokeAgentEffect(
+        agent_name=agent_name,
+        phase=state.phase,
+        prompt_file=prompt_file_for_phase(state.phase),
+        drain=phase_def.drain,
+    )
+
+
+def _commit_phase_effect(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    phase_def: PhaseDefinition,
+    workspace_scope: WorkspaceScope,
+) -> Effect:
+    if state.commit.agent_invoked:
+        return _commit_effect(workspace_scope.root)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
+    if agent_name is None:
+        return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
     return InvokeAgentEffect(
         agent_name=agent_name,
         phase=state.phase,
@@ -430,8 +495,8 @@ def _phase_event_after_agent_run(
     return events[0]
 
 
-def _commit_effect() -> CommitEffect:
-    return CommitEffect(message_file=COMMIT_MESSAGE_ARTIFACT)
+def _commit_effect(workspace_root: Path) -> CommitEffect:
+    return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
 
 
 def _execute_effect(
@@ -464,7 +529,7 @@ def _execute_effect(
     if isinstance(effect, InvokeAgentEffect):
         return _execute_agent_effect(effect, config, deps, workspace_scope)
     if isinstance(effect, CommitEffect):
-        return _execute_commit_effect(effect, create_commit, stage_all)
+        return _execute_commit_effect(effect, create_commit, stage_all, workspace_scope.root)
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 
@@ -478,12 +543,13 @@ def _execute_agent_effect(
     deps: _AgentExecutionDeps,
     workspace_scope: WorkspaceScope,
 ) -> PipelineEvent:
-    console.print(_status_text("Invoking agent", effect.agent_name, "cyan"))
     registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
+
+    show_phase_start(effect.phase, agent_name=effect.agent_name, console=console)
 
     bridge = None
     try:
@@ -561,22 +627,21 @@ def _execute_commit_effect(
     effect: CommitEffect,
     create_commit: Callable[[str, str], str],
     stage_all: Callable[[str], None],
+    repo_root: Path,
 ) -> PipelineEvent:
     try:
-        message_path = Path(effect.message_file)
-        repo_root = _repo_root_for_commit_message_file(message_path)
         message = _read_commit_effect_message(effect)
         if not message:
             logger.error("Commit message file is empty: {}", effect.message_file)
             return PipelineEvent.COMMIT_FAILURE
         if not _repo_has_commit_work(repo_root):
             logger.info("Skipping commit because the worktree is empty")
-            _cleanup_commit_message_artifacts(message_path)
+            _cleanup_commit_message_artifacts(repo_root)
             return PipelineEvent.COMMIT_SUCCESS
         stage_all(str(repo_root))
         sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
-        _cleanup_commit_message_artifacts(message_path)
+        _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)
         return PipelineEvent.COMMIT_FAILURE
@@ -591,18 +656,8 @@ def _repo_has_commit_work(repo_root: Path) -> bool:
     return Repo(repo_root).is_dirty(untracked_files=True)
 
 
-def _cleanup_commit_message_artifacts(message_file: Path) -> None:
-    delete_commit_message_artifacts(_repo_root_for_commit_message_file(message_file))
-
-
-def _repo_root_for_commit_message_file(message_file: Path) -> Path:
-    artifact_relative = Path(COMMIT_MESSAGE_ARTIFACT)
-    if (
-        len(message_file.parts) >= len(artifact_relative.parts)
-        and tuple(message_file.parts[-len(artifact_relative.parts) :]) == artifact_relative.parts
-    ):
-        return message_file.parents[len(artifact_relative.parts) - 1]
-    return message_file.parent
+def _cleanup_commit_message_artifacts(repo_root: Path) -> None:
+    delete_commit_message_artifacts(repo_root)
 
 
 def _stream_parsed_agent_activity(
@@ -626,6 +681,13 @@ def _resolve_parser(parser_type: str) -> AgentParser:
         return get_parser("generic")
 
 
+def _truncate(text: str, max_length: int) -> str:
+    """Truncate text to max_length, appending ellipsis if truncated."""
+    if len(text) <= max_length:
+        return text
+    return text[:max_length] + "…"
+
+
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
     rendered: Text | None = None
 
@@ -633,23 +695,27 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
         content = output.content.strip()
         if content:
             rendered = _styled_prefix(agent_name, "white")
-            rendered.append(content)
+            rendered.append(_truncate(content, _MAX_TEXT_LENGTH))
     elif output.type == "tool_use":
         tool_name = output.content.strip() or "unknown-tool"
         rendered = _styled_prefix(f"{agent_name} tool", "magenta")
-        rendered.append(tool_name)
+        rendered.append(tool_name, style="bold magenta")
         input_summary = _tool_input_summary(output.metadata)
         if input_summary:
-            rendered.append(f" ({input_summary})")
+            truncated = _truncate(input_summary, _MAX_TOOL_INPUT_LENGTH)
+            rendered.append(f" ({truncated})", style="dim")
     elif output.type == "tool_result":
         result = output.content.strip()
         if result:
-            rendered = _styled_prefix(f"{agent_name} tool result", "dim")
-            rendered.append(result)
+            rendered = _styled_prefix(f"{agent_name} result", "dim")
+            if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD:
+                rendered.append(_truncate(result, _MAX_TOOL_RESULT_BRIEF), style="dim")
+            else:
+                rendered.append(_truncate(result, _MAX_TOOL_RESULT_LENGTH), style="dim")
     elif output.type == "error":
         error = output.content.strip() or "unknown error"
-        rendered = _styled_prefix(f"{agent_name} error", "red")
-        rendered.append(error)
+        rendered = _styled_prefix(f"{agent_name} ✗", "red")
+        rendered.append(error, style="red")
     else:
         summary = _event_summary(output)
         rendered = _styled_prefix(f"{agent_name} {output.type}", "dim")
@@ -732,7 +798,8 @@ def _metadata_summary(metadata: dict[str, object]) -> str:
             parts.append(f"{key}={value}")
 
     if parts:
-        return "; ".join(parts)
+        result = "; ".join(parts)
+        return _truncate(result, _MAX_METADATA_SUMMARY_LENGTH)
 
     for key, value_obj in metadata.items():
         value = _format_metadata_value(value_obj)
@@ -741,7 +808,8 @@ def _metadata_summary(metadata: dict[str, object]) -> str:
         if len(parts) >= _MAX_METADATA_PARTS:
             break
 
-    return "; ".join(parts)
+    result = "; ".join(parts)
+    return _truncate(result, _MAX_METADATA_SUMMARY_LENGTH)
 
 
 def _format_metadata_value(value: object) -> str:

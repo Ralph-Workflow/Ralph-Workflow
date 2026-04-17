@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
@@ -16,7 +19,7 @@ from ralph.config.enums import (
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
-from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.policy.models import (
     PhaseDefinition,
     PhaseTransition,
@@ -226,15 +229,16 @@ def test_policy_agent_success_unknown_phase_routes_to_failed() -> None:
     assert effects == [ExitFailureEffect(reason="Unknown phase: missing")]
 
 
-def test_phase_advance_event_ignores_unknown_policy_phase() -> None:
-    """PHASE_ADVANCE should be a no-op when the phase is missing from the policy."""
+def test_phase_advance_event_fails_on_unknown_policy_phase() -> None:
+    """PHASE_ADVANCE should fail with a routing error when the phase is missing from the policy."""
     state = PipelineState(phase="missing")
     policy = _basic_pipeline_policy()
 
     new_state, effects = _reduce(state, PipelineEvent.PHASE_ADVANCE, policy)
 
-    assert new_state == state
-    assert effects == []
+    assert new_state.phase == PHASE_FAILED
+    assert new_state.previous_phase == "missing"
+    assert any("missing" in str(getattr(e, "reason", "")) for e in effects)
 
 
 def test_fix_failure_policy_terminal_transition_emits_exit_failure() -> None:
@@ -551,3 +555,64 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(phase="development_analysis")
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
+
+
+@pytest.mark.parametrize(
+    "event,handler_patch_target",
+    [
+        ("ANALYSIS_SUCCESS", "ralph.pipeline.reducer.resolve_next_phase"),
+        ("ANALYSIS_LOOPBACK", "ralph.pipeline.reducer.resolve_next_phase"),
+        ("REVIEW_CLEAN", "ralph.pipeline.reducer.resolve_next_phase"),
+        ("REVIEW_ISSUES_FOUND", "ralph.pipeline.reducer.resolve_next_phase"),
+        ("FIX_SUCCESS", "ralph.pipeline.reducer.resolve_next_phase"),
+        ("COMMIT_SUCCESS", "ralph.pipeline.reducer.resolve_post_commit_phase"),
+        ("PHASE_ADVANCE", "ralph.pipeline.reducer.resolve_next_phase"),
+    ],
+)
+def test_routing_error_propagates_as_failure_not_silent(
+    event: str, handler_patch_target: str
+) -> None:
+    """All reducer handlers must propagate ValueError from routing as pipeline failure."""
+    policy = MagicMock()
+    phase_def = MagicMock()
+    phase_def.requires_commit = False
+    phase_def.embeds_analysis = False
+    policy.phases.get.return_value = phase_def
+
+    with patch(handler_patch_target, side_effect=ValueError("unknown phase")):
+        state = PipelineState(phase="review")
+        new_state, effects = _reduce(state, getattr(PipelineEvent, event), policy)
+
+    assert new_state.phase == PHASE_FAILED
+    assert any("unknown phase" in str(getattr(e, "reason", "")) for e in effects)
+
+
+def test_agent_success_in_requires_commit_phase_marks_agent_invoked_without_advancing() -> None:
+    """When AGENT_SUCCESS fires in a requires_commit phase, reducer must set
+    commit.agent_invoked=True and keep the same phase — NOT advance to next phase."""
+    policy = MagicMock()
+    phase_def = MagicMock()
+    phase_def.requires_commit = True
+    phase_def.embeds_analysis = False
+    policy.phases.get.return_value = phase_def
+
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+    new_state, effects = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+
+    assert new_state.phase == "development_commit"
+    assert new_state.commit.agent_invoked is True
+    assert effects == []
+
+
+def test_agent_success_in_normal_phase_still_advances() -> None:
+    """Sanity check: AGENT_SUCCESS in a normal (non-commit) phase still advances."""
+    policy = MagicMock()
+    phase_def = MagicMock()
+    phase_def.requires_commit = False
+    phase_def.embeds_analysis = False
+    policy.phases.get.return_value = phase_def
+
+    with patch("ralph.pipeline.reducer.resolve_next_phase", return_value="review"):
+        state = PipelineState(phase="development")
+        new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "review"
