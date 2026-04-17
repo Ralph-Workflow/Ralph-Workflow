@@ -661,7 +661,9 @@ def test_agent_success_in_normal_phase_still_advances() -> None:
     with patch("ralph.pipeline.reducer.resolve_next_phase", return_value="review"):
         state = PipelineState(phase="development")
         new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
-    assert new_state.phase == "review"# ---------------------------------------------------------------------------
+    assert new_state.phase == "review"
+
+# ---------------------------------------------------------------------------
 # Fan-out parallelization lifecycle events
 # ---------------------------------------------------------------------------
 
@@ -830,6 +832,26 @@ def test_all_workers_complete_no_op_if_any_not_succeeded() -> None:
 
     assert new_state == state
     assert effects == []
+
+
+def test_workers_resumed_requeues_running_workers_as_pending() -> None:
+    resumed_event = getattr(PipelineEvent, "WORKERS_RESUMED", None)
+    assert resumed_event is not None
+
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states={
+            "u1": WorkerState(unit_id="u1", status=WorkerStatus.RUNNING),
+            "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
+        },
+    )
+
+    new_state, effects = _reduce(state, resumed_event)
+
+    assert effects == []
+    assert new_state.worker_states["u1"].status == WorkerStatus.PENDING
+    assert new_state.worker_states["u2"].status == WorkerStatus.SUCCEEDED
 
 
 def test_merge_conflict_fails_phase() -> None:

@@ -72,10 +72,10 @@ def test_mcp_handle_stored(tmp_path: Path) -> None:
 
 def test_workspace_scope_rooted_at_worktree(tmp_path: Path) -> None:
     unit = _make_unit("task-gamma")
-    scope = _make_scope(tmp_path)
+    worktree_path = tmp_path / ".worktrees" / "task-gamma"
+    scope = WorkspaceScope(root=worktree_path)
     bundle = build_worker_session(unit, _make_factory(), scope)
-    expected = (tmp_path / ".worktrees" / "task-gamma").resolve()
-    assert bundle.workspace_scope.root == expected
+    assert bundle.workspace_scope.root == worktree_path.resolve()
 
 
 def test_allowed_directories_forwarded(tmp_path: Path) -> None:

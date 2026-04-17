@@ -63,7 +63,7 @@ def _setup_patches(
 ) -> None:
     monkeypatch.setattr(
         "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
-        lambda: fake_executor,
+        lambda *args, **kwargs: fake_executor,
     )
     monkeypatch.setattr(
         "ralph.display.parallel_display.ParallelDisplay",
@@ -84,6 +84,14 @@ def _setup_patches(
     monkeypatch.setattr(
         "ralph.git.executor.GitExecutor",
         MagicMock,
+    )
+    monkeypatch.setattr(
+        "ralph.git.worktree_manager.WorktreeManager",
+        lambda *args, **kwargs: MagicMock(),
+    )
+    monkeypatch.setattr(
+        "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
+        lambda *args, **kwargs: MagicMock(),
     )
 
 

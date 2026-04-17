@@ -49,7 +49,12 @@ def _recording_subprocess_run(*, failing_branches: set[str]) -> tuple[list[list[
         del cwd, capture_output, text, check
         calls.append(args)
         if args[:3] == ["git", "merge", "--no-ff"] and args[3] in failing_branches:
-            return _completed_process(args, returncode=1)
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=1,
+                stdout="CONFLICT (content): Merge conflict in file.txt",
+                stderr="",
+            )
         return _completed_process(args)
 
     return calls, _run

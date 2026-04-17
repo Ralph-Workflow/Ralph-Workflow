@@ -107,8 +107,12 @@ async def _run_with_cancel(
             effect=effect,
             executor=executor,
             display=_FakeDisplay(),  # type: ignore[arg-type]
-            log_dir=checkpoint_path.parent / "logs",
-            run_id="hard-kill-test",
+            ctx=coordinator._WorkerContext(
+                log=coordinator._WorkerLog(
+                    log_dir=checkpoint_path.parent / "logs",
+                    run_id="hard-kill-test",
+                ),
+            ),
         )
     )
     asyncio.get_running_loop().call_later(0.2, task.cancel)

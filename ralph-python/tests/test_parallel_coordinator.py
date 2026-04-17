@@ -4,8 +4,13 @@ import importlib
 import importlib.util
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
 
+from loguru import logger
+
+from ralph.agents.executor import WorkerResult
+from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
     Event,
@@ -44,6 +49,21 @@ def make_unit(unit_id: str, deps: list[str] | None = None) -> WorkUnit:
     )
 
 
+def make_worker_context(
+    *,
+    log_dir: Path | None = None,
+    run_id: str = "default",
+    isolation: object | None = None,
+) -> Any:
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    ctx_type = module._WorkerContext
+    log = None
+    if log_dir is not None:
+        log_type = module._WorkerLog
+        log = log_type(log_dir=log_dir, run_id=run_id)
+    return ctx_type(log=log, isolation=isolation)
+
+
 class RecordingDisplay:
     def __init__(self) -> None:
         self.outputs: dict[str, list[str]] = defaultdict(list)
@@ -69,6 +89,75 @@ class RecordingDisplay:
         self.peak_running = max(self.peak_running, len(self._running_units))
 
 
+@dataclass
+class _RecordedHandle:
+    handle: McpServerHandle
+    shutdown_calls: int = 0
+
+
+class _RecordingMcpFactory:
+    def __init__(self) -> None:
+        self.sessions: list[object] = []
+        self.handles: list[_RecordedHandle] = []
+
+    def build(self, session: object) -> McpServerHandle:
+        self.sessions.append(session)
+        recorded = _RecordedHandle(
+            handle=McpServerHandle(
+                endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
+                pid=1000 + len(self.handles),
+                shutdown=lambda: None,
+            )
+        )
+
+        def _shutdown(record: _RecordedHandle = recorded) -> None:
+            record.shutdown_calls += 1
+
+        recorded.handle = McpServerHandle(
+            endpoint=recorded.handle.endpoint,
+            pid=recorded.handle.pid,
+            shutdown=_shutdown,
+        )
+        self.handles.append(recorded)
+        return recorded.handle
+
+
+class _RecordingWorktreeManager:
+    def __init__(self, repo_root: Path) -> None:
+        self.repo_root = repo_root
+        self.create_calls: list[tuple[str, str]] = []
+        self.destroy_calls: list[str] = []
+
+    def create(self, unit_id: str, base_branch: str) -> Path:
+        self.create_calls.append((unit_id, base_branch))
+        worktree_path = self.repo_root / ".worktrees" / unit_id
+        worktree_path.mkdir(parents=True, exist_ok=True)
+        return worktree_path
+
+    def destroy(self, unit_id: str) -> None:
+        self.destroy_calls.append(unit_id)
+
+
+class _LoggingExecutor:
+    async def run(
+        self,
+        unit: WorkUnit,
+        *,
+        on_output: Callable[[str], None],
+        on_status: Callable[[WorkerStatus], None],
+    ) -> WorkerResult:
+        on_status(WorkerStatus.RUNNING)
+        logger.info("worker-log-message")
+        on_output("done")
+        on_status(WorkerStatus.SUCCEEDED)
+        return WorkerResult(
+            unit_id=unit.unit_id,
+            exit_code=0,
+            final_message="done",
+            duration_ms=1,
+        )
+
+
 async def test_happy_path_three_units(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     units = (make_unit("unit-a"), make_unit("unit-b"), make_unit("unit-c"))
@@ -86,6 +175,7 @@ async def test_happy_path_three_units(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
+        ctx=make_worker_context(),
     )
 
     assert events[0] is PipelineEvent.FAN_OUT_STARTED
@@ -122,6 +212,7 @@ async def test_failure_cancels_siblings(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
+        ctx=make_worker_context(),
     )
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
@@ -154,6 +245,7 @@ async def test_respects_dag_order(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
+        ctx=make_worker_context(),
     )
 
     start_order = {
@@ -183,6 +275,7 @@ async def test_respects_max_workers_cap(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
+        ctx=make_worker_context(),
     )
 
     completed = [event for event in events if isinstance(event, WorkerCompletedEvent)]
@@ -198,6 +291,7 @@ async def test_empty_work_units(tmp_path: Path) -> None:
         effect=FanOutDevelopmentEffect(work_units=(), max_workers=2),
         executor=FakeAgentExecutor({}),
         display=RecordingDisplay(),
+        ctx=make_worker_context(),
     )
 
     assert events == [PipelineEvent.FAN_OUT_STARTED, PipelineEvent.ALL_WORKERS_COMPLETE]
@@ -216,6 +310,7 @@ async def test_nonzero_exit_emits_worker_failed_event(tmp_path: Path) -> None:
             }
         ),
         display=display,
+        ctx=make_worker_context(),
     )
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
@@ -243,6 +338,7 @@ async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> No
             }
         ),
         display=display,
+        ctx=make_worker_context(),
     )
 
     failed_events = [event for event in events if isinstance(event, WorkerFailedEvent)]
@@ -253,3 +349,81 @@ async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> No
         event.unit_id == "unit-b" and event.error == "Blocked by failed dependencies: unit-a"
         for event in failed_events
     )
+
+
+async def test_isolation_creates_worker_session_and_cleans_up_success(tmp_path: Path) -> None:
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+    worktree_manager = _RecordingWorktreeManager(tmp_path)
+    mcp_factory = _RecordingMcpFactory()
+
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+        worktree_manager=worktree_manager,
+        mcp_factory=mcp_factory,
+        repo_root=tmp_path,
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor({"unit-a": FakeRun(outputs=["ok"], exit_code=0, duration_ms=1)}),
+        display=display,
+        ctx=make_worker_context(isolation=isolation),
+    )
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+    assert worktree_manager.create_calls == [("unit-a", "main")]
+    assert worktree_manager.destroy_calls == ["unit-a"]
+    assert len(mcp_factory.sessions) == 1
+    assert getattr(mcp_factory.sessions[0], "parallel_worker", False) is True
+    assert mcp_factory.handles[0].shutdown_calls == 1
+
+
+async def test_isolation_preserves_failed_worktree(tmp_path: Path) -> None:
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+    worktree_manager = _RecordingWorktreeManager(tmp_path)
+    mcp_factory = _RecordingMcpFactory()
+
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+        worktree_manager=worktree_manager,
+        mcp_factory=mcp_factory,
+        repo_root=tmp_path,
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor(
+            {"unit-a": FakeRun(outputs=["boom"], exit_code=1, duration_ms=1)}
+        ),
+        display=display,
+        ctx=make_worker_context(isolation=isolation),
+    )
+
+    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
+    assert worktree_manager.create_calls == [("unit-a", "main")]
+    assert worktree_manager.destroy_calls == []
+    assert mcp_factory.handles[0].shutdown_calls == 1
+
+
+async def test_worker_logs_are_routed_to_per_worker_sink(tmp_path: Path) -> None:
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=_LoggingExecutor(),
+        display=display,
+        ctx=make_worker_context(log_dir=tmp_path / "logs", run_id="run-logging"),
+    )
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+    log_path = tmp_path / "logs" / "run-logging" / "workers" / "unit-unit-a.log"
+    assert "worker-log-message" in log_path.read_text()

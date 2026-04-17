@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import socket
-import threading
 from pathlib import Path
 from typing import Any, cast
 
@@ -421,7 +419,9 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=3),
         state,
     )
-    tools_list = cast("list[dict[str, object]]", tools_response.result["tools"])
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tools_list = cast("list[dict[str, object]]", tools_result["tools"])
     tool_names = {cast("str", tool["name"]) for tool in tools_list}
 
     submit_response, state = mcp_server.handle_request(

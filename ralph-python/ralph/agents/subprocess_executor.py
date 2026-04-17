@@ -14,8 +14,10 @@ from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.pipeline.worker_state import WorkerStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
+    from pathlib import Path
 
+    from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.pipeline.work_units import WorkUnit
 
 
@@ -27,23 +29,38 @@ class SubprocessAgentExecutor:
     process tree on cancellation.
     """
 
+    def __init__(
+        self,
+        command: Sequence[str],
+        *,
+        signal_bridge: SignalBridge | None = None,
+        cwd: Path | None = None,
+        extra_env: Mapping[str, str] | None = None,
+    ) -> None:
+        self._command = tuple(command)
+        self._signal_bridge = signal_bridge
+        self._cwd = cwd
+        self._extra_env = extra_env
+
     async def run(
         self,
         unit: WorkUnit,
         *,
         on_output: Callable[[str], None],
         on_status: Callable[[WorkerStatus], None],
-        command: Sequence[str],
     ) -> WorkerResult:
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
         last_line: str = ""
 
+        env = {**os.environ, **self._extra_env} if self._extra_env else None
         try:
             proc = await asyncio.create_subprocess_exec(
-                *command,
+                *self._command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                cwd=self._cwd,
+                env=env,
                 start_new_session=True,
             )
         except OSError as exc:
@@ -58,12 +75,19 @@ class SubprocessAgentExecutor:
                 on_output(line)
                 last_line = line
 
+        if self._signal_bridge is not None:
+            self._signal_bridge.register_pid(proc.pid)
+
         try:
-            await asyncio.gather(drain_output(), proc.wait())
-        except asyncio.CancelledError:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            raise
+            try:
+                await asyncio.gather(drain_output(), proc.wait())
+            except asyncio.CancelledError:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                raise
+        finally:
+            if self._signal_bridge is not None:
+                self._signal_bridge.deregister_pid(proc.pid)
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
         exit_code = proc.returncode if proc.returncode is not None else 0

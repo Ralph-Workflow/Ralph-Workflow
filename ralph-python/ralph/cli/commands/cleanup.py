@@ -70,7 +70,7 @@ def cleanup(
 
 
 def _delete_branch(git: GitExecutor, repo_root: Path, branch: str) -> None:
-    git.run(
+    result = git.run(
         lambda: subprocess.run(
             ["git", "branch", "-D", branch],
             cwd=repo_root,
@@ -79,3 +79,6 @@ def _delete_branch(git: GitExecutor, repo_root: Path, branch: str) -> None:
             text=True,
         )
     )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        typer.echo(f"Warning: failed to delete branch {branch}: {detail}", err=True)

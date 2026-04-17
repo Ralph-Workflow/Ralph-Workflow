@@ -119,7 +119,12 @@ def test_merge_conflict_fails_phase_and_preserves_worktrees(
     ) -> subprocess.CompletedProcess[str]:
         del cwd, capture_output, text, check
         if args == ["git", "merge", "--no-ff", "ralph/unit-worker-2"]:
-            return _completed_process(args, returncode=1)
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=1,
+                stdout="CONFLICT (content): Merge conflict in file.txt",
+                stderr="",
+            )
         return _completed_process(args)
 
     monkeypatch.setattr(

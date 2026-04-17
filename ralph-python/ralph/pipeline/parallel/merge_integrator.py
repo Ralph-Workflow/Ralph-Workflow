@@ -79,6 +79,13 @@ async def integrate(
         result = await git_executor.arun(_merge)
 
         if result.returncode != 0:
+            is_conflict = "CONFLICT" in result.stdout or "CONFLICT" in result.stderr
+            if not is_conflict:
+                raise RuntimeError(
+                    f"git merge failed for branch {branch_name} "
+                    f"(exit {result.returncode}): "
+                    f"{result.stderr.strip() or result.stdout.strip()}"
+                )
 
             def _abort() -> subprocess.CompletedProcess[str]:
                 return subprocess.run(

@@ -106,20 +106,23 @@ async def test_concurrent_emitters_drain_queue() -> None:
     q: queue.Queue[UpdateEvent] = queue.Queue()
     live = make_live()
     thread = RenderThread(q=q, renderable_fn=lambda state: "", live=live, refresh_hz=20)
+    start = asyncio.Event()
 
     async def worker(uid: str, lines: list[str]) -> None:
+        await start.wait()
         for line in lines:
             q.put(UpdateEvent(unit_id=uid, kind="output", payload=line))
-            await asyncio.sleep(0)
 
     with live:
         thread.start()
-        await asyncio.gather(
-            worker("u1", ["a", "b", "c"]),
-            worker("u2", ["d", "e", "f"]),
-            worker("u3", ["g", "h", "i"]),
-            worker("u4", ["j", "k", "l"]),
-        )
+        tasks = [
+            asyncio.create_task(worker("u1", ["a", "b", "c"])),
+            asyncio.create_task(worker("u2", ["d", "e", "f"])),
+            asyncio.create_task(worker("u3", ["g", "h", "i"])),
+            asyncio.create_task(worker("u4", ["j", "k", "l"])),
+        ]
+        start.set()
+        await asyncio.gather(*tasks)
         await asyncio.to_thread(q.join)
         thread.stop()
 

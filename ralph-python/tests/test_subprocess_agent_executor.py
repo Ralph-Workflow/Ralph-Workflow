@@ -1,6 +1,7 @@
 """Tests for SubprocessAgentExecutor."""
 
 import asyncio
+import inspect
 import sys
 from contextlib import suppress
 
@@ -27,14 +28,17 @@ def make_unit(unit_id: str) -> WorkUnit:
 
 @pytest.mark.asyncio
 async def test_protocol_isinstance() -> None:
-    executor = SubprocessAgentExecutor()
+    executor = SubprocessAgentExecutor([sys.executable, "-c", "print('ok')"])
     assert isinstance(executor, AgentExecutor)
+    assert "command" not in inspect.signature(SubprocessAgentExecutor.run).parameters
 
 
 @pytest.mark.asyncio
 async def test_streams_output() -> None:
     """Verify output lines arrive at on_output callback."""
-    executor = SubprocessAgentExecutor()
+    executor = SubprocessAgentExecutor(
+        [sys.executable, "-c", "print('line1'); print('line2'); print('line3')"]
+    )
     unit = make_unit("test-A")
 
     collected: list[str] = []
@@ -42,7 +46,6 @@ async def test_streams_output() -> None:
         unit,
         on_output=collected.append,
         on_status=ignore_status,
-        command=[sys.executable, "-c", "print('line1'); print('line2'); print('line3')"],
     )
 
     assert result.unit_id == "test-A"
@@ -55,13 +58,14 @@ async def test_streams_output() -> None:
 @pytest.mark.asyncio
 async def test_exit_code_propagates() -> None:
     """Non-zero exit codes propagate to WorkerResult."""
-    executor = SubprocessAgentExecutor()
+    executor = SubprocessAgentExecutor(
+        [sys.executable, "-c", f"import sys; sys.exit({EXIT_CODE_FAILURE})"]
+    )
     unit = make_unit("test-B")
     result = await executor.run(
         unit,
         on_output=ignore_output,
         on_status=ignore_status,
-        command=[sys.executable, "-c", f"import sys; sys.exit({EXIT_CODE_FAILURE})"],
     )
     assert result.exit_code == EXIT_CODE_FAILURE
 
@@ -69,27 +73,26 @@ async def test_exit_code_propagates() -> None:
 @pytest.mark.asyncio
 async def test_cancel_kills_process_group() -> None:
     """Cancellation kills the entire process group."""
-    executor = SubprocessAgentExecutor()
     unit = make_unit("test-C")
     started = asyncio.Event()
 
-    cmd = [
-        sys.executable,
-        "-c",
-        (
-            "import os, sys, time; "
-            "pid = os.fork() if hasattr(os, 'fork') else -1; "
-            "print('ready'); sys.stdout.flush(); time.sleep(30)"
-        ),
-    ]
+    executor = SubprocessAgentExecutor(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os, sys, threading; "
+                "pid = os.fork() if hasattr(os, 'fork') else -1; "
+                "print('ready'); sys.stdout.flush(); threading.Event().wait()"
+            ),
+        ]
+    )
 
     def on_output(line: str) -> None:
         if "ready" in line:
             started.set()
 
-    task = asyncio.create_task(
-        executor.run(unit, on_output=on_output, on_status=ignore_status, command=cmd)
-    )
+    task = asyncio.create_task(executor.run(unit, on_output=on_output, on_status=ignore_status))
 
     await asyncio.wait_for(started.wait(), timeout=1.0)
     task.cancel()
@@ -101,13 +104,12 @@ async def test_cancel_kills_process_group() -> None:
 @pytest.mark.asyncio
 async def test_duration_ms_populated() -> None:
     """WorkerResult.duration_ms is non-zero."""
-    executor = SubprocessAgentExecutor()
+    executor = SubprocessAgentExecutor([sys.executable, "-c", "print('done')"])
     unit = make_unit("test-D")
     result = await executor.run(
         unit,
         on_output=ignore_output,
         on_status=ignore_status,
-        command=[sys.executable, "-c", "print('done')"],
     )
     assert result.duration_ms >= 0
 
@@ -115,13 +117,12 @@ async def test_duration_ms_populated() -> None:
 @pytest.mark.asyncio
 async def test_final_message_from_last_line() -> None:
     """final_message is the last output line received."""
-    executor = SubprocessAgentExecutor()
+    executor = SubprocessAgentExecutor([sys.executable, "-c", "print('first'); print('last')"])
     unit = make_unit("test-E")
     last: list[str] = []
     result = await executor.run(
         unit,
         on_output=last.append,
         on_status=ignore_status,
-        command=[sys.executable, "-c", "print('first'); print('last')"],
     )
     assert result.final_message == (last[-1] if last else "")

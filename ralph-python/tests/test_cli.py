@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from ralph.workspace.scope import WorkspaceScope
 RUN_PIPELINE_SUCCESS = 42
 KEYBOARD_INTERRUPT_EXIT_CODE = 130
 DEFAULT_DEVELOPER_ITERS = 3
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class CliResult:

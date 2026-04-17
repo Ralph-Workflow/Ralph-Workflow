@@ -126,6 +126,7 @@ def reduce(
         PipelineEvent.FAILED: _ignore_policy(_handle_failed),
         PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
         PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
+        PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
         PipelineEvent.ALL_WORKERS_COMPLETE: _ignore_policy(_handle_all_workers_complete),
     }
     handler = handlers.get(event)
@@ -609,6 +610,20 @@ def _handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[E
         for unit in state.work_units
     }
     return state.copy_with(worker_states=new_worker_states), []
+
+
+def _handle_workers_resumed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+    if not state.worker_states:
+        return state, []
+    resumed_states = {
+        unit_id: (
+            worker_state.copy_with(status=WorkerStatus.PENDING)
+            if worker_state.status == WorkerStatus.RUNNING
+            else worker_state
+        )
+        for unit_id, worker_state in state.worker_states.items()
+    }
+    return state.copy_with(worker_states=resumed_states), []
 
 
 def _handle_worker_started(

@@ -26,6 +26,7 @@ class PipelineEvent(StrEnum):
     PROMPT_PREPARED = "prompt_prepared"
     PHASE_ADVANCE = "phase_advance"
     FAN_OUT_STARTED = "fan_out_started"
+    WORKERS_RESUMED = "workers_resumed"
     ALL_WORKERS_COMPLETE = "all_workers_complete"
 
 

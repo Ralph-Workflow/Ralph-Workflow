@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
+from ralph import logging as ralph_logging
+from ralph.agents import subprocess_executor
+from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
     Event,
     PipelineEvent,
@@ -13,15 +18,22 @@ from ralph.pipeline.events import (
     WorkerFailedEvent,
     WorkerStartedEvent,
 )
+from ralph.pipeline.parallel import worker_session
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.workspace import fs
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.git.worktree_manager import WorktreeManager
+    from ralph.interrupt.asyncio_bridge import SignalBridge
+    from ralph.mcp.server.factory import McpServerFactory
     from ralph.pipeline.effects import FanOutDevelopmentEffect
+    from ralph.pipeline.parallel.worker_session import WorkerSessionBundle
     from ralph.pipeline.work_units import WorkUnit
 
 
@@ -29,6 +41,21 @@ if TYPE_CHECKING:
 class _WorkerLog:
     log_dir: Path
     run_id: str
+
+
+@dataclass(frozen=True)
+class _IsolationDeps:
+    worktree_manager: WorktreeManager
+    mcp_factory: McpServerFactory
+    repo_root: Path
+    executor_command: tuple[str, ...] | None = None
+    signal_bridge: SignalBridge | None = None
+
+
+@dataclass(frozen=True)
+class _WorkerContext:
+    log: _WorkerLog | None = None
+    isolation: _IsolationDeps | None = None
 
 
 class _WorkerFailureError(Exception):
@@ -64,6 +91,38 @@ def _nonzero_exit_error(result: WorkerResult) -> str:
     if result.final_message:
         return result.final_message
     return f"Worker {result.unit_id} exited with code {result.exit_code}"
+
+
+def _prepare_executor(
+    unit: WorkUnit,
+    executor: AgentExecutor,
+    isolation: _IsolationDeps | None,
+) -> tuple[AgentExecutor, WorkerSessionBundle | None]:
+    if isolation is None:
+        return executor, None
+
+    worktree_path = isolation.worktree_manager.create(unit.unit_id, base_branch="main")
+    worker_scope = WorkspaceScope(worktree_path)
+    if isolation.executor_command is None:
+        return executor, worker_session.build_worker_session(
+            unit, isolation.mcp_factory, worker_scope
+        )
+
+    worker_workspace = fs.FsWorkspace(worktree_path)
+    worker_mcp_factory = factory_impl.DynamicBindingMcpServerFactory(workspace=worker_workspace)
+    bundle = worker_session.build_worker_session(unit, worker_mcp_factory, worker_scope)
+    return (
+        cast(
+            "AgentExecutor",
+            subprocess_executor.SubprocessAgentExecutor(
+                isolation.executor_command,
+                signal_bridge=isolation.signal_bridge,
+                cwd=worktree_path,
+                extra_env={"RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint},
+            ),
+        ),
+        bundle,
+    )
 
 
 def _blocked_dependency_error(unit: WorkUnit, failed_unit_ids: set[str]) -> str | None:
@@ -151,59 +210,73 @@ async def _run_worker(
     executor: AgentExecutor,
     display: ParallelDisplay,
     completion_queue: asyncio.Queue[WorkerResult],
-    log: _WorkerLog | None = None,
+    ctx: _WorkerContext | None = None,
 ) -> None:
-    from ralph.logging import bind_worker_sink, remove_worker_sink  # noqa: PLC0415
+    log = ctx.log if ctx is not None else None
+    isolation = ctx.isolation if ctx is not None else None
 
-    sink_handle = (
-        bind_worker_sink(unit_id=unit.unit_id, log_dir=log.log_dir, run_id=log.run_id)
-        if log is not None
-        else None
-    )
-
-    def on_output(line: str) -> None:
-        display.emit(unit.unit_id, line)
-
-    def on_status(status: WorkerStatus) -> None:
-        display.set_status(unit.unit_id, status)
-
-    try:
-        try:
-            result = await executor.run(unit, on_output=on_output, on_status=on_status)
-        except asyncio.CancelledError:
-            display.set_status(unit.unit_id, WorkerStatus.CANCELLED)
-            raise
-        except BaseException as exc:
-            if isinstance(exc, _WorkerFailureError):
-                raise
-            if isinstance(exc, Exception):
-                display.set_status(unit.unit_id, WorkerStatus.FAILED)
-                raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
-            raise
-
-        if result.exit_code != 0:
-            raise _WorkerFailureError(
-                unit_id=unit.unit_id,
-                exit_code=result.exit_code,
-                error=_nonzero_exit_error(result),
+    with logger.contextualize(unit_id=unit.unit_id):
+        sink_handle = (
+            ralph_logging.bind_worker_sink(
+                unit_id=unit.unit_id, log_dir=log.log_dir, run_id=log.run_id
             )
+            if log is not None
+            else None
+        )
 
-        await completion_queue.put(result)
-    finally:
-        if sink_handle is not None:
-            remove_worker_sink(sink_handle)
+        bundle = None
+        worker_succeeded = False
+        active_executor = executor
+
+        def on_output(line: str) -> None:
+            display.emit(unit.unit_id, line)
+
+        def on_status(status: WorkerStatus) -> None:
+            display.set_status(unit.unit_id, status)
+
+        try:
+            active_executor, bundle = _prepare_executor(unit, executor, isolation)
+
+            try:
+                result = await active_executor.run(unit, on_output=on_output, on_status=on_status)
+            except asyncio.CancelledError:
+                display.set_status(unit.unit_id, WorkerStatus.CANCELLED)
+                raise
+
+            except BaseException as exc:
+                if isinstance(exc, _WorkerFailureError):
+                    raise
+                if isinstance(exc, Exception):
+                    display.set_status(unit.unit_id, WorkerStatus.FAILED)
+                    raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
+                raise
+
+            if result.exit_code != 0:
+                raise _WorkerFailureError(
+                    unit_id=unit.unit_id,
+                    exit_code=result.exit_code,
+                    error=_nonzero_exit_error(result),
+                )
+
+            await completion_queue.put(result)
+            worker_succeeded = True
+        finally:
+            if bundle is not None:
+                bundle.mcp_handle.shutdown()
+                if worker_succeeded:
+                    assert isolation is not None
+                    isolation.worktree_manager.destroy(unit.unit_id)
+            if sink_handle is not None:
+                ralph_logging.remove_worker_sink(sink_handle)
 
 
 async def run_fan_out(
     effect: FanOutDevelopmentEffect,
     executor: AgentExecutor,
     display: ParallelDisplay,
-    log_dir: Path | None = None,
-    run_id: str = "default",
+    ctx: _WorkerContext | None = None,
 ) -> list[Event]:
     """Execute parallel work units while respecting DAG dependencies and worker caps."""
-    log = _WorkerLog(log_dir=log_dir, run_id=run_id) if log_dir is not None else None
-
     events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
     if not effect.work_units:
         return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
@@ -228,7 +301,13 @@ async def run_fan_out(
                     running[unit.unit_id] = unit
                     events.append(WorkerStartedEvent(unit_id=unit.unit_id))
                     task_group.create_task(
-                        _run_worker(unit, executor, display, completion_queue, log),
+                        _run_worker(
+                            unit,
+                            executor,
+                            display,
+                            completion_queue,
+                            ctx,
+                        ),
                         name=unit.unit_id,
                     )
 

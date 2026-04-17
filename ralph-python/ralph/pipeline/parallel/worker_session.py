@@ -32,10 +32,8 @@ def build_worker_session(
         parallel_worker=True,
     )
     mcp_handle = mcp_factory.build(session)
-    session.drain = mcp_handle.endpoint
-    worktree_path = workspace_scope.root / ".worktrees" / unit.unit_id
     worker_scope = WorkspaceScope.for_worktree(
-        worktree_path,
+        workspace_scope.root,
         tuple(unit.allowed_directories),
     )
     return WorkerSessionBundle(
