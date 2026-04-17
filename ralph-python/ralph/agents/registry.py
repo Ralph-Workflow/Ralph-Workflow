@@ -163,6 +163,7 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
             print_flag=defaults.print_flag,
             streaming_flag=defaults.streaming_flag,
             session_flag=defaults.session_flag,
+            transport=AgentTransport.CLAUDE,
         )
 
     parser = (
@@ -198,6 +199,7 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
         session_flag=alias_value.session_flag
         if alias_value.session_flag is not None
         else defaults.session_flag,
+        transport=AgentTransport.CLAUDE,
     )
 
 
