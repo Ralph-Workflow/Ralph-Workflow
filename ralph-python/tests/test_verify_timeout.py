@@ -48,11 +48,11 @@ def test_run_command_with_timeout_returns_completed_process(tmp_path: Path) -> N
 
 
 def test_run_command_with_timeout_raises_on_suite_timeout(tmp_path: Path) -> None:
-    with pytest.raises(SuiteTimeoutError, match=r"exceeded the 0\.1s wall-clock limit"):
+    with pytest.raises(SuiteTimeoutError, match=r"exceeded the 0\.05s wall-clock limit"):
         run_command_with_timeout(
             [sys.executable, "-c", "import time; time.sleep(1)"],
             cwd=tmp_path,
-            suite_timeout_seconds=0.1,
+            suite_timeout_seconds=0.05,
         )
 
 

@@ -156,27 +156,49 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
     )
 
 
-def test_agent_success_advances_iteration() -> None:
-    """Test that AGENT_SUCCESS in development advances iteration."""
-    state = PipelineState(
-        total_iterations=3,
-        iteration=0,
-        phase=PHASE_DEVELOPMENT,
-    )
-    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS)
-    assert new_state.iteration == 1
+def test_policy_agent_success_in_development_routes_to_analysis() -> None:
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "development_analysis"
+    assert new_state.previous_phase == PHASE_DEVELOPMENT
+
+
+def test_policy_agent_success_in_planning_routes_to_development_and_decrements_budget() -> None:
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase="planning", development_budget_remaining=2)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
     assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.development_budget_remaining == 1
 
 
-def test_final_iteration_advances_to_review() -> None:
-    """Test that AGENT_SUCCESS on final iteration advances to review."""
-    state = PipelineState(
-        total_iterations=2,
-        iteration=1,
-        phase=PHASE_DEVELOPMENT,
+def test_policy_agent_success_with_embeds_analysis_delegates_to_analysis_path() -> None:
+    policy = PipelinePolicy(
+        phases={
+            PHASE_DEVELOPMENT: PhaseDefinition(
+                drain="development",
+                embeds_analysis=True,
+                transitions=PhaseTransition(
+                    on_success="development_commit",
+                    on_loopback=PHASE_DEVELOPMENT,
+                ),
+            ),
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                transitions=PhaseTransition(on_success=PHASE_COMPLETE),
+            ),
+            PHASE_COMPLETE: PhaseDefinition(
+                drain="complete",
+                transitions=PhaseTransition(on_success=PHASE_COMPLETE, on_loopback=PHASE_COMPLETE),
+            ),
+        },
+        entry_phase=PHASE_DEVELOPMENT,
+        terminal_phase=PHASE_COMPLETE,
     )
-    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS)
-    assert new_state.phase == PHASE_REVIEW
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "development_commit"
+    assert new_state.previous_phase == PHASE_DEVELOPMENT
 
 
 def test_review_clean_advances_to_commit() -> None:

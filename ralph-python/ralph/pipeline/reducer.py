@@ -11,8 +11,7 @@ no logging, and no mutable state. This makes it fully deterministic
 and easy to test.
 
 Routing is driven by the policy: phase transitions come from pipeline.toml,
-not hardcoded match arms. When no policy is provided, it falls back to
-the legacy hardcoded routing for backward compatibility with tests.
+not hardcoded match arms.
 """
 
 from __future__ import annotations
@@ -123,9 +122,11 @@ def _handle_agent_success(
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful agent completion."""
-    if policy is not None:
-        return _policy_handle_agent_success(state, policy)
-    return _legacy_handle_agent_success(state)
+    if policy is None:
+        return _advance_to_terminal(
+            state, PHASE_FAILED, "No policy loaded for agent success routing"
+        )
+    return _policy_handle_agent_success(state, policy)
 
 
 def _policy_handle_agent_success(
@@ -155,39 +156,6 @@ def _policy_handle_agent_success(
         return _advance_to_terminal(
             state, PHASE_FAILED, f"Routing error after agent success in '{state.phase}': {exc}"
         )
-
-
-def _legacy_handle_agent_success(
-    state: PipelineState,
-) -> tuple[PipelineState, list[Effect]]:
-    """Legacy hardcoded agent success routing."""
-    if state.phase == PHASE_DEVELOPMENT:
-        if state.iteration + 1 < state.total_iterations:
-            new_state = state.copy_with(iteration=state.iteration + 1)
-            return new_state, []
-
-        new_state = state.copy_with(
-            phase=PHASE_REVIEW,
-            previous_phase=PHASE_DEVELOPMENT,
-            reviewer_pass=0,
-        )
-        return new_state, []
-
-    if state.phase == PHASE_REVIEW:
-        new_state = state.copy_with(
-            phase=PHASE_COMPLETE,
-            previous_phase=PHASE_REVIEW,
-        )
-        return new_state, []
-
-    if state.phase == "planning":
-        new_state = state.copy_with(
-            phase=PHASE_DEVELOPMENT,
-            previous_phase="planning",
-        )
-        return new_state, []
-
-    return state, []
 
 
 def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
