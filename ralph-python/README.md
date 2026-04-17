@@ -87,3 +87,15 @@ python -m pydoc ralph.workspace
 ```
 
 Use package/module docstrings for API understanding and this README for workflow-level guidance.
+
+## Parallel mode
+
+When your planning phase produces two or more work units, Ralph fans development out across multiple git worktrees simultaneously. Configure it in your pipeline policy:
+
+```toml
+[pipeline.parallel_execution]
+max_parallel_workers = 4
+max_work_units = 50
+```
+
+See `docs/agents/parallelization.md` for the full guide.
