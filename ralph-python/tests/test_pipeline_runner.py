@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
+from git import Repo as GitRepo
 from rich.console import Console
 from rich.text import Text
 
@@ -54,6 +55,8 @@ INTERRUPT_EXIT_CODE = 130
 _TRUNCATED_TEXT_MAX = runner_module._MAX_TEXT_LENGTH + 1  # content + ellipsis
 _TRUNCATED_RESULT_BRIEF_MAX = runner_module._MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
 _TRUNCATED_METADATA_MAX = runner_module._MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_AVAILABLE_WIDTH_FLOOR = 40
+_TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
 
 
 @lru_cache(maxsize=1)
@@ -1476,3 +1479,145 @@ class TestRenderAgentActivityLine:
         }
         result = runner_module._metadata_summary(metadata)
         assert len(result) <= _TRUNCATED_METADATA_MAX
+
+
+class TestTruncateEdgeCases:
+    """Tests for _truncate edge cases."""
+
+    def test_truncate_shorter_than_max_unchanged(self) -> None:
+        assert runner_module._truncate("hello", 10) == "hello"
+
+    def test_truncate_exactly_at_max_unchanged(self) -> None:
+        assert runner_module._truncate("hello", 5) == "hello"
+
+    def test_truncate_longer_than_max_adds_ellipsis(self) -> None:
+        result = runner_module._truncate("hello world", 5)
+        assert result == "hello…"
+        assert len(result) == _TRUNCATE_RESULT_LEN
+
+    def test_truncate_max_length_zero_returns_unchanged(self) -> None:
+        assert runner_module._truncate("hello", 0) == "hello"
+
+    def test_truncate_max_length_one_returns_unchanged(self) -> None:
+        assert runner_module._truncate("hello", 1) == "hello"
+
+    def test_truncate_empty_string(self) -> None:
+        assert runner_module._truncate("", 10) == ""
+
+
+class TestAvailableWidth:
+    """Tests for _available_width helper."""
+
+    def test_available_width_minimum_floor(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(runner_module, "_terminal_width", lambda: 20)
+        # With prefix_len=20, width would be 20-20-2 = -2, should floor to 40
+        assert runner_module._available_width(20) == _AVAILABLE_WIDTH_FLOOR
+
+    def test_available_width_normal_terminal(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(runner_module, "_terminal_width", lambda: 120)
+        result = runner_module._available_width(10)
+        expected = 120 - 10 - 2
+        assert result == expected
+
+    def test_available_width_narrow_terminal(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(runner_module, "_terminal_width", lambda: 50)
+        result = runner_module._available_width(5)
+        expected = 50 - 5 - 2
+        assert result == expected
+
+
+class TestEventDecisionLabels:
+    """Tests for _EVENT_DECISION_LABELS mapping."""
+
+    def test_analysis_success_label(self) -> None:
+        assert runner_module._EVENT_DECISION_LABELS[PipelineEvent.ANALYSIS_SUCCESS] == "approved"
+
+    def test_analysis_loopback_label(self) -> None:
+        labels = runner_module._EVENT_DECISION_LABELS
+        assert labels[PipelineEvent.ANALYSIS_LOOPBACK] == "needs changes"
+
+    def test_review_clean_label(self) -> None:
+        labels = runner_module._EVENT_DECISION_LABELS
+        assert labels[PipelineEvent.REVIEW_CLEAN] == "clean — no issues"
+
+    def test_review_issues_found_label(self) -> None:
+        labels = runner_module._EVENT_DECISION_LABELS
+        assert labels[PipelineEvent.REVIEW_ISSUES_FOUND] == "issues found"
+
+    def test_commit_success_label(self) -> None:
+        assert runner_module._EVENT_DECISION_LABELS[PipelineEvent.COMMIT_SUCCESS] == "committed"
+
+    def test_fix_success_label(self) -> None:
+        assert runner_module._EVENT_DECISION_LABELS[PipelineEvent.FIX_SUCCESS] == "fixed"
+
+    def test_unknown_event_has_no_label(self) -> None:
+        assert runner_module._EVENT_DECISION_LABELS.get(PipelineEvent.AGENT_FAILURE) is None
+
+
+class TestStartCommitCapture:
+    def test_run_pipeline_writes_start_commit_on_first_invocation(
+        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+    ) -> None:
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: WorkspaceScope(tmp_git_repo),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "_determine_effect_from_policy",
+            lambda _state, _bundle, _scope: ExitSuccessEffect(),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+
+        state = MagicMock()
+        state.phase = "planning"
+
+        runner_module.run(MagicMock(), initial_state=state)
+
+        start_commit_path = tmp_git_repo / ".agent" / "start_commit"
+        assert start_commit_path.exists(), ".agent/start_commit was not written by run()"
+        expected_sha = GitRepo(tmp_git_repo).head.commit.hexsha
+        assert start_commit_path.read_text().strip() == expected_sha
+
+    def test_run_pipeline_does_not_overwrite_existing_start_commit(
+        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+    ) -> None:
+        # Pre-write a sentinel SHA so run() sees the file as already present.
+        # We make a second commit so the current HEAD differs from the sentinel,
+        # ensuring a buggy "always-write" implementation would be caught.
+        repo = GitRepo(tmp_git_repo)
+        sentinel_sha = repo.head.commit.hexsha
+
+        extra_file = tmp_git_repo / "extra.txt"
+        extra_file.write_text("extra")
+        repo.index.add(["extra.txt"])
+        repo.index.commit("second commit")
+
+        agent_dir = tmp_git_repo / ".agent"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        (agent_dir / "start_commit").write_text(sentinel_sha + "\n")
+
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: WorkspaceScope(tmp_git_repo),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "_determine_effect_from_policy",
+            lambda _state, _bundle, _scope: ExitSuccessEffect(),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+
+        state = MagicMock()
+        state.phase = "planning"
+
+        runner_module.run(MagicMock(), initial_state=state)
+
+        start_commit_path = tmp_git_repo / ".agent" / "start_commit"
+        assert start_commit_path.read_text().strip() == sentinel_sha, (
+            "run() must not overwrite an existing .agent/start_commit"
+        )

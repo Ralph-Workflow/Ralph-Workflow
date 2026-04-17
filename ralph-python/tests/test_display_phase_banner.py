@@ -5,6 +5,8 @@ from __future__ import annotations
 from rich.console import Console
 
 from ralph.display.phase_banner import (
+    _MAJOR_TRANSITIONS,
+    _TRANSITION_DESCRIPTIONS,
     PhaseStartContext,
     _phase_label,
     _phase_style,
@@ -125,3 +127,155 @@ def test_show_phase_transition_with_context() -> None:
     assert "Planning" in output
     assert "Development" in output
     assert "iteration=1/5" in output
+
+
+# --- New tests for expanded transitions and descriptions ---
+
+
+def test_major_transition_analysis_to_commit() -> None:
+    """Analysis approved → commit should be a major (double-rule) transition."""
+    console = Console(record=True, width=120)
+    show_phase_transition("development_analysis", "development_commit", console=console)
+    output = console.export_text()
+    assert "Development Analysis" in output
+    assert "Development Commit" in output
+    assert "Analysis approved" in output
+
+
+def test_major_transition_analysis_loopback() -> None:
+    """Analysis loopback → development should be a major transition."""
+    console = Console(record=True, width=120)
+    show_phase_transition("development_analysis", "development", console=console)
+    output = console.export_text()
+    assert "Development Analysis" in output
+    assert "Development" in output
+    assert "Analysis requested changes" in output
+
+
+def test_major_transition_review_analysis_to_fix() -> None:
+    """Review analysis → fix should be a major transition."""
+    console = Console(record=True, width=120)
+    show_phase_transition("review_analysis", "fix", console=console)
+    output = console.export_text()
+    assert "Review Analysis" in output
+    assert "Fix" in output
+    assert "Review found issues" in output
+
+
+def test_major_transition_review_analysis_to_review_commit() -> None:
+    """Review analysis approved → review_commit should be a major transition."""
+    console = Console(record=True, width=120)
+    show_phase_transition("review_analysis", "review_commit", console=console)
+    output = console.export_text()
+    assert "Review Analysis" in output
+    assert "Review Commit" in output
+    assert "approved" in output
+
+
+def test_major_transition_review_commit_to_development() -> None:
+    """Review commit → development (continue dev) should be major."""
+    console = Console(record=True, width=120)
+    show_phase_transition("review_commit", "development", console=console)
+    output = console.export_text()
+    assert "Review Commit" in output
+    assert "Development" in output
+    assert "continuing development" in output
+
+
+def test_major_transition_review_commit_to_planning() -> None:
+    """Review commit → planning (re-plan) should be major."""
+    console = Console(record=True, width=120)
+    show_phase_transition("review_commit", "planning", console=console)
+    output = console.export_text()
+    assert "Review Commit" in output
+    assert "Planning" in output
+    assert "re-planning" in output
+
+
+def test_major_transition_review_commit_to_complete() -> None:
+    """Review commit → complete should be major."""
+    console = Console(record=True, width=120)
+    show_phase_transition("review_commit", "complete", console=console)
+    output = console.export_text()
+    assert "Review Commit" in output
+    assert "Complete" in output
+    assert "pipeline complete" in output
+
+
+def test_major_transition_fix_to_review() -> None:
+    """Fix → review should be major with description."""
+    console = Console(record=True, width=120)
+    show_phase_transition("fix", "review", console=console)
+    output = console.export_text()
+    assert "Fix" in output
+    assert "Review" in output
+    assert "re-reviewing" in output
+
+
+def test_minor_transition_dev_to_analysis_has_description() -> None:
+    """Dev → analysis is a minor transition but should have a description."""
+    console = Console(record=True, width=120)
+    show_phase_transition("development", "development_analysis", console=console)
+    output = console.export_text()
+    assert "Development" in output
+    assert "Development Analysis" in output
+    assert "analyzing results" in output
+
+
+def test_minor_transition_review_to_analysis_has_description() -> None:
+    """Review → review_analysis is minor but should have description."""
+    console = Console(record=True, width=120)
+    show_phase_transition("review", "review_analysis", console=console)
+    output = console.export_text()
+    assert "Review" in output
+    assert "Review Analysis" in output
+    assert "analyzing findings" in output
+
+
+def test_unknown_transition_renders_gracefully() -> None:
+    """Unknown transition pair should still render without crashing."""
+    console = Console(record=True, width=120)
+    show_phase_transition("unknown_phase", "another_unknown", console=console)
+    output = console.export_text()
+    assert "Unknown Phase" in output
+    assert "Another Unknown" in output
+
+
+def test_all_major_transitions_have_descriptions() -> None:
+    """Every major transition should have a description for good UX."""
+    for from_phase, to_phase in _MAJOR_TRANSITIONS:
+        assert (from_phase, to_phase) in _TRANSITION_DESCRIPTIONS, (
+            f"Major transition ({from_phase}, {to_phase}) has no description"
+        )
+
+
+def test_transition_descriptions_render_in_major_banners() -> None:
+    """Major transitions should include the description text in output."""
+    for (from_phase, to_phase), description in _TRANSITION_DESCRIPTIONS.items():
+        if (from_phase, to_phase) not in _MAJOR_TRANSITIONS:
+            continue
+        console = Console(record=True, width=120)
+        show_phase_transition(from_phase, to_phase, console=console)
+        output = console.export_text()
+        # Description should appear in the output (at least a substring)
+        assert description[:20] in output, (
+            f"Description '{description}' not found in output for ({from_phase}, {to_phase})"
+        )
+
+
+def test_show_phase_start_reviewer_pass_zero_boundary() -> None:
+    """Reviewer pass 0 should display as 1/N (1-indexed)."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(reviewer_pass=0, total_reviewer_passes=3)
+    show_phase_start("review", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "1/3" in output
+
+
+def test_show_phase_start_reviewer_pass_last_boundary() -> None:
+    """Last reviewer pass (N-1) should display as N/N."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(reviewer_pass=2, total_reviewer_passes=3)
+    show_phase_start("review", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "3/3" in output

@@ -375,7 +375,12 @@ def _latest_artifact_content(workspace: Workspace, phase: str) -> str:
 
 def _git_diff(workspace_root: Path) -> str:
     try:
-        return cast("str", Repo(workspace_root).git.diff("HEAD"))
+        repo = Repo(workspace_root)
+        start_commit_path = workspace_root / ".agent" / "start_commit"
+        if start_commit_path.exists():
+            baseline_sha = start_commit_path.read_text().strip()
+            return cast("str", repo.git.diff(baseline_sha))
+        return cast("str", repo.git.diff("HEAD"))
     except Exception:
         return "(no diff available)"
 

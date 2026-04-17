@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from git import Repo as GitRepo
+
 import ralph.prompts.materialize as materialize_module
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
@@ -275,3 +277,32 @@ def test_materialize_review_prompt_uses_file_reference_for_large_diff(
     )
     assert large_diff not in rendered
     assert payload_path.read_text(encoding="utf-8") == large_diff
+
+
+def test_git_diff_uses_start_commit_sha_when_present(tmp_git_repo: Path) -> None:
+    repo = GitRepo(tmp_git_repo)
+    baseline_sha = repo.head.commit.hexsha
+
+    new_file = tmp_git_repo / "feature.py"
+    new_file.write_text("x = 1\n")
+    repo.index.add(["feature.py"])
+    repo.index.commit("add feature")
+
+    agent_dir = tmp_git_repo / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "start_commit").write_text(baseline_sha + "\n")
+
+    diff = materialize_module._git_diff(tmp_git_repo)
+
+    assert "feature.py" in diff
+
+
+def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path) -> None:
+    repo = GitRepo(tmp_git_repo)
+    uncommitted = tmp_git_repo / "work.py"
+    uncommitted.write_text("y = 2\n")
+    repo.index.add(["work.py"])
+
+    diff = materialize_module._git_diff(tmp_git_repo)
+
+    assert "work.py" in diff

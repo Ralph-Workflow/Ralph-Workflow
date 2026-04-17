@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from git import Repo
+from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 from rich.console import Console
 from rich.text import Text
@@ -101,10 +101,24 @@ _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 
+_EVENT_DECISION_LABELS: dict[str, str] = {
+    PipelineEvent.ANALYSIS_SUCCESS: "approved",
+    PipelineEvent.ANALYSIS_LOOPBACK: "needs changes",
+    PipelineEvent.REVIEW_CLEAN: "clean — no issues",
+    PipelineEvent.REVIEW_ISSUES_FOUND: "issues found",
+    PipelineEvent.COMMIT_SUCCESS: "committed",
+    PipelineEvent.FIX_SUCCESS: "fixed",
+}
+
 
 def _terminal_width() -> int:
     """Return the current terminal width with a safe fallback."""
     return shutil.get_terminal_size().columns or 80
+
+
+def _available_width(prefix_len: int) -> int:
+    """Return available width for content after a prefix, with a floor of 40."""
+    return max(40, _terminal_width() - prefix_len - 2)
 
 
 @dataclass(frozen=True)
@@ -112,6 +126,20 @@ class _AgentExecutionDeps:
     invoke_agent: _InvokeAgentFn
     agent_invocation_error: type[Exception]
     agent_registry: _AgentRegistryFactory
+
+
+def _write_start_commit_if_absent(workspace_root: Path) -> None:
+    start_commit_path = workspace_root / ".agent" / "start_commit"
+    if start_commit_path.exists():
+        return
+    try:
+        repo = Repo(workspace_root)
+    except InvalidGitRepositoryError:
+        return
+    if not repo.head.is_valid():
+        return
+    start_commit_path.parent.mkdir(parents=True, exist_ok=True)
+    start_commit_path.write_text(repo.head.commit.hexsha + "\n")
 
 
 def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
@@ -125,6 +153,7 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         Exit code (0 for success, non-zero for failure).
     """
     workspace_scope = resolve_workspace_scope()
+    _write_start_commit_if_absent(workspace_scope.root)
     policy_bundle = load_policy_or_die(workspace_scope.root / ".agent")
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
@@ -182,6 +211,10 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
                     workspace=workspace,
                 )
 
+            decision_label = _EVENT_DECISION_LABELS.get(event)
+            if decision_label is not None:
+                show_phase_complete(state.phase, decision=decision_label, console=console)
+
             state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
             ckpt.save(state)
 
@@ -211,6 +244,15 @@ def _show_phase_transition_with_context(previous_phase: str, state: PipelineStat
         context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
     if state.phase == "review":
         context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
+    if previous_phase in {"development_analysis", "review_analysis"}:
+        if state.phase in {"development_commit", "review_commit"}:
+            context["decision"] = "approved"
+        elif state.phase in {"development", "fix"}:
+            context["decision"] = "needs changes"
+    if previous_phase == "development_commit":
+        context["dev_budget"] = f"{state.total_iterations - state.iteration} remaining"
+    if previous_phase == "review_commit":
+        context["review_budget"] = f"{state.total_reviewer_passes - state.reviewer_pass} remaining"
 
     show_phase_transition(
         previous_phase,
@@ -683,7 +725,7 @@ def _resolve_parser(parser_type: str) -> AgentParser:
 
 def _truncate(text: str, max_length: int) -> str:
     """Truncate text to max_length, appending ellipsis if truncated."""
-    if len(text) <= max_length:
+    if max_length <= 1 or len(text) <= max_length:
         return text
     return text[:max_length] + "…"
 
@@ -695,23 +737,31 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
         content = output.content.strip()
         if content:
             rendered = _styled_prefix(agent_name, "white")
-            rendered.append(_truncate(content, _MAX_TEXT_LENGTH))
+            text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
+            rendered.append(_truncate(content, text_width))
     elif output.type == "tool_use":
         tool_name = output.content.strip() or "unknown-tool"
-        rendered = _styled_prefix(f"{agent_name} tool", "magenta")
+        prefix_label = f"{agent_name} tool"
+        rendered = _styled_prefix(prefix_label, "magenta")
         rendered.append(tool_name, style="bold magenta")
         input_summary = _tool_input_summary(output.metadata)
         if input_summary:
-            truncated = _truncate(input_summary, _MAX_TOOL_INPUT_LENGTH)
+            prefix_total = len(prefix_label) + 2 + len(tool_name) + 3
+            tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
+            truncated = _truncate(input_summary, tool_input_width)
             rendered.append(f" ({truncated})", style="dim")
     elif output.type == "tool_result":
         result = output.content.strip()
         if result:
-            rendered = _styled_prefix(f"{agent_name} result", "dim")
+            result_label = f"{agent_name} result"
+            rendered = _styled_prefix(result_label, "dim")
+            result_prefix_len = len(result_label) + 2
             if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD:
-                rendered.append(_truncate(result, _MAX_TOOL_RESULT_BRIEF), style="dim")
+                brief_width = min(_MAX_TOOL_RESULT_BRIEF, _available_width(result_prefix_len))
+                rendered.append(_truncate(result, brief_width), style="dim")
             else:
-                rendered.append(_truncate(result, _MAX_TOOL_RESULT_LENGTH), style="dim")
+                result_width = min(_MAX_TOOL_RESULT_LENGTH, _available_width(result_prefix_len))
+                rendered.append(_truncate(result, result_width), style="dim")
     elif output.type == "error":
         error = output.content.strip() or "unknown error"
         rendered = _styled_prefix(f"{agent_name} ✗", "red")

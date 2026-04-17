@@ -28,13 +28,38 @@ _PHASE_STYLES: dict[str, str] = {
 _MAJOR_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
     {
         ("planning", "development"),
-        ("development", "review"),
-        ("review", "complete"),
-        ("fix", "review"),
+        ("development_analysis", "development_commit"),
+        ("development_analysis", "development"),
         ("development_commit", "review"),
+        ("review", "complete"),
+        ("review_analysis", "review_commit"),
+        ("review_analysis", "fix"),
+        ("fix", "review"),
         ("review_commit", "complete"),
+        ("review_commit", "development"),
+        ("review_commit", "planning"),
+        ("development_commit", "planning"),
     }
 )
+
+_TRANSITION_DESCRIPTIONS: dict[tuple[str, str], str] = {
+    ("planning", "development"): "Plan ready — starting development",
+    ("development", "development_analysis"): "Development complete — analyzing results",
+    ("development_analysis", "development_commit"): "Analysis approved — committing changes",
+    ("development_analysis", "development"): (
+        "Analysis requested changes — returning to development"
+    ),
+    ("development_commit", "review"): "Changes committed — starting review",
+    ("development_commit", "planning"): "Commit complete — re-planning needed",
+    ("review", "review_analysis"): "Review complete — analyzing findings",
+    ("review_analysis", "review_commit"): "Review analysis approved — committing review changes",
+    ("review_analysis", "fix"): "Review found issues — routing to fix",
+    ("fix", "review"): "Fix complete — re-reviewing",
+    ("review_commit", "complete"): "Review changes committed — pipeline complete",
+    ("review_commit", "development"): "Review committed — continuing development",
+    ("review_commit", "planning"): "Review committed — re-planning needed",
+    ("review", "complete"): "All reviews passed",
+}
 
 
 def _phase_style(phase: str) -> str:
@@ -77,6 +102,7 @@ def show_phase_transition(
     style = _phase_style(to_phase)
     from_label = _phase_label(from_phase)
     to_label = _phase_label(to_phase)
+    description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
 
     is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
 
@@ -91,11 +117,15 @@ def show_phase_transition(
             detail = "  ".join(f"{k}={v}" for k, v in context.items())
             banner.append(f"  ({detail})", style="dim")
         c.print(banner)
+        if description:
+            c.print(Text(f"  {description}", style="dim italic"))
         c.print(Rule(style=style))
     else:
         c.print()
         title = Text()
         title.append(f"{from_label} → {to_label}")
+        if description:
+            title.append(f"  {description}", style="dim italic")
         c.print(Rule(title=title, style=style))
 
 
