@@ -10,6 +10,7 @@ partial checkpoint corruption.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -64,6 +65,34 @@ def load(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("Corrupt checkpoint at {}: {}", path, exc)
         return None
+
+
+async def save_async(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None:
+    """Atomically write state to disk without blocking the event loop.
+
+    Delegates to :func:`save` via ``asyncio.to_thread`` so callers
+    can await this from an async context without stalling the event loop.
+
+    Args:
+        state: The pipeline state to save.
+        path: Path to save the checkpoint. Defaults to .agent/checkpoint.json.
+    """
+    await asyncio.to_thread(save, state, path)
+
+
+async def load_async(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
+    """Load checkpoint from disk without blocking the event loop.
+
+    Delegates to :func:`load` via ``asyncio.to_thread`` so callers
+    can await this from an async context without stalling the event loop.
+
+    Args:
+        path: Path to the checkpoint file.
+
+    Returns:
+        PipelineState if checkpoint exists and is valid, None otherwise.
+    """
+    return await asyncio.to_thread(load, path)
 
 
 def inspect(path: Path = CHECKPOINT_PATH) -> str:
