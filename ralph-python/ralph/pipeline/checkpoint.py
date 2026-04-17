@@ -21,6 +21,17 @@ from ralph.pipeline.state import PipelineState
 CHECKPOINT_PATH = Path(".agent") / "checkpoint.json"
 
 
+def _cleanup_stray_tmp(path: Path) -> None:
+    tmp = Path(str(path) + ".tmp")
+    tmp.unlink(missing_ok=True)
+
+
+class Checkpoint:
+    def __init__(self, path: Path = CHECKPOINT_PATH) -> None:
+        self._path = path
+        _cleanup_stray_tmp(path)
+
+
 def save(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None:
     """Atomically write state to disk.
 
