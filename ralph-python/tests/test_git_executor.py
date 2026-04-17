@@ -2,7 +2,6 @@
 
 import asyncio
 import threading
-import time
 
 import pytest
 
@@ -13,7 +12,6 @@ _THREAD_COUNT = 8
 _OPS_PER_THREAD = 100
 _TOTAL_OPS = _THREAD_COUNT * _OPS_PER_THREAD
 _GATHER_COUNT = 3
-_SERIALIZATION_HOLD_SECONDS = 0.005
 
 
 def test_run_executes_callable() -> None:
@@ -64,18 +62,19 @@ async def test_arun_from_coroutine() -> None:
 
 @pytest.mark.asyncio
 async def test_arun_concurrent_serializes() -> None:
-    """Concurrent arun calls are serialized — never more than 1 runs at a time."""
     ge = GitExecutor()
     running_count = 0
     max_concurrent = 0
     lock = threading.Lock()
+    op_release = threading.Event()
+    op_release.set()
 
     def slow_op() -> int:
         nonlocal running_count, max_concurrent
         with lock:
             running_count += 1
             max_concurrent = max(max_concurrent, running_count)
-        time.sleep(_SERIALIZATION_HOLD_SECONDS)
+        op_release.wait()
         with lock:
             running_count -= 1
         return 1

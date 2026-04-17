@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import random
 from contextlib import suppress
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -85,11 +84,10 @@ def test_coordinator_all_units_reach_terminal_state(
     effect = FanOutDevelopmentEffect(work_units=tuple(units), max_workers=n_units)
     state = PipelineState(work_units=tuple(units))
     display: Any = _FakeDisplay()
-    checkpoint_path = Path("/tmp/test-stress-checkpoint.json")
 
     events = asyncio.run(
         asyncio.wait_for(
-            coordinator.run_fan_out(effect, executor, display, checkpoint_path, state),
+            coordinator.run_fan_out(effect, executor, display),
             timeout=30.0,
         )
     )
@@ -127,7 +125,7 @@ def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
 
     events = asyncio.run(
         asyncio.wait_for(
-            coordinator.run_fan_out(effect, executor, display, Path("/tmp/c.json"), state),
+            coordinator.run_fan_out(effect, executor, display),
             timeout=30.0,
         )
     )

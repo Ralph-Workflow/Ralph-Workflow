@@ -92,7 +92,7 @@ def _wait_for_pids_gone(pids: list[int], timeout_s: float = 0.5) -> bool:
     while time.monotonic() < deadline:
         if all(_pid_gone(pid) for pid in pids):
             return True
-        time.sleep(0.02)
+        time.sleep(0.02)  # signal delivery requires a brief yield; Event is insufficient here
     return all(_pid_gone(pid) for pid in pids)
 
 
@@ -107,8 +107,8 @@ async def _run_with_cancel(
             effect=effect,
             executor=executor,
             display=_FakeDisplay(),  # type: ignore[arg-type]
-            checkpoint_path=checkpoint_path,
-            state=state,
+            log_dir=checkpoint_path.parent / "logs",
+            run_id="hard-kill-test",
         )
     )
     asyncio.get_running_loop().call_later(0.2, task.cancel)

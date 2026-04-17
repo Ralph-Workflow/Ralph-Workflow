@@ -14,7 +14,6 @@ from ralph.pipeline.events import (
     WorkerFailedEvent,
     WorkerStartedEvent,
 )
-from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
@@ -87,8 +86,6 @@ async def test_happy_path_three_units(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     assert events[0] is PipelineEvent.FAN_OUT_STARTED
@@ -125,8 +122,6 @@ async def test_failure_cancels_siblings(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
@@ -159,8 +154,6 @@ async def test_respects_dag_order(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     start_order = {
@@ -190,8 +183,6 @@ async def test_respects_max_workers_cap(tmp_path: Path) -> None:
         effect=effect,
         executor=executor,
         display=display,
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     completed = [event for event in events if isinstance(event, WorkerCompletedEvent)]
@@ -207,8 +198,6 @@ async def test_empty_work_units(tmp_path: Path) -> None:
         effect=FanOutDevelopmentEffect(work_units=(), max_workers=2),
         executor=FakeAgentExecutor({}),
         display=RecordingDisplay(),
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     assert events == [PipelineEvent.FAN_OUT_STARTED, PipelineEvent.ALL_WORKERS_COMPLETE]
@@ -227,8 +216,6 @@ async def test_nonzero_exit_emits_worker_failed_event(tmp_path: Path) -> None:
             }
         ),
         display=display,
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
@@ -256,8 +243,6 @@ async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> No
             }
         ),
         display=display,
-        checkpoint_path=tmp_path / "checkpoint.json",
-        state=PipelineState(),
     )
 
     failed_events = [event for event in events if isinstance(event, WorkerFailedEvent)]

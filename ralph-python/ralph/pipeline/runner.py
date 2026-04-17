@@ -309,8 +309,6 @@ def _execute_fan_out_sync(
         display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(Console())
     )
 
-    checkpoint_path = workspace_scope.root / ".agent" / "checkpoint.json"
-
     async def _run() -> PipelineState:
         completed_ids = {
             uid for uid, ws in state.worker_states.items() if ws.status == WorkerStatus.SUCCEEDED
@@ -337,8 +335,8 @@ def _execute_fan_out_sync(
             effect=resume_effect,
             executor=executor,
             display=pd,
-            checkpoint_path=checkpoint_path,
-            state=resumed_state,
+            log_dir=workspace_scope.root / ".agent" / "logs",
+            run_id=str(uuid.uuid4()),
         )
         current = resumed_state
         for ev in fan_out_events:

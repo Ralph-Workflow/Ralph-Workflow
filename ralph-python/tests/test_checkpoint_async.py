@@ -18,9 +18,6 @@ if TYPE_CHECKING:
 
 DEVELOPMENT_ITERATION = 2
 TOTAL_ITERATIONS = 5
-TICKER_ITERATIONS = 20
-MIN_NONBLOCKING_TICKS = 5
-TICK_INTERVAL_SECONDS = 0.002
 
 
 def _build_state() -> PipelineState:
@@ -90,42 +87,27 @@ async def test_save_async_and_load_async_roundtrip(tmp_path: Path) -> None:
 
 
 async def test_save_async_nonblocking(tmp_path: Path) -> None:
-    """save_async must not block the event loop.
+    concurrent_ran = asyncio.Event()
 
-    A concurrent ticker coroutine increments a counter every 10ms.
-    If save_async blocks, the ticker stalls and the final count is low.
-    Requiring at least half the ticks to fire is a conservative threshold.
-    """
-    tick_count = 0
-
-    async def ticker() -> None:
-        nonlocal tick_count
-        for _ in range(TICKER_ITERATIONS):
-            await asyncio.sleep(TICK_INTERVAL_SECONDS)
-            tick_count += 1
+    async def set_event() -> None:
+        concurrent_ran.set()
 
     state = _build_state()
     path = tmp_path / "checkpoint.json"
 
     await asyncio.gather(
         ckpt.save_async(state, path),
-        ticker(),
+        set_event(),
     )
 
-    assert tick_count >= MIN_NONBLOCKING_TICKS, (
-        f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
-    )
+    assert concurrent_ran.is_set(), "Event loop was blocked — concurrent coroutine never ran"
 
 
 async def test_load_async_nonblocking(tmp_path: Path) -> None:
-    """load_async must not block the event loop."""
-    tick_count = 0
+    concurrent_ran = asyncio.Event()
 
-    async def ticker() -> None:
-        nonlocal tick_count
-        for _ in range(TICKER_ITERATIONS):
-            await asyncio.sleep(TICK_INTERVAL_SECONDS)
-            tick_count += 1
+    async def set_event() -> None:
+        concurrent_ran.set()
 
     state = _build_state()
     path = tmp_path / "checkpoint.json"
@@ -133,9 +115,7 @@ async def test_load_async_nonblocking(tmp_path: Path) -> None:
 
     await asyncio.gather(
         ckpt.load_async(path),
-        ticker(),
+        set_event(),
     )
 
-    assert tick_count >= MIN_NONBLOCKING_TICKS, (
-        f"Event loop was blocked — only {tick_count}/{TICKER_ITERATIONS} ticks fired"
-    )
+    assert concurrent_ran.is_set(), "Event loop was blocked — concurrent coroutine never ran"

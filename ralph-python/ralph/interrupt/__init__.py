@@ -7,42 +7,17 @@ simple so both CLI code and long-running loops can check it safely.
 
 from __future__ import annotations
 
-import signal
 import threading
-from typing import TYPE_CHECKING
 
 from ralph.interrupt.asyncio_bridge import install_signal_handlers as install_signal_handlers
-
-if TYPE_CHECKING:
-    from types import FrameType
 
 __all__ = [
     "install_signal_handlers",
     "request_user_interrupt",
-    "setup_interrupt_handler",
     "user_interrupted_occurred",
 ]
 
 _USER_INTERRUPT_OCCURRED = threading.Event()
-_HANDLER_LOCK = threading.Lock()
-_HANDLER_INSTALLED = threading.Event()
-
-
-def _sigint_handler(signum: int, frame: FrameType | None) -> None:
-    """Handle SIGINT by recording that the user interrupted."""
-
-    request_user_interrupt()
-
-
-def setup_interrupt_handler() -> None:
-    """Install a SIGINT handler that records user interrupts."""
-
-    with _HANDLER_LOCK:
-        if _HANDLER_INSTALLED.is_set():
-            return
-
-        signal.signal(signal.SIGINT, _sigint_handler)
-        _HANDLER_INSTALLED.set()
 
 
 def request_user_interrupt() -> None:

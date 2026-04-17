@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_MERGE_INTEGRATION
 from ralph.pipeline.effects import FanOutDevelopmentEffect
@@ -37,8 +36,6 @@ def _run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
             display=_FakeDisplay(),  # type: ignore[arg-type]
-            checkpoint_path=Path("/tmp/checkpoint.json"),
-            state=state,
         )
     )
 

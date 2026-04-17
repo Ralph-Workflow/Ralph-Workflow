@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import signal
 import sys
 import types
 from pathlib import Path
@@ -88,18 +87,11 @@ def _load_run_command_module() -> RunCommandModule:
 run_command_module = _load_run_command_module()
 
 
-def test_interrupt_handler_sets_flag() -> None:
+def test_request_user_interrupt_sets_flag() -> None:
     module = importlib.reload(interrupt_module)
-    previous_handler = signal.getsignal(signal.SIGINT)
-
     assert not module.user_interrupted_occurred()
-
-    try:
-        module.setup_interrupt_handler()
-        signal.raise_signal(signal.SIGINT)
-        assert module.user_interrupted_occurred()
-    finally:
-        signal.signal(signal.SIGINT, previous_handler)
+    module.request_user_interrupt()
+    assert module.user_interrupted_occurred()
 
 
 def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(

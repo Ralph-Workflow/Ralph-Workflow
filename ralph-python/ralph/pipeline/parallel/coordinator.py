@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.events import (
@@ -21,8 +22,13 @@ if TYPE_CHECKING:
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.effects import FanOutDevelopmentEffect
-    from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnit
+
+
+@dataclass(frozen=True)
+class _WorkerLog:
+    log_dir: Path
+    run_id: str
 
 
 class _WorkerFailureError(Exception):
@@ -145,7 +151,16 @@ async def _run_worker(
     executor: AgentExecutor,
     display: ParallelDisplay,
     completion_queue: asyncio.Queue[WorkerResult],
+    log: _WorkerLog | None = None,
 ) -> None:
+    from ralph.logging import bind_worker_sink, remove_worker_sink  # noqa: PLC0415
+
+    sink_handle = (
+        bind_worker_sink(unit_id=unit.unit_id, log_dir=log.log_dir, run_id=log.run_id)
+        if log is not None
+        else None
+    )
+
     def on_output(line: str) -> None:
         display.emit(unit.unit_id, line)
 
@@ -153,37 +168,41 @@ async def _run_worker(
         display.set_status(unit.unit_id, status)
 
     try:
-        result = await executor.run(unit, on_output=on_output, on_status=on_status)
-    except asyncio.CancelledError:
-        display.set_status(unit.unit_id, WorkerStatus.CANCELLED)
-        raise
-    except BaseException as exc:
-        if isinstance(exc, _WorkerFailureError):
+        try:
+            result = await executor.run(unit, on_output=on_output, on_status=on_status)
+        except asyncio.CancelledError:
+            display.set_status(unit.unit_id, WorkerStatus.CANCELLED)
             raise
-        if isinstance(exc, Exception):
-            display.set_status(unit.unit_id, WorkerStatus.FAILED)
-            raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
-        raise
+        except BaseException as exc:
+            if isinstance(exc, _WorkerFailureError):
+                raise
+            if isinstance(exc, Exception):
+                display.set_status(unit.unit_id, WorkerStatus.FAILED)
+                raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
+            raise
 
-    if result.exit_code != 0:
-        raise _WorkerFailureError(
-            unit_id=unit.unit_id,
-            exit_code=result.exit_code,
-            error=_nonzero_exit_error(result),
-        )
+        if result.exit_code != 0:
+            raise _WorkerFailureError(
+                unit_id=unit.unit_id,
+                exit_code=result.exit_code,
+                error=_nonzero_exit_error(result),
+            )
 
-    await completion_queue.put(result)
+        await completion_queue.put(result)
+    finally:
+        if sink_handle is not None:
+            remove_worker_sink(sink_handle)
 
 
 async def run_fan_out(
     effect: FanOutDevelopmentEffect,
     executor: AgentExecutor,
     display: ParallelDisplay,
-    checkpoint_path: Path,
-    state: PipelineState,
+    log_dir: Path | None = None,
+    run_id: str = "default",
 ) -> list[Event]:
     """Execute parallel work units while respecting DAG dependencies and worker caps."""
-    del checkpoint_path, state
+    log = _WorkerLog(log_dir=log_dir, run_id=run_id) if log_dir is not None else None
 
     events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
     if not effect.work_units:
@@ -209,7 +228,7 @@ async def run_fan_out(
                     running[unit.unit_id] = unit
                     events.append(WorkerStartedEvent(unit_id=unit.unit_id))
                     task_group.create_task(
-                        _run_worker(unit, executor, display, completion_queue),
+                        _run_worker(unit, executor, display, completion_queue, log),
                         name=unit.unit_id,
                     )
 
