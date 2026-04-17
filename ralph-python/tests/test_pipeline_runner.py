@@ -23,12 +23,14 @@ from ralph.pipeline.effects import (
     CommitEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
+    FanOutDevelopmentEffect,
     InvokeAgentEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
+from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     AgentChainConfig,
@@ -222,6 +224,18 @@ class TestDetermineEffect:
             effect.agent_name
             == bundle.agents.agent_chains[bundle.agents.agent_drains["planning"].chain].agents[0]
         )
+
+    def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+        )
+
+        effect = runner_module._determine_effect_from_policy(state, bundle)
+
+        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert effect.work_units[0].unit_id == "unit-a"
 
     def test_commit_phase_with_requires_commit_uses_commit_effect(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()

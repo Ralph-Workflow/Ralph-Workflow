@@ -26,6 +26,7 @@ from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import (
     PHASE_COMPLETE,
+    PHASE_DEVELOPMENT,
     PHASE_FAILED,
     PHASE_PLANNING,
 )
@@ -45,7 +46,9 @@ from ralph.pipeline.effects import (
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
+    FanOutDevelopmentEffect,
     InvokeAgentEffect,
+    MergeIntegrationEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
@@ -206,6 +209,16 @@ def run(
                     state = inline_result
                     continue
 
+                if isinstance(effect, FanOutDevelopmentEffect):
+                    state = _execute_fan_out_sync(
+                        effect=effect,
+                        state=state,
+                        display=active_display,
+                        policy_bundle=policy_bundle,
+                        workspace_scope=workspace_scope,
+                    )
+                    continue
+
                 workspace = FsWorkspace(
                     workspace_scope.root,
                     allowed_roots=workspace_scope.allowed_roots,
@@ -266,6 +279,69 @@ def _show_phase_transition_with_context(previous_phase: str, state: PipelineStat
         context=context if context else None,
         console=console,
     )
+
+
+def _execute_fan_out_sync(
+    *,
+    effect: FanOutDevelopmentEffect,
+    state: PipelineState,
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+) -> PipelineState:
+    """Execute fan-out development synchronously by wrapping asyncio.run()."""
+    import asyncio  # noqa: PLC0415
+
+    from ralph.agents.executor import AgentExecutor  # noqa: PLC0415
+    from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
+    from ralph.display.parallel_display import ParallelDisplay as PD  # noqa: PLC0415
+    from ralph.git.executor import GitExecutor  # noqa: PLC0415
+    from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
+    from ralph.pipeline.parallel import merge_integrator  # noqa: PLC0415
+
+    executor = cast(AgentExecutor, SubprocessAgentExecutor())
+    git_exec = GitExecutor()
+    repo_root = workspace_scope.root
+
+    pd: PD
+    if isinstance(display, PD):
+        pd = display
+    else:
+        from ralph.display.parallel_display import ParallelDisplay as PD2  # noqa: PLC0415
+
+        pd = PD2(Console())
+
+    checkpoint_path = workspace_scope.root / ".agent" / "checkpoint.json"
+
+    async def _run() -> PipelineState:
+        fan_out_events = await coordinator.run_fan_out(
+            effect=effect,
+            executor=executor,
+            display=pd,
+            checkpoint_path=checkpoint_path,
+            state=state,
+        )
+        current = state
+        for ev in fan_out_events:
+            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+        ckpt.save(current)
+
+        merge_effect = MergeIntegrationEffect(
+            worker_states=current.worker_states,
+            base_branch="main",
+        )
+        merge_result = await merge_integrator.integrate(
+            base_branch=merge_effect.base_branch,
+            worker_states=merge_effect.worker_states,
+            git_executor=git_exec,
+            repo_root=repo_root,
+        )
+        for ev in merge_result.events:
+            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+        ckpt.save(current)
+        return current
+
+    return asyncio.run(_run())
 
 
 def _handle_inline_effect(
@@ -449,6 +525,12 @@ def _determine_effect_from_policy(
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
+
+    if state.phase == PHASE_DEVELOPMENT and state.work_units:
+        return FanOutDevelopmentEffect(
+            work_units=state.work_units,
+            max_workers=getattr(policy_bundle.pipeline, "max_parallel_workers", 8),
+        )
 
     return InvokeAgentEffect(
         agent_name=agent_name,
