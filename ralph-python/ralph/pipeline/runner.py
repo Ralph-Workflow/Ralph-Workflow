@@ -363,6 +363,8 @@ def _create_initial_state(
         phase=entry_phase,
         total_iterations=config.general.developer_iters,
         total_reviewer_passes=config.general.reviewer_reviews,
+        development_budget_remaining=config.general.developer_iters,
+        review_budget_remaining=config.general.reviewer_reviews,
         planning_chain=AgentChainState(agents=planning_agents),
         dev_chain=AgentChainState(agents=dev_agents),
         dev_analysis_chain=AgentChainState(agents=dev_analysis_agents),

@@ -138,6 +138,30 @@ class TestCreateInitialState:
 
         assert state.planning_chain.agents == ["claude"]
 
+    def test_creates_state_with_correct_development_budget(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        state = runner_module._create_initial_state(config)
+        assert state.development_budget_remaining == DEVELOPER_ITERATIONS
+
+    def test_creates_state_with_correct_review_budget(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        state = runner_module._create_initial_state(config)
+        assert state.review_budget_remaining == REVIEWER_PASSES
+
+    def test_creates_state_with_zero_review_budget_when_r_zero(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = 1
+        config.general.reviewer_reviews = 0
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        state = runner_module._create_initial_state(config)
+        assert state.review_budget_remaining == 0
+
 
 class TestDetermineEffect:
     def _make_state(
