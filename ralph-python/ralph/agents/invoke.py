@@ -431,6 +431,11 @@ def _prepare_codex_home(
     prefix_sections: list[str] = []
     appended_sections: list[str] = []
     if endpoint:
+        logger.warning(
+            "Codex MCP tool restriction is best-effort: apply_patch and core "
+            "editing primitives cannot be disabled. See "
+            "ralph-python/docs/mcp-tool-restriction.md."
+        )
         features_in_base = "[features]" in base_config
         feature_lines = [
             f"{key.split('.', 1)[1]} = {value}" if "." in key else f"{key} = {value}"
@@ -440,10 +445,6 @@ def _prepare_codex_home(
         prefix_sections.append('web_search = "disabled"\n')
         if features_in_base:
             appended_sections.append(feature_block)
-        logger.warning(
-            "Codex MCP wiring is best-effort; disabling built-in features for {}",
-            endpoint,
-        )
         appended_sections.append(
             f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
         )
