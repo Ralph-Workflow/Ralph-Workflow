@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
@@ -22,6 +22,7 @@ from ralph.config.enums import (
     PHASE_REVIEW,
     PipelinePhase,
 )
+from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName
@@ -181,6 +182,17 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     review_budget_remaining: int = 0
     current_drain: str | None = None
 
+    work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
+
+    @field_validator("work_units", mode="before")
+    @classmethod
+    def _coerce_work_units(cls, v: object) -> tuple[WorkUnit, ...]:
+        if v is None:
+            return ()
+        if isinstance(v, list):
+            return tuple(v)
+        return v  # type: ignore[return-value]
+
     def is_complete(self) -> bool:
         """Check if pipeline has reached a terminal state.
 
@@ -276,4 +288,6 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
 
     def copy_with(self, **updates: object) -> PipelineState:
         """Return a copy with updates applied in a typed-safe manner."""
+        if self.work_units and "work_units" in updates and updates["work_units"] != self.work_units:
+            updates = {k: v for k, v in updates.items() if k != "work_units"}
         return self.model_copy(update=updates)

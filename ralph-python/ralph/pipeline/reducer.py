@@ -95,7 +95,10 @@ def reduce(
     handler = handlers.get(event)
     if handler is None:
         return state, []
-    return handler(state, pipeline_policy)
+    new_state, effects = handler(state, pipeline_policy)
+    if state.work_units and not new_state.work_units:
+        new_state = new_state.copy_with(work_units=state.work_units)
+    return new_state, effects
 
 
 def _ignore_policy(
