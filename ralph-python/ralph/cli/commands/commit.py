@@ -165,6 +165,7 @@ def _handle_agent_commit_generation(
     if not generate:
         return
 
+    delete_commit_message_artifacts(repo_root)
     diff = _working_tree_diff(repo_root)
     if not diff.strip():
         console.print("[yellow]No changes to commit[/yellow]")
@@ -251,16 +252,9 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 
 def _working_tree_diff(repo_root: Path) -> str:
     repo = Repo(repo_root)
-    diff = cast("str", repo.git.diff("HEAD"))
-    if not repo.untracked_files:
-        return diff
-
-    untracked_block = "\n".join(repo.untracked_files)
-    if not untracked_block:
-        return diff
-
-    prefix = "\n\n" if diff.strip() else ""
-    return f"{diff}{prefix}# Untracked files\n{untracked_block}\n"
+    if repo.head.is_valid():
+        return cast("str", repo.git.diff("HEAD"))
+    return cast("str", repo.git.diff("--cached"))
 
 
 def _commit_submit_artifact_tool_names(

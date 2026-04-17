@@ -102,12 +102,26 @@ def read_commit_message_from_path(
     return contents or None
 
 
+_LEGACY_STALE_GLOBS = (
+    "commit_message.xml.processed",
+    "commit_message.xsd",
+    "commit_diff.txt",
+    "commit_diff.model_safe.txt",
+)
+
+
 def delete_commit_message_artifacts(
     repo_root: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> None:
     for path in (commit_message_artifact_path(repo_root), commit_message_text_path(repo_root)):
         if backend.exists(path):
             backend.unlink(path)
+
+    tmp_dir = repo_root / ".agent" / "tmp"
+    for name in _LEGACY_STALE_GLOBS:
+        stale = tmp_dir / name
+        if backend.exists(stale):
+            backend.unlink(stale)
 
 
 def normalize_commit_message_content(content: str | dict[str, object]) -> dict[str, object]:
