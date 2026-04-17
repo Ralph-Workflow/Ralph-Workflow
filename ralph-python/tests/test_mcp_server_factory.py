@@ -1,6 +1,7 @@
-import pytest
-from collections.abc import Callable
 from dataclasses import fields, is_dataclass
+
+import pytest
+
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 
@@ -55,7 +56,5 @@ def test_protocol_runtime_checkable() -> None:
 
 
 def test_factory_importable() -> None:
-    from ralph.mcp.server.factory import McpServerFactory, McpServerHandle  # noqa: F401
-
     assert McpServerFactory is not None
     assert McpServerHandle is not None

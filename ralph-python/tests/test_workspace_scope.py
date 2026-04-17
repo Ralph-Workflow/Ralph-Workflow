@@ -4,14 +4,10 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from git import Repo
 
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
-
-if TYPE_CHECKING:
-    pass
 
 
 def test_resolve_workspace_scope_keeps_root_worktree_authority_local(tmp_path: Path) -> None:

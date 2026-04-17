@@ -1,7 +1,10 @@
 """Tests for sanitize_display_line() line truncation and unicode safety."""
 
-import pytest
 from ralph.display.line_sanitizer import sanitize_display_line
+
+MAX_TRUNCATED_RESULT_LENGTH = 203
+MAX_CHARS_WITH_ELLIPSIS = 201
+CUSTOM_MAX_RESULT_LENGTH = 11
 
 
 def test_normal_short_string_unchanged() -> None:
@@ -12,13 +15,13 @@ def test_normal_short_string_unchanged() -> None:
 def test_oversize_line_truncated() -> None:
     long_input = "x" * 10000
     result = sanitize_display_line(long_input)
-    assert len(result) <= 203  # 200 + ellipsis character (1 char)
+    assert len(result) <= MAX_TRUNCATED_RESULT_LENGTH
     assert result.endswith("…")
 
 
 def test_truncation_at_max_chars() -> None:
     result = sanitize_display_line("a" * 201)
-    assert len(result) <= 201
+    assert len(result) <= MAX_CHARS_WITH_ELLIPSIS
     assert result.endswith("…")
 
 
@@ -37,7 +40,7 @@ def test_binary_bytes_decoded_without_raising() -> None:
 
 
 def test_valid_utf8_bytes_decoded_correctly() -> None:
-    utf8_bytes = "hello".encode("utf-8")
+    utf8_bytes = b"hello"
     result = sanitize_display_line(utf8_bytes)
     assert "hello" in result
 
@@ -67,7 +70,7 @@ def test_emoji_preserved() -> None:
 
 def test_custom_max_chars() -> None:
     result = sanitize_display_line("a" * 50, max_chars=10)
-    assert len(result) <= 11  # 10 + ellipsis
+    assert len(result) <= CUSTOM_MAX_RESULT_LENGTH
     assert result.endswith("…")
 
 

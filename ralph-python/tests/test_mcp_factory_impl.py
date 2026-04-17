@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ralph.mcp.server.factory import McpServerFactory
+from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
+from ralph.mcp.session import AgentSession
+from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ralph.mcp.server import lifecycle
+
+
+class FakeProcess:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+
+
+class FakeBridge:
+    def __init__(self, endpoint: str, pid: int) -> None:
+        self._endpoint = endpoint
+        self.process = FakeProcess(pid)
+        self.shutdown_calls = 0
+
+    def start(self) -> None:
+        return None
+
+    def agent_endpoint_uri(self) -> str:
+        return self._endpoint
+
+    def endpoint_uri(self) -> str:
+        return self._endpoint
+
+    def shutdown(self) -> None:
+        self.shutdown_calls += 1
+
+
+def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:
+    factory = DynamicBindingMcpServerFactory(workspace=FsWorkspace(tmp_path))
+
+    assert isinstance(factory, McpServerFactory)
+
+
+def test_build_creates_handles_with_distinct_endpoints(tmp_path: Path) -> None:
+    seen: list[tuple[object, object, object]] = []
+
+    def fake_reserve_port() -> int:
+        return 43000 + len(seen) + 1
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> FakeBridge:
+        assert deps is not None
+        port = deps.reserve_port()
+        endpoint = f"http://127.0.0.1:{port}/mcp"
+        seen.append((session, workspace, endpoint))
+        return FakeBridge(endpoint=endpoint, pid=port)
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        reserve_port=fake_reserve_port,
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    first = factory.build(session)
+    second = factory.build(session)
+
+    assert first.endpoint != second.endpoint
+    assert first.pid != second.pid
+    assert seen == [
+        (session, factory.workspace, first.endpoint),
+        (session, factory.workspace, second.endpoint),
+    ]
+
+
+def test_handle_shutdown_calls_bridge_shutdown(tmp_path: Path) -> None:
+    bridge = FakeBridge(endpoint="http://127.0.0.1:43123/mcp", pid=43123)
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> FakeBridge:
+        del session, workspace, deps
+        return bridge
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    handle = factory.build(session)
+    handle.shutdown()
+
+    assert bridge.shutdown_calls == 1

@@ -1,12 +1,7 @@
 """Worker execution state model for parallel pipeline workers."""
 
-from __future__ import annotations
-
+from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,6 +43,7 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]
     worktree_path: str | None = None
     log_file: str | None = None
 
-    def copy_with(self, **updates: object) -> WorkerState:
+    def copy_with(self, **updates: object) -> "WorkerState":
         """Return a copy with the given fields replaced."""
         return self.model_copy(update=updates)
+

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
+from pydantic import ValidationError
 
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
@@ -35,19 +38,17 @@ def test_worker_state_frozen_immutable() -> None:
     """WorkerState raises on mutation attempt (frozen=True)."""
     ws = WorkerState(unit_id="u1")
 
-    with pytest.raises(Exception):
+    with pytest.raises((TypeError, ValidationError)):
         ws.status = WorkerStatus.RUNNING  # type: ignore[misc]
 
 
 def test_worker_state_round_trip_json() -> None:
     """WorkerState round-trips through model_dump_json / model_validate_json."""
-    from datetime import datetime, timezone
-
     ws = WorkerState(
         unit_id="unit-42",
         status=WorkerStatus.SUCCEEDED,
-        started_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
-        finished_at=datetime(2026, 1, 1, 12, 5, 0, tzinfo=timezone.utc),
+        started_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+        finished_at=datetime(2026, 1, 1, 12, 5, 0, tzinfo=UTC),
         exit_code=0,
         error_message=None,
         commit_sha="abc123",
@@ -70,9 +71,7 @@ def test_worker_state_all_status_values_serialize() -> None:
 
 def test_worker_state_unit_id_required() -> None:
     """WorkerState requires unit_id."""
-    import pydantic
-
-    with pytest.raises(pydantic.ValidationError):
+    with pytest.raises(ValidationError):
         WorkerState()  # type: ignore[call-arg]
 
 

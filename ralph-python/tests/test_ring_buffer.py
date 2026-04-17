@@ -1,12 +1,16 @@
 """Tests for RingBuffer bounded ring buffer."""
 
 import threading
-import pytest
-from ralph.display.ring_buffer import RingBuffer, PARALLEL_DISPLAY_BUFFER_SIZE
+
+from ralph.display.ring_buffer import PARALLEL_DISPLAY_BUFFER_SIZE, RingBuffer
+
+DEFAULT_BUFFER_SIZE = 1000
+EXPECTED_DROPPED_ITEMS = 2
+EXPECTED_DRAINED_ITEMS = 3
 
 
 def test_buffer_size_constant_exists() -> None:
-    assert PARALLEL_DISPLAY_BUFFER_SIZE == 1000
+    assert PARALLEL_DISPLAY_BUFFER_SIZE == DEFAULT_BUFFER_SIZE
 
 
 def test_enqueue_and_drain_basic() -> None:
@@ -45,7 +49,7 @@ def test_dropped_count_increments() -> None:
     buf = RingBuffer(maxsize=3)
     for i in range(5):
         buf.enqueue(str(i))
-    assert buf.dropped_count == 2
+    assert buf.dropped_count == EXPECTED_DROPPED_ITEMS
 
 
 def test_enqueue_five_drain_three() -> None:
@@ -53,12 +57,12 @@ def test_enqueue_five_drain_three() -> None:
     for i in range(5):
         buf.enqueue(str(i))
     items = buf.drain()
-    assert len(items) == 3
-    assert buf.dropped_count == 2
+    assert len(items) == EXPECTED_DRAINED_ITEMS
+    assert buf.dropped_count == EXPECTED_DROPPED_ITEMS
 
 
 def test_thread_safety_conservation() -> None:
-    """10 threads × 1000 enqueues; dropped + drained == 10000."""
+    """10 threads x 1000 enqueues; dropped + drained == 10000."""
     buf = RingBuffer(maxsize=PARALLEL_DISPLAY_BUFFER_SIZE)
     num_threads = 10
     per_thread = 1000

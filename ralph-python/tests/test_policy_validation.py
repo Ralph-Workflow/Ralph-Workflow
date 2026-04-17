@@ -44,6 +44,7 @@ from ralph.policy.validation import (
 )
 
 ValidationError = importlib.import_module("pydantic").ValidationError
+DEFAULT_MAX_WORK_UNITS = 50
 
 
 class TestAgentsPolicyValidation:
@@ -141,7 +142,7 @@ class TestDefaultPolicyLoading:
         bundle = load_policy(default_dir)
 
         assert bundle.pipeline.parallel_execution is not None
-        assert bundle.pipeline.parallel_execution.max_work_units == 50
+        assert bundle.pipeline.parallel_execution.max_work_units == DEFAULT_MAX_WORK_UNITS
 
     def test_all_pipeline_drains_are_bound(self) -> None:
         """Test that every drain used in pipeline.phases is bound in agents.agent_drains.

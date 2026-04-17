@@ -7,6 +7,8 @@ import pytest
 from ralph.agents.executor import AgentExecutor, ExecutorError, WorkerResult
 from ralph.pipeline.work_units import WorkUnit
 
+DURATION_MS = 123
+
 
 class TestWorkerResult:
     def test_fields_accessible(self) -> None:
@@ -14,12 +16,12 @@ class TestWorkerResult:
             unit_id="u1",
             exit_code=0,
             final_message="done",
-            duration_ms=123,
+            duration_ms=DURATION_MS,
         )
         assert result.unit_id == "u1"
         assert result.exit_code == 0
         assert result.final_message == "done"
-        assert result.duration_ms == 123
+        assert result.duration_ms == DURATION_MS
 
     def test_frozen_raises_on_mutation(self) -> None:
         result = WorkerResult(

@@ -1,8 +1,9 @@
 import importlib
 
-import pytest
-from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
+from ralph.pipeline.work_units import WorkUnit
+
+MAX_SCHEDULED_RESULTS = 2
 
 _hypothesis = importlib.import_module("hypothesis")
 given = _hypothesis.given
@@ -36,7 +37,7 @@ def test_fully_parallel_no_deps() -> None:
 def test_full_parallel_respects_cap() -> None:
     units = tuple(make_unit(str(i)) for i in range(5))
     result = schedule_next_wave(set(), units, set(), max_workers=2)
-    assert len(result) == 2
+    assert len(result) == MAX_SCHEDULED_RESULTS
 
 
 def test_sequential_chain() -> None:

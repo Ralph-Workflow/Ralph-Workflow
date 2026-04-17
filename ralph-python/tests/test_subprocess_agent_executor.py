@@ -2,12 +2,23 @@
 
 import asyncio
 import sys
+from contextlib import suppress
 
 import pytest
 
-from ralph.agents.executor import AgentExecutor, WorkerResult
+from ralph.agents.executor import AgentExecutor
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.pipeline.work_units import WorkUnit
+
+EXIT_CODE_FAILURE = 42
+
+
+def ignore_output(_line: str) -> None:
+    return None
+
+
+def ignore_status(_status: str) -> None:
+    return None
 
 
 def make_unit(unit_id: str) -> WorkUnit:
@@ -29,8 +40,8 @@ async def test_streams_output() -> None:
     collected: list[str] = []
     result = await executor.run(
         unit,
-        on_output=lambda line: collected.append(line),
-        on_status=lambda s: None,
+        on_output=collected.append,
+        on_status=ignore_status,
         command=[sys.executable, "-c", "print('line1'); print('line2'); print('line3')"],
     )
 
@@ -48,11 +59,11 @@ async def test_exit_code_propagates() -> None:
     unit = make_unit("test-B")
     result = await executor.run(
         unit,
-        on_output=lambda line: None,
-        on_status=lambda s: None,
-        command=[sys.executable, "-c", "import sys; sys.exit(42)"],
+        on_output=ignore_output,
+        on_status=ignore_status,
+        command=[sys.executable, "-c", f"import sys; sys.exit({EXIT_CODE_FAILURE})"],
     )
-    assert result.exit_code == 42
+    assert result.exit_code == EXIT_CODE_FAILURE
 
 
 @pytest.mark.asyncio
@@ -68,16 +79,14 @@ async def test_cancel_kills_process_group() -> None:
     ]
 
     task = asyncio.create_task(
-        executor.run(unit, on_output=lambda l: None, on_status=lambda s: None, command=cmd)
+        executor.run(unit, on_output=ignore_output, on_status=ignore_status, command=cmd)
     )
 
     await asyncio.sleep(0.2)
     task.cancel()
 
-    try:
+    with suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
 
     await asyncio.sleep(0.1)
     # Just verifying it doesn't hang here is sufficient
@@ -90,8 +99,8 @@ async def test_duration_ms_populated() -> None:
     unit = make_unit("test-D")
     result = await executor.run(
         unit,
-        on_output=lambda l: None,
-        on_status=lambda s: None,
+        on_output=ignore_output,
+        on_status=ignore_status,
         command=[sys.executable, "-c", "print('done')"],
     )
     assert result.duration_ms >= 0
@@ -105,8 +114,8 @@ async def test_final_message_from_last_line() -> None:
     last: list[str] = []
     result = await executor.run(
         unit,
-        on_output=lambda l: last.append(l),
-        on_status=lambda s: None,
+        on_output=last.append,
+        on_status=ignore_status,
         command=[sys.executable, "-c", "print('first'); print('last')"],
     )
     assert result.final_message == (last[-1] if last else "")
