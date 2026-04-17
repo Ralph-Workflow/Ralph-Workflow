@@ -28,7 +28,11 @@ from loguru import logger
 from tqdm import tqdm
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.tool_names import RALPH_MCP_SERVER_NAME, claude_allowed_tool_names
+from ralph.mcp.tool_names import (
+    OPENCODE_NATIVE_TOOLS_TO_DISABLE,
+    RALPH_MCP_SERVER_NAME,
+    claude_allowed_tool_names,
+)
 
 _MODELED_FLAG_PARTS = 2
 
@@ -504,6 +508,12 @@ def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
         config_obj["permission"] = permission_section_obj
     permission_section = cast("dict[str, object]", permission_section_obj)
     permission_section["ralph_*"] = "allow"
+
+    existing_tools = config_obj.get("tools", {})
+    if not isinstance(existing_tools, dict):
+        existing_tools = {}
+    disable_overrides = {name: False for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE}
+    config_obj["tools"] = {**cast("dict[str, object]", existing_tools), **disable_overrides}
 
     config_obj.setdefault("$schema", "https://opencode.ai/config.json")
     return json.dumps(config_obj, sort_keys=True)
