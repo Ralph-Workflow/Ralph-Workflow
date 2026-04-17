@@ -7,8 +7,11 @@ import importlib.util
 import os
 import signal
 import time
-from collections.abc import Callable
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
 
 from ralph.agents.executor import WorkerResult
 from ralph.config.enums import PHASE_DEVELOPMENT
@@ -20,6 +23,7 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 
 _HAS_PSUTIL = importlib.util.find_spec("psutil") is not None
+_NUM_WORKERS = 3
 
 
 class _FakeDisplay:
@@ -120,9 +124,9 @@ async def _run_with_cancel(
 
 
 def test_parallel_hard_kill(tmp_path: Path) -> None:
-    units = tuple(_make_work_unit(f"unit-{index}") for index in range(3))
+    units = tuple(_make_work_unit(f"unit-{index}") for index in range(_NUM_WORKERS))
     executor = SleeperExecutor()
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutDevelopmentEffect(work_units=units, max_workers=_NUM_WORKERS)
     state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
     checkpoint_path = tmp_path / "checkpoint.json"
     worktree_dirs = [tmp_path / unit.unit_id for unit in units]
@@ -132,7 +136,7 @@ def test_parallel_hard_kill(tmp_path: Path) -> None:
 
     asyncio.run(_run_with_cancel(effect, state, executor, checkpoint_path))
 
-    assert len(executor.pids) == 3
+    assert len(executor.pids) == _NUM_WORKERS
     assert _wait_for_pids_gone(executor.pids)
 
     interrupted_state = PipelineState(
